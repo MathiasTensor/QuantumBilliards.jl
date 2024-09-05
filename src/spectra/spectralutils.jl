@@ -1,14 +1,5 @@
 #include("../abstracttypes.jl")
 
-<<<<<<< Updated upstream
-using IntervalArithmetic
-function is_equal(x,dx,y,dy)
-    #check if numbers are equal within tolerances
-    X = x ± dx
-    Y = y ± dy 
-    Z = X ∩ Y
-    return  ~(Z == ∅)
-=======
 function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
     # Define the intervals
     x_lower = x - dx
@@ -17,7 +8,6 @@ function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
     y_upper = y + dy
     # Check if the intervals overlap
     return max(x_lower, y_lower) <= min(x_upper, y_upper)
->>>>>>> Stashed changes
 end
 
 function match_wavenumbers(ks_l,ts_l,ks_r,ts_r)
