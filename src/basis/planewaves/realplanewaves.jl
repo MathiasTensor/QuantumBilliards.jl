@@ -1,5 +1,5 @@
 
-struct RealPlaneWaves{T,Sy,Sa} <: AbsBasis where  {T<:Real, Sy<:Union{AbsSymmetry,Nothing}, Sa<:AbsSampler}
+struct RealPlaneWaves{T,Sy,Sa} <: AbsBasis where  {T<:Real, Sy<:AbsSymmetry, Sa<:AbsSampler}
     #cs::PolarCS{T} #not fully implemented
     dim::Int64 #using concrete type
     symmetries::Union{Vector{Sy},Nothing}
