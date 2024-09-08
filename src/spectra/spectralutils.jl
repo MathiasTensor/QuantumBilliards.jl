@@ -10,7 +10,6 @@ function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
     return max(x_lower, y_lower) <= min(x_upper, y_upper)
 end
 
-
 function match_wavenumbers(ks_l,ts_l,ks_r,ts_r)
     #vectors ks_l and_ks_r must be sorted
     i = j = 1 #counting index
