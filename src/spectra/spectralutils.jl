@@ -1,14 +1,13 @@
 #include("../abstracttypes.jl")
 
-using IntervalArithmetic
-#using IntervalArithmetic.Symbols
-function is_equal(x,dx,y,dy)
-    #check if numbers are equal within tolerances
-    X = x ± dx
-    Y = y ± dy 
-    Z = IntervalArithmetic.intersect_interval(X, Y)
-    #return  ~(Z == ∅)
-    return  ~IntervalArithmetic.isempty_interval(Z)
+function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
+    # Define the intervals
+    x_lower = x - dx
+    x_upper = x + dx
+    y_lower = y - dy
+    y_upper = y + dy
+    # Check if the intervals overlap
+    return max(x_lower, y_lower) <= min(x_upper, y_upper)
 end
 
 
@@ -119,12 +118,13 @@ function SpectralData(k,ten,control)
 end
 
 function merge_spectra(s1, s2; tol=1e-4)
-    first = interval(s1.k_min-tol/2, s1.k_max+tol/2)
-    second = interval(s2.k_min-tol/2, s2.k_max+tol/2)
-    overlap = intersect_interval(first, second)  #this is the overlap interval
+    # Define the overlap interval manually
+    overlap_start = max(s1.k_min - tol / 2, s2.k_min - tol / 2)
+    overlap_end = min(s1.k_max + tol / 2, s2.k_max + tol / 2)
     
-    idx_1 = [in_interval(k, overlap) for k in s1.k]
-    idx_2 = [in_interval(k, overlap) for k in s2.k]
+    # Identify the indices of wavenumbers within the overlap interval
+    idx_1 = [(k >= overlap_start) && (k <= overlap_end) for k in s1.k]
+    idx_2 = [(k >= overlap_start) && (k <= overlap_end) for k in s2.k]
 
     ks1 = s1.k[idx_1]
     ts1 = s1.ten[idx_1]
