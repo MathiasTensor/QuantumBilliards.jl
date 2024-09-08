@@ -32,8 +32,6 @@ include("basis/planewaves/realplanewaves.jl")
 export RealPlaneWaves
 include("basis/fourierbessel/corneradapted.jl")
 export CornerAdaptedFourierBessel
-include("basis/fundamental/fundamentalbessels.jl")
-export FundamentalBessel
 export resize_basis, basis_fun, dk_fun, gradient, basis_and_gradient 
 
 #billiards
