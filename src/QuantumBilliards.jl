@@ -14,7 +14,6 @@ include("utils/symmetry.jl")
 export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
 
-
 #solvers
 #include("solvers/Solvers.jl")
 #@reexport using .Solvers
