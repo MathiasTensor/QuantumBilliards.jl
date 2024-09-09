@@ -12,22 +12,49 @@ struct RealPlaneWaves{T,Sa} <: AbsBasis where  {T<:Real, Sa<:AbsSampler}
 end
 
 function parity_pattern(symmetries)
-    if isnothing(symmetries)
-        parity_x = [1,1,-1,-1]
-        parity_y = [1,-1,1,-1]
-    else
-        parity_x = [1,-1]
-        parity_y = [1,-1]
+    # Default parity vectors assuming no symmetries
+    parity_x = [1, 1, -1, -1]
+    parity_y = [1, -1, 1, -1]
+    
+    # Flags to track whether the axes are reflected
+    x_reflected = false
+    y_reflected = false
+    xy_reflected = false
+    
+    # Loop over the symmetries
+    if !isnothing(symmetries)
         for sym in symmetries
             if sym.axis == :y_axis
+                # X-axis reflection: constrain parity_x
                 parity_x = [sym.parity, sym.parity]
-            end
-            if sym.axis == :x_axis
-                parity_y = [sym.parity, sym.parity]   
+                x_reflected = true
+            elseif sym.axis == :x_axis
+                # Y-axis reflection: constrain parity_y
+                parity_y = [sym.parity, sym.parity]
+                y_reflected = true
+            elseif sym.axis == :origin
+                # XYReflection: constrain both axes to the same parity
+                parity_x = [sym.parity]
+                parity_y = [sym.parity]
+                xy_reflected = true
+                break  # Once XYReflection is applied, we must exit as there is nothing more to be done
             end
         end
-    end            
-     
+    end
+
+    if xy_reflected
+        # XYReflection overrides any previous reflections, so lengths are already correct and we can terminate early
+        return parity_x, parity_y
+    end
+
+    # Ensure both parity_x and parity_y have the same length to avoid problems of taking lenght of them for effective dimension
+    if x_reflected && !y_reflected
+        # If only XReflection is applied, adjust parity_y to match parity_x
+        parity_y = [1, -1]
+    elseif y_reflected && !x_reflected
+        # If only YReflection is applied, adjust parity_x to match parity_y
+        parity_x = [1, -1]
+    end
     return parity_x, parity_y
 end
 
