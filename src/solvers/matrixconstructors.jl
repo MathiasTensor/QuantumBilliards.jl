@@ -14,31 +14,31 @@ function filter_matrix!(M; ϵ = eps(eltype(M)))
 end
 
 #this will be usefull for basis sets containing several functions (plane and evanscent waves etc.)
-function basis_matrix(basis::Ba, k, pts::Vector{SVector{2,T}}; parallel_matrix = true) where {T<:Real, Ba<:AbsBasis}
+function basis_matrix(basis::Ba, k, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
     let dim = basis.dim
-        B = basis_fun(basis,1:dim,k,pts; parallel_matrix)
+        B = basis_fun(basis,1:dim,k,pts)
         return filter_matrix!(B)
     end
 end
 
-function gradient_matrices(basis::Ba, k, pts::Vector{SVector{2,T}}; parallel_matrix = true) where {T<:Real, Ba<:AbsBasis}
+function gradient_matrices(basis::Ba, k, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
     let dim = basis.dim
-        dB_dx, dB_dy = gradient(basis,1:dim,k,pts; parallel_matrix)
+        dB_dx, dB_dy = gradient(basis,1:dim,k,pts)
         return filter_matrix!(dB_dx), filter_matrix!(dB_dy)
     end
 end
 
-function basis_and_gradient_matrices(basis::Ba, k, pts::Vector{SVector{2,T}}; parallel_matrix = true) where {T<:Real, Ba<:AbsBasis}
+function basis_and_gradient_matrices(basis::Ba, k, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
     let dim = basis.dim
-        B, dB_dx, dB_dy = basis_and_gradient(basis,1:dim,k,pts; parallel_matrix)
+        B, dB_dx, dB_dy = basis_and_gradient(basis,1:dim,k,pts)
         return filter_matrix!(B), filter_matrix!(dB_dx), filter_matrix!(dB_dy)
     end
 end
 
 
-function dk_matrix(basis::Ba, k, pts::Vector{SVector{2,T}}; parallel_matrix = true) where {T<:Real, Ba<:AbsBasis}
+function dk_matrix(basis::Ba, k, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
     let dim = basis.dim
-        dB_dk = dk_fun(basis,1:dim,k,pts; parallel_matrix)
+        dB_dk = dk_fun(basis,1:dim,k,pts)
         return filter_matrix!(dB_dk)
     end
 end

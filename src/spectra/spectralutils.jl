@@ -88,7 +88,7 @@ function overlap_and_merge!(k_left, ten_left, k_right, ten_right, control_left, 
     append!(control_left, [false for i in idx_last:length(k_right)])
 end
 
-function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4, parallel_matrix = true)
+function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4)
     k0 = k1
     #initial computation
     k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk+tol)
@@ -144,7 +144,7 @@ function merge_spectra(s1, s2; tol=1e-4)
     return SpectralData(ks[p], ts[p], control[p])
 end
 
-function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliard,N1::Int,N2::Int,dN::Int; N_expect = 2.0, tol=1e-4, parallel_matrix = false)
+function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliard,N1::Int,N2::Int,dN::Int; N_expect = 2.0, tol=1e-4)
     let solver=solver, basis=basis, billiard=billiard
         N_intervals = range(N1-dN/2,N2+dN/2,step=dN)
         #println(N_intervals)
@@ -162,7 +162,7 @@ function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliar
             #println(k1)
             #println(k2)
             #println(dk)
-            k_res, ten_res, control = compute_spectrum(solver,basis,billiard,k1,k2,dk; parallel_matrix, tol)
+            k_res, ten_res, control = compute_spectrum(solver,basis,billiard,k1,k2,dk; tol)
             #println(k_res)
             results[i] = SpectralData(k_res, ten_res, control)
         end
