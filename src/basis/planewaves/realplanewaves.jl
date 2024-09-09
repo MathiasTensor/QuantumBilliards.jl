@@ -96,24 +96,13 @@ end
         M =  length(pts)
         N = length(indices)
         B = zeros(T,M,N)
-        if parallel_matrix
-            Threads.@threads for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                B[:,i] .= rpw(arg_x, par_x[i]).*rpw(arg_y, par_y[i])
-            end
-        else
-            for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                B[:,i] .= rpw(arg_x, par_x[i]).*rpw(arg_y, par_y[i])
-            end
+        Threads.@threads for i in eachindex(indices)
+            vx = cos(basis.angles[i])
+            vy = sin(basis.angles[i])
+            arg_x = k*vx.*x
+            arg_y = k*vy.*y
+            B[:,i] .= rpw(arg_x, par_x[i]).*rpw(arg_y, par_y[i])
         end
-
         return B 
     end
 end
@@ -142,28 +131,15 @@ function gradient(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::Abst
         N = length(indices)
         dB_dx = zeros(T,M,N)
         dB_dy = zeros(T,M,N)
-        if parallel_matrix
-            Threads.@threads for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                bx = rpw(arg_x, par_x[i])
-                by = rpw(arg_y, par_y[i])
-                dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
-                dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
-            end
-        else
-            for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                bx = rpw(arg_x, par_x[i])
-                by = rpw(arg_y, par_y[i])
-                dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
-                dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
-            end
+        Threads.@threads for i in eachindex(indices)
+            vx = cos(basis.angles[i])
+            vy = sin(basis.angles[i])
+            arg_x = k*vx.*x
+            arg_y = k*vy.*y
+            bx = rpw(arg_x, par_x[i])
+            by = rpw(arg_y, par_y[i])
+            dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
+            dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
         end
         return dB_dx, dB_dy
     end
@@ -197,30 +173,17 @@ function basis_and_gradient(basis::RealPlaneWaves, indices::AbstractArray, k::T,
         B = zeros(T,M,N)
         dB_dx = zeros(T,M,N)
         dB_dy = zeros(T,M,N)
-        if parallel_matrix
-            Threads.@threads for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                bx = rpw(arg_x, par_x[i])
-                by = rpw(arg_y, par_y[i])
-                B[:,i] .= bx.*by
-                dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
-                dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
-            end
-        else
-            for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                bx = rpw(arg_x, par_x[i])
-                by = rpw(arg_y, par_y[i])
-                B[:,i] .= bx.*by
-                dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
-                dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
-            end
+        Threads.@threads for i in eachindex(indices)
+            vx = cos(basis.angles[i])
+            vy = sin(basis.angles[i])
+            arg_x = k*vx.*x
+            arg_y = k*vy.*y
+            bx = rpw(arg_x, par_x[i])
+            by = rpw(arg_y, par_y[i])
+            B[:,i] .= bx.*by
+            dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
+            dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
+
         end
         return B, dB_dx, dB_dy
     end
@@ -251,30 +214,16 @@ end
         M =  length(pts)
         N = length(indices)
         dB_dk = zeros(T,M,N)
-        if parallel_matrix
-            Threads.@threads for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                bx = rpw(arg_x, par_x[i])
-                by = rpw(arg_y, par_y[i])
-                d_bx = d_rpw(arg_x, par_x[i])
-                d_by = d_rpw(arg_y, par_y[i])
-                dB_dk[:,i] .=  @. vx*x*d_bx*by + bx*vy*y*d_by
-            end
-        else
-            for i in eachindex(indices)
-                vx = cos(basis.angles[i])
-                vy = sin(basis.angles[i])
-                arg_x = k*vx.*x
-                arg_y = k*vy.*y
-                bx = rpw(arg_x, par_x[i])
-                by = rpw(arg_y, par_y[i])
-                d_bx = d_rpw(arg_x, par_x[i])
-                d_by = d_rpw(arg_y, par_y[i])
-                dB_dk[:,i] .=  @. vx*x*d_bx*by + bx*vy*y*d_by
-            end
+        Threads.@threads for i in eachindex(indices)
+            vx = cos(basis.angles[i])
+            vy = sin(basis.angles[i])
+            arg_x = k*vx.*x
+            arg_y = k*vy.*y
+            bx = rpw(arg_x, par_x[i])
+            by = rpw(arg_y, par_y[i])
+            d_bx = d_rpw(arg_x, par_x[i])
+            d_by = d_rpw(arg_y, par_y[i])
+            dB_dk[:,i] .=  @. vx*x*d_bx*by + bx*vy*y*d_by
         end
         return dB_dk
     end
