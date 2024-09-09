@@ -34,8 +34,8 @@ function parity_pattern(symmetries)
                 y_reflected = true
             elseif sym.axis == :origin
                 # XYReflection: constrain both axes to the same parity
-                parity_x = [sym.parity]
-                parity_y = [sym.parity]
+                parity_x = [sym.parity[1]]
+                parity_y = [sym.parity[2]]
                 xy_reflected = true
                 break  # Once XYReflection is applied, we must exit as there is nothing more to be done
             end

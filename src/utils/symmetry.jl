@@ -8,7 +8,7 @@ reflect_y = LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
 
 struct Reflection <: AbsSymmetry
     sym_map::LinearMap{SMatrix{2, 2, Float64, 4}}
-    parity::Int64
+    parity::Union{Int64, Vector{Int64}}
     axis::Symbol
 end
 
@@ -21,7 +21,7 @@ function YReflection(parity)
 end
 
 function XYReflection(parity_x, parity_y)
-    return Reflection(reflect_x ∘ reflect_y, parity_x*parity_y, :origin)
+    return Reflection(reflect_x ∘ reflect_y, [parity_x, parity_y], :origin)
 end
 
 function reflect_wavefunction(Psi,x_grid,y_grid,symmetries)
