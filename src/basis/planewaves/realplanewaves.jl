@@ -89,7 +89,7 @@ end
     end
 end
 
-@inline function basis_fun(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray; parallel_matrix = true) where {T<:Real}
+@inline function basis_fun(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
     let par_x = basis.parity_x, par_y = basis.parity_y
         x = getindex.(pts,1)
         y = getindex.(pts,2)
@@ -134,7 +134,7 @@ function gradient(basis::RealPlaneWaves, i::Int, k::T, pts::AbstractArray) where
     end
 end
 
-function gradient(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray; parallel_matrix = true) where {T<:Real}
+function gradient(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
     let par_x = basis.parity_x, par_y = basis.parity_y
         x = getindex.(pts,1)
         y = getindex.(pts,2)
@@ -188,7 +188,7 @@ function basis_and_gradient(basis::RealPlaneWaves, i::Int, k::T, pts::AbstractAr
 end
 
 
-function basis_and_gradient(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray; parallel_matrix = true) where {T<:Real}
+function basis_and_gradient(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
     let par_x = basis.parity_x, par_y = basis.parity_y
         x = getindex.(pts,1)
         y = getindex.(pts,2)
@@ -244,7 +244,7 @@ end
 end
     
 
-@inline function dk_fun(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray; parallel_matrix=true) where {T<:Real}
+@inline function dk_fun(basis::RealPlaneWaves, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
     let par_x = basis.parity_x, par_y = basis.parity_y
         x = getindex.(pts,1)
         y = getindex.(pts,2)
