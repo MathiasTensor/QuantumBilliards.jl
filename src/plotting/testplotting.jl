@@ -46,9 +46,44 @@ function plot_geometry_test!(f,billiard)
     plot_boundary!(ax,billiard;dens=20.0)
 end
 
-function plot_basis_test!(f,basis,billiard;i=1,k=10.0)
+function raycast_to_rectangle(x0, y0, θ, x_limits, y_limits)
+    # Extract rectangle limits
+    x_min, x_max = x_limits
+    y_min, y_max = y_limits
+    # Direction of the ray from the angle θ
+    dx, dy = cos(θ), sin(θ)
+    # Helper function to check intersection with a boundary
+    function check_intersection(x_int, y_int, t)
+        (t > 0 && x_min <= x_int <= x_max && y_min <= y_int <= y_max) ? (x_int, y_int) : nothing
+    end
+    # Calculate intersection points
+    intersections = [
+        dx != 0 ? check_intersection(x_min, y0 + (x_min - x0) / dx * dy, (x_min - x0) / dx) : nothing,
+        dx != 0 ? check_intersection(x_max, y0 + (x_max - x0) / dx * dy, (x_max - x0) / dx) : nothing,
+        dy != 0 ? check_intersection(x0 + (y_min - y0) / dy * dx, y_min, (y_min - y0) / dy) : nothing,
+        dy != 0 ? check_intersection(x0 + (y_max - y0) / dy * dx, y_max, (y_max - y0) / dy) : nothing
+    ]
+    # Filter out 'nothing' values and return the closest valid intersection
+    valid_intersections = filter(!isnothing, intersections)
+    return isempty(valid_intersections) ? nothing : minimum(valid_intersections, by = p -> hypot(p[1] - x0, p[2] - y0))
+end
+
+function plot_basis_test!(f,basis,billiard;i=1,k=10.0, emphasized_discontinuity=false)
     basisstate = BasisState(basis,k, i)
-    plot_wavefunction!(f, basisstate,billiard; b=10.0, plot_normal=false) 
+    ax, hmap = plot_wavefunction!(f, basisstate,billiard; b=10.0, plot_normal=false) 
+    if emphasized_discontinuity && (nameof(typeof(basis)) == nameof(CornerAdaptedFourierBessel))
+        # get type of elem from corner angle
+        typ = eltype(basis.corner_angle)
+        x_limits = [ax.scene.plots[1][1][][1], ax.scene.plots[1][1][][end]] # get the x limits on the heatmap
+        y_limits = [ax.scene.plots[1][2][][1], ax.scene.plots[1][2][][end]] # get the y limits of the heatmap
+        x0 = basis.cs.origin[1] # get the x of origin
+        y0 = basis.cs.origin[2] # get the y of origin
+        angle = basis.rotation_angle_discontinuity # get the angle of the discontinuity from modified atan2
+        pt_on_heatmap_boundary = raycast_to_rectangle(x0, y0, angle, x_limits, y_limits) # find the intersection on the boundary via raycasting in the direction where the angle is pointing
+        if !isnothing(pt_on_heatmap_boundary) # This should always be true
+            lines!(ax, [x0, pt_on_heatmap_boundary[1]], [y0, pt_on_heatmap_boundary[2]], linestyle=:dash) # plot the line from the origin to the heatmap boundary intersect point
+        end
+    end
 end
 
 function plot_solver_test!(f,acc_solver::S,basis,billiard,k1,k2,dk;log=true, tol=1e-4) where {S<:AcceleratedSolver}
