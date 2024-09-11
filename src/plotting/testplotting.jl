@@ -63,9 +63,15 @@ function raycast_to_rectangle(x0, y0, θ, x_limits, y_limits)
         dy != 0 ? check_intersection(x0 + (y_min - y0) / dy * dx, y_min, (y_min - y0) / dy) : nothing,
         dy != 0 ? check_intersection(x0 + (y_max - y0) / dy * dx, y_max, (y_max - y0) / dy) : nothing
     ]
-    # Filter out 'nothing' values and return the closest valid intersection
     valid_intersections = filter(!isnothing, intersections)
-    return isempty(valid_intersections) ? nothing : minimum(valid_intersections, by = p -> hypot(p[1] - x0, p[2] - y0))
+
+    # Check if there are any valid intersections
+    if isempty(valid_intersections)
+        return nothing
+    else
+        # Use `map` to apply the function for distance calculation, then find the minimum
+        return minimum(valid_intersections, by = p -> hypot(p[1] - x0, p[2] - y0))
+    end
 end
 
 function plot_basis_test!(f,basis,billiard;i=1,k=10.0, emphasized_discontinuity=false)
