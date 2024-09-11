@@ -46,6 +46,7 @@ function plot_geometry_test!(f,billiard)
     plot_boundary!(ax,billiard;dens=20.0)
 end
 
+# TODO make this work
 function raycast_to_rectangle(x0, y0, θ, x_limits, y_limits)
     # Extract rectangle limits
     x_min, x_max = x_limits
@@ -74,6 +75,7 @@ function raycast_to_rectangle(x0, y0, θ, x_limits, y_limits)
     end
 end
 
+# TODO make this work for the case of emphasized_discontinuity
 function plot_basis_test!(f,basis,billiard;i=1,k=10.0, emphasized_discontinuity=false)
     basisstate = BasisState(basis,k, i)
     ax, hmap = plot_wavefunction!(f, basisstate,billiard; b=10.0, plot_normal=false) 
