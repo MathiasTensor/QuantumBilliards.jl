@@ -196,7 +196,7 @@ function plot_spectral_rigidity!(ax::GLMakie.Axis, unfolded_energies::Vector{T},
     lines!(ax, Ls, [gueDeltaL(L) for L in Ls], label="GUE", color=:red, linestyle=:dashdot)
 end
 
-function plot_nnls(unfolded_energies::Vector{T}, k::T; nbins::Int=200) where {T<:Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200) where {T<:Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -209,7 +209,7 @@ function plot_nnls(unfolded_energies::Vector{T}, k::T; nbins::Int=200) where {T<
     gue_pdf = x -> (32 / (π^2)) * x^2 * exp(-4 * x^2 / π)
     # Plotting
     fig = Figure(resolution=(800, 600))
-    ax = Axis(fig[1, 1], title="k_max = $(round(k, digits=2))", xlabel="Spacing (s)", ylabel="Probability Density")
+    ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="Probability Density")
     # Plot the empirical histogram
     scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
     # Plot the theoretical distributions
