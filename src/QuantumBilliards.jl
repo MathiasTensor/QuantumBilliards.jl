@@ -115,8 +115,4 @@ export benchmark_solver, compute_benchmarks
 include("plotting/benchmarkplotting.jl")
 export plot_benchmarks!
 
-# NEW STUFF
-include("utils/analysisutils.jl")
-export number_variance, spectral_rigidity, plot_spectral_rigidity!, plot_number_variance, plot_nnls
-
 end
