@@ -126,7 +126,7 @@ function resize_basis(basis::CornerAdaptedFourierBessel, billiard::Bi, dim::Int,
     if basis.dim == dim
         return basis
     else
-        return CornerAdaptedFourierBessel(dim, basis.corner_angle, basis.cs)
+        return CornerAdaptedFourierBessel(dim, basis.corner_angle, basis.cs; rotation_angle_discontinuity=basis.rotation_angle_discontinuity)
     end
 end
 
