@@ -65,7 +65,7 @@ end
 # Arc length calculation with handling for ForwardDiff.Dual types
 function arc_length(polar::L, t::T) where {T<:Real,L<:PolarSegments{T}}
     r_prime(l) = tangent(polar, l)
-    integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
+    integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
@@ -78,7 +78,7 @@ end
 function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t::T) where {T<:Real}
     r_prime(l) = SVector(ForwardDiff.derivative(t -> affine_map(r_func(t))[1], l),
                          ForwardDiff.derivative(t -> affine_map(r_func(t))[2], l))
-    integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
+    integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
