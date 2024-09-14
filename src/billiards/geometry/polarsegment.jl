@@ -77,6 +77,13 @@ end
 # Helper function for arc length during construction
 function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t::T) where {T<:Real}
    # Differentiate the x and y components individually
+   r_x(l) = affine_map(r_func(l))[1]
+   r_y(l) = affine_map(r_func(l))[2]
+
+   println(typeof(r_x(0.5)))
+   println(typeof(r_y(0.5)))
+
+   # Compute the partial derivatives of r with respect to l
    r_prime_x(l) = ForwardDiff.derivative(t -> affine_map(r_func(t))[1], l)
    r_prime_y(l) = ForwardDiff.derivative(t -> affine_map(r_func(t))[2], l)
 
