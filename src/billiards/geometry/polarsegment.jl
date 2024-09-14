@@ -77,7 +77,19 @@ function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap,
     return length
 end
 
-
+# Function to compute the area enclosed by a closed PolarSegment
+function compute_area(polar::L) where {T<:Real, L<:PolarSegments{T}}
+    # Integrand function for the area
+    function integrand(t)
+        pt = curve(polar, t)           # (x(t), y(t))
+        tangent_pt = tangent(polar, t) # (x'(t), y'(t))
+        # Compute 0.5 * (x(t) * y'(t) - y(t) * x'(t))
+        return 0.5 * (pt[1] * tangent_pt[2] - pt[2] * tangent_pt[1])
+    end
+    # Perform numerical integration over t from 0 to 1
+    area, _ = quadgk(integrand, 0.0, 1.0)
+    return abs(area)  # Take absolute value to ensure positive area
+end
 
 
 
