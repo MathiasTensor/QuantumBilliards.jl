@@ -15,7 +15,7 @@ end
 function CircleSegment(R, arc_angle, shift_angle, x0, y0; origin=(zero(x0),zero(x0)),rot_angle=zero(x0), orientation = 1)
     cs = PolarCS(SVector(origin...),rot_angle)
     center = SVector(x0,y0)
-    L = R*arc_angle 
+    L = abs(R*arc_angle)
     return CircleSegment(cs,R,arc_angle,shift_angle,center,orientation,L)
 end
 
@@ -32,7 +32,7 @@ end
 function VirtualCircleSegment(R, arc_angle, shift_angle, x0, y0; origin=(zero(x0),zero(x0)),rot_angle=zero(x0), orientation = 1)
     cs = PolarCS(SVector(origin...),rot_angle)
     center = SVector(x0,y0)
-    L = R*arc_angle 
+    L = abs(R*arc_angle)
     return VirtualCircleSegment(cs,R,arc_angle,shift_angle,center,orientation,L)
 end
 
