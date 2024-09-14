@@ -45,39 +45,40 @@ function curve(polar::L, ts::AbstractArray{T,1}) where {T<:Real, L<:PolarSegment
 end
 
 # Tangent function
-function tangent(polar::L, t::T) where {T<:Real, L<:PolarSegments{T}}
-    affine_map = polar.cs.affine_map 
-    r(t) = affine_map(polar.r_func(t))
-    return ForwardDiff.derivative(r, t)
+function tangent(polar::L, t) where {T, L<:PolarSegments{T}}
+    affine_map = polar.cs.affine_map
+    r_func = polar.r_func
+    # Get the curve at time t (returns SVector)
+    curve_at_t = r_func(t)
+    # Differentiate each component of the SVector separately
+    x_prime = ForwardDiff.derivative(t -> affine_map(r_func(t))[1], t)
+    y_prime = ForwardDiff.derivative(t -> affine_map(r_func(t))[2], t)
+    # Return the differentiated components as a new SVector
+    return SVector(x_prime, y_prime)
 end
 
-function tangent(polar::L, ts::AbstractArray{T,1}) where {T<:Real, L<:PolarSegments{T}}
-    affine_map = polar.cs.affine_map
-    r(t) = affine_map(polar.r_func(t))
-    return collect(ForwardDiff.derivative(r, t) for t in ts)
+function tangent(polar::L, ts::AbstractArray{T,1}) where {T, L<:PolarSegments{T}}
+    return collect(tangent(polar, t) for t in ts)
 end
+
 
 # Arc length calculation with handling for ForwardDiff.Dual types
 function arc_length(polar::L, t::T) where {T<:Real,L<:PolarSegments{T}}
     r_prime(l) = tangent(polar, l)
-    
-    integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)  # Extracting the values from Dual numbers
+    integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
 
 function arc_length(polar::L, ts::AbstractArray{T,1}) where {T<:Real,L<:PolarSegments{T}}
-    r_prime(l) = tangent(polar, l)
-    
-    integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)  # Handling Dual numbers
-    return collect(quadgk(integrand, 0.0, t)[1] for t in ts)
+    return collect(arc_length(polar, t) for t in ts)
 end
 
 # Helper function for arc length during construction
 function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t::T) where {T<:Real}
-    r_prime(l) = ForwardDiff.derivative(l -> affine_map(r_func(l)), l)
-    
-    integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)  # Extracting Dual values
+    r_prime(l) = SVector(ForwardDiff.derivative(t -> affine_map(r_func(t))[1], l),
+                         ForwardDiff.derivative(t -> affine_map(r_func(t))[2], l))
+    integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
