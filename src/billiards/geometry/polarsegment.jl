@@ -95,7 +95,7 @@ end
 
 
 function is_inside(polar::L, pts::AbstractArray{SVector{2,T}}) where {T<:Real, L<:PolarSegments{T}}
-    num_samples = 100  # Adjust for desired accuracy
+    num_samples = 500  # Adjust for desired accuracy
     ts = range(0.0, 1.0, length=num_samples)
     affine_map = polar.cs.affine_map
     # Sample points along the curve in the global coordinate system
