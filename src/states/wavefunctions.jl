@@ -74,9 +74,11 @@ end
 function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
     # Get the polygon points from the billiard boundary
     polygon_xy_vectors = billiard_polygon(billiard, N_polygon_checks; fundamental_domain=fundamental_domain)
-    # Flatten the polygon points into a single vector
     polygon_points = vcat(polygon_xy_vectors...)
-    mask = map(pt -> is_point_in_polygon(polygon_points, pt), pts)
+    mask = fill(false, length(pts))
+    Threads.@threads for i in 1:length(pts)
+        mask[i] = is_point_in_polygon(polygon_points, pts[i])
+    end
     return mask
 end
 
