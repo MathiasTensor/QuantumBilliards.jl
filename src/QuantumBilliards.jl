@@ -94,6 +94,7 @@ include("states/husimifunctions.jl")
 
 export wavefunction #wavefunction_norm 
 export boundary_function, momentum_function, husimi_function
+export billiard_polygon
 
 #plotting functions in Makie
 #include("plotting/Plotting.jl")

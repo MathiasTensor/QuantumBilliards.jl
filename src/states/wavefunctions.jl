@@ -1,5 +1,88 @@
 using StaticArrays
 
+
+
+
+
+
+
+
+
+
+function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector{SVector{2, T}} where {Bi<:AbsBilliard, T<:Real}
+    if fundamental_domain
+        boundary = billiard.fundamental_boundary
+    else
+        boundary = billiard.full_boundary
+    end
+    # Find the fraction of lengths wrt to the boundary
+    billiard_composite_lengths = [crv.length for crv in boundary]
+    total_billiard_length = sum(billiard_composite_lengths)
+    billiard_length_fractions = [crv.length/total_billiard_length for crv in boundary]
+    # Redistribute points based on the fractions
+    distributed_points = [round(Int, fract*N_polygon_checks) for fract in billiard_length_fractions]
+    # Use linear sampling 
+    ts_vectors = [sample_points(LinearNodes(), crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts
+    xy_vectors = Vector{SVector{2,T}}(undef, length(boundary))
+    for (i, crv) in enumerate(boundary) 
+        xy = curve(crv, ts_vectors[i])
+        xy_vectors[i] = xy
+    end
+    return xy_vectors
+end
+
+
+
+
+
+function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:AbsState}
+    let vec = state.vec, k = state.k_basis, basis=state.basis, billiard=state.billiard, eps=state.eps #basis is correct size
+        sz = length(x_grid)*length(y_grid)
+        pts = collect(SVector(x,y) for y in y_grid for x in x_grid)
+        if inside_only
+            pts_mask = is_inside(billiard,pts)
+            pts = pts[pts_mask]
+        end
+        n_pts = length(pts)
+        #estimate max memory needed for the matrices
+        type = eltype(vec)
+        memory = sizeof(type)*basis.dim*n_pts
+        Psi = zeros(type,sz)
+
+        if memory < memory_limit
+            B = basis_matrix(basis, k, pts)
+            Psi_pts = B*vec
+            if inside_only
+                Psi[pts_mask] .= Psi_pts
+            else
+                Psi .= Psi_pts
+            end
+        else
+            println("Warning: memory limit of $(Base.format_bytes(memory_limit)) exceded $(Base.format_bytes(memory)).")
+            if inside_only
+                for i in eachindex(vec)
+                    if abs(vec[i]) > eps 
+                        Psi[pts_mask] .+= vec[i].*basis_fun(basis,i,k,pts)
+                    end
+                end
+            else
+                for i in eachindex(vec)
+                    if abs(vec[i]) > eps 
+                        Psi .+= vec[i].*basis_fun(basis,i,k,pts)
+                    end
+                end
+            end
+            #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
+        end
+        return Psi
+    end
+end
+
+
+
+
+#=
+
 #try using strided to optimize this
 function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:AbsState}
     let vec = state.vec, k = state.k_basis, basis=state.basis, billiard=state.billiard, eps=state.eps #basis is correct size
@@ -43,6 +126,9 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
         return Psi
     end
 end
+
+
+=#
 
 function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {S<:AbsState}
     let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries       
