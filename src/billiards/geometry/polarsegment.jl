@@ -83,3 +83,33 @@ end
 
 
 
+# THIS NEEDS BETTER LOGIC
+
+
+
+
+
+
+
+
+
+
+function is_inside(polar::L, pts::AbstractArray{SVector{2,T}}) where {T<:Real, L<:PolarSegments{T}}
+    num_samples = 100  # Adjust for desired accuracy
+    ts = range(0.0, 1.0, length=num_samples)
+    affine_map = polar.cs.affine_map
+    # Sample points along the curve in the global coordinate system
+    curve_points = [curve(polar, t) for t in ts]
+    # Construct the polygon (include the transformed origin)
+    polygon = [affine_map(SVector{2,T}(0.0, 0.0))]  # Start with the transformed origin
+    append!(polygon, curve_points)
+    push!(polygon, affine_map(SVector{2,T}(0.0, 0.0)))  # Close the polygon
+    return [is_point_in_polygon(polygon, pt) for pt in pts]
+end
+
+
+
+
+
+
+
