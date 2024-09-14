@@ -9,7 +9,7 @@ using StaticArrays
 
 
 
-function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector{SVector{2, T}} where {Bi<:AbsBilliard, T<:Real}
+function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector{SVector} where {Bi<:AbsBilliard}
     if fundamental_domain
         boundary = billiard.fundamental_boundary
     else
@@ -17,13 +17,14 @@ function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domai
     end
     # Find the fraction of lengths wrt to the boundary
     billiard_composite_lengths = [crv.length for crv in boundary]
+    typ = eltype(billiard_composite_lengths[1])
     total_billiard_length = sum(billiard_composite_lengths)
     billiard_length_fractions = [crv.length/total_billiard_length for crv in boundary]
     # Redistribute points based on the fractions
     distributed_points = [round(Int, fract*N_polygon_checks) for fract in billiard_length_fractions]
     # Use linear sampling 
     ts_vectors = [sample_points(LinearNodes(), crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts
-    xy_vectors = Vector{SVector{2,T}}(undef, length(boundary))
+    xy_vectors = Vector{SVector{2,typ}}(undef, length(boundary))
     for (i, crv) in enumerate(boundary) 
         xy = curve(crv, ts_vectors[i])
         xy_vectors[i] = xy
