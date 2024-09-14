@@ -30,47 +30,47 @@ end
 
 PolarSegments{T} = Union{PolarSegment{T},VirtualPolarSegment{T}} where T<:Real
 
-function curve(polar::L, t::T) where {T<:Real, L<:PolarSegments{T}}
+function curve(polar::L, t) where {T<:Real, L<:PolarSegments{T}}
     let affine_map = polar.cs.affine_map
         return affine_map(polar.r_func(t))
     end
 end
 
-function curve(polar::L, ts::AbstractArray{T,1}) where {T<:Real, L<:PolarSegments{T}}
+function curve(polar::L, ts) where {T<:Real, L<:PolarSegments{T}}
     let affine_map = polar.cs.affine_map
         return collect(affine_map(polar.r_func(t)) for t in ts)
     end
 end
 
-function tangent(polar::L, t::T) where {T<:Real, L<:PolarSegments{T}}
+function tangent(polar::L, t) where {T<:Real, L<:PolarSegments{T}}
     let affine_map = circle.cs.affine_map 
         r(t) = affine_map(polar.r_func(t))
         return ForwardDiff.derivative(r, t)
     end
 end
 
-function tangent(polar::L, ts::AbstractArray{T,1}) where {T<:Real, L<:PolarSegments{T}}
+function tangent(polar::L, ts::AbstractArray) where {T<:Real, L<:PolarSegments{T}}
     let affine_map = polar.cs.affine_map
         r(t) = affine_map(polar.r_func(t))
         return collect(ForwardDiff.derivative(r, t) for t in ts)
     end
 end
 
-function arc_length(polar::L, t::T) where {T<:Real,L<:PolarSegments{T}}
+function arc_length(polar::L, t) where {T<:Real,L<:PolarSegments{T}}
     r_prime(l) = tangent(polar, l)
     integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
 
-function arc_length(polar::L, ts::AbstractArray{T,1}) where {T<:Real,L<:PolarSegments{T}}
+function arc_length(polar::L, ts::AbstractArray) where {T<:Real,L<:PolarSegments{T}}
     r_prime(l) = tangent(polar, l)
     integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
     return collect(quadgk(integrand, 0.0, t)[1] for t in ts)
 end
 
 # helper function hack
-function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t::T) where {T<:Real}
+function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t) where {T<:Real}
     r_prime(l) = ForwardDiff.derivative(t -> affine_map(r_func(t)), l)
     integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
     length, _ = quadgk(integrand, 0.0, t)
