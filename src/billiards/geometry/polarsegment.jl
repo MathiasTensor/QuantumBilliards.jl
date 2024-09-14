@@ -8,7 +8,7 @@ using CoordinateTransformations, Rotations
 struct PolarSegment{T} <: AbsRealCurve where {T<:Real}
     cs::PolarCS{T}
     r_func::Function   # The radial function r(t) provided by the user t -> x,y
-    length::T            
+    length::T           
 end
 
 struct VirtualPolarSegment{T} <: AbsVirtualCurve where {T<:Real}
@@ -77,7 +77,7 @@ function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap,
     return length
 end
 
-# Function to compute the area enclosed by a closed PolarSegment
+# Function to compute the area enclosed by a closed PolarSegment !!!!!!
 function compute_area(polar::L) where {T<:Real, L<:PolarSegments{T}}
     # Integrand function for the area
     function integrand(t)
