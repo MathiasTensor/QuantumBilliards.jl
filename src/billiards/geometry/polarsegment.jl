@@ -48,13 +48,7 @@ end
 function tangent(polar::L, t) where {T, L<:PolarSegments{T}}
     affine_map = polar.cs.affine_map
     r_func = polar.r_func
-    # Get the curve at time t (returns SVector)
-    curve_at_t = r_func(t)
-    # Differentiate each component of the SVector separately
-    x_prime = ForwardDiff.derivative(t -> affine_map(r_func(t))[1], t)
-    y_prime = ForwardDiff.derivative(t -> affine_map(r_func(t))[2], t)
-    # Return the differentiated components as a new SVector
-    return SVector(x_prime, y_prime)
+    return ForwardDiff.derivative(l -> affine_map(r_func(l)), t)
 end
 
 function tangent(polar::L, ts::AbstractArray{T,1}) where {T, L<:PolarSegments{T}}
@@ -76,25 +70,9 @@ end
 
 # Helper function for arc length during construction
 function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t::T) where {T<:Real}
-   # Differentiate the x and y components individually
-   r_x(l) = affine_map(r_func(l))[1]
-   r_y(l) = affine_map(r_func(l))[2]
-
-   println(typeof(r_x(0.5)))
-   println(typeof(r_y(0.5)))
-
-   # Compute the partial derivatives of r with respect to l
-   r_prime_x(l) = ForwardDiff.derivative(r_x, l)
-   r_prime_y(l) = ForwardDiff.derivative(r_y, l)
-
-    # Print the types for debugging
-    println("Type of r_prime_x(0.5): ", typeof(r_prime_x(0.5)))
-    println("Type of r_prime_y(0.5): ", typeof(r_prime_y(0.5)))
-    
-    # Compute the integrand for arc length calculation
+    r_prime_x(l) = ForwardDiff.derivative(k -> affine_map(r_func(k))[1], l)
+    r_prime_y(l) = ForwardDiff.derivative(k -> affine_map(r_func(k))[2], l)    
     integrand(l) = sqrt(r_prime_x(l)^2 + r_prime_y(l)^2)
-    
-    # Perform the quadrature
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
