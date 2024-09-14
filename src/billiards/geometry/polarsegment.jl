@@ -78,8 +78,7 @@ end
 function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t::T) where {T<:Real}
     r_prime(l) = SVector(ForwardDiff.derivative(t -> affine_map(r_func(t))[1], l),
                          ForwardDiff.derivative(t -> affine_map(r_func(t))[2], l))
-    println("Type of r_prime_x(0.5): ", typeof(r_prime_x(0.5)))
-    println("Type of r_prime_y(0.5): ", typeof(r_prime_y(0.5)))
+    println("Type of r_prime_x(0.5): ", typeof(r_prime(0.5)))
     integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
