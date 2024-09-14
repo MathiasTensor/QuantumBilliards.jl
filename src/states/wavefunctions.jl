@@ -76,9 +76,8 @@ function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_p
     polygon_xy_vectors = billiard_polygon(billiard, N_polygon_checks; fundamental_domain=fundamental_domain)
     # Flatten the polygon points into a single vector
     polygon_points = vcat(polygon_xy_vectors...)
-    # Filter points that are inside the polygon
-    inside_points = filter(pt -> is_point_in_polygon(polygon_points, pt), pts)
-    return inside_points
+    mask = map(pt -> is_point_in_polygon(polygon_points, pt), pts)
+    return mask
 end
 
 
