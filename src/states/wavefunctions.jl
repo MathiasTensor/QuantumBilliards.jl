@@ -17,11 +17,14 @@ function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domai
     end
     # Find the fraction of lengths wrt to the boundary
     billiard_composite_lengths = [crv.length for crv in boundary]
+    println("Curve lengths: ", billiard_composite_lengths)
     typ = eltype(billiard_composite_lengths[1])
     total_billiard_length = sum(billiard_composite_lengths)
     billiard_length_fractions = [crv.length/total_billiard_length for crv in boundary]
+    println("Curve fractions: ", billiard_length_fractions)
     # Redistribute points based on the fractions
     distributed_points = [round(Int, fract*N_polygon_checks) for fract in billiard_length_fractions]
+    println("Curve points: ", distributed_points)
     # Use linear sampling 
     ts_vectors = [sample_points(LinearNodes(), crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts
     xy_vectors = Vector{Vector}(undef, length(boundary))
