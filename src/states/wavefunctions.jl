@@ -9,7 +9,7 @@ using StaticArrays
 
 
 
-function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector{SVector} where {Bi<:AbsBilliard}
+function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
     if fundamental_domain
         boundary = billiard.fundamental_boundary
     else
@@ -24,10 +24,9 @@ function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domai
     distributed_points = [round(Int, fract*N_polygon_checks) for fract in billiard_length_fractions]
     # Use linear sampling 
     ts_vectors = [sample_points(LinearNodes(), crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts
-    xy_vectors = Vector{SVector{2,typ}}(undef, length(boundary))
+    xy_vectors = Vector{Vector}(undef, length(boundary))
     for (i, crv) in enumerate(boundary) 
-        xy = curve(crv, ts_vectors[i])
-        xy_vectors[i] = xy
+        xy_vectors[i] = curve(crv, ts_vectors[i])
     end
     return xy_vectors
 end
