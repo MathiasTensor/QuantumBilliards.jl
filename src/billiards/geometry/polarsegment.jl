@@ -84,8 +84,8 @@ function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap,
    println(typeof(r_y(0.5)))
 
    # Compute the partial derivatives of r with respect to l
-   r_prime_x(l) = ForwardDiff.derivative(t -> affine_map(r_func(t))[1], l)
-   r_prime_y(l) = ForwardDiff.derivative(t -> affine_map(r_func(t))[2], l)
+   r_prime_x(l) = ForwardDiff.derivative(r_x, l)
+   r_prime_y(l) = ForwardDiff.derivative(r_y, l)
 
     # Print the types for debugging
     println("Type of r_prime_x(0.5): ", typeof(r_prime_x(0.5)))
