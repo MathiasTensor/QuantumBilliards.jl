@@ -20,16 +20,16 @@ end
 PolarSegments{T} = Union{PolarSegment{T}, VirtualPolarSegment{T}} where T<:Real
 
 # Constructor for PolarSegment
-function PolarSegment(r_func::Function, origin=(zero(T), zero(T)), rot_angle=zero(T)) where {T<:Real}
+function PolarSegment(r_func::Function; origin=(0.0, 0.0), rot_angle=0.0) where {T<:Real}
     cs = PolarCS(SVector(origin...), rot_angle)
-    L = compute_arc_length_constructor(r_func, cs.affine_map, T(1.0))
+    L = compute_arc_length_constructor(r_func, cs.affine_map, 1.0)
     return PolarSegment(cs, r_func, L)
 end
 
 # Constructor for VirtualPolarSegment
-function VirtualPolarSegment(r_func::Function, origin=(zero(T), zero(T)), rot_angle=zero(T)) where {T<:Real}
+function VirtualPolarSegment(r_func::Function; origin=(0.0, 0.0), rot_angle=0.0) where {T<:Real}
     cs = PolarCS(SVector(origin...), rot_angle)
-    L = compute_arc_length_constructor(r_func, cs.affine_map, T(1.0))
+    L = compute_arc_length_constructor(r_func, cs.affine_map, 1.0)
     return VirtualPolarSegment(cs, r_func, L)
 end
 
