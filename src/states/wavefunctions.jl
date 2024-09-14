@@ -37,13 +37,61 @@ end
 
 
 
+# Helper function to check if a point is left of an edge
+function is_left(p1::SVector{2,T}, p2::SVector{2,T}, pt::SVector{2,T}) where {T<:Real}
+    return (p2[1] - p1[1]) * (pt[2] - p1[2]) - (pt[1] - p1[1]) * (p2[2] - p1[2])
+end
+
+
+
+
+
+# Winding number algorithm to check if a point is inside a polygon
+function is_point_in_polygon(polygon::Vector{SVector{2,T}}, point::SVector{2,T})::Bool where T
+    winding_number = 0
+    num_points = length(polygon)
+    for i in 1:num_points
+        p1 = polygon[i]
+        p2 = polygon[(i % num_points) + 1]
+        
+        if p1[2] <= point[2]
+            if p2[2] > point[2] && is_left(p1, p2, point) > 0
+                winding_number += 1
+            end
+        else
+            if p2[2] <= point[2] && is_left(p1, p2, point) < 0
+                winding_number -= 1
+            end
+        end
+    end
+    return winding_number != 0
+end
+
+
+
+
+
+function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
+    # Get the polygon points from the billiard boundary
+    polygon_xy_vectors = billiard_polygon(billiard, N_polygon_checks; fundamental_domain=fundamental_domain)
+    # Flatten the polygon points into a single vector
+    polygon_points = vcat(polygon_xy_vectors...)
+    # Filter points that are inside the polygon
+    inside_points = filter(pt -> is_point_in_polygon(polygon_points, pt), pts)
+    return inside_points
+end
+
+
+
+
 
 function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:AbsState}
     let vec = state.vec, k = state.k_basis, basis=state.basis, billiard=state.billiard, eps=state.eps #basis is correct size
         sz = length(x_grid)*length(y_grid)
         pts = collect(SVector(x,y) for y in y_grid for x in x_grid)
         if inside_only
-            pts_mask = is_inside(billiard,pts)
+            #pts_mask = is_inside(billiard,pts)
+            pts_mask = points_in_billiard_polygon(pts, billiard, sz; fundamental_domain=inside_only)
             pts = pts[pts_mask]
         end
         n_pts = length(pts)
