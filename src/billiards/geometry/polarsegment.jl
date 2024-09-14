@@ -92,7 +92,7 @@ function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap,
     println("Type of r_prime_y(0.5): ", typeof(r_prime_y(0.5)))
     
     # Compute the integrand for arc length calculation
-    integrand(l) = sqrt(value(r_prime_x(l))^2 + value(r_prime_y(l))^2)
+    integrand(l) = sqrt(r_prime_x(l)^2 + r_prime_y(l)^2)
     
     # Perform the quadrature
     length, _ = quadgk(integrand, 0.0, t)
