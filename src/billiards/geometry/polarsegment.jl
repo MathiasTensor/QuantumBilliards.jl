@@ -59,7 +59,7 @@ end
 # Arc length calculation with handling for ForwardDiff.Dual types
 function arc_length(polar::L, t::T) where {T<:Real,L<:PolarSegments{T}}
     r_prime(l) = tangent(polar, l)
-    integrand(l) = sqrt(value(r_prime(l)[1])^2 + value(r_prime(l)[2])^2)
+    integrand(l) = sqrt(r_prime(l)[1]^2 + r_prime(l)[2]^2)
     length, _ = quadgk(integrand, 0.0, t)
     return length
 end
