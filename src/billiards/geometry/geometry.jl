@@ -3,6 +3,7 @@
 include("linesegment.jl")
 include("circlesegment.jl")
 include("dispersingcirclesegment.jl")
+include("polarsegment.jl")
 using StaticArrays,LinearAlgebra, ForwardDiff
 
 
