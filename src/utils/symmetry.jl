@@ -40,6 +40,28 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries)
             Psi = hcat(Psi_ref,Psi)
             y_grid = append!(y,y_grid)
         end
+        if sym.axis == :origin
+            # Reflect over both axes
+            x_reflected = -reverse(x_grid)
+            y_reflected = -reverse(y_grid)
+            parity = sym.parity[1] * sym.parity[2]
+            Psi_reflected = reverse(Psi; dims=(1,2))
+            Psi_reflected .= parity .* Psi_reflected
+
+            # Reflect Psi over x-axis
+            Psi_x = reverse(sym.parity[1] .* Psi; dims=1)
+            # Reflect Psi over y-axis
+            Psi_y = reverse(sym.parity[2] .* Psi; dims=2)
+
+            # Assemble Psi
+            top_row = hcat(Psi_reflected, Psi_y)
+            bottom_row = hcat(Psi_x, Psi)
+            Psi = vcat(top_row, bottom_row)
+
+            # Update grids
+            x_grid = vcat(x_reflected, x_grid)
+            y_grid = vcat(y_reflected, y_grid)
+        end
     end
     return Psi, x_grid, y_grid
 end
