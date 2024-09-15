@@ -34,12 +34,12 @@ function VirtualPolarSegment(r_func::Function; origin=SVector(0.0, 0.0), rot_ang
 end
 
 # Curve function
-function curve(polar::L, t::T) where {T<:Real, L<:PolarSegments{T}}
+function curve(polar::L, t::T) where {T, L<:PolarSegments{T}}
     affine_map = polar.cs.affine_map
     return affine_map(polar.r_func(t))
 end
 
-function curve(polar::L, ts::AbstractArray{T,1}) where {T<:Real, L<:PolarSegments{T}}
+function curve(polar::L, ts::AbstractArray{T,1}) where {T, L<:PolarSegments{T}}
     affine_map = polar.cs.affine_map
     return collect(affine_map(polar.r_func(t)) for t in ts)
 end
