@@ -41,26 +41,23 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries)
             y_grid = append!(y,y_grid)
         end
         if sym.axis == :origin
-            # Reflect over both axes
+            # Reflect over both axes (x -> -x, y -> -y)
+            # First, reflect over y-axis
             x_reflected = -reverse(x_grid)
+            Psi_y_reflected = reverse(sym.parity[1] .* Psi; dims=2)
+            Psi_y_combined = [Psi_y_reflected Psi]
+            x_grid_combined = [x_reflected; x_grid]
+            
+            # Then, reflect over x-axis
             y_reflected = -reverse(y_grid)
-            parity = sym.parity[1] * sym.parity[2]
-            Psi_reflected = reverse(Psi; dims=(1,2))
-            Psi_reflected .= parity .* Psi_reflected
-
-            # Reflect Psi over x-axis
-            Psi_x = reverse(sym.parity[1] .* Psi; dims=1)
-            # Reflect Psi over y-axis
-            Psi_y = reverse(sym.parity[2] .* Psi; dims=2)
-
-            # Assemble Psi
-            top_row = hcat(Psi_reflected, Psi_y)
-            bottom_row = hcat(Psi_x, Psi)
-            Psi = vcat(top_row, bottom_row)
-
-            # Update grids
-            x_grid = vcat(x_reflected, x_grid)
-            y_grid = vcat(y_reflected, y_grid)
+            Psi_x_reflected = reverse(sym.parity[2] .* Psi_y_combined; dims=1)
+            Psi_x_combined = [Psi_x_reflected; Psi_y_combined]
+            y_grid_combined = [y_reflected; y_grid]
+            
+            # Update Psi and grids
+            Psi = Psi_x_combined
+            x_grid = x_grid_combined
+            y_grid = y_grid_combined
         end
     end
     return Psi, x_grid, y_grid
