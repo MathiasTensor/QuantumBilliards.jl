@@ -26,7 +26,7 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     pts = evaluate_points(solver, billiard, k)
     res = similar(ks)
     num_intervals = length(ks)
-    p = Progress(num_intervals, 1; showspeed=true)
+    p = Progress(num_intervals, 1)
     for (i,k) in enumerate(ks)
         res[i] = solve(solver,new_basis,pts,k)
         next!(p)

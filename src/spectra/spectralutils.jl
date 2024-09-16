@@ -93,7 +93,7 @@ end
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4)
     k0 = k1
     num_intervals = ceil(Int, (k2 - k1) / dk)
-    p = Progress(num_intervals, 1; showspeed=true)
+    p = Progress(num_intervals, 1)
     #initial computation
     k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk+tol)
     control = [false for i in 1:length(k_res)]
