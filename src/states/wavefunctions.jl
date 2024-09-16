@@ -206,12 +206,12 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                 if hasproperty(billiard, :x_axis)
                     println(nameof(typeof(billiard)), "has the :x_axis reflection")
                     x_axis = billiard.x_axis
-                    println(x_axis, y_axis)
+                    println(x_axis, ", ", y_axis)
                 end
                 if hasproperty(billiard, :y_axis)
                     println(nameof(typeof(billiard)), "has the :y_axis reflection")
                     y_axis = billiard.y_axis
-                    println(x_axis, y_axis)
+                    println(x_axis, ", ", y_axis)
                 end
                 Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
             end
