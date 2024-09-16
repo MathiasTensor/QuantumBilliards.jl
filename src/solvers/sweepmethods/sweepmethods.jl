@@ -5,7 +5,7 @@
 include("particularsolutionsmethod.jl")
 include("decompositionmethod.jl")
 include("boundaryintegralmethod.jl")
-using LinearAlgebra, Optim
+using LinearAlgebra, Optim, ProgressMeter
 
 function solve_wavenumber(solver::SweepSolver,basis::AbsBasis, billiard::AbsBilliard, k, dk)
     dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))
@@ -25,8 +25,11 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     new_basis = resize_basis(basis,billiard,dim,k)
     pts = evaluate_points(solver, billiard, k)
     res = similar(ks)
+    num_intervals = length(ks)
+    p = Progress(num_intervals, 1; showspeed=true)
     for (i,k) in enumerate(ks)
         res[i] = solve(solver,new_basis,pts,k)
+        next!(p)
     end
     return res
 end
