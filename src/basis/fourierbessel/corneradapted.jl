@@ -107,6 +107,11 @@ function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, cs::CoordinateS
     return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, nothing, rotation_angle_discontinuity)
 end
 
+function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, cs::CoordinateSystem, symmetry::Union{Vector{Any},Nothing}; rotation_angle_discontinuity=zero(T)) where {T<:Real}
+    nu = pi/corner_angle
+    return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, symmetry, rotation_angle_discontinuity)
+end
+
 """
 Convert a `CornerAdaptedFourierBessel` basis to use `Float32` precision.
 # Returns
