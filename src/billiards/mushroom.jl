@@ -118,12 +118,12 @@ struct Mushroom{T} <: AbsBilliard where {T<:Real}
     cap_radius::T
     corners::Vector{SVector{2,T}}
     angles::Vector
-    y_axis::T # For correct reflection. This is the actual "axis" of reflection
+    x_axis::T # For correct reflection. This is the actual "axis" of reflection
 end
 
 function make_mushroom_and_basis(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{Mushroom, CornerAdaptedFourierBessel} where {T<:Real}
-    y_axis = stem_width/2
-    mushroom = Mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle, y_axis_reflection=y_axis)
+    x_axis = stem_width/2
+    mushroom = Mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle, x_axis_reflection=x_axis)
     symmetry = Vector{Any}([XReflection(-1)])
     basis = CornerAdaptedFourierBessel(10, 3*pi/2, SVector(zero(T), zero(T)), Float64(pi), symmetry; rotation_angle_discontinuity=Float64(3*pi/4))
     return mushroom, basis
@@ -144,11 +144,11 @@ Constructs a Mushroom billiard with a rectangular stem and a circular cap.
 # Returns
 - An instance of the `Mushroom` struct.
 """
-function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), y_axis_reflection=zero(T)) :: Mushroom where {T<:Real}
+function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), x_axis_reflection=zero(T)) :: Mushroom where {T<:Real}
     fundamental_boundary, _ = make_half_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, corners = make_full_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
     length = sum([crv.length for crv in full_boundary])
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
-    return Mushroom(fundamental_boundary, full_boundary, length, area, stem_width, stem_height, cap_radius, corners, angles, y_axis_reflection)
+    return Mushroom(fundamental_boundary, full_boundary, length, area, stem_width, stem_height, cap_radius, corners, angles, x_axis_reflection)
 end
