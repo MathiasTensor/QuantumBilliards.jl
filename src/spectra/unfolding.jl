@@ -13,7 +13,7 @@ function curvature_correction(billiard::Bi) where {Bi<:AbsBilliard}
         for seg in segments 
             if seg isa PolarSegment
                 println("We are doing polar segment")
-                curvat += quadgk(t -> curvature(seg, t), 0.0, 1.0)
+                curvat += quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
             end
             if seg isa CircleSegment
                 println("We are doing circle segment")
