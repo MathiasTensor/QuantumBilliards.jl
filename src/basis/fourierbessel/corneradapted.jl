@@ -102,9 +102,9 @@ function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, origin::SVector
     return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, nothing, rotation_angle_discontinuity)
 end
 
-function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, cs::CoordinateSystem; rotation_angle_discontinuity=zero(T)) where {T<:Real}
+function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, cs::CoordinateSystem, symmetry::Union{Vector{Any},Nothing}; rotation_angle_discontinuity=zero(T)) where {T<:Real}
     nu = pi/corner_angle
-    return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, nothing, rotation_angle_discontinuity)
+    return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, symmetry, rotation_angle_discontinuity)
 end
 
 function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, origin::SVector{2,T}, rot_angle::T, symmetry::Union{Vector{Any},Nothing}; rotation_angle_discontinuity=zero(T)) where {T<:Real}
@@ -132,7 +132,7 @@ function resize_basis(basis::CornerAdaptedFourierBessel, billiard::Bi, dim::Int,
     if basis.dim == dim
         return basis
     else
-        return CornerAdaptedFourierBessel(dim, basis.corner_angle, basis.cs; rotation_angle_discontinuity=basis.rotation_angle_discontinuity)
+        return CornerAdaptedFourierBessel(dim, basis.corner_angle, basis.cs, basis.symmetries; rotation_angle_discontinuity=basis.rotation_angle_discontinuity)
     end
 end
 
