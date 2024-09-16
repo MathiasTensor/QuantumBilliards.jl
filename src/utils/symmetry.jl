@@ -32,7 +32,7 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
 
             Psi = vcat(Psi_ref,Psi)
             println("x_grid before: ", x_grid)
-            x_grid = vcat(x_reflected, x_grid)
+            x_grid = vcat(x, x_grid)
             println("x_grid after: ", x_grid)
         end
         if sym.axis == :x_axis
@@ -41,7 +41,7 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
 
             Psi = hcat(Psi_ref,Psi) 
             println("y_grid before: ", y_grid)
-            y_grid = vcat(y_reflected, y_grid)
+            y_grid = vcat(y, y_grid)
             println("y_grid after: ", y_grid)
         end
         if sym.axis == :origin
