@@ -89,6 +89,7 @@ include("spectra/spectralutils.jl")
 include("spectra/unfolding.jl")
 export weyl_law
 export compute_spectrum
+export curvature_correction
 #states
 #include("states/States.jl")
 #@reexport using .States
