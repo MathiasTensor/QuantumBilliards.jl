@@ -25,6 +25,7 @@ function XYReflection(parity_x, parity_y)
 end
 
 function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0.0)
+    println(x_axis, ", ", y_axis)
     for sym in symmetries
         if sym.axis == :y_axis
             x = 2*x_axis .- reverse(x_grid)
