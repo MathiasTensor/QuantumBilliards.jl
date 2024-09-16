@@ -122,7 +122,8 @@ end
 
 function make_mushroom_and_basis(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{Mushroom, CornerAdaptedFourierBessel} where {T<:Real}
     mushroom = Mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
-    basis = CornerAdaptedFourierBessel(10, 2*pi/3, SVector(zero(T), zero(T)), Float64(-0/2))
+    symmetry = Vector{Any}([XReflection(-1)])
+    basis = CornerAdaptedFourierBessel(10, 2*pi/3, SVector(zero(T), zero(T)), Float64(-0/2), symmetry)
     return mushroom, basis
 end
 
