@@ -28,14 +28,14 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
     for sym in symmetries
         if sym.axis == :y_axis
             x = 2*x_axis .- reverse(x_grid)
-            Psi_ref = reverse(sym.parity.*Psi; dims=1)
+            Psi_ref = reverse(sym.parity.*Psi; dims=2)
 
             Psi = vcat(Psi_ref,Psi)
             x_grid = append!(x,x_grid)
         end
         if sym.axis == :x_axis
             y = 2*y_axis .- reverse(y_grid)
-            Psi_ref = reverse(sym.parity.*Psi; dims=2)
+            Psi_ref = reverse(sym.parity.*Psi; dims=1)
 
             Psi = hcat(Psi_ref,Psi)
             y_grid = append!(y,y_grid)
