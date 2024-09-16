@@ -144,7 +144,7 @@ Constructs a Mushroom billiard with a rectangular stem and a circular cap.
 # Returns
 - An instance of the `Mushroom` struct.
 """
-function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T); y_axis_reflection=zero(T)) :: Mushroom where {T<:Real}
+function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), y_axis_reflection=zero(T)) :: Mushroom where {T<:Real}
     fundamental_boundary, _ = make_half_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, corners = make_full_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
