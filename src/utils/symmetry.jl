@@ -33,15 +33,15 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
             println("x before: ", extrema(x_grid))
             println("x reflected: ", extrema(x))
 
-            Psi = vcat(Psi_ref,Psi)
+            Psi = hcat(Psi_ref,Psi)
             x_grid = vcat(x, x_grid)
             println("x final: ", extrema(x_grid))
         end
         if sym.axis == :x_axis
             y = 2*y_axis .- reverse(y_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=2)
-            Psi = hcat(Psi, Psi_ref) 
-            y_grid = vcat(y_grid, y)
+            Psi = hcat(Psi_ref, Psi) 
+            y_grid = vcat(y, y_grid)
         end
         if sym.axis == :origin
             # Reflect over both axes (x -> -x, y -> -y)
