@@ -25,14 +25,14 @@ function XYReflection(parity_x, parity_y)
 end
 
 function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0.0)
-    println("x_grid before: ", extrema(x_grid))
-    println("y_grid before: ", extrema(y_grid))
-    println("length of grids before: ", length(x_grid))
-    println("Size of Psi before: ", size(Psi))
+    #println("x_grid before: ", extrema(x_grid))
+    #println("y_grid before: ", extrema(y_grid))
+    #println("length of grids before: ", length(x_grid))
+    #println("Size of Psi before: ", size(Psi))
     x_grid = x_grid .- x_axis  # Shift the grid to move the reflection axis to x=0
     y_grid = y_grid .- y_axis  # Shift the grid to move the reflection axis to y=0
-    println("x_grid after shift: ", extrema(x_grid))
-    println("y_grid after shift: ", extrema(y_grid))
+    #println("x_grid after shift: ", extrema(x_grid))
+    #println("y_grid after shift: ", extrema(y_grid))
     for sym in symmetries
         if sym.axis == :y_axis
             x = -reverse(x_grid)
@@ -42,7 +42,7 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
             x_grid = append!(x,x_grid)
             sorted_indices = sortperm(x_grid)
             x_grid = x_grid[sorted_indices]
-            println("x_grid after appending: ", extrema(x_grid))
+            #println("x_grid after appending: ", extrema(x_grid))
         end
         if sym.axis == :x_axis
             y = -reverse(y_grid)
@@ -52,7 +52,7 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
             y_grid = append!(y,y_grid)
             sorted_indices = sortperm(y_grid)
             y_grid = y_grid[sorted_indices]
-            println("y_grid after appending: ", extrema(y_grid))
+            #println("y_grid after appending: ", extrema(y_grid))
         end
         if sym.axis == :origin
             # Reflect over both axes (x -> -x, y -> -y)
@@ -83,10 +83,10 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
     # Shift the grids back to their original positions before returning
     x_grid = x_grid .+ x_axis
     y_grid = y_grid .+ y_axis
-    println("x_grid after shift back: ", extrema(x_grid))
-    println("y_grid after shift back: ", extrema(y_grid))
-    println("length of grids after: ", length(x_grid))
-    println("Size of Psi after: ", size(Psi))
+    #println("x_grid after shift back: ", extrema(x_grid))
+    #println("y_grid after shift back: ", extrema(y_grid))
+    #println("length of grids after: ", length(x_grid))
+    #println("Size of Psi after: ", size(Psi))
     return Psi, x_grid, y_grid
 end
 
