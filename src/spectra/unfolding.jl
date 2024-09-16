@@ -6,6 +6,9 @@ function curvature_correction(billiard::Bi) where {Bi<:AbsBilliard}
     let segments = billiard.full_boundary
         println(segments)
         println("Number of segments: ", length(segments))
+        for seg in segments 
+            println(typeof(seg))
+        end
         curvat = 0.0
         for seg in segments 
             if typeof(seg) == PolarSegment
