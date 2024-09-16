@@ -139,7 +139,7 @@ function plot_wavefunction!(f,state::AbsState; b=5.0,dens = 10.0, fundamental_do
     #Psi[Psi .== zero(eltype(Psi))] .= NaN
     billiard = state.billiard
     hmap, ax = plot_heatmap_balaced!(f,x,y,Psi ;vmax = vmax, cmap=cmap,hmargs=hmargs,axargs=axargs)
-    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal)
+    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, fundamental_domain=fundamental_domain)
     return ax, hmap
 end
 
