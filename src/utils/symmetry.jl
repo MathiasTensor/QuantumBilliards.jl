@@ -37,9 +37,11 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
         if sym.axis == :x_axis
             y = 2*y_axis .- reverse(y_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=2)
-
+            println("y before: ", extrema(y_axis))
+            println("y reflected: ", extrema(y))
             Psi = hcat(Psi, Psi_ref) 
             y_grid = vcat(y_grid, y)
+            println("y final: ", extrema(y_grid))
         end
         if sym.axis == :origin
             # Reflect over both axes (x -> -x, y -> -y)
