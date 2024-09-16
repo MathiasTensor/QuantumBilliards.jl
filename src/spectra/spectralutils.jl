@@ -1,7 +1,6 @@
 #include("../abstracttypes.jl")
 
 using ProgressMeter
-using BenchmarkTools
 
 function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
     # Define the intervals
@@ -101,7 +100,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     while k0 < k2
         println("Doing interval: [$(k0), $(k0+dk)]")
         k0 += dk
-        k_new, ten_new = @btime solve_spectrum(solver, basis, billiard, k0, dk+tol)
+        k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk+tol)
         overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0-dk, k0; tol=tol)
         next!(p)
     end
