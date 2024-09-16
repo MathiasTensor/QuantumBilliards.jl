@@ -39,7 +39,8 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
             y = 2*y_axis .- reverse(y_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=2)
 
-            Psi = hcat(Psi_ref,Psi)
+            #Psi = hcat(Psi_ref,Psi) 
+            Psi = hcat(Psi_ref, Psi)
             println("y_grid before: ", y_grid)
             y_grid = append!(y,y_grid)
             println("y_grid after: ", y_grid)
