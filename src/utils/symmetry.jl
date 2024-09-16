@@ -50,6 +50,8 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
 
             Psi = hcat(Psi_ref,Psi) 
             y_grid = append!(y,y_grid)
+            sorted_indices = sortperm(y_grid)
+            y_grid = y_grid[sorted_indices]
             println("y_grid after appending: ", extrema(y_grid))
         end
         if sym.axis == :origin
@@ -65,6 +67,12 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
             Psi_x_reflected = reverse(sym.parity[2] .* Psi_y_combined; dims=1)
             Psi_x_combined = [Psi_x_reflected; Psi_y_combined]
             y_grid_combined = [y_reflected; y_grid]
+
+            # Permute the indexes
+            sorted_indices = sortperm(x_grid_combined)
+            x_grid_combined = x_grid_combined[sorted_indices]
+            sorted_indices = sortperm(y_grid_combined)
+            y_grid_combined = y_grid_combined[sorted_indices]
             
             # Update Psi and grids
             Psi = Psi_x_combined
