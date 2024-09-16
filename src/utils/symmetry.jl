@@ -32,11 +32,55 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
 
             Psi = vcat(Psi_ref,Psi)
             println("x_grid before: ", x_grid)
+            x_grid = vcat(x_reflected, x_grid)
+            println("x_grid after: ", x_grid)
+        end
+        if sym.axis == :x_axis
+            y = 2*0.0 .- reverse(y_grid)
+            Psi_ref = reverse(sym.parity.*Psi; dims=2)
+
+            Psi = hcat(Psi_ref,Psi) 
+            println("y_grid before: ", y_grid)
+            y_grid = vcat(y_reflected, y_grid)
+            println("y_grid after: ", y_grid)
+        end
+        if sym.axis == :origin
+            # Reflect over both axes (x -> -x, y -> -y)
+            # First, reflect over y-axis
+            x_reflected = 2*x_axis .- reverse(x_grid)
+            Psi_y_reflected = reverse(sym.parity[1] .* Psi; dims=2)
+            Psi_y_combined = [Psi_y_reflected Psi]
+            x_grid_combined = [x_reflected; x_grid]
+            
+            # Then, reflect over x-axis
+            y_reflected = 2*y_axis .- reverse(y_grid)
+            Psi_x_reflected = reverse(sym.parity[2] .* Psi_y_combined; dims=1)
+            Psi_x_combined = [Psi_x_reflected; Psi_y_combined]
+            y_grid_combined = [y_reflected; y_grid]
+            
+            # Update Psi and grids
+            Psi = Psi_x_combined
+            x_grid = x_grid_combined
+            y_grid = y_grid_combined
+        end
+    end
+    return Psi, x_grid, y_grid
+end
+
+#=
+function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0.0)
+    for sym in symmetries
+        if sym.axis == :y_axis
+            x = 2*x_axis .- reverse(x_grid)
+            Psi_ref = reverse(sym.parity.*Psi; dims=1)
+
+            Psi = vcat(Psi_ref,Psi)
+            println("x_grid before: ", x_grid)
             x_grid = append!(x,x_grid)
             println("x_grid after: ", x_grid)
         end
         if sym.axis == :x_axis
-            y = 4*y_axis .- reverse(y_grid)
+            y = 2*0.0 .- reverse(y_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=2)
 
             Psi = hcat(Psi_ref,Psi) 
@@ -66,7 +110,7 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
     end
     return Psi, x_grid, y_grid
 end
-
+=#
 
 #=
 function reflect_wavefunction(Psi,x_grid,y_grid,symmetries)
