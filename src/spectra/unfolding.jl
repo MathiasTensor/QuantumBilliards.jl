@@ -11,11 +11,11 @@ function curvature_correction(billiard::Bi) where {Bi<:AbsBilliard}
         end
         curvat = 0.0
         for seg in segments 
-            if typeof(seg) == PolarSegment
+            if seg isa PolarSegment
                 println("We are doing polar segment")
                 curvat += quadgk(t -> curvature(seg, t), 0.0, 1.0)
             end
-            if typeof(seg) == CircleSegment
+            if seg isa CircleSegment
                 println("We are doing circle segment")
                 curvat += 1/(12*pi)*(1/seg.radius)*seg.length
             end
