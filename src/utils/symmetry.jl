@@ -38,8 +38,10 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
             x = -reverse(x_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=1)
 
-            Psi = hcat(Psi,Psi_ref)
+            Psi = vcat(Psi,Psi_ref)
             x_grid = append!(x,x_grid)
+            sorted_indices = sortperm(x_grid)
+            x_grid = x_grid[sorted_indices]
             println("x_grid after appending: ", extrema(x_grid))
         end
         if sym.axis == :x_axis
