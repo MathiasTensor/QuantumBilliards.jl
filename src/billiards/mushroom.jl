@@ -117,6 +117,7 @@ struct Mushroom{T} <: AbsBilliard where {T<:Real}
     stem_height::T
     cap_radius::T
     corners::Vector{SVector{2,T}}
+    angles::Vector
 end
 
 function make_mushroom_and_basis(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{Mushroom, CornerAdaptedFourierBessel} where {T<:Real}
@@ -145,5 +146,6 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     full_boundary, corners = make_full_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
     length = sum([crv.length for crv in full_boundary])
-    return Mushroom(fundamental_boundary, full_boundary, length, area, stem_width, stem_height, cap_radius, corners)
+    angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
+    return Mushroom(fundamental_boundary, full_boundary, length, area, stem_width, stem_height, cap_radius, corners, angles)
 end
