@@ -29,26 +29,24 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
     println("y_grid before: ", extrema(y_grid))
     x_grid = x_grid .- x_axis  # Shift the grid to move the reflection axis to x=0
     y_grid = y_grid .- y_axis  # Shift the grid to move the reflection axis to y=0
-    println("x_grid after: ", extrema(x_grid))
-    println("y_grid after: ", extrema(y_grid))
+    println("x_grid after shift: ", extrema(x_grid))
+    println("y_grid after shift: ", extrema(y_grid))
     for sym in symmetries
         if sym.axis == :y_axis
             x = -reverse(x_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=1)
 
             Psi = vcat(Psi_ref,Psi)
-            println("x_grid before: ", extrema(x_grid))
             x_grid = append!(x,x_grid)
-            println("x_grid after: ", extrema(x_grid))
+            println("x_grid after appending: ", extrema(x_grid))
         end
         if sym.axis == :x_axis
             y = -reverse(y_grid)
             Psi_ref = reverse(sym.parity.*Psi; dims=2)
 
             Psi = hcat(Psi_ref,Psi) 
-            println("y_grid before: ", extrema(y_grid))
             y_grid = append!(y,y_grid)
-            println("y_grid after: ", extrema(y_grid))
+            println("y_grid after appending: ", extrema(y_grid))
         end
         if sym.axis == :origin
             # Reflect over both axes (x -> -x, y -> -y)
@@ -73,6 +71,8 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries; x_axis=0.0, y_axis=0
     # Shift the grids back to their original positions before returning
     x_grid = x_grid .+ x_axis
     y_grid = y_grid .+ y_axis
+    println("x_grid after shift back: ", extrema(x_grid))
+    println("y_grid after shift back: ", extrema(y_grid))
     return Psi, x_grid, y_grid
 end
 
