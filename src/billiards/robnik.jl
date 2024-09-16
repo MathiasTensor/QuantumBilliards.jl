@@ -169,7 +169,7 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
 function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, RealPlaneWaves} where {T<:Real}
     robnik_billiard = RobnikBilliard(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     # Define symmetry operations if any (e.g., reflection symmetry)
-    symmetry = Vector{Any}([YReflection(-1)])
+    symmetry = Vector{Any}([XReflection(-1)])
     basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
     return robnik_billiard, basis
 end
