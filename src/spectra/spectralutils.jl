@@ -93,15 +93,17 @@ end
 
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4)
     k0 = k1
+    num_intervals = ceil(Int, (k2 - k1) / dk)
+    p = Progress(num_intervals, 1)
     #initial computation
     k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk+tol)
     control = [false for i in 1:length(k_res)]
     while k0 < k2
         println("Doing interval: [$(k0), $(k0+dk)]")
         k0 += dk
-        k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk+tol)
+        k_new, ten_new = @btime solve_spectrum(solver, basis, billiard, k0, dk+tol)
         overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0-dk, k0; tol=tol)
-
+        next!(p)
     end
     return k_res, ten_res, control
 end
