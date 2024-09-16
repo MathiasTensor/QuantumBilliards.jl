@@ -4,19 +4,12 @@ corner_correction(corner_angles) =  sum([(pi^2 - c^2)/(24*pi*c) for c in corner_
 
 function curvature_correction(billiard::Bi) where {Bi<:AbsBilliard}
     let segments = billiard.full_boundary
-        println(segments)
-        println("Number of segments: ", length(segments))
-        for seg in segments 
-            println(typeof(seg))
-        end
         curvat = 0.0
         for seg in segments 
             if seg isa PolarSegment
-                println("We are doing polar segment")
                 curvat += quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
             end
             if seg isa CircleSegment
-                println("We are doing circle segment")
                 curvat += 1/(12*pi)*(1/seg.radius)*seg.length
             end
         end
