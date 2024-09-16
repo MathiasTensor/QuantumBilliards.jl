@@ -79,7 +79,7 @@ struct CornerAdaptedFourierBessel{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{Ab
     dim::Int64 #using concrete type
     corner_angle::T
     nu::T #order constant, order=nu*i
-    symmetries::Union{Vector{Sy},Nothing}
+    symmetries::Union{Vector{Any},Nothing}
     rotation_angle_discontinuity::T
 end
 
