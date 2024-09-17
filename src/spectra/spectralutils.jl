@@ -121,7 +121,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     end
     num_intervals = length(dk_values)
 
-    # Initialize the progress bar with the estimated number of intervals
+    # Initialize the progress bar with estimated number of intervals
     println("Scaling Method...")
     p = Progress(num_intervals, 1)
 
