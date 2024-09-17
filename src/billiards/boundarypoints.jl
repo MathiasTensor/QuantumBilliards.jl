@@ -7,6 +7,37 @@ struct BoundaryPoints{T} <: AbsPoints where {T<:Real}
     ds::Vector{T} #integration weights
 end
 
+
+function boundary_coords(crv::C,sampler::S, N) where {C<:AbsCurve, S<:AbsSampler}
+    L = crv.length
+    t, dt = sample_points(sampler, N)
+    xy = curve(crv, t)
+    normal = normal_vec(crv,t)
+    s = arc_length(crv,t)
+    if crv isa PolarSegment
+        ds = diff(s)
+        append!(ds, abs(s[1] - s[end])) # add the last difference as we have 1 less element
+    else
+        ds = L.*dt
+    end
+    return xy, normal, s, ds
+end
+
+function boundary_coords(crv::C, t, dt) where {C<:AbsCurve}
+    L = crv.length
+    xy = curve(crv, t)
+    normal = normal_vec(crv,t)
+    s = arc_length(crv,t)
+    if crv isa PolarSegment
+        ds = diff(s)
+        append!(ds, abs(s[1] - s[end])) # add the last difference as we have 1 less element
+    else
+        ds = L.*dt
+    end
+    return xy, normal, s, ds
+end 
+
+#=
 function boundary_coords(crv::C,sampler::S, N) where {C<:AbsCurve, S<:AbsSampler}
     L = crv.length
     t, dt = sample_points(sampler, N)
@@ -25,6 +56,7 @@ function boundary_coords(crv::C, t, dt) where {C<:AbsCurve}
     ds = L.*dt #modify for different parametrizations
     return xy, normal, s, ds
 end 
+=#
 
 #make better watch out for primes parameter
 function boundary_coords(billiard::Bi, sampler::FourierNodes, N) where {Bi<:AbsBilliard}
