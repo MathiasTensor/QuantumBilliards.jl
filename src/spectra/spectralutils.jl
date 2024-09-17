@@ -111,24 +111,34 @@ end
 
 # NEW
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol=1e-4, N_expect = 3)
+    # Estimate the number of intervals and store the dk values
     k0 = k1
-    num_intervals = ceil(Int, (k2 - k1) / dk)
+    dk_values = []
+    while k0 < k2
+        dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental/(4*pi))
+        push!(dk_values, dk)
+        k0 += dk
+    end
+    num_intervals = length(dk_values)
+
+    # Initialize the progress bar with the estimated number of intervals
     println("Scaling Method...")
     p = Progress(num_intervals, 1)
-    
-    #initial computation
-    dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental)
-    k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk+tol)
+
+    # Actual computation using precomputed dk values
+    k0 = k1
+    k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk_values[1] + tol)
     control = [false for i in 1:length(k_res)]
-    
-    while k0 < k2
-        println("Doing interval: [$(k0), $(k0+dk)]")
+
+    for i in 1:num_intervals
+        dk = dk_values[i]
+        println("Doing interval: [$(k0), $(k0 + dk)]")
         k0 += dk
-        dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental)
-        k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk+tol)
-        overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0-dk, k0; tol=tol)
+        k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk + tol)
+        overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0 - dk, k0; tol=tol)
         next!(p)
     end
+    
     return k_res, ten_res, control
 end
 
