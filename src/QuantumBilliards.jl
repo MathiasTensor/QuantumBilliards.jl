@@ -52,6 +52,7 @@ include("billiards/ellipse.jl")
 include("billiards/robnik.jl")
 include("billiards/prosen.jl")
 include("billiards/mushroom.jl")
+include("billiards/rectangle.jl")
 export adapt_basis
 #include("limacon.jl")
 #include("rectangle.jl")
@@ -65,6 +66,7 @@ export Ellipse, make_quarter_ellipse, make_full_ellipse, make_ellipse_and_basis
 export RobnikBilliard, make_half_robnik, make_full_robnik, make_robnik_and_basis
 export ProsenBilliard, make_quarter_prosen, make_full_prosen, make_prosen_and_basis
 export Mushroom, make_half_mushroom, make_full_mushroom, make_mushroom_and_basis
+export RectangleBilliard, make_quarter_rectangle, make_full_rectangle, make_rectangle_and_basis
 
 
 include("solvers/decompositions.jl")
