@@ -16,7 +16,7 @@ function boundary_coords(crv::C,sampler::S, N) where {C<:AbsCurve, S<:AbsSampler
     s = arc_length(crv,t)
     if crv isa PolarSegment
         ds = diff(s)
-        append!(ds, abs(L + s[1] - s[end])) # add the last difference as we have 1 less element
+        append!(ds, abs(L + s[1] - s[end])) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
     else
         ds = L.*dt
     end
@@ -30,7 +30,7 @@ function boundary_coords(crv::C, t, dt) where {C<:AbsCurve}
     s = arc_length(crv,t)
     if crv isa PolarSegment
         ds = diff(s)
-        append!(ds, abs(L + s[1] - s[end])) # add the last difference as we have 1 less element
+        append!(ds, abs(L + s[1] - s[end])) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
     else
         ds = L.*dt
     end
