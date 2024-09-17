@@ -52,7 +52,7 @@ ProgressMeter = "1.10.2"
 BenchmarkTools = "1.5.0"
 CSV = "0.10.14"
 PrettyTables = "2.3.2"
-DataFrames = "1.7.0"
+DataFrames = "1.6.1"
 
 
 [extras]
