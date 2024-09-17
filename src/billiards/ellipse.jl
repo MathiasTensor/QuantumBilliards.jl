@@ -90,7 +90,6 @@ Defines an Ellipse billiard with a full and half boundary.
 - `semi_major_axis::T`: The semi-major axis of the ellipse.
 - `semi_minor_axis::T`: The semi-minor axis of the ellipse.
 - `corners::Vector{SVector{2,T}}`: The corner points on the x- and y-axes.
-- `area::T`: The area of the ellipse.
 - `area_fundamental::T`: The total area of the half ellipse.
 """
 struct Ellipse{T} <: AbsBilliard where {T<:Real}
@@ -102,7 +101,6 @@ struct Ellipse{T} <: AbsBilliard where {T<:Real}
     semi_major_axis::T
     semi_minor_axis::T
     corners::Vector{SVector{2,T}}
-    area::T
     area_fundamental::T
 end
 
@@ -128,7 +126,7 @@ function Ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Ellip
     area_fundamental = area_full * 0.25
     length = sum([crv.length for crv in full_boundary])
     length_fundamental = sum([crv.length for crv in fundamental_boundary])
-    return Ellipse(fundamental_boundary, full_boundary, length, length_fundamental, area, a, b, corners, area_full, area_fundamental)
+    return Ellipse(fundamental_boundary, full_boundary, length, length_fundamental, area_full, a, b, corners, area_fundamental)
 end
 
 
