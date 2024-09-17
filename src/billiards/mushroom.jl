@@ -112,7 +112,9 @@ struct Mushroom{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
     full_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
     length::T
+    length_fundamental::T
     area::T
+    area_fundamental::T
     stem_width::T
     stem_height::T
     cap_radius::T
@@ -148,7 +150,9 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     fundamental_boundary, _ = make_half_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, corners = make_full_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
+    area_fundamental = area/2
     length = sum([crv.length for crv in full_boundary])
+    length_fundamental = sum([crv.length for crv in fundamental_boundary])
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
-    return Mushroom(fundamental_boundary, full_boundary, length, area, stem_width, stem_height, cap_radius, corners, angles, x_axis_reflection)
+    return Mushroom(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, x_axis_reflection)
 end

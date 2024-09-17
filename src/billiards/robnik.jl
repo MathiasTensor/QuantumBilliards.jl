@@ -20,6 +20,7 @@ Constructs a full Robnik billiard.
 - A tuple containing:
   - `boundary::Vector{PolarSegment{T}}`: The boundary segments of the full Robnik billiard.
   - `corners::Vector{SVector{2,T}}`: An empty vector (no corners for the full billiard).
+  - `area_full::T`: The area of the full Robnik billiard.
 """
 function make_full_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
     if ε < zero(T)
@@ -40,11 +41,12 @@ function make_full_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) wher
 
     # Create the full Robnik billiard segment
     full_robnik_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
+    area_full = compute_area(full_robnik_segment)
 
     boundary = [full_robnik_segment]
     corners = []  # Empty vector for corners
 
-    return boundary, corners
+    return boundary, corners, area_full
 end
 
 """
@@ -118,8 +120,11 @@ struct RobnikBilliard{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
     length::T
+    length_fundamental::T
     epsilon::T
     corners::Vector{SVector{2,T}}
+    area::T
+    area_fundamental::T
 end
 
 
@@ -142,9 +147,11 @@ Constructs a Robnik billiard.
 function RobnikBilliard(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: RobnikBilliard where {T<:Real}
     # Create the half and full boundaries
     fundamental_boundary, corners = make_half_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
-    full_boundary, _ = make_full_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
+    full_boundary, _ , area_full = make_full_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
+    area_fundamental = area_full/2
     length = sum([crv.length for crv in full_boundary])
-    return RobnikBilliard(fundamental_boundary, full_boundary, length, ε, corners)
+    length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    return RobnikBilliard(fundamental_boundary, full_boundary, length, length_fundamental, ε, corners, area_full, area_fundamental)
 end
 
 
@@ -168,7 +175,6 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
 """
 function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, RealPlaneWaves} where {T<:Real}
     robnik_billiard = RobnikBilliard(ε; x0=x0, y0=y0, rot_angle=rot_angle)
-    # Define symmetry operations if any (e.g., reflection symmetry)
     symmetry = Vector{Any}([YReflection(-1)])
     basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
     return robnik_billiard, basis

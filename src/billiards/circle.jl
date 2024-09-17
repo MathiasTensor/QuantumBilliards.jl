@@ -63,14 +63,17 @@ Defines a circular billiard.
 - `area::T`: The total area of the circle.
 - `radius::T`: The radius of the circle.
 - `center::SVector{2,T}`: The center point of the circle.
+- `area_fundamental::T`: The total area of the fundamental boundary.
 """
 struct CircleBilliard{T} <: AbsBilliard where {T<:Real}
     full_boundary::Vector
     fundamental_boundary::Vector
     length::T
+    length_fundamental::T
     area::T
     radius::T
     center::SVector{2,T}
+    area_fundamental::T
 end
 
 """
@@ -86,12 +89,14 @@ Constructs a circular billiard with a given radius.
 # Returns
 - An instance of the `CircleBilliard` struct.
 """
-function CircleBilliard(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+function CircleBilliard(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: CircleBilliard where {T<:Real}
     boundary, center = make_circle(radius; x0=x0, y0=y0, rot_angle=rot_angle)
-    area = pi * radius^2
-    length = 2 * pi * radius
     fundamental_boundary, _ = make_quarter_circle(radius; x0=x0, y0=y0, rot_angle=rot_angle)
-    return CircleBilliard(boundary,fundamental_boundary, length, area, radius, center)
+    area = pi * radius^2
+    area_fundamental = area * 0.25
+    length = 2 * pi * radius
+    length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    return CircleBilliard(boundary,fundamental_boundary, length, length_fundamental, area, radius, center, area_fundamental)
 end
 
 

@@ -59,6 +59,8 @@ Constructs a full ellipse billiard.
 # Returns
 - A tuple containing:
   - `boundary::Vector{PolarSegment}`: The boundary segments of the full ellipse.
+  - `corners::Vector{SVector{2,T}}`: The corner points on the x- and y-axes.
+  - `area_full::T`: The total area of the ellipse.
 """
 function make_full_ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
     origin = SVector(x0, y0)
@@ -66,11 +68,11 @@ function make_full_ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)
     # Define the full ellipse boundary
     r_func = t -> SVector(a * cos(2 * pi * t), b * sin(2 * pi * t))  # t from 0 to 1 for the full ellipse
     full_ellipse_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
-    
+    area_full = compute_area(full_ellipse_segment)
     boundary = [full_ellipse_segment]
     corners = [SVector(-a, zero(T)), SVector(a, zero(T))]  # The corner points on the x-axis
     
-    return boundary, corners
+    return boundary, corners, area_full
 end
 
 
@@ -87,15 +89,21 @@ Defines an Ellipse billiard with a full and half boundary.
 - `area::T`: The total area of the ellipse.
 - `semi_major_axis::T`: The semi-major axis of the ellipse.
 - `semi_minor_axis::T`: The semi-minor axis of the ellipse.
+- `corners::Vector{SVector{2,T}}`: The corner points on the x- and y-axes.
+- `area::T`: The area of the ellipse.
+- `area_fundamental::T`: The total area of the half ellipse.
 """
 struct Ellipse{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
     length::T
+    length_fundamental::T
     area::T
     semi_major_axis::T
     semi_minor_axis::T
     corners::Vector{SVector{2,T}}
+    area::T
+    area_fundamental::T
 end
 
 
@@ -115,10 +123,12 @@ Constructs an Ellipse billiard.
 """
 function Ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Ellipse where {T<:Real}
     fundamental_boundary, _ = make_quarter_ellipse(a, b; x0=x0, y0=y0, rot_angle=rot_angle)
-    full_boundary, corners = make_full_ellipse(a, b; x0=x0, y0=y0, rot_angle=rot_angle)
-    area = pi * a * b
+    full_boundary, corners, _ = make_full_ellipse(a, b; x0=x0, y0=y0, rot_angle=rot_angle)
+    area_full = pi * a * b
+    area_fundamental = area_full * 0.25
     length = sum([crv.length for crv in full_boundary])
-    return Ellipse(fundamental_boundary, full_boundary, length, area, a, b, corners)
+    length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    return Ellipse(fundamental_boundary, full_boundary, length, length_fundamental, area, a, b, corners, area_full, area_fundamental)
 end
 
 
