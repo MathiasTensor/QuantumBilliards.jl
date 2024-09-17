@@ -147,7 +147,8 @@ function ProsenBilliard(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Pros
     full_boundary, _, area_full = make_full_prosen(a; x0=x0, y0=y0, rot_angle=rot_angle)
     area_fundamental = area_full * 0.25
     length = sum([crv.length for crv in full_boundary])
-    length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     return ProsenBilliard(fundamental_boundary, full_boundary, length, length_fundamental, a, corners, area_full, area_fundamental)
 end
 

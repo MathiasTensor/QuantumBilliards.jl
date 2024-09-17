@@ -138,7 +138,8 @@ function RectangleBilliard(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
     area = width * height
     area_fundamental = area * 0*25
     length = sum([crv.length for crv in full_boundary])
-    length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     return RectangleBilliard(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, width, height, corners)
 end
 

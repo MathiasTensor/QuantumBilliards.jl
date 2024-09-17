@@ -42,7 +42,7 @@ export LineSegment, VirtualLineSegment
 export CircleSegment, VirtualCircleSegment
 export DispersingCircleSegment, VirtualDispersingCircleSegment
 export PolarSegment, VirtualPolarSegment
-export curve, arc_length, tangent, tangent_vec, normal_vec, curvature
+export curve, arc_length, tangent, tangent_vec, normal_vec, curvature, symmetry_accounted_fundamental_boundary_length
 include("billiards/stadium.jl")
 include("billiards/lemon.jl")
 include("billiards/sinai.jl")

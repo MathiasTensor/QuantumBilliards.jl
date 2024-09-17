@@ -27,13 +27,14 @@ struct VirtualDispersingCircleSegment{T}  <: AbsVirtualCurve where T<:Real
     center::SVector{2,T}
     orientation::Int64
     length::T
+    symmetry_type::Symbol
 end
 
-function VirtualCircleSegment(R, arc_angle, shift_angle, x0, y0; origin=(zero(x0),zero(x0)),rot_angle=zero(x0), orientation = 1)
+function VirtualCircleSegment(R, arc_angle, shift_angle, x0, y0; symmetry_type=:Dirichlet, origin=(zero(x0),zero(x0)),rot_angle=zero(x0), orientation = 1)
     cs = PolarCS(SVector(origin...),rot_angle)
     center = SVector(x0,y0)
     L = abs(R*arc_angle)
-    return VirtualDispersingCircleSegment(cs,R,arc_angle,shift_angle,center,orientation,L)
+    return VirtualDispersingCircleSegment(cs,R,arc_angle,shift_angle,center,orientation,L,symmetry_type)
 end
 
 DispersingCircleSegments{T} = Union{DispersingCircleSegment{T},VirtualDispersingCircleSegment{T} } where T<:Real

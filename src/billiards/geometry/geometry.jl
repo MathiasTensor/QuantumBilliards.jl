@@ -64,7 +64,21 @@ function make_polygon(corners, curve_types; origin=(zero(corners[1][1]),zero(cor
     return boundary
 end
 
-
+function symmetry_accounted_fundamental_boundary_length(fundamental_boundary::Vector)
+    L = 0.0
+    for crv in fundamental_boundary
+        if crv isa AbsVirtualCurve
+            if crv.symmetry_type == :Dirichlet
+                L += crv.length
+            elseif crv.symmetry_type == :Neumann
+                L -= crv.length
+            end
+        else
+            L += crv.length
+        end
+    end
+    return L
+end
 
 #domain fuction has node (zero) at the edge of the curve
 

@@ -23,13 +23,14 @@ struct VirtualLineSegment{T}  <: AbsVirtualCurve where T<:Real
     pt1::SVector{2,T}
     orientation::Int64
     length::T
+    symmetry_type::Symbol
 end
 
-function VirtualLineSegment(pt0::SVector{2,T}, pt1::SVector{2,T}; origin=zero(pt0),rot_angle=zero(eltype(pt0)), orientation = 1) where T<:Real
+function VirtualLineSegment(pt0::SVector{2,T}, pt1::SVector{2,T}; symmetry_type=:Dirichlet, origin=zero(pt0),rot_angle=zero(eltype(pt0)), orientation = 1) where T<:Real
     cs = CartesianCS(SVector(origin...),rot_angle)
     x, y = pt1 .- pt0        
     L = hypot(x,y)
-    return VirtualLineSegment(cs,pt0,pt1,orientation,L)
+    return VirtualLineSegment(cs,pt0,pt1,orientation,L,symmetry_type)
 end
 
 LineSegments{T} = Union{LineSegment{T},VirtualLineSegment{T} } where T<:Real

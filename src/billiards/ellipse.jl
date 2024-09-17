@@ -125,7 +125,8 @@ function Ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Ellip
     area_full = pi * a * b
     area_fundamental = area_full * 0.25
     length = sum([crv.length for crv in full_boundary])
-    length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     return Ellipse(fundamental_boundary, full_boundary, length, length_fundamental, area_full, a, b, corners, area_fundamental)
 end
 
