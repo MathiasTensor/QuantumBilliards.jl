@@ -19,7 +19,7 @@ struct Triangle{T}  <: AbsBilliard where {T<:Real}
     area :: T
     corners :: SVector{3, SVector{2, T}}
     angles :: SVector{3, T}
-    #domain :: Function 
+    angles_fundamental::Vector
 end
 
 function Triangle(gamma, chi; curve_types = [:Real, :Virtual, :Virtual] , x0=zero(gamma), y0=zero(gamma), h = one(gamma))
@@ -32,7 +32,7 @@ function Triangle(gamma, chi; curve_types = [:Real, :Virtual, :Virtual] , x0=zer
     full_boundary = make_polygon(corners, [:Real, :Real, :Real])
     length = sum([crv.length for crv in full_boundary])
     area = 0.5*h*abs(corners[1][1]-corners[3][1])#PolygonOps.area(collect(zip(x,y)))
-    return Triangle(boundary,full_boundary,length,area,corners,angles)
+    return Triangle(boundary,full_boundary,length,area,corners,angles,angles)
 end
 
 function adapt_basis(triangle::T,i) where {T<:Triangle}

@@ -120,6 +120,7 @@ struct Mushroom{T} <: AbsBilliard where {T<:Real}
     cap_radius::T
     corners::Vector{SVector{2,T}}
     angles::Vector
+    angles_fundamental::Vector
     x_axis::T # For correct reflection. This is the actual "axis" of reflection
 end
 
@@ -155,5 +156,6 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     #length_fundamental = sum([crv.length for crv in fundamental_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
-    return Mushroom(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, x_axis_reflection)
+    angles_fundamental = [3*pi/2, pi/2, pi/2]
+    return Mushroom(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection)
 end

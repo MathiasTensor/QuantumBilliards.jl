@@ -125,6 +125,8 @@ struct RobnikBilliard{T} <: AbsBilliard where {T<:Real}
     corners::Vector{SVector{2,T}}
     area::T
     area_fundamental::T
+    angles::Vector
+    angles_fundamental::Vector
 end
 
 
@@ -150,9 +152,10 @@ function RobnikBilliard(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Rob
     full_boundary, _ , area_full = make_full_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     area_fundamental = area_full/2
     length = sum([crv.length for crv in full_boundary])
-    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
-    return RobnikBilliard(fundamental_boundary, full_boundary, length, length_fundamental, ε, corners, area_full, area_fundamental)
+    angles = []
+    angles_fundamental = []
+    return RobnikBilliard(fundamental_boundary, full_boundary, length, length_fundamental, ε, corners, area_full, area_fundamental, angles, angles_fundamental)
 end
 
 

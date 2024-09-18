@@ -40,6 +40,8 @@ struct Lemon{T}  <: AbsBilliard where {T<:Real}
     half_separation::T
     radius::T
     corners::Vector{SVector{2,T}}
+    angles::Vector
+    angles_fundamental::Vector
 end
 
 function Lemon(half_separation; radius=1.0,x0=0.0,y0=0.0)
@@ -48,6 +50,7 @@ function Lemon(half_separation; radius=1.0,x0=0.0,y0=0.0)
     full_boundary, _ = make_full_lemon(half_separation;radius=radius,x0=x0,y0=y0)
     fundamental_boundary, corners = make_quarter_lemon(half_separation;radius=radius,x0=x0,y0=y0)
     length = sum([crv.length for crv in full_boundary])
-    #PolygonOps.area(collect(zip(x,y)))
-    return Lemon(fundamental_boundary,full_boundary,length,area,half_separation,radius,corners)
+    angles = []
+    angles_fundamental = []
+    return Lemon(fundamental_boundary,full_boundary,length,area,half_separation,radius,corners, angles, angles_fundamental)
 end 

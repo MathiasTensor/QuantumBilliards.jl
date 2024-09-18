@@ -74,6 +74,8 @@ struct CircleBilliard{T} <: AbsBilliard where {T<:Real}
     radius::T
     center::SVector{2,T}
     area_fundamental::T
+    angles::Vector
+    angles_fundamental::Vector
 end
 
 """
@@ -95,9 +97,10 @@ function CircleBilliard(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) ::
     area = pi * radius^2
     area_fundamental = area * 0.25
     length = 2 * pi * radius
-    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
-    return CircleBilliard(boundary,fundamental_boundary, length, length_fundamental, area, radius, center, area_fundamental)
+    angles = []
+    angles_fundamental = [pi/2]
+    return CircleBilliard(boundary,fundamental_boundary, length, length_fundamental, area, radius, center, area_fundamental, angles, angles_fundamental)
 end
 
 

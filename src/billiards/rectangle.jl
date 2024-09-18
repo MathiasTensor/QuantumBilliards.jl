@@ -116,6 +116,8 @@ struct RectangleBilliard{T} <: AbsBilliard where {T<:Real}
     width::T
     height::T
     corners::Vector{SVector{2,T}}
+    angles::Vector
+    angles_fundamental::Vector
 end
 
 """
@@ -138,9 +140,10 @@ function RectangleBilliard(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
     area = width * height
     area_fundamental = area * 0*25
     length = sum([crv.length for crv in full_boundary])
-    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
-    return RectangleBilliard(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, width, height, corners)
+    angles = [pi/2, pi/2, pi/2, pi/2]
+    angles_fundamental = [pi/2, pi/2, pi/2, pi/2]
+    return RectangleBilliard(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, width, height, corners, angles, angles_fundamental)
 end
 
 """
