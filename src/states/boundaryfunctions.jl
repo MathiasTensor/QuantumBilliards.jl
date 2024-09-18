@@ -242,8 +242,8 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
         end
         R_r_sum = sum(R_r_array)
         if abs(r - sqrt(k_squared)) < epsilon
-            r_left = r - epsilon
-            r_right = r + epsilon
+            r_left = r - 3*epsilon
+            r_right = r + 3*epsilon
             R_left = (r_left / (r_left^2 - k_squared)^2) * R_r_sum
             R_right = (r_right / (r_right^2 - k_squared)^2) * R_r_sum
             return (R_left + R_right) / T(2)
