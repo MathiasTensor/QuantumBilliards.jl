@@ -78,7 +78,7 @@ function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap,
     return length
 end
 
-# Function to compute the area enclosed by a closed PolarSegment !!!!!!
+# Function to compute the area enclosed by a closed PolarSegment via Green's formula !!!!!!
 function compute_area(polar::L) where {T<:Real, L<:PolarSegments{T}}
     # Integrand function for the area
     function integrand(t)
