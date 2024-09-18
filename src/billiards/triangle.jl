@@ -18,7 +18,7 @@ struct Triangle{T}  <: AbsBilliard where {T<:Real}
     length:: T
     area :: T
     corners :: SVector{3, SVector{2, T}}
-    angles :: SVector{3, T}
+    angles :: Vector
     angles_fundamental::Vector
 end
 
