@@ -227,7 +227,7 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     epsilon = sqrt(eps(T))
     num_points = length(pts_coords)
     function R_r(r)
-        if abs(r - sqrt(k_squared)) < epsilon
+        if abs(r - sqrt(k_squared)) > epsilon
             R_r_array = zeros(T, Threads.nthreads())
             Threads.@threads for i in 1:num_points
                 thread_id = Threads.threadid()
@@ -242,7 +242,7 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
                 R_r_array[thread_id] += R_r_i
             end
             return (r / (r^2 - k_squared)^2) * sum(R_r_array)
-        else
+        else # Interpolating approximation by Backer
             R_r_array = zeros(T, Threads.nthreads())
             Threads.@threads for i in 1:num_points
                 thread_id = Threads.threadid()
