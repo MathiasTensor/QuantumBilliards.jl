@@ -25,14 +25,15 @@ end
 function Triangle(gamma, chi; curve_types = [:Real, :Virtual, :Virtual] , x0=zero(gamma), y0=zero(gamma), h = one(gamma))
     alpha = (pi-gamma)/(1+chi)
     beta = alpha*chi
-    angles = SVector(alpha, beta, gamma)
+    angles_old = SVector(alpha, beta, gamma)
     #println("α=$alpha, β=$beta, γ=$gamma")
-    corners = triangle_corners(angles, x0, y0, h)
+    corners = triangle_corners(angles_old, x0, y0, h)
     boundary = make_polygon(corners, curve_types)
     full_boundary = make_polygon(corners, [:Real, :Real, :Real])
     length = sum([crv.length for crv in full_boundary])
     area = 0.5*h*abs(corners[1][1]-corners[3][1])#PolygonOps.area(collect(zip(x,y)))
-    return Triangle(boundary,full_boundary,length,area,corners,angles,angles)
+    angles_new = [alpha, beta, gamma]
+    return Triangle(boundary,full_boundary,length,area,corners,angles_new,angles_new)
 end
 
 function adapt_basis(triangle::T,i) where {T<:Triangle}
