@@ -12,7 +12,7 @@ Calculates the corner correction term for Weyl's law based on the internal angle
 - `corner_term::Real`: The sum of the corner correction terms.
 
 """
-corner_correction(corner_angles) =  sum([(pi^2 - c^2)/(24*pi*c) for c in corner_angles])
+corner_correction(corner_angles) = isempty(corner_angles) ? 0.0 : sum([(pi^2 - c^2)/(24*pi*c) for c in corner_angles])
 
 """
     curvature_correction(billiard::Bi) -> Real where {Bi<:AbsBilliard}
@@ -25,8 +25,8 @@ Computes the curvature correction term for Weyl's law based on the curvature alo
 # Returns
 - `curvature_term::Real`: The total curvature correction.
 """
-function curvature_correction(billiard::Bi) where {Bi<:AbsBilliard}
-    let segments = billiard.full_boundary
+function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
+    let segments = fundamental ? billiard.fundamental_boundary : billiard.full_boundary
         curvat = 0.0
         for seg in segments 
             if seg isa PolarSegment
@@ -41,128 +41,55 @@ function curvature_correction(billiard::Bi) where {Bi<:AbsBilliard}
 end
 
 """
-    weyl_law(ks::Vector{<:Real}, billiard::Bi; fundamental::Bool=true) -> Vector{Real}
+    weyl_law(ks::Vector, billiard::Bi; fundamental::Bool=true) -> Vector where {Bi<:AbsBilliard}
 
-Computes the leading-order Weyl's law term for the eigenvalue counting function based on the provided wave numbers.
+Computes the eigenvalue counting function `N(k)` using Weyl's law, with corrections for corners and curvature.
 
 # Arguments
-- `ks::Vector{<:Real}`: The wave numbers for which Weyl's law is calculated.
-- `billiard::Bi`: The billiard instance containing the area and length information.
-- `fundamental::Bool=true`: If `true`, uses `area_fundamental` and `length_fundamental` of the billiard; if `false`, uses `area` and `length`.
+- `ks::Vector{Real}`: The wave numbers to evaluate.
+- `billiard::Bi`: The billiard instance containing area, length, and angle information.
+- `fundamental::Bool=true`: If `true`, uses `area_fundamental`, `length_fundamental`, and `angles_fundamental`; otherwise, uses full geometry properties.
 
 # Returns
-- `N(ks)::Vector{Real}`: A vector of estimated eigenvalue counts for each wave number in `ks`.
-
-# Description
-Calculates the leading-order approximation: N(k) = A/(4*pi)*k^2 - L/(4*pi)*k, using either the fundamental or full area and length.
+- `N(ks)::Vector`: The estimated number of eigenvalues less than or equal to each `k`, including corner and curvature corrections.
 """
-function weyl_law(ks::Vector, billiard::Bi; fundamental::Bool = true) where {Bi<:AbsBilliard}
+function weyl_law(ks::Vector, billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
     A = fundamental ? billiard.area_fundamental : billiard.area
     L = fundamental ? billiard.length_fundamental : billiard.length
-    return @. (A * ks^2 - L * ks) / (4 * π)
-end
+    angles = fundamental ? billiard.angles_fundamental : billiard.angles
+    
+    N_ks = (A * ks.^2 .- L .* ks) ./ (4π)
+    N_ks .+= corner_correction(angles)
+    N_ks .+= curvature_correction(billiard)
 
-"""
-    weyl_law(ks::Vector{<:Real}, billiard::Bi, corner_angles::AbstractVector{<:Real}; fundamental::Bool=true) -> Vector{Real}
-
-Computes Weyl's law for a set of wave numbers, including corner corrections.
-
-# Arguments
-- `ks::Vector{<:Real}`: The wave numbers for which Weyl's law is calculated.
-- `billiard::Bi`: The billiard instance containing the area and length information.
-- `corner_angles::AbstractVector{<:Real}`: The internal angles at the billiard's corners (in radians).
-- `fundamental::Bool=true`: If `true`, uses `area_fundamental` and `length_fundamental`; otherwise, uses `area` and `length`.
-
-# Returns
-- `N(ks)::Vector{Real}`: A vector of estimated eigenvalue counts for each wave number in `ks`, with corner corrections applied.
-
-# Description
-Includes the corner correction term in the eigenvalue count estimate: N(k) = A/(4*pi)*k^2 - L/(4*pi)*k + corner_correction.
-"""
-function weyl_law(ks::Vector, billiard::Bi, corner_angles::AbstractVector{<:Real}; fundamental::Bool = true) where {Bi<:AbsBilliard}
-    N = weyl_law(ks, billiard; fundamental=fundamental)
-    N_correction = corner_correction(corner_angles)
-    return N .+ N_correction
-end
-
-"""
-    weyl_law(ks::Vector{<:Real}, billiard::Bi; fundamental::Bool=true) -> Vector{Real}
-
-Computes Weyl's law for a set of wave numbers, including both corner and curvature corrections.
-
-# Arguments
-- `ks::Vector{<:Real}`: The wave numbers for which Weyl's law is calculated.
-- `billiard::Bi`: The billiard instance containing the area, length, and curvature information.
-- `fundamental::Bool=true`: If `true`, uses `area_fundamental` and `length_fundamental`; otherwise, uses `area` and `length`.
-
-# Returns
-- `N(ks)::Vector{Real}`: A vector of estimated eigenvalue counts for each wave number in `ks`, with both corner and curvature corrections applied.
-
-# Description
-This function adds both corner and curvature corrections to the Weyl's law estimation:
-N(k) = A/(4*pi)*k^2 - L/(4*pi)*k + corner_correction + curvature_correction.
-If the billiard has a field `angles`, corner corrections are applied automatically.
-"""
-function weyl_law(ks::Vector{<:Real}, billiard::Bi; fundamental::Bool = true) where {Bi<:AbsBilliard}
-    A = fundamental ? billiard.area_fundamental : billiard.area
-    L = fundamental ? billiard.length_fundamental : billiard.length
-    N = @. (A * ks^2 - L * ks) / (4 * π)
-    if hasfield(billiard, :angles)
-        N .+= corner_correction(billiard.angles)
-    end
-    N .+= curvature_correction(billiard)
-    return N
+    return N_ks
 end
 
 """
     k_at_state(state::Int, billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
 
-Calculates the wave number `k` corresponding to a given state number using the inverted Weyl's law with a potential curvature correction.
+Calculates the wave number `k` corresponding to a given state number using the inverted Weyl's law, including corner and curvature corrections.
 
 # Arguments
 - `state::Int`: The eigenvalue index (state number).
-- `billiard::Bi`: The billiard instance containing area and length information.
-- `fundamental::Bool=true`: If `true`, uses `area_fundamental` and `length_fundamental`; otherwise, uses `area` and `length`.
+- `billiard::Bi`: The billiard instance containing area, length, and angle information.
+- `fundamental::Bool=true`: If `true`, uses `area_fundamental`, `length_fundamental`, and `angles_fundamental`; otherwise, uses full geometry properties.
 
 # Returns
 - `k::Real`: The estimated wave number corresponding to the given state.
-
-# Description
-Solves the quadratic equation: A/(4*pi)*k^2 - L/(4*pi)*k + curvature_correction - state = 0 to find `k`.
 """
 function k_at_state(state::Int, billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
     A = fundamental ? billiard.area_fundamental : billiard.area
     L = fundamental ? billiard.length_fundamental : billiard.length
+    angles = fundamental ? billiard.angles_fundamental : billiard.angles
+    
     a = A
     b = -L
-    c = (curvature_correction(billiard) - state) * 4 * π
-    dis = sqrt(b^2 - 4 * a * c)
-    return (-b + dis) / (2 * a)
-end
-
-"""
-    k_at_state(state::Int, billiard::Bi, corner_angles::AbstractVector{<:Real}; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
-
-Calculates the wave number `k` corresponding to a given state number using the inverted Weyl's law with corner corrections and potential curvature_correction.
-
-# Arguments
-- `state::Int`: The eigenvalue index (state number).
-- `billiard::Bi`: The billiard instance containing area and length information.
-- `corner_angles::AbstractVector{<:Real}`: Internal angles at the corners (in radians).
-- `fundamental::Bool=true`: If `true`, uses `area_fundamental` and `length_fundamental`; otherwise, uses `area` and `length`.
-
-# Returns
-- `k::Real`: The estimated wave number.
-
-# Description
-Solves the quadratic equation: A/(4*pi)*k^2 - L/(4*pi)*k + (corner_correction + curvature_correction) - state = 0 to find `k`.
-"""
-function k_at_state(state::Int, billiard::Bi, corner_angles::AbstractVector{<:Real}; fundamental::Bool=true) where {Bi<:AbsBilliard}
-    A = fundamental ? billiard.area_fundamental : billiard.area
-    L = fundamental ? billiard.length_fundamental : billiard.length
-    a = A
-    b = -L
-    c = (corner_correction(corner_angles) + curvature_correction(billiard) - state) * 4 * π
+    c = -state * 4π
+    
+    c += corner_correction(angles) * 4π
+    c += curvature_correction(billiard) * 4π
+    
     dis = sqrt(b^2 - 4 * a * c)
     return (-b + dis) / (2 * a)
 end
