@@ -319,7 +319,7 @@ Plots the radially integrated momentum density `I(φ)` as a function of angle `�
 - `ax::Axis`: The `Axis` object to plot into.
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-- `num_points::Int=500`: The number of points to use in the plot. Defaults to `500`.
+- `num_points::Int=500`: The number of points to use in the plot. Defaults to `100`.
 
 # Returns
 - The modified `Axis` object with the plot added.
@@ -331,11 +331,12 @@ This function computes the radially integrated momentum density using `computeRa
 - The plot will display the momentum density as a function of angle `φ` in radians.
 - The axis `ax` is modified in place and returned.
 """
-function plot_radially_integrated_density!(ax::Axis, state::S; b::Float64=5.0, num_points::Int=500) where {S<:AbsState}
+function plot_radially_integrated_density!(ax::Axis, state::S; b::Float64=5.0, num_points::Int=100) where {S<:AbsState}
     I_phi_function = computeRadiallyIntegratedDensityFromState(state; b)
     φ_values = range(0, 2π, length=num_points)
     I_values = [I_phi_function(φ) for φ in φ_values]
     I_values = I_values ./ maximum(I_values)
+    println("I_values = ", I_values)
     lines!(ax, φ_values, I_values, label="I(φ)")
     ax.xlabel = "φ (radians)"
     ax.ylabel = "I(φ)"
@@ -351,7 +352,7 @@ Plots the angularly integrated momentum density `R(r)` as a function of radius `
 - `ax::Axis`: The `Axis` object to plot into.
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-- `num_points::Int=500`: The number of points to use in the plot. Defaults to `500`.
+- `num_points::Int=500`: The number of points to use in the plot. Defaults to `100`.
 
 # Returns
 - The modified `Axis` object with the plot added.
@@ -363,12 +364,13 @@ This function computes the angularly integrated momentum density using `computeA
 - The plot will display the momentum density as a function of radius `r`.
 - The axis `ax` is modified in place and returned.
 """
-function plot_angularly_integrated_density!(ax::Axis, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=500) where {S<:AbsState}
+function plot_angularly_integrated_density!(ax::Axis, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=100) where {S<:AbsState}
     k = state.k
     R_r_function = computeAngularIntegratedMomentumDensityFromState(state; b)
     r_values = range(0, 1.5*k, length=num_points)
     R_values = [R_r_function(r) for r in r_values]
     R_values = R_values ./ maximum(R_values) 
+    println("R values: ", R_values)
     lines!(ax, r_values, R_values, label="R(r)")
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
