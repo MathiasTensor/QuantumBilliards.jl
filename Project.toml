@@ -54,7 +54,7 @@ BenchmarkTools = "1.5.0"
 CSV = "0.10.14"
 PrettyTables = "2.3.2"
 DataFrames = "1.6.1"
-Polynomials = "4.0.11"
+Polynomials = "4.0.1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
