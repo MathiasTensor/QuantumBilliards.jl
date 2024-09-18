@@ -39,6 +39,7 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
                 println("polar segment: ", nameof(typeof(seg)), " , L: ", seg.length)
                 println("First point: ", seg.r_func(0.0))
                 println("Last point: ", seg.r_func(1.0))
+                println("Is last point equal first point: ", isapprox(seg.r_func(0.0), seg.r_func(1.0)))
                 curvat += 1/(12*pi)*quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
             end
             if seg isa CircleSegment
