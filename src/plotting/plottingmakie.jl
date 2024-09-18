@@ -335,8 +335,9 @@ function plot_radially_integrated_density!(ax::Axis, state::S; b::Float64=5.0, n
     I_phi_function = computeRadiallyIntegratedDensityFromState(state; b)
     φ_values = range(0, 2π, length=num_points)
     I_values = [I_phi_function(φ) for φ in φ_values]
+    I_values = I_values ./ maximum(I_values)
     idx_to_plot = findall(abs.(I_values) .>= 1e-6)
-    I_values = I_values[idx_to_plot] ./ maximum(I_values)
+    I_values = I_values[idx_to_plot]
     φ_values = φ_values[idx_to_plot]
     println("I_values = ", I_values)
     lines!(ax, φ_values, I_values, label="I(φ)")
@@ -371,8 +372,9 @@ function plot_angularly_integrated_density!(ax::Axis, state::S; b::Float64=5.0, 
     R_r_function = computeAngularIntegratedMomentumDensityFromState(state; b)
     r_values = range(0, 1.5*k, length=num_points)
     R_values = [R_r_function(r) for r in r_values]
+    R_values = R_values./ maximum(R_values) 
     idx_to_plot = findall(abs.(R_values) .>= 1e-6)
-    R_values = R_values[idx_to_plot] ./ maximum(R_values) 
+    R_values = R_values[idx_to_plot]
     r_values = r_values[idx_to_plot]
     println("R values: ", R_values)
     lines!(ax, r_values, R_values, label="R(r)")
