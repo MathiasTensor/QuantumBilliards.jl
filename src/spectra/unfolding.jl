@@ -36,7 +36,7 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
         curvat = 0.0
         for seg in segments 
             if seg isa PolarSegment
-                curvat += quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
+                curvat += 1/(12*pi)*quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
             end
             if seg isa CircleSegment
                 curvat += 1/(12*pi)*(1/seg.radius)*seg.length
