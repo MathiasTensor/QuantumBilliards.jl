@@ -227,6 +227,53 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     epsilon = sqrt(eps(T))
     num_points = length(pts_coords)
     function R_r(r)
+        if abs(r - sqrt(k_squared)) < epsilon
+            R_r_array = zeros(T, Threads.nthreads())
+            Threads.@threads for i in 1:num_points
+                thread_id = Threads.threadid()
+                R_r_i = zero(T)
+                for j in 1:num_points
+                    delta_x = pts_coords[i][1] - pts_coords[j][1]
+                    delta_y = pts_coords[i][2] - pts_coords[j][2]
+                    distance = hypot(delta_x, delta_y)
+                    J0_value = Bessels.besselj(0, distance * r)
+                    R_r_i += u_values[i] * u_values[j] * J0_value
+                end
+                R_r_array[thread_id] += R_r_i
+            end
+            return (r / (r^2 - k_squared)^2) * sum(R_r_array)
+        else
+            R_r_array = zeros(T, Threads.nthreads())
+            Threads.@threads for i in 1:num_points
+                thread_id = Threads.threadid()
+                R_r_i = zero(T)
+                for j in 1:num_points
+                    delta_x = pts_coords[i][1] - pts_coords[j][1]
+                    delta_y = pts_coords[i][2] - pts_coords[j][2]
+                    distance = hypot(delta_x, delta_y)
+                    J0_value = Bessels.besselj(0, distance * r)
+                    J2_value = Bessels.besselj(2, distance * r)
+                    R_r_i += u_values[i] * u_values[j] * distance^2 * 0.5 * (J2_value - J0_value)
+                end
+                R_r_array[thread_id] += R_r_i
+            end
+            return 1/(16*pi*k) * sum(R_r_array)
+        end
+    end
+    return R_r
+end
+
+
+# NOT OK
+#=
+function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
+    u_values, pts, k = setup_momentum_density(state; b)
+    T = eltype(u_values)
+    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
+    k_squared = k^2
+    epsilon = sqrt(eps(T))
+    num_points = length(pts_coords)
+    function R_r(r)
         R_r_array = zeros(T, Threads.nthreads())
         Threads.@threads for i in 1:num_points
             thread_id = Threads.threadid()
@@ -245,42 +292,4 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     end
     return R_r
 end
-
-
-#= OLD - has problems are r=k
-function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
-    u_values, pts, k = setup_momentum_density(state; b)
-    T = eltype(u_values)
-    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
-    k_squared = k^2
-    epsilon = sqrt(eps(T))
-    num_points = length(pts_coords)
-    function R_r(r)
-        R_r_array = zeros(T, Threads.nthreads())
-        Threads.@threads for i in 1:num_points
-            thread_id = Threads.threadid()
-            R_r_i = zero(T)
-            for j in 1:num_points
-                delta_x = pts_coords[i][1] - pts_coords[j][1]
-                delta_y = pts_coords[i][2] - pts_coords[j][2]
-                distance = hypot(delta_x, delta_y)
-                J0_value = Bessels.besselj(0, distance * r)
-                R_r_i += u_values[i] * u_values[j] * J0_value
-            end
-            R_r_array[thread_id] += R_r_i
-        end
-        R_r_sum = sum(R_r_array)
-        if abs(r - sqrt(k_squared)) < epsilon
-            r_left = r - 3*epsilon
-            r_right = r + 3*epsilon
-            R_left = (r_left / (r_left^2 - k_squared)^2) * R_r_sum
-            R_right = (r_right / (r_right^2 - k_squared)^2) * R_r_sum
-            return (R_left + R_right) / T(2)
-        else
-            return (r / (r^2 - k_squared)^2) * R_r_sum
-        end
-    end
-    return R_r
-end
-
 =#
