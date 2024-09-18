@@ -228,7 +228,7 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     num_points = length(pts_coords)
     function R_r(r)
         R_r_array = zeros(T, nthreads())
-        @threads for i in 1:num_points
+        Threads.@threads for i in 1:num_points
             thread_id = Threads.threadid()
             R_r_i = zero(T)
             for j in 1:num_points
