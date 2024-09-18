@@ -341,7 +341,8 @@ function plot_radially_integrated_density!(f, state::S; b::Float64=5.0, num_poin
     φ_values = φ_values[idx_to_plot]
     println("I_values = ", I_values)
     println("φ_values = ", φ_values)
-    lines!(f[1,1], φ_values, I_values, label="I(φ)")
+    ax = Axis(f[1,1])
+    lines!(ax, φ_values, I_values, label="I(φ)")
     ax.xlabel = "φ (radians)"
     ax.ylabel = "I(φ)"
     ax.title = "Radially Integrated Momentum Density"
@@ -379,7 +380,8 @@ function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::
     r_values = r_values[idx_to_plot]
     println("R values: ", R_values)
     println("r values: ", r_values)
-    lines!(f[1,1], r_values, R_values, label="R(r)")
+    ax = Axis(f[1,1])
+    lines!(ax, r_values, R_values, label="R(r)")
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
     ax.title = "Angularly Integrated Momentum Density"
