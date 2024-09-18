@@ -15,7 +15,7 @@ Calculates the corner correction term for Weyl's law based on the internal angle
 corner_correction(corner_angles) = isempty(corner_angles) ? 0.0 : sum([(pi^2 - c^2)/(24*pi*c) for c in corner_angles])
 
 """
-    curvature_correction(billiard::Bi) -> Real where {Bi<:AbsBilliard}
+    curvature_correction(billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
 
 Computes the curvature correction term for Weyl's law based on the curvature along the boundary of the billiard.
 
