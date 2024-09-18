@@ -235,7 +235,7 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
                 delta_x = pts_coords[i][1] - pts_coords[j][1]
                 delta_y = pts_coords[i][2] - pts_coords[j][2]
                 distance = hypot(delta_x, delta_y)
-                J0_value = besselj(T(0), distance * r)
+                J0_value = Bessels.besselj(0, distance * r)
                 R_r_i += u_values[i] * u_values[j] * J0_value
             end
             R_r_array[thread_id] += R_r_i
