@@ -56,6 +56,40 @@ struct BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
     w::Vector{T}
 end
 
+# NEW
+function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
+    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
+    curves = billiard.fundamental_boundary
+    type = eltype(solver.pts_scaling_factor)
+    xy_all = Vector{SVector{2,type}}()
+    w_all = Vector{type}()
+    
+    for i in eachindex(curves)
+        crv = curves[i]
+        if typeof(crv) <: AbsRealCurve
+            L = crv.length
+            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
+            sampler = samplers[i]
+            t, dt = sample_points(sampler, N)
+            # NEW
+            if crv isa PolarSegment
+                ds = diff(s)
+                append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
+            else
+                ds = L.*dt
+            end
+            xy = curve(crv,t)
+            normal = normal_vec(crv,t)
+            rn = dot.(xy, normal)
+            w = ds ./ rn
+            append!(xy_all, xy)
+            append!(w_all, w)
+        end
+    end
+    return BoundaryPointsSM{type}(xy_all, w_all)
+end
+
+#=
 function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
     bs, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves = billiard.fundamental_boundary
@@ -82,6 +116,7 @@ function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:A
     end
     return BoundaryPointsSM{type}(xy_all, w_all)
 end
+=#
 
 #generalize for other types
 function construct_matrices_benchmark(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k) where {Ba<:AbsBasis}

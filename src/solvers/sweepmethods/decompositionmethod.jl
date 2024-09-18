@@ -36,6 +36,44 @@ struct BoundaryPointsDM{T} <: AbsPoints where {T<:Real}
     w_n::Vector{T} #normalization weights
 end
 
+#NEW
+function evaluate_points(solver::DecompositionMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
+    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
+    curves = billiard.fundamental_boundary
+    type = eltype(solver.pts_scaling_factor)
+    xy_all = Vector{SVector{2,type}}()
+    normal_all = Vector{SVector{2,type}}()
+    w_all = Vector{type}()
+    w_n_all = Vector{type}()
+
+    for i in eachindex(curves)
+        crv = curves[i]
+        if typeof(crv) <: AbsRealCurve
+            L = crv.length
+            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
+            sampler = samplers[i]
+            t, dt = sample_points(sampler,N)
+            if crv isa PolarSegment
+                ds = diff(s)
+                append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
+            else
+                ds = L.*dt
+            end
+            xy = curve(crv,t)
+            normal = normal_vec(crv,t)
+            rn = dot.(xy, normal)
+            w = ds
+            w_n = (w.*rn)./(2.0*k.^2) 
+            append!(xy_all, xy)
+            append!(normal_all, normal)
+            append!(w_all, w)
+            append!(w_n_all, w_n)
+        end
+    end
+    return BoundaryPointsDM{type}(xy_all,normal_all, w_all, w_n_all)
+end
+
+#=
 function evaluate_points(solver::DecompositionMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
     bs, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves = billiard.fundamental_boundary
@@ -66,6 +104,7 @@ function evaluate_points(solver::DecompositionMethod, billiard::Bi, k) where {Bi
     end
     return BoundaryPointsDM{type}(xy_all,normal_all, w_all, w_n_all)
 end
+=#
 
 function construct_matrices_benchmark(solver::DecompositionMethod, basis::Ba, pts::BoundaryPointsDM, k) where {Ba<:AbsBasis}
     to = TimerOutput()
