@@ -24,8 +24,8 @@ b = 5.0
 
 # TENSION PARAMS
 dk = 0.1
-L1 = 0.5
-L2 = 100.0
+L1 = 10.0
+L2 = 20.0
 k0 = (L1 + L2)/2
 
 # BENCHMARK PARAMS

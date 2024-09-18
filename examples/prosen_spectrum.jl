@@ -23,8 +23,8 @@ a = 0.2
 
 
 # SOLVER PARAMS
-d = 5.0
-b = 10.0
+d = 10.0
+b = 20.0
 
 
 # TENSION PARAMS
