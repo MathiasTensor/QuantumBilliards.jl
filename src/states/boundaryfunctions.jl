@@ -178,7 +178,7 @@ function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) :: 
     pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
     num_points = length(pts_coords)
     function I_phi(phi)
-        I_phi_array = zeros(T, nthreads())
+        I_phi_array = zeros(T, Threads.nthreads())
         p = k
         Threads.@threads for i in 1:num_points
             thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
@@ -227,7 +227,7 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     epsilon = sqrt(eps(T))
     num_points = length(pts_coords)
     function R_r(r)
-        R_r_array = zeros(T, nthreads())
+        R_r_array = zeros(T, Threads.nthreads())
         Threads.@threads for i in 1:num_points
             thread_id = Threads.threadid()
             R_r_i = zero(T)
