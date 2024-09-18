@@ -311,7 +311,7 @@ end
 
 
 """
-    plot_radially_integrated_density(ax::Axis, state::S; b::Float64=5.0, num_points::Int=500) where {S<:AbsState}
+    plot_radially_integrated_density!(ax::Axis, state::S; b::Float64=5.0, num_points::Int=500) where {S<:AbsState}
 
 Plots the radially integrated momentum density `I(φ)` as a function of angle `φ` into the provided axis `ax`.
 
@@ -331,7 +331,7 @@ This function computes the radially integrated momentum density using `computeRa
 - The plot will display the momentum density as a function of angle `φ` in radians.
 - The axis `ax` is modified in place and returned.
 """
-function plot_radially_integrated_density(ax::Axis, state::S; b::Float64=5.0, num_points::Int=500) where {S<:AbsState}
+function plot_radially_integrated_density!(ax::Axis, state::S; b::Float64=5.0, num_points::Int=500) where {S<:AbsState}
     I_phi_function = computeRadiallyIntegratedDensityFromState(state; b)
     φ_values = range(0, 2π, length=num_points)
     I_values = [I_phi_function(φ) for φ in φ_values]
@@ -339,7 +339,6 @@ function plot_radially_integrated_density(ax::Axis, state::S; b::Float64=5.0, nu
     ax.xlabel = "φ (radians)"
     ax.ylabel = "I(φ)"
     ax.title = "Radially Integrated Momentum Density"
-    return ax
 end
 
 """
@@ -364,7 +363,7 @@ This function computes the angularly integrated momentum density using `computeA
 - The plot will display the momentum density as a function of radius `r`.
 - The axis `ax` is modified in place and returned.
 """
-function plot_angularly_integrated_density(ax::Axis, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=500) where {S<:AbsState}
+function plot_angularly_integrated_density!(ax::Axis, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=500) where {S<:AbsState}
     R_r_function = computeAngularIntegratedMomentumDensityFromState(state; b)
     r_values = range(0, r_max, length=num_points)
     R_values = [R_r_function(r) for r in r_values]
@@ -372,5 +371,4 @@ function plot_angularly_integrated_density(ax::Axis, state::S; b::Float64=5.0, r
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
     ax.title = "Angularly Integrated Momentum Density"
-    return ax
 end
