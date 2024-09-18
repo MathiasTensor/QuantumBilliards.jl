@@ -1,18 +1,24 @@
 using QuadGK
 
 """
-    corner_correction(corner_angles::AbstractVector{<:Real}) -> Real
+    corner_correction(billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
 
 Calculates the corner correction term for Weyl's law based on the internal angles at the corners of the billiard.
 
 # Arguments
-- `corner_angles::AbstractVector{<:Real}`: A vector of internal angles (in radians) at each corner of the billiard.
+- `billiard::Bi`: The billiard instance containing the angles.
+- `fundamental::Bool=true`: Whether to use the fundamental angles (`angles_fundamental`) or the full angles (`angles`).
 
 # Returns
 - `corner_term::Real`: The sum of the corner correction terms.
 
+# Description
+This function calculates the correction term for Weyl's law that accounts for the internal angles of the billiard.
 """
-corner_correction(corner_angles) = isempty(corner_angles) ? 0.0 : sum([(pi^2 - c^2)/(24*pi*c) for c in corner_angles])
+function corner_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
+    corner_angles = fundamental ? billiard.angles_fundamental : billiard.angles
+    return isempty(corner_angles) ? 0.0 : sum((π^2 - c^2) / (24π * c) for c in corner_angles)
+end
 
 """
     curvature_correction(billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
