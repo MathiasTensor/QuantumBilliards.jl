@@ -26,7 +26,7 @@ end
 Computes the curvature correction term for Weyl's law based on the curvature along the boundary of the billiard.
 
 # Arguments
-- `billiard::Bi`: An instance of a billiard (must be a subtype of `AbsBilliard`), containing the `full_boundary` attribute.
+- `billiard::Bi`: An instance of a billiard (must be a subtype of `AbsBilliard`).
 
 # Returns
 - `curvature_term::Real`: The total curvature correction.
@@ -36,6 +36,7 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
         curvat = 0.0
         for seg in segments 
             if seg isa PolarSegment
+                println("polar segment: ", nameof(typeof(seg)), " , L: ", seg.length)
                 curvat += 1/(12*pi)*quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
             end
             if seg isa CircleSegment
