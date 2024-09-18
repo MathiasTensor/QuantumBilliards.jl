@@ -2,7 +2,7 @@
 #include("../utils/billiardutils.jl")
 #include("../utils/gridutils.jl")
 #include("../solvers/matrixconstructors.jl")
-using FFTW
+using FFTW, SpecialFunctions
 
 #this takes care of singular points
 function regularize!(u)
@@ -93,4 +93,70 @@ function momentum_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
         push!(mfs,mf)
     end
     return mfs, ks
+end
+
+
+
+
+
+
+###### ADDITIONS ########
+
+
+# Helper for momentum function calculations
+function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
+    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
+        type = eltype(vec)
+        boundary = billiard.full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        sampler = FourierNodes([2,3,5], crv_lengths)
+        L = billiard.length
+        N = max(round(Int, k*L*b/(2*pi)), 512)
+        # Call boundary_coords to get pts
+        pts = boundary_coords(billiard, sampler, N)
+        # Compute U as in boundary_function
+        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
+        nx = getindex.(pts.normal,1)
+        ny = getindex.(pts.normal,2)
+        dX = nx .* dX
+        dY = ny .* dY
+        U = dX .+ dY
+        u_values = U * vec
+        regularize!(u_values)
+        return u_values, pts, k
+    end
+end
+
+
+function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
+    # Set up the necessary variables
+    u_values, pts, k = setup_momentum_density(state; b)
+    T = eltype(u_values)
+    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
+    num_points = length(pts_coords)
+    function I_phi(phi::T)
+        I_phi_array = zeros(T, nthreads())
+        p = k
+        Threads.@threads for i in 1:num_points
+            thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
+            I_phi_i = zero(T)
+            for j in 1:num_points
+                delta_x = pts_coords[i][1] - pts_coords[j][1]
+                delta_y = pts_coords[i][2] - pts_coords[j][2]
+                alpha = abs(cos(phi) * delta_x + sin(phi) * delta_y)
+                x = alpha * p
+                if abs(x) < sqrt(eps(T))
+                    x = sqrt(eps(T))
+                end
+                Si_x = sinint(x)
+                Ci_x = cosint(x)
+                f_x = sin(x) * Ci_x - cos(x) * Si_x
+                I_phi_i += f_x * u_values[i] * u_values[j]
+            end
+            I_phi_array[thread_id] += I_phi_i
+        end
+        I_phi_total = sum(I_phi_array)
+        return (one(T) / (T(8) * T(pi)^2)) * I_phi_total
+    end
+    return I_phi
 end
