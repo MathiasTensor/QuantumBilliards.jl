@@ -340,6 +340,7 @@ function plot_radially_integrated_density!(ax::Axis, state::S; b::Float64=5.0, n
     I_values = I_values[idx_to_plot]
     φ_values = φ_values[idx_to_plot]
     println("I_values = ", I_values)
+    println("φ_values = ", φ_values)
     lines!(ax, φ_values, I_values, label="I(φ)")
     ax.xlabel = "φ (radians)"
     ax.ylabel = "I(φ)"
@@ -377,6 +378,7 @@ function plot_angularly_integrated_density!(ax::Axis, state::S; b::Float64=5.0, 
     R_values = R_values[idx_to_plot]
     r_values = r_values[idx_to_plot]
     println("R values: ", R_values)
+    println("r values: ", r_values)
     lines!(ax, r_values, R_values, label="R(r)")
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
