@@ -62,11 +62,10 @@ Computes the eigenvalue counting function `N(k)` using Weyl's law, with correcti
 function weyl_law(ks::Vector, billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
     A = fundamental ? billiard.area_fundamental : billiard.area
     L = fundamental ? billiard.length_fundamental : billiard.length
-    angles = fundamental ? billiard.angles_fundamental : billiard.angles
     
     N_ks = (A * ks.^2 .- L .* ks) ./ (4π)
-    N_ks .+= corner_correction(angles)
-    N_ks .+= curvature_correction(billiard)
+    N_ks .+= corner_correction(billiard; fundamental=fundamental)
+    N_ks .+= curvature_correction(billiard; fundamental=fundamental)
 
     return N_ks
 end
@@ -87,14 +86,13 @@ Calculates the wave number `k` corresponding to a given state number using the i
 function k_at_state(state::Int, billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
     A = fundamental ? billiard.area_fundamental : billiard.area
     L = fundamental ? billiard.length_fundamental : billiard.length
-    angles = fundamental ? billiard.angles_fundamental : billiard.angles
     
     a = A
     b = -L
     c = -state * 4π
     
-    c += corner_correction(angles) * 4π
-    c += curvature_correction(billiard) * 4π
+    c += corner_correction(billiard; fundamental=fundamental) * 4π
+    c += curvature_correction(billiard; fundamental=fundamental) * 4π
     
     dis = sqrt(b^2 - 4 * a * c)
     return (-b + dis) / (2 * a)
