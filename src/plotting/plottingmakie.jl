@@ -336,7 +336,7 @@ function plot_radially_integrated_density!(f, state::S; b::Float64=5.0, num_poin
     φ_values = range(0, 2π, length=num_points)
     I_values = [I_phi_function(φ) for φ in φ_values]
     I_values = I_values ./ maximum(I_values)
-    idx_to_plot = findall(abs.(I_values) .>= 1e-6)
+    idx_to_plot = findall(abs.(I_values) .>= 1e-6) # for Makie
     I_values = I_values[idx_to_plot]
     φ_values = φ_values[idx_to_plot]
     println("I_values = ", I_values)
@@ -375,14 +375,14 @@ function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::
     r_values = range(0, 1.5*k, length=num_points)
     R_values = [R_r_function(r) for r in r_values]
     R_values = R_values./ maximum(R_values) 
-    idx_to_plot = findall(abs.(R_values) .>= 1e-6)
+    idx_to_plot = findall(abs.(R_values) .>= 1e-6) # for Makie
     R_values = R_values[idx_to_plot]
     r_values = r_values[idx_to_plot]
     println("R values: ", R_values)
     println("r values: ", r_values)
     ax = Axis(f[1,1])
     lines!(ax, r_values, R_values, label="R(r)")
-    vlines!(ax, k)
+    vlines!(ax, k; color=:red)
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
     ax.title = "Angularly Integrated Momentum Density"
