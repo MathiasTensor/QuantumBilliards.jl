@@ -69,18 +69,6 @@ end
 
 
 
-
-
-
-
-
-
-function make_stadium_and_basis(half_width;radius=1.0,x0=zero(half_width),y0=zero(half_width), rot_angle=zero(half_width))
-    billiard = Stadium(half_width; radius=radius,x0=x0,y0=y0)
-    basis = CornerAdaptedFourierBessel(1, pi/2.0, SVector(x0,y0),rot_angle) 
-    return billiard, basis 
-end
-
 billiard, basis = make_stadium_and_basis(eps)
 
 fig = Figure()
@@ -215,7 +203,7 @@ tens_psm = k_sweep(psm_solver,basis,billiard,k_range)
 ks, tens, control = compute_spectrum(acc_solver, basis, billiard, k_range[1], k_range[end], dk)
 
 f = Figure()
-ax = Axis(f[1,1], title="Mushroom_$(nameof(typeof(basis)))")
+ax = Axis(f[1,1], title="Stadium_$(nameof(typeof(basis)))")
 lines!(ax,k_range,log10.(tens_dm), color=:red)
 lines!(ax,k_range,log10.(tens_psm), color=:green)
 scatter!(ax,ks,log10.(tens), color=:black, markersize=8)

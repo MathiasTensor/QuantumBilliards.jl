@@ -50,4 +50,10 @@ function Stadium(half_width;radius=1.0,x0=0.0,y0=0.0)
     return Stadium(fundamental_boundary,full_boundary,length,area,half_width,radius,corners)
 end 
 
+function make_stadium_and_basis(half_width;radius=1.0,x0=zero(half_width),y0=zero(half_width), rot_angle=zero(half_width))
+    billiard = Stadium(half_width; radius=radius,x0=x0,y0=y0)
+    symmetry = Vector{Any}([XYReflection(-1, -1)])
+    basis = CornerAdaptedFourierBessel(1, pi/2.0, SVector(x0,y0),rot_angle, symmetry) 
+    return billiard, basis 
+end
 
