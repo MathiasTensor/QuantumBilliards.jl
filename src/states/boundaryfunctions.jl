@@ -103,7 +103,37 @@ end
 ###### ADDITIONS ########
 
 
-# Helper for momentum function calculations
+
+
+
+
+
+
+
+
+# Helper for momentum function calculations. We need this one since we will require much point information like xy, s,...
+"""
+    setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
+
+Prepares the necessary data for computing the momentum density from a given state.
+
+# Arguments
+- `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
+- `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
+
+# Returns
+- `u_values`: A vector of type `Vector{T}` containing the computed eigenvector components.
+- `pts`: A structure containing boundary points and related information.
+- `k`: The wave number extracted from the state.
+
+# Description
+This function extracts the eigenvector components (`u_values`), boundary points (`pts`), and wave number (`k`) from the provided `state`. It sets up the necessary variables for computing the radially and angularly integrated momentum densities.
+The function internally calls `boundary_coords` to obtain the boundary coordinates and uses `gradient_matrices` to compute the derivatives required for `u_values`.
+
+# Notes
+- The parameter `b` affects the number of boundary points used in the computation. A higher value results in more points.
+- Ensure that the `state` object contains the necessary attributes (`vec`, `k`, `k_basis`, `basis`, `billiard`).
+"""
 function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -127,9 +157,22 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
     end
 end
 
+"""
+    computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
 
-function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
-    # Set up the necessary variables
+Computes the radially integrated momentum density function `I(φ)` from a given state.
+
+# Arguments
+- `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
+- `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
+
+# Returns
+- A function `I_phi(φ::T)` that computes the radially integrated momentum density at a given angle `φ`.
+
+# Description
+This function calculates the radially integrated momentum density based on the eigenvector components and boundary points extracted from the `state`. It returns a function `I_phi(φ)` that computes the density at any given angle `φ`.
+"""
+function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
     u_values, pts, k = setup_momentum_density(state; b)
     T = eltype(u_values)
     pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
@@ -159,4 +202,54 @@ function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) whe
         return (one(T) / (T(8) * T(pi)^2)) * I_phi_total
     end
     return I_phi
+end
+
+"""
+    computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
+
+Computes the angularly integrated momentum density function `R(r)` from a given state.
+
+# Arguments
+- `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
+- `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
+
+# Returns
+- A function `R_r(r::T)` that computes the angularly integrated momentum density at a given radius `r`.
+
+# Description
+This function calculates the angularly integrated momentum density based on the eigenvector components and boundary points extracted from the `state`. It returns a function `R_r(r)` that computes the density at any given radius `r`.
+"""
+function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
+    u_values, pts, k = setup_momentum_density(state; b)
+    T = eltype(u_values)
+    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
+    k_squared = k^2
+    epsilon = sqrt(eps(T))
+    num_points = length(pts_coords)
+    function R_r(r::T)
+        R_r_array = zeros(T, nthreads())
+        @threads for i in 1:num_points
+            thread_id = Threads.threadid()
+            R_r_i = zero(T)
+            for j in 1:num_points
+                delta_x = pts_coords[i][1] - pts_coords[j][1]
+                delta_y = pts_coords[i][2] - pts_coords[j][2]
+                distance = hypot(delta_x, delta_y)
+                J0_value = besselj(T(0), distance * r)
+                R_r_i += u_values[i] * u_values[j] * J0_value
+            end
+            R_r_array[thread_id] += R_r_i
+        end
+        R_r_sum = sum(R_r_array)
+        if abs(r - sqrt(k_squared)) < epsilon
+            r_left = r - epsilon
+            r_right = r + epsilon
+            R_left = (r_left / (r_left^2 - k_squared)^2) * R_r_sum
+            R_right = (r_right / (r_right^2 - k_squared)^2) * R_r_sum
+            return (R_left + R_right) / T(2)
+        else
+            return (r / (r^2 - k_squared)^2) * R_r_sum
+        end
+    end
+    return R_r
 end
