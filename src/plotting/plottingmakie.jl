@@ -382,6 +382,7 @@ function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::
     println("r values: ", r_values)
     ax = Axis(f[1,1])
     lines!(ax, r_values, R_values, label="R(r)")
+    vlines!(ax, k)
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
     ax.title = "Angularly Integrated Momentum Density"
