@@ -407,7 +407,7 @@ function plot_momentum_representation!(f::Figure, state::S; b::Float64=5.0, num_
     # Initialize mom_values_flat
     mom_values_flat = zeros(Float64, length(KX_flat))
     # Compute mom_values_flat
-    @threads for idx in eachindex(KX_flat)
+    Threads.@threads for idx in eachindex(KX_flat)
         p = SVector{2, Float64}(KX_flat[idx], KY_flat[idx])
         mom_p = mom_function(p)
         mom_values_flat[idx] = abs2(mom_p)
