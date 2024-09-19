@@ -163,7 +163,7 @@ function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function 
     pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
     num_points = length(pts_coords)
     function mom(p::SVector) # p = (px,py)
-        mom_array = zeros(T, Threads.nthreads())
+        mom_array = zeros(Complex{T}, Threads.nthreads())
         if abs(norm(p)^2 - k^2) > sqrt(eps(T))
             Threads.@threads for i in 1:num_points
                 thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
