@@ -316,13 +316,10 @@ end
 Plots the radially integrated momentum density `I(φ)` as a function of angle `φ` into the provided axis `ax`.
 
 # Arguments
-- `ax::Axis`: The `Axis` object to plot into.
+- `f::Figure`: Makie.Figure to plot into 
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
 - `num_points::Int=500`: The number of points to use in the plot. Defaults to `300`.
-
-# Returns
-- The modified `Axis` object with the plot added.
 
 # Description
 This function computes the radially integrated momentum density using `computeRadiallyIntegratedDensityFromState` and plots `I(φ)` over the interval `φ ∈ [0, 2π]` into the provided axis `ax`.
@@ -331,7 +328,7 @@ This function computes the radially integrated momentum density using `computeRa
 - The plot will display the momentum density as a function of angle `φ` in radians.
 - The axis `ax` is modified in place and returned.
 """
-function plot_radially_integrated_density!(f, state::S; b::Float64=5.0, num_points::Int=300) where {S<:AbsState}
+function plot_radially_integrated_density!(f::Figure, state::S; b::Float64=5.0, num_points::Int=300) where {S<:AbsState}
     I_phi_function = computeRadiallyIntegratedDensityFromState(state; b)
     φ_values = range(0, 2π, length=num_points)
     I_values = [I_phi_function(φ) for φ in φ_values]
@@ -352,13 +349,10 @@ end
 Plots the angularly integrated momentum density `R(r)` as a function of radius `r` into the provided axis `ax`.
 
 # Arguments
-- `ax::Axis`: The `Axis` object to plot into.
+- `f::Figure`: Makie.Figure to plot into 
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
 - `num_points::Int=500`: The number of points to use in the plot. Defaults to `300`.
-
-# Returns
-- The modified `Axis` object with the plot added.
 
 # Description
 This function computes the angularly integrated momentum density using `computeAngularIntegratedMomentumDensityFromState` and plots `R(r)` over the interval `r ∈ [0, r_max]` into the provided axis `ax`.
@@ -367,7 +361,7 @@ This function computes the angularly integrated momentum density using `computeA
 - The plot will display the momentum density as a function of radius `r`.
 - The axis `ax` is modified in place and returned.
 """
-function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=300) where {S<:AbsState}
+function plot_angularly_integrated_density!(f::Figure, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=300) where {S<:AbsState}
     k = state.k
     R_r_function = computeAngularIntegratedMomentumDensityFromState(state; b)
     r_values = range(0, 1.5*k, length=num_points)
@@ -382,4 +376,47 @@ function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
     ax.title = "Angularly Integrated Momentum Density"
+end
+
+"""
+    plot_momentum_representation(state::S; b::Float64=5.0, num_r::Int=100, num_θ::Int=100, r_max::Float64=1.5*state.k) where {S<:AbsState}
+
+Plots the momentum representation of a quantum state using `PolarAxis` in `CairoMakie`.
+
+# Arguments
+- `f::Figure`: Makie.Figure to plot into 
+- `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
+- `b::Float64=5.0`: Optional parameter controlling boundary sampling density.
+- `num_r::Int=100`: Number of radial points in the plot.
+- `num_θ::Int=100`: Number of angular points in the plot.
+- `r_max::Float64=1.5*state.k`: Maximum radial value (momentum magnitude) to plot.
+"""
+function plot_momentum_representation(f::Figure, state::S; b::Float64=5.0, num_r::Int=100, num_θ::Int=100, r_max::Float64=1.5*state.k) where {S<:AbsState}
+    mom_function = momentum_representation_of_state(state; b)
+    r_values = collect(range(0, r_max, length=num_r))
+    θ_values = collect(range(0, 2π, length=num_θ))
+    # Create matrices for r and θ
+    R = repeat(r_values, 1, num_θ)
+    Θ = repeat(θ_values', num_r, 1) 
+    # Convert to Cartesian coordinates
+    KX = R .* cos.(Θ)
+    KY = R .* sin.(Θ)
+    # Flatten KX and KY
+    KX_flat = reshape(KX, :)
+    KY_flat = reshape(KY, :)
+    # Initialize mom_values_flat
+    mom_values_flat = zeros(Float64, length(KX_flat))
+    # Compute mom_values_flat
+    @threads for idx in eachindex(KX_flat)
+        p = SVector{2, Float64}(KX_flat[idx], KY_flat[idx])
+        mom_p = mom_function(p)
+        mom_values_flat[idx] = abs2(mom_p)
+    end
+    # Reshape mom_values_flat to mom_values
+    mom_values = reshape(mom_values_flat, size(R))
+    fig = Figure()
+    ax = CairoMakie.PolarAxis(fig[1, 1])
+    CairoMakie.heatmap!(ax, mom_values, colormap=:viridis)
+    Colorbar(fig[1, 2], ax)
+    ax.title = "Momentum Representation"
 end
