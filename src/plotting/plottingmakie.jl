@@ -320,7 +320,7 @@ Plots the radially integrated momentum density `I(φ)` as a function of angle `�
 - `f::Figure`: Makie.Figure to plot into 
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-- `num_points::Int=500`: The number of points to use in the plot. Defaults to `300`.
+- `num_points::Int=300`: The number of points to use in the plot. Defaults to `300`.
 
 # Description
 This function computes the radially integrated momentum density using `computeRadiallyIntegratedDensityFromState` and plots `I(φ)` over the interval `φ ∈ [0, 2π]` into the provided axis `ax`.
@@ -353,7 +353,7 @@ Plots the angularly integrated momentum density `R(r)` as a function of radius `
 - `f::Figure`: Makie.Figure to plot into 
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-- `num_points::Int=500`: The number of points to use in the plot. Defaults to `300`.
+- `num_points::Int=300`: The number of points to use in the plot. Defaults to `300`.
 
 # Description
 This function computes the angularly integrated momentum density using `computeAngularIntegratedMomentumDensityFromState` and plots `R(r)` over the interval `r ∈ [0, r_max]` into the provided axis `ax`.
