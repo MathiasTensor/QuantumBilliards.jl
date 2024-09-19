@@ -377,7 +377,7 @@ function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::
     R_values = R_values[idx_to_plot]
     r_values = r_values[idx_to_plot]
     ax = Axis(f[1,1])
-    scatter!(ax, r_values, R_values, label="R(r)", markersize=1)
+    scatter!(ax, r_values, R_values, label="R(r)", markersize=2)
     vlines!(ax, k; color=:red)
     ax.xlabel = "r"
     ax.ylabel = "R(r)"
