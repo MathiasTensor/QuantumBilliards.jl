@@ -223,7 +223,7 @@ function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) :: 
             I_phi_array[thread_id] += I_phi_i
         end
         I_phi_total = sum(I_phi_array)
-        return (one(T) / (T(8) * T(pi)^2)) * I_phi_total
+        return abs((one(T) / (T(8) * T(pi)^2)) * I_phi_total)
     end
     return I_phi
 end
