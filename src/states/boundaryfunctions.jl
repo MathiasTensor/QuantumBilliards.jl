@@ -157,6 +157,30 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
     end
 end
 
+function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
+    u_values, pts, k = setup_momentum_density(state; b)
+    T = eltype(u_values)
+    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
+    num_points = length(pts_coords)
+    function mom(p::SVector) # p = (px,py)
+        mom_array = zeros(T, Threads.nthreads())
+        if abs(norm(p)^2 - k^2) > sqrt(eps(T))
+            Threads.@threads for i in 1:num_points
+                thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
+                mom_array[thread_id] = u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]))
+            end
+            return 1/(norm(p)^2 - k^2)*(1/(2*pi))*sum(mom_array)
+        else # use Backer's first order approximation to Ψ(p)
+            Threads.@threads for i in 1:num_points
+                thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
+                mom_array[thread_id] = u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])) * (pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])
+            end
+            return -im/(4*pi*k^2)*sum(mom_array)
+        end
+    end
+    return mom
+end
+
 """
     computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
 
@@ -228,7 +252,7 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     num_points = length(pts_coords)
     function R_r(r)
         if abs(r - sqrt(k_squared)) < epsilon
-            return 0.0
+            return 0.0 # this needs a modifed version of the below commented function aka higher derivatives of R to get rid of singularity
         end
         R_r_array = zeros(T, Threads.nthreads())
         Threads.@threads for i in 1:num_points

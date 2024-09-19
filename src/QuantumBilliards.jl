@@ -67,7 +67,7 @@ export RobnikBilliard, make_half_robnik, make_full_robnik, make_robnik_and_basis
 export ProsenBilliard, make_quarter_prosen, make_full_prosen, make_prosen_and_basis
 export Mushroom, make_half_mushroom, make_full_mushroom, make_mushroom_and_basis
 export RectangleBilliard, make_quarter_rectangle, make_full_rectangle, make_rectangle_and_basis
-
+export Stadium, make_quarter_stadium, make_full_stadium, make_stadium_and_basis
 
 include("solvers/decompositions.jl")
 include("solvers/matrixconstructors.jl")
