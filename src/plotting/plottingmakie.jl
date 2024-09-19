@@ -379,7 +379,7 @@ function plot_angularly_integrated_density!(f::Figure, state::S; b::Float64=5.0,
 end
 
 """
-    plot_momentum_representation(state::S; b::Float64=5.0, num_r::Int=100, num_θ::Int=100, r_max::Float64=1.5*state.k) where {S<:AbsState}
+    plot_momentum_representation_polar!(state::S; b::Float64=5.0, num_r::Int=100, num_θ::Int=100, r_max::Float64=1.5*state.k) where {S<:AbsState}
 
 Plots the momentum representation of a quantum state using `PolarAxis` in `CairoMakie`.
 
@@ -391,7 +391,7 @@ Plots the momentum representation of a quantum state using `PolarAxis` in `Cairo
 - `num_θ::Int=100`: Number of angular points in the plot.
 - `r_max::Float64=1.5*state.k`: Maximum radial value (momentum magnitude) to plot.
 """
-function plot_momentum_representation!(f::Figure, state::S; b::Float64=5.0, num_r::Int=100, num_θ::Int=100, r_max::Float64=1.5*state.k) where {S<:AbsState}
+function plot_momentum_representation_polar!(f::Figure, state::S; b::Float64=5.0, num_r::Int=100, num_θ::Int=100, r_max::Float64=1.5*state.k) where {S<:AbsState}
     mom_function = momentum_representation_of_state(state; b)
     r_values = collect(range(0, r_max, length=num_r))
     θ_values = collect(range(0, 2π, length=num_θ))
