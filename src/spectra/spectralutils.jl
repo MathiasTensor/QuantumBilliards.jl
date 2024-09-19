@@ -153,7 +153,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 end
 
 # NEW WITH N1 and N2 INSTEAD OF k1 AND k2
-function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1,N2; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
+function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1::Int,N2::Int; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
     # get the k1 and k2 from the N1 and N2
     k1 = k_at_state(N1, billiard; fundamental=fundamental)
     k2 = k_at_state(N2, billiard; fundamental=fundamental)
