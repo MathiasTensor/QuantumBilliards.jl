@@ -319,7 +319,7 @@ Plots the radially integrated momentum density `I(φ)` as a function of angle `�
 - `ax::Axis`: The `Axis` object to plot into.
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-- `num_points::Int=500`: The number of points to use in the plot. Defaults to `100`.
+- `num_points::Int=500`: The number of points to use in the plot. Defaults to `300`.
 
 # Returns
 - The modified `Axis` object with the plot added.
@@ -331,7 +331,7 @@ This function computes the radially integrated momentum density using `computeRa
 - The plot will display the momentum density as a function of angle `φ` in radians.
 - The axis `ax` is modified in place and returned.
 """
-function plot_radially_integrated_density!(f, state::S; b::Float64=5.0, num_points::Int=100) where {S<:AbsState}
+function plot_radially_integrated_density!(f, state::S; b::Float64=5.0, num_points::Int=300) where {S<:AbsState}
     I_phi_function = computeRadiallyIntegratedDensityFromState(state; b)
     φ_values = range(0, 2π, length=num_points)
     I_values = [I_phi_function(φ) for φ in φ_values]
@@ -339,8 +339,6 @@ function plot_radially_integrated_density!(f, state::S; b::Float64=5.0, num_poin
     idx_to_plot = findall(abs.(I_values) .>= 1e-6) # for Makie
     I_values = I_values[idx_to_plot]
     φ_values = φ_values[idx_to_plot]
-    println("I_values = ", I_values)
-    println("φ_values = ", φ_values)
     ax = Axis(f[1,1])
     lines!(ax, φ_values, I_values, label="I(φ)")
     ax.xlabel = "φ (radians)"
@@ -357,7 +355,7 @@ Plots the angularly integrated momentum density `R(r)` as a function of radius `
 - `ax::Axis`: The `Axis` object to plot into.
 - `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-- `num_points::Int=500`: The number of points to use in the plot. Defaults to `100`.
+- `num_points::Int=500`: The number of points to use in the plot. Defaults to `300`.
 
 # Returns
 - The modified `Axis` object with the plot added.
@@ -369,7 +367,7 @@ This function computes the angularly integrated momentum density using `computeA
 - The plot will display the momentum density as a function of radius `r`.
 - The axis `ax` is modified in place and returned.
 """
-function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=100) where {S<:AbsState}
+function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::Float64=10.0, num_points::Int=300) where {S<:AbsState}
     k = state.k
     R_r_function = computeAngularIntegratedMomentumDensityFromState(state; b)
     r_values = range(0, 1.5*k, length=num_points)
@@ -378,8 +376,6 @@ function plot_angularly_integrated_density!(f, state::S; b::Float64=5.0, r_max::
     idx_to_plot = findall(abs.(R_values) .>= 1e-6) # for Makie
     R_values = R_values[idx_to_plot]
     r_values = r_values[idx_to_plot]
-    println("R values: ", R_values)
-    println("r values: ", r_values)
     ax = Axis(f[1,1])
     scatter!(ax, r_values, R_values, label="R(r)")
     vlines!(ax, k; color=:red)
