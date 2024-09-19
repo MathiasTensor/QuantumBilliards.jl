@@ -116,8 +116,8 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     dk_values = []
     while k0 < k2
         dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental/(4*pi))
-        if dk > 0.1 # For small k this limits the size of the interval
-            dk = 0.1
+        if dk > 0.01 # For small k this limits the size of the interval
+            dk = 0.01
         end
         push!(dk_values, dk)
         k0 += dk
