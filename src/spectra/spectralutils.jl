@@ -139,7 +139,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 
     for i in 1:num_intervals
         dk = dk_values[i]
-        println("Doing interval: [$(k0), $(k0 + dk)]")
+        #println("Doing interval: [$(k0), $(k0 + dk)]")
         k0 += dk
         k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk + tol)
         overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0 - dk, k0; tol=tol)
