@@ -138,7 +138,7 @@ function RectangleBilliard(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
     fundamental_boundary, _ = make_quarter_rectangle(width, height; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, corners = make_full_rectangle(width, height; x0=x0, y0=y0, rot_angle=rot_angle)
     area = width * height
-    area_fundamental = area * 0*25
+    area_fundamental = area * 0.25
     length = sum([crv.length for crv in full_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = [pi/2, pi/2, pi/2, pi/2]
