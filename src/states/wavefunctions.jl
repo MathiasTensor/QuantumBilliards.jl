@@ -17,14 +17,11 @@ function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domai
     end
     # Find the fraction of lengths wrt to the boundary
     billiard_composite_lengths = [crv.length for crv in boundary]
-    #println("Curve lengths: ", billiard_composite_lengths)
     typ = eltype(billiard_composite_lengths[1])
     total_billiard_length = sum(billiard_composite_lengths)
     billiard_length_fractions = [crv.length/total_billiard_length for crv in boundary]
-    #println("Curve fractions: ", billiard_length_fractions)
     # Redistribute points based on the fractions
     distributed_points = [round(Int, fract*N_polygon_checks) for fract in billiard_length_fractions]
-    #println("Curve points: ", distributed_points)
     # Use linear sampling 
     ts_vectors = [sample_points(LinearNodes(), crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts
     xy_vectors = Vector{Vector}(undef, length(boundary))
@@ -35,15 +32,10 @@ function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domai
 end
 
 
-
-
 # Helper function to check if a point is left of an edge
 function is_left(p1::SVector{2,T}, p2::SVector{2,T}, pt::SVector{2,T}) where {T<:Real}
     return (p2[1] - p1[1]) * (pt[2] - p1[2]) - (pt[1] - p1[1]) * (p2[2] - p1[2])
 end
-
-
-
 
 
 # Winding number algorithm to check if a point is inside a polygon
@@ -204,11 +196,11 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                 x_axis = 0.0
                 y_axis = 0.0
                 if hasproperty(billiard, :x_axis)
-                    println(nameof(typeof(billiard)), " has the :x_axis reflection")
+                    #println(nameof(typeof(billiard)), " has the :x_axis reflection")
                     x_axis = billiard.x_axis
                 end
                 if hasproperty(billiard, :y_axis)
-                    println(nameof(typeof(billiard)), " has the :y_axis reflection")
+                    #println(nameof(typeof(billiard)), " has the :y_axis reflection")
                     y_axis = billiard.y_axis
                 end
                 Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
