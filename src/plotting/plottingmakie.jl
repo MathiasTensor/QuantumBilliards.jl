@@ -2,6 +2,7 @@
 #include("../utils/gridutils.jl")
 using Makie
 using StaticArrays
+using CairoMakie
 #helper functions
 function plot_heatmap!(f,x,y,Z ;vmax = 1.0,log=(false,-5.0), cmap=Reverse(:gist_heat),hmargs=Dict(),axargs=Dict(),cbar = true)
     if log[1]
