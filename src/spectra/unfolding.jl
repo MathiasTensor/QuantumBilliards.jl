@@ -47,6 +47,19 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
 end
 
 """
+Convenience function to get the constant C in Weyl's law.
+
+# Arguments
+- `billiard::Bi`: The billiard instance (must be a subtype of `AbsBilliard`).
+
+# Returns
+- `C::Real`: The constant C in Weyl's law.
+"""
+function curvature_and_corner_corrections(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
+    return curvature_corrections(billiard; fundamental=fundamental) + corner_correction(billiard; fundamental=fundamental)
+end
+
+"""
     weyl_law(ks::Vector, billiard::Bi; fundamental::Bool=true) -> Vector where {Bi<:AbsBilliard}
 
 Computes the eigenvalue counting function `N(k)` using Weyl's law, with corrections for corners and curvature.
