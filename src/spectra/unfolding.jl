@@ -56,7 +56,7 @@ Convenience function to get the constant C in Weyl's law.
 - `C::Real`: The constant C in Weyl's law.
 """
 function curvature_and_corner_corrections(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
-    return curvature_corrections(billiard; fundamental=fundamental) + corner_correction(billiard; fundamental=fundamental)
+    return curvature_correction(billiard; fundamental=fundamental) + corner_correction(billiard; fundamental=fundamental)
 end
 
 """
