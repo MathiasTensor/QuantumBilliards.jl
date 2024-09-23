@@ -130,7 +130,6 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
         k0 += dk
     end
     println(dk_values)
-    num_intervals = length(dk_values)
 
     # Initialize the progress bar with estimated number of intervals
     println("Scaling Method...")
@@ -143,7 +142,6 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 
     for i in 1:num_intervals
         dk = dk_values[i]
-        #println("Doing interval: [$(k0), $(k0 + dk)]")
         k0 += dk
         k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk + tol)
         overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0 - dk, k0; tol=tol)
@@ -153,6 +151,16 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 end
 
 # NEW WITH N1 and N2 INSTEAD OF k1 AND k2
+function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1::Int,N2::Int; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
+    # get the k1 and k2 from the N1 and N2
+    k1 = k_at_state(N1, billiard; fundamental=fundamental)
+    k2 = k_at_state(N2, billiard; fundamental=fundamental)
+    # Call the k one
+    k_res, ten_res, control = compute_spectrum(solver, basis, billiard, k1, k2; tol=tol, N_expect=N_expect, dk_threshold=dk_threshold, fundamental=fundamental)
+    return k_res, ten_res, control
+end
+
+#=
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1::Int,N2::Int; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
     # get the k1 and k2 from the N1 and N2
     k1 = k_at_state(N1, billiard; fundamental=fundamental)
@@ -176,7 +184,6 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
         k0 += dk
     end
     println(dk_values)
-    num_intervals = length(dk_values)
 
     # Initialize the progress bar with estimated number of intervals
     println("Scaling Method...")
@@ -197,6 +204,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     end
     return k_res, ten_res, control
 end
+=#
 
 struct SpectralData{T} 
     k::Vector{T}
