@@ -1,4 +1,4 @@
-using Polynomials
+
 
 """
 INTERNAL FOR PLOTTING. Uses the def of σ² = (mean of squares) - (mean)^2 to determine the NV of a vector of unfolded energies in the energy window L
@@ -62,72 +62,6 @@ function number_variance(E::Vector{T}, L::T) where {T<:Real}
     # Variance = mean of squares - (mean)^2
     AveSig = Ave2 - Ave1^2
     return AveSig
-end
-
-"""
-INTERNAL FOR PLOTTING. Uses a modified ver of Prosen's NV algorithm to determine the Δ3(L) for unfolded energies in a energy window of size L 
-"""
-function spectral_rigidity(E::Vector{T}, L::T) where {T<:Real}
-    N = length(E)
-    Ave = Threads.Atomic{T}(0.0)  # Use atomic operations to safely update the shared variable
-    largest_energy = E[end - min(Int(ceil(L) + 10), N-1)]  # Ensure largest_energy is within bounds
-    
-    # Parallelize the main loop
-    Threads.@threads for idx in 1:N
-        j = idx
-        k = j
-        x = E[j]
-        while x < largest_energy && j < N && k < N
-            while k < N && E[k] < x + L  # Ensure k does not exceed bounds
-                k += 1
-            end
-            
-            d1 = E[j] - x
-            d2 = E[k] - (x + L)
-            cn = k - j  # Number of levels in the interval n(x_i, L)
-            
-            if cn < 2
-                if d1 < d2
-                    x = E[j]
-                    j += 1
-                else
-                    x = E[k] - L
-                    k += 1
-                end
-                continue
-            end
-
-            # Get the energy levels in the current interval
-            E_interval = E[j:k-1]
-            nE = 1:length(E_interval)
-
-            # Perform a linear fit to n(E) = a + b*E
-            p = Polynomials.fit(E_interval, nE, 1)
-            
-            # Calculate the deviation from the linear fit
-            fit_values = [p(e) for e in E_interval]
-            deviation = sum((nE .- fit_values).^2) / L
-
-            # Accumulate the deviation for the interval
-            s = min(d1, d2)
-            Threads.atomic_add!(Ave, s * deviation)
-
-            # Move to the next interval
-            if d1 < d2
-                x = E[j]
-                j += 1
-            else
-                x = E[k] - L
-                k += 1
-            end
-        end
-    end
-
-    # Normalize by the total length of the energy spectrum considered
-    total_length = largest_energy - E[1]
-    Ave_value = Ave[] / total_length
-
-    return Ave_value  # This is the spectral rigidity, Δ3(L)
 end
 
 
@@ -340,7 +274,7 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
         
         # If there are values in this bin, calculate the average new_ys
         if !isempty(indices_in_bin)
-            avg_new_y = mean(new_ys[indices_in_bin])
+            avg_new_y = T(mean(new_ys[indices_in_bin]))
             push!(averaged_new_ys, avg_new_y)
             # Store the midpoint of the bin as the x-coordinate
             push!(bin_centers, (bin_start + bin_end) / 2)
@@ -356,6 +290,7 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
     return fig
 end
 
+#=
 """
     plot_spectral_rigidity!(arr::Vector{T}, L_min::T, L_max::T; N::Int=100) where {T<:Real}
 
@@ -386,3 +321,5 @@ function plot_spectral_rigidity!(arr::Vector{T}, L_min::T, L_max::T; N::Int=100)
     ax.xlabel = "Spacing (s)"
     ax.title = "Spectral Rigidity"
 end
+
+=#
