@@ -67,7 +67,7 @@ end
 """
 INTERNAL FOR PLOTTING. Uses a modified ver of Prosen's NV algorithm to determine the Δ3(L) for unfolded energies in a energy window of size L 
 """
-function spectral_rigidity_new_parallel(E::Vector{T}, L::T) where {T<:Real}
+function spectral_rigidity(E::Vector{T}, L::T) where {T<:Real}
     N = length(E)
     Ave = Threads.Atomic{T}(0.0)  # Use atomic operations to safely update the shared variable
     largest_energy = E[end - min(Int(ceil(L) + 10), N-1)]  # Ensure largest_energy is within bounds
@@ -128,4 +128,261 @@ function spectral_rigidity_new_parallel(E::Vector{T}, L::T) where {T<:Real}
     Ave_value = Ave[] / total_length
 
     return Ave_value  # This is the spectral rigidity, Δ3(L)
+end
+
+
+
+"""
+    probability_berry_robnik(s::T, rho::T) -> T where {T <: Real}
+
+Computes the Berry-Robnik distribution for a given spacing `s` and mixing parameter `rho`.
+
+# Arguments
+- `s::T`: The spacing value (must be of a real number type).
+- `rho::T`: The "mixing" parameter (0 < rho < 1), also of a real number type. For rho = 1, we have Poisson, and for rho = 0, we have the Wigner (GOE) distribution.
+
+# Returns
+- The value of the Berry-Robnik distribution at spacing `s` for the given `rho`.
+"""
+function probability_berry_robnik(s::T, rho::T) :: T where {T <: Real}
+    rho1 = rho
+    rho2 = one(T) - rho 
+    term1 = (rho1^2) * erfc(sqrt(π / T(2)) * rho2 * s)
+    term2 = (T(2) * rho1 * rho2 + (π / T(2)) * (rho2^3) * s) * exp(-(π / T(4)) * (rho2^2) * s^2)
+    result = (term1 + term2) * exp(-rho1 * s)
+    return result
+end
+
+
+
+"""
+    cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
+
+Computes the cumulative Berry-Robnik distribution function (CDF) for a given spacing `s` and mixing parameter `rho`.
+The CDF is obtained by integrating the PDF from 0 to `s`.
+
+# Arguments
+- `s::T`: The spacing value (must be of a real number type).
+- `rho::T`: The "mixing" parameter (0 < rho < 1).
+
+# Returns
+- The cumulative probability for the Berry-Robnik distribution at spacing `s`.
+"""
+function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
+    # Use quadgk to integrate the Berry-Robnik PDF from 0 to s
+    result, _ = quadgk(x -> probability_berry_robnik(x, rho), T(0), s)
+    return result
+end
+
+
+
+"""
+    compare_level_count_to_weyl(arr::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+
+Compares the numerical level count of energy levels with Weyl's law prediction for a given billiard geometry, and plots the comparison.
+
+# Arguments
+- `arr::Vector{T}`: A vector of energy levels.
+- `billiard::Bi`: The billiard geometry, which must be a subtype of `AbsBilliard`. This provides the area, perimeter, and other characteristics of the billiard table.
+- `fundamental::Bool=true`: Whether to use the fundamental domain of the billiard. If `true`, it uses the fundamental area and length, otherwise the full geometry is used. Defaults to `true`.
+
+"""
+function compare_level_count_to_weyl(arr::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    A = T(fundamental ? billiard.area_fundamental : billiard.area)
+    L = T(fundamental ? billiard.length_fundamental : billiard.length)
+    C = T(curvature_and_corner_corrections(billiard; fundamental=fundamental))
+    ys = [count(_k -> _k < k, arr) for k in arr]
+    Ns = [(A/(4*pi)*k^2 - L/(4*pi)*k + C) for k in arr]
+    # Create the plot
+    fig = Figure()
+    ax = Axis(fig[1, 1], xlabel="k", ylabel="N(k)", title="Level Count vs. Weyl's Law")
+    scatter!(ax, arr, ys, label="Numerical", color=:blue, marker=:circle, markersize=3)
+    lines!(ax, arr, Ns, label="Weyl", color=:red)
+    axislegend(ax)
+    return fig
+end
+
+
+
+"""
+    plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing) where {T <: Real}
+
+Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energy levels, along with theoretical distributions (Poisson, GOE, GUE). Optionally, the Berry-Robnik distribution can also be included if a `rho` value is provided.
+
+# Arguments
+- `unfolded_energies::Vector{T}`: A vector of unfolded energy eigenvalues.
+- `nbins::Int=200`: The number of bins for the histogram of spacings. Defaults to `200`.
+- `rho::Union{Nothing, T}=nothing`: The Berry-Robnik parameter. If provided, the Berry-Robnik distribution is plotted. If set to `nothing`, the Berry-Robnik distribution is excluded.
+
+# Returns
+- A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
+
+"""
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing) where {T <: Real}
+    # Compute nearest neighbor spacings
+    spacings = diff(unfolded_energies)
+    # Create a normalized histogram
+    hist = Distributions.fit(StatsBase.Histogram, spacings; nbins=nbins)
+    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
+    bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
+    # Theoretical distributions
+    poisson_pdf = x -> exp(-x)
+    goe_pdf = x -> (π / T(2)) * x * exp(-π * x^2 / T(4))
+    gue_pdf = x -> (T(32) / (π^2)) * x^2 * exp(-T(4) * x^2 / π)
+    # Optionally include Berry-Robnik distribution if rho is provided
+    berry_robnik_pdf = rho !== nothing ? (x -> probability_berry_robnik(x, rho)) : nothing
+    fig = Figure(resolution=(800, 600))
+    ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="Probability Density")
+    scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
+    s_values = range(0, stop=maximum(bin_centers), length=1000)
+    lines!(ax, s_values, poisson_pdf.(s_values), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
+    lines!(ax, s_values, goe_pdf.(s_values), label="GOE", color=:green, linestyle=:dot, linewidth=1)
+    lines!(ax, s_values, gue_pdf.(s_values), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+    if berry_robnik_pdf !== nothing
+        lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik", color=:orange, linestyle=:dashdot, linewidth=1)
+    end
+    xlims!(ax, extrema(s_values))
+    axislegend(ax, position=:rt)
+
+    return fig
+end
+
+
+"""
+    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing) where {T <: Real}
+
+Plots the cumulative distribution function (CDF) of the nearest-neighbor level spacings (NNLS) for unfolded energy eigenvalues. Optionally, the Berry-Robnik CDF can be plotted if a `rho` value is provided.
+
+# Arguments
+- `unfolded_energy_eigenvalues::Vector{T}`: A vector of unfolded energy eigenvalues.
+- `rho::Union{Nothing, T}=nothing`: The mixing parameter for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
+
+"""
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing) where {T <: Real}
+    # Compute nearest neighbor spacings and sort them
+    spacings = diff(sort(unfolded_energy_eigenvalues))
+    sorted_spacings = sort(spacings)
+    N = length(sorted_spacings)
+    # Compute the empirical CDF
+    empirical_cdf = [i / N for i in 1:N]
+    # Helper functions for theoretical CDFs
+    poisson_cdf = s -> 1 - exp(-s)
+    goe_cdf = s -> 1 - exp(-π * s^2 / 4)
+    gue_cdf = s -> 1 - exp(-4 * s^2 / π) * (1 + 4 * s^2 / π)
+    # If `rho` is provided, define the Berry-Robnik CDF with (s, rho)
+    berry_robnik_cdf = (s, rho) -> cumulative_berry_robnik(s, rho)
+    # Compute the theoretical CDFs
+    num_points = 1000
+    max_s = maximum(sorted_spacings)
+    s_values = range(0, stop=max_s, length=num_points)
+    poisson_cdf_values = poisson_cdf.(s_values)
+    goe_cdf_values = goe_cdf.(s_values)
+    gue_cdf_values = gue_cdf.(s_values)
+    # Compute Berry-Robnik CDF values if `rho` is provided
+    berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
+    fig = Figure(resolution = (800, 600))
+    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
+    scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
+    lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=2)
+    lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=2)
+    lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=2)
+    # Plot the Berry-Robnik CDF if `rho` is provided
+    if berry_robnik_cdf_values !== nothing
+        lines!(ax, s_values, berry_robnik_cdf_values, label="Berry-Robnik CDF", color=:orange, linewidth=2)
+    end
+    axislegend(ax)
+    return fig
+end
+
+
+
+"""
+    plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_size::T = T(20.0), fundamental::Bool=true) where {Bi<:AbsBilliard, T<:Real}
+
+Plots the difference between the empirical level count `N_count(k)` and the Weyl law prediction `N_weyl(k)` for a given billiard, incorporating curvature and corner corrections. Additionally, it computes and plots the averaged differences over specified intervals.
+
+# Arguments
+- `arr::Vector{T}`: A vector of `k` values. These represent the wavenumbers or eigenvalues.
+- `billiard::Bi`: An instance of a subtype of `AbsBilliard`, representing the billiard's geometric configuration.
+- `bin_size::T`: The size of the binning interval for averaging the differences between the empirical level count and Weyl's law prediction. Defaults to `20.0` (or the appropriate type `T`).
+- `fundamental::Bool=true`: Whether to use the area and length of the fundamental region of the billiard (`true`) or the full billiard (`false`). Defaults to `true`.
+
+# Returns
+- A `Figure` object that plots:
+    1. The difference `N_count(k) - N_weyl(k)` for each `k` value as a scatter plot.
+    2. The averaged difference over intervals of size `bin_size` as a line plot.
+
+"""
+function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_size::T = T(20.0), fundamental::Bool=true) where {Bi<:AbsBilliard, T<:Real} 
+    A = T(fundamental ? billiard.area_fundamental : billiard.area)
+    L = T(fundamental ? billiard.length_fundamental : billiard.length)
+    C = T(curvature_and_corner_corrections(billiard; fundamental=fundamental))
+    
+    # Standard Weyl procedure
+    ys = [count(_k -> _k < k, arr) for k in arr]
+    Ns = [(A/(4*pi)*k^2 - L/(4*pi)*k + C) for k in arr]
+    new_ys = [y - N for (y, N) in zip(ys, Ns)]
+
+    # Binning Algorithm
+    # Determine the range and bin size
+    min_k, max_k = minimum(arr), maximum(arr)
+    bins = collect(min_k:bin_size:max_k)  # Create intervals
+    
+    # To store the results
+    bin_centers = T[]
+    averaged_new_ys = T[]
+    
+    # Iterate over each bin
+    for i in 1:(length(bins)-1)
+        bin_start, bin_end = bins[i], bins[i+1]
+        # Find the indices of `arr` that fall within this bin
+        indices_in_bin = findall(k -> bin_start <= k < bin_end, arr)
+        
+        # If there are values in this bin, calculate the average new_ys
+        if !isempty(indices_in_bin)
+            avg_new_y = mean(new_ys[indices_in_bin])
+            push!(averaged_new_ys, avg_new_y)
+            # Store the midpoint of the bin as the x-coordinate
+            push!(bin_centers, (bin_start + bin_end) / 2)
+        end
+    end
+
+    fig = Figure()
+    ax = Axis(fig[1, 1], xlabel="k", ylabel="N_count(k) - N_weyl(k)", title="Level Count - Weyl's Law")
+    # Scatter plot for the numerical data
+    scatter!(ax, arr, new_ys, label="Numerical", color=:blue, marker=:circle, markersize=2)
+    lines!(ax, bin_centers, averaged_new_ys, color=:red, label="Averaged over k-interval $(bin_size)", linewidth=2)
+    axislegend(ax)
+    return fig
+end
+
+"""
+    plot_spectral_rigidity!(arr::Vector{T}, L_min::T, L_max::T; N::Int=100) where {T<:Real}
+
+Plots the spectral rigidity (Δ₃) for an array of energy levels and compares it to the theoretical predictions for Poisson, GOE, and GUE statistics.
+
+# Arguments
+- `arr::Vector{T}`: A vector of energy levels.
+- `L_min::T`: The minimum value of `L` for which to compute the spectral rigidity.
+- `L_max::T`: The maximum value of `L` for which to compute the spectral rigidity.
+- `N::Int=100`: The number of points for which to compute the spectral rigidity between `L_min` and `L_max`. Defaults to `100`.
+
+"""
+function plot_spectral_rigidity!(arr::Vector{T}, L_min::T, L_max::T; N::Int=100) where {T<:Real}
+    Ls = range(L_min, L_max, length=N)
+    Δ3_values = [spectral_rigidity(arr, L) for L in Ls]
+    # Theoretical Spectral Rigidities
+    poissonDeltaL = L -> L / 15.0 
+    goeDeltaL = L -> (1 / (π^2)) * (log(2π * L) + 0.57721566490153286060 - 5.0 / 4.0 - (π^2 / 8))
+    gueDeltaL = L -> (1 / (2 * π^2)) * (log(2π * L) + 0.57721566490153286060 - 5.0 / 4.0)
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    # Plot numerical spectral rigidity
+    lines!(ax, Ls, Δ3_values, color=:black)
+    lines!(ax, Ls, [poissonDeltaL(L) for L in Ls], label="Poisson", color=:blue, linestyle=:dash)
+    lines!(ax, Ls, [goeDeltaL(L) for L in Ls], label="GOE", color=:green, linestyle=:dot)
+    lines!(ax, Ls, [gueDeltaL(L) for L in Ls], label="GUE", color=:red, linestyle=:dashdot)
+    ax.ylabel = L"Δ_\text{3}"
+    ax.xlabel = "Spacing (s)"
+    ax.title = "Spectral Rigidity"
 end

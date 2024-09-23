@@ -92,6 +92,8 @@ include("spectra/unfolding.jl")
 export weyl_law
 export compute_spectrum
 export curvature_correction, corner_correction, curvature_and_corner_corrections
+include("spectra/spectralStatistics.jl")
+export number_variance, spectral_rigidity_new_parallel, plot_subtract_level_counts_from_weyl
 #states
 #include("states/States.jl")
 #@reexport using .States
