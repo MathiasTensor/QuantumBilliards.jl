@@ -1,4 +1,4 @@
-
+using Makie
 
 """
 INTERNAL FOR PLOTTING. Uses the def of σ² = (mean of squares) - (mean)^2 to determine the NV of a vector of unfolded energies in the energy window L
