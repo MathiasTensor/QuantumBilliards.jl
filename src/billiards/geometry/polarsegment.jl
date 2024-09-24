@@ -70,7 +70,7 @@ function arc_length(polar::L, ts::AbstractArray) where {T<:Real,L<:PolarSegments
 end
 
 # Helper function for arc length during construction
-function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t) where {T<:Real}
+function compute_arc_length_constructor(r_func::Function, affine_map::AffineMap, t)
     r_prime_x(l) = ForwardDiff.derivative(k -> affine_map(r_func(k))[1], l)
     r_prime_y(l) = ForwardDiff.derivative(k -> affine_map(r_func(k))[2], l)    
     integrand(l) = sqrt(r_prime_x(l)^2 + r_prime_y(l)^2)
