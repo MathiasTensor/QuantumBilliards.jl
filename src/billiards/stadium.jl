@@ -35,19 +35,26 @@ struct Stadium{T}  <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
     length::T
+    length_fundamental::T
     area::T
+    area_fundamental::T
     half_width::T
     radius::T
     corners::Vector{SVector{2,T}}
+    angles::Vector
+    angles_fundamental::Vector
 end
 
 function Stadium(half_width;radius=1.0,x0=0.0,y0=0.0)
     full_boundary, corners = make_full_stadium(half_width;radius=radius,x0=x0,y0=y0)
     area = 4.0*half_width*radius + (pi*radius^2)
+    area_fundamental = 0.25 * area
     fundamental_boundary, _ = make_quarter_stadium(half_width;radius=radius,x0=x0,y0=y0)
     length = sum([crv.length for crv in full_boundary])
-    #PolygonOps.area(collect(zip(x,y)))
-    return Stadium(fundamental_boundary,full_boundary,length,area,half_width,radius,corners)
+    length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
+    angles = []
+    angles_fundamental = [pi/2, pi/2]
+    return Stadium(fundamental_boundary,full_boundary,length,length_fundamental,area,area_fundamental,half_width,radius,corners,angles,angles_fundamental)
 end 
 
 function make_stadium_and_basis(half_width;radius=1.0,x0=zero(half_width),y0=zero(half_width), rot_angle=zero(half_width))
