@@ -136,6 +136,40 @@ function compare_level_count_to_weyl(arr::Vector{T}, billiard::Bi; fundamental::
     return fig
 end
 
+"""
+    count_levels_and_avg_fluctuation_in_interval(arr::Vector{T}, billiard::Bi; fundamental::Bool=true) -> Bool
+
+This function computes the average fluctuation of the empirical number of energy levels in a given array `arr` relative to the theoretical number of levels predicted by Weyl's law for a given `billiard` system. It returns `false` if the average fluctuation exceeds ±0.1% of the theoretical number of levels in the interval; otherwise, it returns `true`.
+
+### Arguments:
+- `arr::Vector{T}`: A vector of wave numbers of energy levels.
+- `billiard::Bi`: A billiard object of type <: AbsBilliard.
+- `fundamental::Bool=true`: A boolean flag indicating whether to use the fundamental domain's geometrical data (`true`) or the full billiard system (`false`).
+
+### Returns:
+- `Bool`: Returns `true` if the average fluctuation is within the allowed range (±0.1% of the theoretical number of levels), otherwise returns `false`.
+"""
+function count_levels_and_avg_fluctuation_in_interval(arr::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:Billiard}
+    # geometrical data
+    A = T(fundamental ? billiard.area_fundamental : billiard.area)
+    L = T(fundamental ? billiard.length_fundamental : billiard.length)
+    C = T(curvature_and_corner_corrections(billiard; fundamental=fundamental))
+    # empirical data and weyl data
+    ys = [count(_k -> _k < k, arr) for k in arr]
+    Ns = [(A/(4*pi)*k^2 - L/(4*pi)*k + C) for k in arr]
+    new_ys = [y - N for (y, N) in zip(ys, Ns)]
+    # Averaging over the entire segment
+    avg_new_y = T(mean(new_ys))  # Calculate the mean fluctuation over the whole range
+    # Calculate the fluctuation thresholds (±0.1% of the theoretical levels)
+    fluctuation_threshold = 0.001 * (weyl_law(arr[end], billiard; fundamental=fundamental) - weyl_law(arr[1], billiard; fundamental=fundamental)) # Number of levels in the given interval
+    # Check if the average fluctuation is within ±0.1% of the theoretical number of levels
+    if avg_new_y > fluctuation_threshold || avg_new_y < -fluctuation_threshold
+        return false  # The average fluctuation exceeds the allowed range
+    else
+        return true 
+    end
+end
+
 
 
 """

@@ -129,7 +129,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
         push!(dk_values, dk)
         k0 += dk
     end
-    println(dk_values)
+    println("max/min dk value: ", extrema(dk_values))
 
     # Initialize the progress bar with estimated number of intervals
     println("Scaling Method...")
