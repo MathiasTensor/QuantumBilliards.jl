@@ -149,7 +149,7 @@ This function computes the average fluctuation of the empirical number of energy
 ### Returns:
 - `Bool`: Returns `true` if the average fluctuation is within the allowed range (±0.1% of the theoretical number of levels), otherwise returns `false`.
 """
-function count_levels_and_avg_fluctuation_in_interval(arr::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:Billiard}
+function count_levels_and_avg_fluctuation_in_interval(arr::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
     # geometrical data
     A = T(fundamental ? billiard.area_fundamental : billiard.area)
     L = T(fundamental ? billiard.length_fundamental : billiard.length)
