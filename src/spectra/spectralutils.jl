@@ -111,7 +111,7 @@ end
 
 
 # NEW WITH ADAPTIVE tol
-function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol_eps=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
+function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol_eps=1e-3, N_expect = 3, dk_threshold=0.1, fundamental=true)
     # Estimate the number of intervals and store the dk values
     k0 = k1
     dk_values = []
