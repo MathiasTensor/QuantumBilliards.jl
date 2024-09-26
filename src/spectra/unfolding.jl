@@ -45,6 +45,7 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
                 curvat += 1/(12*pi)*(1/seg.radius)*seg.length
             end
         end
+        println("returning: ", curvat)
         return curvat
     end
 end
