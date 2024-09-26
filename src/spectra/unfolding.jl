@@ -40,7 +40,7 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
             end
             if seg isa CircleSegment
                 println("circle seg length: ", seg.length)
-                printlm("seg radius: ", seg.radius)
+                println("seg radius: ", seg.radius)
                 curvat += 1/(12*pi)*(1/seg.radius)*seg.length
             end
         end
