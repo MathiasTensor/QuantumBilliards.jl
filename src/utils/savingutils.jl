@@ -145,7 +145,158 @@ function compute_and_save_closest_pairs!(ksA::Vector{T}, ksB::Vector{T}, A::T, f
 end
 
 
+"""
+    plot_and_save_eigenstate_results(acc_solver, basis, billiard, ks, shape_name; 
+        save_wavefunction=true, save_full_wavefunction=true, save_probability=true, 
+        save_full_probability=true, save_husimi=true, save_momentum=true, save_radial=true, 
+        save_angular=true, wavefunction_dir="Wavefunctions", husimi_dir="Husimi", 
+        momentum_dir="Momentum")
 
+Generalized function for computing eigenstates and saving various plots (wavefunction, Husimi, momentum, etc.) for different shapes. 
+You can control saving of full or non-full wavefunctions, probability plots, Husimi functions, and momentum-related plots via boolean flags.
+
+# Arguments
+- `acc_solver::AcceleratedSolver`: The solver to compute eigenstates.
+- `basis::AbsBasis`: The basis used in the computation.
+- `billiard::AbsBilliard`: The billiard shape object.
+- `ks::Vector`: A vector of wavenumbers to compute eigenstates for.
+- `shape_name`: The name of the shape for organizing directories (e.g., "Stadium", "Ellipse").
+- `save_wavefunction`: Boolean, whether to save non-full wavefunction plots (default `true`).
+- `save_full_wavefunction`: Boolean, whether to save full wavefunction plots (default `true`).
+- `save_probability`: Boolean, whether to save non-full probability plots (default `true`).
+- `save_full_probability`: Boolean, whether to save full probability plots (default `true`).
+- `save_husimi`: Boolean, whether to save Husimi function plots (default `true`).
+- `save_momentum`: Boolean, whether to save momentum plots (default `true`).
+- `save_radial`: Boolean, whether to save radially integrated momentum density plots (default `true`).
+- `save_angular`: Boolean, whether to save angularly integrated momentum density plots (default `true`).
+- `wavefunction_dir`: Directory for saving wavefunction plots (default `"Wavefunctions"`).
+- `husimi_dir`: Directory for saving Husimi plots (default `"Husimi"`).
+- `momentum_dir`: Directory for saving momentum plots (default `"Momentum"`).
+"""
+function plot_and_save_eigenstate_results!(acc_solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, ks::Vector, shape_name::String;
+    save_wavefunction=true, save_full_wavefunction=true, save_probability=true, 
+    save_full_probability=true, save_husimi=true, save_momentum=true, 
+    save_radial=true, save_angular=true, 
+    wavefunction_dir="Wavefunctions", husimi_dir="Husimi", momentum_dir="Momentum")
+
+    # Ensure directories exist, if not create them
+    if save_wavefunction || save_full_wavefunction || save_probability || save_full_probability
+        if !isdir("$(shape_name)/$(wavefunction_dir)")
+            mkdir("$(shape_name)/$(wavefunction_dir)")
+        end
+    end
+    if save_husimi
+        if !isdir("$(shape_name)/$(husimi_dir)")
+            mkdir("$(shape_name)/$(husimi_dir)")
+        end
+    end
+    if save_momentum || save_radial || save_angular
+        if !isdir("$(shape_name)/$(momentum_dir)")
+            mkdir("$(shape_name)/$(momentum_dir)")
+        end
+    end
+
+    Threads.@threads for i in eachindex(ks)
+        println("Saving results for wavenumber index: ", i)
+        
+        f_probability = Figure()
+        f_probability_full = Figure()
+        f_wavefunction = Figure()
+        f_wavefunction_full = Figure()
+        f_husimi = Figure()
+        f_momentum = Figure()
+        f_radial = Figure()
+        f_angular = Figure()
+        
+        try
+            state = compute_eigenstate(acc_solver, basis, billiard, ks[i])
+            
+            # Save probability plots
+            if save_probability
+                try
+                    plot_probability!(f_probability, state, inside_only=true)
+                    save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_probability.png", f_probability)
+                catch e
+                    println("Error plotting or saving probability for ks[", i, "]: ", e)
+                end
+            end
+
+            if save_full_probability
+                try
+                    plot_probability!(f_probability_full, state, inside_only=true, fundamental_domain=false)
+                    save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_probability_full.png", f_probability_full)
+                catch e
+                    println("Error plotting or saving full probability for ks[", i, "]: ", e)
+                end
+            end
+
+            # Save wavefunction plots
+            if save_wavefunction
+                try
+                    plot_wavefunction!(f_wavefunction, state, inside_only=true)
+                    save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_wavefunction.png", f_wavefunction)
+                catch e
+                    println("Error plotting or saving wavefunction for ks[", i, "]: ", e)
+                end
+            end
+
+            if save_full_wavefunction
+                try
+                    plot_wavefunction!(f_wavefunction_full, state, inside_only=true, fundamental_domain=false)
+                    save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_wavefunction_full.png", f_wavefunction_full)
+                catch e
+                    println("Error plotting or saving full wavefunction for ks[", i, "]: ", e)
+                end
+            end
+
+            # Save Husimi plot
+            if save_husimi
+                try
+                    plot_husimi_function!(f_husimi, state)
+                    save("$(shape_name)/$(husimi_dir)/$(ks[i])_husimi.png", f_husimi)
+                catch e
+                    println("Error plotting or saving Husimi function for ks[", i, "]: ", e)
+                end
+            end
+
+            # Save momentum-related plots
+            if save_momentum
+                try
+                    plot_momentum_function!(f_momentum, state)
+                    save("$(shape_name)/$(momentum_dir)/$(ks[i])_momentum.png", f_momentum)
+                catch e
+                    println("Error plotting or saving momentum function for ks[", i, "]: ", e)
+                end
+            end
+
+            if save_radial
+                try
+                    plot_radially_integrated_density!(f_radial, state)
+                    save("$(shape_name)/$(momentum_dir)/$(ks[i])_radially_integrated_momentum_density.png", f_radial)
+                catch e
+                    println("Error plotting or saving radially integrated momentum density for ks[", i, "]: ", e)
+                end
+            end
+
+            if save_angular
+                try
+                    plot_angularly_integrated_density!(f_angular, state)
+                    save("$(shape_name)/$(momentum_dir)/$(ks[i])_angularly_integrated_momentum_density.png", f_angular)
+                catch e
+                    println("Error plotting or saving angularly integrated momentum density for ks[", i, "]: ", e)
+                end
+            end
+
+        catch e
+            if isa(e, MethodError)
+                println("Skipping due to error in computing eigenstate for ks[", i, "]: ", e)
+                continue
+            else
+                rethrow(e)
+            end
+        end
+    end
+end
 
 
 
