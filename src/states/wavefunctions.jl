@@ -6,7 +6,7 @@ using StaticArrays
 
 
 
-
+## NEW ##
 
 
 function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
@@ -60,9 +60,6 @@ function is_point_in_polygon(polygon::Vector{SVector{2,T}}, point::SVector{2,T})
 end
 
 
-
-
-
 function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
     # Get the polygon points from the billiard boundary
     polygon_xy_vectors = billiard_polygon(billiard, N_polygon_checks; fundamental_domain=fundamental_domain)
@@ -73,6 +70,9 @@ function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_p
     end
     return mask
 end
+
+
+## NEW ##
 
 
 
@@ -193,17 +193,21 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
         if ~fundamental_domain 
             if ~isnothing(symmetries)
-                x_axis = 0.0
-                y_axis = 0.0
-                if hasproperty(billiard, :x_axis)
-                    #println(nameof(typeof(billiard)), " has the :x_axis reflection")
-                    x_axis = billiard.x_axis
+                if all([symmetry isa Reflection for symmetry in symmetries])
+                    x_axis = 0.0
+                    y_axis = 0.0
+                    if hasproperty(billiard, :x_axis)
+                        #println(nameof(typeof(billiard)), " has the :x_axis reflection")
+                        x_axis = billiard.x_axis
+                    end
+                    if hasproperty(billiard, :y_axis)
+                        #println(nameof(typeof(billiard)), " has the :y_axis reflection")
+                        y_axis = billiard.y_axis
+                    end
+                    Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
+                else # We have rotation
+                    Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d, x_grid, y_grid, symmetries[1], billiard)
                 end
-                if hasproperty(billiard, :y_axis)
-                    #println(nameof(typeof(billiard)), " has the :y_axis reflection")
-                    y_axis = billiard.y_axis
-                end
-                Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
             end
         end
         return Psi2d, x_grid, y_grid
