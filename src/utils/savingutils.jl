@@ -173,7 +173,7 @@ You can control saving of full or non-full wavefunctions, probability plots, Hus
 - `husimi_dir`: Directory for saving Husimi plots (default `"Husimi"`).
 - `momentum_dir`: Directory for saving momentum plots (default `"Momentum"`).
 """
-function plot_and_save_eigenstate_results!(acc_solver::Sol, basis::Ba, billiard::Bi, ks::Vector, shape_name::String;
+function plot_and_save_eigenstate_results!(acc_solver::Sol, basis::Ba, billiard::Bi, ks, shape_name::String;
     save_wavefunction=true, save_full_wavefunction=true, save_probability=true, 
     save_full_probability=true, save_husimi=true, save_momentum=true, 
     save_radial=true, save_angular=true, 
