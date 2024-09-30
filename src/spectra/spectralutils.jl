@@ -138,6 +138,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 
     # Actual computation using precomputed dk values
     k0 = k1
+    tol = dk_values[1] * tol_eps
     k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk_values[1] + tol)
     control = [false for i in 1:length(k_res)]
 
