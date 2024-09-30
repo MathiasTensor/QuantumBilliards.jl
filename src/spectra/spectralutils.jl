@@ -250,6 +250,123 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 end
 =#
 
+function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; IntervalK::T = T(10.0), fundamental::Bool = true, N_expect::Int = 3) where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
+
+    # Arrays that will contain returned results
+    intervals = T[]
+    ks_final = T[]
+    tens_final = T[]  # Assuming tensors are of type T
+    control_final = Bool[]
+
+    # Helpers for determining the average of fluctuations
+    # Just calculates the N for the smooth part from a given k
+    N_smooth(k) = weyl_law(k, billiard; fundamental = fundamental)
+
+    # Counts the number of levels in an interval [k0, k] for k ∈ ks ⊂ [k0, k1]
+    th_num_diff(k, ks::Vector{T}, k0) = count(_k -> _k < k, ks) - (N_smooth(k) - N_smooth(k0))
+
+    # Averages the level count for all k ∈ ks. The main criterion function
+    avg_sum_diff(ks::Vector{T}, k0) = sum(th_num_diff(k, ks, k0) for k in ks) / length(ks)
+
+    # Helpers for the limits of the while loop that modifies the threshold dk
+    dk_smallest_func(k; fundamental = true) = begin
+        denom = fundamental ?
+            (billiard.area_fundamental * k) / (2π) - (billiard.length_fundamental) / (4π) :
+            (billiard.area * k) / (2π) - (billiard.length) / (4π)
+        0.5 * N_expect / denom
+    end
+
+    dk_largest_func(k; fundamental = true) = begin
+        denom = fundamental ?
+            (billiard.area_fundamental * k) / (2π) - (billiard.length_fundamental) / (4π) :
+            (billiard.area * k) / (2π) - (billiard.length) / (4π)
+        2.0 * N_expect / denom
+    end
+
+    # Helper for inner callback -> Iteratively checks whether we are losing or gaining levels based on the previous result
+    function spectrum_inner_call(k_start, k_end, dk_threshold_initial)
+        dk_threshold = dk_threshold_initial
+        dk_smallest = dk_smallest_func(k_end; fundamental = fundamental)
+        dk_largest = dk_largest_func(k_start; fundamental = fundamental)
+        iteration = 0
+        max_iterations = 20  # Prevent infinite loops
+        @info "Processing interval [$(k_start), $(k_end)] with initial dk_threshold=$(dk_threshold_initial)"
+        while true
+            iteration += 1
+            if iteration > max_iterations
+                @warn "Maximum iterations reached in interval [$(k_start), $(k_end)]. Accepting current results."
+                break
+            end
+            # Compute the spectrum in the interval [k_start, k_end]
+            k_res, tens, control = compute_spectrum(solver, basis, billiard, k_start, k_end; dk_threshold = dk_threshold, fundamental = fundamental)
+            # Crop the k_res so that we do not have edge outer levels
+            valid_indices = findall(x -> x >= k_start && x <= k_end, k_res)
+            if isempty(valid_indices)
+                @warn "No valid levels found in interval [$(k_start), $(k_end)] with dk_threshold=$(dk_threshold)."
+                return T[], T[], Bool[], dk_threshold  # Return empty if no valid indices
+            end
+            # Extract valid results
+            k_res = k_res[valid_indices]
+            tens = tens[valid_indices]
+            control = control[valid_indices]
+            # Adjust dk_threshold based on average difference
+            diff = avg_sum_diff(k_res, k_start)
+            @info "Iteration $(iteration): dk_threshold=$(dk_threshold), avg_diff=$(diff), levels_found=$(length(k_res))"
+            if diff > 1.0 && dk_threshold > dk_smallest
+                dk_threshold_old = dk_threshold
+                dk_threshold *= 0.9  # We have too many levels, decrease dk
+                @debug "Decreasing dk_threshold from $(dk_threshold_old) to $(dk_threshold) (too many levels)"
+            elseif diff < -1.0 && dk_threshold < dk_largest
+                dk_threshold_old = dk_threshold
+                dk_threshold *= 1.1  # We are losing levels, increase dk
+                @debug "Increasing dk_threshold from $(dk_threshold_old) to $(dk_threshold) (missing levels)"
+            else
+                # We are within ±1 or have reached the smallest/largest sensible dk
+                if dk_threshold < dk_smallest
+                    @warn "dk_threshold ($(dk_threshold)) is smaller than the smallest allowed dk ($(dk_smallest)) for N_expect = $(N_expect)"
+                elseif dk_threshold > dk_largest
+                    @warn "dk_threshold ($(dk_threshold)) is larger than the largest allowed dk ($(dk_largest)) for N_expect = $(N_expect)"
+                end
+                @info "Accepting results for interval [$(k_start), $(k_end)] after $(iteration) iterations."
+                return k_res, tens, control, dk_threshold  # Final result
+            end
+        end
+
+        # Return results if maximum iterations reached
+        return k_res, tens, control, dk_threshold
+    end
+    # End of helper functions
+    # Fill the intervals with increments by IntervalK
+    intervals = [k1]
+    k_run = k1
+    while k_run < k2
+        k_run += IntervalK
+        if k_run >= k2
+            intervals = [intervals; k2]  # Only the last one goes here
+            break
+        else
+            intervals = [intervals; k_run]
+        end
+    end
+    total_intervals = length(intervals) - 1
+    @info "Total intervals to process: $(total_intervals)"
+    for i in 1:total_intervals
+        k_start = intervals[i]
+        k_end = intervals[i + 1]
+        # Some sensible starting dk_threshold
+        dk_threshold_initial = 0.05
+        # Log the start of processing for this interval
+        @info "Starting interval $(i)/$(total_intervals): [$(k_start), $(k_end)]"
+        k_res, tens, control, final_dk_threshold = spectrum_inner_call(k_start, k_end, dk_threshold_initial)
+        append!(ks_final, k_res)
+        append!(tens_final, tens)
+        append!(control_final, control)
+        @info "Finished interval $(i): levels_found=$(length(k_res)), final_dk_threshold=$(final_dk_threshold)"
+    end
+    @info "Spectrum computation completed. Total levels found: $(length(ks_final))"
+    return ks_final, tens_final, control_final
+end
+
 struct SpectralData{T} 
     k::Vector{T}
     ten::Vector{T}
