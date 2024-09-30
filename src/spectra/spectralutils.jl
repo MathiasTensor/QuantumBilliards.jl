@@ -1,6 +1,6 @@
 #include("../abstracttypes.jl")
 
-using ProgressMeter
+using ProgressMeter, LoggingExtras
 
 function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
     # Define the intervals
@@ -250,7 +250,13 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 end
 =#
 
-function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; IntervalK::T = T(10.0), fundamental::Bool = true, N_expect::Int = 3) where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
+function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; IntervalK::T = T(10.0), fundamental::Bool = true, N_expect::Int = 3, log_file::String = "compute_spectrum_log.txt") where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
+
+    # Set up the file logger
+    logfile = open(log_file, "w")
+    file_logger = LoggingExtras.SimpleLogger(logfile, Logging.Info)
+    # Use the file logger only
+    global_logger(file_logger)
 
     # Arrays that will contain returned results
     intervals = T[]
@@ -393,6 +399,7 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
         @info "Finished interval $(i): levels_found=$(length(k_res)), final_dk_threshold=$(final_dk_threshold)"
     end
     @info "Spectrum computation completed. Total levels found: $(length(ks_final))"
+    close(logfile) # close the logger
     return ks_final, tens_final, control_final
 end
 
