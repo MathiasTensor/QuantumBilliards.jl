@@ -85,10 +85,10 @@ end
 function weyl_law(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
     A = fundamental ? billiard.area_fundamental : billiard.area
     L = fundamental ? billiard.length_fundamental : billiard.length
-    N_ks = (A * k^2 - L * ks)/(4π)
-    N_ks += corner_correction(billiard; fundamental=fundamental)
-    N_ks += curvature_correction(billiard; fundamental=fundamental)
-    return N_ks
+    N_k = (A * k^2 - L * k)/(4π)
+    N_k += corner_correction(billiard; fundamental=fundamental)
+    N_k += curvature_correction(billiard; fundamental=fundamental)
+    return N_k
 end
 
 """
