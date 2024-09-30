@@ -290,28 +290,57 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
         dk_largest = dk_largest_func(k_start; fundamental = fundamental)
         iteration = 0
         max_iterations = 20  # Prevent infinite loops
+    
         @info "Processing interval [$(k_start), $(k_end)] with initial dk_threshold=$(dk_threshold_initial)"
+    
+        # Initialize variables to store the last computed results
+        k_res = T[]  # Ensure these are initialized with the correct type
+        tens = T[]
+        control = Bool[]
+        diff = Inf  # Initialize diff to a large value
+    
         while true
             iteration += 1
             if iteration > max_iterations
-                @warn "Maximum iterations reached in interval [$(k_start), $(k_end)]. Accepting current results."
+                @warn "Maximum iterations reached in interval [$(k_start), $(k_end)]. Accepting last computed results."
                 break
             end
+    
             # Compute the spectrum in the interval [k_start, k_end]
-            k_res, tens, control = compute_spectrum(solver, basis, billiard, k_start, k_end; dk_threshold = dk_threshold, fundamental = fundamental)
+            k_res_current, tens_current, control_current = compute_spectrum(
+                solver,
+                basis,
+                billiard,
+                k_start,
+                k_end;
+                dk_threshold = dk_threshold,
+                fundamental = fundamental
+            )
+    
             # Crop the k_res so that we do not have edge outer levels
-            valid_indices = findall(x -> x >= k_start && x <= k_end, k_res)
+            valid_indices = findall(x -> x >= k_start && x <= k_end, k_res_current)
             if isempty(valid_indices)
                 @warn "No valid levels found in interval [$(k_start), $(k_end)] with dk_threshold=$(dk_threshold)."
-                return T[], T[], Bool[], dk_threshold  # Return empty if no valid indices
+                # If no valid levels are found, we may choose to continue to the next iteration or break
+                # For now, we'll continue to the next iteration
+                continue
             end
+    
             # Extract valid results
-            k_res = k_res[valid_indices]
-            tens = tens[valid_indices]
-            control = control[valid_indices]
+            k_res_current = k_res_current[valid_indices]
+            tens_current = tens_current[valid_indices]
+            control_current = control_current[valid_indices]
+    
             # Adjust dk_threshold based on average difference
-            diff = avg_sum_diff(k_res, k_start)
-            @info "Iteration $(iteration): dk_threshold=$(dk_threshold), avg_diff=$(diff), levels_found=$(length(k_res))"
+            diff = avg_sum_diff(k_res_current, k_start)
+    
+            @info "Iteration $(iteration): dk_threshold=$(dk_threshold), avg_diff=$(diff), levels_found=$(length(k_res_current))"
+    
+            # Store the current results as the last computed results
+            k_res = k_res_current
+            tens = tens_current
+            control = control_current
+    
             if diff > 1.0 && dk_threshold > dk_smallest
                 dk_threshold_old = dk_threshold
                 dk_threshold *= 0.9  # We have too many levels, decrease dk
@@ -331,8 +360,8 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
                 return k_res, tens, control, dk_threshold  # Final result
             end
         end
-
-        # Return results if maximum iterations reached
+    
+        # Return the last computed results if maximum iterations reached
         return k_res, tens, control, dk_threshold
     end
     # End of helper functions
