@@ -196,7 +196,7 @@ function plot_and_save_eigenstate_results!(acc_solver::Sol, basis::Ba, billiard:
         end
     end
 
-    Threads.@threads for i in eachindex(ks)
+    for i in eachindex(ks)
         println("Saving results for wavenumber index: ", i)
         
         f_probability = Figure()
