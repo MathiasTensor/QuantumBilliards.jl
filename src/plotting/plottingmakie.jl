@@ -422,3 +422,28 @@ function plot_momentum_representation_polar!(f::Figure, state::S; b::Float64=5.0
     CairoMakie.heatmap!(ax, mom_values, colormap=:viridis)
     ax.title = "Momentum density - polar"
 end
+
+
+
+
+function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64=5.0, grid_size::Int=256) where {S<:AbsState}
+    # Obtain the momentum representation function and wavenumber k
+    mom = momentum_representation_of_state(state; b=b)
+    u_values, pts, k = setup_momentum_density(state; b=b)
+    k_max = 1.2 * k
+    kx_values = Float32.(collect(range(-k_max, k_max, length=grid_size)))
+    ky_values = Float32.(collect(range(-k_max, k_max, length=grid_size)))
+    momentum_matrix = zeros(Float32, grid_size, grid_size)
+    Threads.@threads for i in 1:grid_size
+        for j in 1:grid_size
+            kx = kx_values[i]
+            ky = ky_values[j]
+            p = SVector{2, Float64}(kx, ky)
+            mom_p = mom(p)
+            momentum_matrix[i, j] = abs2(mom_p)
+        end
+    end
+    ax = Axis(f[1,1], aspect=DataAspect())
+    hmap = heatmap!(ax, kx_values, ky_values, momentum_matrix, colormap=Reverse(:gist_heat), aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "|Ψ(p)|²")
+    Colorbar(f[1,2], hmap)
+end
