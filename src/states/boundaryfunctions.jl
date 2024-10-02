@@ -305,7 +305,7 @@ end
 
 
 
-function plot_momentum_representation(ax::Axis, state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
+function plot_momentum_cartesian_representation!(ax::Axis, state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
     # Obtain the momentum representation function and wavenumber k
     mom = momentum_representation_of_state(state; b=b)
     u_values, pts, k = setup_momentum_density(state; b=b)
