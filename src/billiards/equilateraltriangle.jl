@@ -128,8 +128,8 @@ Constructs an equilateral triangle billiard with specified h.
 - An instance of the `EquilateralTriangleBilliard` struct.
 """
 function EquilateralTriangleBilliard(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) where {T<:Real}
-    fundamental_boundary, corners = make_fundamental_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
-    full_boundary, _ = make_full_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
+    fundamental_boundary, corners = make_fundamental_equilateral_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
+    full_boundary, _ = make_full_equilateral_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
 
     side_length = sum([line.length for line in fundamental_boundary if line isa LineSegment]) # from the real one extract the length of the side
     # Calculate area and lengths
