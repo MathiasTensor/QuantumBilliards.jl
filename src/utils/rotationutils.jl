@@ -31,7 +31,6 @@ function get_virtual_line_segment_as_vectors(billiard::Bi; center::SVector{2, Fl
             end
         end
     end
-    println("Got virtual line segments from billiard")
     return origin_vl_segments
 end
 
@@ -56,7 +55,6 @@ function compute_vector_angles(vectors::Vector{SVector{2,T}}) where {T<:Real}
         end
         push!(vector_angles, θ)
     end
-    println("Vector angles computed")
     return vector_angles
 end
 
@@ -74,7 +72,6 @@ Sorts a vector of angles in ascending order.
 function sorted_vector_angles(vector_angles::Vector{T}) where T<:Real
     sorted_angles = sort(vector_angles)
     return sorted_angles
-    println("Angles sorted")
 end
 
 """
@@ -119,7 +116,6 @@ function get_fundamental_area_indices(x_grid::Vector{T}, y_grid::Vector{T}, bill
             push!(fund_indices, idx)
         end
     end
-    println("fundamental area with indexes finished succsefully")
     return fund_indices, coords_flat, indices_flat
     end
     
@@ -164,11 +160,24 @@ function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, b
         rotated_Psi = fund_Psi
         # Append to full_coords and full_Psi
         append!(full_coords, rotated_coords)
-        append!(full_Psi, rotated_Psi)
+        append!(full_Psi, rotated_Psi) # ordering should be imporant here, perhaps use indexed threads ?
     end
-    println("full area finised succesfully")
     return full_coords, full_Psi
 end
+
+# helper for cropping the final x and y grids with the Psi matrix
+function crop_grid_with_full_boundary(Psi::Matrix{T}, x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    xy_vec = billiard_polygon(billiard, 500; fundamental_domain=false)
+    x_min, x_max = extrema([xy[1] for xy in xy_vec])
+    y_min, y_max = extrema([xy[2] for xy in xy_vec])
+    x_in_bounds = (x_min .<= x_grid) .& (x_grid .<= x_max)
+    y_in_bounds = (y_min .<= y_grid) .& (y_grid .<= y_max)
+    cropped_x_grid = x_grid[x_in_bounds]
+    cropped_y_grid = y_grid[y_in_bounds]
+    cropped_Psi = Psi[x_in_bounds, y_in_bounds]
+    return cropped_x_grid, cropped_y_grid, cropped_Psi
+end
+
 
 """
 get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0), grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard}
@@ -237,6 +246,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
             end
         end
     end
-    println("full area with manual binning finisheed succsefully")
-    return new_x_grid, new_y_grid, new_Psi_grid
+    #return new_x_grid, new_y_grid, new_Psi_grid
+    return crop_grid_with_full_boundary(new_Psi_grid, new_x_grid, new_y_grid, billiard)
 end
+
