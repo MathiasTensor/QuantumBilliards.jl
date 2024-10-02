@@ -222,13 +222,8 @@ function plot_and_save_eigenstate_results!(acc_solver::Sol, basis::Ba, billiard:
             end
 
             if save_full_probability
-                try
-                    plot_probability!(f_probability_full, state, inside_only=true, fundamental_domain=false)
-                    save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_probability_full.png", f_probability_full)
-                catch e
-                    println("Error plotting or saving full probability for ks[", i, "]: ", e)
-                    println(stacktrace(e))
-                end
+                plot_probability!(f_probability_full, state, inside_only=true, fundamental_domain=false)
+                save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_probability_full.png", f_probability_full)
             end
 
             # Save wavefunction plots
@@ -242,13 +237,8 @@ function plot_and_save_eigenstate_results!(acc_solver::Sol, basis::Ba, billiard:
             end
 
             if save_full_wavefunction
-                try
-                    plot_wavefunction!(f_wavefunction_full, state, inside_only=true, fundamental_domain=false)
-                    save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_wavefunction_full.png", f_wavefunction_full)
-                catch e
-                    println("Error plotting or saving full wavefunction for ks[", i, "]: ", e)
-                    println(stacktrace(e))
-                end
+                plot_wavefunction!(f_wavefunction_full, state, inside_only=true, fundamental_domain=false)
+                save("$(shape_name)/$(wavefunction_dir)/$(ks[i])_wavefunction_full.png", f_wavefunction_full)
             end
 
             # Save Husimi plot
