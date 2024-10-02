@@ -99,7 +99,7 @@ function rotate_wavefunction(Psi_grid::Matrix, x_grid::Vector{T}, y_grid::Vector
     let n = rotation.n, m = rotation.parity
         println("We have made it inside rotate_Wavefunction")
         new_x_grid, new_y_grid, new_Psi_grid = get_full_area_with_manual_binning(x_grid, y_grid, Psi_grid, billiard, n, m; center=center, grid_size=grid_size)
-        return real.(new_Psi_grid), new_x_grid, new_y_grid # hackfix get only the real part of the wavefunction otherwise error
+        return new_Psi_grid, new_x_grid, new_y_grid 
     end
 end
 

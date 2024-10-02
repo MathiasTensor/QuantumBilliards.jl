@@ -166,7 +166,7 @@ function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, b
         append!(full_Psi, rotated_Psi)
     end
     println("full area finised succesfully")
-    return full_coords, full_Psi
+    return full_coords, real(full_Psi)
 end
 
 """
@@ -204,7 +204,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
     new_y_grid = collect(range(y_min, stop=y_max, length=grid_size))
 
     # Initialize the new Psi grid and count grid (for averaging)
-    new_Psi_grid = Matrix{Complex{T}}(zeros(Complex{T}, length(new_x_grid), length(new_y_grid)))
+    new_Psi_grid = Matrix{T}(zeros(T, length(new_x_grid), length(new_y_grid)))
     count_grid = Matrix{Int}(zeros(Int, length(new_x_grid), length(new_y_grid)))
     # To track region for each cell
     region_grid = Matrix{Int}(zeros(Int, length(new_x_grid), length(new_y_grid)))
@@ -232,7 +232,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
             if count_grid[i, j] > 0
                 new_Psi_grid[i, j] /= count_grid[i, j]
             else
-                new_Psi_grid[i, j] = 0.0 + im * 0.0  # Assign 0 if no coordinates fall into the cell
+                new_Psi_grid[i, j] = 0.0  # Assign 0 if no coordinates fall into the cell
             end
         end
     end
