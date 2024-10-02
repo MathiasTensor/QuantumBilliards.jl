@@ -114,12 +114,12 @@ struct EquilateralTriangleBilliard{T} <: AbsBilliard where {T<:Real}
 end
 
 """
-    TriangleBilliard(side_length; x0=0.0, y0=0.0, rot_angle=0.0)
+    TriangleBilliard(h; x0=0.0, y0=0.0, rot_angle=0.0)
 
-Constructs an equilateral triangle billiard with specified side length.
+Constructs an equilateral triangle billiard with specified h.
 
 # Arguments
-- `side_length::T`: The length of each side of the triangle.
+- `h::T`: The height of the triangle from the center.
 - `x0::T=0.0`: The x-coordinate of the center of the triangle.
 - `y0::T=0.0`: The y-coordinate of the center of the triangle.
 - `rot_angle::T=0.0`: The rotation angle of the billiard table.
@@ -131,8 +131,7 @@ function EquilateralTriangleBilliard(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.
     fundamental_boundary, corners = make_fundamental_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, _ = make_full_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
 
-    side_length = sum([lines.length for lines in fundamental_boundary if lines isa LineSegment]) # from the real one extract the length of the side
-
+    side_length = sum([line.length for line in fundamental_boundary if line isa LineSegment]) # from the real one extract the length of the side
     # Calculate area and lengths
     area = (sqrt(3) / 4) * side_length^2
     area_fundamental = area / 3  # Fundamental domain is 1/3 of the full triangle
@@ -158,13 +157,13 @@ function EquilateralTriangleBilliard(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.
 end
 
 """
-    make_equilateral_triangle_and_basis(side_length; x0=0.0, y0=0.0, rot_angle=0.0) 
+    make_equilateral_triangle_and_basis(h; x0=0.0, y0=0.0, rot_angle=0.0) 
     :: Tuple{EquilateralTriangleBilliard, CornerAdaptedFourierBessel} where {T<:Real}
 
-Constructs an equilateral triangle billiard and a symmetry-adapted basis of real plane waves.
+Constructs an equilateral triangle billiard and a symmetry-adapted CornerAdaptedFourierBessel basis.
 
 # Arguments
-- `side_length`: Side length of the triangle.
+- `h`: The height of the triangle from the center.
 - `x0`: x-coordinate of the center (default = 0.0).
 - `y0`: y-coordinate of the center (default = 0.0).
 - `rot_angle`: Rotation angle of the coordinate system (default = 0.0).
@@ -172,8 +171,8 @@ Constructs an equilateral triangle billiard and a symmetry-adapted basis of real
 # Returns
 - A tuple with the triangle billiard and the basis of real plane waves.
 """
-function make_equilateral_triangle_and_basis(side_length::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) :: Tuple{EquilateralTriangleBilliard, CornerAdaptedFourierBessel} where {T<:Real}
-    triangle = EquilateralTriangleBilliard(side_length; x0=x0, y0=y0, rot_angle=rot_angle)
+function make_equilateral_triangle_and_basis(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) :: Tuple{EquilateralTriangleBilliard, CornerAdaptedFourierBessel} where {T<:Real}
+    triangle = EquilateralTriangleBilliard(h; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([Rotation(3, 3)])  # C3 rotational symmetry
     basis = CornerAdaptedFourierBessel(10, 2*pi/3, SVector(zero(T), zero(T)), 0.0, symmetry) # just the origin, rotation angle and symmetry for correct rotations
     return triangle, basis
