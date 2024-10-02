@@ -76,7 +76,7 @@ function make_full_equilateral_triangle(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T
     side2 = LineSegment(corners[2], corners[3]; origin=origin, rot_angle=rot_angle)
     side3 = LineSegment(corners[3], corners[1]; origin=origin, rot_angle=rot_angle)
 
-    boundary = Vector{LineSegment{T}}[
+    boundary = LineSegment{T}[
         side1, side2, side3
     ]
 
