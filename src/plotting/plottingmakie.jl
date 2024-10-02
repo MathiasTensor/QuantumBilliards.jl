@@ -457,5 +457,5 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     θ_vals = range(0, stop=2π, length=200)
     circle_x = k * cos.(θ_vals)
     circle_y = k * sin.(θ_vals)
-    lines!(ax, circle_x, circle_y, color=:green, linewidth=2)
+    lines!(ax, circle_x, circle_y, color=:green, linewidth=0.5)
 end
