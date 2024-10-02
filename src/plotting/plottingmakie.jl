@@ -452,4 +452,10 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     ax = Axis(f[1,1], aspect=DataAspect())
     hmap = heatmap!(ax, kx_values, ky_values, momentum_matrix, colormap=Reverse(:gist_heat), aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "|Ψ(p)|²")
     Colorbar(f[1,2], hmap)
+
+    # Add the green circle with radius k
+    θ_vals = range(0, stop=2π, length=200)
+    circle_x = k * cos.(θ_vals)
+    circle_y = k * sin.(θ_vals)
+    lines!(ax, circle_x, circle_y, color=:green, linewidth=2)
 end
