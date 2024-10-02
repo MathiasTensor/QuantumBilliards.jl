@@ -97,6 +97,7 @@ end
 
 function rotate_wavefunction(Psi_grid::Matrix{Complex{T}}, x_grid::Vector{T}, y_grid::Vector{T}, rotation::Rotation, billiard::Bi; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard}
     let n = rotation.n, m = rotation.parity
+        println("We have made it inside rotate_Wavefunction")
         new_x_grid, new_y_grid, new_Psi_grid = get_full_area_with_manual_binning(x_grid, y_grid, Psi_grid, billiard, n, m; center=center, grid_size=grid_size)
         return new_Psi_grid, new_x_grid, new_y_grid
     end

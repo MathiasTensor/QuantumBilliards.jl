@@ -31,6 +31,7 @@ function get_virtual_line_segment_as_vectors(billiard::Bi; center::SVector{2, Fl
             end
         end
     end
+    println("Got virtual line segments from billiard")
     return origin_vl_segments
 end
 
@@ -55,6 +56,7 @@ function compute_vector_angles(vectors::Vector{SVector{2,T}}) where {T<:Real}
         end
         push!(vector_angles, θ)
     end
+    println("Vector angles computed")
     return vector_angles
 end
 
@@ -72,6 +74,7 @@ Sorts a vector of angles in ascending order.
 function sorted_vector_angles(vector_angles::Vector{T}) where T<:Real
     sorted_angles = sort(vector_angles)
     return sorted_angles
+    println("Angles sorted")
 end
 
 """
@@ -116,6 +119,7 @@ function get_fundamental_area_indices(x_grid::Vector{T}, y_grid::Vector{T}, bill
             push!(fund_indices, idx)
         end
     end
+    println("fundamental area with indexes finished succsefully")
     return fund_indices, coords_flat, indices_flat
     end
     
@@ -161,6 +165,7 @@ function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Co
         append!(full_coords, rotated_coords)
         append!(full_Psi, rotated_Psi)
     end
+    println("full area finised succesfully")
     return full_coords, full_Psi
 end
 
@@ -186,7 +191,7 @@ Generates a rectangular grid over the billiard area and computes the averaged Ps
 - `new_Psi_grid`: The matrix of averaged Psi values.
 """
 function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard} # grid_size should be less than length of full grid or we get wrong empty pixels
-
+    
     # Get the original full_coords and full_Psi
     full_coords, full_Psi = get_full_area(x_grid, y_grid, Psi_grid, billiard, n, m; center=center)
     
@@ -231,6 +236,6 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
             end
         end
     end
-
+    println("full area with manual binning finisheed succsefully")
     return new_x_grid, new_y_grid, new_Psi_grid
 end
