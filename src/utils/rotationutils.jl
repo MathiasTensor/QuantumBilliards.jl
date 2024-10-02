@@ -131,7 +131,7 @@ Generates the full set of coordinates and Psi values for the entire billiard by 
 # Arguments
 - `x_grid::Vector{T}`: The grid of x-coordinates.
 - `y_grid::Vector{T}`: The grid of y-coordinates.
-- `Psi_grid::Matrix{Complex{T}}`: The matrix of Psi values.
+- `Psi_grid::Matrix`: The matrix of Psi values.
 - `billiard::Bi`: The billiard object, where `Bi` is a subtype of `AbsBilliard`.
 - `n::Int`: The number of times to rotate the fundamental area.
 - `m::Int`: The mode number for the phase factor.
@@ -142,7 +142,7 @@ Generates the full set of coordinates and Psi values for the entire billiard by 
   - `full_coords`: The full set of rotated coordinates.
   - `full_Psi`: The corresponding Psi values.
 """
-function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
+function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, billiard::Bi, n::Int, m::Int; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
     # Get the indices and coordinates of the fundamental area
     fund_indices, coords_flat, indices_flat = get_fundamental_area_indices(x_grid, y_grid, billiard; center=center)
     # Extract fundamental area points and associated values
@@ -177,7 +177,7 @@ Generates a rectangular grid over the billiard area and computes the averaged Ps
 # Arguments
 - `x_grid::Vector{T}`: The grid of x-coordinates.
 - `y_grid::Vector{T}`: The grid of y-coordinates.
-- `Psi_grid::Matrix{Complex{T}}`: The matrix of Psi values.
+- `Psi_grid::Matrix`: The matrix of Psi values.
 - `billiard::Bi`: The billiard object, where `Bi` is a subtype of `AbsBilliard`.
 - `n::Int`: The number of times to rotate the fundamental area.
 - `m::Int`: The mode number for the phase factor.
@@ -190,7 +190,7 @@ Generates a rectangular grid over the billiard area and computes the averaged Ps
 - `new_y_grid`: The newly generated y-coordinates of the rectangular grid.
 - `new_Psi_grid`: The matrix of averaged Psi values.
 """
-function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard} # grid_size should be less than length of full grid or we get wrong empty pixels
+function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, billiard::Bi, n::Int, m::Int; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard} # grid_size should be less than length of full grid or we get wrong empty pixels
     
     # Get the original full_coords and full_Psi
     full_coords, full_Psi = get_full_area(x_grid, y_grid, Psi_grid, billiard, n, m; center=center)
