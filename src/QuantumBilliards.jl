@@ -53,6 +53,7 @@ include("billiards/robnik.jl")
 include("billiards/prosen.jl")
 include("billiards/mushroom.jl")
 include("billiards/rectangle.jl")
+include("billiards/equilateraltriangle.jl")
 export adapt_basis
 #include("limacon.jl")
 #include("rectangle.jl")
