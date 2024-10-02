@@ -120,7 +120,7 @@ function get_fundamental_area_indices(x_grid::Vector{T}, y_grid::Vector{T}, bill
     end
     
 """
-get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
+get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
 
 Generates the full set of coordinates and Psi values for the entire billiard by rotating the fundamental area `n` times and applying parity phase factor.
 
@@ -181,7 +181,7 @@ end
 
 
 """
-get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0), grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard}
+get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0), grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard}
 
 Generates a rectangular grid over the billiard area and computes the averaged Psi values for each cell. Ensures that no two regions overlap within a single cell. Optionally, the grid size can be specified.
 

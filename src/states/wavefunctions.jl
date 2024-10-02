@@ -215,7 +215,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                         center = SVector{2, Float64}(billiard.center)
                     end
                     println("matrix type of Psi2d", typeof(Psi2d))
-                    Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d,x_grid,y_grid,symmetries[1], billiard) # removed center, add after debugging
+                    Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d,x_grid,y_grid,symmetries[1], billiard; center=center)
                 else
                     @error "Do not mix Reflections with Rotations"
                 end
