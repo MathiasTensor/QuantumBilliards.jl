@@ -170,13 +170,13 @@ function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function 
         
         if abs(p_squared - k_squared) > sqrt(eps(T))
             # Far from energy shell
-            Threads.@threads for i in 1:num_points
+            for i in 1:num_points
                 local_sum += u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]))
             end
             return 1/(p_squared - k_squared) * (1/(2*pi)) * local_sum
         else
-            # Near energy shell, use approximation
-            Threads.@threads for i in 1:num_points
+            # Near energy shell, use approximation by Backer
+            for i in 1:num_points
                 phase_term = pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]
                 local_sum += u_values[i] * exp(im*phase_term) * phase_term
             end

@@ -434,7 +434,7 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     kx_values = Float32.(collect(range(-k_max, k_max, length=grid_size)))
     ky_values = Float32.(collect(range(-k_max, k_max, length=grid_size)))
     momentum_matrix = zeros(Float32, grid_size, grid_size)
-    Threads.@threads for i in 1:grid_size
+    for i in 1:grid_size
         for j in 1:grid_size
             kx = kx_values[i]
             ky = ky_values[j]
@@ -444,7 +444,7 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
         end
     end
     largest_val = maximum(momentum_matrix)
-    Threads.@threads for i in 1:length(grid_size)
+    for i in 1:length(grid_size)
         for j in 1:length(grid_size)
             momentum_matrix[i, j] /= largest_val
         end 
