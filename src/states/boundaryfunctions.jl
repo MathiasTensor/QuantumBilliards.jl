@@ -270,7 +270,22 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     num_points = length(pts_coords)
     function R_r(r)
         if abs(r - sqrt(k_squared)) < epsilon
-            return 0.0 # this needs a modifed version of the below commented function aka higher derivatives of R to get rid of singularity
+            # This just uses Backer's first approximation to the R(r) at the wavefunctions's k value
+            R_r_array = zeros(T, Threads.nthreads())
+            Threads.@threads for i in 1:num_points
+                thread_id = Threads.threadid()
+                R_r_i = zero(T)
+                for j in 1:num_points
+                    delta_x = pts_coords[i][1] - pts_coords[j][1]
+                    delta_y = pts_coords[i][2] - pts_coords[j][2]
+                    distance = hypot(delta_x, delta_y)
+                    J0_value = Bessels.besselj(0, distance * r)
+                    J2_value = Bessels.besselj(2, distance * r)
+                    R_r_i += u_values[i] * u_values[j] * distance^2 * 0.5 * (J2_value - J0_value)
+                end
+                R_r_array[thread_id] += R_r_i
+            end
+        return 1/(16*pi*k) * sum(R_r_array)
         end
         R_r_array = zeros(T, Threads.nthreads())
         Threads.@threads for i in 1:num_points
