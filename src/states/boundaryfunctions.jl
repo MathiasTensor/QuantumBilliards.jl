@@ -162,20 +162,25 @@ function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function 
     T = eltype(u_values)
     pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
     num_points = length(pts_coords)
-    function mom(p::SVector) # p = (px,py)
-        mom_array = zeros(Complex{T}, Threads.nthreads())
-        if abs(norm(p)^2 - k^2) > sqrt(eps(T))
+    
+    function mom(p::SVector) # p = (px, py)
+        local_sum = zero(Complex{T})
+        k_squared = k^2
+        p_squared = norm(p)^2
+        
+        if abs(p_squared - k_squared) > sqrt(eps(T))
+            # Far from energy shell
             Threads.@threads for i in 1:num_points
-                thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
-                mom_array[thread_id] = u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]))
+                local_sum += u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]))
             end
-            return 1/(norm(p)^2 - k^2)*(1/(2*pi))*sum(mom_array)
-        else # use Backer's first order approximation to Ψ(p)
+            return 1/(p_squared - k_squared) * (1/(2*pi)) * local_sum
+        else
+            # Near energy shell, use approximation
             Threads.@threads for i in 1:num_points
-                thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
-                mom_array[thread_id] = u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])) * (pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])
+                phase_term = pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]
+                local_sum += u_values[i] * exp(im*phase_term) * phase_term
             end
-            return -im/(4*pi*k^2)*sum(mom_array)
+            return -im/(4*pi*k_squared) * local_sum
         end
     end
     return mom
