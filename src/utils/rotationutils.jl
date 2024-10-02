@@ -171,8 +171,8 @@ function crop_grid_with_full_boundary(Psi::Matrix{T}, x_grid::Vector{T}, y_grid:
     println(xy_vec)
     x_min, x_max = extrema([xy[1] for xy in xy_vec])
     y_min, y_max = extrema([xy[2] for xy in xy_vec])
-    println("x_min, x_max", x_min, x_max)
-    println("y_min, y_max", y_min, y_max)
+    println("x_min, x_max: ", x_min, ", ", x_max)
+    println("y_min, y_max: ", y_min, ", ", y_max)
     x_in_bounds = (x_min[1] .<= x_grid) .& (x_grid .<= x_max[1])
     y_in_bounds = (y_min[1] .<= y_grid) .& (y_grid .<= y_max[1])
     cropped_x_grid = x_grid[x_in_bounds]
