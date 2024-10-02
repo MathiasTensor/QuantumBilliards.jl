@@ -305,7 +305,7 @@ end
 
 
 
-function plot_momentum_representation(state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
+function plot_momentum_representation(ax::Axis, state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
     # Obtain the momentum representation function and wavenumber k
     mom = momentum_representation_of_state(state; b=b)
     u_values, pts, k = setup_momentum_density(state; b=b)
@@ -322,5 +322,5 @@ function plot_momentum_representation(state::S; b::Float64=5.0, grid_size::Int=5
             momentum_matrix[i, j] = abs2(mom_p)
         end
     end
-    heatmap(kx_values, ky_values, momentum_matrix', aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "Momentum Cartesian Representation", colorbar_title = "|Ψ(p)|²")
+    heatmap(ax, kx_values, ky_values, momentum_matrix', aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "|Ψ(p)|²")
 end
