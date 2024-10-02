@@ -167,7 +167,7 @@ end
 
 # helper for cropping the final x and y grids with the Psi matrix
 function crop_grid_with_full_boundary(Psi::Matrix{T}, x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    xy_vec = billiard_polygon(billiard, 500; fundamental_domain=false)
+    xy_vec = billiard_polygon(billiard, 256; fundamental_domain=false)
     x_min, x_max = extrema([xy[1] for xy in xy_vec])
     y_min, y_max = extrema([xy[2] for xy in xy_vec])
     println("x_min, x_max", x_min, x_max)
