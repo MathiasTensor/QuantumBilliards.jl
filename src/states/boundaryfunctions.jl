@@ -171,11 +171,12 @@ function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function 
             end
             return 1/(norm(p)^2 - k^2)*(1/(2*pi))*sum(mom_array)
         else # use Backer's first order approximation to Ψ(p)
-            Threads.@threads for i in 1:num_points
-                thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
-                mom_array[thread_id] = u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])) * (pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])
-            end
-            return -im/(4*pi*k^2)*sum(mom_array)
+            #Threads.@threads for i in 1:num_points
+            #    thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
+            #    mom_array[thread_id] = u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])) * (pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2])
+            #end
+            #return -im/(4*pi*k^2)*sum(mom_array)
+            return 0.0
         end
     end
     return mom
