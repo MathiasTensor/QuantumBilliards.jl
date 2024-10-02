@@ -153,7 +153,7 @@ function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, b
     full_coords = copy(fund_coords)
     full_Psi = copy(fund_Psi)
     # Rotate the fundamental coordinates and associated values
-    Threads.@threads for i in 1:(n - 1)
+    for i in 1:(n - 1)
         θ = 2 * pi * i / n  # Compute the rotation angle
         R = SMatrix{2, 2, T}([cos(θ) -sin(θ); sin(θ)  cos(θ)])
         # Compute phase factor
@@ -210,7 +210,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
     region_grid = Matrix{Int}(zeros(Int, length(new_x_grid), length(new_y_grid)))
 
     # Iterate over the full coordinates and assign them to cells
-    Threads.@threads for k in eachindex(full_coords)
+    for k in eachindex(full_coords)
         # Find the nearest x and y indices in the rectangular grid
         x_idx = searchsortedfirst(new_x_grid, full_coords[k][1])
         y_idx = searchsortedfirst(new_y_grid, full_coords[k][2])
@@ -227,7 +227,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
     end
 
     # Average the Psi values for each cell
-    Threads.@threads for i in eachindex(new_x_grid)
+    for i in eachindex(new_x_grid)
         for j in 1:length(new_y_grid)
             if count_grid[i, j] > 0
                 new_Psi_grid[i, j] /= count_grid[i, j]
