@@ -206,6 +206,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                     end
                     Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
                 elseif all([sym isa Rotation for sym in symmetries])
+                    println("We have a rotation")
                     if length(symmetries) > 1
                         @error "Only one Rotation symmetry allowed"
                     end
