@@ -170,8 +170,8 @@ function crop_grid_with_full_boundary(Psi::Matrix{T}, x_grid::Vector{T}, y_grid:
     xy_vec = billiard_polygon(billiard, 500; fundamental_domain=false)
     x_min, x_max = extrema([xy[1] for xy in xy_vec])
     y_min, y_max = extrema([xy[2] for xy in xy_vec])
-    x_in_bounds = (x_min .<= x_grid) .& (x_grid .<= x_max)
-    y_in_bounds = (y_min .<= y_grid) .& (y_grid .<= y_max)
+    x_in_bounds = (x_min[1] .<= x_grid) .& (x_grid .<= x_max[1])
+    y_in_bounds = (y_min[1] .<= y_grid) .& (y_grid .<= y_max[1])
     cropped_x_grid = x_grid[x_in_bounds]
     cropped_y_grid = y_grid[y_in_bounds]
     cropped_Psi = Psi[x_in_bounds, y_in_bounds]
