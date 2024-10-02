@@ -424,9 +424,19 @@ function plot_momentum_representation_polar!(f::Figure, state::S; b::Float64=5.0
 end
 
 
+"""
+    plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
 
+Plots the Cartesian momentum representation |Ψ(p)|² of a quantum state `state` on a 2D grid using a heatmap, and overlays a green circle with radius `k` corresponding to the wavenumber of the state.
 
-function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64=5.0, grid_size::Int=256) where {S<:AbsState}
+# Arguments
+- `f::Figure`: The figure object to which the momentum representation plot and heatmap are added.
+- `state::S`: The quantum state of type `S<:AbsState` for which the momentum representation is computed.
+- `b::Float64`: A parameter controlling the resolution of the momentum density function (default = 5.0).
+- `grid_size::Int`: The size of the grid (number of points in each dimension) on which the momentum representation is computed (default = 512).
+
+"""
+function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
     # Obtain the momentum representation function and wavenumber k
     mom = momentum_representation_of_state(state; b=b)
     u_values, pts, k = setup_momentum_density(state; b=b)

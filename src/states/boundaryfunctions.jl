@@ -157,6 +157,19 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
     end
 end
 
+"""
+    momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
+
+Returns a function that computes the momentum representation of a given quantum state `state` for any momentum vector `p`.
+
+# Arguments
+- `state::S`: The quantum state for which the momentum representation is computed. The type `S` is a subtype of `AbsState`.
+- `b::Float64`: A parameter controlling the resolution and width of the momentum density (default = 5.0).
+
+# Returns
+- A function `mom(p::SVector{2, <:Real})` that computes the momentum representation for a momentum vector `p`.
+
+"""
 function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
     u_values, pts, k = setup_momentum_density(state; b)
     T = eltype(u_values)
