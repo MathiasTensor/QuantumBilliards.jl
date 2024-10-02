@@ -322,5 +322,5 @@ function plot_momentum_cartesian_representation!(ax::Axis, state::S; b::Float64=
             momentum_matrix[i, j] = abs2(mom_p)
         end
     end
-    hmap = heatmap!(ax, kx_values, ky_values, momentum_matrix, aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "|Ψ(p)|²")
+    hmap = heatmap!(ax, kx_values, ky_values, momentum_matrix, colormap=Reverse(:gist_heat), aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "|Ψ(p)|²")
 end
