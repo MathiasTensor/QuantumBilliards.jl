@@ -160,13 +160,14 @@ function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix, b
         phase_factor = cis(m * θ)  # e^(i * m * θ)
         # Rotate coordinates and apply phase factor to Psi
         rotated_coords = [R * (coord .- center) .+ center for coord in fund_coords]
-        rotated_Psi = phase_factor .* fund_Psi
+        #rotated_Psi = phase_factor .* fund_Psi
+        rotated_Psi = fund_Psi
         # Append to full_coords and full_Psi
         append!(full_coords, rotated_coords)
         append!(full_Psi, rotated_Psi)
     end
     println("full area finised succesfully")
-    return full_coords, real(full_Psi)
+    return full_coords, full_Psi
 end
 
 """
