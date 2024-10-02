@@ -212,7 +212,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                     end
                     center = SVector{2, Float64}(0.0, 0.0)
                     if hasproperty(billiard, :center)
-                        center = billiard.center
+                        center = SVector{2, Float64}(billiard.center)
                     end
                     Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d,x_grid,y_grid,symmetries[1], billiard; center=center)
                 else
