@@ -211,7 +211,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
     region_grid = Matrix{Int}(zeros(Int, length(new_x_grid), length(new_y_grid)))
 
     # Iterate over the full coordinates and assign them to cells
-    for k in eachindex(full_coords)
+    Threads.@threads for k in eachindex(full_coords)
         # Find the nearest x and y indices in the rectangular grid
         x_idx = searchsortedfirst(new_x_grid, full_coords[k][1])
         y_idx = searchsortedfirst(new_y_grid, full_coords[k][2])
@@ -228,7 +228,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
     end
 
     # Average the Psi values for each cell
-    for i in eachindex(new_x_grid)
+    Threads.@threads for i in eachindex(new_x_grid)
         for j in 1:length(new_y_grid)
             if count_grid[i, j] > 0
                 new_Psi_grid[i, j] /= count_grid[i, j]
