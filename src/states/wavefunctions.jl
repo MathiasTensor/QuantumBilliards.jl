@@ -286,6 +286,80 @@ function compute_psi(state_bundle::S, x_grid, y_grid; inside_only=true, memory_l
     end
 end
 
+# NEW STATE BUNDLE ONE; NEEDS FURTHER TESTING
+function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_domain=true, memory_limit=10.0e9) where {S<:EigenstateBundle}
+    let
+        k = state_bundle.k_basis
+        billiard = state_bundle.billiard
+        symmetries = state_bundle.basis.symmetries
+        T = Float64  # Ensure consistent type
+
+        L = billiard.length
+        xlim, ylim = boundary_limits(
+            billiard.fundamental_boundary;
+            grd=max(1000, round(Int, k * L * b / (2 * pi)))
+        )
+        dx = xlim[2] - xlim[1]
+        dy = ylim[2] - ylim[1]
+        nx = max(round(Int, k * dx * b / (2 * pi)), 512)
+        ny = max(round(Int, k * dy * b / (2 * pi)), 512)
+        x_grid::Vector{T} = collect(range(xlim..., nx))
+        y_grid::Vector{T} = collect(range(ylim..., ny))
+        Psi_bundle::Matrix{Complex{T}} = compute_psi(
+            state_bundle,
+            x_grid,
+            y_grid;
+            inside_only=inside_only,
+            memory_limit=memory_limit
+        )
+        # Reshape each column of Psi_bundle into a matrix
+        Psi2d::Vector{Matrix{Complex{T}}} = [reshape(Psi, (nx, ny)) for Psi in eachcol(Psi_bundle)]
+        if !fundamental_domain
+            if !isnothing(symmetries)
+                if all([sym isa Reflection for sym in symmetries])
+                    # Handle reflections
+                    x_axis = 0.0
+                    y_axis = 0.0
+                    if hasproperty(billiard, :x_axis)
+                        x_axis = billiard.x_axis
+                    end
+                    if hasproperty(billiard, :y_axis)
+                        y_axis = billiard.y_axis
+                    end
+                    for i in eachindex(Psi2d)
+                        Psi_new, x_grid_new, y_grid_new = reflect_wavefunction(Psi2d[i], x_grid, y_grid, symmetries; x_axis=x_axis,y_axis=y_axis)
+                        Psi2d[i] = Psi_new
+                    end
+                    x_grid = x_grid_new
+                    y_grid = y_grid_new
+                elseif all([sym isa Rotation for sym in symmetries])
+                    println("We have a rotation")
+                    if length(symmetries) > 1
+                        @error "Only one Rotation symmetry allowed"
+                    end
+                    center = SVector{2, T}(0.0, 0.0)
+                    if hasproperty(billiard, :center)
+                        center = SVector{2, T}(billiard.center...)
+                    end
+                    # Apply rotation to each wavefunction
+                    for i in eachindex(Psi2d)
+                        Psi_new, x_grid_new, y_grid_new = rotate_wavefunction(Psi2d[i], x_grid, y_grid, symmetries[1], billiard; center=center)
+                        Psi2d[i] = Psi_new
+                    end
+                    x_grid = x_grid_new
+                    y_grid = y_grid_new
+                else
+                    @error "Do not mix Reflections with Rotations"
+                end
+            end
+        end
+        return Psi2d, x_grid, y_grid
+    end
+end
+
+
+
+#= OLD ONE
 function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {S<:EigenstateBundle}
     let k = state_bundle.k_basis, billiard=state_bundle.billiard, symmetries=state_bundle.basis.symmetries          
         #println(new_basis.dim)
@@ -313,5 +387,7 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
         return Psi2d, x_grid, y_grid
     end
 end
+
+=#
 
 

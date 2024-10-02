@@ -302,3 +302,25 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     return R_r
 end
 =#
+
+
+
+function plot_momentum_representation(state::S; b::Float64=5.0, grid_size::Int=512) where {S<:AbsState}
+    # Obtain the momentum representation function and wavenumber k
+    mom = momentum_representation_of_state(state; b=b)
+    u_values, pts, k = setup_momentum_density(state; b=b)
+    k_max = 1.5 * k
+    kx_values = range(-k_max, k_max, length=grid_size)
+    ky_values = range(-k_max, k_max, length=grid_size)
+    momentum_matrix = zeros(Float64, grid_size, grid_size)
+    Threads.@threads for i in 1:grid_size
+        for j in 1:grid_size
+            kx = kx_values[i]
+            ky = ky_values[j]
+            p = SVector{2, Float64}(kx, ky)
+            mom_p = mom(p)
+            momentum_matrix[i, j] = abs2(mom_p)
+        end
+    end
+    heatmap(kx_values, ky_values, momentum_matrix', aspect_ratio = :equal, xlabel = "kx", ylabel = "ky", title = "Momentum Cartesian Representation", colorbar_title = "|Ψ(p)|²")
+end
