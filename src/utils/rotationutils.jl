@@ -11,7 +11,7 @@ Optionally, the vectors are shifted by the specified center.
 # Returns
 - A vector of non-origin points from the virtual line segments.
 """
-function get_virtual_line_segment_as_vectors(billiard::Bi; center::SVector=SVector{2,Float64}(0.0,0.0)) where {Bi<:AbsBilliard}
+function get_virtual_line_segment_as_vectors(billiard::Bi; center::SVector{2,Float64}=SVector(0.0,0.0)) where {Bi<:AbsBilliard}
     origin_vl_segments = SVector{2, Float64}[] # contains the non-origin points of the virtual line segment
     for seg in billiard.fundamental_boundary # only in the fundamental boundary
         if seg isa VirtualLineSegment
@@ -92,7 +92,7 @@ is defined by the angles between two vectors extracted from the billiard's bound
   - `coords_flat`: The flattened coordinates of the grid.
   - `indices_flat`: The corresponding grid indices.
 """
-function get_fundamental_area_indices(x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi; center::SVector{2, T}=SVector{2, T}(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
+function get_fundamental_area_indices(x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi; center::SVector{2, T}=SVector(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
     vectors = get_virtual_line_segment_as_vectors(billiard; center=center)
     vector_angles = compute_vector_angles(vectors)
     sort_vec_angles = sorted_vector_angles(vector_angles)
@@ -138,7 +138,7 @@ Generates the full set of coordinates and Psi values for the entire billiard by 
   - `full_coords`: The full set of rotated coordinates.
   - `full_Psi`: The corresponding Psi values.
 """
-function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
+function get_full_area(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector(0.0, 0.0)) where {T<:Real, Bi<:AbsBilliard}
     # Get the indices and coordinates of the fundamental area
     fund_indices, coords_flat, indices_flat = get_fundamental_area_indices(x_grid, y_grid, billiard; center=center)
     # Extract fundamental area points and associated values
@@ -185,7 +185,7 @@ Generates a rectangular grid over the billiard area and computes the averaged Ps
 - `new_y_grid`: The newly generated y-coordinates of the rectangular grid.
 - `new_Psi_grid`: The matrix of averaged Psi values.
 """
-function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector{2, T}(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard} # grid_size should be less than length of full grid or we get wrong empty pixels
+function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T}, Psi_grid::Matrix{Complex{T}}, billiard::Bi, n::Int, m::Int; center::SVector{2, T}=SVector(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard} # grid_size should be less than length of full grid or we get wrong empty pixels
 
     # Get the original full_coords and full_Psi
     full_coords, full_Psi = get_full_area(x_grid, y_grid, Psi_grid, billiard, n, m; center=center)
