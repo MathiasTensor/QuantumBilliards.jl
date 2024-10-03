@@ -83,9 +83,9 @@ function make_full_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zer
     # Line segments for the stem
     stem_right_side = LineSegment(stem_bottom_right_corner, stem_top_right_corner; origin=origin, rot_angle=rot_angle)
     stem_bottom_side = LineSegment(stem_bottom_left_corner, stem_bottom_right_corner; origin=origin, rot_angle=rot_angle)
-    stem_left_side = VirtualLineSegment(stem_top_left_corner, stem_bottom_left_corner; origin=origin, rot_angle=rot_angle)
+    stem_left_side = LineSegment(stem_top_left_corner, stem_bottom_left_corner; origin=origin, rot_angle=rot_angle)
     cap_connector_right = LineSegment(SVector(cap_radius, zero(T)), stem_top_right_corner; origin=origin, rot_angle=rot_angle)
-    cap_connector_left = VirtualLineSegment(SVector(-cap_radius, zero(T)), stem_top_left_corner; origin=origin, rot_angle=rot_angle)
+    cap_connector_left = LineSegment(SVector(-cap_radius, zero(T)), stem_top_left_corner; origin=origin, rot_angle=rot_angle)
 
     # Starts with AbsRealCurve counterclockwise
     boundary = Union{LineSegment, CircleSegment, VirtualLineSegment}[stem_bottom_side, stem_right_side, cap_connector_right, cap_segment, cap_connector_left, stem_left_side]
