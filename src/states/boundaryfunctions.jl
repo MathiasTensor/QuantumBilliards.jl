@@ -306,33 +306,4 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
 end
 
 
-# NOT OK
-#=
-function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
-    u_values, pts, k = setup_momentum_density(state; b)
-    T = eltype(u_values)
-    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
-    k_squared = k^2
-    epsilon = sqrt(eps(T))
-    num_points = length(pts_coords)
-    function R_r(r)
-        R_r_array = zeros(T, Threads.nthreads())
-        Threads.@threads for i in 1:num_points
-            thread_id = Threads.threadid()
-            R_r_i = zero(T)
-            for j in 1:num_points
-                delta_x = pts_coords[i][1] - pts_coords[j][1]
-                delta_y = pts_coords[i][2] - pts_coords[j][2]
-                distance = hypot(delta_x, delta_y)
-                J0_value = Bessels.besselj(0, distance * r)
-                J2_value = Bessels.besselj(2, distance * r)
-                R_r_i += u_values[i] * u_values[j] * distance^2 * 0.5 * (J2_value - J0_value)
-            end
-            R_r_array[thread_id] += R_r_i
-        end
-        return R_r_sum = 1/(16*pi*k) * sum(R_r_array)
-    end
-    return R_r
-end
-=#
 
