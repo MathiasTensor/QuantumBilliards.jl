@@ -250,6 +250,83 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 end
 =#
 
+
+
+"""
+    compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; 
+                              IntervalK::T = T(10.0), fundamental::Bool = true, 
+                              N_expect::Int = 3, log_file::String = "compute_spectrum_log.txt") 
+                              -> (ks_final::Vector{T}, tens_final::Vector{T}, control_final::Vector{Bool}) where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
+
+Compute the eigenvalue spectrum of a quantum billiard system over a specified interval `[k1, k2]`, 
+adaptively adjusting computational parameters to ensure accurate level counting and resolution.
+
+# Description
+
+`compute_spectrum_adaptive` calculates the eigenvalues (`ks`) and associated data (`tensions`, `control flags`) 
+for a quantum billiard problem within the interval `[k1, k2]`. It divides the interval into smaller subintervals 
+and adaptively adjusts the `dk_threshold` parameter in each subinterval to achieve the expected number of energy levels, 
+improving the accuracy and reliability of the spectrum computation.
+
+This function is crucial for spectral analysis in quantum billiard systems, where accurate eigenvalue computation is essential.
+
+# Arguments
+- `solver::Sol`: An instance of the accelerated solver.
+- `basis::Ba`: The basis set.
+- `billiard::Bi`: The billiard.
+- `k1::T`: The starting wavenumber.
+- `k2::T`: The ending wavenumber.
+
+# Keyword Arguments
+
+- `IntervalK::T = T(10.0)`: The length of each subinterval into which `[k1, k2]` is divided. Default is `10.0`.
+- `fundamental::Bool = true`: If `true`, computations are performed on the fundamental domain; if `false`, on the full billiard domain.
+- `N_expect::Int = 3`: The expected number of energy levels per single generalized eigenvalue problem, guiding the adaptive adjustment of `dk_threshold`.
+- `log_file::String = "compute_spectrum_log.txt"`: The file name for logging computation details.
+
+# Returns
+
+A tuple containing:
+
+- `ks_final::Vector{T}`: A vector of computed eigenvalues within the interval `[k1, k2]`.
+- `tens_final::Vector{T}`: A vector of associated tensions.
+- `control_final::Vector{Bool}`: A vector of boolean control flags for merging analysis.
+
+# Algorithm Details
+
+1. **Interval Division**:
+   - The main interval `[k1, k2]` is partitioned into smaller subintervals of length `IntervalK`.
+
+2. **Adaptive `dk_threshold` Adjustment**:
+   - For each subinterval `[k_start, k_end]`, the function `spectrum_inner_call` is invoked.
+   - `dk_threshold` controls the size of the interval the results of the generalized eigenvalue problem; it is adaptively adjusted based on the diff level count.
+
+3. **Level Counting and Adjustment Logic**:
+   - **Theoretical Level Count (`N_smooth`)**: Estimated using the smooth Weyl law for the billiard system.
+   - **Actual vs. Theoretical Difference (`th_num_diff`)**: The difference between the actual number of levels found and the smooth theoretical expectation.
+   - **Average Difference (`avg_sum_diff`)**: The average of `th_num_diff` over all levels in the subinterval.
+   - **Adjustment Criteria**:
+     - If `avg_sum_diff > 1.0` (too many levels), decrease `dk_threshold`.
+     - If `avg_sum_diff < -1.0` (missing levels), increase `dk_threshold`.
+     - Adjustments are constrained within sensible minimum and maximum `dk_threshold` values computed based on `N_expect`.
+
+4. **Iterative Refinement**:
+   - The adjustment process repeats until the average difference is within ±1.0 or the `dk_threshold` reaches its limits.
+   - A maximum iteration limit (`max_iterations = 20`) prevents infinite loops.
+
+5. **Result Compilation**:
+   - Valid eigenvalues and associated data from each subinterval are collected.
+   - The final results (`ks_final`, `tens_final`, `control_final`) are aggregates of these subinterval computations.
+
+# Helper Functions
+
+- **`N_smooth(k)`**: Estimates the cumulative number of energy levels up to wavenumber `k` using the smooth part of Weyl's formula.
+- **`th_num_diff(k, ks, k0)`**: Calculates the difference between the numerical and theoretical number of levels below `k`, relative to a starting point `k0`.
+- **`avg_sum_diff(ks, k0)`**: Computes the average of `th_num_diff` over a set of computed eigenvalues `ks` in a given subinterval.
+- **`dk_smallest_func(k)` & `dk_largest_func(k)`**: Determine the smallest and largest sensible values for `dk_threshold` based on `k` and `N_expect`.
+- **`spectrum_inner_call(k_start, k_end, dk_threshold_initial)`**: Performs the adaptive computation within a subinterval, adjusting `dk_threshold` iteratively for each subinterval.
+
+"""
 function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; IntervalK::T = T(10.0), fundamental::Bool = true, N_expect::Int = 3, log_file::String = "compute_spectrum_log.txt") where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
 
     # Set up the file logger
@@ -296,22 +373,25 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
         dk_largest = dk_largest_func(k_start; fundamental = fundamental)
         iteration = 0
         max_iterations = 20  # Prevent infinite loops
-    
+
         @info "Processing interval [$(k_start), $(k_end)] with initial dk_threshold=$(dk_threshold_initial)"
-    
-        # Initialize variables to store the last computed results
-        k_res = T[]  # Ensure these are initialized with the correct type
-        tens = T[]
-        control = Bool[]
-        diff = Inf  # Initialize diff to a large value
-    
+
+        # Initialize variables to store the best computed results
+        best_k_res = T[]
+        best_tens = T[]
+        best_control = Bool[]
+        best_diff = Inf  # Initialize best_diff to a large value
+
+        # Temporary storage for current subinterval results
+        temp_storage = Dict{Int, Tuple{Vector{T}, Vector{T}, Vector{Bool}, T}}()
+
         while true
             iteration += 1
             if iteration > max_iterations
-                @warn "Maximum iterations reached in interval [$(k_start), $(k_end)]. Accepting last computed results."
+                @warn "Maximum iterations reached in interval [$(k_start), $(k_end)]. Selecting best available results."
                 break
             end
-    
+
             # Compute the spectrum in the interval [k_start, k_end]
             k_res_current, tens_current, control_current = compute_spectrum(
                 solver,
@@ -320,40 +400,46 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
                 k_start,
                 k_end;
                 dk_threshold = dk_threshold,
-                fundamental = fundamental
+                fundamental = fundamental,
             )
-    
+
             # Crop the k_res so that we do not have edge outer levels
             valid_indices = findall(x -> x >= k_start && x <= k_end, k_res_current)
             if isempty(valid_indices)
                 @warn "No valid levels found in interval [$(k_start), $(k_end)] with dk_threshold=$(dk_threshold)."
-                # If no valid levels are found, we may choose to continue to the next iteration or break
-                # For now, we'll continue to the next iteration
+                # Continue to the next iteration
                 continue
             end
-    
+
             # Extract valid results
             k_res_current = k_res_current[valid_indices]
             tens_current = tens_current[valid_indices]
             control_current = control_current[valid_indices]
-    
-            # Adjust dk_threshold based on average difference
+
+            # Compute average difference
             diff = avg_sum_diff(k_res_current, k_start)
-    
+
+            # Store current results in temporary storage
+            temp_storage[iteration] = (k_res_current, tens_current, control_current, diff)
+
             @info "Iteration $(iteration): dk_threshold=$(dk_threshold), avg_diff=$(diff), levels_found=$(length(k_res_current))"
-    
-            # Store the current results as the last computed results
-            k_res = k_res_current
-            tens = tens_current
-            control = control_current
-    
+
+            # Check if the current diff is closer to zero than the best so far and update the hashmap
+            if abs(diff) < abs(best_diff)
+                best_diff = diff
+                best_k_res = k_res_current
+                best_tens = tens_current
+                best_control = control_current
+            end
+
+            # Adjust dk_threshold based on average difference
             if diff > 1.0 && dk_threshold > dk_smallest
                 dk_threshold_old = dk_threshold
                 dk_threshold *= 0.9  # We have too many levels, decrease dk
                 @debug "Decreasing dk_threshold from $(dk_threshold_old) to $(dk_threshold) (too many levels)"
             elseif diff < -1.0 && dk_threshold < dk_largest
                 dk_threshold_old = dk_threshold
-                dk_threshold *= 1.1  # We are losing levels, increase dk
+                dk_threshold *= 1.1  # We are missing levels, increase dk
                 @debug "Increasing dk_threshold from $(dk_threshold_old) to $(dk_threshold) (missing levels)"
             else
                 # We are within ±1 or have reached the smallest/largest sensible dk
@@ -363,12 +449,15 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
                     @warn "dk_threshold ($(dk_threshold)) is larger than the largest allowed dk ($(dk_largest)) for N_expect = $(N_expect)"
                 end
                 @info "Accepting results for interval [$(k_start), $(k_end)] after $(iteration) iterations."
-                return k_res, tens, control, dk_threshold  # Final result
+                break  # Exit the loop
             end
         end
-    
-        # Return the last computed results if maximum iterations reached
-        return k_res, tens, control, dk_threshold
+        # After iterations, select the results with avg_diff closest to zero
+        @info "Selecting results with avg_diff closest to zero (avg_diff=$(best_diff))"
+        # Flush temporary storage for this subinterval
+        temp_storage = nothing  # Allow garbage collection
+
+        return best_k_res, best_tens, best_control, dk_threshold  # Return best results
     end
     # End of helper functions
     # Fill the intervals with increments by IntervalK
