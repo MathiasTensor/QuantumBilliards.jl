@@ -52,12 +52,13 @@ function evaluate_points(solver::DecompositionMethod, billiard::Bi, k) where {Bi
             L = crv.length
             N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
             sampler = samplers[i]
-            t, dt = sample_points(sampler,N)
             if crv isa PolarSegment
+                t, dt = sample_points(sampler, crv, N)
                 s = arc_length(crv,t)
                 ds = diff(s)
                 append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
             else
+                t, dt = sample_points(sampler,N)
                 ds = L.*dt
             end
             xy = curve(crv,t)
