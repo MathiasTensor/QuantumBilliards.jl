@@ -24,7 +24,7 @@ function ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vecto
 return ScalingMethodA(d, bs, sampler, eps(T), min_dim, min_pts)
 end
 
-function ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
+function ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{Sam}; min_dim = 100, min_pts = 500) where {T<:Real, Sam<:AbsSampler} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     return ScalingMethodA(d, bs, samplers, eps(T), min_dim, min_pts)
