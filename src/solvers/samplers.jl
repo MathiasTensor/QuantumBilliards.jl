@@ -22,6 +22,24 @@ function sample_points(sampler::GaussLegendreNodes, N::Int)
     return t, dt
 end
 
+struct PolarSampler <: AbsSampler
+end
+
+function sample_points(sampler::PolarSampler, crv::C, N::Int; α::Float64=4.0, β::Float64=0.7) where {C<:PolarSegments}
+    # generate liner sampling
+    ts = range(0, 1.0, length=N)
+    dts = diff(ts)
+    # generate curvatures
+    curvatures = curvature(crv, ts)
+    # Use a two parameter sigmoid = σ(α, β) = 1/(1+βℯ^-(α*x)) for weights
+    new_dts = dts ./ (1 .+ abs(α) * exp.(-abs(β) * abs.(curvatures[1:end-1])))
+    # Normalize them so we get 0 -> 1
+    new_dts = new_dts / sum(new_dts)
+    new_ts = vcat(0.0, cumsum(new_dts)) # generate new ts from new dts
+    new_ts[end] = 1.0 # just to make sure
+    return new_ts, new_dts
+end
+
 #=
 #this one is not working yet
 function chebyshev_nodes(N::Int)
