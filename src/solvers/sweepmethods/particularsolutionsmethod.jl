@@ -18,7 +18,7 @@ function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Un
     return ParticularSolutionsMethod(d, bs,int_pts_scaling_factor, sampler, eps(T), min_dim, min_pts, min_int_pts)
 end
 
-function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, int_pts_scaling_factor::T, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500, min_int_pts=500) where T<:Real 
+function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, int_pts_scaling_factor::T, samplers::Vector{Sam}; min_dim = 100, min_pts = 500, min_int_pts=500) where {T<:Real, Sam<:AbsSampler} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     return ParticularSolutionsMethod(d, bs,int_pts_scaling_factor, samplers, eps(T), min_dim, min_pts, min_int_pts)
