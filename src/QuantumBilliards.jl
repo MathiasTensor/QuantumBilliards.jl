@@ -18,7 +18,7 @@ export real_length, is_inside
 #include("solvers/Solvers.jl")
 #@reexport using .Solvers
 include("solvers/samplers.jl")
-export GaussLegendreNodes, LinearNodes, FourierNodes
+export GaussLegendreNodes, LinearNodes, FourierNodes, PolarSampler
 export sample_points
 
 include("billiards/boundarypoints.jl")
