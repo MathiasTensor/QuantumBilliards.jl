@@ -24,9 +24,14 @@ function sample_points(sampler::GaussLegendreNodes, N::Int)
 end
 
 struct PolarSampler <: AbsSampler
+    α::Float64
+    β::Float64
+    PolarSampler(α::Float64=20.0, β::Float64=1.0)
 end
 
-function sample_points(sampler::PolarSampler, crv::C, N::Int; α::Float64=4.0, β::Float64=0.7) where {C<:PolarSegments}
+function sample_points(sampler::PolarSampler, crv::C, N::Int) where {C<:PolarSegments}
+    α = sampler.α
+    β = sampler.β
     # generate liner sampling
     ts = range(0, 1.0, length=N)
     dts = diff(ts)
