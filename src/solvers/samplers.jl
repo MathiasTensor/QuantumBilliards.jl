@@ -37,7 +37,9 @@ function sample_points(sampler::PolarSampler, crv::C, N::Int; Î±::Float64=4.0, Î
     # Normalize them so we get 0 -> 1
     new_dts = new_dts / sum(new_dts)
     new_ts = vcat(0.0, cumsum(new_dts)) # generate new ts from new dts
-    if isapprox(new_ts[end], 1.0) ? new_ts[end] = 0.999 : nothing # just to make sure
+    if isapprox(new_ts[end], 1.0) # just to make sure
+        new_ts[end] = 0.999
+    end 
     return new_ts, new_dts
 end
 
