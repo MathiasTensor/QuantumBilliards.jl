@@ -26,7 +26,7 @@ end
 struct PolarSampler <: AbsSampler
     α::Float64
     β::Float64
-    PolarSampler(α::Float64=20.0, β::Float64=1.0)
+    PolarSampler(α::Float64=20.0, β::Float64=1.0) = new(α, β)
 end
 
 function sample_points(sampler::PolarSampler, crv::C, N::Int) where {C<:PolarSegments}
