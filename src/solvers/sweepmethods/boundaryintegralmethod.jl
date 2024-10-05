@@ -49,7 +49,11 @@ function evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k) where 
             N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
             sampler = samplers[i]
             if crv isa PolarSegment
-                t, dt = sample_points(sampler, crv, N)
+                if sampler isa PolarSampler
+                    t, dt = sample_points(sampler, crv, N)
+                else
+                    t, dt = sample_points(sampler, N)
+                end
                 s = arc_length(crv,t)
                 ds = diff(s)
                 append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]

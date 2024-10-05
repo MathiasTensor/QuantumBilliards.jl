@@ -43,7 +43,7 @@ function evaluate_points(solver::ParticularSolutionsMethod, billiard::Bi, k) whe
             L = crv.length
             N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
             sampler = samplers[i]
-            if crv isa PolarSegment
+            if crv isa PolarSegment && sampler isa PolarSampler
                 t, dt = sample_points(sampler, crv, N)
             else
                 t, dt = sample_points(sampler, N)

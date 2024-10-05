@@ -72,7 +72,11 @@ function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:A
             sampler = samplers[i]
             # NEW
             if crv isa PolarSegment
-                t, dt = sample_points(sampler, crv, N)
+                if sampler isa PolarSampler
+                    t, dt = sample_points(sampler, crv, N)
+                else
+                    t, dt = sample_points(sampler, N)
+                end
                 s = arc_length(crv,t)
                 ds = diff(s)
                 append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
