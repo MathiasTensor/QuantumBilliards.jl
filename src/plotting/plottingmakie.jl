@@ -478,9 +478,9 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
         L = crv.length
         grid = max(round(Int, L*dens),3)
         if crv isa PolarSegments
-            ts, dts = sample_points(sampler[i], crv, grid)
+            ts, dts = sample_points(samplers[i], crv, grid)
         else
-            ts, dts = sample_points(sampler[i], grid)
+            ts, dts = sample_points(samplers[i], grid)
         end
         # Normalize dts_normalized to the range [0, 1] for better plotting
         min_val = minimum(dts)
@@ -501,7 +501,7 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
             ns = normal_vec(crv,ts)
             arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
         end
-        if !(sampler[i] isa LinearNodes()) # avoid 0 range for colorbar for linear samplers
+        if !(samplers[i] isa LinearNodes()) # avoid 0 range for colorbar for linear samplers
             Colorbar(f[1, 1][1, i+j], sc)
             j += 1 
         end
