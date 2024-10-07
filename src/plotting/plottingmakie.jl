@@ -469,15 +469,14 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     lines!(ax, circle_x, circle_y, color=:green, linewidth=0.5, linestyle=:dash)
 end
 
-function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs=true, plot_normal=false, dens = 10.0) where {Sol<:AbsSolver, Bi<:AbsBilliard}
+function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs::Bool=true, plot_normal::Bool=false, grid::Int = 100) where {Sol<:AbsSolver, Bi<:AbsBilliard}
     samplers = solver.sampler # get the samplers, this is only for the fundamental boundary since adjust_scaling_and_samplers only works on it and not the full boundary
     _, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves_fundamental = billiard.fundamental_boundary
-    ax = Axis(f[1,1][1,1], aspect=DataAspect())
-    j = 1 # to avoid blanck spaces
+    ax = Axis(f[1,1], aspect=DataAspect())
+    j = 0 # to avoid blanck spaces
     for (i, crv) in enumerate(curves_fundamental)
         L = crv.length
-        grid = max(round(Int, L*dens),3)
         if crv isa PolarSegments
             ts, dts = sample_points(samplers[i], crv, grid)
         else
@@ -503,7 +502,7 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
             arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
         end
         if !(samplers[i] isa LinearNodes) # avoid 0 range for colorbar for linear samplers
-            Colorbar(f[1, 1][1, i+j], sc)
+            Colorbar(f[1, 2][1, i+j], sc)
             j += 1 
         end
     end
