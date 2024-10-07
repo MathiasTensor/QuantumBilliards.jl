@@ -468,3 +468,42 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     circle_y = k * sin.(θ_vals)
     lines!(ax, circle_x, circle_y, color=:green, linewidth=0.5, linestyle=:dash)
 end
+
+function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs=true, plot_normal=false, dens = 10.0) where {Sol<:AbsSolver, Bi<:AbsBilliard}
+    samplers = solver.sampler # get the samplers, this is only for the fundamental boundary since adjust_scaling_and_samplers only works on it and not the full boundary
+    curves_fundamental = billiard.fundamental_boundary
+    ax = Axis(f[1,1][1,1], aspect=DataAspect())
+    non_linear_sampler_idx = 1 # to avoid blanck spaces
+    for (i, crv) in enumerate(curves_fundamental)
+        L = crv.length
+        grid = max(round(Int, L*dens),3)
+        if crv isa PolarSegments
+            ts, dts = sample_points(sampler[i], crv, grid)
+        else
+            ts, dts = sample_points(sampler[i], grid)
+        end
+        # Normalize dts_normalized to the range [0, 1] for better plotting
+        min_val = minimum(dts)
+        max_val = maximum(dts)
+        if max_val - min_val == 0
+            normalized_colors = fill(0.5, length(dts))  # Avoid division by zero
+        else
+            normalized_colors = (dts .- min_val) / (max_val - min_val)
+        end
+        # plot the curve
+        pts = curve(crv,ts)
+        sc = scatter!(ax, pts, color=normalized_colors, markersize=5)
+        if plot_idxs
+            mid_point = round(Int, length(pts) / 2)
+            text!(ax, pts[mid_point][1], pts[mid_point][2], text = string(i), color=:black) # plot the index of the curve at the mid point
+        end
+        if plot_normal
+            ns = normal_vec(crv,ts)
+            arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
+        end
+        if !(sampler[i] isa LinearNodes()) # avoid 0 range for colorbar for linear samplers
+            Colorbar(f[1, 1][1, i+j], sc)
+            j += 1 
+        end
+    end
+end
