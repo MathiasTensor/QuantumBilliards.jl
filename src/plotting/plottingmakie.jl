@@ -474,7 +474,7 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     _, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves_fundamental = billiard.fundamental_boundary
     ax = Axis(f[1,1], aspect=DataAspect())
-    j = 0 # to avoid blanck spaces
+    j = 1 # to avoid blanck spaces and no overlap
     for (i, crv) in enumerate(curves_fundamental)
         L = crv.length
         if crv isa PolarSegments
