@@ -471,6 +471,7 @@ end
 
 function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs=true, plot_normal=false, dens = 10.0) where {Sol<:AbsSolver, Bi<:AbsBilliard}
     samplers = solver.sampler # get the samplers, this is only for the fundamental boundary since adjust_scaling_and_samplers only works on it and not the full boundary
+    _, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves_fundamental = billiard.fundamental_boundary
     ax = Axis(f[1,1][1,1], aspect=DataAspect())
     j = 1 # to avoid blanck spaces
