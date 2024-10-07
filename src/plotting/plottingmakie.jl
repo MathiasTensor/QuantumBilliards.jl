@@ -502,7 +502,8 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
             arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
         end
         if !(samplers[i] isa LinearNodes) # avoid 0 range for colorbar for linear samplers
-            Colorbar(f[1, 2][1, i+j], sc, label="$(i) - $(nameof(typeof(samplers[i])))", labelrotation=pi/2, height=Relative(0.4))
+            num_divs, remain = divrem(i, 3) # max 3 in a line
+            Colorbar(f[1, 2][num_divs+1, remain+1], sc, label="$(i) - $(nameof(typeof(samplers[i])))", labelrotation=pi/2, height=Relative(0.4))
             j += 1 
         end
     end
