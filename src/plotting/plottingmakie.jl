@@ -474,6 +474,8 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     _, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves_fundamental = billiard.fundamental_boundary
     ax = Axis(f[1,1], aspect=DataAspect())
+    num_nl_samplers = sum([1 for sam in samplers if !(sam isa LinearNodes)])
+    println(num_nl_samplers)
     j = 1 # to avoid blanck spaces and no overlap
     for (i, crv) in enumerate(curves_fundamental)
         L = crv.length
