@@ -475,10 +475,10 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     curves_fundamental = billiard.fundamental_boundary
     ax = Axis(f[1,1], aspect=DataAspect())
     num_nl_samplers = sum([1 for sam in samplers if !(sam isa LinearNodes)])
-    println(num_nl_samplers)
-    j = 1 # to avoid blanck spaces and no overlap
+    num_divs, remain = divrem(num_nl_samplers, 3)  # Max 3 in a line
+    row = 1
+    col = 1
     for (i, crv) in enumerate(curves_fundamental)
-        L = crv.length
         if crv isa PolarSegments
             ts, dts = sample_points(samplers[i], crv, grid)
         else
@@ -504,9 +504,12 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
             arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
         end
         if !(samplers[i] isa LinearNodes) # avoid 0 range for colorbar for linear samplers
-            num_divs, remain = divrem(i, 3) # max 3 in a line
             Colorbar(f[1, 2][num_divs+1, remain+1], sc, label="$(i) - $(nameof(typeof(samplers[i])))", labelrotation=pi/2, height=Relative(0.4))
-            j += 1 
+            col += 1
+            if col > 3  # Move to next row after 3 columns
+                col = 1
+                row += 1
+            end
         end
     end
 end
