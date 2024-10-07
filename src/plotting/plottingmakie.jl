@@ -479,7 +479,7 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     row = 1
     col = 1
     for (i, crv) in enumerate(curves_fundamental)
-        if (crv isa PolarSegments) && (sampler isa PolarSampler)
+        if (crv isa PolarSegments) && (sampler[i] isa PolarSampler)
             ts, dts = sample_points(samplers[i], crv, grid)
         else
             ts, dts = sample_points(samplers[i], grid)
