@@ -469,7 +469,7 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     lines!(ax, circle_x, circle_y, color=:green, linewidth=0.5, linestyle=:dash)
 end
 
-function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs::Bool=true, plot_normal::Bool=false, grid::Int = 100) where {Sol<:AbsSolver, Bi<:AbsBilliard}
+function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs::Bool=true, plot_normal::Bool=false, grid::Int = 512) where {Sol<:AbsSolver, Bi<:AbsBilliard}
     samplers = solver.sampler # get the samplers, this is only for the fundamental boundary since adjust_scaling_and_samplers only works on it and not the full boundary
     _, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves_fundamental = billiard.fundamental_boundary
