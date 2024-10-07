@@ -473,7 +473,7 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     samplers = solver.sampler # get the samplers, this is only for the fundamental boundary since adjust_scaling_and_samplers only works on it and not the full boundary
     curves_fundamental = billiard.fundamental_boundary
     ax = Axis(f[1,1][1,1], aspect=DataAspect())
-    non_linear_sampler_idx = 1 # to avoid blanck spaces
+    j = 1 # to avoid blanck spaces
     for (i, crv) in enumerate(curves_fundamental)
         L = crv.length
         grid = max(round(Int, L*dens),3)
