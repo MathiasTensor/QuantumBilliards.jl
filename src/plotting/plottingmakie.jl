@@ -469,6 +469,19 @@ function plot_momentum_cartesian_representation!(f::Figure, state::S; b::Float64
     lines!(ax, circle_x, circle_y, color=:green, linewidth=0.5, linestyle=:dash)
 end
 
+"""
+    plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs::Bool=true, plot_normal::Bool=false, grid::Int=512)
+
+Plots the point distribution for a given billiard system and solver, displaying the index of each curve and optionally plotting the normal vectors and colorbars for non-linear samplers.
+# Arguments
+- `f::Figure`: The figure object from Makie.jl where the plot will be drawn.
+- `billiard::Bi`: An instance of the billiard system (of type `AbsBilliard` or a subtype).
+- `solver::Sol`: An instance of a solver (of type `AbsSolver` or a subtype).
+- `plot_idxs::Bool`: (Optional) Whether to plot the index of each curve at its midpoint. Defaults to `true`.
+- `plot_normal::Bool`: (Optional) Whether to plot normal vectors along the curves. Defaults to `false`.
+- `grid::Int`: (Optional) The number of grid points to sample along each curve. Defaults to `512`.
+
+"""
 function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idxs::Bool=true, plot_normal::Bool=false, grid::Int = 512) where {Sol<:AbsSolver, Bi<:AbsBilliard}
     samplers = solver.sampler # get the samplers, this is only for the fundamental boundary since adjust_scaling_and_samplers only works on it and not the full boundary
     _, samplers = adjust_scaling_and_samplers(solver, billiard)
