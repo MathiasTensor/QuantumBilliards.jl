@@ -104,7 +104,7 @@ function CircleBilliard(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) ::
 end
 
 
-function make_circle_and_basis(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{CircleBilliard{T}, RealPlaneWaves} where {T<:Real}
+function make_circle_and_basis(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:rpw) :: Tuple{CircleBilliard{T}, Union{RealPlaneWaves, CornerAdaptedFourierBessel}} where {T<:Real}
     billiard = CircleBilliard(radius; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([XYReflection(-1, -1)])
     if basis_type == :rpw
