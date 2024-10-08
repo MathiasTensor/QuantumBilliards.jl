@@ -105,8 +105,14 @@ end
 
 
 function make_circle_and_basis(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{CircleBilliard{T}, RealPlaneWaves} where {T<:Real}
-    prosen_billiard = CircleBilliard(radius; x0=x0, y0=y0, rot_angle=rot_angle)
+    billiard = CircleBilliard(radius; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([XYReflection(-1, -1)])
-    basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
-    return prosen_billiard, basis
+    if basis_type == :rpw
+        basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
+    elseif basis_type == :bessel
+        basis = CornerAdaptedFourierBessel(10, pi/2, SVector(zero(T), zero(T)), 0.0, symmetry)
+    else
+        @error "Non-valid basis"
+    end
+    return billiard, basis 
 end
