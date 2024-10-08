@@ -95,7 +95,7 @@ export weyl_law
 export compute_spectrum, compute_spectrum_adaptive
 export curvature_correction, corner_correction, curvature_and_corner_corrections
 include("spectra/spectralStatistics.jl")
-export number_variance, plot_subtract_level_counts_from_weyl, probability_berry_robnik, cumulative_berry_robnik, compare_level_count_to_weyl, plot_nnls, plot_cumulative_spacing_distribution, plot_subtract_level_counts_from_weyl
+export number_variance, plot_subtract_level_counts_from_weyl, probability_berry_robnik, cumulative_berry_robnik, compare_level_count_to_weyl, plot_nnls, plot_cumulative_spacing_distribution, plot_subtract_level_counts_from_weyl, plot_point_distribution!
 #states
 #include("states/States.jl")
 #@reexport using .States
@@ -137,4 +137,6 @@ export plot_benchmarks!
 include("utils/savingutils.jl")
 export save_numerical_ks_and_tensions!, read_numerical_ks_and_tensions, compute_and_save_closest_pairs!, plot_and_save_eigenstate_results!
 include("utils/rotationutils.jl")
+include("spectra/m_index.jl")
+export visualize_overlap, compute_M, compute_and_save_husimi_functions_jld2!, load_husimi_functions_jld2, shift_s_vals_poincare_birkhoff, classical_phase_space_matrix
 end
