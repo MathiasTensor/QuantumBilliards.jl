@@ -110,7 +110,7 @@ function make_circle_and_basis(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero
     if basis_type == :rpw
         basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
     elseif basis_type == :bessel
-        basis = CornerAdaptedFourierBessel(10, pi/2, SVector(zero(T), zero(T)), 0.0, symmetry)
+        basis = CornerAdaptedFourierBessel(10, pi/2, SVector(0.0, 0.0), 0.0, symmetry)
     else
         @error "Non-valid basis"
     end
