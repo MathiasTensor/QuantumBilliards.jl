@@ -199,6 +199,7 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     # get the k1 and k2 from the N1 and N2
     k1 = k_at_state(N1, billiard; fundamental=fundamental)
     k2 = k_at_state(N2, billiard; fundamental=fundamental)
+    println("k1 = $(k1), k2 = $(k2)")
     # Call the k one
     k_res, ten_res, control = compute_spectrum(solver, basis, billiard, k1, k2; tol=tol, N_expect=N_expect, dk_threshold=dk_threshold, fundamental=fundamental)
     return k_res, ten_res, control
