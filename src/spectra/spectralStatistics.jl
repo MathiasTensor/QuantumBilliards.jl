@@ -207,7 +207,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     lines!(ax, s_values, goe_pdf.(s_values), label="GOE", color=:green, linestyle=:dot, linewidth=1)
     lines!(ax, s_values, gue_pdf.(s_values), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
     if berry_robnik_pdf !== nothing
-        lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik", color=:orange, linestyle=:dashdot, linewidth=1)
+        lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:orange, linestyle=:dashdot, linewidth=1)
     end
     xlims!(ax, extrema(s_values))
     axislegend(ax, position=:rt)
