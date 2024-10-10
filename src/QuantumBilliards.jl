@@ -139,4 +139,6 @@ export save_numerical_ks_and_tensions!, read_numerical_ks_and_tensions, compute_
 include("utils/rotationutils.jl")
 include("spectra/m_index.jl")
 export visualize_overlap, compute_M, compute_and_save_husimi_functions_jld2!, load_husimi_functions_jld2, shift_s_vals_poincare_birkhoff, classical_phase_space_matrix, visualize_quantum_classical_overlap_of_levels!
+include("spectra/gap_ratios.jl")
+export P_chaotic, P_integrable, P_r_normalized, plot_gap_ratios
 end
