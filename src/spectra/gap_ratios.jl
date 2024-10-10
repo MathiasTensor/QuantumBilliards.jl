@@ -117,6 +117,7 @@ end
 Plots the empirical gap ratio distribution for a given set of energy levels and compares it with theoretical distributions for integrable and chaotic systems.
 
 # Arguments
+- `ax::Axis`: The axis object to plot into.
 - `energies::Vector{T}`: A vector of energy levels for which the gap ratios are calculated.
 - `nbins::Int=50`: (Optional) The number of bins used to create the histogram of the empirical gap ratio distribution.
 - `μ_c::Union{Nothing,T}=nothing`: (Optional) The chaotic phasespace portion `μ_c`.If `nothing` is passed, no mixed distribution is plotted.
@@ -126,7 +127,7 @@ Plots the empirical gap ratio distribution for a given set of energy levels and 
     - The empirical gap ratio distribution (as a scatter plot).
     - Theoretical gap ratio distributions (as line plots).
 """
-function plot_gap_ratios(energies::Vector{T}; nbins::Int=50, μ_c::Union{Nothing,T}=nothing) where {T<:Real}
+function plot_gap_ratios(ax::Axis, energies::Vector{T}; nbins::Int=50, μ_c::Union{Nothing,T}=nothing) where {T<:Real}
     energy_differences = diff(energies)
     gap_ratios = Vector{T}(undef, length(energy_differences) - 1)
     for i in eachindex(gap_ratios)
@@ -134,8 +135,6 @@ function plot_gap_ratios(energies::Vector{T}; nbins::Int=50, μ_c::Union{Nothing
         s_n1 = energy_differences[i + 1]
         gap_ratios[i] = min(s_n, s_n1)/max(s_n, s_n1)
     end
-    fig = Figure(resolution=(800, 600))
-    ax = Axis(fig[1, 1], title="Gap Ratios", xlabel="r", ylabel="P(r)")
     hist = Distributions.fit(StatsBase.Histogram, gap_ratios; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
@@ -152,5 +151,5 @@ function plot_gap_ratios(energies::Vector{T}; nbins::Int=50, μ_c::Union{Nothing
     end
     xlims!(ax, extrema(r_values))
     axislegend(ax, position=:rt)
-    return fig
+    return ax
 end
