@@ -112,6 +112,37 @@ function P_chaotic(r::T, β::Int) where {T<:Real}
 end
 
 """
+    average_gap_ratio(type::Symbol; β=1, μ_c::Union{Nothing,T}=nothing) -> T where {T<:Real}
+
+Computes the ⟨r⟩ for a specified system type (integrable, chaotic, or mixed).
+
+# Arguments
+- `type::Symbol`: The type of the system, which must be one of:
+    - `:integrable`: For an integrable system.
+    - `:chaotic`: For a chaotic system. The Dyson index `β` can be specified for different ensembles.
+    - `:mixed`: For a system with a mixed chaotic and integrable component (m=2 strictly), the chaotic phasespace portion `μ_c` must be provided.
+
+# Keyword Arguments
+- `β=1`: (Optional) The Dyson index used for chaotic systems. Default is `β=1` (corresponding to the Gaussian Orthogonal Ensemble, GOE). Other possible values:
+    - `β=2`: For the Gaussian Unitary Ensemble (GUE),
+    - `β=4`: For the Gaussian Symplectic Ensemble (GSE).
+- `μ_c::Union{Nothing,T}=nothing`: (Optional) The chaotic phasespace portion for mixed systems. If `type == :mixed`, `μ_c` must be provided and is between integrable (μ_c = 0.0) and chaotic (μ_c = 1.0).
+
+# Returns
+- `T`: The average gap ratio ⟨r⟩ for the specified system type.
+
+"""
+function average_gap_ratio(type::Symbol; β=1, μ_c::Union{Nothing,T}=nothing) where {T<:Real}
+    if type == :integrable
+        return quadgk(r -> r*P_integrable(r), 0.0, 1.0)[1]
+    elseif type == :chaotic
+        return quadgk(r -> r*P_chaotic(r, β), 0.0, 1.0)[1]
+    elseif type == :mixed
+        return quadgk(r -> r*P_r_normalized(r, μ_c), 0.0, 1.0)[1]
+    end
+end
+
+"""
     plot_gap_ratios(energies::Vector{T}; nbins::Int=50, μ_c::Union{Nothing,T}=nothing) -> Figure where {T<:Real}
 
 Plots the empirical gap ratio distribution for a given set of energy levels and compares it with theoretical distributions for integrable and chaotic systems.
