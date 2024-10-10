@@ -89,3 +89,42 @@ function compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, b
     X = X[:,idx]
     return EigenstateBundle(ks, k, X, tens, basis_new, billiard)
 end
+
+
+
+
+
+###### NEW ######
+
+
+# no need for basis and billiard data due to complex nested hierarchy
+struct StateData{K,T} <: AbsState 
+    ks::Vector{K}
+    k_basis::K
+    X::Matrix{T}
+    tens::Vector{T}
+    dim::Int64
+    eps::T
+end
+
+# constructor for the saved data with no billiard or basis information
+function StateData(ks, k_basis, X, tens)  
+    eps = set_precision(X[1,1])
+    type = eltype(X)
+    if  type <: Real
+        filtered_array = type.([abs(x)>eps ? x : zero(type) for x in X])
+    else 
+        filtered_array = X
+    end
+    return StateData(ks, k_basis, filtered_array, tens, length(X[:,1]), eps)
+end
+
+# this is basically the new solve 
+function solve_state_data_bundle(solver::Sol, basis::Ba, billiard::Bi, k, dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+    L = billiard.length
+    dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
+    basis_new = resize_basis(basis,billiard, dim,k)
+    pts = evaluate_points(solver, billiard, k)
+    ks, tens, X = solve_vectors(solver,basis_new, pts, k, dk) # this one filters the ks that are outside k+-dk and gives us the filtered out ks, tensions and X matrix of filtered vectors
+    return StateData(ks, k, X, tens)
+end
