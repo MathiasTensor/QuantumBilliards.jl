@@ -128,7 +128,7 @@ Computes the ⟨r⟩ for a specified system type (integrable, chaotic, or mixed)
     - `β=4`: For the Gaussian Symplectic Ensemble (GSE).
 - `μ_c::Union{Nothing,T}=nothing`: (Optional) The chaotic phasespace portion for mixed systems. If `type == :mixed`, `μ_c` must be provided and is between integrable (μ_c = 0.0) and chaotic (μ_c = 1.0).
 
-# This gives for the integrable case and the chaotic case the correct ⟨r⟩ (up to quadgk error using Float64):
+This gives for the integrable case and the chaotic case the correct ⟨r⟩ (up to quadgk error using Float64):
 - Poisson: ⟨r⟩≈0.386294
 - GOE: ⟨r⟩≈0.535898
 - GUE: ⟨r⟩≈0.602657
