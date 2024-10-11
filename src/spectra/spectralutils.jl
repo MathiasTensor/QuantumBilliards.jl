@@ -151,6 +151,47 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     return k_res, ten_res, control
 end
 
+# with saving of vectors in a matrix X
+function compute_spectrum_with_state_vectors(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol=1e-4, N_expect = 3, dk_threshold=0.05, fundamental=true)
+    # Estimate the number of intervals and store the dk values
+    k0 = k1
+    dk_values = []
+    while k0 < k2
+        if fundamental
+            dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental/(4*pi))
+        else
+            dk = N_expect / (billiard.area * k0 / (2*pi) - billiard.length/(4*pi))
+        end
+        if dk < 0.0
+            dk = -dk
+        end
+        if dk > dk_threshold # For small k this limits the size of the interval
+            dk = dk_threshold
+        end
+        push!(dk_values, dk)
+        k0 += dk
+    end
+    println("min/max dk value: ", extrema(dk_values))
+
+    # Initialize the progress bar with estimated number of intervals
+    println("Scaling Method...")
+    p = Progress(length(dk_values), 1)
+
+    # Actual computation using precomputed dk values
+    k0 = k1
+    k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk_values[1] + tol)
+    control = [false for i in 1:length(k_res)]
+
+    for i in eachindex(dk_values)
+        dk = dk_values[i]
+        k0 += dk
+        k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk + tol)
+        overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0 - dk, k0; tol=tol)
+        next!(p)
+    end
+    return k_res, ten_res, control
+end
+
 # NEW
 #=
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
