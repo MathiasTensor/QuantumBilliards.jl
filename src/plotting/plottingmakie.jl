@@ -42,12 +42,12 @@ function plot_heatmap_balaced!(f,x,y,Z ;vmax = 1.0, cmap=Reverse(:balance),hmarg
 end
 
 #curve and billiard ploting
-function plot_curve!(ax, crv::AbsRealCurve; plot_normal=true, dens = 20.0)
+function plot_curve!(ax, crv::AbsRealCurve; plot_normal=true, dens = 20.0, color_crv=:grey)
     L = crv.length
     grid = max(round(Int, L*dens),3)
     t = range(0.0,1.0, grid)
     pts = curve(crv,t)
-    lines!(ax,pts, color = :grey, linewidth = 0.75 )
+    lines!(ax,pts, color = color_crv, linewidth = 0.75 )
     if plot_normal
         ns = normal_vec(crv,t)
         arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
@@ -55,12 +55,12 @@ function plot_curve!(ax, crv::AbsRealCurve; plot_normal=true, dens = 20.0)
     ax.aspect=DataAspect()
 end
 
-function plot_curve!(ax, crv::AbsVirtualCurve; plot_normal=false, dens = 10.0)
+function plot_curve!(ax, crv::AbsVirtualCurve; plot_normal=false, dens = 10.0, color_crv=:grey)
     L = crv.length
     grid = max(round(Int, L*dens),3)
     t = range(0.0,1.0, grid)
     pts = curve(crv,t)
-    lines!(ax,pts, color = :grey, linestyle = :dash, linewidth = 0.75)
+    lines!(ax,pts, color = color_crv, linestyle = :dash, linewidth = 0.75)
     if plot_normal
         ns = normal_vec(crv,t)
         arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
@@ -68,7 +68,7 @@ function plot_curve!(ax, crv::AbsVirtualCurve; plot_normal=false, dens = 10.0)
     ax.aspect=DataAspect()
 end
 
-function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, dens = 100.0, plot_normal=true)
+function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, dens = 100.0, plot_normal=true, color_crv=:grey)
     if fundamental_domain 
         boundary = billiard.fundamental_boundary  
     else
@@ -76,7 +76,7 @@ function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, de
     end
     
     for curve in boundary 
-        plot_curve!(ax, curve; dens = dens, plot_normal = plot_normal)
+        plot_curve!(ax, curve; dens = dens, plot_normal = plot_normal, color_crv=color_crv)
     end
 end
 

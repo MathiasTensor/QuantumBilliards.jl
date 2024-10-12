@@ -119,7 +119,7 @@ function StateData(ks, k_basis, X, tens)
     return StateData(ks, k_basis, filtered_array, tens, length(X[:,1]), eps)
 end
 
-# this is basically the new solve 
+# this is basically the new solve where we incur the smallest penalty for getting the ks and the relevant state information for saving the husimi functions
 function solve_state_data_bundle(solver::Sol, basis::Ba, billiard::Bi, k, dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
     L = billiard.length
     dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
