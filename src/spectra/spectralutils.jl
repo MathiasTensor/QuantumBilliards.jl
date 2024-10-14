@@ -343,21 +343,20 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 """
 function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k1::T, k2::T; tol::T = T(1e-4), N_expect::Int = 3, dk_threshold::T = T(0.05), fundamental::Bool = true) :: (StateData{T, T}, Vector{Bool}) where {T<:Real}
     # Estimate the number of intervals and store the dk values
-    k0::T = k1
-    dk_values::Vector{T} = T[]
-    two_pi = 2 * π
+    k0 = k1
+    dk_values = []
     while k0 < k2
-        dk::T
         if fundamental
-            area = billiard.area_fundamental
-            length = billiard.length_fundamental
+            dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental/(4*pi))
         else
-            area = billiard.area
-            length = billiard.length
+            dk = N_expect / (billiard.area * k0 / (2*pi) - billiard.length/(4*pi))
         end
-        dk = N_expect / (area * k0 / two_pi - length / (4 * π))
-        dk = abs(dk)
-        dk = min(dk, dk_threshold)
+        if dk < 0.0
+            dk = -dk
+        end
+        if dk > dk_threshold # For small k this limits the size of the interval
+            dk = dk_threshold
+        end
         push!(dk_values, dk)
         k0 += dk
     end
