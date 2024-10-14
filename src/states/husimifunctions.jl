@@ -138,7 +138,7 @@ An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals`
 - `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_boundary_functions(ks::Vector, us::Vector{Vector}, s_vals::Vector{Vector}, billiard::Bi; c = 10.0, w = 7.0) where {Bi<:AbsBilliard}
+function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; c = 10.0, w = 7.0) where {Bi<:AbsBilliard}
     L = billiard.length
     Threads.@threads for i in eachindex(ks) 
         H, ps, qs = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
