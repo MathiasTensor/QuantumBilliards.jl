@@ -362,7 +362,7 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
     end
     println("min/max dk value: ", extrema(dk_values))
     # Initialize the progress bar with estimated number of intervals
-    println("Scaling Method...")
+    println("Scaling Method w/ StateData...")
     p = Progress(length(dk_values), 1)
     # Actual computation using precomputed dk values
     k0 = k1

@@ -89,20 +89,21 @@ High level wrapper for the `Eigenstate` version of the `boundary_function`. This
 - `norms`: A vector of the norms of the boundary functions (the u functions). Each element corresponds to a wave number `ks[i]`.
 """
 function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    let ks = state_data.ks, tens = state_data.tens, X = state_data.X
-        us = Vector{Vector{eltype(ks)}}(undef, length(ks))
-        s_vals = Vector{Vector{eltype(ks)}}(undef, length(ks))
-        norms = Vector{eltype(ks)}(undef, length(ks))
-        for i in eachindex(ks) 
-            vec = X[i] # vector of vectors
-            dim = length(vec)
-            new_basis = resize_basis(basis, billiard, dim, ks[i])
-            state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
-            u, s, norm = boundary_function(state; b=b)
-            us[i] = u
-            s_vals[i] = s
-            norms[i] = norm
-        end
+    ks = state_data.ks
+    tens = state_data.tens
+    X = state_data.X
+    us = Vector{Vector{eltype(ks)}}(undef, length(ks))
+    s_vals = Vector{Vector{eltype(ks)}}(undef, length(ks))
+    norms = Vector{eltype(ks)}(undef, length(ks))
+    for i in eachindex(ks) 
+        vec = X[i] # vector of vectors
+        dim = length(vec)
+        new_basis = resize_basis(basis, billiard, dim, ks[i])
+        state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
+        u, s, norm = boundary_function(state; b=b)
+        us[i] = u
+        s_vals[i] = s
+        norms[i] = norm
     end
     return ks, us, s_vals, norms
 end
