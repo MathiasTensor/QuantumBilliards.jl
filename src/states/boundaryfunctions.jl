@@ -88,7 +88,7 @@ High level wrapper for the `Eigenstate` version of the `boundary_function`. This
 - `s_vals`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
 - `norms`: A vector of the norms of the boundary functions (the u functions). Each element corresponds to a wave number `ks[i]`.
 """
-function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) :: Tuple{Vector{T}, Vector{Vector{T}}, Vector{Vector{T}}, Vector{T}} where {T, Bi<:AbsBilliard, Ba<:AbsBasis}
+function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     let ks = state_data.ks, tens = state_data.tens, X = state_data.X
         us = Vector{Vector{eltype(ks)}}(undef, length(ks))
         s_vals = Vector{Vector{eltype(ks)}}(undef, length(ks))
