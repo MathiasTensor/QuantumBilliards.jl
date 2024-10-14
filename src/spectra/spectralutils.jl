@@ -68,7 +68,7 @@ end
 
     Match wavenumbers and tensions from two input lists, taking into account their respective tensions. If there is any overlap (`is_equal` is called) between the `ks_l` and `ks_r` then we choose the one to push into the `ks` those that have the lowest tension (as more accurate). Otherwise we append those that are smaller of the two. In this way we glue together the `ks_l` and `ks_r` to ks such that it has the smallest tensions and smallest `k` of the two closest to one another.
 """
-function match_wavenumbers_with_X(ks_l::Vector, ts_l::Vector, X_l::Vector{Vector}, ks_r::Vector, ts_r::Vector, X_r::Vector{Vector})
+function match_wavenumbers_with_X(ks_l::Vector, ts_l::Vector, X_l, ks_r::Vector, ts_r::Vector, X_r)
     i = j = 1
     ks = Vector{eltype(ks_l)}() # final wavenumbers
     ts = Vector{eltype(ts_l)}() # final tensions
