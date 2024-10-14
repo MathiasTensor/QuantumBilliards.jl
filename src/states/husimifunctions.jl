@@ -1,6 +1,7 @@
 #include("../abstracttypes.jl")
 
 using CircularArrays
+using JLD2
 
 function antisym_vec(x)
     v = reverse(-x[2:end])
@@ -88,3 +89,106 @@ function coherent(q,p,k,s,L,m::Int,b::Complex)
     end 
 end
 =#
+
+### NEW ###
+
+"""
+    function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) :: Tuple{Vector{Matrix{T}}, Vector{Vector{T}}, Vector{Vector{T}}} where {T<:Real, Bi<:AbsBilliard, Ba<:AbsBasis}
+
+High level wrapper for the construction of the husimi functions from StateData which we compute as we run the compute_spectrum so we do not have to compute the eigenstate for each k in the eigenvalues we get from the spectrum.
+
+# Arguments
+- `state_data`: A `StateData` object containing the state data.
+- `billiard`: A `Bi` object representing the billiard.
+- `basis`: A `Ba` object representing the basis.
+- Comment: `c` density of points in coherent state peak, `w` width in units of sigma.
+
+# Returns
+- `Hs_return::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+"""
+function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    L = billiard.length
+    Hs_return = Vector{Matrix}(undef, length(ks))
+    ps_return = Vector{Vector}(undef, length(ks))
+    qs_return = Vector{Vector}(undef, length(ks))
+    ks, us, s_vals, _ = boundary_function(state_data, billiard, basis; b=b)
+    Threads.@threads for i in eachindex(ks) 
+        H, ps, qs = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
+        Hs_return[i] = H
+        ps_return[i] = ps
+        qs_return[i] = qs
+    end
+    return Hs_return, ps_return, qs_return
+end
+
+"""
+    husimi_functions_from_boundary_functions(ks::Vector, us::Vector{Vector}, s_vals::Vector{Vector}, billiard::Bi; c = 10.0, w = 7.0)
+
+An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals` that we can save after doing the version of `compute_spectrum` with the `StateData`.
+
+# Arguments
+- `ks::Vector`: A vector of eigenvalues.
+- `us::Vector{Vector}`: A vector of vectors representing the boundary functions.
+- `s_vals::Vector{Vector}`: A vector of vectors representing the evaluation points in s coordinate.
+
+# Returns
+- `Hs_return::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+"""
+function husimi_functions_from_boundary_functions(ks::Vector, us::Vector{Vector}, s_vals::Vector{Vector}, billiard::Bi; c = 10.0, w = 7.0)
+    L = billiard.length
+    Threads.@threads for i in eachindex(ks) 
+        H, ps, qs = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
+        Hs_return[i] = H
+        ps_return[i] = ps
+        qs_return[i] = qs
+    end
+    return Hs_return, ps_return, qs_return
+end
+
+
+
+#### NOT TO BE USED FOR LARGE NUMBER OF EIGENVALUES!!! #### use rather the husimi functions from state data or directly from the us, s_vals to get them more efficiently
+
+
+
+"""
+    function save_husimi_to_jld2(state_data::StateData, billiard::Bi, basis::Ba; filename::String="husimi_data.jld2", b=5.0, c=10.0, w=7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+
+Saves the husimi functions (the matrices and the qs and ps that accompany it) to the filename using JLD2.
+
+# Arguments
+- `state_data`: A `StateData` object containing the state data.
+- `billiard`: A `Bi` object representing the billiard.
+- `basis`: A `Ba` object representing the basis.
+- `filename::String`: The name of the file to save the data to (must be .jld2)
+
+# Returns
+- `Nothing`
+"""
+function save_husimi_to_jld2(state_data::StateData, billiard::Bi, basis::Ba; filename::String="husimi_data.jld2", b=5.0, c=10.0, w=7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    Hs_return, ps_return, qs_return = husimi_functions_from_StateData(state_data, billiard, basis; b=b, c=c, w=w)
+    @save filename Hs_return ps_return qs_return
+    println("Husimi functions and corresponding q, p values saved to JLD2 file: $filename")
+end
+
+"""
+    load_husimi_from_jld2(filename::String) :: Tuple{Vector{Matrix}, Vector{Vector}, Vector{Vector}}
+
+Loads the husimi functions (the matrices and the qs and ps that accompany it) from the filename using JLD2.
+
+# Arguments
+- `filename::String`: The name of the file to load the data from (must be .jld2)
+
+# Returns
+- `Hs_return::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+"""
+function load_husimi_from_jld2(filename::String)
+    @load filename Hs_return ps_return qs_return
+    return Hs_return, ps_return, qs_return
+end

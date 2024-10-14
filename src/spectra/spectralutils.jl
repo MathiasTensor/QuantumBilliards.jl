@@ -48,6 +48,175 @@ function match_wavenumbers(ks_l,ts_l,ks_r,ts_r)
     return ks, ts, control 
 end
 
+### NEW ###
+"""
+    match_wavenumbers_with_X(ks_l::Vector, ts_l::Vector, X_l::Vector{Vector}, ks_r::Vector, ts_r::Vector, X_r::Vector{Vector}) -> Tuple{Vector, Vector, Vector{Vector}, Vector{Bool}}
+
+    #Arguments
+    ks_l::Vector{<:Real} : List of wavenumbers from the left
+    ts_l::Vector{<:Real} : List of wavenumbers from the right
+    X_l::Vector{Vector{<:Real}} : List of vectors of vectors of the left sample -> the solve_vector sols for each k in ks_l
+    ks_r::Vector{<:Real} : List of wavenumbers from the right
+    ts_r::Vector{<:Real} : List of tensions from the right
+    X_r::Vector{Vector{<:Real}} : List of vectors of vectors of the right sample -> the solve_vector sols for each k in ks_r
+
+    #Returns
+    ks::Vector{<:Real} : List of merged wavenumbers that match 
+    ts::Vector{<:Real} : List of merged tensions that 
+    X_list::Vector{Vector{<:Real}} : List of vectors of vectors of the matched/merged ks
+    control::Vector{Bool} : List of boolean values indicating whether there was an overlap and we had to choose based on tension value to merge
+
+    Match wavenumbers and tensions from two input lists, taking into account their respective tensions. If there is any overlap (`is_equal` is called) between the `ks_l` and `ks_r` then we choose the one to push into the `ks` those that have the lowest tension (as more accurate). Otherwise we append those that are smaller of the two. In this way we glue together the `ks_l` and `ks_r` to ks such that it has the smallest tensions and smallest `k` of the two closest to one another.
+"""
+function match_wavenumbers_with_X(ks_l::Vector, ts_l::Vector, X_l::Vector{Vector}, ks_r::Vector, ts_r::Vector, X_r::Vector{Vector})
+    i = j = 1
+    ks = Vector{eltype(ks_l)}() # final wavenumbers
+    ts = Vector{eltype(ts_l)}() # final tensions
+    X_list = Vector{Vector{Float64}}() # final vectors
+    control = Bool[]
+    while i <= length(ks_l) && j <= length(ks_r)
+        x, dx, Xx = ks_l[i], ts_l[i], X_l[i]
+        y, dy, Xy = ks_r[j], ts_r[j], X_r[j]
+        if is_equal(x, dx, y, dy)
+            # Choose which to keep based on tension
+            i += 1
+            j += 1
+            if dx < dy
+                push!(ks, x); 
+                push!(ts, dx); 
+                push!(X_list, Xx); 
+                push!(control, true)
+            else
+                push!(ks, y); 
+                push!(ts, dy); 
+                push!(X_list, Xy); 
+                push!(control, true)
+            end
+        elseif x < y
+            push!(ks, x); 
+            push!(ts, dx); 
+            push!(X_list, Xx); 
+            push!(control, false)
+            i += 1
+        else
+            push!(ks, y); 
+            push!(ts, dy); 
+            push!(X_list, Xy); 
+            push!(control, false)
+            j += 1
+        end
+    end
+    return ks, ts, X_list, control
+end
+
+function overlap_and_merge!(k_left, ten_left, k_right, ten_right, control_left, kl, kr; tol=1e-3)
+    #check if intervals are empty 
+    if isempty(k_left)
+        #println("Left interval is empty.")
+        append!(k_left, k_right)
+        append!(ten_left, ten_right)
+        append!(control_left, [false for i in 1:length(k_right)])
+        return nothing #return short circuits further evaluation
+    end
+
+    #if right is empty just skip the mergeing
+    if isempty(k_right)
+        #println("Right interval is empty.")
+        return nothing
+    end
+    
+    #find overlaps in interval [k1,k2]
+    idx_l = k_left .> (kl-tol) .&& k_left .< (kr+tol)
+    idx_r = k_right .> (kl-tol) .&& k_right .< (kr+tol)
+    
+    ks_l,ts_l,ks_r,ts_r = k_left[idx_l], ten_left[idx_l], k_right[idx_r], ten_right[idx_r]
+    #check if wavnumbers match in overlap interval
+    ks, ts, control = match_wavenumbers(ks_l,ts_l,ks_r,ts_r)
+    deleteat!(k_left, idx_l)
+    append!(k_left, ks)
+    deleteat!(ten_left, idx_l)
+    append!(ten_left, ts)
+    deleteat!(control_left, idx_l)
+    append!(control_left, control)
+
+    fl = findlast(idx_r)
+    idx_last = isnothing(fl) ? 1 : fl + 1
+    append!(k_left, k_right[idx_last:end])
+    append!(ten_left, ten_right[idx_last:end])
+    append!(control_left, [false for i in idx_last:length(k_right)])
+end
+
+"""
+    overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left::Vector{Vector}, k_right::Vector, ten_right::Vector, X_right::Vector{Vector}, control_left::Vector{Bool}, kl::T, kr::T; tol::Float64=1e-3) :: Nothing where {T<:Real}
+
+Merges the right interval data into the left interval data in place, handling overlaps between wavenumbers and their associated data, including eigenvectors.
+
+# Arguments
+- `k_left::Vector`: Vector of wavenumbers from the left interval.
+- `ten_left::Vector`: Vector of tensions corresponding to `k_left`.
+- `X_left::Vector{Vector}`: Vector of eigenvectors corresponding to `k_left`.
+- `k_right::Vector`: Vector of wavenumbers from the right interval.
+- `ten_right::Vector`: Vector of tensions corresponding to `k_right`.
+- `X_right::Vector{Vector}`: Vector of eigenvectors corresponding to `k_right`.
+- `control_left::Vector{Bool}`: Vector indicating whether each wavenumber in `k_left` was merged (`true`) or not (`false`).
+- `kl::T`: Left boundary of the overlapping interval.
+- `kr::T`: Right boundary of the overlapping interval.
+- `tol::Float64`: Tolerance for determining overlaps (default: `1e-3`).
+
+# Returns
+- `Nothing`: The function modifies `k_left`, `ten_left`, `X_left`, and `control_left` in place.
+
+# Description
+This function merges two sets of wavenumber data (`k_left`, `ten_left`, `X_left`) and (`k_right`, `ten_right`, `X_right`) that may have overlapping wavenumbers in the interval `[kl - tol, kr + tol]`. It ensures that each wavenumber and its associated data are only included once in the merged result, preferring the data with the smaller tension when overlaps occur.
+"""
+function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left::Vector{Vector}, k_right::Vector, ten_right::Vector, X_right::Vector{Vector}, control_left::Vector{Bool}, kl::T, kr::T; tol=1e-3) where {T<:Real}
+    # Check if intervals are empty
+    if isempty(k_left)
+        append!(k_left, k_right)
+        append!(ten_left, ten_right)
+        append!(X_left, X_right)
+        append!(control_left, [false for _ in 1:length(k_right)])
+        return nothing
+    end
+
+    if isempty(k_right)
+        return nothing
+    end
+
+    # Find overlaps in interval [kl - tol, kr + tol]
+    idx_l = k_left .> (kl - tol) .& k_left .< (kr + tol)
+    idx_r = k_right .> (kl - tol) .& k_right .< (kr + tol)
+
+    # Extract overlapping data
+    ks_l = k_left[idx_l]
+    ts_l = ten_left[idx_l]
+    Xs_l = X_left[idx_l]
+    ks_r = k_right[idx_r]
+    ts_r = ten_right[idx_r]
+    Xs_r = X_right[idx_r]
+
+    # Check if wavenumbers match in overlap interval
+    ks, ts, Xs, control = match_wavenumbers_with_X(ks_l, ts_l, Xs_l, ks_r, ts_r, Xs_r)
+    # For all those that matched we put them in the location where there was ambiguity (overlap) for merging ks_r into ks_l. So we delete all the k_left that were in the overlap interval and merged the matched results into the correct location where we deleted from idx_l
+    deleteat!(k_left, findall(idx_l))
+    append!(k_left, ks)
+    deleteat!(ten_left, findall(idx_l))
+    append!(ten_left, ts)
+    deleteat!(X_left, findall(idx_l))
+    append!(X_left, Xs)
+    deleteat!(control_left, findall(idx_l))
+    append!(control_left, control)
+
+    # After we are done with in-tolerance ks safely append what is let to the final results. This is the part where
+    fl = findlast(idx_r)
+    idx_last = isnothing(fl) ? 1 : fl + 1
+    append!(k_left, k_right[idx_last:end])
+    append!(ten_left, ten_right[idx_last:end])
+    append!(X_left, X_right[idx_last:end])
+    append!(control_left, [false for _ in idx_last:length(k_right)])
+end
+
+#=
 function overlap_and_merge!(k_left, ten_left, k_right, ten_right, control_left, kl, kr; tol=1e-3)
     #check if intervals are empty 
     if isempty(k_left)
@@ -89,6 +258,7 @@ function overlap_and_merge!(k_left, ten_left, k_right, ten_right, control_left, 
     append!(ten_left, ten_right[idx_last:end])
     append!(control_left, [false for i in idx_last:length(k_right)])
 end
+=#
 
 # OLD
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4)
@@ -151,45 +321,68 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     return k_res, ten_res, control
 end
 
-# with saving of vectors in a matrix X
-function compute_spectrum_with_state_vectors(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol=1e-4, N_expect = 3, dk_threshold=0.05, fundamental=true)
+"""
+    compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental=true)
+
+Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors.
+
+# Arguments
+- `solver`: The solver used to compute the spectrum.
+- `basis`: The basis set used in computations.
+- `billiard`: The billiard domain for the problem.
+- `k1`, `k2`: The starting and ending wavenumbers of the spectrum range.
+- `tol`: Tolerance for computations (default: `1e-4`).
+- `N_expect`: Expected number of eigenvalues per interval (default: `3`).
+- `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
+- `fundamental`: Whether to use fundamental domain properties (default: `true`).
+
+# Returns
+- A tuple `(state_res, control)`:
+    - `state_res`: `StateData` containing the merged wavenumbers, tensions, and eigenvectors.
+    - `control`: Vector indicating whether each wavenumber was merged (`true`) or not (`false`).
+"""
+function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k1::T, k2::T; tol::T = T(1e-4), N_expect::Int = 3, dk_threshold::T = T(0.05), fundamental::Bool = true) :: (StateData{T, T}, Vector{Bool}) where {T<:Real}
     # Estimate the number of intervals and store the dk values
-    k0 = k1
-    dk_values = []
+    k0::T = k1
+    dk_values::Vector{T} = T[]
+    two_pi = 2 * π
     while k0 < k2
+        dk::T
         if fundamental
-            dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental/(4*pi))
+            area = billiard.area_fundamental
+            length = billiard.length_fundamental
         else
-            dk = N_expect / (billiard.area * k0 / (2*pi) - billiard.length/(4*pi))
+            area = billiard.area
+            length = billiard.length
         end
-        if dk < 0.0
-            dk = -dk
-        end
-        if dk > dk_threshold # For small k this limits the size of the interval
-            dk = dk_threshold
-        end
+        dk = N_expect / (area * k0 / two_pi - length / (4 * π))
+        dk = abs(dk)
+        dk = min(dk, dk_threshold)
         push!(dk_values, dk)
         k0 += dk
     end
     println("min/max dk value: ", extrema(dk_values))
-
     # Initialize the progress bar with estimated number of intervals
     println("Scaling Method...")
     p = Progress(length(dk_values), 1)
-
     # Actual computation using precomputed dk values
     k0 = k1
-    k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk_values[1] + tol)
-    control = [false for i in 1:length(k_res)]
+    state_res::StateData{T, T} = solve_state_data_bundle(solver, basis, billiard, k0, dk_values[1] + tol)
+    control::Vector{Bool} = [false for _ in 1:length(state_res.ks)]
 
-    for i in eachindex(dk_values)
+    for i in eachindex(dk_values)[2:end]
         dk = dk_values[i]
         k0 += dk
-        k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk + tol)
-        overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0 - dk, k0; tol=tol)
+        state_new::StateData{T, T} = solve_state_data_bundle(solver, basis, billiard, k0, dk + tol)
+        # Merge the new state into the accumulated state
+        overlap_and_merge_state!(
+            state_res.ks, state_res.tens, state_res.X,
+            state_new.ks, state_new.tens, state_new.X,
+            control, k0 - dk, k0; tol=tol
+        )
         next!(p)
     end
-    return k_res, ten_res, control
+    return state_res, control
 end
 
 # NEW
