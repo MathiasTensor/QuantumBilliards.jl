@@ -156,7 +156,7 @@ end
 
 #### NOT TO BE USED FOR LARGE NUMBER OF EIGENVALUES!!! #### use rather the husimi functions from state data or directly from the us, s_vals to get them more efficiently
 
-
+#=
 
 """
     function save_husimi_to_jld2(state_data::StateData, billiard::Bi, basis::Ba; filename::String="husimi_data.jld2", b=5.0, c=10.0, w=7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
@@ -195,3 +195,5 @@ function load_husimi_from_jld2(filename::String)
     @load filename Hs_return ps_return qs_return
     return Hs_return, ps_return, qs_return
 end
+
+=#
