@@ -140,6 +140,9 @@ An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals`
 """
 function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; c = 10.0, w = 7.0) where {Bi<:AbsBilliard}
     L = billiard.length
+    Hs_return = Vector{Matrix}(undef, length(ks))
+    ps_return = Vector{Vector}(undef, length(ks))
+    qs_return = Vector{Vector}(undef, length(ks))
     Threads.@threads for i in eachindex(ks) 
         H, ps, qs = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
         Hs_return[i] = H
