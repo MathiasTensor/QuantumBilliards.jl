@@ -158,6 +158,6 @@ function solve_state_data_bundle(solver::Sol, basis::Ba, billiard::Bi, k, dk) wh
     pts = evaluate_points(solver, billiard, k)
     ks, tens, X_matrix = solve_vectors(solver,basis_new, pts, k, dk) # this one filters the ks that are outside k+-dk and gives us the filtered out ks, tensions and X matrix of filtered vectors. No need to store dim as we can get it from the length(X[1])
     # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
-    X_vectors = X_vectors = collect(eachcol(X_matrix))
+    X_vectors = collect(eachcol(X_matrix))
     return StateData(ks, X_vectors, tens)
 end
