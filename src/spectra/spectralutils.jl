@@ -184,8 +184,8 @@ function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left, k_ri
     end
 
     # Find overlaps in interval [kl - tol, kr + tol]
-    idx_l = k_left .> (kl - tol) .& k_left .< (kr + tol)
-    idx_r = k_right .> (kl - tol) .& k_right .< (kr + tol)
+    idx_l = k_left .> (kl - tol) .&& k_left .< (kr + tol)
+    idx_r = k_right .> (kl - tol) .&& k_right .< (kr + tol)
 
     # Extract overlapping data
     ks_l = k_left[idx_l]
