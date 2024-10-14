@@ -169,7 +169,7 @@ Merges the right interval data into the left interval data in place, handling ov
 # Description
 This function merges two sets of wavenumber data (`k_left`, `ten_left`, `X_left`) and (`k_right`, `ten_right`, `X_right`) that may have overlapping wavenumbers in the interval `[kl - tol, kr + tol]`. It ensures that each wavenumber and its associated data are only included once in the merged result, preferring the data with the smaller tension when overlaps occur.
 """
-function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left::Vector{Vector}, k_right::Vector, ten_right::Vector, X_right::Vector{Vector}, control_left::Vector{Bool}, kl::T, kr::T; tol=1e-3) where {T<:Real}
+function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left, k_right::Vector, ten_right::Vector, X_right, control_left::Vector{Bool}, kl::T, kr::T; tol=1e-3) where {T<:Real}
     # Check if intervals are empty
     if isempty(k_left)
         append!(k_left, k_right)
