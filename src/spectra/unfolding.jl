@@ -91,6 +91,14 @@ function weyl_law(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi
     return N_k
 end
 
+# INTERNAL
+function dos_weyl(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    A = fundamental ? billiard.area_fundamental : billiard.area
+    L = fundamental ? billiard.length_fundamental : billiard.length
+    ρ_k = A/(2*pi)*k - L/(4*pi)
+    return ρ_k
+end
+
 """
     k_at_state(state::Int, billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
 
