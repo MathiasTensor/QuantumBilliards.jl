@@ -27,6 +27,7 @@ Computes the curvature correction term for Weyl's law based on the curvature alo
 
 # Arguments
 - `billiard::Bi`: An instance of a billiard (must be a subtype of `AbsBilliard`).
+- `fundamental::Bool`: Whether we use the geometry of the fundamental domain. Defaults to `true`.
 
 # Returns
 - `curvature_term::Real`: The total curvature correction.
@@ -47,10 +48,13 @@ function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:A
 end
 
 """
+     curvature_and_corner_corrections(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
+
 Convenience function to get the constant C in Weyl's law.
 
 # Arguments
 - `billiard::Bi`: The billiard instance (must be a subtype of `AbsBilliard`).
+- `fundamental::Bool`: Whether we use the geometry of the fundamental domain. Defaults to `true`.
 
 # Returns
 - `C::Real`: The constant C in Weyl's law.
