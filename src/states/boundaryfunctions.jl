@@ -109,7 +109,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
 end
 
 """
-    save_boundary_function(us, s_vals; filename::String="boundary_values.jld2")
+    save_boundary_function!(us, s_vals; filename::String="boundary_values.jld2")
 
 Saves the results of the boundary_function with the `StateData` input. Primarly useful for creating efficient input to the husimi function constructor.
 
@@ -121,7 +121,7 @@ Saves the results of the boundary_function with the `StateData` input. Primarly 
 # Returns
 - `Nothing`
 """
-function save_boundary_function(us, s_vals; filename::String="boundary_values.jld2")
+function save_boundary_function!(us, s_vals; filename::String="boundary_values.jld2")
     @save filename us s_vals
 end
 
