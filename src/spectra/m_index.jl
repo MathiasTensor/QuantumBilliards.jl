@@ -434,6 +434,7 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
             qs = qs_list[i]
             ps = ps_list[i]
             proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+            println("Size of projection grid: ", size(proj_grid), " , size of H: ", size(H))
             M_val = compute_M(proj_grid, H)
             overlap_val = visualize_overlap(proj_grid, H)
             projection_grids[i] = proj_grid
