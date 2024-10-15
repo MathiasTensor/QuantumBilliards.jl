@@ -527,7 +527,7 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     end
 end
 
-function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1e-5, fundamental::Bool=true, step_size=0.005) where {Bi<:AbsBilliard}
+function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1e-5, fundamental::Bool=true, step_size=0.01) where {Bi<:AbsBilliard}
     k = 1.0
     while dos_weyl(k, billiard, fundamental=fundamental) < 0.0
         k += step_size
@@ -543,5 +543,5 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
         push!(x, k)
         push!(y, mls)
     end
-    lines!(ax, x, y)
+    scatter!(ax, x, y)
 end
