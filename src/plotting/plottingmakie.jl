@@ -557,5 +557,5 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
     # visual indication what is the max k
     final_k = x[end]
     vlines!(ax, [final_k], color=:red, linewidth=2)
-    text!(ax, "k = $(round(final_k, digits=6))", position=(final_k, maximum(y)), align=:left, color=:red, fontsize=14)
+    text!(ax, (final_k, maximum(y)), text="k = $(round(final_k, digits=6))", align=:left, color=:red, fontsize=14, rotation=pi/2)
 end
