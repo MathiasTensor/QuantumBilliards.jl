@@ -534,10 +534,11 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
         k += step_size
         mls = dos_weyl(k, billiard, fundamental=fundamental)
     end
+    mls_inv = 1.0/mls
     x = Float64[]
     y = Float64[]
     push!(x,k)
-    push!(y,1.0/mls)
+    push!(y,mls_inv)
     while mls_inv > avg_smallest_tension
         k += step_size
         mls_inv = 1.0/dos_weyl(k, billiard, fundamental=fundamental)
