@@ -534,25 +534,16 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
         k += step_size
         mls = dos_weyl(k, billiard, fundamental=fundamental)
     end
-    max_steps = 100000
-    x = Vector{Float64}(undef, max_steps)
-    y = Vector{Float64}(undef, max_steps)
-    x[1]=k
-    y[1] = mls
-    step=2
+    x = Float64[]
+    y = Float64[]
+    push!(x,k)
+    push!(y,mls)
     while mls > avg_smallest_tension
         k += step_size
         mls = 1.0/dos_weyl(k, billiard, fundamental=fundamental)
-        if step > length(x) # Extend the array size b/c we dont know the size before runtime
-            resize!(x, length(x)*2)
-            resize!(y, length(y)*2)
-        end
-        x[step] = k
-        y[step] = mls
-        step += 1
+        push!(x,k)
+        push!(y,k)
     end
-    resize!(x, step - 1) # we know the size
-    resize!(y, step - 1) # we know the size
     scatter!(ax, x, log10.(y))
     # visual indication what is the max k
     final_k = x[end]
