@@ -234,6 +234,7 @@ end
 
 
 """
+USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
     visualize_quantum_classical_overlap_of_levels!(filename::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
 
 Generates and saves visualizations of the quantum-classical overlap for each level based on precomputed Husimi functions.
