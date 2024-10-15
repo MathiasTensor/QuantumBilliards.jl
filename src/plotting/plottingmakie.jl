@@ -534,7 +534,7 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
         k += step_size
         mls = dos_weyl(k, billiard, fundamental=fundamental)
     end
-    max_steps = 1e6
+    max_steps = 100000
     x = Vector{Float64}(undef, max_steps)
     y = Vector{Float64}(undef, max_steps)
     x[1]=k
@@ -554,4 +554,8 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
     resize!(x, step - 1) # we know the size
     resize!(y, step - 1) # we know the size
     scatter!(ax, x, log10.(y))
+    # visual indication what is the max k
+    final_k = x[end]
+    vlines!(ax, [final_k], color=:red, linewidth=2)
+    text!(ax, "k = $(round(final_k, digits=6))", position=(final_k, maximum(y)), align=:left, color=:red, fontsize=14)
 end
