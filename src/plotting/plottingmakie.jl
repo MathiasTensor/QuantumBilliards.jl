@@ -545,8 +545,11 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
         push!(x,k)
         push!(y,mls_inv)
     end
-    scatter!(ax, x, log10.(y))
+    logy = log10.(y)
+    scatter!(ax, x, logy)
     # visual indication what is the max k
     final_k = x[end]
     vlines!(ax, [final_k], color=:red, linewidth=2)
+    min_y, max_y = extrema(logy)
+    text!(ax, final_k, (min_y+max_y)/2, text = "k = $(round(final_k; sigdigits=6))", color=:red)
 end
