@@ -305,3 +305,167 @@ function visualize_quantum_classical_overlap_of_levels!(filename::String, classi
     end
 end
 
+"""
+    visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
+
+Generates and saves visualizations of the quantum-classical overlap for each level based on precomputed Husimi functions.
+
+# Arguments
+- `ks::Vector`:  
+  Vector of wavenumbers corresponding to each quantum level.
+- `H_list::Vector{Matrix}`:  
+  Vector of Husimi functions for each quantum level.
+- `qs_list::Vector{Vector}`:  
+  Vector of position grids (`q`) for each Husimi function.
+- `ps_list::Vector{Vector}`:  
+  Vector of momentum grids (`p`) for each Husimi function.
+- `classical_chaotic_s_vals::Vector`:  
+  Vector of classical chaotic `s` values used to compute the projection grid.
+- `classical_chaotic_p_vals::Vector`:  
+  Vector of classical chaotic `p` values used to compute the projection grid.
+
+# Returns
+- `Nothing`
+"""
+function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
+    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
+    if !isdir("Overlap_visualization")
+        mkdir("Overlap_visualization")
+    end
+    progress_computing = Progress(length(ks), desc = "Computing overlaps...")
+    progress_saving = Progress(length(ks), desc = "Saving overlap visualizations...")
+    Ms = Vector{Float64}(undef, length(ks))
+    projection_grids = Vector{Matrix}(undef, length(ks))
+    overlaps = Vector{Matrix}(undef, length(ks))
+    Threads.@threads for i in eachindex(ks) # only this can multithread, precompute data
+        try
+            H = H_list[i]
+            qs = qs_list[i]
+            ps = ps_list[i]
+            proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+            M_val = compute_M(proj_grid, H)
+            overlap_val = visualize_overlap(proj_grid, H)
+            projection_grids[i] = proj_grid
+            Ms[i] = M_val
+            overlaps[i] = overlap_val
+        catch e
+            @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
+        end
+        next!(progress_computing)
+    end
+
+    for i in eachindex(ks) # do not multithread, memory corruption problem
+        try
+            f = Figure(resolution = (800, 1500))
+            ax_H = Axis(f[1,1])
+            hmap = heatmap!(ax_H, H_list[i]; colormap=Reverse(:gist_heat))
+            Colorbar(f[1,2], hmap)
+            ax_projection = Axis(f[2,1])
+            hmap = heatmap!(ax_projection, projection_grids[i])
+            Colorbar(f[2,2], hmap)
+            ax_overlap = Axis(f[3,1], title="k = $(round(ks[i]; sigdigits=8)), Overlap = $(round(Ms[i]; sigdigits=4))")
+            hmap = heatmap!(ax_overlap, overlaps[i]; colormap=Reverse(:gist_heat))
+            Colorbar(f[3,2], hmap)
+            colsize!(f.layout, 1, Aspect(3, 1))
+            save("Overlap_visualization/$(ks[i])_overlap.png", f)
+        catch e
+            @warn "Failed to save overlap for k = $(ks[i]): $(e)"
+        end
+        next!(progress_saving)
+    end
+end
+
+"""
+    visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
+    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
+    state_data::StateData, billiard::Bi, basis::Ba; 
+    b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9)
+
+Generates and saves visualizations of the quantum-classical overlap for each level, and also plots wavefunction heatmaps.
+
+# Arguments
+- `ks::Vector`:  
+  Vector of wavenumbers corresponding to each quantum level.
+- `H_list::Vector{Matrix}`:  
+  Vector of Husimi functions for each quantum level.
+- `qs_list::Vector{Vector}`:  
+  Vector of position grids (`q`) for each Husimi function.
+- `ps_list::Vector{Vector}`:  
+  Vector of momentum grids (`p`) for each Husimi function.
+- `classical_chaotic_s_vals::Vector`:  
+  Vector of classical chaotic `s` values used to compute the projection grid.
+- `classical_chaotic_p_vals::Vector`:  
+  Vector of classical chaotic `p` values used to compute the projection grid.
+- `state_data::StateData`:  
+  The `StateData` object containing wavefunction information from the spectrum calculations.
+- `billiard::Bi`:  
+  The billiard object for computing wavefunctions.
+- `basis::Ba`:  
+  The basis object for computing wavefunctions.
+- `b::Float64`:  
+  Point scaling factor for the wavefunctions (default 5.0).
+- `inside_only::Bool`:  
+  Whether to only include points inside the billiard for wavefunction (default true).
+- `fundamental_domain::Bool`:  
+  Whether to compute wavefunctions only in the fundamental domain (default true).
+- `memory_limit::Float64`:  
+  The memory limit for constructing the wavefunction (default 10.0e9 bytes).
+
+# Returns
+- `Nothing`
+"""
+function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
+    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
+    state_data::StateData, billiard::Bi, basis::Ba; 
+    b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    if !isdir("Overlap_visualization")
+        mkdir("Overlap_visualization")
+    end
+    progress_computing = Progress(length(ks), desc = "Computing overlaps...")
+    progress_saving = Progress(length(ks), desc = "Saving overlap visualizations...")
+    Ms = Vector{Float64}(undef, length(ks))
+    projection_grids = Vector{Matrix}(undef, length(ks))
+    overlaps = Vector{Matrix}(undef, length(ks))
+    ks_wf, Psi2ds, x_grids, y_grids = wavefunctions(state_data, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
+
+    Threads.@threads for i in eachindex(ks) # only this can multithread, precompute data
+        try
+            H = H_list[i]
+            qs = qs_list[i]
+            ps = ps_list[i]
+            proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+            M_val = compute_M(proj_grid, H)
+            overlap_val = visualize_overlap(proj_grid, H)
+            projection_grids[i] = proj_grid
+            Ms[i] = M_val
+            overlaps[i] = overlap_val
+        catch e
+            @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
+        end
+        next!(progress_computing)
+    end
+
+    for i in eachindex(ks) # do not multithread, memory corruption problem
+        try
+            f = Figure(resolution = (800, 1500))
+            ax_H = Axis(f[1,1])
+            hmap = heatmap!(ax_H, H_list[i]; colormap=Reverse(:gist_heat))
+            Colorbar(f[1,2], hmap)
+            ax_projection = Axis(f[2,1])
+            hmap = heatmap!(ax_projection, projection_grids[i])
+            Colorbar(f[2,2], hmap)
+            ax_overlap = Axis(f[3,1], title="k = $(round(ks[i]; sigdigits=8)), Overlap = $(round(Ms[i]; sigdigits=4))")
+            hmap = heatmap!(ax_overlap, overlaps[i]; colormap=Reverse(:gist_heat))
+            Colorbar(f[3,2], hmap)
+            ax_wave = Axis(f[4,1], title="Wavefunction Heatmap for k = $(round(ks[i]; sigdigits=8))")
+            hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=Reverse(:gist_heat))
+            Colorbar(f[4,2], hmap)
+            colsize!(f.layout, 1, Aspect(3, 1))
+            save("Overlap_visualization/$(ks[i])_overlap.png", f)
+        catch e
+            @warn "Failed to save overlap for k = $(ks[i]): $(e)"
+        end
+        next!(progress_saving)
+    end
+end
+
