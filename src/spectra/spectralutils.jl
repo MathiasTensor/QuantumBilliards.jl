@@ -321,6 +321,16 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     return k_res, ten_res, control
 end
 
+function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1::Int,N2::Int; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
+    # get the k1 and k2 from the N1 and N2
+    k1 = k_at_state(N1, billiard; fundamental=fundamental)
+    k2 = k_at_state(N2, billiard; fundamental=fundamental)
+    println("k1 = $(k1), k2 = $(k2)")
+    # Call the k one
+    k_res, ten_res, control = compute_spectrum(solver, basis, billiard, k1, k2; tol=tol, N_expect=N_expect, dk_threshold=dk_threshold, fundamental=fundamental)
+    return k_res, ten_res, control
+end
+
 """
     compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental=true)
 
@@ -384,6 +394,34 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
     return state_res, control
 end
 
+"""
+    compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, N1::Int, N2::Int; tol=1e-4, N_expect::Int=3, dk_threshold=0.05, fundamental::Bool = true)
+
+Wrapper for the k1 to k2 compute_spectrum_with_state function. This one accepts a starting state number and an ending state number.
+
+# Arguments
+- `solver`: The solver used to compute the spectrum.
+- `basis`: The basis set used in computations.
+- `billiard`: The billiard domain for the problem.
+- `N1`, `N2`: The starting and ending state numbers of the spectrum range.
+- `tol`: Tolerance for overlaps and merging (default: `1e-4`).
+- `N_expect`: Expected number of eigenvalues per generalized eigenvalue decomposition, determines width of acceptable results from such a computation (default: `3`).
+- `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
+- `fundamental`: Whether to use fundamental domain (default: `true`).
+
+# Returns
+- A tuple `(state_res, control)` where state_res contains all the information about the eigenvalues and tensions of the problem together with the wavefunction expansion coefficients in the given basis and a control vector that determines if these values were merged in an overlap such that minimal tensions were compared
+"""
+function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, N1::Int, N2::Int; tol=1e-4, N_expect::Int=3, dk_threshold=0.05, fundamental::Bool = true)
+    # get the k1 and k2 from the N1 and N2
+    k1 = k_at_state(N1, billiard; fundamental=fundamental)
+    k2 = k_at_state(N2, billiard; fundamental=fundamental)
+    println("k1 = $(k1), k2 = $(k2)")
+    # Call the k one
+    state_res, control = compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=tol, N_expect=N_expect, dk_threshold=dk_threshold, fundamental=fundamental)
+    return state_res, control
+end
+
 # NEW
 #=
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
@@ -426,17 +464,6 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     return k_res, ten_res, control
 end
 =#
-
-# NEW WITH N1 and N2 INSTEAD OF k1 AND k2
-function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1::Int,N2::Int; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
-    # get the k1 and k2 from the N1 and N2
-    k1 = k_at_state(N1, billiard; fundamental=fundamental)
-    k2 = k_at_state(N2, billiard; fundamental=fundamental)
-    println("k1 = $(k1), k2 = $(k2)")
-    # Call the k one
-    k_res, ten_res, control = compute_spectrum(solver, basis, billiard, k1, k2; tol=tol, N_expect=N_expect, dk_threshold=dk_threshold, fundamental=fundamental)
-    return k_res, ten_res, control
-end
 
 #=
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,N1::Int,N2::Int; tol=1e-4, N_expect = 3, dk_threshold=0.1, fundamental=true)
