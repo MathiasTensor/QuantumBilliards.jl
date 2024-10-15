@@ -449,7 +449,7 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
 
     for i in eachindex(ks) # do not multithread, memory corruption problem
         try
-            f = Figure(resolution = (800, 1500))
+            f = Figure(resolution = (1000, 2500), resolution=(1000, 2500))
             ax_H = Axis(f[1,1])
             hmap = heatmap!(ax_H, H_list[i]; colormap=Reverse(:gist_heat))
             Colorbar(f[1,2], hmap)
