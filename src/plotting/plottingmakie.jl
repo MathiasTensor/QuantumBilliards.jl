@@ -527,6 +527,20 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     end
 end
 
+"""
+    plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1e-5, fundamental::Bool=true, step_size=0.01) where {Bi<:AbsBilliard}
+
+Plots the mean level spacings up to the given tension input. It serves as a visual guide to determine the maximal k0 we can take in the scaling method.
+
+# Arguments
+- `ax::Axis`: The axis object from Makie where the plot will be drawn.
+- `billiard::Bi`: An instance of the billiard.
+- `avg_smallest_tension::Float64`: The average smallest tension for which the mean level spacing should be calculated. Defaults to 1e-5.
+- `fundamental::Bool`: (Optional) Whether to consider the fundamental boundary only. Defaults to `true`.
+
+# Returns
+- `Nothing`
+"""
 function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1e-5, fundamental::Bool=true, step_size=0.01) where {Bi<:AbsBilliard}
     k = 1.0
     mls = dos_weyl(k, billiard, fundamental=fundamental)
