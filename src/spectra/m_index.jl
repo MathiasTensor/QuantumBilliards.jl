@@ -382,7 +382,7 @@ end
     state_data::StateData, billiard::Bi, basis::Ba; 
     b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9)
 
-Generates and saves visualizations of the quantum-classical overlap for each level, and also plots wavefunction heatmaps.
+Generates and saves visualizations of the quantum-classical overlap for each level, and also plots wavefunction heatmaps. This one is for visualization of a small number of levels due to the wavefunction computations.
 
 # Arguments
 - `ks::Vector`:  
