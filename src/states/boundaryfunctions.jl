@@ -138,6 +138,7 @@ Load the boundary function from a jld2 file.
 """
 function read_boundary_function(filename::String="boundary_values.jld2")
     @load filename us s_vals
+    return us, s_vals
 end
 
 function momentum_function(u,s)
