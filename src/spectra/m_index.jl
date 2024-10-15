@@ -463,7 +463,7 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
             hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=:balance)
             Colorbar(f[4,2], hmap)
             colsize!(f.layout, 1, Aspect(4, 1))
-            save("Overlap_visualization/$(ks[i])_overlap.png", f)
+            save("Overlap_visualization/$(ks[i])_overlap_w_wavefunctions.png", f)
         catch e
             @warn "Failed to save overlap for k = $(ks[i]): $(e)"
         end
