@@ -127,7 +127,7 @@ export plot_boundary_function!, plot_momentum_function!, plot_husimi_function!
 export plot_heatmap!, plot_heatmap_balaced!
 export plot_angularly_integrated_density!, plot_radially_integrated_density!, plot_momentum_representation_polar!, plot_momentum_cartesian_representation!
 include("plotting/testplotting.jl")
-export  plot_geometry_test!, plot_basis_test!, plot_solver_test!, plot_state_test!, plot_matrix!
+export  plot_geometry_test!, plot_basis_test!, plot_solver_test!, plot_state_test!, plot_matrix!, plot_mean_level_spacing!
 
 include("utils/benchmarkutils.jl")
 export BenchmarkInfo

@@ -526,3 +526,19 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
         end
     end
 end
+
+function plot_mean_level_spacing!(billiard::Bi; avg_smallest_tension=1e-5, fundamental::Bool=true, step_size=0.005) where {Bi<:AbsBilliard}
+    k = 1.0
+    mls = 1/weyl_law(k, billiard, fundamental=fundamental)
+    x = Float64[]
+    y = Float64[]
+    while mls > avg_smallest_tension
+        k += step_size
+        mls = 1/weyl_law(k, billiard, fundamental=fundamental)
+        push!(x, k)
+        push!(y, mls)
+    end
+    f = Figure()
+    ax = Axis(f[1,1], title="Mean Level Spacing vs. k", xlabel="k", ylabel=L"1/ρ(k)")
+    lines!(ax, x, y)
+end
