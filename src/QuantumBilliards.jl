@@ -140,7 +140,7 @@ include("utils/savingutils.jl")
 export save_numerical_ks_and_tensions!, read_numerical_ks_and_tensions, compute_and_save_closest_pairs!, plot_and_save_eigenstate_results!
 include("utils/rotationutils.jl")
 include("spectra/m_index.jl")
-export visualize_overlap, compute_M, compute_and_save_husimi_functions_jld2!, load_husimi_functions_jld2, shift_s_vals_poincare_birkhoff, classical_phase_space_matrix, visualize_quantum_classical_overlap_of_levels!
+export visualize_overlap, compute_M, shift_s_vals_poincare_birkhoff, classical_phase_space_matrix, visualize_quantum_classical_overlap_of_levels!
 include("spectra/gap_ratios.jl")
 export P_chaotic, P_integrable, P_r_normalized, plot_gap_ratios, average_gap_ratio
 export compute_spectrum_with_state, StateData, solve_state_data_bundle, husimi_functions_from_boundary_functions, husimi_functions_from_StateData, match_wavenumbers_with_X, overlap_and_merge_state!

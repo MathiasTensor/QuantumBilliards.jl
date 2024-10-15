@@ -117,7 +117,7 @@ function visualize_overlap(projection_grid::Matrix, H::Matrix)
 end
 
 
-
+#=
 """
 USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
     compute_and_save_husimi_functions_jld2!(
@@ -304,6 +304,7 @@ function visualize_quantum_classical_overlap_of_levels!(filename::String, classi
         next!(progress_saving)
     end
 end
+=#
 
 """
     visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
