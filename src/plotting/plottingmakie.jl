@@ -537,12 +537,12 @@ function plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1
     x = Float64[]
     y = Float64[]
     push!(x,k)
-    push!(y,mls)
-    while mls > avg_smallest_tension
+    push!(y,1.0/mls)
+    while mls_inv > avg_smallest_tension
         k += step_size
-        mls = 1.0/dos_weyl(k, billiard, fundamental=fundamental)
+        mls_inv = 1.0/dos_weyl(k, billiard, fundamental=fundamental)
         push!(x,k)
-        push!(y,k)
+        push!(y,mls_inv)
     end
     scatter!(ax, x, log10.(y))
     # visual indication what is the max k
