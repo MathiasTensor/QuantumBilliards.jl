@@ -225,7 +225,7 @@ end
 
 ### NEW ONE THAT USES StateData to generate the wavefunctions and the X, Y grids
 """
-    wavefunction(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) :: Tuple{Vector, Vector{Matrix}, Vector{Vector}, Vector{Vector}} where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    wavefunctions(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) :: Tuple{Vector, Vector{Matrix}, Vector{Vector}, Vector{Vector}} where {Bi<:AbsBilliard, Ba<:AbsBasis}
 
 High level wrapper for constructing the wavefunctions as a a `Tuple` of `Vector`s : `Tuple (ks::Vector, Psi2ds::Vector{Matrix}, x_grid::Vector{Vector}, y_grid::Vector{Vector})`.
 
@@ -244,7 +244,7 @@ High level wrapper for constructing the wavefunctions as a a `Tuple` of `Vector`
 - `x_grids::Vector{Vector}`: A vector of `Vector` containing the x grid for each k in ks.
 - `y_grids::Vector{Vector}`: A vector of `Vector` containing the y grid for each k in ks.
 """
-function wavefunction(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+function wavefunctions(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     ks = state_data.ks
     tens = state_data.tens
     X = state_data.X
