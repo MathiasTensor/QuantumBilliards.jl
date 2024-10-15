@@ -125,6 +125,21 @@ function save_boundary_function(us, s_vals; filename::String="boundary_values.jl
     @save filename us s_vals
 end
 
+"""
+    read_boundary_function(filename::String="boundary_values.jld2")
+
+Load the boundary function from a jld2 file.
+# Arguments
+- `filename::String`: The name of the jld2 file to load the boundary values from. Default is "boundary_values.jld2".
+
+# Returns
+- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
+- `s_vals::Vector{Vector}`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
+"""
+function read_boundary_function(filename::String="boundary_values.jld2")
+    @load filename us s_vals
+end
+
 function momentum_function(u,s)
     fu = rfft(u)
     sr = 1.0/diff(s)[1]
