@@ -306,6 +306,52 @@ function visualize_quantum_classical_overlap_of_levels!(filename::String, classi
 end
 =#
 
+function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64)
+    len_list = length(ks)
+    function calc_ρ(M_thresh)
+        local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
+        Threads.@threads for i in eachindex(ks) 
+            try
+                H = H_list[i]
+                qs = qs_list[i]
+                ps = ps_list[i]
+                proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+                M_val = compute_M(proj_grid, H)
+                
+                if M_val < M_thresh
+                    # Append in a thread-safe way
+                    Threads.atomic_push!(local_regular_idx, i)
+                end
+            catch e
+                @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
+            end
+        end
+        regular_idx = copy(local_regular_idx[])  # Retrieve final indices list
+        return length(regular_idx) / length(ks), regular_idx
+    end
+    
+    M_thresh = 0.99 #first guess
+    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    Ms = Float64[]
+    ρs = Float64[]
+    push!(Ms, M_thresh) # push the first ones
+    push!(ρs, ρ_numeric_reg) # push the first ones
+    while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states
+        M_thresh -= 1e-3 # slightly decrease the M_thresh
+        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
+        push!(Ms, M_thresh)
+        push!(ρs, ρ_numeric_reg)
+        if M_thresh < 0.0
+            throw(ArgumentError("M_thresh must be positive"))
+            break
+        end
+        if ρ_numeric_reg < ρ_regular_classic # the first one that passes the classical one
+            regular_idx = reg_idx_loop
+        end
+    end
+    return Ms, ρs, regular_idx
+end
+
 """
     visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
 
