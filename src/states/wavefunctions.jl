@@ -223,6 +223,45 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
     end
 end
 
+### NEW ONE THAT USES StateData to generate the wavefunctions and the X, Y grids
+"""
+    wavefunction(state_data::StateData; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) :: Tuple{Vector, Vector{Matrix}, Vector{Vector}, Vector{Vector}}
+
+High level wrapper for constructing the wavefunctions as a a `Tuple` of `Vector`s : `Tuple (ks::Vector, Psi2ds::Vector{Matrix}, x_grid::Vector{Vector}, y_grid::Vector{Vector})`.
+
+# Arguments
+- `state_data::StateData`: Object containing the wavenumbers, tensions and the coefficients of the wavefunction expansion as a vector of vectors for each k in ks.
+- `b`: The point scalling factor. Default is 5.0.
+- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
+- `fundamental_domain::Bool`: If true, the wavefunction information is only constructed in the fundamental domain. Default is true.
+- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the `basis_fun` directly. Default is 10.0e9.
+
+# Returns
+- `ks::Vector{Float64}`: A vector of wavenumbers.
+- `Psi2ds::Vector{Matrix}`: A vector of `Matrix` containing the wavefunction for each k in ks.
+- `x_grids::Vector{Vector}`: A vector of `Vector` containing the x grid for each k in ks.
+- `y_grids::Vector{Vector}`: A vector of `Vector` containing the y grid for each k in ks.
+"""
+function wavefunction(state_data::StateData; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9)
+    ks = state_data.ks
+    tens = state_data.tens
+    X = state_data.X
+    Psi2ds = Vector{Matrix{eltype(ks)}}(undef, length(ks))
+    x_grids = Vector{Vector{eltype(ks)}}(undef, length(ks))
+    y_grids = Vector{Vector{eltype(ks)}}(undef, length(ks))
+    for i in eachindex(ks) 
+        vec = X[i] # vector of vectors
+        dim = length(vec)
+        new_basis = resize_basis(basis, billiard, dim, ks[i])
+        state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
+        Psi2d, x_grid, y_grid = wavefunction(state; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
+        Psi2ds[i] = Psi2d
+        x_grids[i] = x_grid
+        y_grids[i] = y_grid
+    end
+    return ks, Psi2ds, x_grids, y_grids
+end
+
 function wavefunction(state::BasisState; xlim =(-2.0,2.0), ylim=(-2.0,2.0), b=5.0) 
     let k = state.k, basis=state.basis      
         #println(new_basis.dim)
