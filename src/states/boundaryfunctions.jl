@@ -2,7 +2,7 @@
 #include("../utils/billiardutils.jl")
 #include("../utils/gridutils.jl")
 #include("../solvers/matrixconstructors.jl")
-using FFTW, SpecialFunctions
+using FFTW, SpecialFunctions, JLD2
 
 #this takes care of singular points
 function regularize!(u)
@@ -106,6 +106,23 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         norms[i] = norm
     end
     return ks, us, s_vals, norms
+end
+
+"""
+    save_boundary_function(us, s_vals; filename::String="boundary_values.jld2")
+
+Saves the results of the boundary_function with the `StateData` input. Primarly useful for creating efficient input to the husimi function constructor.
+
+# Arguments
+- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
+- `s_vals::Vector{Vector}`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
+- `filename::String`: The name of the jld2 file to save the boundary values to. Default is "boundary_values.jld2".
+
+# Returns
+- `Nothing`
+"""
+function save_boundary_function(us, s_vals; filename::String="boundary_values.jld2")
+    @save filename us s_vals
 end
 
 function momentum_function(u,s)

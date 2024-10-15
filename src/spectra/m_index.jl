@@ -119,6 +119,7 @@ end
 
 
 """
+USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
     compute_and_save_husimi_functions_jld2!(
         solvers::Vector{<:QuantumBilliards.AbsSolver}, 
         basis::Ba, 
@@ -210,6 +211,7 @@ end
 
 
 """
+USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
     load_husimi_functions_jld2(filename::String = "husimi_functions.jld2") -> Tuple{Vector, Vector{Matrix}, Vector, Vector}
 
 Loads the Husimi functions from a JLD2 file.
