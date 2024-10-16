@@ -144,6 +144,6 @@ export visualize_overlap, compute_M, shift_s_vals_poincare_birkhoff, classical_p
 include("spectra/gap_ratios.jl")
 export P_chaotic, P_integrable, P_r_normalized, plot_gap_ratios, average_gap_ratio
 export compute_spectrum_with_state, StateData, solve_state_data_bundle, husimi_functions_from_boundary_functions, husimi_functions_from_StateData, match_wavenumbers_with_X, overlap_and_merge_state!
-include("spectra/spectral_measures.jl")
+include("spectra/localization_entropy.jl")
 export localization_entropy, normalized_inverse_participation_ratio_R
 end
