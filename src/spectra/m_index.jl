@@ -317,6 +317,11 @@ function compute_overlaps(H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_li
     return convert(Vector{Float64}, Ms)
 end
 
+function fraction_of_mixed_states(Ms::Vector; l_bound=-0.8, u_bound=0.8)
+    idxs = findall(x -> (x > l_bound)&&(x < u_bound), Ms)
+    return length(idxs) / length(Ms)
+end
+
 """
     separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64) :: Tuple{Vector, Vector, Vector}
 
@@ -406,6 +411,6 @@ function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::S
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
     barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color)
     xlims!(ax, (-1.0, 1.0))
-    axislegend(ax, position=:rt)
+    axislegend(ax, position=:ct)
 end
 
