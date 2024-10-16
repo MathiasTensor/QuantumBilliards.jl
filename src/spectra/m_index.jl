@@ -414,3 +414,7 @@ function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::S
     axislegend(ax, position=:ct)
 end
 
+function plot_fraction_of_eigenstates_vs_k(χ_Ms::Vector{T}, k::Vector{T}) where {T<:Real}
+    
+end
+
