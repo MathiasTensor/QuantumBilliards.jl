@@ -405,7 +405,7 @@ Plots a histogram (pdf) of the distribution of overlap indexes `Ms`
 # Returns
 - `Nothing`
 """
-function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::Symbol=:blue)
+function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::Symbol=:lightblue)
     hist = Distributions.fit(StatsBase.Histogram, Ms; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
