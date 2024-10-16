@@ -282,6 +282,42 @@ end
 # M COMPUTATIONS
 
 """
+    compute_overlaps(H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
+
+Computes the overlaps of the classical phase space matrix of {+1,-1} depending on whether we are on the chaotic region or regular with the Husimi function matrix.
+
+# Arguments
+- `H_list::Vector{Matrix}`:  
+  Vector of Husimi functions for each quantum level.
+- `qs_list::Vector{Vector}`: Vector of position grid points corresponding to each Husimi function.
+- `ps_list::Vector{Vector}`: Vector of momentum grid points corresponding to each Husimi function.
+- `classical_chaotic_s_vals::Vector`: Vector of classical chaotic `s` values used to compute the projection grid.
+- `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
+
+# Returns
+- `Ms::Vector{Float64}`: Vector of overlaps for each Husimi function with the classical phase space grid
+"""
+function compute_overlaps(H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
+    @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
+    Ms = Vector{Union{Float64, Nothing}}(undef, length(H_list))
+    Threads.@threads for i in eachindex(qs_list) 
+        try
+            H = H_list[i]
+            qs = qs_list[i]
+            ps = ps_list[i]
+            proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+            M_val = compute_M(proj_grid, H)
+            Ms[i] = M_val
+        catch e
+            @warn "Failed to compute overlap for idx=$(i): $(e)"
+            Ms[i] = nothing
+        end
+    end
+    filter!(x -> !isnothing(x), Ms)
+    return convert(Vector{Float64}, Ms)
+end
+
+"""
     separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64) :: Tuple{Vector, Vector, Vector}
 
 Separates the regular from the chaotic states based on the classical criterion where the fraction of the number of quantum states classified as regular by their Husimi functions is the same as the classical regular phase space volume.
@@ -303,6 +339,7 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
 """
 function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; decrease_step_size=1e-3)
+    @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
     function calc_ρ(M_thresh) # helper for each M_thresh iteration
         local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
         Threads.@threads for i in eachindex(ks) 
