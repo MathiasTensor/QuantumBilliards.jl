@@ -430,32 +430,41 @@ end
 """
     get_mixed_states(Ms::Vector; l_bound=-0.8, u_bound=0.8)
 
-Gives us overlap indexes of mixed states between l_bound and u_bound.
+Gives us overlap indexes of mixed states between l_bound and u_bound and their corresponding ks.
 
 # Arguments
 - `Ms::Vector`: The overlap indexes.
+- `ks::Vector`: The wavenumbers.
 - `l_bound::Float64`: Lower bound for the mixed states.
 - `u_bound::Float64`: Upper bound for the mixed states.
 
  # Returns
 - `Vector{<:Real}`: Vector of overlap indexes of mixed states.
+- `Vector{<:Real}`: Vector of wavenumbers corresponding to the mixed states.
 """
-function get_mixed_states(Ms::Vector; l_bound=-0.8, u_bound=0.8)
+function get_mixed_states(Ms::Vector, ks::Vector; l_bound=-0.8, u_bound=0.8)
     idxs = findall(x -> (x > l_bound)&&(x < u_bound), Ms)
-    return Ms[idxs]
+    return Ms[idxs], ks[idxs]
 end
 
 """
-    coefficient_of_fraction_of_eigenstates_vs_k(χ_Ms::Vector{T}, ks::Vector{T}) where {T<:Real}
+    coefficient_of_fraction_of_eigenstates_vs_k(χ_Ms::Vector{T}, ks_M::Vector{T}) where {T<:Real}
 
-Computes the coefficient of the fraction of mixed eigenstates (α) for the relation M_mixed=k^-α via the built in linear fitting.
+Computes the coefficient of the fraction of mixed eigenstates (ζ) for the relation M_mixed=k^-α via the built in linear fitting.
+
+# Arguments
+- `χ_Ms::Vector{T}`: The fraction of mixed states for each k in ks.
+- `ks_M::Vector{T}`: The wavenumbers that accompany the mixed states.
+
+ # Returns
+ - `<:Real`: The coefficient of the fraction of mixed eigenstates (ζ).
 """
-function coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms::Vector{T}, ks::Vector{T}) where {T<:Real}
+function coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms::Vector{T}, ks_M::Vector{T}) where {T<:Real}
     # Make the log-log data of the χ_Ms and ks
     log_χ_Ms = log.(χ_Ms)
-    log_ks = log.(ks)
+    log_ks_M = log.(ks_M)
     # Built in lapack linear fitting
-    ζ = -(log_ks / log_χ_Ms)
+    ζ = -(log_ks_M / log_χ_Ms)
     return ζ
 end
 
@@ -467,17 +476,17 @@ PLots the fraction of mixed states vs. the wavenumber k. We expect a power-law d
 # Arguments
 - `ax::Axis`: The Makie axis object to plot on.
 - `χ_Ms::Vector{T}`: The fraction of mixed states for each k in ks.
-- `ks::Vector{T}`: The wavenumbers that accompany the mixed states.
+- `ks_M::Vector{T}`: The wavenumbers that accompany the mixed states.
 
 # Returns
 - `Nothing`
 """
-function plot_fraction_of_mixed_eigenstates_vs_k(ax::Axis, χ_Ms::Vector{T}, ks::Vector{T}) where {T<:Real}
-    log_ks = log.(ks)
+function plot_fraction_of_mixed_eigenstates_vs_k(ax::Axis, χ_Ms::Vector{T}, ks_M::Vector{T}) where {T<:Real}
+    log_ks_M = log.(ks_M)
     log_χ_Ms = log.(χ_Ms)
     # First plot the scatter log-log plot then fit
-    ζ = coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms, ks)
-    scatter!(ax, log_ks, log_χ_Ms, label="Numerical data", color=:blue, marker=:circle, msize=4)
-    lines!(ax, log_ks, -ζ*log_ks, label="ζ=$(round(ζ; digits=3))", color=:red, linewidth=2) # do not forget the minus here. The fraction of mixed eigenstates should decay with increasing k
+    ζ = coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms, ks_M)
+    scatter!(ax, log_ks_M, log_χ_Ms, label="Numerical data", color=:blue, marker=:circle, msize=4)
+    lines!(ax, log_ks_M, -ζ*log_ks, label="ζ=$(round(ζ; digits=3))", color=:red, linewidth=2) # do not forget the minus here. The fraction of mixed eigenstates should decay with increasing k
 end
 
