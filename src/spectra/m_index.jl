@@ -116,197 +116,28 @@ function visualize_overlap(projection_grid::Matrix, H::Matrix)
     return M
 end
 
-
-#=
 """
-USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
-    compute_and_save_husimi_functions_jld2!(
-        solvers::Vector{<:QuantumBilliards.AbsSolver}, 
-        basis::Ba, 
-        billiard::Bi, 
-        ks::Vector{Float64}; 
-        filename::String = "husimi_functions.jld2"
-    ) where {Ba<:QuantumBilliards.AbsBasis, Bi<:QuantumBilliards.AbsBilliard}
+    separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64) :: Tuple{Vector, Vector, Vector}
 
-Compute Husimi functions for a set of wavenumbers (`ks`), using a list of solvers, and save the results to a JLD2 file. This function uses multithreading for parallel computation of Husimi functions.
+Separates the regular from the chaotic states based on the classical criterion where the fraction of the number of quantum states classified as regular by their Husimi functions is the same as the classical regular phase space volume.
 
 # Arguments
-- `solvers::Vector{<:QuantumBilliards.AbsSolver}`: A vector of solver objects that will be used to compute quantum eigenstates for each `k`.
-- `basis::Ba`: The basis set used for the quantum billiard system, which must be a subtype of `QuantumBilliards.AbsBasis`.
-- `billiard::Bi`: The quantum billiard system for which the eigenstates will be computed, a subtype of `QuantumBilliards.AbsBilliard`.
-- `ks::Vector{Float64}`: A vector of wavenumbers for which the Husimi functions will be computed.
-- `filename::String`: (Optional) The name of the JLD2 file to save the results. Defaults to `"husimi_functions.jld2"`.
-
-# Output File (JLD2 format)
-The results are saved in the following format in the specified JLD2 file:
-- `"ks::Vector"`: A vector of successfully computed wavenumbers.
-- `"H_list::Vector{Matrix}"`: A vector of Matrices, each representing the Husimi function matrix for a given wavenumber.
-- `"qs_list::Vector{Vector}"`: A vector of vectors, each representing the `q` grid (arc-length) values corresponding to the Husimi function.
-- `"ps_list::Vector{Vector}"`: A vector of vectors, each representing the `p` grid (momentum) values corresponding to the Husimi function.
-
-# Notes
-- The function uses multithreading to parallelize the computation of the Husimi functions. A lock mechanism is employed to ensure thread-safe access when updating shared data structures (`successful_ks`, `H_list`, `qs_list`, `ps_list`).
-- If an eigenstate cannot be computed for a specific wavenumber `k`, the function will skip that `k` and continue with the next one.
-"""
-function compute_and_save_husimi_functions_jld2!(solvers::Vector{<:QuantumBilliards.AbsSolver}, basis::Ba, billiard::Bi, ks::Vector; filename::String = "husimi_functions.jld2") where {Ba<:QuantumBilliards.AbsBasis, Bi<:QuantumBilliards.AbsBilliard}
-    # Initialize arrays to store successful ks and Husimi functions
-    successful_ks = Vector()
-    H_list = Vector{Matrix}()
-    qs_list = Vector{Vector}()
-    ps_list = Vector{Vector}()
-    num_ks = length(ks)
-
-    # Create locks for thread-safe access
-    data_lock = ReentrantLock()
-    progress_lock = ReentrantLock()
-    # Progress meter
-    progress = Progress(num_ks, desc = "Computing Husimi functions...")
-    # Multithreading over ks
-    Threads.@threads for idx in 1:num_ks
-        k = ks[idx]
-        state_computed = false
-        local_H = nothing
-        local_qs = nothing
-        local_ps = nothing
-        for solver in solvers
-            try
-                # Attempt to compute the eigenstate using the current solver
-                state = compute_eigenstate(solver, basis, billiard, k)
-                # Compute the Husimi function
-                H, qs, ps = husimi_function(state)
-                state_computed = true
-                local_H = H
-                local_qs = qs
-                local_ps = ps
-                break   # Exit the solver loop if successful
-            catch
-                # If an error occurs, try the next solver
-                continue
-            end
-        end
-        if state_computed
-            # Save the data in thread-safe manner
-            lock(data_lock) do # get the lock, open it and write
-                push!(successful_ks, k)
-                push!(H_list, local_H)
-                push!(qs_list, local_qs)
-                push!(ps_list, local_ps)
-            end
-        else
-            println("Could not compute eigenstate for k = ", k)
-        end
-        lock(progress_lock) do # get the lock and execute next!
-            next!(progress)
-        end
-    end
-    # After all computations, save the data to the JLD2 file
-    jldopen(filename, "w") do file
-        file["ks"] = successful_ks
-        file["H_list"] = H_list
-        file["qs_list"] = qs_list
-        file["ps_list"] = ps_list
-    end
-end
-
-
-
-"""
-USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
-    load_husimi_functions_jld2(filename::String = "husimi_functions.jld2") -> Tuple{Vector, Vector{Matrix}, Vector, Vector}
-
-Loads the Husimi functions from a JLD2 file.
-
-# Keyword Arguments
-- `filename::String = "husimi_functions.jld2"`: The name of the JLD2 file to load the data from. Defaults to `"husimi_functions.jld2"`.
+- `ks::Vector`: Vector of wavenumbers.
+- `H_list::Vector{Matrix}`: Vector of Husimi function matrices corresponding to each wavenumber.
+- `qs_list::Vector{Vector}`: Vector of position grid points corresponding to each Husimi function.
+- `ps_list::Vector{Vector}`: Vector of momentum grid points corresponding to each Husimi function.
+- `classical_chaotic_s_vals::Vector`: Vector of classical chaotic `s` values used to compute the projection grid.
+- `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
+- `ρ_regular_classic::Float64`: The volume fraction of the classical phase space.
+- `decrease_step_size`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
 
 # Returns
-- `Tuple{Vector, Vector{Matrix}, Vector{Vector}, Vector{Vector}}`: A tuple containing:
-  - `ks::Vector`: The vector of wavenumbers that succesfully saved.
-  - `H_list::Vector{Matrix}`: The list of Husimi functions (grids) for each k in ks.
-  - `qs_list::Vector{Vector}`: The position grid points for each k in ks.
-  - `ps_list::Vector{Vector}`: The momentum grid points for each k in ks.
+- `Tuple{Vector, Vector, Vector}`: A tuple containing:
+- `Ms::Vector`: The thresholds for which calculation were done for plotting purposes.
+- `ρs::Vector`: The calculated volumes for each M_thresh.
+- `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
 """
-function load_husimi_functions_jld2(filename::String)
-    @load filename ks H_list qs_list ps_list
-    return ks, H_list, qs_list, ps_list
-end
-
-
-
-"""
-USE THIS FOR SMALL SAMPLE SIZE. FOR LARGER SIZES RATHER SAVE THE BOUNDARY FUNCTION
-    visualize_quantum_classical_overlap_of_levels!(filename::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
-
-Generates and saves visualizations of the quantum-classical overlap for each level based on precomputed Husimi functions.
-
-# Description
-
-Precomputes Husimi functions from a specified JLD2 file to visualize the quantum-classical overlap for each quantum level.
-
-# Arguments
-- `filename::String`:  
-  The path to the JLD2 file containing precomputed Husimi functions and associated data. The file should contain the following variables:
-    - `ks`: Vector of wavenumbers.
-    - `H_list`: Vector of Husimi functions corresponding to each wavenumber.
-    - `qs_list`: Vector of position grids corresponding to each Husimi function.
-    - `ps_list`: Vector of momentum grids corresponding to each Husimi function.
-- `classical_chaotic_s_vals::Vector`:
-  Vector of classical chaotic `s` values used to compute the projection grid.
-- `classical_chaotic_p_vals::Vector`:
-  Vector of classical chaotic `p` values used to compute the projection grid.
-
-"""
-function visualize_quantum_classical_overlap_of_levels!(filename::String, classical_chaotic_s_vals::Vector,
-    classical_chaotic_p_vals::Vector)
-    if !isdir("Overlap_visualization")
-        mkdir("Overlap_visualization")
-    end
-    ks, H_list, qs_list, ps_list = load_husimi_functions_jld2(filename)
-    progress_computing = Progress(length(ks), desc = "Computing overlaps...")
-
-    progress_saving = Progress(length(ks), desc = "Saving overlap visualizations...")
-    Ms = Vector{Float64}(undef, length(ks))
-    projection_grids = Vector{Matrix}(undef, length(ks))
-    overlaps = Vector{Matrix}(undef, length(ks))
-    Threads.@threads for i in eachindex(ks) # only this can multithread, precompute data
-        try
-            H = H_list[i]
-            qs = qs_list[i]
-            ps = ps_list[i]
-            proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
-            M_val = compute_M(proj_grid, H)
-            overlap_val = visualize_overlap(proj_grid, H)
-            projection_grids[i] = proj_grid
-            Ms[i] = M_val
-            overlaps[i] = overlap_val
-        catch e
-            @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
-        end
-        next!(progress_computing)
-    end
-    for i in eachindex(ks) # do not multithread, memory corrution problem
-        try
-            f = Figure(resolution = (800, 1500))
-            ax_H = Axis(f[1,1])
-            hmap = heatmap!(ax_H, H_list[i]; colormap=Reverse(:gist_heat))
-            Colorbar(f[1,2], hmap)
-            ax_projection = Axis(f[2,1])
-            hmap = heatmap!(ax_projection, projection_grids[i])
-            Colorbar(f[2,2], hmap)
-            ax_overlap = Axis(f[3,1], title="k = $(round(ks[i]; sigdigits=8)), Overlap = $(round(Ms[i]; sigdigits=4))")
-            hmap = heatmap!(ax_overlap, overlaps[i]; colormap=Reverse(:gist_heat))
-            Colorbar(f[3,2], hmap)
-            colsize!(f.layout, 1, Aspect(3, 1))
-            save("Overlap_visualization/$(ks[i])_overlap.png", f)
-        catch e
-            @warn "Failed to save overlap for k = $(ks[i]): $(e)"
-        end
-        next!(progress_saving)
-    end
-end
-=#
-
-function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64)
+function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; decrease_step_size=1e-3)
     function calc_ρ(M_thresh) # helper for each M_thresh iteration
         local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
         Threads.@threads for i in eachindex(ks) 
@@ -336,7 +167,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     push!(Ms, M_thresh) # push the first ones
     push!(ρs, ρ_numeric_reg) # push the first ones
     while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states with the decrease of M_thresh
-        M_thresh -= 1e-3 # slightly decrease the M_thresh
+        M_thresh -= decrease_step_size # slightly decrease the M_thresh
         ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
         push!(Ms, M_thresh)
         push!(ρs, ρ_numeric_reg)
