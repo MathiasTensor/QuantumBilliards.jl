@@ -60,7 +60,7 @@ DataFrames = "1.6.1"
 SpecialFunctions = "2.4.0"
 LoggingExtras = "1.0.3"
 JLD2 = "0.5.4"
-Polynomials = "4.0.11"
+Polynomials = "3.2.1"
 
 
 [extras]
