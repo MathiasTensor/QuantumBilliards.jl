@@ -411,7 +411,7 @@ function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::S
     bin_widths = diff(bin_edges)
     bin_centers = bin_edges[1:end-1] .+ bin_widths / 2
     bin_counts = hist.weights ./ sum(hist.weights) / bin_widths
-    barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color)
+    barplot!(ax, bin_centers, vec(bin_counts), label="M distribution", color=color)
     xlims!(ax, (-1.0, 1.0))
     axislegend(ax, position=:ct)
 end
