@@ -37,3 +37,8 @@ function normalized_inverse_participation_ratio_R(H::Matrix{T}) where {T<:Real}
     R = 1/(prod(size(H))*sum(H.^2)) # the prod(size(H)) is the grid count directly from the size of the matrix
     return R
 end
+
+# try to fit the beta distribution
+function P_localization_entropy(Hs::Vector{Matrix{T}}, classical_phase_space_vol::T) where {T<:Real}
+    localization_entropies = [localization_entropy(H, classical_phase_space_vol) for H in Hs]
+end
