@@ -1,4 +1,4 @@
-using JLD2, Makie
+using JLD2, Makie, Polynomials
 
 # PRELIMINARY FUNCTIONS
 
@@ -414,7 +414,10 @@ function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::S
     axislegend(ax, position=:ct)
 end
 
-function plot_fraction_of_eigenstates_vs_k(χ_Ms::Vector{T}, k::Vector{T}) where {T<:Real}
-    
+function plot_fraction_of_eigenstates_vs_k(χ_Ms::Vector{T}, ks::Vector{T}) where {T<:Real}
+    # Make the log-log data of the χ_Ms and ks
+    log_χ_Ms = log.(χ_Ms)
+    log_ks = log.(ks)
+    # Built in lapack linear solve
 end
 
