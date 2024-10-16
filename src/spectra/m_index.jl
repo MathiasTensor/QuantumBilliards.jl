@@ -337,6 +337,7 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
             Colorbar(f[3,2], hmap)
             ax_wave = Axis(f[4,1], title="Wavefunction Heatmap for k = $(round(ks[i]; sigdigits=8))")
             hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=:balance)
+            plot_boundary!(ax_wave, billiard; fundamental_domain=fundamental_domain)
             Colorbar(f[4,2], hmap)
             colsize!(f.layout, 1, Aspect(4, 1))
             save("Overlap_visualization/$(ks[i])_overlap_w_wavefunctions.png", f)
