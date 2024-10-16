@@ -114,6 +114,7 @@ end
 Saves the results of the boundary_function with the `StateData` input. Primarly useful for creating efficient input to the husimi function constructor.
 
 # Arguments
+- `ks::Vector{Float64}`: A vector of the wave numbers.
 - `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
 - `s_vals::Vector{Vector}`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
 - `filename::String`: The name of the jld2 file to save the boundary values to. Default is "boundary_values.jld2".
@@ -121,8 +122,8 @@ Saves the results of the boundary_function with the `StateData` input. Primarly 
 # Returns
 - `Nothing`
 """
-function save_boundary_function!(us, s_vals; filename::String="boundary_values.jld2")
-    @save filename us s_vals
+function save_boundary_function!(ks, us, s_vals; filename::String="boundary_values.jld2")
+    @save filename ks us s_vals
 end
 
 """
@@ -133,12 +134,13 @@ Load the boundary function from a jld2 file.
 - `filename::String`: The name of the jld2 file to load the boundary values from. Default is "boundary_values.jld2".
 
 # Returns
+- `ks::Vector{Float64}`: A vector of the wave numbers. 
 - `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
 - `s_vals::Vector{Vector}`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
 """
 function read_boundary_function(filename::String="boundary_values.jld2")
-    @load filename us s_vals
-    return us, s_vals
+    @load filename ks us s_vals
+    return ks, us, s_vals
 end
 
 function momentum_function(u,s)
