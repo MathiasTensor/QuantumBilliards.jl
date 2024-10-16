@@ -307,8 +307,7 @@ end
 =#
 
 function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64)
-    len_list = length(ks)
-    function calc_ρ(M_thresh)
+    function calc_ρ(M_thresh) # helper for each M_thresh iteration
         local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
         Threads.@threads for i in eachindex(ks) 
             try
@@ -329,14 +328,14 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
         regular_idx = copy(local_regular_idx[])  # Retrieve final indices list
         return length(regular_idx) / length(ks), regular_idx
     end
-    
+
     M_thresh = 0.99 #first guess
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
     Ms = Float64[]
     ρs = Float64[]
     push!(Ms, M_thresh) # push the first ones
     push!(ρs, ρ_numeric_reg) # push the first ones
-    while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states
+    while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states with the decrease of M_thresh
         M_thresh -= 1e-3 # slightly decrease the M_thresh
         ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
         push!(Ms, M_thresh)
