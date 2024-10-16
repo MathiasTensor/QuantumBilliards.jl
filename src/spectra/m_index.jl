@@ -1,6 +1,6 @@
-using JLD2
+using JLD2, Makie
 
-
+# PRELIMINARY FUNCTIONS
 
 """
     shift_s_vals_poincare_birkhoff(s_vals::Vector{T}, s_shift::T, boundary_length::T) where {T<:Real}
@@ -69,9 +69,6 @@ function classical_phase_space_matrix(classical_s_vals::Vector{T}, classical_p_v
     return projection_grid
 end
 
-
-
-
 """
     compute_M(projection_grid::Matrix, H::Matrix)
 
@@ -93,7 +90,7 @@ function compute_M(projection_grid::Matrix, H::Matrix)
     return M
 end
 
-
+# VISUALISATIONS
 
 """
     visualize_overlap(projection_grid::Matrix, H::Matrix)
@@ -114,72 +111,6 @@ function visualize_overlap(projection_grid::Matrix, H::Matrix)
     H = H ./ sum(H) # normalize
     M = broadcast(*, projection_grid, H)
     return M
-end
-
-"""
-    separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64) :: Tuple{Vector, Vector, Vector}
-
-Separates the regular from the chaotic states based on the classical criterion where the fraction of the number of quantum states classified as regular by their Husimi functions is the same as the classical regular phase space volume.
-
-# Arguments
-- `ks::Vector`: Vector of wavenumbers.
-- `H_list::Vector{Matrix}`: Vector of Husimi function matrices corresponding to each wavenumber.
-- `qs_list::Vector{Vector}`: Vector of position grid points corresponding to each Husimi function.
-- `ps_list::Vector{Vector}`: Vector of momentum grid points corresponding to each Husimi function.
-- `classical_chaotic_s_vals::Vector`: Vector of classical chaotic `s` values used to compute the projection grid.
-- `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
-- `ρ_regular_classic::Float64`: The volume fraction of the classical phase space.
-- `decrease_step_size`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
-
-# Returns
-- `Tuple{Vector, Vector, Vector}`: A tuple containing:
-- `Ms::Vector`: The thresholds for which calculation were done for plotting purposes.
-- `ρs::Vector`: The calculated volumes for each M_thresh.
-- `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
-"""
-function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; decrease_step_size=1e-3)
-    function calc_ρ(M_thresh) # helper for each M_thresh iteration
-        local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
-        Threads.@threads for i in eachindex(ks) 
-            try
-                H = H_list[i]
-                qs = qs_list[i]
-                ps = ps_list[i]
-                proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
-                M_val = compute_M(proj_grid, H)
-                
-                if M_val < M_thresh
-                    # Append in a thread-safe way
-                    Threads.atomic_push!(local_regular_idx, i)
-                end
-            catch e
-                @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
-            end
-        end
-        regular_idx = copy(local_regular_idx[])  # Retrieve final indices list
-        return length(regular_idx) / length(ks), regular_idx
-    end
-
-    M_thresh = 0.99 #first guess
-    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
-    Ms = Float64[]
-    ρs = Float64[]
-    push!(Ms, M_thresh) # push the first ones
-    push!(ρs, ρ_numeric_reg) # push the first ones
-    while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states with the decrease of M_thresh
-        M_thresh -= decrease_step_size # slightly decrease the M_thresh
-        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
-        push!(Ms, M_thresh)
-        push!(ρs, ρ_numeric_reg)
-        if M_thresh < 0.0
-            throw(ArgumentError("M_thresh must be positive"))
-            break
-        end
-        if ρ_numeric_reg < ρ_regular_classic # the first one that passes the classical one
-            regular_idx = reg_idx_loop
-        end
-    end
-    return Ms, ρs, regular_idx
 end
 
 """
@@ -346,5 +277,98 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
         end
         next!(progress_saving)
     end
+end
+
+# M COMPUTATIONS
+
+"""
+    separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64) :: Tuple{Vector, Vector, Vector}
+
+Separates the regular from the chaotic states based on the classical criterion where the fraction of the number of quantum states classified as regular by their Husimi functions is the same as the classical regular phase space volume.
+
+# Arguments
+- `ks::Vector`: Vector of wavenumbers.
+- `H_list::Vector{Matrix}`: Vector of Husimi function matrices corresponding to each wavenumber.
+- `qs_list::Vector{Vector}`: Vector of position grid points corresponding to each Husimi function.
+- `ps_list::Vector{Vector}`: Vector of momentum grid points corresponding to each Husimi function.
+- `classical_chaotic_s_vals::Vector`: Vector of classical chaotic `s` values used to compute the projection grid.
+- `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
+- `ρ_regular_classic::Float64`: The volume fraction of the classical phase space.
+- `decrease_step_size`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
+
+# Returns
+- `Tuple{Vector, Vector, Vector}`: A tuple containing:
+- `Ms::Vector`: The thresholds for which calculation were done for plotting purposes.
+- `ρs::Vector`: The calculated volumes for each M_thresh.
+- `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
+"""
+function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; decrease_step_size=1e-3)
+    function calc_ρ(M_thresh) # helper for each M_thresh iteration
+        local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
+        Threads.@threads for i in eachindex(ks) 
+            try
+                H = H_list[i]
+                qs = qs_list[i]
+                ps = ps_list[i]
+                proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+                M_val = compute_M(proj_grid, H)
+                
+                if M_val < M_thresh
+                    # Append in a thread-safe way
+                    Threads.atomic_push!(local_regular_idx, i)
+                end
+            catch e
+                @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
+            end
+        end
+        regular_idx = copy(local_regular_idx[])  # Retrieve final indices list
+        return length(regular_idx) / length(ks), regular_idx
+    end
+
+    M_thresh = 0.99 #first guess
+    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    Ms = Float64[]
+    ρs = Float64[]
+    push!(Ms, M_thresh) # push the first ones
+    push!(ρs, ρ_numeric_reg) # push the first ones
+    while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states with the decrease of M_thresh
+        M_thresh -= decrease_step_size # slightly decrease the M_thresh
+        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
+        push!(Ms, M_thresh)
+        push!(ρs, ρ_numeric_reg)
+        if M_thresh < 0.0
+            throw(ArgumentError("M_thresh must be positive"))
+            break
+        end
+        if ρ_numeric_reg < ρ_regular_classic # the first one that passes the classical one
+            regular_idx = reg_idx_loop
+        end
+    end
+    return Ms, ρs, regular_idx
+end
+
+# HISTOGRAMS
+
+"""
+    plot_hist_M_distribution(ax::Axis, Ms::Vector; nbins::Int=50, color::Symbol=:blue)
+
+Plots a histogram (pdf) of the distribution of overlap indexes `Ms`
+
+# Arguments
+- `ax::Axis`: The axis to plot on.
+- `Ms::Vector`: The overlap indexes.
+- `nbins::Int`: The number of bins for the histogram.
+- `color::Symbol`: The color of the histogram.
+
+# Returns
+- `Nothing`
+"""
+function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::Symbol=:blue)
+    hist = Distributions.fit(StatsBase.Histogram, Ms; nbins=nbins)
+    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
+    bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
+    barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color)
+    xlims!(ax, (-1.0, 1.0))
+    axislegend(ax, position=:rt)
 end
 
