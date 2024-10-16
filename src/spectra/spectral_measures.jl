@@ -13,16 +13,16 @@ Calculates the localization entropy of a quantum eigenstate's Husimi matrix. It 
 # Returns
 - `A<:Real`: The localization entropy A of the quantum eigenstate
 """
-function localization_entropy(H::Matrix, classical_phase_space_vol::T) where {T<:Real}
+function localization_entropy(H::Matrix{T}, classical_phase_space_vol::T) where {T<:Real}
     H = H ./ sum(H) # normalize H
     lnH = log.(H)
     Im = sum(broadcast(*, H, lnH))
     A = 1.0/classical_phase_space_vol*exp(-Im)
-    return T(A)
+    return A
 end
 
 """
-    normalized_inverse_participation_ratio_R(H::Matrix)
+    normalized_inverse_participation_ratio_R(H::Matrix) where {T<:Real}
 
 Calculates the normalized inverse participation ratio R.
 
@@ -32,7 +32,7 @@ Calculates the normalized inverse participation ratio R.
 # Returns
 - `R<:Real`: The normalized inverse participation ratio R of the quantum eigenstate
 """
-function normalized_inverse_participation_ratio_R(H::Matrix)
+function normalized_inverse_participation_ratio_R(H::Matrix{T}) where {T<:Real}
     H = H ./ sum(H)
     R = 1/(prod(size(H))*sum(H.^2)) # the prod(size(H)) is the grid count directly from the size of the matrix
     return R
