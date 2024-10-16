@@ -1,4 +1,4 @@
-using JLD2, Makie, Polynomials
+using JLD2, Makie
 
 # PRELIMINARY FUNCTIONS
 
