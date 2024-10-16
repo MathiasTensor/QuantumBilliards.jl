@@ -409,7 +409,7 @@ function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::S
     hist = Distributions.fit(StatsBase.Histogram, Ms; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
-    barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color, gap=0)
+    barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
     xlims!(ax, (-1.0, 1.0))
     axislegend(ax, position=:ct)
 end
