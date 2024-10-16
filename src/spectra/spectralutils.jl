@@ -349,7 +349,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 # Returns
 - A tuple `(state_res, control)`:
     - `state_res`: `StateData` containing the merged wavenumbers, tensions, and eigenvectors.
-    - `control`: Vector indicating whether each wavenumber was merged (`true`) or not (`false`).
+    - `control`: Vector indicating whether each wavenumber was merged (`true`) with tension comparisons or not (`false`).
 """
 function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k1::T, k2::T; tol::T = T(1e-4), N_expect::Int = 3, dk_threshold::T = T(0.05), fundamental::Bool = true) where {T<:Real}
     # Estimate the number of intervals and store the dk values
