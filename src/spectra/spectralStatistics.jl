@@ -224,9 +224,10 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 # Arguments
 - `unfolded_energy_eigenvalues::Vector{T}`: A vector of unfolded energy eigenvalues.
 - `rho::Union{Nothing, T}=nothing`: The mixing parameter for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
+- `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
 
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing; plot_GUE=false) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
@@ -251,12 +252,14 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     fig = Figure(resolution = (800, 600))
     ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
     scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
-    lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=2)
-    lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=2)
-    lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=2)
+    lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+    lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:do)
+    if plot_GUE
+        lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:do)
+    end
     # Plot the Berry-Robnik CDF if `rho` is provided
     if berry_robnik_cdf_values !== nothing
-        lines!(ax, s_values, berry_robnik_cdf_values, label="Berry-Robnik CDF", color=:black, linewidth=2)
+        lines!(ax, s_values, berry_robnik_cdf_values, label="Berry-Robnik CDF", color=:black, linewidth=1)
     end
     axislegend(ax)
     return fig
