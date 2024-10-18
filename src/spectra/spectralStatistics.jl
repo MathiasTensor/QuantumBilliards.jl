@@ -255,7 +255,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
     lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:do)
     if plot_GUE
-        lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:do)
+        lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
     end
     # Plot the Berry-Robnik CDF if `rho` is provided
     if berry_robnik_cdf_values !== nothing
