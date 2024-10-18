@@ -227,7 +227,7 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 - `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
 
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing; plot_GUE=false) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
