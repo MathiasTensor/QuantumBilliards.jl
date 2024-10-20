@@ -215,7 +215,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     return fig
 end
 
-function plot_brody_fit(unfolded_energies:Vector{T}) where {T<:Real}
+function plot_brody_fit(unfolded_energies::Vector{T}) where {T<:Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -223,7 +223,7 @@ function plot_brody_fit(unfolded_energies:Vector{T}) where {T<:Real}
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
     # Theoretical form
-    
+
 end
 
 
