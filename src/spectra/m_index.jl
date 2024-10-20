@@ -136,9 +136,9 @@ Generates and saves visualizations of the quantum-classical overlap for each lev
 - `Nothing`
 """
 function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
-    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
-    if !isdir("Overlap_visualization")
-        mkdir("Overlap_visualization")
+    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; save_path::String = "Overlap_visualization")
+    if !isdir(save_path)
+        mkdir(save_path)
     end
     progress_computing = Progress(length(ks), desc = "Computing overlaps...")
     progress_saving = Progress(length(ks), desc = "Saving overlap visualizations...")
@@ -175,7 +175,7 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
             hmap = heatmap!(ax_overlap, overlaps[i]; colormap=:balance)
             Colorbar(f[3,2], hmap)
             colsize!(f.layout, 1, Aspect(3, 1))
-            save("Overlap_visualization/$(ks[i])_overlap.png", f)
+            save("$save_path/$(ks[i])_overlap_w_wavefunctions.png", f)
         catch e
             @warn "Failed to save overlap for k = $(ks[i]): $(e)"
         end
@@ -225,9 +225,9 @@ Generates and saves visualizations of the quantum-classical overlap for each lev
 function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
     ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
     state_data::StateData, billiard::Bi, basis::Ba; 
-    b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    if !isdir("Overlap_visualization")
-        mkdir("Overlap_visualization")
+    b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9, save_path::String = "Overlap_visualization") where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    if !isdir(save_path)
+        mkdir(save_path)
     end
     progress_computing = Progress(length(ks), desc = "Computing overlaps...")
     progress_saving = Progress(length(ks), desc = "Saving overlap visualizations...")
@@ -270,8 +270,8 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
             hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=:balance)
             #plot_boundary!(ax_wave, billiard; fundamental_domain=fundamental_domain) # add later b/c DataAspect from plot_boundary! makes not good image
             Colorbar(f[4,2], hmap)
-            colsize!(f.layout, 1, Aspect(4, 1))
-            save("Overlap_visualization/$(ks[i])_overlap_w_wavefunctions.png", f)
+            colsize!(f.layout, 1, Aspect(4, 1)) 
+            save("$save_path/$(ks[i])_overlap_w_wavefunctions.png", f)
         catch e
             @warn "Failed to save overlap for k = $(ks[i]): $(e)"
         end
