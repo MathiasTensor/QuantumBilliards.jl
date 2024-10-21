@@ -74,7 +74,7 @@ Plots the probability density function (PDF) of the localization entropy A using
 # Returns
 - `Nothing`
 """
-function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector{Matrix{T}}, classical_phase_space_vol::T; nbins=50, color::Symbol=:lightblue) where {T<:Real}
+function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector{Matrix}, classical_phase_space_vol::T; nbins=50, color::Symbol=:lightblue) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, classical_phase_space_vol; nbins=nbins)
     barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
     xlims!(ax, (0.0, 1.0))
