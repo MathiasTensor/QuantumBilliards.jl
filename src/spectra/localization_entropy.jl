@@ -14,7 +14,7 @@ Calculates the localization entropy of a quantum eigenstate's Husimi matrix. It 
 """
 function localization_entropy(H::Matrix{T}, classical_phase_space_vol::T) where {T<:Real}
     H = H ./ sum(H)  # normalize H
-    non_zero_idxs = findall(H .> 0)  # Find indices of non-zero elements
+    non_zero_idxs = findall(H .> 0.0)  # Find indices of non-zero elements
     Im = sum(H[non_zero_idxs] .* log.(H[non_zero_idxs]))  # Compute the entropy for non-zero elements
     A = 1.0 / classical_phase_space_vol * exp(-Im)
     return A
