@@ -1,22 +1,22 @@
 using LsqFit, QuadGK
 
 """
-    localization_entropy(H::Matrix{T}, classical_phase_space_vol::T) where {T<:Real}
+    localization_entropy(H::Matrix{T}, chaotic_classical_phase_space_vol::T) where {T<:Real}
 
 Calculates the localization entropy of a quantum eigenstate's Husimi matrix. It uses the convention 2πħ=1 like in Lozej, Batistić, Robnik. The same holds for the classical phase space volume for counting the number of the classical chaotic domain, so Nc=classical_phase_space_vol.
 
 # Arguments
 - `H::Matrix`: The Husimi matrix of the quantum eigenstate
-- `classical_phase_space_vol`: The volume of the classical phase space.
+- `chaotic_classical_phase_space_vol`: The volume of the chaotic classical phase space (The number of chaotic grid cells for the PH Matrix).
 
 # Returns
 - `A<:Real`: The localization entropy A of the quantum eigenstate
 """
-function localization_entropy(H::Matrix{T}, classical_phase_space_vol::T) where {T<:Real}
+function localization_entropy(H::Matrix{T}, chaotic_classical_phase_space_vol::T) where {T<:Real}
     H = H ./ sum(H)  # normalize H
     non_zero_idxs = findall(H .> 0.0)  # Find indices of non-zero elements
     Im = sum(H[non_zero_idxs] .* log.(H[non_zero_idxs]))  # Compute the entropy for non-zero elements
-    A = 1.0 / classical_phase_space_vol * exp(-Im)
+    A = 1.0 / chaotic_classical_phase_space_vol * exp(-Im)
     return A
 end
 
@@ -38,21 +38,21 @@ function normalized_inverse_participation_ratio_R(H::Matrix{T}) where {T<:Real}
 end
 
 """
-    P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, classical_phase_space_vol::T; nbins=50) where {T<:Real}
+    P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol::T; nbins=50) where {T<:Real}
 
 Calculates the pdf data for plotting the localization entropy A using a histogram.
 
 # Arguments
 - `Hs::Vector{Matrix{T}}`: The Husimi matrices of the quantum eigenstates
-- `classical_phase_space_vol::T`: The volume of the classical phase space
+- `chaotic_classical_phase_space_vol::T`: The volume of the chaotic classical phase space (The number of chaotic grid cells for the PH Matrix).
 - `nbins=50`: The number of bins for the histogram
 
 # Returns
 - `bin_centers::Vector{T}`: The centers of the histogram bins
 - `bin_counts::Vector{T}`: The counts of the histogram bins (normalized)
 """
-function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, classical_phase_space_vol::T; nbins=50) where {T<:Real}
-    localization_entropies = [localization_entropy(H, classical_phase_space_vol) for H in Hs]
+function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol::T; nbins=50) where {T<:Real}
+    localization_entropies = [localization_entropy(H, chaotic_classical_phase_space_vol) for H in Hs]
     hist = Distributions.fit(StatsBase.Histogram, localization_entropies; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
@@ -60,42 +60,42 @@ function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, classical_phase_
 end
 
 """
-    plot_P_localization_entropy_pdf(ax::Axis, Hs::Vector{Matrix{T}}, classical_phase_space_vol::T; nbins=50) where {T<:Real}
+    plot_P_localization_entropy_pdf(ax::Axis, Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol::T; nbins=50) where {T<:Real}
 
 Plots the probability density function (PDF) of the localization entropy A using a histogram.
 
 # Arguments
 - `ax::Axis`: The Makie Axis object to plot on
 - `Hs::Vector{Matrix{T}}`: The Husimi matrices of the quantum eigenstates
-- `classical_phase_space_vol::T`: The volume of the classical phase space
+- `chaotic_classical_phase_space_vol::T`: The volume of the chaotic classical phase space (The number of chaotic grid cells for the PH Matrix).
 - `nbins=50`: The number of bins for the histogram
 - `color::Symbol=:lightblue`: The color of the histogram bars
 
 # Returns
 - `Nothing`
 """
-function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, classical_phase_space_vol::T; nbins=50, color::Symbol=:lightblue) where {T<:Real}
-    bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, classical_phase_space_vol; nbins=nbins)
+function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classical_phase_space_vol::T; nbins=50, color::Symbol=:lightblue) where {T<:Real}
+    bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol; nbins=nbins)
     barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
     xlims!(ax, (0.0, 1.0))
     axislegend(ax, position=:ct)
 end
 
 """
-    fit_P_localization_entropy_to_beta(Hs::Vector{Matrix{T}}, classical_phase_space_vol::T; nbins=50) :: LsqFitResult where {T<:Real}
+    fit_P_localization_entropy_to_beta(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol::T; nbins=50) :: LsqFitResult where {T<:Real}
 
 Fits the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data.
 
 # Arguments
 - `Hs::Vector{Matrix{T}}`: The Husimi matrices of the quantum eigenstates
-- `classical_phase_space_vol::T`: The volume of the classical phase space
+- `chaotic_classical_phase_space_vol::T`: The volume of the chaotic classical phase space (The number of chaotic grid cells for the PH Matrix).
 - `nbins=50`: The number of bins for the histogram
 
 # Returns
 - `fit_result::LsqFitResult`: The result of the curve fitting using LsqFit. To get the `A0`, `a`, `b` take `fit_result.param`
 """
-function fit_P_localization_entropy_to_beta(Hs::Vector{Matrix{T}}, classical_phase_space_vol::T; nbins=50) where {T<:Real}
-    bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, classical_phase_space_vol; nbins=nbins)
+function fit_P_localization_entropy_to_beta(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol::T; nbins=50) where {T<:Real}
+    bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol; nbins=nbins)
     function model(A, p) # A scalar, p vector
         A0, a, b = p # unfold the param vector
         # Define the unnormalized function
