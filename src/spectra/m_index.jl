@@ -343,49 +343,45 @@ Separates the regular from the chaotic states based on the classical criterion w
 function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; decrease_step_size=1e-3)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
 
-    function calc_ρ(M_thresh) # helper for each M_thresh iteration
-        thread_local_regular_idx = [Vector{Int64}[] for _ in 1:Threads.nthreads()]  # Separate results per thread
-        
-        Threads.@threads for i in eachindex(ks)
+    function calc_ρ(M_thresh)
+        n = length(ks)
+        regular_mask = zeros(Bool, n)
+
+        Threads.@threads for i in 1:n
             try
-                thread_id = Threads.threadid()  # Get the thread ID
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
                 proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
                 M_val = compute_M(proj_grid, H)
-
                 if M_val < M_thresh
-                    # Append to the thread-local storage
-                    push!(thread_local_regular_idx[thread_id], i)
+                    regular_mask[i] = true
                 end
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
         end
 
-        # Combine thread-local regular indices into one final vector
-        regular_idx = reduce(vcat, thread_local_regular_idx)
-        return length(regular_idx) / length(ks), regular_idx
+        ρ_numeric_reg = count(regular_mask) / n
+        regular_idx = findall(regular_mask)
+        return ρ_numeric_reg, regular_idx
     end
 
-    M_thresh = 0.99 # First guess
-    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    M_thresh = 0.99  # Initial threshold
     Ms = Float64[]
     ρs = Float64[]
-    push!(Ms, M_thresh) # Push the first ones
-    push!(ρs, ρ_numeric_reg) # Push the first ones
+    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    push!(Ms, M_thresh)
+    push!(ρs, ρ_numeric_reg)
 
     while ρ_numeric_reg > ρ_regular_classic
         M_thresh -= decrease_step_size
-        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
-        push!(Ms, M_thresh)
-        push!(ρs, ρ_numeric_reg)
-
         if M_thresh < 0.0
             throw(ArgumentError("M_thresh must be positive"))
         end
-
+        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
+        push!(Ms, M_thresh)
+        push!(ρs, ρ_numeric_reg)
         if ρ_numeric_reg < ρ_regular_classic
             regular_idx = reg_idx_loop
         end
