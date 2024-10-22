@@ -378,7 +378,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
-            ProgressThreads.next!(progress)
+            next!(progress)
         end
 
         ρ_numeric_reg = count(regular_mask) / n
@@ -397,7 +397,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
         ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
         push!(ρs, ρ_numeric_reg)
         idxs[j] = regular_idx
-        ProgressThreads.next!(progress_outer)
+        next!(progress_outer)
     end
 
     # Find the M_thresh that gives ρ_numeric_reg closest to ρ_regular_classic
@@ -422,7 +422,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
         ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
         push!(ρs_refine, ρ_numeric_reg)
         idxs_refine[j] = regular_idx
-        ProgressThreads.next!(progress_refine)
+        next!(progress_refine)
     end
 
     # Find the refined M_thresh that gives ρ_numeric_reg closest to ρ_regular_classic
