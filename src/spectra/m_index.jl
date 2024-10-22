@@ -342,47 +342,55 @@ Separates the regular from the chaotic states based on the classical criterion w
 """
 function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; decrease_step_size=1e-3)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
+
     function calc_ρ(M_thresh) # helper for each M_thresh iteration
-        local_regular_idx = Threads.Atomic{Vector{Int}}(Vector{Int}())  # thread-safe
-        Threads.@threads for i in eachindex(ks) 
+        regular_idx = Vector{Int}()  # non-threaded vector for results
+        lock = ReentrantLock()  # Create a lock for thread safety
+
+        Threads.@threads for i in eachindex(ks)
             try
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
                 proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
                 M_val = compute_M(proj_grid, H)
-                
+
                 if M_val < M_thresh
-                    # Append in a thread-safe way
-                    Threads.atomic_push!(local_regular_idx, i)
+                    # Safely append to the shared `regular_idx` using the lock
+                    lock() do
+                        push!(regular_idx, i)
+                    end
                 end
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
         end
-        regular_idx = copy(local_regular_idx[])  # Retrieve final indices list
+
         return length(regular_idx) / length(ks), regular_idx
     end
 
-    M_thresh = 0.99 #first guess
+    M_thresh = 0.99 # First guess
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
     Ms = Float64[]
     ρs = Float64[]
-    push!(Ms, M_thresh) # push the first ones
-    push!(ρs, ρ_numeric_reg) # push the first ones
-    while ρ_numeric_reg > ρ_regular_classic # as it will only decrease as there will be more chaotic states with the decrease of M_thresh
-        M_thresh -= decrease_step_size # slightly decrease the M_thresh
+    push!(Ms, M_thresh) # Push the first ones
+    push!(ρs, ρ_numeric_reg) # Push the first ones
+
+    while ρ_numeric_reg > ρ_regular_classic
+        M_thresh -= decrease_step_size
         ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
         push!(Ms, M_thresh)
         push!(ρs, ρ_numeric_reg)
+
         if M_thresh < 0.0
             throw(ArgumentError("M_thresh must be positive"))
-            break
         end
-        if ρ_numeric_reg < ρ_regular_classic # the first one that passes the classical one
+
+        if ρ_numeric_reg < ρ_regular_classic
             regular_idx = reg_idx_loop
         end
     end
+
     return Ms, ρs, regular_idx
 end
 
