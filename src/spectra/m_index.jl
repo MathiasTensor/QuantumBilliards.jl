@@ -344,11 +344,11 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
 
     function calc_ρ(M_thresh) # helper for each M_thresh iteration
-        regular_idx = Vector{Int}()  # non-threaded vector for results
-        lock = ReentrantLock()  # Create a lock for thread safety
-
+        thread_local_regular_idx = Threads.Vector{Vector{Int}}(Threads.nthreads())  # Separate results per thread
+        
         Threads.@threads for i in eachindex(ks)
             try
+                thread_id = Threads.threadid()  # Get the thread ID
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
@@ -356,9 +356,9 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
                 M_val = compute_M(proj_grid, H)
 
                 if M_val < M_thresh
-                    # Safely append to the shared `regular_idx` using the lock
-                    lock() do
-                        push!(regular_idx, i)
+                    # Append to the thread-local storage
+                    if !haskey(thread_local_regular_idx[thread_id], i)
+                        push!(thread_local_regular_idx[thread_id], i)
                     end
                 end
             catch e
@@ -366,6 +366,8 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
             end
         end
 
+        # Combine thread-local regular indices into one final vector
+        regular_idx = reduce(vcat, thread_local_regular_idx)
         return length(regular_idx) / length(ks), regular_idx
     end
 
