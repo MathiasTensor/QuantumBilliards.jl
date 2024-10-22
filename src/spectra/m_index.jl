@@ -344,7 +344,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
 
     function calc_ρ(M_thresh) # helper for each M_thresh iteration
-        thread_local_regular_idx = Threads.Vector{Vector{Int}}(Threads.nthreads())  # Separate results per thread
+        thread_local_regular_idx = [Vector{Int64}[] for _ in 1:Threads.nthreads()]  # Separate results per thread
         
         Threads.@threads for i in eachindex(ks)
             try
@@ -357,9 +357,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
 
                 if M_val < M_thresh
                     # Append to the thread-local storage
-                    if !haskey(thread_local_regular_idx[thread_id], i)
-                        push!(thread_local_regular_idx[thread_id], i)
-                    end
+                    push!(thread_local_regular_idx[thread_id], i)
                 end
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
