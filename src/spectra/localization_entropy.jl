@@ -78,6 +78,7 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
     barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
     xlims!(ax, (0.0, 1.0))
+    xticks!(ax, 0:0.1:1.0)
     axislegend(ax, position=:ct)
 end
 
