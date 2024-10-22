@@ -342,25 +342,20 @@ Separates the regular from the chaotic states based on the classical criterion w
 """
 function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; initial_M_range=(0.1, 1.0), num_initial_M=100, num_refinement_M=50)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
-
     function calc_ρ(M_thresh)
         n = length(ks)
         regular_mask = zeros(Bool, n)
         progress = Progress(n; desc="Calculating M values")
         nthreads = Threads.nthreads()
-
         # Initialize per-thread caches
         thread_caches = [Dict{UInt64, Any}() for _ in 1:nthreads]
-
         Threads.@threads for i in 1:n
             try
                 thread_id = Threads.threadid()
                 cache = thread_caches[thread_id]
-
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
-
                 # Create a hash key based on the size of H, qs, and ps
                 key = hash((size(H), qs, ps))
 
@@ -391,8 +386,8 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     Ms = range(M_start, M_end; length=num_initial_M)
     ρs = Float64[]
     idxs = Vector{Vector{Int64}}(undef, num_initial_M)
-
     progress_outer = Progress(length(Ms); desc="Initial M_thresh Search")
+    
     for (j, M_thresh) in enumerate(Ms)
         ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
         push!(ρs, ρ_numeric_reg)
