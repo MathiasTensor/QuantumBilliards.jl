@@ -402,7 +402,7 @@ Separate `ks` values into regular and chaotic based on the indices of regular st
 function separate_ks_by_classical_indices(ks::Vector, regular_idx::Vector{Int})
     ks_regular = ks[regular_idx]
     all_indices = Set(1:length(ks))  # Set of all indices
-    chaotic_idx = sort(setdiff(all_indices, regular_idx))  # Find chaotic indices
+    chaotic_idx = sort(Vector(setdiff(all_indices, regular_idx)))  # Find chaotic indices
     ks_chaotic = ks[collect(chaotic_idx)]  # Extract ks_chaotic
     return ks_regular, ks_chaotic
 end
