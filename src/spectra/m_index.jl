@@ -346,13 +346,31 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     function calc_ρ(M_thresh)
         n = length(ks)
         regular_mask = zeros(Bool, n)
-        progress = Progress(n; desc="Calculating M_th: $(M_thresh)")
+        progress = Progress(n; desc="Calculating M values")
+        nthreads = Threads.nthreads()
+
+        # Initialize per-thread caches
+        thread_caches = [Dict{UInt64, Any}() for _ in 1:nthreads]
+
         Threads.@threads for i in 1:n
             try
+                thread_id = Threads.threadid()
+                cache = thread_caches[thread_id]
+
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
-                proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+
+                # Create a hash key based on the size of H, qs, and ps
+                key = hash((size(H), qs, ps))
+
+                if haskey(cache, key)
+                    proj_grid = cache[key]
+                else
+                    proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+                    cache[key] = proj_grid
+                end
+
                 M_val = compute_M(proj_grid, H)
                 if M_val < M_thresh
                     regular_mask[i] = true
@@ -360,7 +378,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
-            next!(progress)
+            ProgressThreads.next!(progress)
         end
 
         ρ_numeric_reg = count(regular_mask) / n
@@ -368,27 +386,57 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
         return ρ_numeric_reg, regular_idx
     end
 
-    M_thresh = 0.99  # Initial threshold
-    Ms = Float64[]
+    # Initial search over a range of M_thresh values
+    M_start, M_end = initial_M_range
+    Ms = range(M_start, M_end; length=num_initial_M)
     ρs = Float64[]
-    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
-    push!(Ms, M_thresh)
-    push!(ρs, ρ_numeric_reg)
+    idxs = Vector{Vector{Int64}}(undef, num_initial_M)
 
-    while ρ_numeric_reg > ρ_regular_classic
-        M_thresh -= decrease_step_size
-        if M_thresh < 0.0
-            throw(ArgumentError("M_thresh must be positive"))
-        end
-        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
-        push!(Ms, M_thresh)
+    progress_outer = Progress(length(Ms); desc="Initial M_thresh Search")
+    for (j, M_thresh) in enumerate(Ms)
+        ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
         push!(ρs, ρ_numeric_reg)
-        if ρ_numeric_reg < ρ_regular_classic
-            regular_idx = reg_idx_loop
-        end
+        idxs[j] = regular_idx
+        ProgressThreads.next!(progress_outer)
     end
 
-    return Ms, ρs, regular_idx
+    # Find the M_thresh that gives ρ_numeric_reg closest to ρ_regular_classic
+    abs_diff = abs.(ρs .- ρ_regular_classic)
+    min_idx = argmin(abs_diff)
+    best_M_thresh = Ms[min_idx]
+    best_ρ_numeric_reg = ρs[min_idx]
+    regular_idx = idxs[min_idx]
+
+    # Refinement around the best M_thresh
+    refinement_range = (best_M_thresh - (M_end - M_start)/num_initial_M, best_M_thresh + (M_end - M_start)/num_initial_M)
+    M_refine_start = max(M_start, refinement_range[1])
+    M_refine_end = min(M_end, refinement_range[2])
+    Ms_refine = range(M_refine_start, M_refine_end; length=num_refinement_M)
+
+    # Re-initialize lists for refinement
+    ρs_refine = Float64[]
+    idxs_refine = Vector{Vector{Int64}}(undef, num_refinement_M)
+
+    progress_refine = Progress(length(Ms_refine); desc="Refining M_thresh")
+    for (j, M_thresh) in enumerate(Ms_refine)
+        ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+        push!(ρs_refine, ρ_numeric_reg)
+        idxs_refine[j] = regular_idx
+        ProgressThreads.next!(progress_refine)
+    end
+
+    # Find the refined M_thresh that gives ρ_numeric_reg closest to ρ_regular_classic
+    abs_diff_refine = abs.(ρs_refine .- ρ_regular_classic)
+    min_idx_refine = argmin(abs_diff_refine)
+    best_M_thresh_refine = Ms_refine[min_idx_refine]
+    best_ρ_numeric_reg_refine = ρs_refine[min_idx_refine]
+    regular_idx = idxs_refine[min_idx_refine]
+
+    # Combine all Ms and ρs
+    Ms_total = vcat(Ms, Ms_refine)
+    ρs_total = vcat(ρs, ρs_refine)
+
+    return Ms_total, ρs_total, regular_idx
 end
 
 """
