@@ -386,6 +386,27 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     return Ms, ρs, regular_idx
 end
 
+"""
+    separate_ks_by_classical_indices(ks::Vector, regular_idx::Vector{Int})
+
+Separate `ks` values into regular and chaotic based on the indices of regular states.
+
+# Arguments:
+- `ks::Vector`: A vector containing the `ks` wavenumbers.
+- `regular_idx::Vector{Int}`: A vector of indices corresponding to the regular states.
+
+# Returns:
+- `ks_regular::Vector`: The subset of `ks` corresponding to the regular states.
+- `ks_chaotic::Vector`: The subset of `ks` corresponding to the chaotic states.
+"""
+function separate_ks_by_classical_indices(ks::Vector, regular_idx::Vector{Int})
+    ks_regular = ks[regular_idx]
+    all_indices = Set(1:length(ks))  # Set of all indices
+    chaotic_idx = setdiff(all_indices, regular_idx)  # Find chaotic indices
+    ks_chaotic = ks[collect(chaotic_idx)]  # Extract ks_chaotic
+    return ks_regular, ks_chaotic
+end
+
 # HISTOGRAMS
 
 """
