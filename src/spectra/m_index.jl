@@ -1,4 +1,4 @@
-using JLD2, Makie
+using JLD2, Makie, ProgressMeter
 
 # PRELIMINARY FUNCTIONS
 
@@ -346,7 +346,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
     function calc_ρ(M_thresh)
         n = length(ks)
         regular_mask = zeros(Bool, n)
-
+        progress = Progress(n; desc="Calculating M_th: $(M_thresh)")
         Threads.@threads for i in 1:n
             try
                 H = H_list[i]
@@ -360,6 +360,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
+            next!(progress)
         end
 
         ρ_numeric_reg = count(regular_mask) / n
