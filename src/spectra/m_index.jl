@@ -389,7 +389,7 @@ function separate_regular_and_chaotic_states(
         return ρ_numeric_reg, regular_idx
     end
 
-    M_thresh = 0.8  # Start from 0.8 as per your preference
+    M_thresh = 0.8  # Start from 0.8 since that is where we usually start the mixed regime
     Ms = Float64[]
     ρs = Float64[]
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
