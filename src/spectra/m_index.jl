@@ -332,7 +332,7 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `classical_chaotic_s_vals::Vector`: Vector of classical chaotic `s` values used to compute the projection grid.
 - `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
 - `ρ_regular_classic::Float64`: The volume fraction of the classical phase space.
-- `decrease_step_size`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
+- `decrease_step_size=1e-2`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
 
 # Returns
 - `Tuple{Vector, Vector, Vector}`: A tuple containing:
@@ -340,22 +340,36 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `ρs::Vector`: The calculated volumes for each M_thresh.
 - `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
 """
-function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, ρ_regular_classic::Float64; initial_M_range=(0.1, 1.0), num_initial_M=100, num_refinement_M=50)
+function separate_regular_and_chaotic_states(
+    ks::Vector,
+    H_list::Vector{Matrix},
+    qs_list::Vector{Vector},
+    ps_list::Vector{Vector},
+    classical_chaotic_s_vals::Vector,
+    classical_chaotic_p_vals::Vector,
+    ρ_regular_classic::Float64;
+    decrease_step_size=1e-2
+)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
+
     function calc_ρ(M_thresh)
         n = length(ks)
         regular_mask = zeros(Bool, n)
-        progress = Progress(n; desc="Calculating M values")
+        progress = Progress(n; desc="Calculating for M_thresh = $(round(M_thresh, digits=3))")
         nthreads = Threads.nthreads()
+
         # Initialize per-thread caches
         thread_caches = [Dict{UInt64, Any}() for _ in 1:nthreads]
+
         Threads.@threads for i in 1:n
             try
                 thread_id = Threads.threadid()
                 cache = thread_caches[thread_id]
+
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
+
                 # Create a hash key based on the size of H, qs, and ps
                 key = hash((size(H), qs, ps))
 
@@ -373,7 +387,7 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
-            next!(progress)
+            ProgressThreads.next!(progress)
         end
 
         ρ_numeric_reg = count(regular_mask) / n
@@ -381,57 +395,33 @@ function separate_regular_and_chaotic_states(ks::Vector, H_list::Vector{Matrix},
         return ρ_numeric_reg, regular_idx
     end
 
-    # Initial search over a range of M_thresh values
-    M_start, M_end = initial_M_range
-    Ms = range(M_start, M_end; length=num_initial_M)
+    M_thresh = 0.8  # Start from 0.8 as per your preference
+    Ms = Float64[]
     ρs = Float64[]
-    idxs = Vector{Vector{Int64}}(undef, num_initial_M)
-    progress_outer = Progress(length(Ms); desc="Initial M_thresh Search")
-    
-    for (j, M_thresh) in enumerate(Ms)
-        ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    push!(Ms, M_thresh)
+    push!(ρs, ρ_numeric_reg)
+
+    progress_outer = Progress(; desc="Adjusting M_thresh")
+    while ρ_numeric_reg > ρ_regular_classic
+        M_thresh -= decrease_step_size
+        if M_thresh < 0.0
+            throw(ArgumentError("M_thresh must be positive"))
+        end
+        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
+        push!(Ms, M_thresh)
         push!(ρs, ρ_numeric_reg)
-        idxs[j] = regular_idx
-        next!(progress_outer)
+        ProgressThreads.next!(progress_outer)
+
+        if abs(ρ_numeric_reg - ρ_regular_classic) < decrease_step_size
+            regular_idx = reg_idx_loop
+            break
+        else
+            regular_idx = reg_idx_loop
+        end
     end
 
-    # Find the M_thresh that gives ρ_numeric_reg closest to ρ_regular_classic
-    abs_diff = abs.(ρs .- ρ_regular_classic)
-    min_idx = argmin(abs_diff)
-    best_M_thresh = Ms[min_idx]
-    best_ρ_numeric_reg = ρs[min_idx]
-    regular_idx = idxs[min_idx]
-
-    # Refinement around the best M_thresh
-    refinement_range = (best_M_thresh - (M_end - M_start)/num_initial_M, best_M_thresh + (M_end - M_start)/num_initial_M)
-    M_refine_start = max(M_start, refinement_range[1])
-    M_refine_end = min(M_end, refinement_range[2])
-    Ms_refine = range(M_refine_start, M_refine_end; length=num_refinement_M)
-
-    # Re-initialize lists for refinement
-    ρs_refine = Float64[]
-    idxs_refine = Vector{Vector{Int64}}(undef, num_refinement_M)
-
-    progress_refine = Progress(length(Ms_refine); desc="Refining M_thresh")
-    for (j, M_thresh) in enumerate(Ms_refine)
-        ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
-        push!(ρs_refine, ρ_numeric_reg)
-        idxs_refine[j] = regular_idx
-        next!(progress_refine)
-    end
-
-    # Find the refined M_thresh that gives ρ_numeric_reg closest to ρ_regular_classic
-    abs_diff_refine = abs.(ρs_refine .- ρ_regular_classic)
-    min_idx_refine = argmin(abs_diff_refine)
-    best_M_thresh_refine = Ms_refine[min_idx_refine]
-    best_ρ_numeric_reg_refine = ρs_refine[min_idx_refine]
-    regular_idx = idxs_refine[min_idx_refine]
-
-    # Combine all Ms and ρs
-    Ms_total = vcat(Ms, Ms_refine)
-    ρs_total = vcat(ρs, ρs_refine)
-
-    return Ms_total, ρs_total, regular_idx
+    return Ms, ρs, regular_idx
 end
 
 """
