@@ -396,7 +396,6 @@ function separate_regular_and_chaotic_states(
     push!(Ms, M_thresh)
     push!(ρs, ρ_numeric_reg)
 
-    progress_outer = Progress(; desc="Adjusting M_thresh")
     while ρ_numeric_reg > ρ_regular_classic
         println("Current ρ_numeric_reg: ", ρ_numeric_reg)
         println("Theoretical ρ_reg: ", ρ_regular_classic)
@@ -408,7 +407,6 @@ function separate_regular_and_chaotic_states(
         ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
         push!(Ms, M_thresh)
         push!(ρs, ρ_numeric_reg)
-        next!(progress_outer)
 
         if abs(ρ_numeric_reg - ρ_regular_classic) < decrease_step_size
             regular_idx = reg_idx_loop
