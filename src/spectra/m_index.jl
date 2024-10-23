@@ -409,6 +409,7 @@ function separate_regular_and_chaotic_states(
         push!(ρs, ρ_numeric_reg)
 
         if abs(ρ_numeric_reg - ρ_regular_classic) < decrease_step_size
+            println("Final ρ regular numerica: ", ρ_numeric_reg, " relative closeness: ", abs((ρ_numeric_reg-ρ_regular_classic)/ρ_regular_classic)*100, " %")
             regular_idx = reg_idx_loop
             break
         else
