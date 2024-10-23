@@ -399,7 +399,7 @@ function separate_regular_and_chaotic_states(
     while ρ_numeric_reg > ρ_regular_classic
         println("Current ρ_numeric_reg: ", ρ_numeric_reg)
         println("Theoretical ρ_reg: ", ρ_regular_classic)
-        println("Relative closeness: ", abs(ρ_numeric_reg-ρ_regular_classic/ρ_regular_classic))
+        println("Relative closeness: ", abs((ρ_numeric_reg-ρ_regular_classic)/ρ_regular_classic))
         M_thresh -= decrease_step_size
         if M_thresh < 0.0
             throw(ArgumentError("M_thresh must be positive"))
