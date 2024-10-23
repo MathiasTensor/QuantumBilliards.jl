@@ -389,6 +389,7 @@ function separate_regular_and_chaotic_states(
         return ρ_numeric_reg, regular_idx
     end
 
+    #TODO # high initial guess but might use a linear scaling to be better?
     M_thresh = 0.99 
     Ms = Float64[]
     ρs = Float64[]
