@@ -100,7 +100,9 @@ function fit_P_localization_entropy_to_beta(Hs::Vector{Matrix{T}}, chaotic_class
         A0, a, b = p # unfold the param vector
         # Define the unnormalized function
         unnormalized_f(A) = A^a * (A0 - A)^b # assume a beta disitribution based on paper Batistić, Lozej, Robnik
-        C, _ = quadgk(unnormalized_f, 0.0, A0) # use quadGK to get C
+        #C, _ = quadgk(unnormalized_f, 0.0, A0) # use quadGK to get C, depreceated
+        B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
+        C = 1.0/(A^(a+b+1)*B(a+1,b+1))
         return A .^ a .* (A0 .- A) .^ b ./ C # normalized model
     end
     initial_A0 = maximum(bin_centers) # the max val in As we have from data

@@ -357,29 +357,23 @@ function separate_regular_and_chaotic_states(
         regular_mask = zeros(Bool, n)
         progress = Progress(n; desc="Calculating for M_thresh = $(round(M_thresh, digits=3))")
         nthreads = Threads.nthreads()
-
         # Initialize per-thread caches
         thread_caches = [Dict{UInt64, Any}() for _ in 1:nthreads]
-
         Threads.@threads for i in 1:n
             try
                 thread_id = Threads.threadid()
                 cache = thread_caches[thread_id]
-
                 H = H_list[i]
                 qs = qs_list[i]
                 ps = ps_list[i]
-
                 # Create a hash key based on the size of H, qs, and ps
                 key = hash((size(H), qs, ps))
-
                 if haskey(cache, key)
                     proj_grid = cache[key]
                 else
                     proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
                     cache[key] = proj_grid
                 end
-
                 M_val = compute_M(proj_grid, H)
                 if M_val < M_thresh
                     regular_mask[i] = true
@@ -387,7 +381,7 @@ function separate_regular_and_chaotic_states(
             catch e
                 @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
             end
-            ProgressThreads.next!(progress)
+            next!(progress)
         end
 
         ρ_numeric_reg = count(regular_mask) / n
@@ -404,6 +398,9 @@ function separate_regular_and_chaotic_states(
 
     progress_outer = Progress(; desc="Adjusting M_thresh")
     while ρ_numeric_reg > ρ_regular_classic
+        println("Current ρ_numeric_reg: ", ρ_numeric_reg)
+        println("Theoretical ρ_reg: ", ρ_regular_classic)
+        println("Relative closeness: ", abs(ρ_numeric_reg-ρ_regular_classic/ρ_regular_classic))
         M_thresh -= decrease_step_size
         if M_thresh < 0.0
             throw(ArgumentError("M_thresh must be positive"))
@@ -411,7 +408,7 @@ function separate_regular_and_chaotic_states(
         ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
         push!(Ms, M_thresh)
         push!(ρs, ρ_numeric_reg)
-        ProgressThreads.next!(progress_outer)
+        next!(progress_outer)
 
         if abs(ρ_numeric_reg - ρ_regular_classic) < decrease_step_size
             regular_idx = reg_idx_loop
