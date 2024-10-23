@@ -332,7 +332,7 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `classical_chaotic_s_vals::Vector`: Vector of classical chaotic `s` values used to compute the projection grid.
 - `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
 - `ρ_regular_classic::Float64`: The volume fraction of the classical phase space.
-- `decrease_step_size=1e-2`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
+- `decrease_step_size=0.05`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
 
 # Returns
 - `Tuple{Vector, Vector, Vector}`: A tuple containing:
@@ -348,7 +348,7 @@ function separate_regular_and_chaotic_states(
     classical_chaotic_s_vals::Vector,
     classical_chaotic_p_vals::Vector,
     ρ_regular_classic::Float64;
-    decrease_step_size=1e-2
+    decrease_step_size=0.05
 )
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
 
@@ -389,7 +389,7 @@ function separate_regular_and_chaotic_states(
         return ρ_numeric_reg, regular_idx
     end
 
-    M_thresh = 0.8  # Start from 0.8 since that is where we usually start the mixed regime
+    M_thresh = 0.99 
     Ms = Float64[]
     ρs = Float64[]
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
