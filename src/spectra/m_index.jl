@@ -371,7 +371,7 @@ function separate_regular_and_chaotic_states(
                 # Create a hash key based on the size of H, qs, and ps
                 key = hash((size(H), qs, ps))
                 if haskey(cache, key)
-                    proj_grid = cache[key]
+                    proj_grid = cache[key] # So we dont have to always construct a new projection grid if the size of the Husimi function is the same
                 else
                     proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
                     cache[key] = proj_grid
