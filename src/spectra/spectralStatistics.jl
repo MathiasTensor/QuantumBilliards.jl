@@ -338,6 +338,10 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
     return fig
 end
 
+function length_spectrum(undolded_energies::Vector, l::T) where {T<:Real}
+    return 
+end
+
 #=
 """
     plot_spectral_rigidity!(arr::Vector{T}, L_min::T, L_max::T; N::Int=100) where {T<:Real}

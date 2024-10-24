@@ -394,10 +394,11 @@ function separate_regular_and_chaotic_states(
     Ms = Float64[]
     ρs = Float64[]
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    prev_num_ρ = ρ_numeric_reg # for preventing inf cycles in outer loop
     push!(Ms, M_thresh)
     push!(ρs, ρ_numeric_reg)
+    M_thresh -= decrease_step_size # to not calculate twice in outer loop
 
-    previous_ρ_numeric_reg = ρ_numeric_reg
     max_iterations = 1000  # To prevent infinite loops
     iteration = 0
     inner_iteration = false
