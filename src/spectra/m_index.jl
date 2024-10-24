@@ -400,6 +400,7 @@ function separate_regular_and_chaotic_states(
     previous_ρ_numeric_reg = ρ_numeric_reg
     max_iterations = 1000  # To prevent infinite loops
     iteration = 0
+    inner_iteration = false
 
     while true
         iteration += 1
@@ -407,6 +408,11 @@ function separate_regular_and_chaotic_states(
             @warn "Maximum iterations reached."
             break
         end
+
+        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
+        push!(Ms, M_thresh)
+        push!(ρs, ρ_numeric_reg)
+        regular_idx = reg_idx_loop # this is returned for separation purposes
 
         println("Current ρ_numeric_reg: $(round(ρ_numeric_reg, digits=6))")
         println("Theoretical ρ_reg: $(round(ρ_regular_classic, digits=6))")
@@ -425,26 +431,20 @@ function separate_regular_and_chaotic_states(
             break
         end
 
-        change_in_ρ = abs(ρ_numeric_reg - previous_ρ_numeric_reg) / previous_ρ_numeric_reg * 100
-        println("Change in ρ_numeric_reg: $(round(change_in_ρ, digits=4))%")
-
-        if change_in_ρ < 1
-            println("Change in ρ_numeric_reg is less than 1%")
+        if abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100 < 1
+            println("No more precise, breaking!")
             break
         end
-
-        # Update M_thresh
-        M_thresh -= decrease_step_size
+        prev_num_ρ = ρ_numeric_reg
+        # Update M_thresh based on outer/inner loop
+        if !inner_iteration
+            M_thresh -= decrease_step_size
+        else
+            M_thresh += decrease_step_size
+        end
         if M_thresh <= 0.0
             throw(ArgumentError("M_thresh must be positive"))
         end
-
-        # Recalculate ρ_numeric_reg
-        previous_ρ_numeric_reg = ρ_numeric_reg
-        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
-        push!(Ms, M_thresh)
-        push!(ρs, ρ_numeric_reg)
-        regular_idx = reg_idx_loop
     end
 
     return Ms, ρs, regular_idx
