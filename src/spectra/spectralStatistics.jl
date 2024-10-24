@@ -390,14 +390,15 @@ function length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; funda
 end
 
 """
-    plot_length_spectrum!(ax::Axis, unfolded_energies::Vector, ls::Vector{T}) where {T<:Real}
+    plot_length_spectrum!(ax::Axis, energies::Vector, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
 
-Simple high-level plotting of length spectrum
+Simple high-level plotting of length spectrum.
 
 # Arguments
 - `ax::Axis`: The axis to plot on.
 - `energies::Vector`: A vector of energy levels.
-- `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.
+- `billiard::Bi`: Billiard geometry, which provides the area, perimeter, and curvature/corner corrections.
+- `fundamental::Bool`: Whether to use the fundamental domain of the billiard. Defaults to `true`.
 
 # Returns
 - `Nothing`
