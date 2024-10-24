@@ -1,4 +1,4 @@
-using LsqFit, QuadGK
+using LsqFit, QuadGK, SpecialFunctions
 
 """
     localization_entropy(H::Matrix{T}, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
@@ -70,15 +70,26 @@ Plots the probability density function (PDF) of the localization entropy A using
 - `chaotic_classical_phase_space_vol_fraction::T`: The fraction of the chaotic classical phase space (The fraction of chaotic grid cells for the PH Matrix).
 - `nbins=50`: The number of bins for the histogram
 - `color::Symbol=:lightblue`: The color of the histogram bars
+- `fit_beta::Bool=false`: Whether to fit the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data (used only for close to ergodic systems otherwise it will obviously fail)
 
 # Returns
 - `Nothing`
 """
-function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50, color::Symbol=:lightblue) where {T<:Real}
+function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50, color::Symbol=:lightblue, fit_beta::Bool=false) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
     barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
-    xlims!(ax, (0.0, 1.0))
     axislegend(ax, position=:ct)
+    if fit_beta
+        fit_data = fit_P_localization_entropy_to_beta(Hs, chaotic_classical_phase_space_vol_fraction, nbins=nbins)
+        A0, a, b = fit_data.param
+        # x scale for the beta distributin will be from 0.0 to A0
+        xs = collect(range(0.0, A0, 200))
+        B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
+        ys = (1.0 ./ (A0^(a + b + 1) * B(a + 1, b + 1))) .* (xs .^ a) .* ((A0 - xs) .^ b) # normalized
+        param_label = "Beta fit: A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))"
+        lines!(ax,xs,ys,label=param_label,color=:red)
+    end
+    xlims!(ax, (0.0, 1.0))
 end
 
 """
@@ -92,7 +103,7 @@ Fits the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data.
 - `nbins=50`: The number of bins for the histogram
 
 # Returns
-- `fit_result::LsqFitResult`: The result of the curve fitting using LsqFit. To get the `A0`, `a`, `b` take `fit_result.param`
+- `fit_result::LsqFitResult`: The result of the curve fitting using LsqFit. To get the `A0`, `a`, `b` take `fit_result.param`. It is returned in that order.
 """
 function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
@@ -102,7 +113,7 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         unnormalized_f(A) = A^a * (A0 - A)^b # assume a beta disitribution based on paper Batistić, Lozej, Robnik
         #C, _ = quadgk(unnormalized_f, 0.0, A0) # use quadGK to get C, depreceated
         B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
-        C = 1.0/(A^(a+b+1)*B(a+1,b+1))
+        C = (A^(a+b+1)*B(a+1,b+1))
         return A .^ a .* (A0 .- A) .^ b ./ C # normalized model
     end
     initial_A0 = maximum(bin_centers) # the max val in As we have from data
