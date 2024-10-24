@@ -370,6 +370,27 @@ function length_spectrum(unfolded_energies::Vector, ls::Vector{T}) where {T<:Rea
     return [length_spectrum(unfolded_energies, l) for l in ls]
 end
 
+"""
+    plot_length_spectrum!(ax::Axis, unfolded_energies::Vector, ls::Vector{T}) where {T<:Real}
+
+Simple high-level plotting of length spectrum
+
+# Arguments
+- `ax::Axis`: The axis to plot on.
+- `unfolded_energies::Vector`: A vector of unfolded energy levels.
+- `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.
+
+# Returns
+- `Nothing`
+"""
+function plot_length_spectrum!(ax::Axis, unfolded_energies::Vector, ls::Vector{T}) where {T<:Real}
+    lines!(ax, ls, length_spectrum(unfolded_energies, ls), linewidth=1)
+end
+
+
+
+
+
 #=
 """
     plot_spectral_rigidity!(arr::Vector{T}, L_min::T, L_max::T; N::Int=100) where {T<:Real}
