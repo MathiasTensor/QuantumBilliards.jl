@@ -333,6 +333,7 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `classical_chaotic_p_vals::Vector`: Vector of classical chaotic `p` values used to compute the projection grid.
 - `ρ_regular_classic::Float64`: The volume fraction of the classical phase space.
 - `decrease_step_size=0.05`: By how much each iteration we decrease the M_thresh until we get the correct volume fraction of the classical phase space.
+- `relative_closeness_perc=5`: What is (percentage) the acceptable relative tolerance for the numerical ρ wrt. theoretical ρ.
 
 # Returns
 - `Tuple{Vector, Vector, Vector}`: A tuple containing:
@@ -348,7 +349,8 @@ function separate_regular_and_chaotic_states(
     classical_chaotic_s_vals::Vector,
     classical_chaotic_p_vals::Vector,
     ρ_regular_classic::Float64;
-    decrease_step_size=0.05
+    decrease_step_size=0.05,
+    relative_closeness_perc=5
 )
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
 
@@ -432,7 +434,7 @@ function separate_regular_and_chaotic_states(
             inner_iteration = true
             println("Adjusted decrease_step_size: $(round(decrease_step_size, digits=6))")
         end
-        if (abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100) < 1 && (relative_closeness < 5)
+        if (abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100) < 1 && (relative_closeness < relative_closeness_perc)
             println("No more precise, breaking!")
             break
         end
