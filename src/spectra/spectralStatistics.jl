@@ -344,14 +344,14 @@ end
 Length spectrum for `unfolded_energies` for a particular `l` with `abs` applied.
 
 # Arguments
-- `undolded_energies::Vector`: A vector of energy levels.
+- `unfolded_energies::Vector`: A vector of unfolded energy levels.
 - `l::T`: length for which to compute the length spectrum.
 
 # Returns
 - `T`: The length spectrum value for the given `l` and `unfolded_energies`.
 """
-function length_spectrum(undolded_energies::Vector, l::T) where {T<:Real}
-    return abs(sum([exp(im*e*l) for e in undolded_energies]))
+function length_spectrum(unfolded_energies::Vector, l::T) where {T<:Real}
+    return abs(sum(exp(im*e*l) for e in unfolded_energies))
 end
 
 """
