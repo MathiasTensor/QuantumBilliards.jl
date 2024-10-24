@@ -389,33 +389,62 @@ function separate_regular_and_chaotic_states(
         return ρ_numeric_reg, regular_idx
     end
 
-    #TODO # high initial guess but might use a linear scaling to be better?
-    M_thresh = 0.99 
+    # Initial setup
+    M_thresh = 0.99
     Ms = Float64[]
     ρs = Float64[]
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
     push!(Ms, M_thresh)
     push!(ρs, ρ_numeric_reg)
 
-    while ρ_numeric_reg > ρ_regular_classic
-        println("Current ρ_numeric_reg: ", ρ_numeric_reg)
-        println("Theoretical ρ_reg: ", ρ_regular_classic)
-        println("Relative closeness: ", abs((ρ_numeric_reg-ρ_regular_classic)/ρ_regular_classic)*100, " %")
+    previous_ρ_numeric_reg = ρ_numeric_reg
+    max_iterations = 1000  # To prevent infinite loops
+    iteration = 0
+
+    while true
+        iteration += 1
+        if iteration > max_iterations
+            @warn "Maximum iterations reached."
+            break
+        end
+
+        println("Current ρ_numeric_reg: $(round(ρ_numeric_reg, digits=6))")
+        println("Theoretical ρ_reg: $(round(ρ_regular_classic, digits=6))")
+        relative_closeness = abs(ρ_numeric_reg - ρ_regular_classic) / ρ_regular_classic * 100
+        println("Relative closeness: $(round(relative_closeness, digits=4))%")
+
+        # Adjust decrease_step_size if ρ_numeric_reg has gone below ρ_regular_classic
+        if ρ_numeric_reg < ρ_regular_classic
+            decrease_step_size *= 0.9
+            println("Adjusted decrease_step_size: $(round(decrease_step_size, digits=6))")
+        end
+
+        # Check stopping conditions
+        if relative_closeness < 5
+            println("Reached desired relative closeness of less than 5%")
+            break
+        end
+
+        change_in_ρ = abs(ρ_numeric_reg - previous_ρ_numeric_reg) / previous_ρ_numeric_reg * 100
+        println("Change in ρ_numeric_reg: $(round(change_in_ρ, digits=4))%")
+
+        if change_in_ρ < 1
+            println("Change in ρ_numeric_reg is less than 1%")
+            break
+        end
+
+        # Update M_thresh
         M_thresh -= decrease_step_size
-        if M_thresh < 0.0
+        if M_thresh <= 0.0
             throw(ArgumentError("M_thresh must be positive"))
         end
+
+        # Recalculate ρ_numeric_reg
+        previous_ρ_numeric_reg = ρ_numeric_reg
         ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
         push!(Ms, M_thresh)
         push!(ρs, ρ_numeric_reg)
-
-        if abs(ρ_numeric_reg - ρ_regular_classic) < decrease_step_size
-            println("Final ρ regular numerica: ", ρ_numeric_reg, " relative closeness: ", abs((ρ_numeric_reg-ρ_regular_classic)/ρ_regular_classic)*100, " %")
-            regular_idx = reg_idx_loop
-            break
-        else
-            regular_idx = reg_idx_loop
-        end
+        regular_idx = reg_idx_loop
     end
 
     return Ms, ρs, regular_idx
