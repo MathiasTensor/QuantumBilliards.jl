@@ -396,14 +396,14 @@ Simple high-level plotting of length spectrum
 
 # Arguments
 - `ax::Axis`: The axis to plot on.
-- `unfolded_energies::Vector`: A vector of unfolded energy levels.
+- `energies::Vector`: A vector of energy levels.
 - `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.
 
 # Returns
 - `Nothing`
 """
-function plot_length_spectrum!(ax::Axis, unfolded_energies::Vector, ls::Vector{T}) where {T<:Real}
-    lines!(ax, ls, length_spectrum(unfolded_energies, ls), linewidth=1)
+function plot_length_spectrum!(ax::Axis, energies::Vector, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    lines!(ax, ls, length_spectrum(energies, ls, billiard; fundamental=fundamental), linewidth=1)
 end
 
 
