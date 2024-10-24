@@ -47,7 +47,22 @@ function save_numerical_ks_and_tensions!(ks::Vector{T}, tens::Vector{T}, filenam
     CSV.write(filename, df)
 end
 
+"""
+    save_numerical_ks!(ks::Vector{T}, filename::String) where {T<:Real}
 
+Saves numerical values of `ks` to a CSV file
+
+# Arguments
+- `ks::Vector{T}`: A vector of numerical eigenvalues `k`.
+- `filename::String`: The name of the CSV file to save the data.
+
+# Notes
+- The function creates a `DataFrame` with a single column `k` and writes it to the specified `filename`.
+"""
+function save_numerical_ks!(ks::Vector{T}, filename::String) where {T<:Real}
+    df = DataFrame(k=ks)
+    CSV.write(filename, df)
+end
 
 """
     read_numerical_ks_and_tensions(filename::String) -> (ks, tensions)
@@ -58,7 +73,7 @@ Read numerical eigenvalues and tensions from a CSV file.
 - `filename::String`: Name of the CSV file to read the data from.
 
 # Returns
-- `ks`: Vector of numerical eigenvalues.
+- `ks`: Vector of numerical eigenvalues. This is a SentinelArray so you should use Vector(...) on the ks and tensions.
 - `tensions`: Vector of tensions corresponding to each eigenvalue.
 
 # Notes
@@ -71,7 +86,25 @@ function read_numerical_ks_and_tensions(filename::String)
     return ks, tensions
 end
 
+"""
+    read_numerical_ks(filename::String)
 
+Read numerical eigenvalues from a CSV file.
+
+# Arguments
+- `filename::String`: Name of the CSV file to read the data from.
+
+# Returns
+- `ks`: Vector of numerical eigenvalues. This is a SentinelArray so you should use Vector(...) on the ks and tensions.
+
+# Notes
+- Assumes the CSV file has a single column named `k`.
+"""
+function read_numerical_ks(filename::String)
+    df = CSV.read(filename, DataFrame)
+    ks = df.k
+    return ks
+end
 
 """
     compute_and_save_closest_pairs!(ksA::Vector{T}, ksB::Vector{T}, A::T, filename::String; unique=true, tolerance::Float64=1e-6) where {T<:Real}
