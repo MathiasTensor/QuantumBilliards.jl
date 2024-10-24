@@ -339,35 +339,54 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
 end
 
 """
-    length_spectrum(undolded_energies::Vector, l::T) :: T where {T<:Real}
+    length_spectrum(energies::Vector{T}, l::T, billiard::Bi; fundamental::Bool=true) :: T where {T<:Real, Bi<:AbsBilliard}
 
-Length spectrum for `unfolded_energies` for a particular `l` with `abs` applied.
+Calculates the length spectrum for a particular `l`, using raw (non-unfolded) energy levels and Weyl's law.
 
 # Arguments
-- `unfolded_energies::Vector`: A vector of unfolded energy levels.
-- `l::T`: length for which to compute the length spectrum.
+- `energies::Vector`: A vector of raw energy levels.
+- `l::T`: Length for which to compute the length spectrum.
+- `billiard::Bi`: Billiard geometry, which provides the area, perimeter, and curvature/corner corrections.
+- `fundamental::Bool`: Whether to use the fundamental domain of the billiard. Defaults to `true`.
 
 # Returns
-- `T`: The length spectrum value for the given `l` and `unfolded_energies`.
+- `T`: The length spectrum value for the given `l`, energies, and billiard geometry.
 """
-function length_spectrum(unfolded_energies::Vector, l::T) where {T<:Real}
-    return abs(sum(exp(im*e*l) for e in unfolded_energies))
+function length_spectrum(energies::Vector, l::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    A = T(fundamental ? billiard.area_fundamental : billiard.area)
+    L = T(fundamental ? billiard.length_fundamental : billiard.length)
+    C = T(curvature_and_corner_corrections(billiard; fundamental=fundamental))
+    l_spec = complex(0.0)
+    N_weyl = [(A/(4*pi)*k^2 - L/(4*pi)*k + C) for k in energies]
+    N_numeric = [count(_k -> _k < k, energies) for k in energies]
+    rho_fluct = N_numeric .- N_weyl
+    for (rho, k) in zip(rho_fluct, energies)
+        l_spec += rho * exp(im * k * l)
+    end
+    norm = length(energies)
+    return abs(l_spec) / norm
 end
 
 """
-    length_spectrum(unfolded_energies::Vector, ls::Vector{T}) :: Vector{T} where {T<:Real}
+    length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) :: Vector{T} where {T<:Real, Bi<:AbsBilliard}
 
-Computes the length spectrum for a given `Vector` of lengths `ls`.
+Calculates the length spectrum for a range of lengths `ls`, using raw (non-unfolded) energy levels and Weyl's law.
 
 # Arguments
-- `unfolded_energies::Vector`: A vector of energy levels.
-- `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.ž
+- `energies::Vector`: A vector of raw energy levels.
+- `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.
+- `billiard::Bi`: Billiard geometry, which provides the area, perimeter, and curvature/corner corrections.
+- `fundamental::Bool`: Whether to use the fundamental domain of the billiard. Defaults to `true`.
 
 # Returns
-- `Vector{T}`: A vector of length spectrum values corresponding to the given `ls` and `unfolded_energies`.
+- `Vector{T}`: A vector of length spectrum values corresponding to the given `ls` and `energies`.
 """
-function length_spectrum(unfolded_energies::Vector, ls::Vector{T}) where {T<:Real}
-    return [length_spectrum(unfolded_energies, l) for l in ls]
+function length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    l_spec = zeros(T, length(ls))
+    Threads.@threads for i in 1:length(ls)
+        l_spec[i] = length_spectrum(energies, ls[i], billiard; fundamental=fundamental)
+    end
+    return l_spec
 end
 
 """
