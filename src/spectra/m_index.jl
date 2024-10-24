@@ -432,7 +432,7 @@ function separate_regular_and_chaotic_states(
             inner_iteration = true
             println("Adjusted decrease_step_size: $(round(decrease_step_size, digits=6))")
         end
-        if abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100 < 1 && relative_closeness > 5
+        if (abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100) < 1 && (relative_closeness < 5)
             println("No more precise, breaking!")
             break
         end
