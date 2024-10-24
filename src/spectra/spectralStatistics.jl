@@ -339,7 +339,7 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
 end
 
 """
-    length_spectrum(energies::Vector{T}, l::T, billiard::Bi; fundamental::Bool=true) :: T where {T<:Real, Bi<:AbsBilliard}
+    length_spectrum(energies::Vector{T}, l::T, billiard::Bi; fundamental::Bool=true, regular_idx::Union{Nothing, Vector{Int}}=nothing, reg_or_cha=true) :: T where {T<:Real, Bi<:AbsBilliard}
 
 Calculates the length spectrum for a particular `l`, using raw (non-unfolded) energy levels and Weyl's law.
 
@@ -348,11 +348,13 @@ Calculates the length spectrum for a particular `l`, using raw (non-unfolded) en
 - `l::T`: Length for which to compute the length spectrum.
 - `billiard::Bi`: Billiard geometry, which provides the area, perimeter, and curvature/corner corrections.
 - `fundamental::Bool`: Whether to use the fundamental domain of the billiard. Defaults to `true`.
+- `regular_idx::Union{Nothing, Vector{Int}}`: Optional vector of regular indexes (must be regular otherwise we get complement).
+- `reg_or_cha::Bool`: Whether to use regular or chaotic indexes. Defaults to `true` for regular idxs.
 
 # Returns
 - `T`: The length spectrum value for the given `l`, energies, and billiard geometry.
 """
-function length_spectrum(energies::Vector, l::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+function length_spectrum(energies::Vector, l::T, billiard::Bi; fundamental::Bool=true, regular_idx::Union{Nothing, Vector{Int}}=nothing, reg_or_cha=true) where {T<:Real, Bi<:AbsBilliard}
     A = T(fundamental ? billiard.area_fundamental : billiard.area)
     L = T(fundamental ? billiard.length_fundamental : billiard.length)
     C = T(curvature_and_corner_corrections(billiard; fundamental=fundamental))
@@ -360,6 +362,18 @@ function length_spectrum(energies::Vector, l::T, billiard::Bi; fundamental::Bool
     N_weyl = [(A/(4*pi)*k^2 - L/(4*pi)*k + C) for k in energies]
     N_numeric = [count(_k -> _k < k, energies) for k in energies]
     rho_fluct = N_numeric .- N_weyl
+    # unfold then separate
+    if !isnothing(regular_idx)
+        if reg_or_cha == true # do regular
+            rho_fluct = rho_fluct[regular_idx]
+            energies = energies[regular_idx]
+        else # do chaotic
+            all_indices = Set(1:length(rho_fluct))  # Set of all indices
+            chaotic_idx = sort(collect(setdiff(all_indices, regular_idx)))  # Find chaotic indices
+            rho_fluct = rho_fluct[collect(chaotic_idx)]
+            energies = energies[collect(chaotic_idx)]
+        end    
+    end
     for (rho, k) in zip(rho_fluct, energies)
         l_spec += rho * exp(im * k * l)
     end
@@ -368,7 +382,7 @@ function length_spectrum(energies::Vector, l::T, billiard::Bi; fundamental::Bool
 end
 
 """
-    length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) :: Vector{T} where {T<:Real, Bi<:AbsBilliard}
+    length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; fundamental::Bool=true, regular_idx::Union{Nothing, Vector{Int}}=nothing, reg_or_cha=true) :: Vector{T} where {T<:Real, Bi<:AbsBilliard}
 
 Calculates the length spectrum for a range of lengths `ls`, using raw (non-unfolded) energy levels and Weyl's law.
 
@@ -377,20 +391,22 @@ Calculates the length spectrum for a range of lengths `ls`, using raw (non-unfol
 - `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.
 - `billiard::Bi`: Billiard geometry, which provides the area, perimeter, and curvature/corner corrections.
 - `fundamental::Bool`: Whether to use the fundamental domain of the billiard. Defaults to `true`.
+- `regular_idx::Union{Nothing, Vector{Int}}`: Optional vector of regular indexes (must be regular otherwise we get complement).
+- `reg_or_cha::Bool`: Whether to use regular or chaotic indexes. Defaults to `true` for regular idxs.
 
 # Returns
 - `Vector{T}`: A vector of length spectrum values corresponding to the given `ls` and `energies`.
 """
-function length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+function length_spectrum(energies::Vector{T}, ls::Vector{T}, billiard::Bi; fundamental::Bool=true, regular_idx::Union{Nothing, Vector{Int}}=nothing, reg_or_cha=true) where {T<:Real, Bi<:AbsBilliard}
     l_spec = zeros(T, length(ls))
     Threads.@threads for i in 1:length(ls)
-        l_spec[i] = length_spectrum(energies, ls[i], billiard; fundamental=fundamental)
+        l_spec[i] = length_spectrum(energies, ls[i], billiard; fundamental=fundamental, regular_idx=regular_idx, reg_or_cha=reg_or_cha)
     end
     return l_spec
 end
 
 """
-    plot_length_spectrum!(ax::Axis, energies::Vector, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    plot_length_spectrum!(ax::Axis, energies::Vector, ls::Vector{T}, billiard::Bi; fundamental::Bool=true, regular_idx::Union{Nothing, Vector{Int}}=nothing, reg_or_cha=true) where {T<:Real, Bi<:AbsBilliard}
 
 Simple high-level plotting of length spectrum.
 
@@ -399,12 +415,14 @@ Simple high-level plotting of length spectrum.
 - `energies::Vector`: A vector of energy levels.
 - `billiard::Bi`: Billiard geometry, which provides the area, perimeter, and curvature/corner corrections.
 - `fundamental::Bool`: Whether to use the fundamental domain of the billiard. Defaults to `true`.
+- `regular_idx::Union{Nothing, Vector{Int}}`: Optional vector of regular indexes (must be regular otherwise we get complement).
+- `reg_or_cha::Bool`: Whether to use regular or chaotic indexes. Defaults to `true` for regular idxs.
 
 # Returns
 - `Nothing`
 """
-function plot_length_spectrum!(ax::Axis, energies::Vector, ls::Vector{T}, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
-    lines!(ax, ls, length_spectrum(energies, ls, billiard; fundamental=fundamental), linewidth=1)
+function plot_length_spectrum!(ax::Axis, energies::Vector, ls::Vector{T}, billiard::Bi; fundamental::Bool=true, regular_idx::Union{Nothing, Vector{Int}}=nothing, reg_or_cha=true) where {T<:Real, Bi<:AbsBilliard}
+    lines!(ax, ls, length_spectrum(energies, ls, billiard; fundamental=fundamental, regular_idx=regular_idx, reg_or_cha=reg_or_cha), linewidth=1)
 end
 
 
