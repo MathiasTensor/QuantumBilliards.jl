@@ -338,8 +338,36 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
     return fig
 end
 
+"""
+    length_spectrum(undolded_energies::Vector, l::T) :: T where {T<:Real}
+
+Length spectrum for `unfolded_energies` for a particular `l` with `abs` applied.
+
+# Arguments
+- `undolded_energies::Vector`: A vector of energy levels.
+- `l::T`: length for which to compute the length spectrum.
+
+# Returns
+- `T`: The length spectrum value for the given `l` and `unfolded_energies`.
+"""
 function length_spectrum(undolded_energies::Vector, l::T) where {T<:Real}
-    return 
+    return abs(sum([exp(im*e*l) for e in undolded_energies]))
+end
+
+"""
+    length_spectrum(unfolded_energies::Vector, ls::Vector{T}) :: Vector{T} where {T<:Real}
+
+Computes the length spectrum for a given `Vector` of lengths `ls`.
+
+# Arguments
+- `unfolded_energies::Vector`: A vector of energy levels.
+- `ls::Vector{T}`: A vector of lengths for which to compute the length spectrum.ž
+
+# Returns
+- `Vector{T}`: A vector of length spectrum values corresponding to the given `ls` and `unfolded_energies`.
+"""
+function length_spectrum(unfolded_energies::Vector, ls::Vector{T}) where {T<:Real}
+    return [length_spectrum(unfolded_energies, l) for l in ls]
 end
 
 #=

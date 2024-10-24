@@ -394,6 +394,12 @@ function separate_regular_and_chaotic_states(
     Ms = Float64[]
     ρs = Float64[]
     ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+
+    println("Current ρ_numeric_reg: $(round(ρ_numeric_reg, digits=6))") # for checking purposes
+    println("Theoretical ρ_reg: $(round(ρ_regular_classic, digits=6))")
+    relative_closeness = abs(ρ_numeric_reg - ρ_regular_classic) / ρ_regular_classic * 100
+    println("Relative closeness: $(round(relative_closeness, digits=4))%")
+    
     prev_num_ρ = ρ_numeric_reg # for preventing inf cycles in outer loop
     push!(Ms, M_thresh)
     push!(ρs, ρ_numeric_reg)
@@ -423,6 +429,7 @@ function separate_regular_and_chaotic_states(
         # Adjust decrease_step_size if ρ_numeric_reg has gone below ρ_regular_classic
         if ρ_numeric_reg < ρ_regular_classic
             decrease_step_size *= 0.9
+            inner_iteration = true
             println("Adjusted decrease_step_size: $(round(decrease_step_size, digits=6))")
         end
 
@@ -442,6 +449,7 @@ function separate_regular_and_chaotic_states(
             M_thresh -= decrease_step_size
         else
             M_thresh += decrease_step_size
+            inner_iteration = false
         end
         if M_thresh <= 0.0
             throw(ArgumentError("M_thresh must be positive"))
