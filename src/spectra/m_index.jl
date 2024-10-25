@@ -408,7 +408,9 @@ function separate_regular_and_chaotic_states(
     M_thresh -= decrease_step_size # to not calculate twice in outer loop
 
     max_iterations = 1000  # To prevent infinite loops
+    max_inner_iterations = 5
     iteration = 0
+    inner_iterations = 0
     inner_iteration = false
 
     while true
@@ -430,9 +432,14 @@ function separate_regular_and_chaotic_states(
 
         # Adjust decrease_step_size if ρ_numeric_reg has gone below ρ_regular_classic
         if ρ_numeric_reg < ρ_regular_classic
+            if inner_iterations > max_inner_iterations
+                println("Max inner iterations achieved, breaking")
+                break
+            end
             decrease_step_size *= 0.9
             inner_iteration = true
             println("Adjusted decrease_step_size: $(round(decrease_step_size, digits=6))")
+            inner_iterations += 1
         end
         if (abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100) < 1 && (relative_closeness < relative_closeness_perc)
             println("No more precise, breaking!")
