@@ -60,7 +60,7 @@ function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, chaotic_classica
 end
 
 """
-    plot_P_localization_entropy_pdf(ax::Axis, Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
+    plot_P_localization_entropy_pdf(ax::Axis, Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol_fraction::T; nbins=50, color::Symbol=:lightblue, fit_beta::Bool=false) where {T<:Real}
 
 Plots the probability density function (PDF) of the localization entropy A using a histogram.
 
