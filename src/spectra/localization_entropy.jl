@@ -107,6 +107,7 @@ Fits the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data.
 """
 function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
+    #=
     function model(A, p) # A scalar, p vector
         A0, a, b = p # unfold the param vector
         # Define the unnormalized function
@@ -115,6 +116,11 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
         C = (A^(a+b+1)*B(a+1,b+1))
         return A .^ a .* (A0 .- A) .^ b ./ C # normalized model
+    end
+    =#
+    function model(A, p)
+        A0, a, b = p
+        return (A .^ a) .* ((A0 .- A) .^ b)
     end
     initial_A0 = maximum(bin_centers) # the max val in As we have from data
     initial_params = [initial_A0, 10.0, 10.0] # just a guess
