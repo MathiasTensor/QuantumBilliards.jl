@@ -88,7 +88,7 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
         C = A0^(a + b + 1) * B(a + 1, b + 1)
         # x scale for the beta distributin will be from 0.0 to A0
         xs = collect(range(0.0, A0, 200))
-        ys = @. 1.0/C * xs^a * (A0 - xs)^b 
+        ys = @. xs^a * (A0 - xs)^b 
         param_label = "Beta dist.fit: [A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))]"
         lines!(ax,xs,ys,label=param_label,color=:red)
     end
