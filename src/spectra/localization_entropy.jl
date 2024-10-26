@@ -84,9 +84,8 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
         A0, a, b = fit_data.param
         # x scale for the beta distributin will be from 0.0 to A0
         xs = collect(range(0.0, A0, 200))
-        B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
-        ys = @. (1.0 / (A0^(a + b + 1) * B(a + 1, b + 1))) * xs^a * (A0 - xs)^b # normalized
-        param_label = "Beta fit: A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))"
+        ys = @. xs^a * (A0 - xs)^b # non-normalized
+        param_label = "Beta dist.fit: [A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))]"
         lines!(ax,xs,ys,label=param_label,color=:red)
     end
     xlims!(ax, (0.0, 1.0))
@@ -120,7 +119,14 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     =#
     function model(A, p)
         A0, a, b = p
-        return (A .^ a) .* ((A0 .- A) .^ b)
+        epsilon = 1e-6  # DomainError problems?
+        result = Vector{Float64}(undef, length(A))
+        for i in eachindex(A)
+            base1 = max(A[i] + epsilon, epsilon)
+            base2 = max(A0 - A[i] + epsilon, epsilon)
+            result[i] = real((base1)^a * (base2)^b)
+        end
+        return result
     end
     initial_A0 = maximum(bin_centers) # the max val in As we have from data
     initial_params = [initial_A0, 10.0, 10.0] # just a guess
