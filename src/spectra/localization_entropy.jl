@@ -79,8 +79,9 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
     barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
     if fit_beta
+        A0 = maximum(bin_centers)
         fit_data = fit_P_localization_entropy_to_beta(Hs, chaotic_classical_phase_space_vol_fraction, nbins=nbins)
-        A0, a, b = fit_data.param
+        a, b = fit_data.param
         # x scale for the beta distributin will be from 0.0 to A0
         xs = collect(range(0.0, A0, 200))
         ys = @. xs^a * (A0 - xs)^b # non-normalized
