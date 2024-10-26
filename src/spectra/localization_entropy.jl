@@ -135,7 +135,7 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         for j in 1:b_steps
             a = a_values[i]
             b = b_values[j]
-            objective_matrix[i, j] = least_squares_fit(bin_centers, normalized_bin_counts, A0, a, b)
+            objective_matrix[i, j] = least_squares_fit(bin_centers, bin_counts, A0, a, b)
         end
     end
     min_index = argmin(objective_matrix)
