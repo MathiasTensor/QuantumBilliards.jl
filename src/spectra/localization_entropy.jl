@@ -122,16 +122,17 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     =#
     function model(A, p)
         A0, a, b = p
-        B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
-        C = (A0^(a+b+1)*B(a+1,b+1))
-        epsilon = 1e-6  # DomainError problems?
+        epsilon = 1e-6  # Small offset to avoid domain issues
+        # Normalization constant using the Beta function B(a+1, b+1)
+        B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
+        C = A0^(a + b + 1) * B(a + 1, b + 1)
         result = Vector{Float64}(undef, length(A))
         for i in eachindex(A)
             base1 = max(A[i] + epsilon, epsilon)
             base2 = max(A0 - A[i] + epsilon, epsilon)
-            result[i] = real((base1)^a * (base2)^b)
+            result[i] = real((base1)^a * (base2)^b) / C
         end
-        return result ./C
+        return result
     end
     initial_A0 = maximum(bin_centers) # the max val in As we have from data
     println("initial_A0 = ", initial_A0)
