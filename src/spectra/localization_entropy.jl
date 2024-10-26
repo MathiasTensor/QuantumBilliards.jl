@@ -78,7 +78,6 @@ Plots the probability density function (PDF) of the localization entropy A using
 function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50, color::Symbol=:lightblue, fit_beta::Bool=false) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
     barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
-    axislegend(ax, position=:ct)
     if fit_beta
         fit_data = fit_P_localization_entropy_to_beta(Hs, chaotic_classical_phase_space_vol_fraction, nbins=nbins)
         A0, a, b = fit_data.param
@@ -89,6 +88,7 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
         lines!(ax,xs,ys,label=param_label,color=:red)
     end
     xlims!(ax, (0.0, 1.0))
+    axislegend(ax, position=:rt)
 end
 
 """
@@ -102,7 +102,7 @@ Fits the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data.
 - `nbins=50`: The number of bins for the histogram
 
 # Returns
-- `fit_result::LsqFitResult`: The result of the curve fitting using LsqFit. To get the `A0`, `a`, `b` take `fit_result.param`. It is returned in that order.
+- `fit_result::LsqFitResult`: The result of the curve fitting using LsqFit. To get the `a`, `b` take `fit_result.param`. It is returned in that order.
 """
 function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
@@ -117,8 +117,9 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         return A .^ a .* (A0 .- A) .^ b ./ C # normalized model
     end
     =#
+    A0 = maximum(bin_centers) # the max val in As we have from data
     function model(A, p)
-        A0, a, b = p
+        a, b = p
         epsilon = 1e-6  # DomainError problems?
         result = Vector{Float64}(undef, length(A))
         for i in eachindex(A)
@@ -128,8 +129,7 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         end
         return result
     end
-    initial_A0 = maximum(bin_centers) # the max val in As we have from data
-    initial_params = [initial_A0, 10.0, 10.0] # just a guess
+    initial_params = [10.0, 10.0] # just a guess
     fit_result = curve_fit(model, bin_centers, bin_counts, initial_params)
     return fit_result
 end
