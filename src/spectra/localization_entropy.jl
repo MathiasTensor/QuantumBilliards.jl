@@ -83,12 +83,10 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
     barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
     if fit_beta
         fit_data = fit_P_localization_entropy_to_beta(Hs, chaotic_classical_phase_space_vol_fraction, nbins=nbins)
-        A0, a, b = fit_data
-        B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
-        C = A0^(a + b + 1) * B(a + 1, b + 1)
+        A0, a, b, beta_model = fit_data
         # x scale for the beta distributin will be from 0.0 to A0
         xs = collect(range(0.0, A0, 200))
-        ys = @. xs^a * (A0 - xs)^b 
+        ys = beta_model(xs, A0, a, b)
         param_label = "Beta dist.fit: [A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))]"
         lines!(ax,xs,ys,label=param_label,color=:red)
     end
@@ -115,8 +113,6 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         # Normalization constant using the Beta function B(a+1, b+1)
         B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
         C = A0^(a + b + 1) * B(a + 1, b + 1)
-        
-        # Calculate model values
         result = A .^ a .* (A0 .- A) .^ b / C
         return result
     end
@@ -141,5 +137,5 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     min_index = argmin(objective_matrix)
     optimal_a = a_values[min_index[1]]
     optimal_b = b_values[min_index[2]]
-    return A0, optimal_a, optimal_b
+    return A0, optimal_a, optimal_b, beta_model
 end
