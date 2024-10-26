@@ -109,36 +109,35 @@ Fits the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data.
 """
 function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
     bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
-    #=
-    function model(A, p) # A scalar, p vector
-        A0, a, b = p # unfold the param vector
-        # Define the unnormalized function
-        unnormalized_f(A) = A^a * (A0 - A)^b # assume a beta disitribution based on paper Batistić, Lozej, Robnik
-        #C, _ = quadgk(unnormalized_f, 0.0, A0) # use quadGK to get C, depreceated
-        B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
-        C = (A^(a+b+1)*B(a+1,b+1))
-        return A .^ a .* (A0 .- A) .^ b ./ C # normalized model
-    end
-    =#
-    function model(A, p)
-        A0, a, b = p
-        epsilon = 1e-6  # Small offset to avoid domain issues
+    function beta_model(A, A0, a, b)
         # Normalization constant using the Beta function B(a+1, b+1)
         B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
-        C = real(A0)^(a + b + 1) * real(B(a + 1, b + 1))
-        result = Vector{Float64}(undef, length(A))
-        for i in eachindex(A)
-            base1 = max(A[i] + epsilon, epsilon)
-            base2 = max(A0 - A[i] + epsilon, epsilon)
-            result[i] = real((base1)^a * (base2)^b) / C
-        end
+        C = A0^(a + b + 1) * B(a + 1, b + 1)
+        
+        # Calculate model values
+        result = A .^ a .* (A0 .- A) .^ b / C
         return result
     end
-    initial_A0 = maximum(bin_centers) # the max val in As we have from data
-    println("initial_A0 = ", initial_A0)
-    println("bin_centers = ", bin_centers)
-    println("bin_counts: ", bin_counts)
-    initial_params = [initial_A0, 10.0, 10.0] # just a guess
-    fit_result = curve_fit(model, bin_centers, bin_counts, initial_params)
-    return fit_result
+    function least_squares_fit(A, data, A0, a, b)
+        model_values = beta_model(A, A0, a, b)
+        return sum((model_values .- data).^2)
+    end
+    A0 = maximum(bin_centers)
+    println("Fixed A0: ", A0)
+    a_steps = 100
+    b_steps = 100
+    a_values = range(1.0, 50.0, length=a_steps)
+    b_values = range(1.0, 50.0, length=b_steps)
+    objective_matrix = Matrix{Float64}(undef, a_steps, b_steps)
+    Threads.@threads for i in 1:a_steps
+        for j in 1:b_steps
+            a = a_values[i]
+            b = b_values[j]
+            objective_matrix[i, j] = least_squares_fit(bin_centers, normalized_bin_counts, A0, a, b)
+        end
+    end
+    min_index = argmin(objective_matrix)
+    optimal_a = a_values[min_index[1]]
+    optimal_b = b_values[min_index[2]]
+    return A0, optimal_a, optimal_b
 end
