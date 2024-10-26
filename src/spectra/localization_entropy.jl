@@ -57,9 +57,8 @@ function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, chaotic_classica
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
     # Normalize bin_counts to make it a probability density function
-    bin_width = bin_centers[2] - bin_centers[1] # const width of bin_centers
-    total_area = sum(bin_counts) * bin_width
-    bin_counts = bin_counts / total_area
+    total_area = sum(bin_counts)
+    bin_counts = bin_counts ./ total_area
     return bin_centers, bin_counts
 end
 
