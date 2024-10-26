@@ -432,6 +432,9 @@ function separate_regular_and_chaotic_states(
 
         # Adjust decrease_step_size if ρ_numeric_reg has gone below ρ_regular_classic
         if ρ_numeric_reg < ρ_regular_classic
+            if relative_closeness < 2
+                break
+            end
             if inner_iterations > max_inner_iterations
                 println("Max inner iterations achieved, breaking")
                 break
