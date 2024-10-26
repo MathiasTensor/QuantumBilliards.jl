@@ -129,6 +129,7 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         return result
     end
     initial_A0 = maximum(bin_centers) # the max val in As we have from data
+    println("initial_A0 = ", initial_A0)
     initial_params = [initial_A0, 10.0, 10.0] # just a guess
     fit_result = curve_fit(model, bin_centers, bin_counts, initial_params)
     return fit_result
