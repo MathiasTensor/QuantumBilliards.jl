@@ -260,7 +260,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     gue_cdf_values = gue_cdf.(s_values)
     # Compute Berry-Robnik CDF values if `rho` is provided
     berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
-    fig = Figure(resolution = (1500, 1500))
+    fig = Figure(resolution = (1000, 1000))
     ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
     scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
     lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
