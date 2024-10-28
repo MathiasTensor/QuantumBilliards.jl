@@ -124,7 +124,7 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         end
         return result
     end
-    initial_guess = [2.0, 2.0]  # Initial guesses for a and b
+    initial_guess = [30.0, 6.0]  # Initial guesses for a and b
     fit_result = curve_fit((A, params) -> beta_model(A, params), bin_centers, bin_counts, initial_guess)
     optimal_a, optimal_b = fit_result.param
     return A0, optimal_a, optimal_b, beta_model
