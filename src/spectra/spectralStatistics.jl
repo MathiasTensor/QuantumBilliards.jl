@@ -341,10 +341,8 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     # Inset plot settings
     inset_ax = Axis(fig[1, 1],
                     width=Relative(0.5), height=Relative(0.5),
-                    halign=0.9, valign=0.9,
-                    xlabel="Spacing (s)", ylabel="CDF",
-                    backgroundcolor=:lightgray)
-    #hiddecorations!(inset_ax)  # Hide decorations in the inset
+                    halign=0.9, valign=0.6,
+                    xlabel="Spacing (s)", ylabel="CDF")
     
     # Offset inset to bring it in front of the main axis content
     translate!(inset_ax.scene, 0, 0, 10)
@@ -368,9 +366,9 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="B-R CDF", color=:black, linewidth=1)
     end
 
-    # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 1.5]
+    # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
     xlims!(inset_ax, 0.0, s_cutoff)
-    ylims!(inset_ax, 0.0, 1.5)
+    ylims!(inset_ax, 0.0, 0.5)
 
     return fig
 end
