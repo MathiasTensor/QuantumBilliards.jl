@@ -279,7 +279,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     end
     # Plot the Berry-Robnik CDF if `rho` is provided
     if berry_robnik_cdf_values !== nothing
-        lines!(ax, s_values, berry_robnik_cdf_values, label="Berry-Robnik CDF", color=:black, linewidth=1)
+        lines!(ax, s_values, berry_robnik_cdf_values, label=L"B-R: ρ=$(round(rho; sigdigits=4))", color=:black, linewidth=1)
     end
     axislegend(ax)
     return fig
