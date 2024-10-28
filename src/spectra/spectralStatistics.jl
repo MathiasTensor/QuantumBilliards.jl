@@ -226,7 +226,7 @@ function plot_brody_fit(unfolded_energies::Vector{T}) where {T<:Real}
 
 end
 
-
+#=
 """
     plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing) where {T <: Real}
 
@@ -275,7 +275,79 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     axislegend(ax, position=:rb)
     return fig
 end
+=#
+function plot_cumulative_spacing_distribution(
+    unfolded_energy_eigenvalues::Vector{T};
+    rho::Union{Nothing, T}=nothing,
+    plot_GUE::Bool=false,
+    plot_inset::Bool=false,
+    s1::T=2,
+    cdf1::T=0.5,
+    s2::T=4,
+    cdf2::T=1.0
+) where {T <: Real}
+    # Compute nearest neighbor spacings and sort them
+    spacings = diff(sort(unfolded_energy_eigenvalues))
+    sorted_spacings = sort(spacings)
+    N = length(sorted_spacings)
+    # Compute the empirical CDF
+    empirical_cdf = [i / N for i in 1:N]
+    # Helper functions for theoretical CDFs
+    poisson_cdf = s -> 1 - exp(-s)
+    goe_cdf = s -> 1 - exp(-π * s^2 / 4)
+    gue_cdf = s -> 1 - exp(-4 * s^2 / π) * (1 + 4 * s^2 / π)
+    # If `rho` is provided, define the Berry-Robnik CDF with (s, rho)
+    berry_robnik_cdf = (s, rho) -> cumulative_berry_robnik(s, rho)
+    # Compute the theoretical CDFs
+    num_points = 1000
+    max_s = maximum(sorted_spacings)
+    s_values = range(0, stop=max_s, length=num_points)
+    poisson_cdf_values = poisson_cdf.(s_values)
+    goe_cdf_values = goe_cdf.(s_values)
+    gue_cdf_values = gue_cdf.(s_values)
+    # Compute Berry-Robnik CDF values if `rho` is provided
+    berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
 
+    # Create the main figure and axis
+    fig = Figure(resolution = (1000, 1000))
+    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
+    scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
+    lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+    lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+    if plot_GUE
+        lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+    end
+    # Plot the Berry-Robnik CDF if `rho` is provided
+    if berry_robnik_cdf_values !== nothing
+        lines!(ax, s_values, berry_robnik_cdf_values, label="B-R: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=1)
+    end
+    axislegend(ax, position=:rb)
+
+    if plot_inset
+        # Add an inset axis above the legend at position :rb
+        # Define the rectangle for the inset (x, y, width, height) in relative coordinates of the parent axis
+        inset_rect = Rect(0.6, 0.15, 0.35, 0.35)  # Adjust these values as needed
+        inset_ax = inset!(ax, inset_rect)
+        # Now plot the same data but adjust the x and y limits
+        scatter!(inset_ax, sorted_spacings, empirical_cdf, color=:blue, markersize=2)
+        lines!(inset_ax, s_values, poisson_cdf_values, color=:red, linewidth=1, linestyle=:dot)
+        lines!(inset_ax, s_values, goe_cdf_values, color=:green, linewidth=1, linestyle=:dot)
+        if plot_GUE
+            lines!(inset_ax, s_values, gue_cdf_values, color=:purple, linewidth=1, linestyle=:dot)
+        end
+        if berry_robnik_cdf_values !== nothing
+            lines!(inset_ax, s_values, berry_robnik_cdf_values, color=:black, linewidth=1)
+        end
+        # Adjust the x and y limits using s1, s2, cdf1, cdf2
+        xlims!(inset_ax, s1, s2)
+        ylims!(inset_ax, cdf1, cdf2)
+        # Hide the legend in the inset
+        inset_ax.legendvisible = false
+        # Optionally, hide spines or adjust ticks to reduce clutter
+        hidespines!(inset_ax)
+    end
+    return fig
+end
 
 
 """
