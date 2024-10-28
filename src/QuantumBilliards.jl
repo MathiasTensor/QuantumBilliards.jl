@@ -115,6 +115,7 @@ export boundary_function, momentum_function, husimi_function
 export billiard_polygon
 export wavefunctions
 export read_boundary_function, save_boundary_function!
+export save_husimi_functions!, load_husimi_functions
 
 #plotting functions in Makie
 #include("plotting/Plotting.jl")

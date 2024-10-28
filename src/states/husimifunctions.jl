@@ -152,6 +152,41 @@ function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; 
     return Hs_return, ps_return, qs_return
 end
 
+"""
+    save_husimi_functions(Hs::Vector{Matrix}, ps::Vector{Vector}, qs::Vector{Vector})
+
+Saves the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) to the filename using JLD2.
+
+# Arguments
+- `Hs::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+
+# Returns
+- `Nothing`
+"""
+function save_husimi_functions!(Hs::Vector, ps::Vector, qs::Vector; filename::String="husimi.jld2")
+    @save filename Hs, ps, qs
+end
+
+"""
+    load_husimi_functions(filename::String)
+
+Loads the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) from the filename using JLD2.
+
+# Arguments
+- `filename::String`: The name of the file to load the data from (must be .jld2)
+
+# Returns
+- `Hs::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+"""
+function load_husimi_functions(filename::String)
+    @load filename Hs, ps, qs
+    return Hs, ps, qs
+end
+
 
 
 #### NOT TO BE USED FOR LARGE NUMBER OF EIGENVALUES!!! #### use rather the husimi functions from state data or directly from the us, s_vals to get them more efficiently
