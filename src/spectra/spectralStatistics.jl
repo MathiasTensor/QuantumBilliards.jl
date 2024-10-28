@@ -306,7 +306,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
 
     # Determine cutoff point in `s_values` based on GOE reaching 1.5
-    max_s_index_goe = findfirst(x -> x > 1.5, goe_cdf_values)
+    max_s_index_goe = findfirst(x -> x > 0.5, goe_cdf_values)
     if max_s_index_goe !== nothing
         s_cutoff = s_values[max_s_index_goe]
     else
