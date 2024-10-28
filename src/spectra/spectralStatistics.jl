@@ -129,7 +129,22 @@ The CDF is obtained by integrating the PDF from 0 to `s`.
 """
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     # Use quadgk to integrate the Berry-Robnik PDF from 0 to s
-    result, _ = quadgk_count(x -> probability_berry_robnik_asymptotic(x, rho), 0.0, s, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    #result, _ = quadgk_count(x -> probability_berry_robnik_asymptotic(x, rho), 0.0, s, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    #return result
+    # Define parameters
+    R1 = rho
+    R2 = 1 - rho
+    sqrt_pi_half = sqrt(π / 2)
+    
+    # Terms as per the Mathematica output
+    term1 = -exp(-R1 * s) * R2
+    term2 = -exp(-s * (1 / 4) * (4 * R1 + π * R2^2 * s)) * R2 / π
+    term3 = (R1^2 / (exp(π * R2^2) * π^(3 / 2))) * erf((2 * R1 + π * R2^2 * s) / (2 * sqrt(π) * R2))
+    term4 = -(R1 * exp(-R1 * s) * erf(sqrt_pi_half * R2 * s))
+    term5 = (R1^2 / (exp(2 * π * R2^2) * R2 * sqrt(π))) * erf((R1 + π * R2^2 * s) / (sqrt(2 * π) * R2))
+    
+    # Sum the terms for the final cumulative function
+    result = term1 + term2 + term3 + term4 + term5
     return result
 end
 
