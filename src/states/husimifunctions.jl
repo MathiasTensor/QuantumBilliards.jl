@@ -153,7 +153,7 @@ function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; 
 end
 
 """
-    save_husimi_functions(Hs::Vector{Matrix}, ps::Vector{Vector}, qs::Vector{Vector})
+    save_husimi_functions(Hs::Vector{Matrix}, ps::Vector{Vector}, qs::Vector{Vector}; filename::String="husimi.jld2")
 
 Saves the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) to the filename using JLD2.
 
@@ -161,6 +161,7 @@ Saves the husimi functions (the matrices and the qs and ps vector that accompany
 - `Hs::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
 - `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+- `filename::String=husimi.jld2`: The name of the file to save the data to (must be .jld2)
 
 # Returns
 - `Nothing`
