@@ -282,14 +282,18 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
     N = length(sorted_spacings)
+
     # Compute the empirical CDF
     empirical_cdf = [i / N for i in 1:N]
+
     # Helper functions for theoretical CDFs
     poisson_cdf = s -> 1 - exp(-s)
     goe_cdf = s -> 1 - exp(-π * s^2 / 4)
     gue_cdf = s -> 1 - exp(-4 * s^2 / π) * (1 + 4 * s^2 / π)
-    # If `rho` is provided, define the Berry-Robnik CDF with (s, rho)
+
+    # If `rho` is provided, define the Berry-Robnik CDF
     berry_robnik_cdf = (s, rho) -> cumulative_berry_robnik(s, rho)
+
     # Compute the theoretical CDFs
     num_points = 1000
     max_s = maximum(sorted_spacings)
@@ -297,68 +301,64 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     poisson_cdf_values = poisson_cdf.(s_values)
     goe_cdf_values = goe_cdf.(s_values)
     gue_cdf_values = gue_cdf.(s_values)
+
     # Compute Berry-Robnik CDF values if `rho` is provided
     berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
 
+    # Determine cutoff point in `s_values` based on GOE reaching 1.5
+    max_s_index_goe = findfirst(x -> x > 1.5, goe_cdf_values)
+    if max_s_index_goe !== nothing
+        s_cutoff = s_values[max_s_index_goe]
+    else
+        s_cutoff = max_s  # If GOE CDF never reaches 1.5, use max_s as cutoff
+    end
+
     # Create the main figure and axis
     fig = Figure(resolution = (1000, 1000))
-    ax = Axis(
-        fig[1, 1],
-        xlabel="Spacing (s)",
-        ylabel="Cumulative Probability",
-        title="Cumulative Distribution of Nearest Neighbor Spacings"
-    )
+    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
+
+    # Plot the empirical CDF
     scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
+
+    # Plot theoretical CDFs
     lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
     lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
     if plot_GUE
         lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
     end
-    # Plot the Berry-Robnik CDF if `rho` is provided
     if berry_robnik_cdf_values !== nothing
         lines!(ax, s_values, berry_robnik_cdf_values, label="B-R: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=1)
     end
     axislegend(ax, position=:rb)
 
-    ### Add the inset plot ###
-    # Calculate s1 where GOE CDF equals 0.5
-    s1 = sqrt((4 / π) * log(2))  # s1 ≈ 0.977
+    # Inset plot settings
+    inset_ax = Axis(fig[1, 1],
+                    width=Relative(0.5), height=Relative(0.5),
+                    halign=0.9, valign=0.9,
+                    xlabel="Spacing (s)", ylabel="CDF")
+    #hiddecorations!(inset_ax)  # Hide decorations in the inset
+    
+    # Offset inset to bring it in front of the main axis content
+    translate!(inset_ax.scene, 0, 0, 10)
+    translate!(inset_ax.elements[:background], 0, 0, 9)
 
-    # Calculate s2 as 80% of the maximum spacing
-    s2 = 0.8 * maximum(sorted_spacings)
+    # Plot cumulative distributions in the inset, limited to the cutoff
+    scatter!(inset_ax, sorted_spacings[sorted_spacings .<= s_cutoff], empirical_cdf[1:findfirst(s -> s >= s_cutoff, sorted_spacings)], label="Empirical CDF", color=:blue, markersize=2)
+    lines!(inset_ax, s_values[s_values .<= s_cutoff], poisson_cdf_values[1:max_s_index_goe], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+    lines!(inset_ax, s_values[s_values .<= s_cutoff], goe_cdf_values[1:max_s_index_goe], label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
 
-    # Ensure s2 is greater than s1
-    if s2 <= s1
-        s2 = s1 + 0.1  # Add a small value to ensure a valid range
-    end
-
-    # Create the inset axis with size 50% width and 50% height
-    inset_width = 0.5  # 50% of the parent axis width
-    inset_height = 0.5  # 50% of the parent axis height
-
-    # Position the inset at the top-right corner without overlapping the legend
-    inset_x = 1.0 - inset_width - 0.05  # Slight offset from the right edge
-    inset_y = 1.0 - inset_height - 0.05  # Slight offset from the top edge
-
-    inset_rect = Rect(inset_x, inset_y, inset_width, inset_height)
-    inset_ax = inset!(ax, inset_rect)
-    # Plot the same data in the inset
-    scatter!(inset_ax, sorted_spacings, empirical_cdf, color=:blue, markersize=2)
-    lines!(inset_ax, s_values, poisson_cdf_values, color=:red, linewidth=1, linestyle=:dot)
-    lines!(inset_ax, s_values, goe_cdf_values, color=:green, linewidth=1, linestyle=:dot)
     if plot_GUE
-        lines!(inset_ax, s_values, gue_cdf_values, color=:purple, linewidth=1, linestyle=:dot)
+        lines!(inset_ax, s_values[s_values .<= s_cutoff], gue_cdf_values[1:max_s_index_goe], label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
     end
+    
     if berry_robnik_cdf_values !== nothing
-        lines!(inset_ax, s_values, berry_robnik_cdf_values, color=:black, linewidth=1)
+        lines!(inset_ax, s_values[s_values .<= s_cutoff], berry_robnik_cdf_values[1:max_s_index_goe], label="B-R CDF", color=:black, linewidth=1)
     end
-    # Adjust the x and y limits
-    xlims!(inset_ax, s1, s2)
-    ylims!(inset_ax, 0.5, 1.0)
-    # Hide the legend in the inset
-    inset_ax.legendvisible = false
-    # Optionally, hide spines or adjust ticks to reduce clutter
-    hidespines!(inset_ax)
+
+    # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 1.5]
+    xlims!(inset_ax, 0.0, s_cutoff)
+    ylims!(inset_ax, 0.0, 1.5)
+
     return fig
 end
 
