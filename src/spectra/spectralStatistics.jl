@@ -342,7 +342,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     inset_ax = Axis(fig[1, 1],
                     width=Relative(0.5), height=Relative(0.5),
                     halign=0.95, valign=0.5,
-                    xlabel="Spacing (s)", ylabel="CDF")
+                    xlabel="Spacing (s)", ylabel="Cumulative Probability")
     
     # Offset inset to bring it in front of the main axis content
     translate!(inset_ax.scene, 0, 0, 10)
