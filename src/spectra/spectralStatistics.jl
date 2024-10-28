@@ -87,6 +87,31 @@ function probability_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     return result
 end
 
+# INTERNAL
+function probability_berry_robnik_asymptotic(s::T, rho::T) :: T where {T <: Real}
+    rho1 = rho
+    rho2 = one(T) - rho
+    x = sqrt(π / T(2)) * rho2 * s
+
+    # Define modified erfc logic within this function
+    erfc_val = if x < 0.1
+        # Series expansion for small x
+        1 - (2 * x) / sqrt(π) + (x^3) / (3 * sqrt(π))
+    elseif x >= 5
+        # Asymptotic expansion for large x
+        exp(-x^2) / (x * sqrt(π)) * (1 - 1 / (2 * x^2) + 3 / (4 * x^4))
+    else
+        # Standard erfc for moderate x
+        erfc(x)
+    end
+    
+    # Calculate the probability with modified erfc value
+    term1 = (rho1^2) * erfc_val
+    term2 = (T(2) * rho1 * rho2 + (π / T(2)) * (rho2^3) * s) * exp(-(π / T(4)) * (rho2^2) * s^2)
+    result = (term1 + term2) * exp(-rho1 * s)
+    return result
+end
+
 
 
 """
@@ -104,7 +129,7 @@ The CDF is obtained by integrating the PDF from 0 to `s`.
 """
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     # Use quadgk to integrate the Berry-Robnik PDF from 0 to s
-    result, _ = quadgk_count(x -> probability_berry_robnik(x, rho), 0.0, s, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    result, _ = quadgk_count(x -> probability_berry_robnik_asymptotic(x, rho), 0.0, s, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
     return result
 end
 
@@ -242,43 +267,6 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 - `Figure`.
 """
 function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true) where {T <: Real}
-    #=
-    # Compute nearest neighbor spacings and sort them
-    spacings = diff(sort(unfolded_energy_eigenvalues))
-    sorted_spacings = sort(spacings)
-    N = length(sorted_spacings)
-    # Compute the empirical CDF
-    empirical_cdf = [i / N for i in 1:N]
-    # Helper functions for theoretical CDFs
-    poisson_cdf = s -> 1 - exp(-s)
-    goe_cdf = s -> 1 - exp(-π * s^2 / 4)
-    gue_cdf = s -> 1 - exp(-4 * s^2 / π) * (1 + 4 * s^2 / π)
-    # If `rho` is provided, define the Berry-Robnik CDF with (s, rho)
-    berry_robnik_cdf = (s, rho) -> cumulative_berry_robnik(s, rho)
-    # Compute the theoretical CDFs
-    num_points = 1000
-    max_s = maximum(sorted_spacings)
-    s_values = range(0, stop=max_s, length=num_points)
-    poisson_cdf_values = poisson_cdf.(s_values)
-    goe_cdf_values = goe_cdf.(s_values)
-    gue_cdf_values = gue_cdf.(s_values)
-    # Compute Berry-Robnik CDF values if `rho` is provided
-    berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
-    fig = Figure(resolution = (1000, 1000))
-    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
-    scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
-    lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
-    lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
-    if plot_GUE
-        lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
-    end
-    # Plot the Berry-Robnik CDF if `rho` is provided
-    if berry_robnik_cdf_values !== nothing
-        lines!(ax, s_values, berry_robnik_cdf_values, label="B-R: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=1)
-    end
-    axislegend(ax, position=:rb)
-    return fig
-    =#
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
