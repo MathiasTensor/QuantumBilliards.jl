@@ -112,13 +112,13 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     A0 = maximum(bin_centers)  # Fix A0
     function beta_model(A, params)
         a, b = params  # Only a and b are optimized
-        #B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
-        #C = A0^(a + b + 1) * B(a + 1, b + 1)  # Normalization
+        B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
+        C = 1 / (A0^(a + b + 1) * B(a + 1, b + 1)) 
         result = Vector{Float64}(undef, length(A))
         for i in eachindex(A)
             term1 = (A[i] + 0im)^a
             term2 = (A0 - A[i] + 0im)^b
-            term = term1 * term2 #/ C
+            term = C*term1 * term2 #/ C
             result[i] = isreal(term) ? real(term) : 0.0  # Ensure real output
         end
         return result
