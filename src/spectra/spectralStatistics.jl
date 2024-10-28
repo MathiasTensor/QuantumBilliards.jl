@@ -114,7 +114,7 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     term3 = -exp(rho1^2 / (T(2) * π * rho2^2)) * rho1 * erf((rho1 + π * rho2^2 * s) / (sqrt(T(2) * π) * rho2))
     term4 = -exp(rho1^2 / (π * rho2^2)) * rho1 * erf((T(2) * rho1 + π * rho2^2 * s) / (T(2) * sqrt(π) * rho2))
     term5 = -(rho1 * erfc(sqrt(π / T(2)) * rho2 * s)) * exp(-rho1 * s)
-    return term1 + term2 + term3 + term4 + term5
+    return ℯ + term1 + term2 + term3 + term4 + term5
 end
 
 
