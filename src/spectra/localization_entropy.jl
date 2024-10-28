@@ -85,8 +85,7 @@ function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classica
         fit_data = fit_P_localization_entropy_to_beta(Hs, chaotic_classical_phase_space_vol_fraction, nbins=nbins)
         A0, a, b, beta_model = fit_data
         params = a, b
-        # x scale for the beta distributin will be from 0.0 to A0
-        xs = collect(range(0.0, A0, 200))
+        xs = collect(range(0.0, A0, 200)) # x scale for the beta distributin will be from 0.0 to A0
         ys = beta_model(xs, params)
         param_label = "Beta dist.fit: [A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))]"
         lines!(ax,xs,ys,label=param_label,color=:red)
@@ -113,13 +112,13 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     A0 = maximum(bin_centers)  # Fix A0
     function beta_model(A, params)
         a, b = params  # Only a and b are optimized
-        B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
-        C = A0^(a + b + 1) * B(a + 1, b + 1)  # Normalization
+        #B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
+        #C = A0^(a + b + 1) * B(a + 1, b + 1)  # Normalization
         result = Vector{Float64}(undef, length(A))
         for i in eachindex(A)
             term1 = (A[i] + 1e-6 + 0im)^a
             term2 = (A0 - A[i] + 1e-6 + 0im)^b
-            term = term1 * term2 / C
+            term = term1 * term2 #/ C
             result[i] = isreal(term) ? real(term) : 0.0  # Ensure real output
         end
         return result
