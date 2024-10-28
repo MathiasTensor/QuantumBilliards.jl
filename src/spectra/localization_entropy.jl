@@ -116,8 +116,8 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
         #C = A0^(a + b + 1) * B(a + 1, b + 1)  # Normalization
         result = Vector{Float64}(undef, length(A))
         for i in eachindex(A)
-            term1 = (A[i] + 1e-6 + 0im)^a
-            term2 = (A0 - A[i] + 1e-6 + 0im)^b
+            term1 = (A[i] + 0im)^a
+            term2 = (A0 - A[i] + 0im)^b
             term = term1 * term2 #/ C
             result[i] = isreal(term) ? real(term) : 0.0  # Ensure real output
         end
