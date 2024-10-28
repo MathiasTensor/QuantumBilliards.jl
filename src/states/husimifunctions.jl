@@ -167,7 +167,7 @@ Saves the husimi functions (the matrices and the qs and ps vector that accompany
 - `Nothing`
 """
 function save_husimi_functions!(Hs::Vector, ps::Vector, qs::Vector; filename::String="husimi.jld2")
-    @save filename Hs, ps, qs
+    @save filename Hs ps qs
 end
 
 """
@@ -184,7 +184,7 @@ Loads the husimi functions (the matrices and the qs and ps vector that accompany
 - `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
 function load_husimi_functions(filename::String)
-    @load filename Hs, ps, qs
+    @load filename Hs ps qs
     return Hs, ps, qs
 end
 
