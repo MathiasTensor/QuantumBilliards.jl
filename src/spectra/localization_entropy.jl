@@ -128,3 +128,27 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     optimal_a, optimal_b = fit_result.param
     return A0, optimal_a, optimal_b, beta_model
 end
+
+"""
+    heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
+
+Plots the M(A) 2d heatmap along with 12 random representative chaotic Poincare-Husimi functions for that M(A).
+
+# Arguments
+- `Hs_list::Vector{Matrix}`: A list of Husimi function (matrices).
+- `qs_list::Vector{Vector}`: Vector of Vectors that represent the qs for each Husimi matrix.
+- `ps_list::Vector{Vector}`: Vector of Vectors that represent the ps for each Husimi matrix.
+
+# Returns
+- `fig::Figure`: Figure object from Makie to save or display.
+"""
+function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
+    Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+    As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
+    # Make H -> (M,A) pairs distribution
+    # Create grid of 100x100 and bin the H -> (M,A) pairs
+    As_grid = collect(range(0.0, maximum(As), 100))
+    Ms_grid = collect(range(-1.0, 1.0, 100))
+    grid = fill(0.0, length(As_grid), length(Ms_grid))
+    # logic for determining the position of H (M,A) on the grid
+end
