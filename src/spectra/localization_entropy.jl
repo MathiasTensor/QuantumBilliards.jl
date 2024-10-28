@@ -112,7 +112,7 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     bin_centers = collect(bin_centers)
     println("bin_centers, ", bin_centers) # debug
     println("bin_counts, ", bin_counts) # debug
-    A0 = maximum(bin_centers)  # Fix A0
+    A0 = maximum(bin_centers)+0.05  # Fix A0
     function beta_model(A, params)
         a, b = params  # Only a and b are optimized
         B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
