@@ -228,7 +228,7 @@ end
 
 
 """
-    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing) where {T <: Real}
+    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true) where {T <: Real}
 
 Plots the cumulative distribution function (CDF) of the nearest-neighbor level spacings (NNLS) for unfolded energy eigenvalues. Optionally, the Berry-Robnik CDF can be plotted if a `rho` value is provided.
 
@@ -236,11 +236,12 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 - `unfolded_energy_eigenvalues::Vector{T}`: A vector of unfolded energy eigenvalues.
 - `rho::Union{Nothing, T}=nothing`: The mixing parameter for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
 - `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
+- `plot_inset::Bool=true`: Whether to plot an inset of small spacings. Defaults to `true`.
 
 # Returns
 - `Figure`.
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true) where {T <: Real}
     #=
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
@@ -339,37 +340,29 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     axislegend(ax, position=:rb)
 
     # Inset plot settings
-    inset_ax = Axis(fig[1, 1],
-                    width=Relative(0.5), height=Relative(0.5),
-                    halign=0.95, valign=0.5,
-                    xlabel="Spacing (s)", ylabel="Cumulative Probability")
-    
-    # Offset inset to bring it in front of the main axis content
-    translate!(inset_ax.scene, 0, 0, 10)
-    translate!(inset_ax.elements[:background], 0, 0, 9)
-
-    # Plot cumulative distributions in the inset, limited to the cutoff
-    max_s_cutoff_index = findfirst(s -> s >= s_cutoff, sorted_spacings)
-    if max_s_cutoff_index === nothing
-        max_s_cutoff_index = N  # Use full range if s_cutoff is beyond data range
+    if plot_inset
+        inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.5, xlabel="Spacing (s)", ylabel="Cumulative Probability")
+        # Offset inset to bring it in front of the main axis content
+        translate!(inset_ax.scene, 0, 0, 10)
+        translate!(inset_ax.elements[:background], 0, 0, 9)
+        # Plot cumulative distributions in the inset, limited to the cutoff
+        max_s_cutoff_index = findfirst(s -> s >= s_cutoff, sorted_spacings)
+        if max_s_cutoff_index === nothing
+            max_s_cutoff_index = N  # Use full range if s_cutoff is beyond data range
+        end
+        scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], empirical_cdf[1:max_s_cutoff_index], label="Empirical CDF", color=:blue, markersize=2)
+        lines!(inset_ax, s_values[1:max_index], poisson_cdf_values[1:max_index], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+        lines!(inset_ax, s_values[1:max_index], goe_cdf_values[1:max_index], label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+        if plot_GUE
+            lines!(inset_ax, s_values[1:max_index], gue_cdf_values[1:max_index], label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+        end
+        if berry_robnik_cdf_values !== nothing
+            lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="B-R CDF", color=:black, linewidth=1)
+        end
+        # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
+        xlims!(inset_ax, 0.0, s_cutoff)
+        ylims!(inset_ax, 0.0, 0.5)
     end
-    
-    scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], empirical_cdf[1:max_s_cutoff_index], label="Empirical CDF", color=:blue, markersize=2)
-    lines!(inset_ax, s_values[1:max_index], poisson_cdf_values[1:max_index], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
-    lines!(inset_ax, s_values[1:max_index], goe_cdf_values[1:max_index], label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
-
-    if plot_GUE
-        lines!(inset_ax, s_values[1:max_index], gue_cdf_values[1:max_index], label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
-    end
-    
-    if berry_robnik_cdf_values !== nothing
-        lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="B-R CDF", color=:black, linewidth=1)
-    end
-
-    # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
-    xlims!(inset_ax, 0.0, s_cutoff)
-    ylims!(inset_ax, 0.0, 0.5)
-
     return fig
 end
 
