@@ -226,7 +226,7 @@ function plot_brody_fit(unfolded_energies::Vector{T}) where {T<:Real}
 
 end
 
-#=
+
 """
     plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing) where {T <: Real}
 
@@ -237,8 +237,11 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 - `rho::Union{Nothing, T}=nothing`: The mixing parameter for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
 - `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
 
+# Returns
+- `Figure`.
 """
 function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false) where {T <: Real}
+    #=
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
@@ -274,18 +277,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     end
     axislegend(ax, position=:rb)
     return fig
-end
-=#
-function plot_cumulative_spacing_distribution(
-    unfolded_energy_eigenvalues::Vector{T};
-    rho::Union{Nothing, T}=nothing,
-    plot_GUE::Bool=false,
-    plot_inset::Bool=false,
-    s1::T=2,
-    cdf1::T=0.5,
-    s2::T=4,
-    cdf2::T=1.0
-) where {T <: Real}
+    =#
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
@@ -310,7 +302,12 @@ function plot_cumulative_spacing_distribution(
 
     # Create the main figure and axis
     fig = Figure(resolution = (1000, 1000))
-    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
+    ax = Axis(
+        fig[1, 1],
+        xlabel="Spacing (s)",
+        ylabel="Cumulative Probability",
+        title="Cumulative Distribution of Nearest Neighbor Spacings"
+    )
     scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
     lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
     lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
@@ -323,29 +320,45 @@ function plot_cumulative_spacing_distribution(
     end
     axislegend(ax, position=:rb)
 
-    if plot_inset
-        # Add an inset axis above the legend at position :rb
-        # Define the rectangle for the inset (x, y, width, height) in relative coordinates of the parent axis
-        inset_rect = Rect(0.6, 0.15, 0.35, 0.35)  # Adjust these values as needed
-        inset_ax = inset!(ax, inset_rect)
-        # Now plot the same data but adjust the x and y limits
-        scatter!(inset_ax, sorted_spacings, empirical_cdf, color=:blue, markersize=2)
-        lines!(inset_ax, s_values, poisson_cdf_values, color=:red, linewidth=1, linestyle=:dot)
-        lines!(inset_ax, s_values, goe_cdf_values, color=:green, linewidth=1, linestyle=:dot)
-        if plot_GUE
-            lines!(inset_ax, s_values, gue_cdf_values, color=:purple, linewidth=1, linestyle=:dot)
-        end
-        if berry_robnik_cdf_values !== nothing
-            lines!(inset_ax, s_values, berry_robnik_cdf_values, color=:black, linewidth=1)
-        end
-        # Adjust the x and y limits using s1, s2, cdf1, cdf2
-        xlims!(inset_ax, s1, s2)
-        ylims!(inset_ax, cdf1, cdf2)
-        # Hide the legend in the inset
-        inset_ax.legendvisible = false
-        # Optionally, hide spines or adjust ticks to reduce clutter
-        hidespines!(inset_ax)
+    ### Add the inset plot ###
+    # Calculate s1 where GOE CDF equals 0.5
+    s1 = sqrt((4 / π) * log(2))  # s1 ≈ 0.977
+
+    # Calculate s2 as 80% of the maximum spacing
+    s2 = 0.8 * maximum(sorted_spacings)
+
+    # Ensure s2 is greater than s1
+    if s2 <= s1
+        s2 = s1 + 0.1  # Add a small value to ensure a valid range
     end
+
+    # Create the inset axis with size 50% width and 50% height
+    inset_width = 0.5  # 50% of the parent axis width
+    inset_height = 0.5  # 50% of the parent axis height
+
+    # Position the inset at the top-right corner without overlapping the legend
+    inset_x = 1.0 - inset_width - 0.05  # Slight offset from the right edge
+    inset_y = 1.0 - inset_height - 0.05  # Slight offset from the top edge
+
+    inset_rect = Rect(inset_x, inset_y, inset_width, inset_height)
+    inset_ax = inset!(ax, inset_rect)
+    # Plot the same data in the inset
+    scatter!(inset_ax, sorted_spacings, empirical_cdf, color=:blue, markersize=2)
+    lines!(inset_ax, s_values, poisson_cdf_values, color=:red, linewidth=1, linestyle=:dot)
+    lines!(inset_ax, s_values, goe_cdf_values, color=:green, linewidth=1, linestyle=:dot)
+    if plot_GUE
+        lines!(inset_ax, s_values, gue_cdf_values, color=:purple, linewidth=1, linestyle=:dot)
+    end
+    if berry_robnik_cdf_values !== nothing
+        lines!(inset_ax, s_values, berry_robnik_cdf_values, color=:black, linewidth=1)
+    end
+    # Adjust the x and y limits
+    xlims!(inset_ax, s1, s2)
+    ylims!(inset_ax, 0.5, 1.0)
+    # Hide the legend in the inset
+    inset_ax.legendvisible = false
+    # Optionally, hide spines or adjust ticks to reduce clutter
+    hidespines!(inset_ax)
     return fig
 end
 
