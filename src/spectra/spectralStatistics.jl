@@ -104,7 +104,7 @@ The CDF is obtained by integrating the PDF from 0 to `s`.
 """
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     # Use quadgk to integrate the Berry-Robnik PDF from 0 to s
-    result, _ = quadgk(x -> probability_berry_robnik(x, rho), BigFloat(0), BigFloat(s), rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    result, _ = quadgk_count(x -> probability_berry_robnik(x, rho), BigFloat(0.0), BigFloat(s), rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
     return result
 end
 
