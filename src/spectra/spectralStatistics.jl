@@ -344,7 +344,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
                     halign=0.9, valign=0.9,
                     xlabel="Spacing (s)", ylabel="CDF",
                     backgroundcolor=:lightgray)
-    hiddecorations!(inset_ax)  # Hide decorations in the inset
+    #hiddecorations!(inset_ax)  # Hide decorations in the inset
     
     # Offset inset to bring it in front of the main axis content
     translate!(inset_ax.scene, 0, 0, 10)
