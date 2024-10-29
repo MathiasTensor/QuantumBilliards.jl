@@ -195,6 +195,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
 
     # get the classical phase space matrix so we can make the gray spots on the chaotic grid whenever there is a 0.0 value of the chaotic husimi on it
     husimi_grid = fig[2:3, 1] = GridLayout()
+    row = 1
+    col = 1
     for (j, random_index) in enumerate(selected_indices)
         H = Hs_list[random_index]
         qs_i = qs_list[random_index]
@@ -202,13 +204,14 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         chaotic_background = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
         H = husimi_with_chaotic_background(H, chaotic_background)
         roman_label = int_to_roman(j)
-        #row = div(j, 4) + 1
-        #col = mod(j, 4) + 1
-        row = div(j, 4) + 1
-        col = mod(j, 4)
         ax_husimi = Axis(husimi_grid[row, col], title=roman_label, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, yticklabelsvisible=false)
         heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
+        col += 1
+        if col > 4  # Move to the next row after 4 columns
+            col = 1
+            row += 1
+        end
     end
     rowgap!(husimi_grid, 5)
     colgap!(husimi_grid, 5)
