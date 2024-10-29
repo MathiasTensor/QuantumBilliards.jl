@@ -151,6 +151,7 @@ end
 
 # INTERNAL gray background for husimi matrix plot when no 0.0 husimi value there
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
+    H_bg = fill(NaN, size(H))
     Threads.@threads for idx in eachindex(projection_grid)
         H[idx] = isapprox(H[idx], 0.0, atol=1e-4) ? NaN : H[idx]
     end
@@ -199,8 +200,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         roman_label = int_to_roman(j)
         row = div(j, 4) + 1
         col = mod(j, 4) + 1
-        ax_husimi = Axis(husimi_grid[row, col], title=roman_label)
-        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false) # Plot the Husimi matrix with NaN values as light gray
+        ax_husimi = Axis(husimi_grid[row, col], title=roman_label, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false)
+        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
     end
     return fig
