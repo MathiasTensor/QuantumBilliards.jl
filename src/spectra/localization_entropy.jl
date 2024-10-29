@@ -205,11 +205,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         #row = div(j, 4) + 1
         #col = mod(j, 4) + 1
         row = div(j, 4) + 1
-        if row == 1
-            col = j + 1  # First row, columns are directly 1 to 4
-        else
-            col = mod(j, 4) + 1  # For rows 2 to 4, use modulo to cycle columns 1 to 4
-        end
+        col = mod(j, 4)
         ax_husimi = Axis(husimi_grid[row, col], title=roman_label, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, yticklabelsvisible=false)
         heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
