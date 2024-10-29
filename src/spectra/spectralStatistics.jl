@@ -112,29 +112,6 @@ function probability_berry_robnik_asymptotic(s::T, rho::T) :: T where {T <: Real
     return result
 end
 
-# INTERNAL 
-function level_spacing_brody_pdf(s::T; beta=1.0) where {T<:Real}
-    C2 = gamma((beta+2.0)/(beta+1.0))^(beta+1.0)
-    C1 = (beta+1.0)*C2
-    return C1*(s^beta)*exp(-C2*s^(beta + 1.0))
-end
-
-# INTERNAL
-function gap_probability_brody(s::T; beta=1.0) where {T<:Real}
-    norm1 = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0) 
-    norm2 = beta + 1.0
-    x = (gamma((beta + 2.0) / (beta + 1.0))*s)^(beta + 1.0)
-    gap = 1.0/(norm1*norm2)*gamma_inc(1.0/(beta+1.0), x)[1]  # incomplete gamma function with just p from (p,q)
-    return gap
-end
-
-# INTERNAL 
-function level_spacing_cdf_brody(s::T; beta=1.0) where {T<:Real}
-    a = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0)
-    return 1.0-exp(-a*s^(beta+1.0))
-end
-
-
 """
     cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
 
@@ -149,14 +126,6 @@ The CDF is obtained analytically.
 - The cumulative probability for the Berry-Robnik distribution at spacing `s`.
 """
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
-    #=
-    arg = (1.0-rho)*s
-    gap = gap_probability_brody(arg)
-    pfd = level_spacing_brody_pdf(arg)
-    cdf = level_spacing_cdf_brody(arg)
-    a = (1.0-rho)*(cdf-1.0)-rho*gap
-    return a*exp(-rho*s)+1.0
-    =#
     E_c(x) = erfc(sqrt(pi)*x/2.0)
     E(x) = exp(-rho*x)*E_c((1.0-rho)*x)
     return ForwardDiff.derivative(x -> E(x), s) - ForwardDiff.derivative(x -> E(x), 0.0)
