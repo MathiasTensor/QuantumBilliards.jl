@@ -153,7 +153,11 @@ end
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
     H_bg = fill(NaN, size(H))
     Threads.@threads for idx in eachindex(projection_grid)
-        H[idx] = isapprox(H[idx], 0.0, atol=1e-4) ? NaN : H[idx]
+        if projection_grid[idx] == -1 # regular
+            H_bg[idx] = 0.0
+        elseif projection_grid[idx] == 1 # chaotic
+            H[idx] = isapprox(H[idx], 0.0, atol=1e-4) ? NaN : H[idx]
+        end
     end
     return H
 end
