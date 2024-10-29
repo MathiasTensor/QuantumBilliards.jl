@@ -1,4 +1,4 @@
-using Makie
+using Makie, SpecialFunctions
 
 """
 INTERNAL FOR PLOTTING. Uses the def of σ² = (mean of squares) - (mean)^2 to determine the NV of a vector of unfolded energies in the energy window L
@@ -112,13 +112,32 @@ function probability_berry_robnik_asymptotic(s::T, rho::T) :: T where {T <: Real
     return result
 end
 
+# INTERNAL 
+function level_spacing_brody_pdf(s::T; beta=1.0) where {T<:Real}
+    a = gamma((beta+2.0)/(beta+1.0))^(beta+1.0)
+    (beta + 1.0) * a * s^beta * exp(-a * s^(beta + 1.0))
+end
+
+# INTERNAL
+function gap_probability_brody(s::T; beta=1.0) where {T<:Real}
+    a = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0)  # Scaling factor for Brody model
+    x = a * s^(beta + 1.0)
+    gap = gamma_inc(1.0 / (beta + 1.0), x)  # Regularized incomplete gamma function
+    return gap
+end
+
+# INTERNAL 
+function level_spacing_cdf_brody(s::T; beta=1.0) where {T<:Real}
+    a = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0)
+    return 1.0-exp(-a*s^(beta+1.0))
+end
 
 
 """
     cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
 
 Computes the cumulative Berry-Robnik distribution function (CDF) for a given spacing `s` and mixing parameter `rho`.
-The CDF is obtained by integrating the PDF from 0 to `s`.
+The CDF is obtained by analytically.
 
 # Arguments
 - `s::T`: The spacing value (must be of a real number type).
@@ -128,7 +147,31 @@ The CDF is obtained by integrating the PDF from 0 to `s`.
 - The cumulative probability for the Berry-Robnik distribution at spacing `s`.
 """
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
-    # Use quadgk to integrate the Berry-Robnik PDF from 0 to s
+    arg = (1.0-rho)*s
+    gap = gap_probability_brody(arg)
+    pfd = level_spacing_brody_pdf(arg)
+    cdf = level_spacing_cdf_brody(arg)
+    a = (1.0-rho)*(cdf-1.0)-rho*gap
+    return a*exp(-rho*s)
+
+end
+
+
+
+"""
+    cumulative_berry_robnik_numerical_integration(s::T, rho::T) -> T where {T <: Real}
+
+Computes the cumulative Berry-Robnik distribution function (CDF) for a given spacing `s` and mixing parameter `rho`.
+The CDF is obtained by numerically integrating the PDF from 0 to `s`.
+
+# Arguments
+- `s::T`: The spacing value (must be of a real number type).
+- `rho::T`: The "mixing" parameter (0 < rho < 1).
+
+# Returns
+- The cumulative probability for the Berry-Robnik distribution at spacing `s`.
+"""
+function cumulative_berry_robnik_numerical_integration(s::T, rho::T) :: T where {T <: Real}
     result, _ = quadgk_count(x -> probability_berry_robnik(x, rho), 0.0, s, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
     return result
 end
