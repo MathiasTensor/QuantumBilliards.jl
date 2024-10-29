@@ -152,7 +152,7 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     pfd = level_spacing_brody_pdf(arg)
     cdf = level_spacing_cdf_brody(arg)
     a = (1.0-rho)*(cdf-1.0)-rho*gap
-    return a*exp(-rho*s)
+    return a*exp(-rho*s)+1.0
 end
 
 
