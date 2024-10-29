@@ -157,7 +157,8 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     a = (1.0-rho)*(cdf-1.0)-rho*gap
     return a*exp(-rho*s)+1.0
     =#
-    E(x) = exp(-rho*x)*gap_probability_brody((1.0-rho)*x)
+    E_c(x) = erfc(sqrt(pi)*x/2.0)
+    E(x) = exp(-rho*x)*E_c((1.0-rho)*x)
     return ForwardDiff.derivative(x -> E(x), s) - ForwardDiff.derivative(x -> E(x), 0.0)
 end
 
@@ -371,7 +372,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
     end
     if berry_robnik_cdf_values !== nothing
-        lines!(ax, s_values, berry_robnik_cdf_values, label="B-R: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=6)
+        lines!(ax, s_values, berry_robnik_cdf_values, label="B-R: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=1)
     end
     axislegend(ax, position=:rb)
 
