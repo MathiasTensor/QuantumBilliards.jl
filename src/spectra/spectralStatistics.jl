@@ -122,7 +122,7 @@ end
 function gap_probability_brody(s::T; beta=1.0) where {T<:Real}
     a = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0)  # Scaling factor for Brody model
     x = a * s^(beta + 1.0)
-    gap = gamma_inc(1.0 / (beta + 1.0), x)[1]  # Regularized incomplete gamma function
+    gap = gamma_inc(1.0 / (beta + 1.0), x)[1]  # incomplete gamma function with just p from (p,q)
     return gap
 end
 
@@ -137,7 +137,7 @@ end
     cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
 
 Computes the cumulative Berry-Robnik distribution function (CDF) for a given spacing `s` and mixing parameter `rho`.
-The CDF is obtained by analytically.
+The CDF is obtained analytically.
 
 # Arguments
 - `s::T`: The spacing value (must be of a real number type).
@@ -153,7 +153,6 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     cdf = level_spacing_cdf_brody(arg)
     a = (1.0-rho)*(cdf-1.0)-rho*gap
     return a*exp(-rho*s)
-
 end
 
 
