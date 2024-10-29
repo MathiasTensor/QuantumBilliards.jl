@@ -178,8 +178,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     # Main grid P(A,M)
     fig = Figure(resolution=(1200, 1000))
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
-    heatmap!(ax, As_grid, Ms_grid, grid; colormap=:balance, colorrange=(-maximum(grid), maximum(grid)))
-
+    heatmap!(ax, As_grid, Ms_grid, grid; colormap=Reverse(:gist_heat))
 
     selected_indices = rand(1:length(Hs_list), 16) # Choose 16 random Husimi matrices and label them with Roman numerals
     for (j, random_index) in enumerate(selected_indices)
@@ -201,8 +200,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         row = div(j, 4) + 1
         col = mod(j, 4) + 1
         ax_husimi = Axis(husimi_grid[row, col], title=roman_label)
-        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:gray, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false) # Plot the Husimi matrix with NaN values as light gray
-        text!(ax_husimi, 0.1, 0.9, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
+        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false) # Plot the Husimi matrix with NaN values as light gray
+        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
     end
     return fig
 end
