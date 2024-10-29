@@ -122,7 +122,7 @@ end
 function gap_probability_brody(s::T; beta=1.0) where {T<:Real}
     a = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0)  # Scaling factor for Brody model
     x = a * s^(beta + 1.0)
-    gap = gamma_inc(1.0 / (beta + 1.0), x)  # Regularized incomplete gamma function
+    gap = gamma_inc(1.0 / (beta + 1.0), x)[1]  # Regularized incomplete gamma function
     return gap
 end
 
