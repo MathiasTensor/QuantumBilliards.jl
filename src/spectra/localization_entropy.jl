@@ -178,7 +178,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     fig = Figure(resolution=(1200, 1000))
     # The main heatmap occupies the upper third of the figure
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
-    heatmap!(ax, As_grid, Ms_grid, grid; colormap=:viridis, colorrange=(0, maximum(grid)))
+    heatmap!(ax, As_grid, Ms_grid, grid; colormap=:balance, colorrange=(0, maximum(grid)))
 
 
     selected_indices = rand(1:length(Hs_list), 12) # Choose 12 random Husimi matrices and label them with Roman numerals
