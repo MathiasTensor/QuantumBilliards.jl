@@ -154,12 +154,12 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
     H_bg = fill(NaN, size(H))
     Threads.@threads for idx in eachindex(projection_grid)
         if projection_grid[idx] == -1 # regular
-            H_bg[idx] = 0.0
+            H_bg[idx] = NaN
         elseif projection_grid[idx] == 1 # chaotic
-            H[idx] = isapprox(H[idx], 0.0, atol=1e-3) ? NaN : H[idx]
+            H_bg[idx] = isapprox(H[idx], 0.0, atol=1e-3) ? NaN : H[idx]
         end
     end
-    return H
+    return H_bg
 end
 
 function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
