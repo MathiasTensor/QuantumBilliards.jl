@@ -190,7 +190,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     end
 
     # get the classical phase space matrix so we can make the gray spots on the chaotic grid whenever there is a 0.0 value of the chaotic husimi on it
-    husimi_grid = fig[2, 1] = GridLayout()
+    husimi_grid = fig[2:3, 1] = GridLayout()
     for (j, random_index) in enumerate(selected_indices)
         H = Hs_list[random_index]
         qs_i = qs_list[random_index]
