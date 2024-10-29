@@ -176,9 +176,6 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
 
     # Create the figure and set the grid gaps
     fig = Figure(resolution=(1200, 1000))
-    fig.layout.rowgap[] = 10  # Set the gap between rows
-    fig.layout.colgap[] = 10  # Set the gap between columns if needed  
-    
     # The main heatmap occupies the upper third of the figure
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
     heatmap!(ax, As_grid, Ms_grid, grid; colormap=:viridis, colorrange=(0, maximum(grid)))
@@ -194,8 +191,6 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
 
     # get the classical phase space matrix so we can make the gray spots on the chaotic grid whenever there is a 0.0 value of the chaotic husimi on it
     husimi_grid = fig[2, 1] = GridLayout()
-    husimi_grid.rowgap[] = 10
-    husimi_grid.colgap[] = 10
     for (j, random_index) in enumerate(selected_indices)
         H = Hs_list[random_index]
         qs_i = qs_list[random_index]
