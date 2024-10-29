@@ -156,7 +156,7 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
         if projection_grid[idx] == -1 # regular
             H_bg[idx] = 0.0
         elseif projection_grid[idx] == 1 # chaotic
-            H[idx] = isapprox(H[idx], 0.0, atol=1e-4) ? NaN : H[idx]
+            H[idx] = isapprox(H[idx], 0.0, atol=1e-3) ? NaN : H[idx]
         end
     end
     return H
