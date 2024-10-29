@@ -142,13 +142,66 @@ Plots the M(A) 2d heatmap along with 12 random representative chaotic Poincare-H
 # Returns
 - `fig::Figure`: Figure object from Makie to save or display.
 """
+
+# INTERNAL convert integer to Roman numeral (up to 12, otherwise arabic to string)
+function int_to_roman(n::Int)
+    romans = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii"]
+    return n <= 12 ? romans[n] : string(n)
+end
+
+# INTERNAL gray background for husimi matrix plot when no 0.0 husimi value there
+function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
+    Threads.@threads for idx in eachindex(projection_grid)
+        H[idx] = isapprox(H[idx], 0.0) ? NaN : H[idx]
+    end
+    return H
+end
+
 function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
-    # Make H -> (M,A) pairs distribution
-    # Create grid of 100x100 and bin the H -> (M,A) pairs
-    As_grid = collect(range(0.0, maximum(As), 100))
-    Ms_grid = collect(range(-1.0, 1.0, 100))
-    grid = fill(0.0, length(As_grid), length(Ms_grid))
-    # logic for determining the position of H (M,A) on the grid
+    As_grid = collect(range(0.0, maximum(As), length=100)) # Create 2D grid for M and A with 100x100 bins
+    Ms_grid = collect(range(-1.0, 1.0, length=100))
+    grid = fill(0, length(Ms_grid), length(As_grid))  # Integer grid for counts
+    H_to_bin = Dict{Int, Tuple{Int, Int}}() # Initialize a dictionary to map each Husimi matrix to its (M_index, A_index) bin
+    
+    for (i, (M, A)) in enumerate(zip(Ms, As))
+        A_index = findfirst(x -> x >= A, As_grid) - 1
+        M_index = findfirst(x -> x >= M, Ms_grid) - 1
+        if A_index in eachindex(As_grid) && M_index in eachindex(Ms_grid) # indices withing bounds, sanity check for findfirst
+            grid[M_index, A_index] += 1
+            H_to_bin[i] = (M_index, A_index)
+        end
+    end
+
+    fig = Figure(resolution=(1200, 1000))
+    grid_layout = GridLayout(fig, nrows=2, ncols=1, rowgap=10)    
+    # The main heatmap occupies the upper third of the figure
+    ax = Axis(grid_layout[1, 1], title="M vs A Heatmap", xlabel="A (Localization Entropy)", ylabel="M (Overlap)")
+    heatmap!(ax, As_grid, Ms_grid, grid; colormap=:viridis, colorrange=(0, maximum(grid)))
+
+    selected_indices = rand(1:length(Hs_list), 12) # Choose 12 random Husimi matrices and label them with Roman numerals
+    for (j, random_index) in enumerate(selected_indices)
+        bin_coords = H_to_bin[random_index]
+        M_index, A_index = bin_coords
+        roman_label = int_to_roman(j)
+        text!(ax, As_grid[A_index], Ms_grid[M_index], text=roman_label, color=:red, align=(:center, :center), fontsize=16)
+    end
+
+    # get the classical phase space matrix so we can make the gray spots on the chaotic grid whenever there is a 0.0 value of the chaotic husimi on it
+    husimi_grid = GridLayout(grid_layout[2, 1], nrows=3, ncols=4, colgap=10, rowgap=10)
+    for (j, random_index) in enumerate(selected_indices)
+        H = Hs_list[random_index]
+        qs_i = qs_list[random_index]
+        ps_i = ps_list[random_index]
+        chaotic_background = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
+        H = husimi_with_chaotic_background(H, chaotic_background)
+        roman_label = int_to_roman(j)
+        row = div(j, 4) + 1
+        col = mod(j, 4) + 1
+        ax_husimi = Axis(husimi_grid[row, col], title=roman_label, titleposition=:left)
+        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
+        text!(ax_husimi, 0.1, 0.9, text=roman_label, color=:black, align=(:left, :top), fontsize=14, transform=ax_husimi.scene) # Label the top left corner with the Roman numeral
+    end
+    return fig
 end
