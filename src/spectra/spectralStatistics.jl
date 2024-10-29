@@ -1,4 +1,4 @@
-using Makie, SpecialFunctions
+using Makie, SpecialFunctions, ForwardDiff
 
 """
 INTERNAL FOR PLOTTING. Uses the def of σ² = (mean of squares) - (mean)^2 to determine the NV of a vector of unfolded energies in the energy window L
@@ -114,15 +114,17 @@ end
 
 # INTERNAL 
 function level_spacing_brody_pdf(s::T; beta=1.0) where {T<:Real}
-    a = gamma((beta+2.0)/(beta+1.0))^(beta+1.0)
-    (beta + 1.0) * a * s^beta * exp(-a * s^(beta + 1.0))
+    C2 = gamma((beta+2.0)/(beta+1.0))^(beta+1.0)
+    C1 = (beta+1.0)*C2
+    return C1*(s^beta)*exp(-C2*s^(beta + 1.0))
 end
 
 # INTERNAL
 function gap_probability_brody(s::T; beta=1.0) where {T<:Real}
-    a = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0)  # Scaling factor for Brody model
-    x = a * s^(beta + 1.0)
-    gap = gamma_inc(1.0 / (beta + 1.0), x)[1]  # incomplete gamma function with just p from (p,q)
+    norm1 = gamma((beta + 2.0) / (beta + 1.0))^(beta + 1.0) 
+    norm2 = beta + 1.0
+    x = (gamma((beta + 2.0) / (beta + 1.0))*s)^(beta + 1.0)
+    gap = 1.0/(norm1*norm2)*gamma_inc(1.0/(beta+1.0), x)[1]  # incomplete gamma function with just p from (p,q)
     return gap
 end
 
@@ -147,12 +149,16 @@ The CDF is obtained analytically.
 - The cumulative probability for the Berry-Robnik distribution at spacing `s`.
 """
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
+    #=
     arg = (1.0-rho)*s
     gap = gap_probability_brody(arg)
     pfd = level_spacing_brody_pdf(arg)
     cdf = level_spacing_cdf_brody(arg)
     a = (1.0-rho)*(cdf-1.0)-rho*gap
     return a*exp(-rho*s)+1.0
+    =#
+    E(x) = exp(-rho*x)*gap_probability_brody((1.0-rho)*x)
+    return ForwardDiff.derivative(x -> E(x), s) - ForwardDiff.derivative(x -> E(x), 0.0)
 end
 
 
