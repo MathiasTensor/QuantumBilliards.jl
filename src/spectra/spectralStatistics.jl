@@ -87,31 +87,6 @@ function probability_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     return result
 end
 
-# INTERNAL
-function probability_berry_robnik_asymptotic(s::T, rho::T) :: T where {T <: Real}
-    rho1 = rho
-    rho2 = one(T) - rho
-    x = sqrt(π / T(2)) * rho2 * s
-
-    # Define modified erfc logic within this function
-    erfc_val = if x < 0.1
-        # Series expansion for small x
-        1 - (2 * x) / sqrt(π) + (x^3) / (3 * sqrt(π))
-    elseif x >= 5
-        # Asymptotic expansion for large x
-        exp(-x^2) / (x * sqrt(π)) * (1 - 1 / (2 * x^2) + 3 / (4 * x^4))
-    else
-        # Standard erfc for moderate x
-        erfc(x)
-    end
-    
-    # Calculate the probability with modified erfc value
-    term1 = (rho1^2) * erfc_val
-    term2 = (T(2) * rho1 * rho2 + (π / T(2)) * (rho2^3) * s) * exp(-(π / T(4)) * (rho2^2) * s^2)
-    result = (term1 + term2) * exp(-rho1 * s)
-    return result
-end
-
 """
     cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
 
