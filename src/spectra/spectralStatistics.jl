@@ -103,7 +103,14 @@ The CDF is obtained analytically.
 function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     E_c(x) = erfc(sqrt(pi)*x/2.0)
     E(x) = exp(-rho*x)*E_c((1.0-rho)*x)
-    return ForwardDiff.derivative(x -> E(x), s) - ForwardDiff.derivative(x -> E(x), 0.0)
+    #return ForwardDiff.derivative(x -> E(x), s) - ForwardDiff.derivative(x -> E(x), 0.0)
+    function dE_dx(x::T, rho::T) :: T where {T <: Real}
+        exp_term = exp(-rho * x)
+        erfc_term = E_c((1.0 - rho) * x)
+        inner_exp_term = exp(-π * (1.0 - rho)^2 * x^2 / 4.0)
+        return -exp_term * (rho * erfc_term + (1.0 - rho) * inner_exp_term)
+    end
+    return dE_dx(s, rho) - dE_dx(0.0, rho)
 end
 
 
