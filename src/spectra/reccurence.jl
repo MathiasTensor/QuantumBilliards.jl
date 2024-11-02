@@ -113,12 +113,14 @@ Here is an example of such a wrapper function for the mushroom billiard using `D
 ```julia
 using DynamicalBilliards
 
-function bmap_func(max_collisions)
-    l,w,r = 1.0, 0.5, 1.0
+function bmap_wrapper(l,w,r)
     p = MushroomTools.randomchaotic(l,w,r)
     mushroom = billiard_mushroom(l,w,r)
-    bmap, _ = boundarymap(p, mushroom, max_collisions)
-    return bmap # Vector{SVector{2,Float64}} [SVector(s1,p1), SVector(s2,p2),...]
+    bmap_func = function (max_collisions)
+        bmap, _ = boundarymap(p, mushroom, max_collisions)
+        return bmap
+    end
+    return bmap_func
 end
 ```
 """
@@ -152,12 +154,14 @@ Here is an example of such a wrapper function for the mushroom billiard using `D
 ```julia
 using DynamicalBilliards
 
-function bmap_func(max_collisions)
-    l,w,r = 1.0, 0.5, 1.0
+function bmap_wrapper(l,w,r)
     p = MushroomTools.randomchaotic(l,w,r)
     mushroom = billiard_mushroom(l,w,r)
-    bmap, _ = boundarymap(p, mushroom, max_collisions)
-    return bmap # Vector{SVector{2,Float64}} [SVector(s1,p1), SVector(s2,p2),...]
+    bmap_func = function (max_collisions)
+        bmap, _ = boundarymap(p, mushroom, max_collisions)
+        return bmap
+    end
+    return bmap_func
 end
 ```
 """
