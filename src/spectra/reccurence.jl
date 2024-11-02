@@ -192,7 +192,7 @@ Plots the S matrix with the s and p edges w/ a Colorbar.
 # Returns
 - `Nothing`
 """
-function plot_S_heatmap!(f::Figure, S_grid::Matrix, s_edges::Vector, p_edges::Vector; additional_text::String="")
+function plot_S_heatmap!(f::Figure, S_grid, s_edges::Vector, p_edges::Vector; additional_text::String="")
     ax = Axis(f[1, 1], title="S-plot " * additional_text, xlabel="s", ylabel="p")
     hmap = heatmap!(ax, s_edges, p_edges, S_grid; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
     Colorbar(f[1, 2], hmap, ticks=0:1:15)
