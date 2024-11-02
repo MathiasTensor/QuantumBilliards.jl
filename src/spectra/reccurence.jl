@@ -220,8 +220,13 @@ function plot_S_heatmaps!(f::Figure, S_grids::Vector, s_edges::Vector, p_edges::
     col = 1
     heatmaps = []
     for idx in eachindex(S_grids) 
+        S_grid = convert(Matrix{Float32}, S_grids[idx])
+        s_edge = convert(Vector{Float32}, s_edges[idx])
+        p_edge = convert(Vector{Float32}, p_edges[idx])
+
         ax = Axis(f[row, col], title="S-plot " * additional_texts[idx], xlabel="s", ylabel="p")
-        hmap = heatmap!(ax, S_grids[idx], s_edges[idx], p_edges[idx]; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
+        heatmap!(ax, s_edge[1:end-1], p_edge[1:end-1], S_grid; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
+
         push!(heatmaps, hmap)
         col += 1
         if col > max_cols
