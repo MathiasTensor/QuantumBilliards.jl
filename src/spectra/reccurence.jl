@@ -98,7 +98,7 @@ end
 High-level wrapper for the S-plot function. It just takes the function that for a given initial condition and geometry generates a chaotic trajectory. The function's signature is given in Arguments. Use this one if the chaotic trajectory spans limiting s values of the phase space plot.
 
 # Arguments
-- `bmap_func::Function`: Signature: `(..., max_collisions::Int=max_collisions) -> Vector{SVector{2,<:Real}}`. A function that takes the number of collisions as input and returns a `Vector` of `SVector(s, p)` coordinates representing the trajectories for each collision up to `max_collisions`.
+- `bmap_func::Function`: Signature: `(max_collisions::Int) -> Vector{SVector{2,<:Real}}`. A function that takes the number of collisions as input and returns a `Vector` of `SVector(s, p)` coordinates representing the trajectories for each collision up to `max_collisions`.
 - `max_collisions::Int=10^8`: (Optional) The maximum number of collisions to process.
 - `num_bins::Int=1000`: (Optional) The number of bins in the phase space grid, same in s and p direction.
 
@@ -124,7 +124,7 @@ end
 """
 function S(bmap_func::Function; max_collisions::Int=10^8, num_bins::Int=1000)
     println("Processing collisions...")
-    @time bmap = bmap_func(; max_collisions=max_collisions)
+    @time bmap = bmap_func(max_collisions)
     println("Done w/ collisions...")
     L, _ = findmax(s_p[1] for s_p in bmap) # finds largest s if chaotic spans 0 -> L, equal to whole s length
     S(bmap, L, max_collisions=max_collisions, num_bins=num_bins)
@@ -136,7 +136,7 @@ end
 High-level wrapper for the S-plot function. It just takes the function that for a given initial condition and geometry generates a chaotic trajectory. The function's signature is given in Arguments. 
 
 # Arguments
-- `bmap_func::Function`: Signature: `(..., max_collisions::Int=max_collisions) -> Vector{SVector{2,<:Real}}`. A function that takes the number of collisions as input and returns a `Vector` of `SVector(s, p)` coordinates representing the trajectories for each collision up to `max_collisions`.
+- `bmap_func::Function`: Signature: `(max_collisions::Int) -> Vector{SVector{2,<:Real}}`. A function that takes the number of collisions as input and returns a `Vector` of `SVector(s, p)` coordinates representing the trajectories for each collision up to `max_collisions`.
 - `L::T`: The total length of the phase space.
 - `max_collisions::Int=10^8`: (Optional) The maximum number of collisions to process.
 - `num_bins::Int=1000`: (Optional) The number of bins in the phase space grid, same in s and p direction.
@@ -163,7 +163,7 @@ end
 """
 function S(bmap_func::Function, L::T; max_collisions::Int=10^8, num_bins::Int=1000) where {T<:Real}
     println("Processing collisions...")
-    @time bmap = bmap_func(; max_collisions=max_collisions)
+    @time bmap = bmap_func(max_collisions)
     println("Done w/ collisions...")
     S(bmap, L, max_collisions=max_collisions, num_bins=num_bins)
 end
