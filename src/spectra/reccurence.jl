@@ -89,7 +89,7 @@ function S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) whe
             S_grid[s_idx, p_idx] = sigma / τ # store as 2d grid
         end
     end
-    return S_grid, s_edges, p_edges 
+    return S_grid, collect(s_edges), collect(p_edges) 
 end
 
 """
