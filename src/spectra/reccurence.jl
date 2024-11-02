@@ -234,6 +234,6 @@ function plot_S_heatmaps!(f::Figure, S_grids::Vector, s_edges::Vector, p_edges::
             row += 1
         end
     end
-    colorbar = Colorbar(f[row + 1, 1:max_cols], heatmaps[1], vertical=:false)
+    colorbar = Colorbar(f[row + 1, 1:max_cols], heatmaps[1], vertical=:false, ticks=0:1:15)
     #rowgap!(f.layout, row, Relative(1/10))
 end
