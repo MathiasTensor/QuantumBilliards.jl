@@ -43,9 +43,15 @@ function S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) whe
         s, p_coord = bmap[collision]
         
         # Determine cell indices in the grid
-        s_idx = findfirst(x -> x >= s, s_edges) - 1 # the previous one is therefore the wanted one
-        p_idx = findfirst(x -> x >= p_coord, p_edges) - 1 # the previous one is therefore the wanted one
-        
+        #s_idx = findfirst(x -> x >= s, s_edges) - 1 # the previous one is therefore the wanted one
+        #p_idx = findfirst(x -> x >= p_coord, p_edges) - 1 # the previous one is therefore the wanted one
+        s_idx = findfirst(x -> x >= s, s_edges)
+        p_idx = findfirst(x -> x >= p_coord, p_edges)
+
+        # Check if `findfirst` returned `nothing` and adjust accordingly
+        s_idx = isnothing(s_idx) ? num_bins : max(1, s_idx - 1)  # Use last bin if out of bounds, or decrement by 1 as logic above (uncommented)
+        p_idx = isnothing(p_idx) ? num_bins : max(1, p_idx - 1)  # Same logic for p
+
         # Check if the particle is within the grid bounds -> sanity check
         if s_idx in 1:num_bins && p_idx in 1:num_bins
             cell = (s_idx, p_idx)
