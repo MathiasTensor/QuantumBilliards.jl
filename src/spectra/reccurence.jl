@@ -2,7 +2,7 @@ using ProgressMeter
 
 
 """
-    S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000)
+    S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) where {T<:Real}
 
 The S-plot matrix (of size (num_bins+1)x(num_bins+1)) along with the s and p edges for heatmap plotting. Good for showing stickiness regions.
 
@@ -161,7 +161,7 @@ function bmap_func(max_collisions)
 end
 ```
 """
-function S(bmap_func::Function, L::T; max_collisions::Int=10^8, num_bins::Int=1000)
+function S(bmap_func::Function, L::T; max_collisions::Int=10^8, num_bins::Int=1000) where {T<:Real}
     println("Processing collisions...")
     @time bmap = bmap_func(max_collisions)
     println("Done w/ collisions...")
