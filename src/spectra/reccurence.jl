@@ -48,7 +48,7 @@ function S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) whe
         s_idx = findfirst(x -> x >= s, s_edges)
         p_idx = findfirst(x -> x >= p_coord, p_edges)
 
-        # Check if `findfirst` returned `nothing` and adjust accordingly
+        # Check if `findfirst` returned `nothing` and adjust accordingly. This is a hack since s or p_coord can go slightly out of bounds (now always)
         s_idx = isnothing(s_idx) ? num_bins : max(1, s_idx - 1)  # Use last bin if out of bounds, or decrement by 1 as logic above (uncommented)
         p_idx = isnothing(p_idx) ? num_bins : max(1, p_idx - 1)  # Same logic for p
 
@@ -220,7 +220,7 @@ function plot_S_heatmaps!(f::Figure, S_grids::Vector, s_edges::Vector, p_edges::
     col = 1
     heatmaps = []
     for idx in eachindex(S_grids) 
-        ax = Axis(f[1, 1], title="S-plot " * additional_texts[idx], xlabel="s", ylabel="p")
+        ax = Axis(f[row, col], title="S-plot " * additional_texts[idx], xlabel="s", ylabel="p")
         hmap = heatmap!(ax, S_grids[idx], s_edges[idx], p_edges[idx]; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
         push!(heatmaps, hmap)
         col += 1
