@@ -184,7 +184,7 @@ Plots the S matrix with the s and p edges w/ a Colorbar.
 """
 function plot_S_heatmap!(f::Figure, S_grid::Matrix, s_edges::Vector, p_edges::Vector; additional_text::String="")
     ax = Axis(f[1, 1], title="S-plot " * additional_text, xlabel="s", ylabel="p")
-    hmap = heatmap!(ax, s_edges[1:end-1], p_edges[1:end-1], S_grid; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
+    hmap = heatmap!(ax, s_edges, p_edges, S_grid; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
     Colorbar(f[1, 2], hmap, ticks=0:1:15)
     colsize!(f.layout, 2, Relative(1/10))
 end
@@ -211,7 +211,7 @@ function plot_S_heatmaps!(f::Figure, S_grids::Vector, s_edges::Vector, p_edges::
     heatmaps = []
     for idx in eachindex(S_grids) 
         ax = Axis(f[1, 1], title="S-plot " * additional_texts[idx], xlabel="s", ylabel="p")
-        hmap = heatmap!(ax, S_grids[idx], s_edges[idx][1:end-1], p_edges[idx][1:end-1]; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
+        hmap = heatmap!(ax, S_grids[idx], s_edges[idx], p_edges[idx]; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
         push!(heatmaps, hmap)
         col += 1
         if col > max_cols
