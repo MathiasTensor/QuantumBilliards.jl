@@ -682,7 +682,7 @@ function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi,
         k_start = k_at_state(N_start, billiard, fundamental=fundamental)
         println("From $(k_start) to $(k_end), N_levels=$(N_levels)")
         (N_start < 1) ? (@error "Smallest k=$(k_start) is too small to get N=$(N_levels)") : nothing    
-        filename = joinpath(save_path, "$(save_identifier)_boundary_vals_$(k).jld2")
+        filename = joinpath(save_path, "$(save_identifier)_boundary_vals_$(k)_N_$(N_levels).jld2")
         if !isfile(filename) # do the taxing calculation to get state data
             println("No found saved data, doing spectrum calculation...")
             state_res, _ = compute_spectrum_with_state(acc_solver, basis, billiard, k_start, k_end, N_expect=N_expect, dk_threshold=dk_threshold)
