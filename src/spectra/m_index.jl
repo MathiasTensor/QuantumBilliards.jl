@@ -680,7 +680,7 @@ function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi,
         N_end = ceil(Integer, weyl_law(k_end, billiard, fundamental=fundamental))
         N_start = N_end - N_levels
         k_start = k_at_state(N_start, billiard, fundamental=fundamental)
-        println("From $(k_start) to $(k_end)")
+        println("From $(k_start) to $(k_end), N_levels=$(N_levels)")
         (N_start < 1) ? (@error "Smallest k=$(k_start) is too small to get N=$(N_levels)") : nothing    
         filename = joinpath(save_path, "$(save_identifier)_boundary_vals_$(k).jld2")
         if !isfile(filename) # do the taxing calculation to get state data
