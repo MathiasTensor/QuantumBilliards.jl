@@ -440,7 +440,7 @@ function wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 
         xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
         x_grid::Vector{type} = collect(type,range(xlim... , nx))
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
-        Psi::Vector{type} = compute_psi(state,x_grid,y_grid; true, memory_limit) 
+        Psi::Vector{type} = compute_psi(state,x_grid,y_grid; inside_only=true, memory_limit=memory_limit) 
         #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
         if ~false 
