@@ -663,6 +663,10 @@ Comment: save_path is a directory path aka '/users/you...', while the save_ident
 - `N_expect::Integer=1`: (Optional) Rule of thumb parameter for dk determination. It represents the expected number of eigenvalues we get for each dk interval.
 - `fundamental::Bool=true`: (Optional) If true, we use the desymmetrized billiard.
 - `save_M_distributions::Bool=true`: (Optional) If true, we save the plots of M distributions for each k in the save_path directory using the save_identifier.
+
+# Returns
+- `ks_points::Vector{<:Real}`: The ks at which the fractions of mixed eigenstates were computed.
+- `χs::Vector{<:Real}`: The fractions of mixed eigenstates for each k.
 """
 function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     d = 3.0
