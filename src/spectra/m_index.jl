@@ -1,4 +1,4 @@
-using JLD2, Makie, ProgressMeter
+using JLD2, Makie, ProgressMeter, LsqFit
 
 # PRELIMINARY FUNCTIONS
 
