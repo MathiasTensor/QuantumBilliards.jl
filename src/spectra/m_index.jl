@@ -688,7 +688,7 @@ function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi,
             state_res, _ = compute_spectrum_with_state(acc_solver, basis, billiard, k_start, k_end, N_expect=N_expect, dk_threshold=dk_threshold)
             if save_tension_plot_check
                 eigenvalues, tensions = state_res.ks, state_res.tens
-                f = Figure(1000, 600)
+                f = Figure(size=(1000, 600), resolution=(1000, 600))
                 ax = Axis(f[1,1], title="VS Eigenvalues check around k=$(k)")
                 scatter!(ax, eigenvalues, tensions)
                 save_png_tens = joinpath(save_path, "$(save_identifier)_tens_$(k).png")
