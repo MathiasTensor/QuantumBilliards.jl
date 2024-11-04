@@ -173,7 +173,7 @@ end
 
 
 =#
-
+# MAIN ONE USED, JUST HAS ADDITIONAL LOGIC INTRODUCED FOR SYMMETRIES
 function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {S<:AbsState}
     let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries       
         #println(new_basis.dim)
@@ -428,5 +428,51 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
 end
 
 =#
+
+
+### INTERNAL - ONLY FOR OTOC WHERE WE NEED BOTH WAVEFUNCTION MATRICES OF SAME SIZE
+function wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 10.0e9) where {S<:AbsState, T<:Real}
+    let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries       
+        #println(new_basis.dim)
+        type = eltype(state.vec)
+        #try to find a lazy way to do this
+        L = billiard.length
+        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
+        x_grid::Vector{type} = collect(type,range(xlim... , nx))
+        y_grid::Vector{type} = collect(type,range(ylim... , ny))
+        Psi::Vector{type} = compute_psi(state,x_grid,y_grid; true, memory_limit) 
+        #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
+        Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
+        if ~false 
+            if ~isnothing(symmetries)
+                if all([sym isa Reflection for sym in symmetries])
+                    x_axis = 0.0
+                    y_axis = 0.0
+                    if hasproperty(billiard, :x_axis)
+                        #println(nameof(typeof(billiard)), " has the :x_axis reflection")
+                        x_axis = billiard.x_axis
+                    end
+                    if hasproperty(billiard, :y_axis)
+                        #println(nameof(typeof(billiard)), " has the :y_axis reflection")
+                        y_axis = billiard.y_axis
+                    end
+                    Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
+                elseif all([sym isa Rotation for sym in symmetries])
+                    if length(symmetries) > 1
+                        @error "Only one Rotation symmetry allowed"
+                    end
+                    center = SVector{2, Float64}(0.0, 0.0)
+                    if hasproperty(billiard, :center)
+                        center = SVector{2, Float64}(billiard.center)
+                    end
+                    Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d,x_grid,y_grid,symmetries[1], billiard; center=center)
+                else
+                    @error "Do not mix Reflections with Rotations"
+                end
+            end
+        end
+        return Psi2d, x_grid, y_grid
+    end
+end
 
 
