@@ -643,7 +643,7 @@ end
 
 ### HIGH LEVEL WRAPPERS FOR DETERMINING THE FRACTION OF MIXED EIGENSTATES OVER AN ENERGY RANGE
 """
-    compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true, save_tension_plot_check::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
 
 High-level wrapper for computing the fractions of mixed eigenstates over a given k interval. This is done for a specific billiard geometry and basis.\n
 Comment: save_path is a directory path aka '/users/you...', while the save_identifier is a String name, like 'my_billiard_w_0.1".
@@ -663,12 +663,13 @@ Comment: save_path is a directory path aka '/users/you...', while the save_ident
 - `N_expect::Integer=1`: (Optional) Rule of thumb parameter for dk determination. It represents the expected number of eigenvalues we get for each dk interval.
 - `fundamental::Bool=true`: (Optional) If true, we use the desymmetrized billiard.
 - `save_M_distributions::Bool=true`: (Optional) If true, we save the plots of M distributions for each k in the save_path directory using the save_identifier.
+- `save_tension_plot_check::Bool=true`: (Optional) If true, we save a tension plot for each k in the save_path directory to help us check if the eigenvalues were ok (low tensions)
 
 # Returns
 - `ks_points::Vector{<:Real}`: The ks at which the fractions of mixed eigenstates were computed.
 - `χs::Vector{<:Real}`: The fractions of mixed eigenstates for each k.
 """
-function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true, save_tension_plot_check::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     d = 3.0
     b = 12.0
     acc_solver = ScalingMethodA(d,b)
@@ -684,6 +685,14 @@ function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi,
         if !isfile(filename) # do the taxing calculation to get state data
             println("No found saved data, doing spectrum calculation...")
             state_res, _ = compute_spectrum_with_state(acc_solver, basis, billiard, k_start, k_end, N_expect=N_expect, dk_threshold=dk_threshold)
+            if save_tension_plot_check
+                eigenvalues, tensions = state_res.ks, state_res.tens
+                f = Figure(1000, 600)
+                ax = Axis(f[1,1], title="VS Eigenvalues check around k=$(k)")
+                scatter!(ax, eigenvalues, tensions)
+                save_png_tens = joinpath(save_path, "$(save_identifier)_tens_$(k).png")
+                save(save_png_tens, f)
+            end
             @time ks, us, s_vals, _ = boundary_function(state_res, billiard, basis; b=5.0) # Play with b
             @time save_boundary_function!(ks, us, s_vals, filename=filename)
         end
