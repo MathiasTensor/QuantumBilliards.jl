@@ -641,3 +641,95 @@ function plot_fraction_of_mixed_eigenstates_vs_k(ax::Axis, χ_Ms::Vector{T}, ks_
     lines!(ax, log_ks_M, -ζ*log_ks, label="ζ=$(round(ζ; digits=3))", color=:red, linewidth=2) # do not forget the minus here. The fraction of mixed eigenstates should decay with increasing k
 end
 
+### HIGH LEVEL WRAPPERS FOR DETERMINING THE FRACTION OF MIXED EIGENSTATES OVER AN ENERGY RANGE
+"""
+    compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+
+High-level wrapper for computing the fractions of mixed eigenstates over a given k interval. This is done for a specific billiard geometry and basis.\n
+Comment: save_path is a directory path aka '/users/you...', while the save_identifier is a String name, like 'my_billiard_w_0.1".
+
+# Arguments
+- `ks_points::Vector{<:Real}`: The ks at which to compute the fractions of mixed eigenstates.
+- `billiard::Bi<:AbsBilliard`: The billiard geometry.
+- `basis::Ba<:AbsBasis`: The basis for the geometry. In principle should give similar results for other suitable bases.
+- `save_path::String`: The directory where to save the data. This is the top level directory path to which other subdirectories will be added.
+- `save_identifier::String`: The identifier that will create a unique save file for each k.
+- `classical_chaotic_s_vals::Vector{<:Real}`: The s values of the classical chaotic trajectory.
+- `classical_chaotic_p_vals::Vector{<:Real}`: The p values of the classical chaotic trajectory.
+- `N_levels::Integer=2000`: (Optional) The number of levels to compute the Husimi functions and M index for each k.
+- `dk_threshold::Real=0.05`: (Optional) The threshold for the largest interval (dk) for which we gather the eigenvalues using Scaling Method.
+- `lower_bound_M_th::Real=-0.8`: (Optional) The lower bound of the M threshold for which we determine whether the state is a mixed eigenstate.
+- `upper_bound_M_th::Real=0.8`: (Optional) The upper bound of the M threshold for which we determine whether the state is a mixed eigenstate.
+- `N_expect::Integer=1`: (Optional) Rule of thumb parameter for dk determination. It represents the expected number of eigenvalues we get for each dk interval.
+- `fundamental::Bool=true`: (Optional) If true, we use the desymmetrized billiard.
+- `save_M_distributions::Bool=true`: (Optional) If true, we save the plots of M distributions for each k in the save_path directory using the save_identifier.
+"""
+function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    d = 3.0
+    b = 12.0
+    acc_solver = ScalingMethodA(d,b)
+    χs = Vector{Float64}(undef, length(ks_points))
+    for (i,k) in enumerate(ks_points)
+        println("Started k=$(k)")
+        k_end = k
+        N_end = ceil(Integer, weyl_law(k_end, billiard, fundamental=fundamental))
+        N_start = N_end - N_levels
+        k_start = k_at_state(N_start, billiard, fundamental=fundamental)
+        (N_start < 1) ? (@error "Smallest k=$(k_start) is too small to get N=$(N_levels)") : nothing    
+        filename = joinpath(save_path, save_identifier)
+        if !isfile(filename) # do the taxing calculation to get state data
+            println("No found saved data, doing spectrum calculation...")
+            state_res, _ = compute_spectrum_with_state(acc_solver, basis, billiard, k_start, k_end, N_expect=N_expect, dk_threshold=dk_threshold)
+            @time ks, us, s_vals, _ = boundary_function(state_res, billiard, basis; b=5.0) # Play with b
+            @time save_boundary_function!(ks, us, s_vals, filename=filename)
+        end
+        @time ks, us, s_vals = read_boundary_function(filename)
+        @time Hs_list, ps_list, qs_list = husimi_functions_from_boundary_functions(ks, us, s_vals, billiard; c = 10.0, w = 7.0)
+        println("Started overlaps computation...")
+        @time Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+        if save_M_distributions
+            # for each point save the M distributions
+            f = Figure(size=(1000,1000), resolution=(1000,1000))
+            ax = Axis(f[1,1])
+            @time plot_hist_M_distribution!(ax, Ms)
+            save(joinpath(save_path, save_identifier*"_M_dist_k_$(k).png"),f)
+        end
+        χ = fraction_of_mixed_states(Ms, l_bound=lower_bound_M_th, u_bound=upper_bound_M_th)
+        χs[i]=χ
+        println("Finished k=$(k)")
+    end
+    return ks_points, χs
+end
+
+"""
+    plot_fraction_mixed_states(ax::Axis, ks_points::Vector, χs::Vector)
+
+Plots the fractions of mixed eigenstates for a k window in a log-log plot together with the expected linear fit (power-law decay of eigenstates).
+
+# Arguments
+- `ax::Axis`: The Makie axis on which to plot the data.
+- `ks_points::Vector{<:Real}`: The ks at which the fractions of mixed eigenstates are computed.
+- `χs::Vector{<:Real}`: The fractions of mixed eigenstates for the corresponding ks points, usually obtained from `compute_fractions_of_mixed_eigenstates` function.
+
+# Returns
+- `ζ_optimal::Real`: The optimal value of ζ (the exponent in the power-law decay of eigenstates, linear fit to log-log data) that best fits the data.
+"""
+function plot_fraction_mixed_states(ax::Axis, ks_points::Vector, χs::Vector)
+    scatter!(ax, log10.(ks_points), log10.(χs), marker_size=5)
+    log_ks_min, log_ks_max = minimum(ks_points), maximum(ks_points)
+    function linear_model(ks_inter_log, params)
+        ζ = params
+        result = Vector{Float64}(undef, length(ks_inter_log))
+        for i in eachindex(ks_inter_log) 
+            result[i] = ζ*ks_inter_log[i]
+        end
+        return result
+    end
+    ζ_init = 0.4
+    fit_result = curve_fit((ks_log, params) -> linear_model(ks_log, params), log10.(ks_points), log10.(χs), ζ_init)
+    ζ_optimal = fit_result.param
+    sintetic_xs = collect(range(log_ks_min, log_ks_max, 10)) # 10 logs of points enough for log-log linear plot
+    sintetic_ys = ζ_optimal .* sintetic_xs
+    lines!(ax, sintetic_xs, sintetic_ys, color=:red, label="ζ=$(round(ζ_optimal; digits=4))")
+    return ζ_optimal
+end
