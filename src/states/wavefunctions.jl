@@ -268,7 +268,7 @@ end
 
 # IN DEVELOPEMNT
 # USEFUL FOR CONSTRUCTING LARGE NUMBER OF WAVEFUNCTIONS FROM StateData (saved ks[i], X[i], basis, billiard)
-function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {S<:AbsState, T<:Real}
+function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
     symmetries=state.basis.symmetries       
     basis = resize_basis(basis, billiard, length(vec), k)
     type = eltype(state.vec)
