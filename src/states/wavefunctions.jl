@@ -122,9 +122,52 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
     end
 end
 
+# DO NOT USE
+# INTERNAL FOR COMPUTING WAVEFUNCTIONS FROM STATE DATA WHERE WE TAKE THE ONLY THE VECTOR OF COEFFICIENTS OF THE LINEAR EXPANSIONS AND THE K EIGENVALUE
+function compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
+    eps = set_precision(vec[1])
+    dim = length(vec) # only way to get dim of basis implicitely
+    basis = resize_basis(basis, billiard, dim, k) # since we dont have the solver for adjust basis and samplers
+    sz = length(x_grid)*length(y_grid)
+    pts = collect(SVector(x,y) for y in y_grid for x in x_grid)
+    if inside_only
+        #pts_mask = is_inside(billiard,pts)
+        pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=inside_only)
+        pts = pts[pts_mask]
+    end
+    n_pts = length(pts)
+    #estimate max memory needed for the matrices
+    type = eltype(vec)
+    memory = sizeof(type)*basis.dim*n_pts
+    Psi = zeros(type,sz)
 
-
-
+    if memory < memory_limit
+        B = basis_matrix(basis, k, pts)
+        Psi_pts = B*vec
+        if inside_only
+            Psi[pts_mask] .= Psi_pts
+        else
+            Psi .= Psi_pts
+        end
+    else
+        println("Warning: memory limit of $(Base.format_bytes(memory_limit)) exceded $(Base.format_bytes(memory)).")
+        if inside_only
+            for i in eachindex(vec)
+                if abs(vec[i]) > eps 
+                    Psi[pts_mask] .+= vec[i].*basis_fun(basis,i,k,pts)
+                end
+            end
+        else
+            for i in eachindex(vec)
+                if abs(vec[i]) > eps 
+                    Psi .+= vec[i].*basis_fun(basis,i,k,pts)
+                end
+            end
+        end
+        #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
+    end
+    return Psi
+end
 #=
 
 #try using strided to optimize this
@@ -221,6 +264,56 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         end
         return Psi2d, x_grid, y_grid
     end
+end
+
+# IN DEVELOPEMNT
+# USEFUL FOR CONSTRUCTING LARGE NUMBER OF WAVEFUNCTIONS FROM StateData (saved ks[i], X[i], basis, billiard)
+function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {S<:AbsState}
+    symmetries=state.basis.symmetries       
+    basis = resize_basis(basis, billiard, length(vec), k)
+    type = eltype(state.vec)
+    #try to find a lazy way to do this
+    L = billiard.length
+    
+    xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
+    dx = xlim[2] - xlim[1]
+    dy = ylim[2] - ylim[1]
+    nx = max(round(Int, k*dx*b/(2*pi)), 512)
+    ny = max(round(Int, k*dy*b/(2*pi)), 512)
+    x_grid::Vector{type} = collect(type,range(xlim... , nx))
+    y_grid::Vector{type} = collect(type,range(ylim... , ny))
+    Psi::Vector{type} = compute_psi(vec,k,billiard,basis,x_grid,y_grid; inside_only=inside_only, memory_limit=memory_limit) 
+    #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
+    Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
+    if ~fundamental_domain 
+        if ~isnothing(symmetries)
+            if all([sym isa Reflection for sym in symmetries])
+                x_axis = 0.0
+                y_axis = 0.0
+                if hasproperty(billiard, :x_axis)
+                    #println(nameof(typeof(billiard)), " has the :x_axis reflection")
+                    x_axis = billiard.x_axis
+                end
+                if hasproperty(billiard, :y_axis)
+                    #println(nameof(typeof(billiard)), " has the :y_axis reflection")
+                    y_axis = billiard.y_axis
+                end
+                Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
+            elseif all([sym isa Rotation for sym in symmetries])
+                if length(symmetries) > 1
+                    @error "Only one Rotation symmetry allowed"
+                end
+                center = SVector{2, Float64}(0.0, 0.0)
+                if hasproperty(billiard, :center)
+                    center = SVector{2, Float64}(billiard.center)
+                end
+                Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d,x_grid,y_grid,symmetries[1], billiard; center=center)
+            else
+                @error "Do not mix Reflections with Rotations"
+            end
+        end
+    end
+    return Psi2d, x_grid, y_grid
 end
 
 ### NEW ONE THAT USES StateData to generate the wavefunctions and the X, Y grids
