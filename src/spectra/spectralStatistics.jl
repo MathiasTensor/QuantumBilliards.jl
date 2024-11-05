@@ -221,7 +221,7 @@ function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where 
 end
 
 """
-    plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing) where {T <: Real}
+    plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false) where {T <: Real}
 
 Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energy levels, along with theoretical distributions (Poisson, GOE, GUE). Optionally, the Berry-Robnik distribution can also be included if a `rho` value is provided.
 
@@ -258,7 +258,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     if berry_robnik_pdf !== nothing
         lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
     end
-    if fit_brody && !isnothing(rho)
+    if fit_brb && !isnothing(rho)
         ρ_opt, β_opt = fit_brb_to_data(bin_centers, bin_counts, rho)
         brb_pdf = x -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
         lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
