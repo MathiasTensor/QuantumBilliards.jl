@@ -216,7 +216,7 @@ function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where 
         return [probability_berry_robnik_brody(s,ρ,β) for s in s_vals]
     end
     init_params = [rho,1.0] # beta init 1.0
-    fit_result = curve_fit((s_vals, params) -> brb(s_vals, params), bin_centers, bin_counts, init_params)
+    fit_result = curve_fit((s_vals, params) -> brb_model(s_vals, params), bin_centers, bin_counts, init_params)
     return fit_result.param
 end
 
