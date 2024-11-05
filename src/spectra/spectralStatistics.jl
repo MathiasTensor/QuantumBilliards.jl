@@ -87,8 +87,18 @@ function probability_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     return result
 end
 
+# INTERNAL Second derivative of the joint gap probability between Poisson and Brody
 function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
-    
+    Γ_factor = gamma(1 + 1 / (1 + β))
+    C2 = Γ_factor^(β + 1)
+    T1 = (1 / Γ_factor) * exp(-rho * s)
+    T2 = (1 / s) * exp((-1 + rho) * s * ((s - rho * s)^β * C2))
+    # Separate out complex components to prevent negative powers leading to complex values
+    inner_term = -((-1 + rho) * s * (s - rho * s)^β * C2)
+    T3 = inner_term^(1 / (1 + β))
+    T4 = 2 * rho - (1 + β) * (-1 + rho) * (s - rho * s)^β * C2
+    T5 = (rho^2 * gamma(1 / (1 + β), inner_term)) / (1 + β)
+    return T1 * (T2 * T3 * T4 + T5)
 end
 
 """
@@ -199,15 +209,14 @@ function count_levels_and_avg_fluctuation_in_interval(arr::Vector{T}, billiard::
     end
 end
 
-# INTERNAL, returns the optimal β parameter
-function fit_brody_to_data(bin_centers::Vector, bin_counts::Vector)
-    function brody_model(s_vals::Vector, params)
-        β = params
-        a = gamma((β+2)/(β+1))^(β+1)
-        return @. (β+1)*a*s_vals^β*exp(-a*s_vals^(β+1))
+# INTERNAL, returns the optimal (ρ,β) parameters
+function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
+    function brb_model(s_vals::Vector, params)
+        ρ, β = params
+        return [probability_berry_robnik_brody(s,ρ,β) for s in s_vals]
     end
-    β_init = 1.0
-    fit_result = curve_fit((s, params) -> beta_model(s, params), bin_centers, bin_counts, β_init)
+    init_params = [rho,1.0] # beta init 1.0
+    fit_result = curve_fit((s_vals, params) -> brb(s_vals, params), bin_centers, bin_counts, init_params)
     return fit_result.param
 end
 
@@ -220,13 +229,13 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `unfolded_energies::Vector{T}`: A vector of unfolded energy eigenvalues.
 - `nbins::Int=200`: The number of bins for the histogram of spacings. Defaults to `200`.
 - `rho::Union{Nothing, T}=nothing`: The Berry-Robnik parameter. If provided, the Berry-Robnik distribution is plotted. If set to `nothing`, the Berry-Robnik distribution is excluded.
-- `fit_brody::Bool=false`: If the numerical data requires a fitting of the brody P(s) distribution, displaying the beta parameter in the legend.
+- `fit_brb::Bool=false`: If the numerical data requires a fitting of the Berry-Robnik_Brody P(s) distribution, displaying the optimal beta and rho parameter in the legend.
 
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brody::Bool=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -249,23 +258,15 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     if berry_robnik_pdf !== nothing
         lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
     end
+    if fit_brody && !isnothing(rho)
+        ρ_opt, β_opt = fit_brb_to_data(bin_centers, bin_counts, rho)
+        brb_pdf = x -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
+        lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+    end
     xlims!(ax, extrema(s_values))
     axislegend(ax, position=:rt)
-
     return fig
 end
-
-function plot_brody_fit(unfolded_energies::Vector{T}) where {T<:Real}
-    # Compute nearest neighbor spacings
-    spacings = diff(unfolded_energies)
-    # Create a normalized histogram
-    hist = Distributions.fit(StatsBase.Histogram, spacings; nbins=nbins)
-    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
-    bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
-    # Theoretical form
-
-end
-
 
 """
     plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true) where {T <: Real}
