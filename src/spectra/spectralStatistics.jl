@@ -259,8 +259,8 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
         lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
     end
     if fit_brb && !isnothing(rho)
-        ρ_opt, β_opt = fit_brb_to_data(bin_centers, bin_counts, rho)
-        brb_pdf = x -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
+        ρ_opt, β_opt = fit_brb_to_data(collect(bin_centers), collect(bin_counts), rho)
+        brb_pdf = s -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
         lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
     end
     xlims!(ax, extrema(s_values))
