@@ -1,4 +1,4 @@
-using Makie, SpecialFunctions, ForwardDiff
+using Makie, SpecialFunctions, ForwardDiff, LsqFit
 
 """
 INTERNAL FOR PLOTTING. Uses the def of σ² = (mean of squares) - (mean)^2 to determine the NV of a vector of unfolded energies in the energy window L
@@ -87,6 +87,10 @@ function probability_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     return result
 end
 
+function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
+    
+end
+
 """
     cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
 
@@ -114,7 +118,7 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
 end
 
 
-
+# THIS ONE IS NOT OK, HAS CONVERGENCE PROBLEMS
 """
     cumulative_berry_robnik_numerical_integration(s::T, rho::T) -> T where {T <: Real}
 
@@ -195,7 +199,17 @@ function count_levels_and_avg_fluctuation_in_interval(arr::Vector{T}, billiard::
     end
 end
 
-
+# INTERNAL, returns the optimal β parameter
+function fit_brody_to_data(bin_centers::Vector, bin_counts::Vector)
+    function brody_model(s_vals::Vector, params)
+        β = params
+        a = gamma((β+2)/(β+1))^(β+1)
+        return @. (β+1)*a*s_vals^β*exp(-a*s_vals^(β+1))
+    end
+    β_init = 1.0
+    fit_result = curve_fit((s, params) -> beta_model(s, params), bin_centers, bin_counts, β_init)
+    return fit_result.param
+end
 
 """
     plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing) where {T <: Real}
@@ -206,12 +220,13 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `unfolded_energies::Vector{T}`: A vector of unfolded energy eigenvalues.
 - `nbins::Int=200`: The number of bins for the histogram of spacings. Defaults to `200`.
 - `rho::Union{Nothing, T}=nothing`: The Berry-Robnik parameter. If provided, the Berry-Robnik distribution is plotted. If set to `nothing`, the Berry-Robnik distribution is excluded.
+- `fit_brody::Bool=false`: If the numerical data requires a fitting of the brody P(s) distribution, displaying the beta parameter in the legend.
 
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brody:Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram

@@ -745,5 +745,6 @@ function plot_fraction_mixed_states(ax::Axis, ks_points::Vector, χs::Vector)
     sintetic_xs = collect(range(log_ks_min, log_ks_max, 10)) # 10 logs of points enough for log-log linear plot
     sintetic_ys = ζ_optimal .* sintetic_xs
     lines!(ax, sintetic_xs, sintetic_ys, color=:red, label="ζ=$(round(ζ_optimal; digits=4))")
+    axislegend(ax, position=:rt)
     return ζ_optimal
 end
