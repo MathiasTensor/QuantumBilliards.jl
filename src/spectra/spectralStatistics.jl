@@ -481,7 +481,7 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
         lines!(ax, empirical_cdf, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
     end
     xlims!(1e-4, 1.0-1e-4)
-    ylims!(-0.01, 0.01)
+    ylims!(-0.03, 0.03)
     axislegend(ax, position=:rt)
     return fig
 end
