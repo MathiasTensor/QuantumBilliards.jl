@@ -504,13 +504,13 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
     band!(ax, empirical_cdf, dU_num_br .+ max_std_dev, dU_num_br .- max_std_dev, color=:lightgray)
     if fit_brb_cumul && dU_num_brb !== nothing
-        lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
-        lines!(ax, empirical_cdf, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         band!(ax, empirical_cdf, dU_num_br .+ max_std_dev, dU_num_br .- max_std_dev, color=:lightgray)
         band!(ax, empirical_cdf, dU_num_brb .+ max_std_dev, dU_num_brb .- max_std_dev, color=:lightgray)
-    else
         lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+        lines!(ax, empirical_cdf, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
+    else
         band!(ax, empirical_cdf, dU_num_br .+ max_std_dev, dU_num_br .- max_std_dev, color=:lightgray)
+        lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
     end
     lines!(ax, [w_cutoff, 1.0-w_cutoff], [0.0,0.0], color=:red, linewidth=1)
     axislegend(ax, position=:rt)
