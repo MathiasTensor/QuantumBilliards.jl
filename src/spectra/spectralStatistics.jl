@@ -258,7 +258,7 @@ function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where 
 end
 
 # INTERNAL, returns optimal (ρ,β) parameters for cumulative
-function fit_brb_cumulative_to_data(s_values::Vector, ws::Vector)
+function fit_brb_cumulative_to_data(s_values::Vector, ws::Vector, rho::T) where {T<:Real}
     function brb_cumul_model(s_vals::Vector, params)
         ρ, β = params
         return [cumulative_berry_robnik_brody(s,ρ,β) for s in s_vals]
@@ -317,7 +317,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
 end
 
 """
-    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true) where {T <: Real}
+    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true fit_brb_cumul::Bool=false) where {T <: Real}
 
 Plots the cumulative distribution function (CDF) of the nearest-neighbor level spacings (NNLS) for unfolded energy eigenvalues. Optionally, the Berry-Robnik CDF can be plotted if a `rho` value is provided.
 
@@ -358,6 +358,16 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
 
     # Compute Berry-Robnik CDF values if `rho` is provided
     berry_robnik_cdf_values = rho !== nothing ? [berry_robnik_cdf(s, rho) for s in s_values] : nothing
+    # Compute Berry-Robnik-Brody values if `rho` is provided and also `fit_brb_cumul` is true
+    ρ_opt, β_opt = nothing, nothing
+    if !isnothing(rho) && fit_brb_cumul
+        empirial_spacings = Vector(collect(sorted_spacings))
+        ρ_opt_fit, β_opt_fit = fit_brb_cumulative_to_data(empirial_spacings, empirical_cdf, rho)
+        berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, ρ_opt_fit, β_opt_fit) for s in s_values]
+        ρ_opt, β_opt = ρ_opt_fit, β_opt_fit
+    else
+        berry_robnik_brody_cdf_values = nothing
+    end
 
     # Determine cutoff point in `s_values` based on GOE reaching 0.5
     max_s_index_goe = findfirst(x -> x > 0.5, goe_cdf_values)
@@ -388,7 +398,10 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
     end
     if berry_robnik_cdf_values !== nothing
-        lines!(ax, s_values, berry_robnik_cdf_values, label="B-R: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+        lines!(ax, s_values, berry_robnik_cdf_values, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+    end
+    if berry_robnik_brody_cdf_values !== nothing
+        lines!(ax,  s_values, berry_robnik_brody_cdf_values, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))")
     end
     axislegend(ax, position=:rb)
 
@@ -410,7 +423,10 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
             lines!(inset_ax, s_values[1:max_index], gue_cdf_values[1:max_index], label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
         end
         if berry_robnik_cdf_values !== nothing
-            lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="B-R CDF", color=:black, linewidth=1)
+            lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="BR CDF", color=:black, linewidth=1)
+        end
+        if berry_robnik_brody_cdf_values !== nothing
+            lines!(inset_ax, s_values[1:max_index], berry_robnik_brody_cdf_values[1:max_index], label="BRB CDF", color=:orange, linewidth=1)
         end
         # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
         xlims!(inset_ax, 0.0, s_cutoff)
