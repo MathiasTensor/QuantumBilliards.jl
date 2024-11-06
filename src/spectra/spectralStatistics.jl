@@ -502,7 +502,7 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     xlims!(ax, w_cutoff, 1.0-w_cutoff)
     ylims!(ax, -u_cutoff, u_cutoff)
     lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
-    band!(ax, empirical_cdf, dU_num_br .+ max_std_dev, dU_num_br .- max_std_dev, color=(0.8, 0.8, 0.8, 0.5))
+    band!(ax, empirical_cdf, dU_num_br .+ max_std_dev, dU_num_br .- max_std_dev, color=:lightgray)
     if fit_brb_cumul && dU_num_brb !== nothing
         lines!(ax, empirical_cdf, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
     end
