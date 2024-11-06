@@ -441,6 +441,49 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     return fig
 end
 
+function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cumul::Bool=false) where {T <: Real}
+    # Compute nearest neighbor spacings and sort them
+    spacings = diff(sort(unfolded_energy_eigenvalues))
+    sorted_spacings = collect(sort(spacings))
+    N = length(sorted_spacings)
+    # Compute the empirical CDF
+    empirical_cdf = [i / N for i in 1:N]
+    berry_robnik_cdf = (s, rho) -> cumulative_berry_robnik(s, rho)
+    berry_robnik_cdf_values = [berry_robnik_cdf(s, rho) for s in sorted_spacings]
+    
+    # Compute Berry-Robnik-Brody values if requested
+    ρ_opt, β_opt = nothing, nothing
+    if fit_brb_cumul
+        ρ_opt_fit, β_opt_fit = fit_brb_cumulative_to_data(sorted_spacings, empirical_cdf, rho)
+        berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, ρ_opt_fit, β_opt_fit) for s in sorted_spacings]
+        ρ_opt, β_opt = ρ_opt_fit, β_opt_fit
+    else
+        berry_robnik_brody_cdf_values = nothing
+    end
+    
+    # Calculate U transformations
+    U_numerical = U(empirical_cdf)
+    U_berry_robnik = U(berry_robnik_cdf_values)
+    
+    # Calculate U differences
+    dU_num_br = U_numerical .- U_berry_robnik
+    if fit_brb_cumul && berry_robnik_brody_cdf_values !== nothing
+        U_berry_robnik_brody = U(berry_robnik_brody_cdf_values)
+        dU_num_brb = U_numerical .- U_berry_robnik_brody
+    else
+        dU_num_brb = nothing
+    end
+    
+    fig = Figure(resolution = (1000, 1000))
+    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel=L"U - U(β,ρ)", title="U(s) transformation of W(s)")
+    lines!(ax, sorted_spacings, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+    if fit_brb_cumul && dU_num_brb !== nothing
+        lines!(ax, sorted_spacings, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
+    end
+    axislegend(ax, position=:ct)
+    return fig
+end
+
 
 """
     plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_size::T = T(20.0), fundamental::Bool=true) where {Bi<:AbsBilliard, T<:Real}
