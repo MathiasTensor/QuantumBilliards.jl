@@ -407,7 +407,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         lines!(ax, s_values, berry_robnik_cdf_values, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
     end
     if berry_robnik_brody_cdf_values !== nothing
-        lines!(ax,  s_values, berry_robnik_brody_cdf_values, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))")
+        lines!(ax,  s_values, berry_robnik_brody_cdf_values, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
     end
     axislegend(ax, position=:rb)
 
