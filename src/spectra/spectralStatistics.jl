@@ -127,6 +127,24 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     return dE_dx(s, rho) - dE_dx(0.0, rho)
 end
 
+function cumulative_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
+    function E_joint_derivative(s, rho, β) 
+        Γ_factor = gamma((β + 2) / (β + 1))
+        term1 = real(Complex(-exp(-rho * s - ((1 - rho) * s)^(1 + β) * Γ_factor^(1 + β))))
+        term2 = real(Complex((1 - rho) * ((1 - rho) * s)^β * Γ_factor^β))
+        term3 = real(Complex((((1 - rho) * s)^(1+β) * Γ_factor^(1+β))^(-1+1/(1+β))))
+        term4 = real(Complex(exp(-rho*s) * rho * gamma(1/(1+β)) * gamma_inc(1 / (1 + β), ((1 - rho) * s)^(1 + β) * Γ_factor^(1 + β))[2] / ((1+β)*Γ_factor)))
+        return term1 * term2 * term3 - term4
+    end
+    small_offset = 1e-10
+    return E_joint_derivative(s, rho, β) - E_joint_derivative(small_offset, rho, β)
+end
+
+# INTERNAL U transformation
+function U(ws::Vector)
+    return @. 2/pi*acos(sqrt(1-ws))
+end
+
 
 # THIS ONE IS NOT OK, HAS CONVERGENCE PROBLEMS
 """
