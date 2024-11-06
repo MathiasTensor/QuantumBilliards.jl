@@ -474,7 +474,7 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
         dU_num_brb = nothing
     end
     
-    fig = Figure(resolution = (1000, 1000))
+    fig = Figure(resolution = (2000, 1500), size=(2000,1500))
     ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel=L"U - U(β,ρ)", title="U(s) transformation of W(s)")
     lines!(ax, sorted_spacings, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
     if fit_brb_cumul && dU_num_brb !== nothing
