@@ -473,6 +473,25 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     else
         dU_num_brb = nothing
     end
+
+    # Bin the data and calculate the standard deviation within each bin
+    num_bins = 50
+    bins = range(0, stop=1.0, length=num_bins + 1)
+    bin_indices = searchsortedlast.(Ref(empirical_cdf), bins[1:end-1])
+    bin_std_devs = Float64[]
+
+    for i in 1:num_bins
+        # Extract dU values in the current bin
+        start_idx = i == 1 ? 1 : bin_indices[i-1] + 1
+        end_idx = bin_indices[i]
+        if start_idx <= end_idx
+            dU_values_in_bin = dU_num_br[start_idx:end_idx]
+            push!(bin_std_devs, std(dU_values_in_bin))
+        end
+    end
+
+    # Calculate the maximum standard deviation across bins
+    max_std_dev = maximum(bin_std_devs)
     
     fig = Figure(resolution = (2000, 1500), size=(2000,1500))
     w_cutoff = 1e-4
@@ -483,6 +502,7 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     xlims!(ax, w_cutoff, 1.0-w_cutoff)
     ylims!(ax, -u_cutoff, u_cutoff)
     lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+    band!(ax, empirical_cdf, dU_num_br .+ max_std_dev, dU_num_br .- max_std_dev, color=(0.8, 0.8, 0.8, 0.5))
     if fit_brb_cumul && dU_num_brb !== nothing
         lines!(ax, empirical_cdf, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
     end
