@@ -475,7 +475,7 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     end
 
     # Bin the data and calculate the standard deviation within each bin
-    num_bins = 50
+    num_bins = 100
     bins = range(0, stop=1.0, length=num_bins + 1)
     bin_indices = searchsortedlast.(Ref(empirical_cdf), bins[1:end-1])
     bin_std_devs = Float64[]
