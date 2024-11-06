@@ -475,13 +475,17 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     end
     
     fig = Figure(resolution = (2000, 1500), size=(2000,1500))
-    ax = Axis(fig[1, 1], xlabel="W(s)", ylabel=L"U - U(β,ρ)", title="U(s) transformation of W(s)")
+    w_cutoff = 1e-4
+    u_cutoff = 0.03
+    w_ticks = w_cutoff:0.1:(1.0-w_cutoff)
+    u_ticks = (-u_cutoff):0.005:u_cutoff
+    ax = Axis(fig[1, 1], xlabel="W(s)", ylabel=L"U - U(β,ρ)", title="U(s) transformation of W(s)", xticks=w_ticks, yticks=u_ticks)
+    xlims!(ax, w_cutoff, 1.0-w_cutoff)
+    ylims!(ax, -u_cutoff, u_cutoff)
     lines!(ax, empirical_cdf, dU_num_br, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
     if fit_brb_cumul && dU_num_brb !== nothing
         lines!(ax, empirical_cdf, dU_num_brb, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
     end
-    xlims!(1e-4, 1.0-1e-4)
-    ylims!(-0.03, 0.03)
     axislegend(ax, position=:rt)
     return fig
 end
