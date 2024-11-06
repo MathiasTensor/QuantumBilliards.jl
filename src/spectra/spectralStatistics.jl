@@ -108,8 +108,8 @@ Computes the cumulative Berry-Robnik distribution function (CDF) for a given spa
 The CDF is obtained analytically.
 
 # Arguments
-- `s::T`: The spacing value (must be of a real number type).
-- `rho::T`: The "mixing" parameter (0 < rho < 1).
+- `s::T`: The spacing value.
+- `rho::T`: Liouville regular phase space portion.
 
 # Returns
 - The cumulative probability for the Berry-Robnik distribution at spacing `s`.
@@ -127,6 +127,19 @@ function cumulative_berry_robnik(s::T, rho::T) :: T where {T <: Real}
     return dE_dx(s, rho) - dE_dx(0.0, rho)
 end
 
+"""
+    cumulative_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
+
+Comuptes the cumulative Berry-Robnik_Brody cumulative distribution. The expression used is based on the analytical expression from Mathematica.
+
+# Arguments
+- `s::T`: The spacing value.
+- `rho::T`: Liouville regular phase space portion.
+- `β::T`: Brody exponent.
+
+# Returns
+- The cumulative probability for the Berry-Robnik_Brody distribution at spacing `s`.
+"""
 function cumulative_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     function E_joint_derivative(s, rho, β) 
         Γ_factor = gamma((β + 2) / (β + 1))
@@ -244,6 +257,17 @@ function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where 
     return fit_result.param
 end
 
+# INTERNAL, returns optimal (ρ,β) parameters for cumulative
+function fit_brb_cumulative_to_data(s_values::Vector, ws::Vector)
+    function brb_cumul_model(s_vals::Vector, params)
+        ρ, β = params
+        return [cumulative_berry_robnik_brody(s,ρ,β) for s in s_vals]
+    end
+    init_params = [rho+0.1,1.0] # beta init 1.0, rho little bigger than theoretical regular phase space
+    fit_result = curve_fit((s_vals, params) -> brb_cumul_model(s_vals, params), s_values, ws, init_params)
+    return fit_result.param
+end
+
 """
     plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false) where {T <: Real}
 
@@ -299,14 +323,15 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 
 # Arguments
 - `unfolded_energy_eigenvalues::Vector{T}`: A vector of unfolded energy eigenvalues.
-- `rho::Union{Nothing, T}=nothing`: The mixing parameter for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
+- `rho::Union{Nothing, T}=nothing`: The Liouville reg. phase space portion for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
 - `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
 - `plot_inset::Bool=true`: Whether to plot an inset of small spacings. Defaults to `true`.
+- `fit_brb_cumul::Bool=false`: Whether to fit the Berry-Robnik-Brody CDF to the data and display the optimal rho parameter in the legend. Defaults to `false`.
 
 # Returns
 - `Figure`.
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
