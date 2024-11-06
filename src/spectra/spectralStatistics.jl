@@ -441,7 +441,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     return fig
 end
 
-function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cumul::Bool=false) where {T <: Real}
+function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cumul::Bool=false, num_bins = 100) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = collect(sort(spacings))
@@ -475,7 +475,6 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     end
 
     # Bin the data and calculate the standard deviation within each bin
-    num_bins = 100
     bins = range(0, stop=1.0, length=num_bins + 1)
     bin_indices = searchsortedlast.(Ref(empirical_cdf), bins[1:end-1])
     bin_std_devs = Float64[]
