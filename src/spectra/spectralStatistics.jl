@@ -476,7 +476,7 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     
     fig = Figure(resolution = (2000, 1500), size=(2000,1500))
     w_cutoff = 1e-4
-    u_cutoff = 0.03
+    u_cutoff = 0.025
     w_ticks = w_cutoff:0.1:(1.0-w_cutoff)
     u_ticks = (-u_cutoff):0.005:u_cutoff
     ax = Axis(fig[1, 1], xlabel="W(s)", ylabel=L"U - U(β,ρ)", title="U(s) transformation of W(s)", xticks=w_ticks, yticks=u_ticks)
