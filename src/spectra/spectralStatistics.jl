@@ -256,9 +256,9 @@ function fit_brb_only_beta(bin_centers::Vector, bin_counts::Vector, rho::T) wher
         β = params
         return [probability_berry_robnik_brody(s,rho,β) for s in s_vals]
     end
-    init_params = 1.0 # beta init 1.0
+    init_params = [1.0] # beta init 1.0
     fit_result = curve_fit((s_vals, params) -> brb_model(s_vals, params), bin_centers, bin_counts, init_params)
-    return fit_result.param
+    return fit_result.param[1]
 end
 
 # INTERNAL, returns optimal (ρ,β) parameters for cumulative
@@ -277,9 +277,9 @@ function fit_brb_cumulative_to_data_only_beta(s_values::Vector, ws::Vector, rho:
         β = params
         return [cumulative_berry_robnik_brody(s,rho,β) for s in s_vals]
     end
-    init_params = 1.0
+    init_params = [1.0]
     fit_result = curve_fit((s_vals, params) -> brb_cumul_model(s_vals, params), s_values, ws, init_params)
-    return fit_result.param
+    return fit_result.param[1]
 end
 
 """
