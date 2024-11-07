@@ -95,7 +95,7 @@ function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     T2 = (1 / s) * exp((-1 + rho) * s * (real((Complex(s - rho * s))^β) * C2))
     # Separate out complex components to prevent negative powers leading to complex values
     inner_term = -((-1 + rho) * s * real((Complex(s - rho * s))^β) * C2)
-    T3 = inner_term^(1 / (1 + β))
+    T3 = real(Complex(inner_term)^(1 / (1 + β)))
     T4 = 2 * rho - (1 + β) * (-1 + rho) * real((Complex(s - rho * s))^β) * C2
     T5 = (rho^2 * gamma(1 / (1 + β), inner_term)) / (1 + β)
     return T1 * (T2 * T3 * T4 + T5)
@@ -314,9 +314,9 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     berry_robnik_pdf = rho !== nothing ? (x -> probability_berry_robnik(x, rho)) : nothing
     fig = Figure(resolution=(800, 600))
     if log_scale
-        ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="P(s)")
-    else
         ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="log10(P(s))")
+    else
+        ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="P(s)")
     end
     if log_scale
         scatter!(ax, bin_centers, log10.(bin_counts), label="Empirical", color=:black, marker=:cross, markersize=10)
