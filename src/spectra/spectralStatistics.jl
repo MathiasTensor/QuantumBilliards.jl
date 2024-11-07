@@ -299,7 +299,7 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -343,8 +343,9 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     end
     if fit_brb && !isnothing(rho)
         if fit_only_beta
-            β_opt = fit_brb_cumulative_to_data_only_beta(collect(bin_centers), collect(bin_counts), rho)
-            brb_pdf = s -> probability_berry_robnik_brody(s, rho, β_opt)
+            fited_rho = isnothing(fited_rho) ? rho : fited_rho
+            β_opt = fit_brb_cumulative_to_data_only_beta(collect(bin_centers), collect(bin_counts), fited_rho)
+            brb_pdf = s -> probability_berry_robnik_brody(s, fited_rho, β_opt)
             if log_scale
                 lines!(ax, s_values, log10.(abs.(brb_pdf.(abs.(s_values)))), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             else
@@ -361,7 +362,11 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
         end
     end
     xlims!(ax, extrema(s_values))
-    axislegend(ax, position=:rt)
+    if log_scale
+        axislegend(ax, position=:lb)
+    else
+        axislegend(ax, position=:rt)
+    end
     return fig
 end
 
