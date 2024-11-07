@@ -353,7 +353,7 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 # Returns
 - `Figure`.
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
@@ -384,10 +384,11 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     ρ_opt, β_opt = nothing, nothing
     if !isnothing(rho) && fit_brb_cumul
         if fit_only_beta
+            fited_rho = isnothing(fited_rho) ? rho : fited_rho
             empirial_spacings = Vector(collect(sorted_spacings))
-            β_opt_fit = fit_brb_cumulative_to_data_only_beta(empirial_spacings, empirical_cdf, rho)
-            berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, rho, β_opt_fit) for s in s_values]
-            ρ_opt, β_opt = rho, β_opt_fit
+            β_opt_fit = fit_brb_cumulative_to_data_only_beta(empirial_spacings, empirical_cdf, fited_rho)
+            berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, fited_rho, β_opt_fit) for s in s_values]
+            ρ_opt, β_opt = fited_rho, β_opt_fit
         else
             empirial_spacings = Vector(collect(sorted_spacings))
             ρ_opt_fit, β_opt_fit = fit_brb_cumulative_to_data(empirial_spacings, empirical_cdf, rho)
@@ -464,7 +465,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     return fig
 end
 
-function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cumul::Bool=false, fit_only_beta=false, num_bins = 100) where {T <: Real}
+function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cumul::Bool=false, fit_only_beta=false, num_bins = 100, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = collect(sort(spacings))
@@ -478,9 +479,10 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     ρ_opt, β_opt = nothing, nothing
     if fit_brb_cumul
         if fit_only_beta
-            β_opt_fit = fit_brb_cumulative_to_data_only_beta(sorted_spacings, empirical_cdf, rho)
-            berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, rho, β_opt_fit) for s in sorted_spacings]
-            ρ_opt, β_opt = rho, β_opt_fit
+            fited_rho = isnothing(fited_rho) ? rho : fited_rho
+            β_opt_fit = fit_brb_cumulative_to_data_only_beta(sorted_spacings, empirical_cdf, fited_rho)
+            berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, fited_rho, β_opt_fit) for s in sorted_spacings]
+            ρ_opt, β_opt = fited_rho, β_opt_fit
         else
             ρ_opt_fit, β_opt_fit = fit_brb_cumulative_to_data(sorted_spacings, empirical_cdf, rho)
             berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, ρ_opt_fit, β_opt_fit) for s in sorted_spacings]
