@@ -325,20 +325,20 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
     if log_scale
-        lines!(ax, s_values, log10.(poisson_pdf.(s_values)), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
-        lines!(ax, s_values, log10.(goe_pdf.(s_values)), label="GOE", color=:green, linestyle=:dot, linewidth=1)
-        lines!(ax, s_values, log10.(gue_pdf.(s_values)), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+        lines!(ax, s_values, log10.(poisson_pdf.(abs.(s_values))), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
+        lines!(ax, s_values, log10.(goe_pdf.(abs.(s_values))), label="GOE", color=:green, linestyle=:dot, linewidth=1)
+        lines!(ax, s_values, log10.(gue_pdf.(abs.(s_values))), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
     else
-        lines!(ax, s_values, poisson_pdf.(s_values), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
-        lines!(ax, s_values, goe_pdf.(s_values), label="GOE", color=:green, linestyle=:dot, linewidth=1)
-        lines!(ax, s_values, gue_pdf.(s_values), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+        lines!(ax, s_values, poisson_pdf.(abs.(s_values)), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
+        lines!(ax, s_values, goe_pdf.(abs.(s_values)), label="GOE", color=:green, linestyle=:dot, linewidth=1)
+        lines!(ax, s_values, gue_pdf.(abs.(s_values)), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
     end
     
     if berry_robnik_pdf !== nothing
         if log_scale
-            lines!(ax, s_values, log10.(berry_robnik_pdf.(s_values)), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+            lines!(ax, s_values, log10.(berry_robnik_pdf.(abs.(s_values))), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
         else
-            lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+            lines!(ax, s_values, berry_robnik_pdf.(abs.(s_values)), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
         end
     end
     if fit_brb && !isnothing(rho)
@@ -346,17 +346,17 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
             β_opt = fit_brb_cumulative_to_data_only_beta(collect(bin_centers), collect(bin_counts), rho)
             brb_pdf = s -> probability_berry_robnik_brody(s, rho, β_opt)
             if log_scale
-                lines!(ax, s_values, log10.(brb_pdf.(s_values)), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+                lines!(ax, s_values, log10.(brb_pdf.(abs.(s_values))), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             else
-                lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+                lines!(ax, s_values, brb_pdf.(abs.(s_values)), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             end
         else
             ρ_opt, β_opt = fit_brb_to_data(collect(bin_centers), collect(bin_counts), rho)
             brb_pdf = s -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
             if log_scale
-                lines!(ax, s_values, log10.(brb_pdf.(s_values)), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+                lines!(ax, s_values, log10.(brb_pdf.(abs.(s_values))), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             else
-                lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+                lines!(ax, s_values, brb_pdf.(abs.(s_values)), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             end
         end
     end
