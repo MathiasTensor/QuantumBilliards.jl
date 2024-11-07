@@ -97,7 +97,7 @@ function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     inner_term = -((-1 + rho) * s * real((Complex(s - rho * s))^β) * C2)
     T3 = real(Complex(inner_term)^(1 / (1 + β)))
     T4 = 2 * rho - (1 + β) * (-1 + rho) * real((Complex(s - rho * s))^β) * C2
-    T5 = (rho^2 * gamma(1 / (1 + β), inner_term)) / (1 + β)
+    T5 = (rho^2 * gamma(1 / (1 + abs(β)), inner_term)) / (1 + β)
     return T1 * (T2 * T3 * T4 + T5)
 end
 
