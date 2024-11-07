@@ -243,18 +243,18 @@ end
 # INTERNAL, returns the optimal (ρ,β) parameters
 function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
     function brb_model(s_vals::Vector, params)
-        #ρ, β = params
-        Δρ, β = params
-        ρ = rho + abs(Δρ)
+        ρ, β = params
+        #Δρ, β = params
+        #ρ = rho + abs(Δρ)
         return [probability_berry_robnik_brody(s,ρ,β) for s in s_vals]
     end
-    #init_params = [rho+0.1,1.0] # beta init 1.0
-    init_params = [0.003, 1.0]
+    init_params = [rho+0.1,1.0] # beta init 1.0
+    #init_params = [0.003, 1.0]
     fit_result = curve_fit((s_vals, params) -> brb_model(s_vals, params), bin_centers, bin_counts, init_params)
-    ρ_opt = rho + abs(fit_result.param[1])
-    β_opt = fit_result.param[2]
-    return (ρ_opt, β_opt)
-    #return fit_result.param
+    #ρ_opt = rho + abs(fit_result.param[1])
+    #β_opt = fit_result.param[2]
+    #return (ρ_opt, β_opt)
+    return fit_result.param
 end
 
 # INTERNAL, returns optimal (ρ,β) parameters for cumulative
