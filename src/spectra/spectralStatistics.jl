@@ -476,8 +476,8 @@ function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cum
     
     # Compute Berry-Robnik-Brody values if requested
     ρ_opt, β_opt = nothing, nothing
-    if fit_only_beta
-        if fit_brb_only_beta
+    if fit_brb_cumul
+        if fit_only_beta
             β_opt_fit = fit_brb_cumulative_to_data_only_beta(sorted_spacings, empirical_cdf, rho)
             berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, rho, β_opt_fit) for s in sorted_spacings]
             ρ_opt, β_opt = rho, β_opt_fit
