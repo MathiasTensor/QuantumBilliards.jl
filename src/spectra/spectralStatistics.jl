@@ -293,12 +293,13 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `rho::Union{Nothing, T}=nothing`: The Berry-Robnik parameter. If provided, the Berry-Robnik distribution is plotted. If set to `nothing`, the Berry-Robnik distribution is excluded.
 - `fit_brb::Bool=false`: If the numerical data requires a fitting of the Berry-Robnik_Brody P(s) distribution, displaying the optimal beta and rho parameter in the legend.
 - `fit_only_beta::Bool=false`: If `true`, only the Berry-Robnik-Brody distribution's β parameter is fitted to the data, ρ is as given initially.
+- `log_scale::Bool=false`: If we plot log(P(s)) for observing small differences
 
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -312,24 +313,51 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     # Optionally include Berry-Robnik distribution if rho is provided
     berry_robnik_pdf = rho !== nothing ? (x -> probability_berry_robnik(x, rho)) : nothing
     fig = Figure(resolution=(800, 600))
-    ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="Probability Density")
-    scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
+    if log_scale
+        ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="P(s)")
+    else
+        ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="log10(P(s))")
+    end
+    if log_scale
+        scatter!(ax, bin_centers, log10.(bin_counts), label="Empirical", color=:black, marker=:cross, markersize=10)
+    else
+        scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
+    end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
-    lines!(ax, s_values, poisson_pdf.(s_values), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
-    lines!(ax, s_values, goe_pdf.(s_values), label="GOE", color=:green, linestyle=:dot, linewidth=1)
-    lines!(ax, s_values, gue_pdf.(s_values), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+    if log_scale
+        lines!(ax, s_values, log10.(poisson_pdf.(s_values)), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
+        lines!(ax, s_values, log10.(goe_pdf.(s_values)), label="GOE", color=:green, linestyle=:dot, linewidth=1)
+        lines!(ax, s_values, log10.(gue_pdf.(s_values)), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+    else
+        lines!(ax, s_values, poisson_pdf.(s_values), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
+        lines!(ax, s_values, goe_pdf.(s_values), label="GOE", color=:green, linestyle=:dot, linewidth=1)
+        lines!(ax, s_values, gue_pdf.(s_values), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+    end
+    
     if berry_robnik_pdf !== nothing
-        lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+        if log_scale
+            lines!(ax, s_values, log10.(berry_robnik_pdf.(s_values)), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+        else
+            lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+        end
     end
     if fit_brb && !isnothing(rho)
         if fit_only_beta
             β_opt = fit_brb_cumulative_to_data_only_beta(collect(bin_centers), collect(bin_counts), rho)
             brb_pdf = s -> probability_berry_robnik_brody(s, rho, β_opt)
-            lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+            if log_scale
+                lines!(ax, s_values, log10.(brb_pdf.(s_values)), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+            else
+                lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+            end
         else
             ρ_opt, β_opt = fit_brb_to_data(collect(bin_centers), collect(bin_counts), rho)
             brb_pdf = s -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
-            lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+            if log_scale
+                lines!(ax, s_values, log10.(brb_pdf.(s_values)), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+            else
+                lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+            end
         end
     end
     xlims!(ax, extrema(s_values))
