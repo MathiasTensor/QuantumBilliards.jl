@@ -143,10 +143,10 @@ Comuptes the cumulative Berry-Robnik_Brody cumulative distribution. The expressi
 function cumulative_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     function E_joint_derivative(s, rho, β) 
         Γ_factor = gamma((β + 2) / (β + 1))
-        term1 = real(Complex(-exp(-rho * s - ((1 - rho) * s)^(1 + β) * Γ_factor^(1 + β))))
-        term2 = real(Complex((1 - rho) * ((1 - rho) * s)^β * Γ_factor^β))
-        term3 = real(Complex((((1 - rho) * s)^(1+β) * Γ_factor^(1+β))^(-1+1/(1+β))))
-        term4 = real(Complex(exp(-rho*s) * rho * gamma(1/(1+β)) * gamma_inc(1 / (1 + β), ((1 - rho) * s)^(1 + β) * Γ_factor^(1 + β))[2] / ((1+β)*Γ_factor)))
+        term1 = -exp(-rho * s - real(Complex((1 - rho) * s)^(1 + β)) * Γ_factor^(1 + β))
+        term2 = (1 - rho) * real(Complex((1 - rho) * s)^β) * Γ_factor^β
+        term3 = (real(Complex((1 - rho) * s)^(1+β)) * Γ_factor^(1+β))^(-1+1/(1+β))
+        term4 = exp(-rho*s) * rho * gamma(1/(1+β)) * gamma_inc(1 / (1 + β), real(Complex((1 - rho) * s)^(1 + β)) * Γ_factor^(1 + β))[2] / ((1+β)*Γ_factor)
         return term1 * term2 * term3 - term4
     end
     small_offset = 1e-10
