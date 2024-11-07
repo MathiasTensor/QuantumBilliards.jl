@@ -92,7 +92,7 @@ function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     Γ_factor = gamma(1 + 1 / (1 + β))
     C2 = Γ_factor^(β + 1)
     T1 = (1 / Γ_factor) * exp(-rho * s)
-    T2 = (1 / s) * exp((-1 + rho) * s * ((s - rho * s)^β * C2))
+    T2 = real(Complex((1 / s) * exp((-1 + rho) * s * ((s - rho * s)^β * C2))))
     # Separate out complex components to prevent negative powers leading to complex values
     inner_term = -((-1 + rho) * s * (s - rho * s)^β * C2)
     T3 = inner_term^(1 / (1 + β))
