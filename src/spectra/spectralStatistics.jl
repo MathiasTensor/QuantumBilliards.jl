@@ -348,11 +348,12 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 - `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
 - `plot_inset::Bool=true`: Whether to plot an inset of small spacings. Defaults to `true`.
 - `fit_brb_cumul::Bool=false`: Whether to fit the Berry-Robnik-Brody CDF to the data and display the optimal rho parameter in the legend. Defaults to `false`.
+- `fit_only_beta::Bool=false`: If `true`, only the Berry-Robnik-Brody distribution's β parameter is fitted to the data, ρ is as given initially.
 
 # Returns
 - `Figure`.
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
@@ -382,10 +383,17 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     # Compute Berry-Robnik-Brody values if `rho` is provided and also `fit_brb_cumul` is true
     ρ_opt, β_opt = nothing, nothing
     if !isnothing(rho) && fit_brb_cumul
-        empirial_spacings = Vector(collect(sorted_spacings))
-        ρ_opt_fit, β_opt_fit = fit_brb_cumulative_to_data(empirial_spacings, empirical_cdf, rho)
-        berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, ρ_opt_fit, β_opt_fit) for s in s_values]
-        ρ_opt, β_opt = ρ_opt_fit, β_opt_fit
+        if fit_only_beta
+            empirial_spacings = Vector(collect(sorted_spacings))
+            β_opt_fit = fit_brb_cumulative_to_data_only_beta(empirial_spacings, empirical_cdf, rho)
+            berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, rho, β_opt_fit) for s in s_values]
+            ρ_opt, β_opt = rho, β_opt_fit
+        else
+            empirial_spacings = Vector(collect(sorted_spacings))
+            ρ_opt_fit, β_opt_fit = fit_brb_cumulative_to_data(empirial_spacings, empirical_cdf, rho)
+            berry_robnik_brody_cdf_values = [cumulative_berry_robnik_brody(s, ρ_opt_fit, β_opt_fit) for s in s_values]
+            ρ_opt, β_opt = ρ_opt_fit, β_opt_fit
+        end
     else
         berry_robnik_brody_cdf_values = nothing
     end
