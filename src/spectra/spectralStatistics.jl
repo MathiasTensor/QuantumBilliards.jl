@@ -253,7 +253,7 @@ end
 
 function fit_brb_only_beta(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
     function brb_model(s_vals::Vector, params)
-        β = params
+        β = params[1]
         return [probability_berry_robnik_brody(s,rho,β) for s in s_vals]
     end
     init_params = [1.0] # beta init 1.0
@@ -274,7 +274,7 @@ end
 
 function fit_brb_cumulative_to_data_only_beta(s_values::Vector, ws::Vector, rho::T) where {T<:Real}
     function brb_cumul_model(s_vals::Vector, params)
-        β = params
+        β = params[1]
         return [cumulative_berry_robnik_brody(s,rho,β) for s in s_vals]
     end
     init_params = [1.0]
