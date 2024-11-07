@@ -244,34 +244,42 @@ end
 function fit_brb_to_data(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
     function brb_model(s_vals::Vector, params)
         ρ, β = params
-        #Δρ, β = params
-        #ρ = rho + abs(Δρ)
         return [probability_berry_robnik_brody(s,ρ,β) for s in s_vals]
     end
     init_params = [rho+0.1,1.0] # beta init 1.0
-    #init_params = [0.003, 1.0]
     fit_result = curve_fit((s_vals, params) -> brb_model(s_vals, params), bin_centers, bin_counts, init_params)
-    #ρ_opt = rho + abs(fit_result.param[1])
-    #β_opt = fit_result.param[2]
-    #return (ρ_opt, β_opt)
+    return fit_result.param
+end
+
+function fit_brb_only_beta(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
+    function brb_model(s_vals::Vector, params)
+        β = params
+        return [probability_berry_robnik_brody(s,rho,β) for s in s_vals]
+    end
+    init_params = 1.0 # beta init 1.0
+    fit_result = curve_fit((s_vals, params) -> brb_model(s_vals, params), bin_centers, bin_counts, init_params)
     return fit_result.param
 end
 
 # INTERNAL, returns optimal (ρ,β) parameters for cumulative
 function fit_brb_cumulative_to_data(s_values::Vector, ws::Vector, rho::T) where {T<:Real}
     function brb_cumul_model(s_vals::Vector, params)
-        #ρ, β = params
-        Δρ, β = params
-        ρ = rho + abs(Δρ)
+        ρ, β = params
         return [cumulative_berry_robnik_brody(s,ρ,β) for s in s_vals]
     end
-    #init_params = [rho+0.1,1.0] # beta init 1.0, rho little bigger than theoretical regular phase space
-    init_params = [0.003, 1.0]
+    init_params = [rho+0.1,1.0] # beta init 1.0, rho little bigger than theoretical regular phase space
     fit_result = curve_fit((s_vals, params) -> brb_cumul_model(s_vals, params), s_values, ws, init_params)
-    ρ_opt = rho + abs(fit_result.param[1])
-    β_opt = fit_result.param[2]
-    return (ρ_opt, β_opt)
-    #return fit_result.param
+    return fit_result.param
+end
+
+function fit_brb_cumulative_to_data_only_beta(s_values::Vector, ws::Vector, rho::T) where {T<:Real}
+    function brb_cumul_model(s_vals::Vector, params)
+        β = params
+        return [cumulative_berry_robnik_brody(s,rho,β) for s in s_vals]
+    end
+    init_params = 1.0
+    fit_result = curve_fit((s_vals, params) -> brb_cumul_model(s_vals, params), s_values, ws, init_params)
+    return fit_result.param
 end
 
 """
@@ -284,12 +292,13 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `nbins::Int=200`: The number of bins for the histogram of spacings. Defaults to `200`.
 - `rho::Union{Nothing, T}=nothing`: The Berry-Robnik parameter. If provided, the Berry-Robnik distribution is plotted. If set to `nothing`, the Berry-Robnik distribution is excluded.
 - `fit_brb::Bool=false`: If the numerical data requires a fitting of the Berry-Robnik_Brody P(s) distribution, displaying the optimal beta and rho parameter in the legend.
+- `fit_only_beta::Bool=false`: If `true`, only the Berry-Robnik-Brody distribution's β parameter is fitted to the data, ρ is as given initially.
 
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -313,9 +322,15 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
         lines!(ax, s_values, berry_robnik_pdf.(s_values), label="Berry-Robnik, rho=$(round(rho; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
     end
     if fit_brb && !isnothing(rho)
-        ρ_opt, β_opt = fit_brb_to_data(collect(bin_centers), collect(bin_counts), rho)
-        brb_pdf = s -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
-        lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+        if fit_only_beta
+            β_opt = fit_brb_cumulative_to_data_only_beta(collect(bin_centers), collect(bin_counts), rho)
+            brb_pdf = s -> probability_berry_robnik_brody(s, rho, β_opt)
+            lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+        else
+            ρ_opt, β_opt = fit_brb_to_data(collect(bin_centers), collect(bin_counts), rho)
+            brb_pdf = s -> probability_berry_robnik_brody(s, ρ_opt, β_opt)
+            lines!(ax, s_values, brb_pdf.(s_values), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+        end
     end
     xlims!(ax, extrema(s_values))
     axislegend(ax, position=:rt)
