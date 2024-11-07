@@ -347,9 +347,9 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
             β_opt = fit_brb_only_beta(collect(bin_centers), collect(bin_counts), fited_rho)
             brb_pdf = s -> probability_berry_robnik_brody(s, fited_rho, β_opt)
             if log_scale
-                lines!(ax, s_values, log10.(abs.(brb_pdf.(abs.(s_values)))), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+                lines!(ax, s_values, log10.(abs.(brb_pdf.(abs.(s_values)))), label="Berry-Robnik-Brody, ρ_fit=$(round(fited_rho; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             else
-                lines!(ax, s_values, brb_pdf.(abs.(s_values)), label="Berry-Robnik-Brody, β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
+                lines!(ax, s_values, brb_pdf.(abs.(s_values)), label="Berry-Robnik-Brody, ρ_fit=$(round(fited_rho; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             end
         else
             ρ_opt, β_opt = fit_brb_to_data(collect(bin_centers), collect(bin_counts), rho)
