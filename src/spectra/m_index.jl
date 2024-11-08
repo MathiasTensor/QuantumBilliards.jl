@@ -352,6 +352,18 @@ function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list:
     end
 
     for i in eachindex(ks) # do not multithread, memory corruption problem
+        f = Figure(size = (1000, 1000), resolution=(1000, 1000))
+        ax_overlap = Axis(f[1,1], title="k = $(round(ks[i]; sigdigits=8)), Overlap = $(round(Ms[i]; sigdigits=4))")
+        max_value = maximum(abs, overlaps[i])
+        hmap = heatmap!(ax_overlap, overlaps[i]; colormap=:balance,colorrange=(-max_value, max_value))
+        Colorbar(f[1,2], hmap)
+        ax_wave = Axis(f[2,1], title="Wavefunction Heatmap for k = $(round(ks[i]; sigdigits=8))")
+        hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=:balance)
+        plot_boundary!(ax_wave, billiard; fundamental_domain=fundamental_domain, plot_normal=false)
+        Colorbar(f[2,2], hmap)
+        colsize!(f.layout, 1, Aspect(4, 1)) 
+        save("$save_path/$(ks[i])_overlap_w_wavefunctions.png", f)
+        #=
         try
             f = Figure(size = (1000, 1000), resolution=(1000, 1000))
             ax_overlap = Axis(f[1,1], title="k = $(round(ks[i]; sigdigits=8)), Overlap = $(round(Ms[i]; sigdigits=4))")
@@ -367,6 +379,7 @@ function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list:
         catch e
             @warn "Failed to save overlap for k = $(ks[i]): $(e)"
         end
+        =#
         next!(progress_saving)
     end
 end
