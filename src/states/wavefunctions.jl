@@ -1,4 +1,4 @@
-using StaticArrays, JLD2
+using StaticArrays, JLD2, ProgressMeter
 
 
 
@@ -401,6 +401,7 @@ function wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, in
     vec_Psi = Vector{Matrix}(undef, length(ks))
     vec_xs = Vector{Vector}(undef, length(ks))
     vec_ys = Vector{Vector}(undef, length(ks))
+    p = Progress(length(ks), 1)
     Threads.@threads for i in eachindex(ks) 
         vec = X[i]
         k = ks[i]
@@ -408,6 +409,7 @@ function wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, in
         vec_Psi[i] = Psi2d
         vec_xs[i] = x_grid
         vec_ys[i] = y_grid
+        next!(p)
     end
     return vec_Psi, vec_xs, vec_ys
 end

@@ -332,7 +332,7 @@ function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list:
     Ms = Vector{Float64}(undef, length(ks))
     projection_grids = Vector{Matrix}(undef, length(ks))
     overlaps = Vector{Matrix}(undef, length(ks))
-    _, Psi2ds, x_grids, y_grids = wavefunctions(X, ks, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
+    Psi2ds, x_grids, y_grids = wavefunctions(X, ks, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
     Threads.@threads for i in eachindex(ks) # only this can multithread, precompute data
         try
             H = H_list[i]
