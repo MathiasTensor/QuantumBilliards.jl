@@ -361,7 +361,7 @@ function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list:
         hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=:balance)
         plot_boundary!(ax_wave, billiard; fundamental_domain=fundamental_domain, plot_normal=false)
         Colorbar(f[2,2], hmap)
-        colsize!(f.layout, 1, Aspect(4, 1)) 
+        colsize!(f.layout, 1, Aspect(2, 1)) 
         save("$save_path/$(ks[i])_overlap_w_wavefunctions.png", f)
         #=
         try
