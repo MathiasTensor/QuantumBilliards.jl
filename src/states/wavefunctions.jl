@@ -122,7 +122,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
     end
 end
 
-# DO NOT USE
+
 # INTERNAL FOR COMPUTING WAVEFUNCTIONS FROM STATE DATA WHERE WE TAKE THE ONLY THE VECTOR OF COEFFICIENTS OF THE LINEAR EXPANSIONS AND THE K EIGENVALUE
 function compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
     eps = set_precision(vec[1])
@@ -266,13 +266,74 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
     end
 end
 
+# INTERNAL
+file_extension(file::String) = file[findlast(==('.'), file)+1:end]
+"""
+    save_vec_from_StateData(state_data::StateData, file_path::String)
+
+Saves the X matrix into a a .jld2 file with ks for convenience.
+
+# Arguments
+- `state_data::StateData`: The `StateData` containing the eigenvalues (ks) and the X matrix that contains the basis expansion coefficients.
+- `file_path::String`: The file path where the data will be saved.
+
+# Returns
+- `Nothing`: If the file is successfully saved.
+"""
+function save_vec_from_StateData!(state_data::StateData, file_path::String)
+    ks = state_data.ks
+    X = state_data.X
+    @assert file_extension(file_path) == "jld2" "Must be a .jld2 file format"
+    @assert length(ks) == length(X) "The number of eigenvalues should be the same as the number of columns in X"
+    @save file_path ks X
+end
+
+"""
+    load_vec_from_file(file_path::String)
+
+Loads the saved ks and X matrix from a string file.
+
+# Arguments
+- `file_path::String`: The file path from which the data will be loaded.
+
+# Returns
+- `ks::Vector{<:Real}`: The vector of eigenvalues (wavenumbers).
+- `X::Matrix{<:Real}`: The matrix containing the basis expansion coefficients.
+"""
+function load_vec_from_file(file_path::String)
+    ks = nothing
+    X = nothing
+    @load file_path ks X
+    @assert ks !== nothing && X !== nothing "Failed to load ks or X from file"
+    return ks, X
+end
+
 # IN DEVELOPEMNT
 # USEFUL FOR CONSTRUCTING LARGE NUMBER OF WAVEFUNCTIONS FROM StateData (saved ks[i], X[i], basis, billiard)
-function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
-    symmetries=state.basis.symmetries       
+"""
+    wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}     
+
+Computes the wavefunction matrix and the x and y grids for heatmap plotting. It is contructed from the vec=X[i] of `StateData` and not directly from `StateData`.
+
+# Arguments
+- `vec::Vector{<:Real}`: The vector of coefficients of the basis expansion of the wavefunction. It's length determines the resizeing of the `basis`.ž
+- `k<:Real`: The wavenumber for that vec = X[i].
+- `billiard<:AbsBilliard`: The billiard geometry.
+- `basis<:AbsBasis`: The basis used for constructing the wavefunction from `vec`. Must be the same as the one used for constructing `vec`.
+- `b`: The point scalling factor. Default is 5.0.
+- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
+- `fundamental_domain::Bool`: If true, the wavefunction information is only constructed in the fundamental domain. Default is true.
+- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the `basis_fun` directly. Default is 10.0e9.
+
+# Returns
+- `Psi2ds::Vector{Matrix}`: A vector of `Matrix` containing the wavefunction for each k in ks.
+- `x_grids::Vector{Vector}`: A vector of `Vector` containing the x grid for each k in ks.
+- `y_grids::Vector{Vector}`: A vector of `Vector` containing the y grid for each k in ks.
+"""
+function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}     
     basis = resize_basis(basis, billiard, length(vec), k)
+    symmetries = basis.symmetries
     type = eltype(state.vec)
-    #try to find a lazy way to do this
     L = billiard.length
     
     xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
