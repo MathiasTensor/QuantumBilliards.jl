@@ -333,7 +333,7 @@ Computes the wavefunction matrix and the x and y grids for heatmap plotting. It 
 function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}     
     basis = resize_basis(basis, billiard, length(vec), k)
     symmetries = basis.symmetries
-    type = eltype(state.vec)
+    type = eltype(vec)
     L = billiard.length
     
     xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
