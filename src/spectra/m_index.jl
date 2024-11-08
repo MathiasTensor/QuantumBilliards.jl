@@ -302,8 +302,8 @@ Visualizes and saves the wavefunction with it's corresponding Husimi function.
   Vector of classical chaotic `s` values used to compute the projection grid.
 - `classical_chaotic_p_vals::Vector`:  
   Vector of classical chaotic `p` values used to compute the projection grid.
-- `state_data::StateData`:  
-  The `StateData` object containing wavefunction information from the spectrum calculations.
+- `X::Matrix`:  
+  The `X` object containing expansion coefficients of the wavefunction basis expansion for each k in ks.
 - `billiard::Bi`:  
   The billiard object for computing wavefunctions.
 - `basis::Ba`:  
@@ -322,7 +322,7 @@ Visualizes and saves the wavefunction with it's corresponding Husimi function.
 """
 function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list::Vector, 
     ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
-    state_data::StateData, billiard::Bi, basis::Ba; 
+    X::Vector, billiard::Bi, basis::Ba; 
     b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9, save_path::String = "Overlap_visualization") where {Bi<:AbsBilliard, Ba<:AbsBasis}
     if !isdir(save_path)
         mkdir(save_path)
@@ -332,7 +332,7 @@ function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list:
     Ms = Vector{Float64}(undef, length(ks))
     projection_grids = Vector{Matrix}(undef, length(ks))
     overlaps = Vector{Matrix}(undef, length(ks))
-    _, Psi2ds, x_grids, y_grids = wavefunctions(state_data, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
+    _, Psi2ds, x_grids, y_grids = wavefunctions(X, ks, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
     Threads.@threads for i in eachindex(ks) # only this can multithread, precompute data
         try
             H = H_list[i]

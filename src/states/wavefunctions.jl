@@ -377,6 +377,41 @@ function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_
     return Psi2d, x_grid, y_grid
 end
 
+"""
+    wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
+
+High level wrapper for moer efficiently computing wavefunction matrices and the grids for plotting.
+
+# Arguments
+- `X::Vector`: A vector of coefficients of the basis expansion of the wavefunction for each k in ks.
+- `ks::Vector`: A vector of wavenumbers for which to compute the wavefunction.
+- `billiard::Bi`: An object representing the billiard.
+- `basis::Ba`: An object representing the basis (rpw, cafb...).
+- `b`: The point scalling factor. Default is 5.0.
+- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
+- `fundamental_domain::Bool`: If true, the wavefunction is only constructed in the fundamental domain. Default is true.
+- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the `basis_fun` directly. Default is 10.0e9.
+
+# Returns
+- `vec_Psi::Vector{Matrix}`: A vector of `Matrix` containing the wavefunction for each k in ks.
+- `vec_xs::Vector{Vector}`: A vector of `Vector` containing the x grid for each k in ks.
+- `vec_ys::Vector{Vector}`: A vector of `Vector` containing the y grid for each k in ks.
+"""
+function wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
+    vec_Psi = Vector{Matrix}(undef, length(ks))
+    vec_xs = Vector{Vector}(undef, length(ks))
+    vec_ys = Vector{Vector}(undef, length(ks))
+    for i in eachindex(ks) 
+        vec = X[i]
+        k = ks[i]
+        Psi2d, x_grid, y_grid = wavefunction(vec, k, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
+        vec_Psi[i] = Psi2d
+        vec_xs[i] = x_grid
+        vec_ys[i] = y_grid
+    end
+    return vec_Psi, vec_xs, vec_ys
+end
+
 ### NEW ONE THAT USES StateData to generate the wavefunctions and the X, Y grids
 """
     wavefunctions(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) :: Tuple{Vector, Vector{Matrix}, Vector{Vector}, Vector{Vector}} where {Bi<:AbsBilliard, Ba<:AbsBasis}
