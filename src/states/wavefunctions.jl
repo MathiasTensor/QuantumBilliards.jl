@@ -401,7 +401,7 @@ function wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, in
     vec_Psi = Vector{Matrix}(undef, length(ks))
     vec_xs = Vector{Vector}(undef, length(ks))
     vec_ys = Vector{Vector}(undef, length(ks))
-    for i in eachindex(ks) 
+    Threads.@threads for i in eachindex(ks) 
         vec = X[i]
         k = ks[i]
         Psi2d, x_grid, y_grid = wavefunction(vec, k, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
