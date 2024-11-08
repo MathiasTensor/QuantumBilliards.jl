@@ -281,6 +281,96 @@ function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vect
     end
 end
 
+"""
+    visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
+    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
+    state_data::StateData, billiard::Bi, basis::Ba; 
+    b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9, save_path::String = "Overlap_visualization") where {Bi<:AbsBilliard, Ba<:AbsBasis}
+
+Visualizes and saves the wavefunction with it's corresponding Husimi function.
+
+# Arguments
+- `ks::Vector`:  
+  Vector of wavenumbers corresponding to each quantum level.
+- `H_list::Vector{Matrix}`:  
+  Vector of Husimi functions for each quantum level.
+- `qs_list::Vector{Vector}`:  
+  Vector of position grids (`q`) for each Husimi function.
+- `ps_list::Vector{Vector}`:  
+  Vector of momentum grids (`p`) for each Husimi function.
+- `classical_chaotic_s_vals::Vector`:  
+  Vector of classical chaotic `s` values used to compute the projection grid.
+- `classical_chaotic_p_vals::Vector`:  
+  Vector of classical chaotic `p` values used to compute the projection grid.
+- `state_data::StateData`:  
+  The `StateData` object containing wavefunction information from the spectrum calculations.
+- `billiard::Bi`:  
+  The billiard object for computing wavefunctions.
+- `basis::Ba`:  
+  The basis object for computing wavefunctions.
+- `b::Float64`:  
+  Point scaling factor for the wavefunctions (default 5.0).
+- `inside_only::Bool`:  
+  Whether to only include points inside the billiard for wavefunction (default true).
+- `fundamental_domain::Bool`:  
+  Whether to compute wavefunctions only in the fundamental domain (default true).
+- `memory_limit::Float64`:  
+  The memory limit for constructing the wavefunction (default 10.0e9 bytes).
+
+# Returns
+- `Nothing`
+"""
+function visualize_husimi_and_wavefunction!(ks::Vector, H_list::Vector, qs_list::Vector, 
+    ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
+    state_data::StateData, billiard::Bi, basis::Ba; 
+    b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9, save_path::String = "Overlap_visualization") where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    if !isdir(save_path)
+        mkdir(save_path)
+    end
+    progress_computing = Progress(length(ks), desc = "Computing overlaps...")
+    progress_saving = Progress(length(ks), desc = "Saving overlap visualizations...")
+    Ms = Vector{Float64}(undef, length(ks))
+    projection_grids = Vector{Matrix}(undef, length(ks))
+    overlaps = Vector{Matrix}(undef, length(ks))
+    _, Psi2ds, x_grids, y_grids = wavefunctions(state_data, billiard, basis; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
+    Threads.@threads for i in eachindex(ks) # only this can multithread, precompute data
+        try
+            H = H_list[i]
+            qs = qs_list[i]
+            ps = ps_list[i]
+            proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+            println("Size of projection grid: ", size(proj_grid), " , size of H: ", size(H))
+            M_val = compute_M(proj_grid, H)
+            overlap_val = visualize_overlap(proj_grid, H)
+            projection_grids[i] = proj_grid
+            Ms[i] = M_val
+            overlaps[i] = overlap_val
+        catch e
+            @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
+        end
+        next!(progress_computing)
+    end
+
+    for i in eachindex(ks) # do not multithread, memory corruption problem
+        try
+            f = Figure(size = (1000, 1000), resolution=(1000, 1000))
+            ax_overlap = Axis(f[1,1], title="k = $(round(ks[i]; sigdigits=8)), Overlap = $(round(Ms[i]; sigdigits=4))")
+            max_value = maximum(abs, overlaps[i])
+            hmap = heatmap!(ax_overlap, overlaps[i]; colormap=:balance,colorrange=(-max_value, max_value))
+            Colorbar(f[1,2], hmap)
+            ax_wave = Axis(f[2,1], title="Wavefunction Heatmap for k = $(round(ks[i]; sigdigits=8))")
+            hmap = heatmap!(ax_wave, x_grids[i], y_grids[i], Psi2ds[i]; colormap=:balance)
+            plot_boundary!(ax_wave, billiard; fundamental_domain=fundamental_domain, plot_normal=false)
+            Colorbar(f[2,2], hmap)
+            colsize!(f.layout, 1, Aspect(4, 1)) 
+            save("$save_path/$(ks[i])_overlap_w_wavefunctions.png", f)
+        catch e
+            @warn "Failed to save overlap for k = $(ks[i]): $(e)"
+        end
+        next!(progress_saving)
+    end
+end
+
 # M COMPUTATIONS
 
 """
