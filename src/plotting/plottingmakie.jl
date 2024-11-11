@@ -127,7 +127,11 @@ function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::
         x2, y2 = all_pts[mod1(i + 1, n)]
         area += x1 * y2 - y1 * x2
     end
-    ifelse(area > 0.0, println("Correct counterclockwise orientation"), println("Signed area: $(area)!!"))
+    if area > 0.0
+        println("Correct counterclockwise orientation")
+    else
+        println("Signed area: $(area)!!")
+    end
 end
 
 function plot_domain_fun!(f, curve::C; xlim=(-1.0,1.0),ylim=(-1.0,1.0), dens=100.0, hmargs=Dict(),cmap=:binary) where {C<:AbsCurve}
