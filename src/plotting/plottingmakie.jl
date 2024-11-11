@@ -93,8 +93,8 @@ function plot_boundary_orientation!(ax, billiard::Bi; fundamental_domain=true, d
         t = range(0.0,1.0, grid)
         pts = curve(crv,t)
         for i in eachindex(pts)[1:end-1] # Plot arrows between each consecutive pair of points
-            sp = pts[i]
-            ep = pts[i + 1]
+            sp = Vector(pts[i])
+            ep = Vector(pts[i + 1])
             dir = ep - sp
             arrows!(ax, sp, dir; color=:black, linewidth = 2, arrowsize = 0.2, arrowcolor=:red)
         end
