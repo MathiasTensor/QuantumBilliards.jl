@@ -472,6 +472,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
             lines!(ax,  s_values, log10.(abs.(1.0.-berry_robnik_brody_cdf_values)), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         end
         xlims!(ax, (2.0, 10.0))
+        axislegend(ax, position=:lb)
     else
         # Plot the empirical CDF
         scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
@@ -487,12 +488,16 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         if berry_robnik_brody_cdf_values !== nothing
             lines!(ax,  s_values, berry_robnik_brody_cdf_values, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         end
+        axislegend(ax, position=:rb)
     end
-    axislegend(ax, position=:rb)
 
     # Inset plot settings
     if plot_inset
-        inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.5, xlabel="Spacing (s)", ylabel="Cumulative Probability")
+        if plot_log
+            inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.5, xlabel="Spacing (s)", ylabel="Cumulative Probability")
+        else
+            inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.95, xlabel="Spacing (s)", ylabel="Cumulative Probability")
+        end
         # Offset inset to bring it in front of the main axis content
         translate!(inset_ax.scene, 0, 0, 10)
         translate!(inset_ax.elements[:background], 0, 0, 9)
