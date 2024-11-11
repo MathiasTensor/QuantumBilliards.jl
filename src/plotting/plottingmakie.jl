@@ -101,7 +101,7 @@ function plot_boundary_orientation!(ax, billiard::Bi; fundamental_domain=true, d
             push!(sps, sp)
             push!(dirs, dir)
         end
-        arrows!(ax, sps, dirs; color=:black, linewidth=2, arrowsize=0.2, arrowcolor=:red)
+        arrows!(ax, sps, dirs; color=:blue, linewidth=2, arrowsize=0.2, arrowcolor=:red)
         if plot_normal
             ns = normal_vec(crv,t)
             arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
