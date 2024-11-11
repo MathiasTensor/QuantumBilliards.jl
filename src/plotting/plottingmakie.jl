@@ -119,6 +119,14 @@ function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::
         end
         push!(all_pts, pts)
     end
+    all_pts = []
+    for crv in boundary
+        L = crv.length
+        grid = max(round(Int, L*100.0),3)
+        t = range(0.0,1.0, grid)
+        pts = curve(crv,t)
+        push!(all_pts, pts)
+    end
     all_pts = vcat(all_pts...)
     n = length(all_pts)
     area = 0.0 # signed area
