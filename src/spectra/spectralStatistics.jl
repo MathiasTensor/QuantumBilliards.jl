@@ -507,6 +507,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
             max_s_cutoff_index = N  # Use full range if s_cutoff is beyond data range
         end
         if plot_log
+            #=
             scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], log10.(abs.(1.0.-empirical_cdf[1:max_s_cutoff_index])), label="Empirical CDF", color=:blue, markersize=2)
             lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-poisson_cdf_values[1:max_index])), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
             lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-goe_cdf_values[1:max_index])), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
@@ -521,6 +522,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
             end
             xlims!(inset_ax, 3.0, 5.0)
             ylims!(inset_ax, -1.0, -3.0)
+            =#
         else
             scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], empirical_cdf[1:max_s_cutoff_index], label="Empirical CDF", color=:blue, markersize=2)
             lines!(inset_ax, s_values[1:max_index], poisson_cdf_values[1:max_index], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
