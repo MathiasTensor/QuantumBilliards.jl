@@ -72,7 +72,7 @@ Constructs a full mushroom billiard with a rectangular stem and a circular cap.
 function make_full_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
     origin = SVector(x0 + stem_width/2, y0)
     # Define the cap: a half circle with radius `cap_radius` centered at (0, 0)
-    cap_segment = CircleSegment(cap_radius, Float64(pi), Float64(2*pi), zero(T), zero(T); origin=origin, rot_angle=rot_angle)
+    cap_segment = CircleSegment(cap_radius, Float64(pi), Float64(2*pi), zero(T), zero(T); origin=origin, rot_angle=rot_angle) # corrected from before wrong -pi, pi for shift angle and arc
     
     # Define the stem: a rectangle with width `stem_width` and height `stem_height`
     stem_top_right_corner = SVector(stem_width/2, zero(T))
@@ -84,7 +84,7 @@ function make_full_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zer
     stem_right_side = LineSegment(stem_bottom_right_corner, stem_top_right_corner; origin=origin, rot_angle=rot_angle)
     stem_bottom_side = LineSegment(stem_bottom_left_corner, stem_bottom_right_corner; origin=origin, rot_angle=rot_angle)
     stem_left_side = LineSegment(stem_top_left_corner, stem_bottom_left_corner; origin=origin, rot_angle=rot_angle)
-    cap_connector_right = LineSegment(SVector(cap_radius, zero(T)), stem_top_right_corner; origin=origin, rot_angle=rot_angle)
+    cap_connector_right = LineSegment(stem_top_right_corner, SVector(cap_radius, zero(T)); origin=origin, rot_angle=rot_angle) # wrong: cap_connector_right = LineSegment(SVector(cap_radius, zero(T)), stem_top_right_corner; origin=origin, rot_angle=rot_angle)
     cap_connector_left = LineSegment(SVector(-cap_radius, zero(T)), stem_top_left_corner; origin=origin, rot_angle=rot_angle)
 
     # Starts with AbsRealCurve counterclockwise
