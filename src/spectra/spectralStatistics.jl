@@ -371,7 +371,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
 end
 
 """
-    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true fit_brb_cumul::Bool=false) where {T <: Real}
+    plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true fit_brb_cumul::Bool=false, fit_only_beta=false, fited_rho::Union{Nothing, T} = nothing, plot_log::Bool=false) where {T <: Real}
 
 Plots the cumulative distribution function (CDF) of the nearest-neighbor level spacings (NNLS) for unfolded energy eigenvalues. Optionally, the Berry-Robnik CDF can be plotted if a `rho` value is provided.
 
@@ -382,11 +382,12 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 - `plot_inset::Bool=true`: Whether to plot an inset of small spacings. Defaults to `true`.
 - `fit_brb_cumul::Bool=false`: Whether to fit the Berry-Robnik-Brody CDF to the data and display the optimal rho parameter in the legend. Defaults to `false`.
 - `fit_only_beta::Bool=false`: If `true`, only the Berry-Robnik-Brody distribution's β parameter is fitted to the data, ρ is as given initially.
+- `plot_log::Bool=false`: If we y axis will be in log scale -> log-lin plot. Defaults to `false`.
 
 # Returns
 - `Figure`.
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false, fited_rho::Union{Nothing, T} = nothing, plot_log::Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
     spacings = diff(sort(unfolded_energy_eigenvalues))
     sorted_spacings = sort(spacings)
@@ -451,20 +452,36 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     fig = Figure(resolution = (1000, 1000))
     ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
 
-    # Plot the empirical CDF
-    scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
-
-    # Plot theoretical CDFs
-    lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
-    lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
-    if plot_GUE
-        lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
-    end
-    if berry_robnik_cdf_values !== nothing
-        lines!(ax, s_values, berry_robnik_cdf_values, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
-    end
-    if berry_robnik_brody_cdf_values !== nothing
-        lines!(ax,  s_values, berry_robnik_brody_cdf_values, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
+    if plot_log
+        # Plot the empirical CDF
+        scatter!(ax, sorted_spacings, log10.(empirical_cdf), label="Empirical CDF", color=:blue, markersize=2)
+        # Plot theoretical CDFs
+        lines!(ax, s_values, log10.(poisson_cdf_values), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+        lines!(ax, s_values, log10.(goe_cdf_values), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+        if plot_GUE
+            lines!(ax, s_values, log10.(gue_cdf_values), label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+        end
+        if berry_robnik_cdf_values !== nothing
+            lines!(ax, s_values, log10.(berry_robnik_cdf_values), label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+        end
+        if berry_robnik_brody_cdf_values !== nothing
+            lines!(ax,  s_values, log10.(berry_robnik_brody_cdf_values), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
+        end
+    else
+        # Plot the empirical CDF
+        scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
+        # Plot theoretical CDFs
+        lines!(ax, s_values, poisson_cdf_values, label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+        lines!(ax, s_values, goe_cdf_values, label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+        if plot_GUE
+            lines!(ax, s_values, gue_cdf_values, label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+        end
+        if berry_robnik_cdf_values !== nothing
+            lines!(ax, s_values, berry_robnik_cdf_values, label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+        end
+        if berry_robnik_brody_cdf_values !== nothing
+            lines!(ax,  s_values, berry_robnik_brody_cdf_values, label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
+        end
     end
     axislegend(ax, position=:rb)
 
@@ -479,21 +496,39 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         if max_s_cutoff_index === nothing
             max_s_cutoff_index = N  # Use full range if s_cutoff is beyond data range
         end
-        scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], empirical_cdf[1:max_s_cutoff_index], label="Empirical CDF", color=:blue, markersize=2)
-        lines!(inset_ax, s_values[1:max_index], poisson_cdf_values[1:max_index], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
-        lines!(inset_ax, s_values[1:max_index], goe_cdf_values[1:max_index], label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
-        if plot_GUE
-            lines!(inset_ax, s_values[1:max_index], gue_cdf_values[1:max_index], label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+        if plot_log
+            scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], log10.(empirical_cdf[1:max_s_cutoff_index]), label="Empirical CDF", color=:blue, markersize=2)
+            lines!(inset_ax, s_values[1:max_index], log10.(poisson_cdf_values[1:max_index]), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+            lines!(inset_ax, s_values[1:max_index], log10.(goe_cdf_values[1:max_index]), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+            if plot_GUE
+                lines!(inset_ax, s_values[1:max_index], log10.(gue_cdf_values[1:max_index]), label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+            end
+            if berry_robnik_cdf_values !== nothing
+                lines!(inset_ax, s_values[1:max_index], log10.(berry_robnik_cdf_values[1:max_index]), label="BR CDF", color=:black, linewidth=1)
+            end
+            if berry_robnik_brody_cdf_values !== nothing
+                lines!(inset_ax, s_values[1:max_index], log10.(berry_robnik_brody_cdf_values[1:max_index]), label="BRB CDF", color=:orange, linewidth=1)
+            end
+            # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
+            xlims!(inset_ax, 0.0, s_cutoff)
+            ylims!(inset_ax, log10.(1e-5), log10.(0.5))
+        else
+            scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], empirical_cdf[1:max_s_cutoff_index], label="Empirical CDF", color=:blue, markersize=2)
+            lines!(inset_ax, s_values[1:max_index], poisson_cdf_values[1:max_index], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+            lines!(inset_ax, s_values[1:max_index], goe_cdf_values[1:max_index], label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+            if plot_GUE
+                lines!(inset_ax, s_values[1:max_index], gue_cdf_values[1:max_index], label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+            end
+            if berry_robnik_cdf_values !== nothing
+                lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="BR CDF", color=:black, linewidth=1)
+            end
+            if berry_robnik_brody_cdf_values !== nothing
+                lines!(inset_ax, s_values[1:max_index], berry_robnik_brody_cdf_values[1:max_index], label="BRB CDF", color=:orange, linewidth=1)
+            end
+            # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
+            xlims!(inset_ax, 0.0, s_cutoff)
+            ylims!(inset_ax, 1e-5, 0.5)
         end
-        if berry_robnik_cdf_values !== nothing
-            lines!(inset_ax, s_values[1:max_index], berry_robnik_cdf_values[1:max_index], label="BR CDF", color=:black, linewidth=1)
-        end
-        if berry_robnik_brody_cdf_values !== nothing
-            lines!(inset_ax, s_values[1:max_index], berry_robnik_brody_cdf_values[1:max_index], label="BRB CDF", color=:orange, linewidth=1)
-        end
-        # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
-        xlims!(inset_ax, 0.0, s_cutoff)
-        ylims!(inset_ax, 0.0, 0.5)
     end
     return fig
 end
