@@ -458,7 +458,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
 
     if plot_log
         # Plot the empirical CDF
-        scatter!(ax, sorted_spacings, log10.(abs.(1.0-empirical_cdf)), label="Empirical CDF", color=:blue, markersize=2)
+        scatter!(ax, sorted_spacings, log10.(abs.(1.0.-empirical_cdf)), label="Empirical CDF", color=:blue, markersize=2)
         # Plot theoretical CDFs
         lines!(ax, s_values, log10.(abs.(1.0.-poisson_cdf_values)), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
         lines!(ax, s_values, log10.(abs.(1.0.-goe_cdf_values)), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
