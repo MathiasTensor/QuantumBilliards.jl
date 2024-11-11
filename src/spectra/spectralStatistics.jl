@@ -471,7 +471,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         if berry_robnik_brody_cdf_values !== nothing
             lines!(ax,  s_values, log10.(abs.(1.0.-berry_robnik_brody_cdf_values)), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         end
-        xlims!(ax, (2.0, 10.0))
+        xlims!(ax, (2.0, 8.0))
         axislegend(ax, position=:lb)
     else
         # Plot the empirical CDF
@@ -494,9 +494,9 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     # Inset plot settings
     if plot_inset
         if plot_log
-            inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.95, xlabel="Spacing (s)", ylabel="Cumulative Probability")
+            inset_ax = Axis(fig[1, 1], width=Relative(0.4), height=Relative(0.4), halign=0.95, valign=0.95, xlabel="Spacing (s)", ylabel="log10(W(s))")
         else
-            inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.5, xlabel="Spacing (s)", ylabel="Cumulative Probability")
+            inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.5, xlabel="Spacing (s)", ylabel="W(s)")
         end
         # Offset inset to bring it in front of the main axis content
         translate!(inset_ax.scene, 0, 0, 10)
@@ -507,21 +507,20 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
             max_s_cutoff_index = N  # Use full range if s_cutoff is beyond data range
         end
         if plot_log
-            scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], log10.(empirical_cdf[1:max_s_cutoff_index]), label="Empirical CDF", color=:blue, markersize=2)
-            lines!(inset_ax, s_values[1:max_index], log10.(poisson_cdf_values[1:max_index]), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
-            lines!(inset_ax, s_values[1:max_index], log10.(goe_cdf_values[1:max_index]), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+            scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], log10.(abs.(1.0.-empirical_cdf[1:max_s_cutoff_index])), label="Empirical CDF", color=:blue, markersize=2)
+            lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-poisson_cdf_values[1:max_index])), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+            lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-goe_cdf_values[1:max_index])), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
             if plot_GUE
-                lines!(inset_ax, s_values[1:max_index], log10.(gue_cdf_values[1:max_index]), label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+                lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-gue_cdf_values[1:max_index])), label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
             end
             if berry_robnik_cdf_values !== nothing
-                lines!(inset_ax, s_values[1:max_index], log10.(berry_robnik_cdf_values[1:max_index]), label="BR CDF", color=:black, linewidth=1)
+                lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-berry_robnik_cdf_values[1:max_index])), label="BR CDF", color=:black, linewidth=1)
             end
             if berry_robnik_brody_cdf_values !== nothing
-                lines!(inset_ax, s_values[1:max_index], log10.(berry_robnik_brody_cdf_values[1:max_index]), label="BRB CDF", color=:orange, linewidth=1)
+                lines!(inset_ax, s_values[1:max_index], log10.(abs.(1.0.-berry_robnik_brody_cdf_values[1:max_index])), label="BRB CDF", color=:orange, linewidth=1)
             end
-            # Set inset x and y limits to fit the range [0, s_cutoff] and [0, 0.5]
-            xlims!(inset_ax, 0.0, s_cutoff)
-            ylims!(inset_ax, log10.(1e-5), log10.(0.5))
+            xlims!(inset_ax, 3.0, 5.0)
+            ylims!(inset_ax, -1.0, -3.0)
         else
             scatter!(inset_ax, sorted_spacings[1:max_s_cutoff_index], empirical_cdf[1:max_s_cutoff_index], label="Empirical CDF", color=:blue, markersize=2)
             lines!(inset_ax, s_values[1:max_index], poisson_cdf_values[1:max_index], label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
