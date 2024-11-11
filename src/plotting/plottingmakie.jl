@@ -92,12 +92,16 @@ function plot_boundary_orientation!(ax, billiard::Bi; fundamental_domain=true, d
         grid = max(round(Int, L*dens),3)
         t = range(0.0,1.0, grid)
         pts = curve(crv,t)
+        sps = Point{2, Float32}[]
+        dirs = Point{2, Float32}[]
         for i in eachindex(pts)[1:end-1] # Plot arrows between each consecutive pair of points
             sp = pts[i]
             ep = pts[i + 1]
             dir = ep-sp
-            arrows!(ax, sp[1], sp[2], ep[1], ep[2]; color=:black, linewidth = 2, arrowsize = 0.2, arrowcolor=:red)
+            push!(sps, sp)
+            push!(dirs, dir)
         end
+        arrows!(ax, sps, dirs; color=:black, linewidth=2, arrowsize=0.2, arrowcolor=:red)
         if plot_normal
             ns = normal_vec(crv,t)
             arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
