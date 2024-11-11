@@ -458,18 +458,18 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
 
     if plot_log
         # Plot the empirical CDF
-        scatter!(ax, sorted_spacings, log10.(empirical_cdf), label="Empirical CDF", color=:blue, markersize=2)
+        scatter!(ax, sorted_spacings, log10.(abs.(1.0-empirical_cdf)), label="Empirical CDF", color=:blue, markersize=2)
         # Plot theoretical CDFs
-        lines!(ax, s_values, log10.(poisson_cdf_values), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
-        lines!(ax, s_values, log10.(goe_cdf_values), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
+        lines!(ax, s_values, log10.(abs.(1.0.-poisson_cdf_values)), label="Poisson CDF", color=:red, linewidth=1, linestyle=:dot)
+        lines!(ax, s_values, log10.(abs.(1.0.-goe_cdf_values)), label="GOE CDF", color=:green, linewidth=1, linestyle=:dot)
         if plot_GUE
-            lines!(ax, s_values, log10.(gue_cdf_values), label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
+            lines!(ax, s_values, log10.(abs.(1.0.-gue_cdf_values)), label="GUE CDF", color=:purple, linewidth=1, linestyle=:dot)
         end
         if berry_robnik_cdf_values !== nothing
-            lines!(ax, s_values, log10.(berry_robnik_cdf_values), label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
+            lines!(ax, s_values, log10.(abs.(1.0-berry_robnik_cdf_values)), label="BR: ρ_reg=$(round(rho; sigdigits=4))", color=:black, linewidth=2)
         end
         if berry_robnik_brody_cdf_values !== nothing
-            lines!(ax,  s_values, log10.(berry_robnik_brody_cdf_values), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
+            lines!(ax,  s_values, log10.(abs.(1.0.-berry_robnik_brody_cdf_values)), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         end
         xlims!(ax, (0.0, 2.0))
     else
