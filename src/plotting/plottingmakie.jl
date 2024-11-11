@@ -80,6 +80,41 @@ function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, de
     end
 end
 
+function plot_boundary_orientation!(ax, billiard::Bi; fundamental_domain=true, dens=5.0, plot_normal=true) where {Bi<:AbsBilliard}
+    if fundamental_domain
+        boundary = billiard.fundamental_boundary
+    else
+        boundary = billiard.full_boundary
+    end
+    all_pts = []
+    for crv in boundary 
+        L = crv.length
+        grid = max(round(Int, L*dens),3)
+        t = range(0.0,1.0, grid)
+        pts = curve(crv,t)
+        for i in eachindex(pts)[1:end-1] # Plot arrows between each consecutive pair of points
+            sp = pts[i]
+            ep = pts[i + 1]
+            dir = ep - sp
+            arrows!(ax, sp, dir; color=:black, linewidth = 2, arrowsize = 0.2, arrowcolor=:red)
+        end
+        if plot_normal
+            ns = normal_vec(crv,t)
+            arrows!(ax,getindex.(pts,1),getindex.(pts,2), getindex.(ns,1),getindex.(ns,2), color = :black, lengthscale = 0.1)
+        end
+        push!(all_pts, pts)
+    end
+    all_pts = vcat(all_pts...)
+    n = length(all_pts)
+    area = 0.0 # signed area
+    for i in 1:n
+        x1, y1 = all_pts[i]
+        x2, y2 = all_pts[mod1(i + 1, n)]
+        area += x1 * y2 - y1 * x2
+    end
+    ifelse(area > 0.0, "Correct counterclockwise orientation", throw("Signed area $(area)"))
+end
+
 function plot_domain_fun!(f, curve::C; xlim=(-1.0,1.0),ylim=(-1.0,1.0), dens=100.0, hmargs=Dict(),cmap=:binary) where {C<:AbsCurve}
     d = one(dens)/dens
     x_grid = range(xlim... ; step=d)

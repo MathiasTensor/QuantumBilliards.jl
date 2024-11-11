@@ -121,7 +121,7 @@ export save_husimi_functions!, load_husimi_functions, save_vec_from_StateData!, 
 #include("plotting/Plotting.jl")
 #@reexport using .Plotting
 include("plotting/plottingmakie.jl")
-export plot_curve!, plot_boundary!
+export plot_curve!, plot_boundary!, plot_boundary_orientation!
 export plot_domain_fun!, plot_domain!
 export plot_lattice!
 export plot_wavefunction!, plot_wavefunction_gradient!, plot_probability!
