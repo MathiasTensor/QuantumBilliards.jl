@@ -494,13 +494,13 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     # Inset plot settings
     if plot_inset
         if plot_log
-            inset_ax = Axis(fig[1, 1], width=Relative(0.4), height=Relative(0.4), halign=0.95, valign=0.95, xlabel="Spacing (s)", ylabel="log10(W(s))")
+            #inset_ax = Axis(fig[1, 1], width=Relative(0.4), height=Relative(0.4), halign=0.95, valign=0.95, xlabel="Spacing (s)", ylabel="log10(W(s))")
         else
             inset_ax = Axis(fig[1, 1], width=Relative(0.5), height=Relative(0.5), halign=0.95, valign=0.5, xlabel="Spacing (s)", ylabel="W(s)")
+            # Offset inset to bring it in front of the main axis content
+            translate!(inset_ax.scene, 0, 0, 10)
+            translate!(inset_ax.elements[:background], 0, 0, 9)
         end
-        # Offset inset to bring it in front of the main axis content
-        translate!(inset_ax.scene, 0, 0, 10)
-        translate!(inset_ax.elements[:background], 0, 0, 9)
         # Plot cumulative distributions in the inset, limited to the cutoff
         max_s_cutoff_index = findfirst(s -> s >= s_cutoff, sorted_spacings)
         if max_s_cutoff_index === nothing
