@@ -109,6 +109,40 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
 end
 
 """
+    boundary_function_with_points(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+
+Computes the boundary functions us and the `BoundaryPoints` from which we can construct the wavefunction object using the boundary integtral definition.
+
+# Arguments
+`state_data::StateData`: The state data object that contains the `ks` and the `vec` from which we cna contruct the boundary points and the boundary function.
+`billiard<:AbsBilliard`: The geometry of the billiard.
+`basis<::AbsBilliard`: The basis of from which we contruct the wavefunction and the `vec` object.
+
+# Returns
+`ks::Vector`: The vector of eigenvalues. A convenience return.
+`us::Vector{Vector}`: The vector of boundary functions (Vector) for each k that is a solution.
+`pts::BoundaryPoints`: A struct that contains the positions for which the u(s) (boundary function was evaluated) {pts.xy}, the arclengths that corresponds to these points {pts.s}, the normal vectors for the points we use {pts.normal} and the differences between the arclengths {pts.ds}
+"""
+function boundary_function_with_points(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    ks = state_data.ks
+    tens = state_data.tens
+    X = state_data.X
+    us_all = Vector{Vector{eltype(ks)}}(undef, length(ks))
+    pts_all = Vector{BoundaryPoints{eltype(ks)}}(undef, length(ks))
+    Threads.@threads for i in eachindex(ks) 
+        vec = X[i] # vector of vectors
+        dim = length(vec)
+        new_basis = resize_basis(basis, billiard, dim, ks[i])
+        state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
+        setup_momentum_density(state; b=b)
+        u, pts, _ = boundary_function(state; b=b) # pts is BoundaryPoints and has information on ds and x
+        us_all[i] = u
+        pts_all[i] = pts
+    end
+    return ks, us, pts_all
+end
+
+"""
     save_boundary_function!(ks, us, s_vals; filename::String="boundary_values.jld2")
 
 Saves the results of the boundary_function with the `StateData` input. Primarly useful for creating efficient input to the husimi function constructor.

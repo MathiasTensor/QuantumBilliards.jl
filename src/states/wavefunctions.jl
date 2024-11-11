@@ -168,6 +168,12 @@ function compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid, y_grid;
     end
     return Psi
 end
+
+# INTERNAL FOR COMPUTING THE WAVEFUNCTION. THIS IS THE MOST EFFICIENT ONE VIA THE BOUNDARY INTEGRAL
+
+
+
+
 #=
 
 #try using strided to optimize this
