@@ -72,7 +72,7 @@ Constructs a full mushroom billiard with a rectangular stem and a circular cap.
 function make_full_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
     origin = SVector(x0 + stem_width/2, y0)
     # Define the cap: a half circle with radius `cap_radius` centered at (0, 0)
-    cap_segment = CircleSegment(cap_radius, Float64(-pi), Float64(+pi), zero(T), zero(T); origin=origin, rot_angle=rot_angle)
+    cap_segment = CircleSegment(cap_radius, Float64(+pi), Float64(-pi), zero(T), zero(T); origin=origin, rot_angle=rot_angle)
     
     # Define the stem: a rectangle with width `stem_width` and height `stem_height`
     stem_top_right_corner = SVector(stem_width/2, zero(T))
