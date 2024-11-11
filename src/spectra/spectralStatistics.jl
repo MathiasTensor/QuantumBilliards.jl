@@ -450,7 +450,11 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
 
     # Create the main figure and axis
     fig = Figure(resolution = (1000, 1000))
-    ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="Cumulative Probability", title="Cumulative Distribution of Nearest Neighbor Spacings")
+    if plot_log
+        ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="log10(W(s))", title="Cumulative Distribution of Nearest Neighbor Spacings")
+    else
+        ax = Axis(fig[1, 1], xlabel="Spacing (s)", ylabel="W(s)", title="Cumulative Distribution of Nearest Neighbor Spacings")
+    end
 
     if plot_log
         # Plot the empirical CDF
@@ -467,6 +471,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         if berry_robnik_brody_cdf_values !== nothing
             lines!(ax,  s_values, log10.(berry_robnik_brody_cdf_values), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         end
+        xlims!(ax, (0.0, 2.0))
     else
         # Plot the empirical CDF
         scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
