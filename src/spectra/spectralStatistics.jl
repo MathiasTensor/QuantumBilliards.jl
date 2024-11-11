@@ -471,7 +471,7 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
         if berry_robnik_brody_cdf_values !== nothing
             lines!(ax,  s_values, log10.(abs.(1.0.-berry_robnik_brody_cdf_values)), label="BRB: ρ_reg=$(round(ρ_opt; sigdigits=4)), β=$(round(β_opt; sigdigits=4))", color=:orange, linewidth=2)
         end
-        xlims!(ax, (0.0, 2.0))
+        xlims!(ax, (2.0, 10.0))
     else
         # Plot the empirical CDF
         scatter!(ax, sorted_spacings, empirical_cdf, label="Empirical CDF", color=:blue, markersize=2)
