@@ -80,7 +80,18 @@ function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, de
     end
 end
 
-function plot_boundary_orientation!(ax, billiard::Bi; fundamental_domain=true, dens=5.0, plot_normal=true) where {Bi<:AbsBilliard}
+"""
+    function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::Bool=true, dens::Float64=5.0, plot_normal::Bool=true) where {Bi<:AbsBilliard}
+
+Plots the boundary orientation as a sequence of arrows for the points that form the given curve segments in the billiard boundary (either fundamental or full)
+
+# Arguments
+- `ax::Axis`: The `Makie::Axis` to plot on.
+- `billiard<:AbsBilliard`: The billiard to plot.
+- `fundamental_domain::Bool=true`: Whether to plot the boundary in the fundamental domain (default: true)
+- `dens::Float64=5.0`: The density of points to plot on the boundary (default: 5.0, should be small as to )
+"""
+function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::Bool=true, dens::Float64=5.0, plot_normal::Bool=true) where {Bi<:AbsBilliard}
     if fundamental_domain
         boundary = billiard.fundamental_boundary
     else
@@ -116,7 +127,7 @@ function plot_boundary_orientation!(ax, billiard::Bi; fundamental_domain=true, d
         x2, y2 = all_pts[mod1(i + 1, n)]
         area += x1 * y2 - y1 * x2
     end
-    ifelse(area > 0.0, "Correct counterclockwise orientation", "Signed area: $(area)!!")
+    ifelse(area > 0.0, println("Correct counterclockwise orientation"), println("Signed area: $(area)!!"))
 end
 
 function plot_domain_fun!(f, curve::C; xlim=(-1.0,1.0),ylim=(-1.0,1.0), dens=100.0, hmargs=Dict(),cmap=:binary) where {C<:AbsCurve}
