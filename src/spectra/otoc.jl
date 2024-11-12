@@ -87,8 +87,10 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
                     end
                     Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2ds[i],x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
                     Psi2ds_w_symmetry[i] = Psi2d
-                    x_grid_w_symmetry = x_grid
-                    y_grid_w_symmetry = y_grid
+                    if i == 1
+                        x_grid_w_symmetry = x_grid
+                        y_grid_w_symmetry = y_grid
+                    end
                 elseif all([sym isa Rotation for sym in symmetries])
                     if length(symmetries) > 1
                         @error "Only one Rotation symmetry allowed"
@@ -99,8 +101,10 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
                     end
                     Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2ds[i],x_grid,y_grid,symmetries[1], billiard; center=center)
                     Psi2ds_w_symmetry[i] = Psi2d
-                    x_grid_w_symmetry = x_grid
-                    y_grid_w_symmetry = y_grid
+                    if i == 1
+                        x_grid_w_symmetry = x_grid
+                        y_grid_w_symmetry = y_grid
+                    end
                 else
                     @error "Do not mix Reflections with Rotations"
                 end
