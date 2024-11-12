@@ -62,13 +62,4 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     return Psi2ds, x_grid, y_grid
 end
 
-"""
-    construct_wavefunctions_high_level(filename::String, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard}
-
-High-level wrapper for the `wavefunction_multi` that constructs the wavefunctions from the saved vector of boundary points and params `Vector{BoundaryPoints}` and vector of boundary functions `Vector{Vector}`.
-"""
-function construct_wavefunctions_high_level(filename::String, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard}
-    ks, vec_bd_points, vec_us = read_BoundaryPoints(filename)
-    return wavefunction_multi(ks, vec_us, vec_bd_points, billiard; b=b, inside_only=inside_only)
-end
 
