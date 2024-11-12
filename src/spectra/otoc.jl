@@ -66,6 +66,6 @@ High-level wrapper for the `wavefunction_multi` that constructs the wavefunction
 """
 function construct_wavefunctions_high_level(filename::String, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard}
     ks, vec_bd_points, vec_us = read_BoundaryPoints(filename)
-    return wavefunction_multi(ks, vec_bd_points, vec_us, billiard; b=b, inside_only=inside_only)
+    return wavefunction_multi(ks, vec_us, vec_bd_points, billiard; b=b, inside_only=inside_only)
 end
 
