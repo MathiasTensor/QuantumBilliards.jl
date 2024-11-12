@@ -307,6 +307,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
     bin_std_devs = [std(spacings[(spacings .>= hist.edges[1][i]) .& (spacings .< hist.edges[1][i+1])]) for i in 1:(length(hist.edges[1])-1)]
+    yerror = [(std_dev, std_dev) for std_dev in bin_std_devs]
 
     # Theoretical distributions
     poisson_pdf = x -> exp(-x)
@@ -327,9 +328,9 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     end
     # Add ±1 standard deviation band
     if log_scale
-        errorbars!(ax, collect(bin_centers), log10.(bin_counts), yerror=log10.(abs.(bin_std_devs)), color=:black)
+        errorbars!(ax, collect(bin_centers), log10.(bin_counts), log10.(abs.(bin_std_devs)), color=:black)
     else
-        errorbars!(ax, collect(bin_centers), bin_counts, yerror=bin_std_devs, color=:black)
+        errorbars!(ax, collect(bin_centers), bin_counts, bin_std_devs, color=:black)
     end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
     if log_scale
