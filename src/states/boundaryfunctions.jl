@@ -181,7 +181,7 @@ end
 # Returns
 - `Nothing`
 """
-function save_BoundaryPoints!(ks::Vector, vec_bd_points::Vector{BoundaryPoints}, us::Vector{Vector}; filename::String="boundary_points.jld2")
+function save_BoundaryPoints!(ks::Vector{T}, vec_bd_points::Vector{BoundaryPoints{T}}, us::Vector{Vector{T}}; filename::String="boundary_points.jld2") where {T<:Real}
     @save filename ks vec_bd_points us
 end
 
