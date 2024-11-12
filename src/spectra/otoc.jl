@@ -61,6 +61,25 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     return Psi2ds, x_grid, y_grid
 end
 
+"""
+    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+
+Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the wavefunction_multi or a similar function.
+
+# Arguments
+- `ks`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Vector of 2D wavefunction matrices.
+- `x_grid::Vector{<:Real}`: Vector of x-coordinates for the grid.
+- `y_grid::Vector{<:Real}`: Vector of y-coordinates for the grid.
+- `billiard<:AbsBilliard`: The billiard geometry.
+- `b::Float64=5.0`: The point scaling factor.
+- `width_ax::Integer=500`: The size of each axis in the grid layout.
+- `height_ax::Integer=500`: The size of each axis in the grid layout.
+- `max_cols::Integer=6`: The maximum number of columns in the grid layout.
+
+ # Returns
+- `f::Figure`: A Figure object containing the grid of wavefunctions.
+"""
 function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
     L = billiard.length
     xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
