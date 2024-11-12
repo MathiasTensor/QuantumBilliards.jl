@@ -228,7 +228,7 @@ function save_BoundaryPoints(ks::Vector, solver::AbsScalingMethod, billiard::Bi,
         bd_point = _evaluate_boundary_points(solver, billiard, ks[i])
         vec_bd_points[i] = bd_point
     end
-    @save filename ks vec_bd_points, us
+    @save filename ks vec_bd_points us
 end
 
 """
@@ -254,7 +254,7 @@ end
 - `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
 """
 function read_BoundaryPoints(filename::String="boundary_points.jld2")
-    @load filename ks, vec_bd_points, us
+    @load filename ks vec_bd_points us
     return ks, vec_bd_points, us
 end
 
