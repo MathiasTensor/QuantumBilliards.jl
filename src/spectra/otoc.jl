@@ -61,7 +61,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     return Psi2ds, x_grid, y_grid
 end
 
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=4) where {Bi<:AbsBilliard}
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
     L = billiard.length
     xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
     f = Figure()
