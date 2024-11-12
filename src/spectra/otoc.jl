@@ -42,11 +42,8 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     end
     # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
     function ϕ(x,y,k,bdPoints::BoundaryPoints, us::Vector)
-        println(length(bdPoints.xy))
-        println(length(us))
         target_point = SVector(x, y)
-        distances = norm.(Ref(target_point) .- bdPoints.xy)    
-        println(length(distances))      
+        distances = norm.(Ref(target_point) .- bdPoints.xy)      
         weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds  
         return sum(weighted_bessel_values) / 4                  
     end
