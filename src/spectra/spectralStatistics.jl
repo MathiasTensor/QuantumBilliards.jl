@@ -306,26 +306,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     hist = Distributions.fit(StatsBase.Histogram, spacings; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
-
-    bins = hist.edges[1]
-    bin_indices = searchsortedlast.(Ref(spacings), bins[1:end-1])  # Locate data points in each bin
-    bin_std_devs = Float64[]
-
-    for i in 1:length(bins) - 1
-        # Indices corresponding to data points within each bin range
-        start_idx = i == 1 ? 1 : bin_indices[i-1] + 1
-        end_idx = bin_indices[i]
-        
-        if start_idx <= end_idx
-            # Extract `spacings` values within the current bin
-            bin_data = spacings[start_idx:end_idx]
-            # Compute standard deviation for data points in the bin, scaled for density
-            bin_std = isempty(bin_data) ? 0.0 : std(bin_data)
-            push!(bin_std_devs, bin_std)
-        else
-            push!(bin_std_devs, 0.0)
-        end
-    end
+    bin_std_devs = [std(spacings[(spacings .>= hist.edges[1][i]) .& (spacings .< hist.edges[1][i+1])]) for i in 1:(nbins-1)]
 
     # Theoretical distributions
     poisson_pdf = x -> exp(-x)
