@@ -150,4 +150,5 @@ export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_lo
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
 include("spectra/otoc.jl")
+export plot_wavefunctions, wavefunction_multi
 end
