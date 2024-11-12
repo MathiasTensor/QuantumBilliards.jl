@@ -310,7 +310,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     # Calculate the standard deviation for each bin
     bins = range(minimum(bin_centers), stop=maximum(bin_centers), length=nbins + 1)
     bin_std_devs = Float64[]
-    for i in 1:(nbins-1)
+    for i in 1:length(hist.edges[1]) - 1
         # Identify data points in each bin
         start_idx = hist.edges[1][i]
         end_idx = hist.edges[1][i+1]
