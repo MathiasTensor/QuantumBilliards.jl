@@ -222,7 +222,7 @@ end
 # Returns
 - `Nothing`
 """
-function save_BoundaryPoints(ks::Vector, solver::AbsScalingMethod, billiard::Bi, us::Vector; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
+function save_BoundaryPoints!(ks::Vector, solver::AbsScalingMethod, billiard::Bi, us::Vector; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
     vec_bd_points = Vector{BoundaryPoints{eltype(ks)}}(undef, length(ks))
     Threads.@threads for i in eachindex(ks) 
         bd_point = _evaluate_boundary_points(solver, billiard, ks[i])
