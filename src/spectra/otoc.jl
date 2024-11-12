@@ -61,69 +61,18 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     return Psi2ds, x_grid, y_grid
 end
 
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi, basis::Ba; width_ax::Integer=500, height_ax::Integer=500, fundamental_domain=true, max_cols::Integer=4) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    symmetries = basis.symmetries
-    Psi2ds_w_symmetry = Vector{Matrix}(undef, length(Psi2ds))
-    x_grid_w_symmetry = x_grid
-    y_grid_w_symmetry = y_grid
-    println("x grid before: ", length(x_grid_w_symmetry))
-    println("y grid before: ", length(y_grid_w_symmetry))
-    println("matrix size 1: ", size(Psi2ds[1]))
-    println("matrix size end: ", size(Psi2ds[end]))
-
-    Threads.@threads for i in eachindex(Psi2ds)
-        if ~fundamental_domain 
-            if ~isnothing(symmetries)
-                if all([sym isa Reflection for sym in symmetries])
-                    x_axis = 0.0
-                    y_axis = 0.0
-                    if hasproperty(billiard, :x_axis)
-                        #println(nameof(typeof(billiard)), " has the :x_axis reflection")
-                        x_axis = billiard.x_axis
-                    end
-                    if hasproperty(billiard, :y_axis)
-                        #println(nameof(typeof(billiard)), " has the :y_axis reflection")
-                        y_axis = billiard.y_axis
-                    end
-                    Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2ds[i],x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
-                    Psi2ds_w_symmetry[i] = Psi2d
-                    if i == 1
-                        x_grid_w_symmetry = x_grid
-                        y_grid_w_symmetry = y_grid
-                    end
-                elseif all([sym isa Rotation for sym in symmetries])
-                    if length(symmetries) > 1
-                        @error "Only one Rotation symmetry allowed"
-                    end
-                    center = SVector{2, Float64}(0.0, 0.0)
-                    if hasproperty(billiard, :center)
-                        center = SVector{2, Float64}(billiard.center)
-                    end
-                    Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2ds[i],x_grid,y_grid,symmetries[1], billiard; center=center)
-                    Psi2ds_w_symmetry[i] = Psi2d
-                    if i == 1
-                        x_grid_w_symmetry = x_grid
-                        y_grid_w_symmetry = y_grid
-                    end
-                else
-                    @error "Do not mix Reflections with Rotations"
-                end
-            end
-        end
-    end
-
-    println("x grid after: ", length(x_grid_w_symmetry))
-    println("y grid after: ", length(y_grid_w_symmetry))
-    println("matrix size 1: ", size(Psi2ds_w_symmetry[1]))
-    println("matrix size end: ", size(Psi2ds_w_symmetry[end]))
-
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=4) where {Bi<:AbsBilliard}
+    L = billiard.length
+    xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
     f = Figure()
     row = 1
     col = 1
     for j in eachindex(ks)
         local ax = Axis(f[row,col], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
-        hm = heatmap!(ax, x_grid_w_symmetry, y_grid_w_symmetry, Psi2ds_w_symmetry[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
+        hm = heatmap!(ax, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
         plot_boundary!(ax, billiard, fundamental_domain=fundamental_domain, plot_normal=false)
+        xlims!(ax, xlim)
+        ylims!(ax, ylim)
         col += 1
         if col > max_cols
             row += 1
