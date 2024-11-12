@@ -30,8 +30,8 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, k_max*L*b/(2*pi))))
     dx = xlim[2] - xlim[1]
     dy = ylim[2] - ylim[1]
-    nx = max(round(Int, k*dx*b/(2*pi)), 512)
-    ny = max(round(Int, k*dy*b/(2*pi)), 512)
+    nx = max(round(Int, k_max*dx*b/(2*pi)), 512)
+    ny = max(round(Int, k_max*dy*b/(2*pi)), 512)
     x_grid::Vector{type} = collect(type,range(xlim... , nx))
     y_grid::Vector{type} = collect(type,range(ylim... , ny))
     sz = length(x_grid)*length(y_grid)
