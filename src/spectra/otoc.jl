@@ -66,6 +66,10 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
     Psi2ds_w_symmetry = Vector{Matrix}(undef, length(Psi2ds))
     x_grid_w_symmetry = x_grid
     y_grid_w_symmetry = y_grid
+    println("x grid before: ", length(x_grid_w_symmetry))
+    println("y grid before: ", length(y_grid_w_symmetry))
+    println("matrix size 1: ", size(Psi2ds[1]))
+    println("matrix size end: ", size(Psi2ds[end]))
 
     Threads.@threads for i in eachindex(Psi2ds)
         if ~fundamental_domain 
@@ -103,6 +107,11 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
             end
         end
     end
+
+    println("x grid after: ", length(x_grid_w_symmetry))
+    println("y grid after: ", length(y_grid_w_symmetry))
+    println("matrix size 1: ", size(Psi2ds_w_symmetry[1]))
+    println("matrix size end: ", size(Psi2ds_w_symmetry[end]))
 
     f = Figure()
     row = 1
