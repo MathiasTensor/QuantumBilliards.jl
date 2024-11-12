@@ -320,7 +320,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
             # Extract `spacings` values within the current bin
             bin_data = spacings[start_idx:end_idx]
             # Compute standard deviation for data points in the bin, scaled for density
-            bin_std = isempty(bin_data) ? 0.0 : std(bin_data) / (bins[i+1] - bins[i])
+            bin_std = isempty(bin_data) ? 0.0 : std(bin_data)
             push!(bin_std_devs, bin_std)
         else
             push!(bin_std_devs, 0.0)
