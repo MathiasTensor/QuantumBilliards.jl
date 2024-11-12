@@ -23,7 +23,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T}, vec_us::Vector{T}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     k_max = maximum(ks) # for most resolution
     type = eltype(k_max)
     L = billiard.length
