@@ -306,6 +306,23 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     hist = Distributions.fit(StatsBase.Histogram, spacings; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
+
+    # Calculate the standard deviation for each bin
+    bins = range(minimum(bin_centers), stop=maximum(bin_centers), length=nbins + 1)
+    bin_std_devs = Float64[]
+    for i in 1:nbins
+        # Identify data points in each bin
+        start_idx = hist.edges[1][i]
+        end_idx = hist.edges[1][i+1]
+        bin_data = spacings[(spacings .>= start_idx) .& (spacings .< end_idx)]
+        # Calculate and store the standard deviation within the bin
+        if !isempty(bin_data)
+            push!(bin_std_devs, std(bin_data))
+        else
+            push!(bin_std_devs, 0.0)
+        end
+    end
+
     # Theoretical distributions
     poisson_pdf = x -> exp(-x)
     goe_pdf = x -> (π / T(2)) * x * exp(-π * x^2 / T(4))
@@ -322,6 +339,12 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
         scatter!(ax, bin_centers, log10.(bin_counts), label="Empirical", color=:black, marker=:cross, markersize=10)
     else
         scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
+    end
+    # Add ±1 standard deviation band
+    if log_scale
+        band!(ax, bin_centers, log10.(bin_counts .+ bin_std_devs), log10.(bin_counts .- bin_std_devs), color=:gray, transparency=0.2)
+    else
+        band!(ax, bin_centers, bin_counts .+ bin_std_devs, bin_counts .- bin_std_devs, color=:gray, transparency=0.2)
     end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
     if log_scale
