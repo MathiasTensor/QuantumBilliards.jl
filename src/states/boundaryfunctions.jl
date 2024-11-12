@@ -121,7 +121,7 @@ Computes the boundary functions us and the `BoundaryPoints` from which we can co
 # Returns
 `ks::Vector`: The vector of eigenvalues. A convenience return.
 `us::Vector{Vector}`: The vector of boundary functions (Vector) for each k that is a solution.
-`pts::BoundaryPoints`: A struct that contains the positions for which the u(s) (boundary function was evaluated) {pts.xy}, the arclengths that corresponds to these points {pts.s}, the normal vectors for the points we use {pts.normal} and the differences between the arclengths {pts.ds}
+`pts_all::Vector{BoundaryPoints}`: A struct that contains the positions for which the u(s) (boundary function was evaluated) {pts.xy}, the arclengths that corresponds to these points {pts.s}, the normal vectors for the points we use {pts.normal} and the differences between the arclengths {pts.ds}. This is for every k in ks.
 """
 function boundary_function_with_points(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     ks = state_data.ks
@@ -138,7 +138,7 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
         us_all[i] = u
         pts_all[i] = pts
     end
-    return ks, us, pts_all
+    return ks, us_all, pts_all
 end
 
 """
@@ -159,50 +159,8 @@ function save_boundary_function!(ks, us, s_vals; filename::String="boundary_valu
     @save filename ks us s_vals
 end
 
-# With the Scaling Method we need the BoundaryPoints and not the BoundaryPointsSM -> missing ds and s
-function _evaluate_boundary_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
-    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
-    curves = billiard.fundamental_boundary
-    type = eltype(solver.pts_scaling_factor)
-    xy_all = Vector{SVector{2,type}}()
-    normal_all = Vector{SVector{2,type}}()
-    s_all = Vector{type}()
-    ds_all = Vector{type}()
-    
-    for i in eachindex(curves)
-        crv = curves[i]
-        if typeof(crv) <: AbsRealCurve
-            L = crv.length
-            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
-            sampler = samplers[i]
-            # NEW
-            if crv isa PolarSegment
-                if sampler isa PolarSampler
-                    t, dt = sample_points(sampler, crv, N)
-                else
-                    t, dt = sample_points(sampler, N)
-                end
-                s = arc_length(crv,t)
-                ds = diff(s)
-                append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
-            else
-                t, dt = sample_points(sampler, N)
-                s = arc_length(crv,t)
-                ds = L.*dt
-            end
-            xy = curve(crv,t)
-            normal = normal_vec(crv,t)
-            append!(s_all, s)
-            append!(normal_all, normal)
-            append!(xy_all, xy)
-            append!(ds_all, ds)
-        end
-    end
-    return BoundaryPoints{type}(xy_all, normal_all, s_all, ds_all)
-end
-
 """
-     save_BoundaryPoints(ks::Vector, solver::AbsScalingMethod, billiard::Bi, us::Vector; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
+     save_BoundaryPoints(ks::Vector, vec_bd_points::Vector{BoundaryPoints}, us::Vector{Vector}; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
 
 Saves the Vector of BoundaryPoints structs together us and with ks for convenience. This makes it easier to construct the wavefunction via the boundary integral for which we need the boundary points, the arclength differences and the arclengths. For this it needs to construct the BoundaryPoints via the Scaling Method.
 
@@ -223,12 +181,7 @@ end
 # Returns
 - `Nothing`
 """
-function save_BoundaryPoints!(ks::Vector, solver::AbsScalingMethod, billiard::Bi, us::Vector; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
-    vec_bd_points = Vector{BoundaryPoints{eltype(ks)}}(undef, length(ks))
-    Threads.@threads for i in eachindex(ks) 
-        bd_point = _evaluate_boundary_points(solver, billiard, ks[i])
-        vec_bd_points[i] = bd_point
-    end
+function save_BoundaryPoints!(ks::Vector, vec_bd_points::Vector{BoundaryPoints}, us::Vector{Vector}; filename::String="boundary_points.jld2")
     @save filename ks vec_bd_points us
 end
 
@@ -329,7 +282,7 @@ Prepares the necessary data for computing the momentum density from a given stat
 
 # Returns
 - `u_values`: A vector of type `Vector{T}` containing the computed eigenvector components.
-- `pts`: A structure containing boundary points and related information.
+- `pts::BoundaryPoints`: A structure containing boundary points and related information.
 - `k`: The wave number extracted from the state.
 
 # Description
