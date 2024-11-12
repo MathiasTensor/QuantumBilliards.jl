@@ -403,7 +403,7 @@ High level wrapper for moer efficiently computing wavefunction matrices and the 
 - `vec_xs::Vector{Vector}`: A vector of `Vector` containing the x grid for each k in ks.
 - `vec_ys::Vector{Vector}`: A vector of `Vector` containing the y grid for each k in ks.
 """
-function wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
+function wavefunctions(X::Vector, ks::Vector, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     vec_Psi = Vector{Matrix}(undef, length(ks))
     vec_xs = Vector{Vector}(undef, length(ks))
     vec_ys = Vector{Vector}(undef, length(ks))
