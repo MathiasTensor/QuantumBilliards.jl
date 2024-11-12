@@ -308,20 +308,7 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
 
     # Calculate the standard deviation for each bin
-    bins = range(minimum(bin_centers), stop=maximum(bin_centers), length=nbins + 1)
-    bin_std_devs = Float64[]
-    for i in 1:length(hist.edges[1]) - 1
-        # Identify data points in each bin
-        start_idx = hist.edges[1][i]
-        end_idx = hist.edges[1][i+1]
-        bin_data = spacings[(spacings .>= start_idx) .& (spacings .< end_idx)]
-        # Calculate and store the standard deviation within the bin
-        if !isempty(bin_data)
-            push!(bin_std_devs, std(bin_data))
-        else
-            push!(bin_std_devs, 0.0)
-        end
-    end
+    bin_std_devs = [std(bin) for bin in bin_counts]
 
     # Theoretical distributions
     poisson_pdf = x -> exp(-x)
