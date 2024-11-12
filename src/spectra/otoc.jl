@@ -1,4 +1,4 @@
-using Bessels, LinearAlgebra
+using Bessels, LinearAlgebra, ProgressMeter
 
 include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
@@ -48,13 +48,15 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
         return sum(weighted_bessel_values) / 4                  
     end
     Psi2ds = Vector{Matrix{type}}(undef, length(ks))
-    for i in eachindex(ks) 
+    progress = Progress(length(ks), desc = "Constructing wavefunction matrices...")
+    Threads.@threads for i in eachindex(ks) 
         k = ks[i]
         bdPoints = vec_bdPoints[i]
         us = vec_us[i]
         Psi_flat = [ϕ(x,y,k,bdPoints,us) for y in y_grid for x in x_grid]  # Flattened vector
         Psi_flat .= ifelse.(pts_mask, Psi_flat, zero(type))  # Zero out points outside billiard
         Psi2ds[i] = reshape(Psi_flat, ny, nx)  # Reshape back to 2D matrix
+        next!(progress)
     end
     return Psi2ds, x_grid, y_grid
 end
