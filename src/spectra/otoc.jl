@@ -70,7 +70,7 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
     for j in eachindex(ks)
         local ax = Axis(f[row,col], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
         hm = heatmap!(ax, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
-        plot_boundary!(ax, billiard, fundamental_domain=fundamental_domain, plot_normal=false)
+        plot_boundary!(ax, billiard, fundamental_domain=true, plot_normal=false)
         xlims!(ax, xlim)
         ylims!(ax, ylim)
         col += 1
