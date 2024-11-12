@@ -321,15 +321,15 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
         ax = Axis(fig[1, 1], title="NNLS", xlabel="Spacing (s)", ylabel="P(s)")
     end
     if log_scale
-        scatter!(ax, collect(bin_centers), log10.(bin_counts), label="Empirical", color=:black, marker=:cross, markersize=10)
+        scatter!(ax, bin_centers, log10.(bin_counts), label="Empirical", color=:black, marker=:cross, markersize=10)
     else
-        scatter!(ax, collect(bin_centers), bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
+        scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
     end
     # Add ±1 standard deviation band
     if log_scale
-        errorbars!(ax, bin_centers, log10.(bin_counts), yerror=log10.(abs.(bin_std_devs)), color=:black)
+        errorbars!(ax, collect(bin_centers), log10.(bin_counts), yerror=log10.(abs.(bin_std_devs)), color=:black)
     else
-        errorbars!(ax, bin_centers, bin_counts, yerror=bin_std_devs, color=:black)
+        errorbars!(ax, collect(bin_centers), bin_counts, yerror=bin_std_devs, color=:black)
     end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
     if log_scale
