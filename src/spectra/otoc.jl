@@ -51,7 +51,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
         return sum(weighted_bessel_values) / 4                  
     end
     Psi2ds = Vector{Matrix{type}}(undef, length(ks))
-    Threads.@threads for i in eachindex(ks) 
+    for i in eachindex(ks) 
         k = ks[i]
         bdPoints = vec_bdPoints[i]
         us = vec_us[i]
