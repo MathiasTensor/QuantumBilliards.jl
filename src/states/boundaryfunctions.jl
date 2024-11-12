@@ -134,8 +134,7 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
         dim = length(vec)
         new_basis = resize_basis(basis, billiard, dim, ks[i])
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
-        setup_momentum_density(state; b=b)
-        u, pts, _ = boundary_function(state; b=b) # pts is BoundaryPoints and has information on ds and x
+        u, pts, _ = setup_momentum_density(state; b=b) # pts is BoundaryPoints and has information on ds and x
         us_all[i] = u
         pts_all[i] = pts
     end
@@ -158,6 +157,105 @@ Saves the results of the boundary_function with the `StateData` input. Primarly 
 """
 function save_boundary_function!(ks, us, s_vals; filename::String="boundary_values.jld2")
     @save filename ks us s_vals
+end
+
+# With the Scaling Method we need the BoundaryPoints and not the BoundaryPointsSM -> missing ds and s
+function _evaluate_boundary_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
+    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
+    curves = billiard.fundamental_boundary
+    type = eltype(solver.pts_scaling_factor)
+    xy_all = Vector{SVector{2,type}}()
+    normal_all = Vector{SVector{2,type}}()
+    s_all = Vector{type}()
+    ds_all = Vector{type}()
+    
+    for i in eachindex(curves)
+        crv = curves[i]
+        if typeof(crv) <: AbsRealCurve
+            L = crv.length
+            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
+            sampler = samplers[i]
+            # NEW
+            if crv isa PolarSegment
+                if sampler isa PolarSampler
+                    t, dt = sample_points(sampler, crv, N)
+                else
+                    t, dt = sample_points(sampler, N)
+                end
+                s = arc_length(crv,t)
+                ds = diff(s)
+                append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
+            else
+                t, dt = sample_points(sampler, N)
+                ds = L.*dt
+            end
+            xy = curve(crv,t)
+            normal = normal_vec(crv,t)
+            append!(s_all, s)
+            append!(normal_all, normal)
+            append!(xy_all, xy)
+            append!(ds_all, ds)
+        end
+    end
+    return BoundaryPoints{type}(xy_all, normal_all, s_all, ds_all)
+end
+
+"""
+     save_BoundaryPoints(ks::Vector, solver::AbsScalingMethod, billiard::Bi, us::Vector; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
+
+Saves the Vector of BoundaryPoints structs together us and with ks for convenience. This makes it easier to construct the wavefunction via the boundary integral for which we need the boundary points, the arclength differences and the arclengths. For this it needs to construct the BoundaryPoints via the Scaling Method.
+
+```julia
+struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
+    xy::Vector{SVector{2, T}}
+    normal::Vector{SVector{2, T}}
+    s::Vector{T}
+    ds::Vector{T}
+end
+```
+
+# Arguments
+- `ks::Vector{Float64}`: A vector of the eigenvalues.
+- `vec_bd_points::Vector{BoundaryPoints}`: A vector of BoundaryPoints structs. Each BoundaryPoints struct corresponds to a wave number `ks[i]`.
+- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
+
+# Returns
+- `Nothing`
+"""
+function save_BoundaryPoints(ks::Vector, solver::AbsScalingMethod, billiard::Bi, us::Vector; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
+    vec_bd_points = Vector{BoundaryPoints{eltype(ks)}}(undef, length(ks))
+    Threads.@threads for i in eachindex(ks) 
+        bd_point = _evaluate_boundary_points(solver, billiard, ks[i])
+        vec_bd_points[i] = bd_point
+    end
+    @save filename ks vec_bd_points, us
+end
+
+"""
+    read_BoundaryPoints(filename::String="boundary_points.jld2")
+
+Read the saved Vector{BoundaryPoints} for later construction of the wavefunction.
+
+```julia
+struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
+    xy::Vector{SVector{2, T}}
+    normal::Vector{SVector{2, T}}
+    s::Vector{T}
+    ds::Vector{T}
+end
+```
+
+# Arguments
+- `filename::String`: The name of the jld2 file to load the boundary points from. Default is "boundary_points.jld2".
+
+# Returns
+- `ks::Vector{<:Real}`: A vector of the wave numbers.
+- `vec_bd_points::Vector{BoundaryPoints}`: A vector of BoundaryPoints structs. Each BoundaryPoints struct corresponds to a wave number `ks[i]`.
+- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
+"""
+function read_BoundaryPoints(filename::String="boundary_points.jld2")
+    @load filename ks, vec_bd_points, us
+    return ks, vec_bd_points, us
 end
 
 """

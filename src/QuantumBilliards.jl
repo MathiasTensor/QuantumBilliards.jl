@@ -149,4 +149,5 @@ include("spectra/localization_entropy.jl")
 export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
+include("spectra/otoc.jl")
 end
