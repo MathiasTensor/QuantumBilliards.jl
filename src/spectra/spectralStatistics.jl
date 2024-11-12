@@ -327,9 +327,9 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     end
     # Add ±1 standard deviation band
     if log_scale
-        band!(ax, bin_centers, log10.(abs.(bin_counts .+ bin_std_devs)), log10.(abs.(bin_counts .- bin_std_devs)), color=:gray, transparency=0.2)
+        errorbars!(ax, bin_centers, log10.(bin_counts), yerror=log10.(abs.(bin_std_devs)), color=:black)
     else
-        band!(ax, bin_centers, bin_counts .+ bin_std_devs, bin_counts .- bin_std_devs, color=:gray, transparency=0.2)
+        errorbars!(ax, bin_centers, bin_counts, yerror=bin_std_devs, color=:black)
     end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
     if log_scale
