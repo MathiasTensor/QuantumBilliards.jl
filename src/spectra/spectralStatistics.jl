@@ -104,28 +104,28 @@ end
 # INTERNAL - taken from Gregor Vidmar's PhD thesis
 function probability_antenna_distorted_berry_robnik(s::T, rho::T, σ::T) where {T<:Real}
     integrand(φ, s_) = s_/(σ*sqrt(2*pi))*probability_berry_robnik(s_*cos(φ),rho)*exp(-s_^2*sin(φ)^2/(8*σ^2))
-    pb_antenna_dist(u) = quadgk_count(φ -> integrand(φ,u), 0.0, pi/2, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
-    normalization = quadgk_count(x -> x*pb_antenna_dist(x), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    pb_antenna_dist(u) = quadgk_count(φ -> integrand(φ,u), 0.0, pi/2, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
+    normalization = quadgk_count(x -> x*pb_antenna_dist(x), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
     return pb_antenna_dist(s)/normalization
 end
 
 # INTERNAL - taken from Gregor Vidmar's PhD thesis
 function probability_antenna_distorted_berry_robnik(s_vec::Vector{T}, rho::T, σ::T) where {T<:Real}
     integrand(φ, s_) = s_/(σ*sqrt(2*pi))*probability_berry_robnik(s_*cos(φ),rho)*exp(-s_^2*sin(φ)^2/(8*σ^2))
-    pb_antenna_dist(u) = quadgk_count(φ -> integrand(φ,u), 0.0, pi/2, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
-    normalization = quadgk_count(x -> x*pb_antenna_dist(x), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    pb_antenna_dist(u) = quadgk_count(φ -> integrand(φ,u), 0.0, pi/2, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
+    normalization = quadgk_count(x -> x*pb_antenna_dist(x), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
     return [pb_antenna_dist(s)/normalization for s in s_vec]
 end
 
 function probability_tunneling_distorted_berry_robnik(s::T, rho::T, σ::T) where {T<:Real}
     integrand(u) = 2*rho*(1-rho)*probability_antenna_distorted_berry_robnik(u,rho,σ) + (1.0-2*rho*(1-rho))*probability_berry_robnik(u,rho)
-    normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
     return integrand(s)/normalization
 end
 
 function probability_tunneling_distorted_berry_robnik(s_vec::Vector{T}, rho::T, σ::T) where {T<:Real}
     integrand(u) = 2*rho*(1-rho)*probability_antenna_distorted_berry_robnik(u,rho,σ) + (1.0-2*rho*(1-rho))*probability_berry_robnik(u,rho)
-    normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
     return [integrand(s)/normalization for s in s_vec]
 end
 
