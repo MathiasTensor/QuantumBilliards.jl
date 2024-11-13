@@ -101,6 +101,54 @@ function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     return T1 * (T2 * T3 * T4 + T5)
 end
 
+# INTERNAL - taken from Gregor Vidmar's PhD thesis
+function probability_antenna_distorted_berry_robnik(s::T, rho::T, σ::T) where {T<:Real}
+    integrand(φ, s_) = s_/(σ*sqrt(2*pi))*probability_berry_robnik(s_*cos(φ),rho)*exp(-s_^2*sin(φ)^2/(8*σ^2))
+    pb_antenna_dist(u) = quadgk_count(φ -> integrand(φ,u), 0.0, pi/2, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    normalization = quadgk_count(x -> x*pb_antenna_dist(x), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    return pb_antenna_dist(s)/normalization
+end
+
+# INTERNAL - taken from Gregor Vidmar's PhD thesis
+function probability_antenna_distorted_berry_robnik(s_vec::Vector{T}, rho::T, σ::T) where {T<:Real}
+    integrand(φ, s_) = s_/(σ*sqrt(2*pi))*probability_berry_robnik(s_*cos(φ),rho)*exp(-s_^2*sin(φ)^2/(8*σ^2))
+    pb_antenna_dist(u) = quadgk_count(φ -> integrand(φ,u), 0.0, pi/2, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    normalization = quadgk_count(x -> x*pb_antenna_dist(x), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    return [pb_antenna_dist(s)/normalization for s in s_vec]
+end
+
+function probability_tunneling_distorted_berry_robnik(s::T, rho::T, σ::T) where {T<:Real}
+    integrand(u) = 2*rho*(1-rho)*probability_antenna_distorted_berry_robnik(u,rho,σ) + (1.0-2*rho*(1-rho))*probability_berry_robnik(u,rho)
+    normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    return integrand(s)/normalization
+end
+
+function probability_tunneling_distorted_berry_robnik(s_vec::Vector{T}, rho::T, σ::T) where {T<:Real}
+    integrand(u) = 2*rho*(1-rho)*probability_antenna_distorted_berry_robnik(u,rho,σ) + (1.0-2*rho*(1-rho))*probability_berry_robnik(u,rho)
+    normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)
+    return [integrand(s)/normalization for s in s_vec]
+end
+
+
+# INTERNAL - only use for s <= 0.7
+function tunneling_distorted_berry_robnik_small_s_asymptotic(s::T, rho::T, σ::T) where {T<:Real}
+    # antenna-distorted BR
+    function p_ADBR()
+        ρ1 = rho
+        ρ2 = 1.0-rho
+        a0 = ρ1^2+2*ρ1*ρ2
+        a1 = -ρ1^3-3*ρ1^2*ρ2+pi/2*ρ2^3
+        a2 = 0.5*(ρ1^4+4*ρ1^3*ρ2-2*pi*ρ1*ρ2^3)
+        a3 = 1.0/24.0*(-4*ρ1^5-20*ρ1^4*ρ2+20*pi*ρ1^2*ρ2^3-3*pi^2*ρ2^5)
+        term1 = pi/2*(ρ1^2+2*ρ1*ρ2)
+        term2 = (-ρ1^3-3*ρ1^2*ρ2+pi/2*ρ2^3)*s
+        term3 = pi/4*(a2-a0/(8*σ^2))*s^2
+        term4 = 1.0/3.0*(-a1/(8*σ^2)+2*a3)*s^3
+        return s/(sqrt(2*pi)*σ)*(term1+term2+term3+term4)
+    end
+    # for s >= 0.7 we use the regular berry-robnik
+end
+
 """
     cumulative_berry_robnik(s::T, rho::T) -> T where {T <: Real}
 
@@ -282,6 +330,16 @@ function fit_brb_cumulative_to_data_only_beta(s_values::Vector, ws::Vector, rho:
     return fit_result.param[1]
 end
 
+function fit_br_tunneling_distorted_sigma(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
+    function tunneling_model(bin_centers, params)
+        σ = params
+        return probability_tunneling_distorted_berry_robnik(bin_centers, rho, σ)
+    end
+    init_params = [0.1]
+    fit_result = curve_fit((bin_centers, params) -> tunneling_model(bin_centers, params), bin_centers, bin_counts, init_params)
+    return fit_result.param[1]
+end
+
 """
     plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false) where {T <: Real}
 
@@ -295,11 +353,13 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `fit_only_beta::Bool=false`: If `true`, only the Berry-Robnik-Brody distribution's β parameter is fitted to the data, ρ is as given initially.
 - `log_scale::Bool=false`: If we plot log(P(s)) for observing small differences
 
+- `plot_tunneling_distorted_brb`: Whether we plot the tunneling distorted Berry-Robnik.
+
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -369,6 +429,10 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
                 lines!(ax, s_values, brb_pdf.(abs.(s_values)), label="Berry-Robnik-Brody, ρ_fit=$(round(ρ_opt; sigdigits=5)), β_fit=$(round(β_opt; sigdigits=5))", color=:orange, linestyle=:solid, linewidth=1)
             end
         end
+    end
+    if plot_tunneling_distorted_brb && !log_scale # we dont want the log scale for now
+        σ_fit = fit_br_tunneling_distorted_sigma(bin_centers, bin_counts, rho)
+        lines!(ax, s_values, probability_tunneling_distorted_berry_robnik.(s_values), label="Tunneling distorted BR")
     end
     xlims!(ax, extrema(s_values))
     if log_scale
