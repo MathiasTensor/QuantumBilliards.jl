@@ -332,7 +332,7 @@ end
 
 function fit_br_tunneling_distorted_sigma(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
     function tunneling_model(bin_centers, params)
-        σ = params
+        σ = params[1]
         return probability_tunneling_distorted_berry_robnik(bin_centers, rho, σ)
     end
     init_params = [0.1]
