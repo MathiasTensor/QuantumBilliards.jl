@@ -197,7 +197,7 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
         local ax_h = Axis(f[row,col][1,2], width=width_ax, height=height_ax)
         hm = heatmap!(ax, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
         plot_boundary!(ax, billiard, fundamental_domain=true, plot_normal=false)
-        hm_h = heatmap!(ax_h, qs_list[i], ps_list[i], Hs_list[i]; colormap=Reverse(:gist_heat))
+        hm_h = heatmap!(ax_h, qs_list[j], ps_list[j], Hs_list[j]; colormap=Reverse(:gist_heat))
         xlims!(ax, xlim)
         ylims!(ax, ylim)
         col += 1
