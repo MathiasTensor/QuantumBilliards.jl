@@ -6,6 +6,38 @@ include("../states/wavefunctions.jl")
 # EFFICIENT CONSTRUCTION AND PLOTTING
 
 """
+    ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
+
+Computes the wavefunction via the boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds. For a specific `k` it needs the boundary discretization information encoded into the `BoundaryPoints` struct:
+
+```julia
+struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
+xy::Vector{SVector{2, T}} # boundary (x,y) pts
+normal::Vector{SVector{2, T}} # Normals at for those (x,y) pts
+s::Vector{T} # Arclengths for those (x,y) pts
+ds::Vector{T} # Differences between the arclengths of pts.
+end
+```
+
+# Arguments
+- `x::T`: x-coordinate of the point to compute the wavefunction.
+- `y::T`: y-coordinate of the point to compute the wavefunction.
+- `k::T`: The eigenvalue for which the wavefunction is to be computed.
+- `bdPoints::BoundaryPoints`: Boundary discretization information.
+- `us::Vector`: Vector of boundary functions.
+
+# Returns
+- `ϕ::T`: The value of the wavefunction at the given point (x,y).
+
+"""
+function ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
+    target_point = SVector(x, y)
+    distances = norm.(Ref(target_point) .- bdPoints.xy)
+    weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds
+    return sum(weighted_bessel_values) / 4
+end
+
+"""
     wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
 Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral.
@@ -278,6 +310,10 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
     resize_to_layout!(f)
     return f
 end
+
+# OTOC constructions
+
+
 
 
 
