@@ -72,8 +72,8 @@ end
 Computes the Berry-Robnik distribution for a given spacing `s` and mixing parameter `rho`.
 
 # Arguments
-- `s::T`: The spacing value (must be of a real number type).
-- `rho::T`: The "mixing" parameter (0 < rho < 1), also of a real number type. For rho = 1, we have Poisson, and for rho = 0, we have the Wigner (GOE) distribution.
+- `s::T`: The spacing value .
+- `rho::T`: Liouville regular phase space portion.
 
 # Returns
 - The value of the Berry-Robnik distribution at spacing `s` for the given `rho`.
@@ -88,6 +88,19 @@ function probability_berry_robnik(s::T, rho::T) :: T where {T <: Real}
 end
 
 # INTERNAL Second derivative of the joint gap probability between Poisson and Brody
+"""
+    probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
+
+Computes the Berry-Robnik-Brody distribution for a give spacing `s` adn the given pair of parameters (σ,β).
+
+# Arguments
+- `s::T`: The spacing.
+- `rho::T`: Liouville regular phase space portion.
+- `β::T`: The Brody parameter.
+
+# Returns
+- `<:Real`: The probability value.
+"""
 function probability_berry_robnik_brody(s::T, rho::T, β::T) where {T<:Real}
     Γ_factor = gamma(1 + 1 / (1 + β))
     C2 = Γ_factor^(β + 1)
@@ -121,6 +134,19 @@ end
 
 # INTERNAL - taken from Gregor Vidmar's PhD thesis
 # Computes the probability for the tunneling distorsion w/ antenna contribution - single s
+"""
+    probability_tunneling_distorted_berry_robnik(s_vec::T, rho::T, σ::T) where {T<:Real}
+
+Computes the tunneling distorted Berry-Robnik distribution. Taken from Gregor Vidmar's PhD thesis.
+
+# Arguments
+- `s<:Real`: s value for which to compute the probability.
+- `rho::T`: Liouville regular phase space portion.
+- `σ::T`: Standard deviation of the antenna distortion.
+
+# Returns
+- `<:Real`: Cumulative probabilit< for the Berry-Robnik distribution at spacing `s`.
+"""
 function probability_tunneling_distorted_berry_robnik(s::T, rho::T, σ::T) where {T<:Real}
     integrand(u) = 2*rho*(1-rho)*probability_antenna_distorted_berry_robnik(u,rho,σ) + (1.0-2*rho*(1-rho))*probability_berry_robnik(u,rho)
     normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
@@ -129,6 +155,19 @@ end
 
 # INTERNAL - taken from Gregor Vidmar's PhD thesis
 # Computes the probability for the tunneling distorsion w/ antenna contribution - range of s
+"""
+    probability_tunneling_distorted_berry_robnik(s_vec::Vector{T}, rho::T, σ::T) where {T<:Real}
+
+Computes the tunneling distorted Berry-Robnik distribution. Taken from Gregor Vidmar's PhD thesis. Use this one for calculating on a grid s values, since it calaculates the nornalization once.
+
+# Arguments
+- `s_vec::Vector{<:Real}`: Vector of s values for which to compute the probability.
+- `rho::T`: Liouville regular phase space portion.
+- `σ::T`: Standard deviation of the antenna distortion.
+
+# Returns
+- `Vector{<:Real}`: A vector of the cumulative probabilities for the Berry-Robnik distribution at spacing `s` for each `s` in `s_vec`.
+"""
 function probability_tunneling_distorted_berry_robnik(s_vec::Vector{T}, rho::T, σ::T) where {T<:Real}
     integrand(u) = 2*rho*(1-rho)*probability_antenna_distorted_berry_robnik(u,rho,σ) + (1.0-2*rho*(1-rho))*probability_berry_robnik(u,rho)
     normalization = quadgk_count(l -> integrand(l), 0.0, Inf, rtol=1e-12, atol=1e-15, maxevals=1e7, order=21)[1]
@@ -306,6 +345,7 @@ function fit_brb_cumulative_to_data(s_values::Vector, ws::Vector, rho::T) where 
     return fit_result.param
 end
 
+# INTERNAL - fitting BRB to bin counts
 function fit_brb_cumulative_to_data_only_beta(s_values::Vector, ws::Vector, rho::T) where {T<:Real}
     function brb_cumul_model(s_vals::Vector, params)
         β = params[1]
@@ -316,6 +356,7 @@ function fit_brb_cumulative_to_data_only_beta(s_values::Vector, ws::Vector, rho:
     return fit_result.param[1]
 end
 
+# INTERNAL - fitting TDBR to bin counts
 function fit_br_tunneling_distorted_sigma(bin_centers::Vector, bin_counts::Vector, rho::T) where {T<:Real}
     function tunneling_model(bin_centers, params)
         σ = params[1]
@@ -327,7 +368,7 @@ function fit_br_tunneling_distorted_sigma(bin_centers::Vector, bin_counts::Vecto
 end
 
 """
-    plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false) where {T <: Real}
+    plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false, plot_standard_error::Bool=false) where {T <: Real}
 
 Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energy levels, along with theoretical distributions (Poisson, GOE, GUE). Optionally, the Berry-Robnik distribution can also be included if a `rho` value is provided.
 
@@ -338,14 +379,15 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `fit_brb::Bool=false`: If the numerical data requires a fitting of the Berry-Robnik_Brody P(s) distribution, displaying the optimal beta and rho parameter in the legend.
 - `fit_only_beta::Bool=false`: If `true`, only the Berry-Robnik-Brody distribution's β parameter is fitted to the data, ρ is as given initially.
 - `log_scale::Bool=false`: If we plot log(P(s)) for observing small differences
-
+- `fited_rho::Union{Nothing, T} = nothing`: The fitted Berry-Robnik parameter provided by the user. Use a non-nothing value only if the `curve_fit` gives non-sensible fit.
+- `plot_standard_error::Bool=false`: Whether we plot the standard error of the bin counts.
 - `plot_tunneling_distorted_brb`: Whether we plot the tunneling distorted Berry-Robnik.
 
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false, plot_standard_error::Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = diff(unfolded_energies)
     # Create a normalized histogram
@@ -376,7 +418,9 @@ function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Noth
     if log_scale
         # no need
     else
-        errorbars!(ax, collect(bin_centers), bin_counts, bin_std_devs, color=:black, whiskerwidth = 5)
+        if plot_standard_error
+            errorbars!(ax, collect(bin_centers), bin_counts, bin_std_devs, color=:black, whiskerwidth = 5)
+        end
     end
     s_values = range(0, stop=maximum(bin_centers), length=1000)
     if log_scale
