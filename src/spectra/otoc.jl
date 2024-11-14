@@ -30,7 +30,7 @@ end
 - `ϕ::T`: The value of the wavefunction at the given point (x,y).
 
 """
-function ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
+function ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector) where {T<:Real}
     target_point = SVector(x, y)
     distances = norm.(Ref(target_point) .- bdPoints.xy)
     weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds
