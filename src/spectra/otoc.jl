@@ -74,7 +74,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     # Determine points inside the billiard only once if inside_only is true
     pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) : fill(true, sz)
     pts_masked_indices = findall(pts_mask)
-    # Define the boundary integral function
+    # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
     function ϕ(x, y, k, bdPoints::BoundaryPoints, us::Vector)
         target_point = SVector(x, y)
         distances = norm.(Ref(target_point) .- bdPoints.xy)
@@ -167,7 +167,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     # Determine points inside the billiard only once if inside_only is true
     pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) : fill(true, sz)
     pts_masked_indices = findall(pts_mask)
-    # Define the boundary integral function
+    # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
     function ϕ(x, y, k, bdPoints::BoundaryPoints, us::Vector)
         target_point = SVector(x, y)
         distances = norm.(Ref(target_point) .- bdPoints.xy)
