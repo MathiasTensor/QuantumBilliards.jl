@@ -151,4 +151,6 @@ include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
 include("spectra/otoc.jl")
 export plot_wavefunctions, wavefunction_multi
+include("spectra/classical_transport_time.jl")
+export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_chaotic_init_conditions_to_cartesian, simulate_trajectories, plot_p2_stats!, generate_intervals_from_limits
 end
