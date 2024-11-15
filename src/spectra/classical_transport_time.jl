@@ -116,8 +116,7 @@ Simulates the boundary map of particles in a billiard geometry using a provided 
 # Arguments
 - `cartesian_conditions::Vector{Tuple{SVector{2, T}, SVector{2, T}}}`: A vector of initial conditions in Cartesian coordinates, where each element is `(pos, vel)`.
 - `boundarymap_function::Function`: A function that computes the boundary map for a particle. Its signature should be:
-  `boundarymap_function(pos::SVector{2, T}, vel::SVector{2, T}, N_collisions::Int; extra_args...) -> Tuple{Vector{SVector{2, T}}, Vector{SVector{2, T}}}`
-  where the function returns a tuple of boundary maps and extra outputs (if any).
+  `boundarymap_function(pos::SVector{2, T}, vel::SVector{2, T}, N_collisions::Int; extra_args...) -> Vector{Tuple{T,T}}`, where each element is a`(s,p)` pair for a trajectory that starts at `pos,vel`.
 - `extra_args...`: Additional arguments required by the `boundarymap_function`.
 - `N_collisions::Integer=1_000_000`: Number of boundary collisions to simulate for each trajectory.
 
@@ -144,9 +143,17 @@ function simulate_trajectories(cartesian_conditions::Vector{Tuple{SVector{2, T},
     progress = Progress(total_particles, desc="Simulating trajectories")
     Threads.@threads for particle_idx in eachindex(cartesian_conditions)
         pos, vel = cartesian_conditions[particle_idx]
-        bmap = boundarymap_function(pos, vel, N_collisions, extra_args...)
-        s_vals_all[particle_idx] = [bmap[i][1] for i in eachindex(bmap)] # Extract `s`- and `p`-values from the boundary map
-        p_vals_all[particle_idx] = [bmap[i][2] for i in eachindex(bmap)]
+        success = false
+        while !success
+            try
+                bmap = boundarymap_function(pos, vel, N_collisions, extra_args...)
+                s_vals_all[particle_idx] = [bmap[i][1] for i in eachindex(bmap)]
+                p_vals_all[particle_idx] = [bmap[i][2] for i in eachindex(bmap)]
+                success = true
+            catch e
+                println("Warning: Error encountered for particle $particle_idx, retrying...")
+            end
+        end
         next!(progress)
     end
     return s_vals_all, p_vals_all
