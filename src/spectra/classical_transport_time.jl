@@ -159,6 +159,10 @@ Calculates the average p^2 value for all particles for each collision.
 
 # Arguements
 - `p_vals_all::Vector{Vector{T}}`: A vector of vectors where each element is a vector of p^2 values for a particle across collisions.
+
+# Returns
+- `iterations::Vector{T}`: A vector of integers representing the collision numbers.
+- `p_squared_averages::Vector{T}`: A vector of numbers representing the average p^2 values for each collision.
 """
 function calculate_p2_averages(p_vals_all::Vector{Vector{T}}) where {T<:Real}
     N_collisions = length(p_vals_all[1])
