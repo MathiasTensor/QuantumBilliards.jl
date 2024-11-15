@@ -96,7 +96,7 @@ end
 # Returns
 - `Vector{Tuple{SVector{2, T}, SVector{2, T}}}`: A vector of Cartesian coordinates and Cartesian momenta corresponding to the provided Poincare-Birkhoff initial conditions.
 """
-function convert_p_0_chaotic_init_conditions_to_cartesian(init_conditions::Vector{T}, from_bcoords_to_cartesian::Function; extra_args...) where {T<:Real}
+function convert_p_0_chaotic_init_conditions_to_cartesian(init_conditions::Vector{T}, from_bcoords_to_cartesian::Function, extra_args...) where {T<:Real}
     cartesian_conditions = Vector{Tuple{SVector{2, Float64}, SVector{2, Float64}}}(undef, length(init_conditions))
     Threads.@threads for i in eachindex(init_conditions)
         s = init_conditions[i]
@@ -136,15 +136,15 @@ function boundarymap_wrapper(pos::SVector{2, T}, vel::SVector{2, T}, N_collision
     return bmap
 end
 """
-function simulate_trajectories(cartesian_conditions::Vector{Tuple{SVector{2, T}, SVector{2, T}}}, boundarymap_function::Function; 
-    extra_args..., N_collisions::Int=1_000_000) where {T<:Real}
+function simulate_trajectories(cartesian_conditions::Vector{Tuple{SVector{2, T}, SVector{2, T}}}, boundarymap_function::Function, extra_args...; 
+    N_collisions::Int=1_000_000) where {T<:Real}
     total_particles = length(cartesian_conditions)
     s_vals_all = Vector{Vector{T}}(undef, total_particles)
     p_vals_all = Vector{Vector{T}}(undef, total_particles)
     progress = Progress(total_particles, desc="Simulating trajectories")
     Threads.@threads for particle_idx in eachindex(cartesian_conditions)
         pos, vel = cartesian_conditions[particle_idx]
-        bmap = boundarymap_function(pos, vel, N_collisions; extra_args...)
+        bmap = boundarymap_function(pos, vel, N_collisions, extra_args...)
         s_vals_all[particle_idx] = [bmap[i][1] for i in eachindex(bmap)] # Extract `s`- and `p`-values from the boundary map
         p_vals_all[particle_idx] = [bmap[i][2] for i in eachindex(bmap)]
         next!(progress)
