@@ -195,4 +195,5 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
     else
         scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
     end
+    xtickformat(ax, "{:.0f}")
 end
