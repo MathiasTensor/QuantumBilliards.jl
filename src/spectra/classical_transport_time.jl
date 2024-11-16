@@ -193,7 +193,7 @@ Plots the ⟨p^2⟩ vs. N_T with no secondary moving average by default.
 
 
 """
-function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 100, inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
+function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 200, inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
     N_collisions = length(p2_averages)
     actual_window_size = N_collisions < window_size ? 1 : window_size
     n = length(p2_averages)
