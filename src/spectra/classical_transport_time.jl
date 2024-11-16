@@ -152,6 +152,7 @@ function simulate_trajectories(cartesian_conditions::Vector{Tuple{SVector{2, T},
                 success = true
             catch e
                 println("Warning: Error encountered for particle $particle_idx, retrying...")
+                println("ERROR: ", e)
             end
         end
         next!(progress)
