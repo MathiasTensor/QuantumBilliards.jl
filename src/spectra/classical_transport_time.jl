@@ -182,8 +182,18 @@ function calculate_p2_averages(p_vals_all::Vector{Vector{T}}) where {T<:Real}
     return collect(1:N_collisions), p_squared_averages
 end
 
-# SIMPLE PLOTTING WRAPPER
-function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false) where {T<:Real}
+"""
+    plot_p2_stats!(ax::Axis, inset_ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 100) where {T<:Real}
+
+Plots the ⟨p^2⟩ vs. N_T with no secondary moving average by default.
+
+# Arguments
+- `ax::Axis`: The main axis to plot on.
+- `inset_ax::Axis`: The inset axis to plot on.
+
+
+"""
+function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 100, inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
     N_collisions = length(p2_averages)
     actual_window_size = N_collisions < window_size ? 1 : window_size
     n = length(p2_averages)
@@ -196,4 +206,16 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
         scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
     end
     ax.xtickformat = "{:.0f}"
+    # Inset axis
+    if !isnothing(inset_ax)
+        inset_iterations = iterations_smoothed[iterations_smoothed .<= inset_iterations_limit]
+        inset_p2_averages = p2_averages_smoothed[1:length(inset_iterations)]
+        if log_scale
+            scatter!(inset_ax, log10.(inset_iterations), inset_p2_averages, markersize=4, color=:blue)
+        else
+            scatter!(inset_ax, inset_iterations, inset_p2_averages, markersize=4, color=:blue)
+        end
+        inset_ax.xtickformat = "{:.0f}"
+        hidedecorations!(inset_ax, grid=false)
+    end
 end
