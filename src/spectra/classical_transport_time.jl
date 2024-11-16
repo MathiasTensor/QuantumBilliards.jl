@@ -183,11 +183,15 @@ function calculate_p2_averages(p_vals_all::Vector{Vector{T}}) where {T<:Real}
 end
 
 # SIMPLE PLOTTING WRAPPER
-function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1) where {T<:Real}
+function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false) where {T<:Real}
     N_collisions = length(p2_averages)
     actual_window_size = N_collisions < window_size ? 1 : window_size
     n = length(p2_averages)
     p2_averages_smoothed = actual_window_size == 1 ? p2_averages : [mean(p2_averages[i:min(i+actual_window_size-1, n)]) for i in 1:actual_window_size:n]
     iterations_smoothed = collect(1:actual_window_size:N_collisions)
-    scatter!(ax, log10.(iterations_smoothed), p2_averages_smoothed, markersize=4, color=:blue)
+    if log_scale
+        scatter!(ax, log10.(iterations_smoothed), p2_averages_smoothed, markersize=4, color=:blue)
+    else
+        scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
+    end
 end
