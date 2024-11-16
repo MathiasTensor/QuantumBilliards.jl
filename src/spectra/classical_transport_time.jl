@@ -191,9 +191,9 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
     iterations_smoothed = collect(1:actual_window_size:N_collisions)
     if log_scale
         scatter!(ax, log10.(iterations_smoothed), p2_averages_smoothed, markersize=4, color=:blue)
-        xticks!(ax, log10(eps(T)):0.2:log10(iterations_smoothed[end]))
+        xticks!(ax, collect(log10(eps(T)):0.2:log10(iterations_smoothed[end])))
     else
         scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
-        xticks!(ax, 0:200:iterations_smoothed[end])
+        xticks!(ax, collect(0:200:iterations_smoothed[end]))
     end
 end
