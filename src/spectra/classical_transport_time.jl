@@ -192,15 +192,7 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
     N_collisions = length(iterations_smoothed)
     if log_scale
         scatter!(ax, log10.(iterations_smoothed), p2_averages_smoothed, markersize=4, color=:blue)
-        ticks_positions = log10.(collect(1:10:N_collisions))  # Adjust range if needed
-        ticks_labels = map(x -> "10^$(round(Int, x))", ticks_positions)  # Labels for log scale
-        xticks!(ax, (ticks_positions, ticks_labels))
-        xticklabelrotation!(ax, pi/2)
     else
         scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
-        ticks_positions = collect(0:200:N_collisions)  # Adjust range if needed
-        ticks_labels = string.(ticks_positions)
-        xticks!(ax, (ticks_positions, ticks_labels))
-        xticklabelrotation!(ax, pi/2)
     end
 end
