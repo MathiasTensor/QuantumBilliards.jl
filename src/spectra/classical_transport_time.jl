@@ -183,7 +183,7 @@ function calculate_p2_averages(p_vals_all::Vector{Vector{T}}) where {T<:Real}
 end
 
 # SIMPLE PLOTTING WRAPPER
-function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=100) where {T<:Real}
+function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=10) where {T<:Real}
     N_collisions = length(p2_averages)
     actual_window_size = N_collisions < window_size ? 1 : window_size
     n = length(p2_averages)
