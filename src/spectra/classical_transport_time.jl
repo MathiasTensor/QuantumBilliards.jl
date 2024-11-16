@@ -189,13 +189,14 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
     n = length(p2_averages)
     p2_averages_smoothed = actual_window_size == 1 ? p2_averages : [mean(p2_averages[i:min(i+actual_window_size-1, n)]) for i in 1:actual_window_size:n]
     iterations_smoothed = collect(1:actual_window_size:N_collisions)
+    N_collisions = length(iterations_smoothed)
     if log_scale
         scatter!(ax, log10.(iterations_smoothed), p2_averages_smoothed, markersize=4, color=:blue)
-        xticks!(ax, collect(log10(eps(T)):0.2:log10(iterations_smoothed[end])))
+        xticks!(ax, collect(log10(eps(T)):0.2:log10(N_collisions)))
         xticklabelrotation!(ax, pi/2)
     else
         scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
-        xticks!(ax, collect(0:200:iterations_smoothed[end]))
+        xticks!(ax, collect(0:200:N_collisions))
         xticklabelrotation!(ax, pi/2)
     end
 end
