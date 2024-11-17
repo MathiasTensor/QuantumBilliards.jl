@@ -216,6 +216,7 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
         ylims!(inset_ax, 0.75*maximum(inset_p2_averages), 1.2*maximum(inset_p2_averages))
         xlims!(inset_ax, 0.0, inset_iterations[end])
         L_range = collect(range(0, inset_iterations_limit, 10))
+        inset_ax.xticks = L_range
         #inset_ax.xtickformat = "{:.0f}"
         inset_ax.xticklabelrotation=pi/2
         #hidedecorations!(inset_ax, grid=false)
