@@ -212,7 +212,7 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
         inset_p2_averages = p2_averages_smoothed[1:length(inset_iterations)]
         scatter!(inset_ax, inset_iterations, inset_p2_averages, markersize=4, color=:blue)
         ylims!(inset_ax, 0.0, 1.1*maximum(inset_p2_averages))
-        xlims!(inset_ax, 0.0, inset_iterations)
+        xlims!(inset_ax, 0.0, inset_iterations[end])
         inset_ax.xtickformat = "{:.0f}"
         hidedecorations!(inset_ax, grid=false)
     end
