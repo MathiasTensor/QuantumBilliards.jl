@@ -183,23 +183,25 @@ function calculate_p2_averages(p_vals_all::Vector{Vector{T}}) where {T<:Real}
 end
 
 """
-    plot_p2_stats!(ax::Axis, inset_ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 100) where {T<:Real}
+    plot_p2_stats!(ax::Axis, inset_ax::Axis, p2_averages::Vector{T}; log_scale=false, inset_iterations_limit::Int = 100) where {T<:Real}
 
 Plots the ⟨p^2⟩ vs. N_T with no secondary moving average by default.
 
 # Arguments
 - `ax::Axis`: The main axis to plot on.
 - `inset_ax::Axis`: The inset axis to plot on.
+- `p2_averages::Vector{T}`: The ⟨p^2⟩ values to plot.
+- `log_scale::Bool=false`: Whether to plot in log scale the x-axis (num of collisions).
+- `inset_iterations_limit::Int=100`: The number of iterations to plot in the inset axis.
 
-
+# Returns
+- `Nothing`
 """
 function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 200, inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
     N_collisions = length(p2_averages)
     actual_window_size = N_collisions < window_size ? 1 : window_size
     n = length(p2_averages)
-    #p2_averages_smoothed = actual_window_size == 1 ? p2_averages : [mean(p2_averages[i:min(i+actual_window_size-1, n)]) for i in 1:actual_window_size:n]
     p2_averages_smoothed = p2_averages
-    #iterations_smoothed = collect(1:actual_window_size:N_collisions)
     iterations_smoothed = collect(1:N_collisions)
     N_collisions = length(iterations_smoothed)
     if log_scale
@@ -215,10 +217,5 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
         scatter!(inset_ax, inset_iterations, inset_p2_averages, markersize=4, color=:blue)
         ylims!(inset_ax, 0.5*maximum(inset_p2_averages), 1.1*maximum(inset_p2_averages))
         xlims!(inset_ax, 0.0, inset_iterations[end])
-        #L_range = collect(range(0, inset_iterations_limit, 10))
-        #inset_ax.xticks = L_range
-        #inset_ax.xtickformat = "{:.0f}"
-        #inset_ax.xticklabelrotation=pi/2
-        #hidedecorations!(inset_ax, grid=false)
     end
 end
