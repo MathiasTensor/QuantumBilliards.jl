@@ -207,7 +207,7 @@ function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, lo
     else
         scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
     end
-    #ax.xtickformat = "{:.0f}"
+    ax.xtickformat = "{:.0f}"
     # Inset axis
     if !isnothing(inset_ax) && !log_scale
         inset_iterations = iterations_smoothed[iterations_smoothed .<= inset_iterations_limit]
