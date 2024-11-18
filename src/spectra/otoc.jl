@@ -193,6 +193,9 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
     dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
     nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
+    println("nx: ", nx)
+    println("ny: ", ny)
+    println("Length of u(s) start, finish: ", length(vec_us[1]), ", ", length(vec_us[end]))
     x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
     pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
     sz = length(pts)
