@@ -4,7 +4,7 @@ include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
 
 # EFFICIENT CONSTRUCTION AND PLOTTING
-
+# TODO Fix sampling for small u(s)
 """
     ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
 
