@@ -209,7 +209,7 @@ Constructs the bₙₘ matrix from which we can construct the OTOC expression. J
 # Returns
 - `Vector{Matrix{Complex{T}}}`: The computed bₙₘ matrix for times ts.
 """
-function B(ks::Vector{T}, A::Matrix, B::Matrix, ts::Vector)
+function B(ks::Vector{T}, A::Matrix, B::Matrix, ts::Vector) where {T<:Real}
     return [B(ks,A,B,t) for t in ts]
 end
 
@@ -316,7 +316,7 @@ end
 # Taken from : Out-of-time-order correlators in quantum mechanics by Koji Hashimoto, Keiju Murata and Ryosuke Yoshii. For the most typical [x(t),p(0)] expectation value with the gaussian wavepacket the calculations are greatly simplified. We just need to calculate the xₘₙ terms and have the eigenvalues.
 
 """
-    function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vectpr{T}, bdPoints_m::BoundaryPoints{T}, bdPoints_n::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
+    X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoints_m::BoundaryPoints{T}, bdPoints_n::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::Vector) where {T<:Real}
 
 Constructs the (m,n)-th component of the xₘₙ term for the coordinate matrix element xₘₙ=⟨m|x|n⟩. This is calculated as:
 ```math
@@ -332,50 +332,58 @@ Constructs the (m,n)-th component of the xₘₙ term for the coordinate matrix 
 - `bdPoints_n::BoundaryPoints{T}`: The BoundaryPoints struct for the n-th state.
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
+- `pts_mask::Vector`: Vector indicating which points in the grid are inside the billiard. This is supplied from the top calling function. It uses the `inside_only=true` case always.
 
 # Returns
 - `T`: The (m,n)-th component of the xₘₙ term.
 """
-function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoints_m::BoundaryPoints{T}, bdPoints_n::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
-    dx = x_grid[2] - x_grid[1] # Grid is by construction evenly spaced with wavefunction construction
+function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoints_m::BoundaryPoints{T}, bdPoints_n::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::Vector) where {T<:Real}
+    # Grid spacings
+    dx = x_grid[2] - x_grid[1]
     dy = y_grid[2] - y_grid[1]
     dxdy = dx * dy
-    distances_m = Matrix{T}(undef, length(y_grid), length(x_grid))
-    distances_n = Matrix{T}(undef, length(y_grid), length(x_grid))
+    
+    # Create grid points and apply mask to determine points inside the billiard
+    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
+    pts_masked = pts[pts_mask]
+    
+    # Preallocate arrays for distances
+    distances_m = Vector{T}(undef, length(pts_masked))
+    distances_n = Vector{T}(undef, length(pts_masked))
+    
     # Function to compute the double integral for a given boundary point pair (s, s')
     function double_integral(xy_s_m::SVector{2, T}, xy_s_n::SVector{2, T})
         x_s_m, y_s_m = xy_s_m
         x_s_n, y_s_n = xy_s_n
-        # Compute distance matrices for Y₀ evaluations
-        for j in eachindex(y_grid)
-            for i in eachindex(x_grid)
-                distances_m[j, i] = norm(SVector(x_grid[i] - x_s_m, y_grid[j] - y_s_m))
-                distances_n[j, i] = norm(SVector(x_grid[i] - x_s_n, y_grid[j] - y_s_n))
-            end
+
+        # Compute distances for masked points
+        Threads.@threads for idx in eachindex(pts_masked)
+            distances_m[idx] = norm(pts_masked[idx] - SVector(x_s_m, y_s_m))
+            distances_n[idx] = norm(pts_masked[idx] - SVector(x_s_n, y_s_n))
         end
-        # Evaluate the Bessel functions
+
+        # Compute Bessel functions for masked points
         Y0_m = Bessels.bessely0.(k_m .* distances_m)
         Y0_n = Bessels.bessely0.(k_n .* distances_n)
-        # Perform the element-wise product with x-coordinates and sum over the grid
-        integral_sum = zero(T)
-        Threads.@threads for j in eachindex(y_grid)
-            for i in eachindex(x_grid)
-                integral_sum += x_grid[i] * Y0_m[j, i] * Y0_n[j, i] * dxdy
-            end
-        end
-        return integral_sum
+
+        # Apply x-operator and perform element-wise multiplication
+        x_operator_values = getindex.(pts_masked, 1)  # Extract x-coordinates of masked points
+        integrand = Y0_m .* x_operator_values .* Y0_n
+
+        # Compute the sum over the masked grid points
+        return sum(integrand) * dxdy
     end
-    # Compute the full boundary integral
-    total_sum = Threads.Atomic{T}(0.0)
+    # Compute the full double boundary integral
+    result = Threads.Atomic{T}(0.0)
     Threads.@threads for i in eachindex(us_m)
         for j in eachindex(us_n)
             xy_s_m = bdPoints_m.xy[i]
             xy_s_n = bdPoints_n.xy[j]
             contribution = us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
-            Threads.atomic_add!(total_sum, contribution)
+            Threads.atomic_add!(result, contribution)
         end
     end
-    return total_sum[] / 4.0  # Divide by 4 as per the formula
+    return result[] / 4.0  # Multiply by 1/4 as per the formula
 end
 
 """
@@ -395,15 +403,18 @@ Computes the full X matrix of xₘₙ=⟨m|x|n⟩. Just a multithreaded wrapper 
 """
 function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
     full_matrix = fill(0.0, length(ks), length(ks))
+    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
+    sz = length(pts)
+    pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true)
     Threads.@threads for i in eachindex(ks)
         for j in eachindex(ks)
-            full_matrix[i,j] = X_mn_standard(ks[i], ks[j], vec_us[i], vec_us[j], vec_bdPoints[j], vec_bdPoints[j], x_grid, y_grid)
+            full_matrix[i,j] = X_mn_standard(ks[i], ks[j], vec_us[i], vec_us[j], vec_bdPoints[j], vec_bdPoints[j], x_grid, y_grid, pts_mask)
         end
     end
     return full_matrix
 end
 
-function b_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
+function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
     Es = ks .^2 # get energies
     X_matrix = X_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid)
     B_matrix = fill(Complex(0.0), length(ks), length(ks))
@@ -423,9 +434,17 @@ function b_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
         end
         B_matrix[i,:] = local_result # Doing it row by row
     end
+    return 0.5*B_matrix
+end
+
+function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+    return [B_standard(ks, vec_us, vec_bdPoints,x_grid, y_grid,t) for t in ts]
 end
 
 #TODO finish the standard OTOC for p,x
+function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
+    
+end
 
 
 ### PLOTTING LOGIC AND EFFICIENT CONSTRUCTIONS
