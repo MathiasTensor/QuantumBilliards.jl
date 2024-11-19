@@ -472,7 +472,7 @@ function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
     sz = length(pts)
     pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) # only compute once
     progress = Progress(length(ks), desc="Computing X_mn matrix elements...")
-    Threads.@threads for i in eachindex(ks)
+    for i in eachindex(ks)
         for j in eachindex(ks)
             full_matrix[i,j] = X_mn_standard(ks[i], ks[j], vec_us[i], vec_us[j], vec_bdPoints[j], vec_bdPoints[j], x_grid, y_grid, pts_mask)
         end
