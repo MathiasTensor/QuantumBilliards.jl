@@ -130,20 +130,6 @@ function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_
     return A0, optimal_a, optimal_b, beta_model
 end
 
-"""
-    heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
-
-Plots the M(A) 2d heatmap along with 12 random representative chaotic Poincare-Husimi functions for that M(A).
-
-# Arguments
-- `Hs_list::Vector{Matrix}`: A list of Husimi function (matrices).
-- `qs_list::Vector{Vector}`: Vector of Vectors that represent the qs for each Husimi matrix.
-- `ps_list::Vector{Vector}`: Vector of Vectors that represent the ps for each Husimi matrix.
-
-# Returns
-- `fig::Figure`: Figure object from Makie to save or display.
-"""
-
 # INTERNAL convert integer to Roman numeral (up to 16, otherwise arabic to string)
 function int_to_roman(n::Int)
     romans = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi"]
@@ -151,6 +137,7 @@ function int_to_roman(n::Int)
 end
 
 # INTERNAL gray background for husimi matrix plot when no 0.0 husimi value there
+#=
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
     H_bg = fill(NaN, size(H))
     Threads.@threads for idx in eachindex(projection_grid)
@@ -161,6 +148,14 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
         end
     end
     return H_bg
+end
+=#
+function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
+    chaotic_H = projection_grid .== 1
+    regular_H = projection_grid .== -1
+    # Adjust background with a constant value for non-chaotic, non-regular regions
+    background = projection_grid .== 0  # Default 0
+    return H .* (chaotic_H .+ regular_H) .+ background .* 0.1  # Add 0.1 for visual clarity
 end
 
 """
@@ -222,7 +217,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         H = husimi_with_chaotic_background(H, chaotic_background)
         roman_label = int_to_roman(j)
         ax_husimi = Axis(husimi_grid[row, col], title=roman_label, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, yticklabelsvisible=false)
-        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
+        #heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
+        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H)))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
         col += 1
         if col > 4  # Move to the next row after 4 columns
