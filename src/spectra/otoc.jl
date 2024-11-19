@@ -531,7 +531,14 @@ High level wrapper for standard `[x(t),p(0)]` OTOC B matrix construction. It jus
 - `Vector{Matrix{Complex{T}}}`: Vector of B matrices for each time parameter in `ts`. The matrix elements are Complex.
 """
 function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    return [B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard) for t in ts]
+    progress = Progress(length(ts), desc="Computing B matrices for all times...")
+    B_matrices = Vector{Matrix{Complex{T}}}(undef, length(ts))
+    Threads.@threads for t_idx in eachindex(ts)
+        t = ts[t_idx]
+        B_matrices[t_idx] = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard)
+        next!(progress)
+    end
+    return B_matrices
 end
 
 """
