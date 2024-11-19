@@ -242,7 +242,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     # Compute M and A values
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
-
+    println(As)
     # Dynamically extend the range of A
     max_A = maximum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
