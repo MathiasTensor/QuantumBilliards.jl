@@ -151,19 +151,10 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
 end
 =#
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
-    # Chaotic regions: Keep Husimi values as they are
-    chaotic_H = projection_grid .== 1
-
-    # Regular regions: Keep Husimi values as they are
-    regular_H = projection_grid .== -1
-
-    # Neutral regions: Fill with a small constant (e.g., 0.1) or a neutral background
-    neutral_H = projection_grid .== 0
-
-    # Combine all contributions
-    H_bg = H .* (chaotic_H .+ regular_H)  # Retain values for chaotic and regular regions
-    H_bg .+= neutral_H .* minimum(H[chaotic_H .+ regular_H]) / 10  # Neutral regions are dimmed
-    return H_bg
+     # Create a binary mask for chaotic regions
+     chaotic_mask = projection_grid .== 1
+     H_bg = H
+     return H_bg, chaotic_mask
 end
 
 """
@@ -221,12 +212,17 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         H = Hs_list[random_index]
         qs_i = qs_list[random_index]
         ps_i = ps_list[random_index]
-        chaotic_background = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
-        H = husimi_with_chaotic_background(H, chaotic_background)
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
+        H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
         roman_label = int_to_roman(j)
         ax_husimi = Axis(husimi_grid[row, col], title=roman_label, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, yticklabelsvisible=false)
         #heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
-        heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H)))
+        #heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H)))
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
+
+        # Overlay the chaotic mask with transparency
+        heatmap!(ax_husimi, chaotic_mask; colormap=:gray, alpha=0.5, colorrange=(0, 1))
+
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
         col += 1
         if col > 4  # Move to the next row after 4 columns
