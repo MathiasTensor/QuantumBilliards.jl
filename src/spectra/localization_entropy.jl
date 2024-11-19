@@ -137,7 +137,7 @@ function int_to_roman(n::Int)
 end
 
 # INTERNAL gray background for husimi matrix plot when no 0.0 husimi value there
-#=
+#= UNUSED
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
     H_bg = fill(NaN, size(H))
     Threads.@threads for idx in eachindex(projection_grid)
@@ -150,6 +150,7 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
     return H_bg
 end
 =#
+# INTERNAL new one
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
      # Create a binary mask for chaotic regions
      chaotic_mask = projection_grid .== 1
