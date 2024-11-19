@@ -713,7 +713,8 @@ function microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}}
     nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
     x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
     # Precompute B matrices for all time values
-    B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
+    println("Constructing the B matrix...")
+    @time B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
     total_iterations = length(ts) * length(ks)
     progress = Progress(total_iterations, desc="Computing cₙ(t) without wavepacket coefficients")
     result = Matrix{T}(undef, length(ts), length(ks))  # Store cₙ(t) for each time step
