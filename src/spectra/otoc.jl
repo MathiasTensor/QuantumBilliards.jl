@@ -438,13 +438,14 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
     println("Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     Threads.@threads for i in eachindex(us_m)
         local_result = zero(T)  # Thread-local accumulator
+        println("Thread $(Threads.threadid()): Starting i=", i)  # Thread-safe thread ID
         @inbounds for j in eachindex(us_n)
             xy_s_m = bdPoints_m.xy[i]
             xy_s_n = bdPoints_n.xy[j]
             local_result += us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
-            Threads.atomic_add!(total_result, local_result)
         end
-        println("Done i: ", i)
+        Threads.atomic_add!(total_result, local_result)
+        println("Thread $(Threads.threadid()): Done i=", i)  # Thread-safe completion log
     end
     return total_result[] / 4.0
 end
