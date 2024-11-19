@@ -258,9 +258,9 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         A_index = findfirst(x -> x > A, As_edges)
         M_index = findfirst(x -> x > M, Ms_edges)
         
-        # Use fallback indices if findfirst returns nothing
-        A_index = A_index === nothing ? length(As_bin_centers) : A_index - 1
-        M_index = M_index === nothing ? length(Ms_bin_centers) : M_index - 1
+        # Handle cases where indices are out of bounds
+        A_index = A_index === nothing ? length(As_bin_centers) : max(1, A_index - 1)
+        M_index = M_index === nothing ? length(Ms_bin_centers) : max(1, M_index - 1)
         
         if A_index in 1:length(As_bin_centers) && M_index in 1:length(Ms_bin_centers)
             grid[M_index, A_index] += 1
@@ -273,14 +273,24 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     # Create main figure and 2D heatmap
     fig = Figure(resolution=(1200, 1000))
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
-    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat), xticks=collect(range(0.0, 0.7, length=10)))
+    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat))
 
     # Select 16 random Husimi matrices and label them
     selected_indices = rand(1:length(Hs_list), 16)
     for (j, random_index) in enumerate(selected_indices)
+        if !haskey(H_to_bin, random_index)
+            println("DEBUG: Missing bin mapping for Husimi index $random_index")
+            continue
+        end
         bin_coords = H_to_bin[random_index]
         M_index, A_index = bin_coords
         roman_label = int_to_roman(j)
+
+        # Debugging output for each label
+        println("DEBUG: Roman numeral $roman_label -> Husimi index $random_index")
+        println("DEBUG: M = $(Ms[random_index]), A = $(As[random_index])")
+        println("DEBUG: M_index = $M_index, A_index = $A_index")
+        println("DEBUG: M_center = $(Ms_bin_centers[M_index]), A_center = $(As_bin_centers[A_index])")
 
         # Use bin centers for accurate label placement
         M_center = Ms_bin_centers[M_index]
@@ -289,7 +299,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     end
 
     # Husimi function grid layout
-    husimi_grid = fig[2:3, 1] = GridLayout()
+    husimi_grid = fig[2, 1] = GridLayout()
     row = 1
     col = 1
     for (j, random_index) in enumerate(selected_indices)
