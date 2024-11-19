@@ -534,6 +534,7 @@ function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
     progress = Progress(length(ts), desc="Computing B matrices for all times...")
     B_matrices = Vector{Matrix{Complex{T}}}(undef, length(ts))
     for t_idx in eachindex(ts)
+        println("t idx: ", t_idx)
         t = ts[t_idx]
         B_matrices[t_idx] = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard)
         next!(progress)
