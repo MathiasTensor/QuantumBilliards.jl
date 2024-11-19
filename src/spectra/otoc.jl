@@ -415,7 +415,7 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
         x_s_n, y_s_n = xy_s_n
 
         # Compute distances for masked points
-        Threads.@threads for idx in eachindex(pts_masked)
+        @inbounds Threads.@threads for idx in eachindex(pts_masked)
             distances_m[idx] = norm(pts_masked[idx] - SVector(x_s_m, y_s_m))
             distances_n[idx] = norm(pts_masked[idx] - SVector(x_s_n, y_s_n))
         end
@@ -434,19 +434,20 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
     # Compute the full double boundary integral
     println("length us_m=", length(us_m))
     println("length us_n=", length(us_n))
-    
-    result = Threads.Atomic{T}(0.0)
-    progress = Progress(length(us_m), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
+    total_result = Threads.Atomic{T}(0.0)
+    total_iterations = length(us_m) * length(us_n)
+    progress = Progress(total_iterations, desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     Threads.@threads for i in eachindex(us_m)
-        for j in eachindex(us_n)
+        local_result = zero(T)  # Thread-local accumulator
+        @inbounds for j in eachindex(us_n)
             xy_s_m = bdPoints_m.xy[i]
             xy_s_n = bdPoints_n.xy[j]
-            contribution = us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
-            Threads.atomic_add!(result, contribution)
-            next!(progress)
+            local_result += us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
+            Threads.atomic_add!(total_result, local_result)
         end
+        next!(progress, length(us_n))  # Update progress after processing all `j` for the current `i`
     end
-    return result[] / 4.0  # Multiply by 1/4 as per the formula
+    return total_result[] / 4.0
 end
 
 """
