@@ -255,8 +255,13 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
 
     # Map each Husimi function to its bin (M_bin, A_bin)
     for (i, (M, A)) in enumerate(zip(Ms, As))
-        A_index = findfirst(x -> x > A, As_edges) - 1
-        M_index = findfirst(x -> x > M, Ms_edges) - 1
+        A_index = findfirst(x -> x > A, As_edges)
+        M_index = findfirst(x -> x > M, Ms_edges)
+        
+        # Use fallback indices if findfirst returns nothing
+        A_index = A_index === nothing ? length(As_bin_centers) : A_index - 1
+        M_index = M_index === nothing ? length(Ms_bin_centers) : M_index - 1
+        
         if A_index in 1:length(As_bin_centers) && M_index in 1:length(Ms_bin_centers)
             grid[M_index, A_index] += 1
             H_to_bin[i] = (M_index, A_index)
