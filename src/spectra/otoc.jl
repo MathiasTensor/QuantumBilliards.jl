@@ -535,7 +535,7 @@ function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
 end
 
 """
-    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
 
 Computes the microcanonical cₙ(t) for all n for a time t.
 
@@ -543,8 +543,6 @@ Computes the microcanonical cₙ(t) for all n for a time t.
 - `ks::Vector{T}`: Vector of eigenvalues.
 - `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
 - `alphas::Vector{Complex{T}}`: Expansion coefficients for the Gaussian wavepacket in the eigenbasis.
 - `t::T`: Time parameter.
 - `billiard::Bi`: The billiard geometry.
@@ -552,7 +550,14 @@ Computes the microcanonical cₙ(t) for all n for a time t.
 # Returns
 - `T`: The microcanonical cₙ(t) for all n.
 """
-function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    k_max = maximum(ks)
+    type = eltype(k_max)
+    L = billiard.length
+    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
+    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
+    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
+    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
     B_standard_matrix = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard)
     total_iterations = length(ks) * length(ks)
     progress = Progress(total_iterations, desc="Computing single-time c_φ(t)")
@@ -573,7 +578,7 @@ function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, ve
 end
 
 """
-    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, ts::Vector{T}) where {T<:Real}
 
 Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts`.
 
@@ -581,8 +586,6 @@ Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts`.
 - `ks::Vector{T}`: Vector of eigenvalues.
 - `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
 - `alphas::Vector{Complex{T}}`: Expansion coefficients for the Gaussian wavepacket in the eigenbasis.
 - `ts::Vector{T}`: Vector of time points.
 - `billiard::Bi`: The billiard geometry.
@@ -590,7 +593,14 @@ Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts`.
 # Returns
 - `Vector{T}`: Vector of `cₙ(t) values for each t in ts.
 """
-function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, alphas::Vector{Complex{T}}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, alphas::Vector{Complex{T}}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    k_max = maximum(ks)
+    type = eltype(k_max)
+    L = billiard.length
+    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
+    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
+    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
+    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
     total_iterations = length(ts) * length(ks) * length(ks)
     progress = Progress(total_iterations, desc="Computing multi-time c_φ(t)")
     B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
@@ -679,7 +689,7 @@ end
 ### NO WAVEPACKET VERSIONS FOR Cₙ(t)
 
 """
-    microcanonical_Cn_no_wavepacket(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+    microcanonical_Cn_no_wavepacket(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, ts::Vector{T}) where {T<:Real}
 
 Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts` without using wavepacket coefficients.
 
@@ -687,15 +697,20 @@ Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts` wi
 - `ks::Vector{T}`: Vector of eigenvalues.
 - `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
 - `ts::Vector{T}`: Vector of time points.
 - `billiard::Bi`: The billiard geometry.
 
 # Returns
 - `Matrix{T}`: A matrix where each row corresponds to a time `t` and each column to an eigenstate `n`.
 """
-function microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},x_grid::Vector{T},y_grid::Vector{T},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+function microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    k_max = maximum(ks)
+    type = eltype(k_max)
+    L = billiard.length
+    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
+    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
+    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
+    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
     # Precompute B matrices for all time values
     B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
     total_iterations = length(ts) * length(ks)
