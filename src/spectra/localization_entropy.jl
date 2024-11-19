@@ -221,7 +221,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
 
         # Overlay the chaotic mask with transparency
-        heatmap!(ax_husimi, chaotic_mask; colormap=:gray, alpha=0.5, colorrange=(0, 1))
+        colormap = cgrad([:white, :black])  # Linear gradient from white to black
+        heatmap!(ax_husimi, chaotic_mask; colormap=colormap, alpha=0.5, colorrange=(0, 1))
 
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
         col += 1
