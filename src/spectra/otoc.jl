@@ -69,7 +69,7 @@ function gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, x0::T, y0::T, sigma_
 end
 
 """
-    gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, pts_mask::Vector) where {T<:Real}
 
 For a single state |φₘ⟩ constructs the projection coefficient for the gaussian 2d wavepacket:
 αₘ = ⟨Φ|φₘ⟩ = 1/4*∮dsuₘ(s)*[∫∫Yₒ(kₘ|(x,y)-(x(s),y(s)|))*Φ(x,y)dxdy]
@@ -83,26 +83,36 @@ For a single state |φₘ⟩ constructs the projection coefficient for the gauss
 - `x0::T, y0::T`: The center of the wavepacket in space.
 - `sigma_x::T, sigma_y::T`: standard deviations of the wavepacket in the x and y directions.
 - `kx0::T, ky0::T`: The wavevectors in the x and y directions for the wavepacket.
+- `pts_mask::Vector{Bool}`: Vector indicating which points in the grid are inside the billiard. This is supplied from the top calling function. It uses the `inside_only=true` case always. In the top function this is the result of `points_in_billiard_polygon` function.
 
 # Returns
 - `T`: The projection coefficient αₘ for the given state.
 """
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+function gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, pts_mask::Vector) where {T<:Real}
     # Compute the Gaussian wavepacket
-    packet = gaussian_wavepacket_2d(x_grid, y_grid, x0, y0, sigma_x, sigma_y, kx0, ky0)
-    distances = Matrix{T}(undef, length(y_grid), length(x_grid))
+    packet_full = gaussian_wavepacket_2d(x_grid, y_grid, x0, y0, sigma_x, sigma_y, kx0, ky0)
     dx = x_grid[2] - x_grid[1] # Precompute x grid spacing
     dy = y_grid[2] - y_grid[1] # Precompute y grid spacing
     dxdy = dx * dy # integration volume
+    # Mask the packet values
+    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
+    pts_masked_indices = findall(pts_mask)
+    packet_masked = packet_full[pts_masked_indices] # The 2d gaussian wavepacket on the non-trivial billiard grid (inside the billiard)
+
+    # Make a flattened vector w/ same length as the non-trivial no-masked indices (true for inside the billiard)
+    distances_masked = Vector{T}(undef, length(pts_masked_indices))
+
     function proj(xy_s::SVector{2,T}) # this is the s term in the coefficient of expansion of the gaussian wave packet in the eigenbasis (given as a matrix) ∫∫dxdyY0(k|(x,y) - (x_s, y_s)|)*Φ(x,y) where Φ(x,y) is the Gaussian wave packet
         x_s, y_s = xy_s
-        for j in eachindex(y_grid) # significant overhead if threading inside loop
-            for i in eachindex(x_grid)
-                distances[j, i] = norm(SVector(x_grid[i] - x_s, y_grid[j] - y_s))
-            end
+        # Compute distances for masked points
+        Threads.@threads for idx in eachindex(pts_masked_indices)
+            global_idx = pts_masked_indices[idx]
+            distances_masked[idx] = norm(pts[global_idx] - SVector(x_s, y_s))
         end
-        Y0_values = Bessels.bessely0.(k .* distances)
-        return sum(Y0_values .* packet) * dxdy # element wise sum ∑_ij A[i,j]*B[i,j]dx*dy for the double integral approximation. The consturction of the grid is linear which implies that the dx and dy are constant
+        # Compute Bessel function values for masked points
+        Y0_values = Bessels.bessely0.(k .* distances_masked)
+
+        return sum(Y0_values .* packet_masked) * dxdy # element wise sum ∑_ij A[i,j]*B[i,j]dx*dy for the double integral approximation. The consturction of the grid is linear which implies that the dx and dy are constant
     end
      # Compute the sum of u(s) * F(x(s), y(s)) over the boundary
      total_sum = Threads.Atomic{T}(0.0)
@@ -113,6 +123,53 @@ function gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T
      end
      return total_sum[] * 0.25 # 1/4 * ∮ u_n(s) * ∫∫dxdyY0(k|(x,y) - (x_s, y_s)|)*Φ(x,y), used Atomic for threading since mutating same total_sum
 end
+
+"""
+    compute_all_projection_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+
+High-level function that computes all the projection coefficients αₘ for a given Gaussian wavepacket
+and a set of eigenstates.
+
+# Arguments
+- `ks::Vector{T}`: Vector of eigenvalues for the eigenstates.
+- `vec_us::Vector{Vector{T}}`: Vector of boundary function values for each eigenstate.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of `BoundaryPoints` structs for each eigenstate.
+- `x_grid::Vector{T}, y_grid::Vector{T}`: Grids defining the spatial domain of the billiard.
+- `x0::T, y0::T`: The center of the Gaussian wavepacket in space.
+- `sigma_x::T, sigma_y::T`: Standard deviations of the Gaussian wavepacket in x and y directions.
+- `kx0::T, ky0::T`: Wavevectors of the Gaussian wavepacket in x and y directions.
+- `billiard::Bi`: The billiard geometry.
+
+# Returns
+- `Vector{T}`: A vector of projection coefficients αₘ for each eigenstate.
+"""
+function compute_all_projection_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},x_grid::Vector{T},y_grid::Vector{T},x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T,billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+    # Generate the point mask for points inside the billiard
+    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
+    sz = length(pts)
+    pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true)
+    projection_coefficients = Vector{T}(undef, length(ks))
+    # Compute each projection coefficient in parallel
+    progress = Progress(length(ks), desc = "Computing α_m for each k...")
+    Threads.@threads for i in eachindex(ks)
+        k = ks[i]
+        us = vec_us[i]
+        bdPoints = vec_bdPoints[i]
+        projection_coefficients[i] = gaussian_wavepacket_eigenbasis_expansion_coefficient(k, us, bdPoints, x_grid, y_grid, x0, y0, sigma_x, sigma_y, kx0, ky0, pts_mask)
+        next!(progress)
+    end
+    return projection_coefficients
+end
+
+
+
+
+
+
+
+### GENERAL OTOC CONSTRUCTION - NOT USED FREQUENTLY, STILL BEING TESTED
+
+#=
 
 """
     b_nk(u_n::Vector, u_m::Vector, F_nk::Function)
@@ -306,6 +363,7 @@ function OTOC_4_Point_Precursor(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bd
     return result
 end
 
+=#
 
 
 
@@ -332,7 +390,7 @@ Constructs the (m,n)-th component of the xₘₙ term for the coordinate matrix 
 - `bdPoints_n::BoundaryPoints{T}`: The BoundaryPoints struct for the n-th state.
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
-- `pts_mask::Vector`: Vector indicating which points in the grid are inside the billiard. This is supplied from the top calling function. It uses the `inside_only=true` case always.
+- `pts_mask::Vector{Bool}`: Vector indicating which points in the grid are inside the billiard. This is supplied from the top calling function. It uses the `inside_only=true` case always. In the top function this is the result of `points_in_billiard_polygon` function.
 
 # Returns
 - `T`: The (m,n)-th component of the xₘₙ term.
@@ -387,7 +445,7 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
 end
 
 """
-    X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
+    X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
 
 Computes the full X matrix of xₘₙ=⟨m|x|n⟩. Just a multithreaded wrapper for the `X_mn` function.
 
@@ -397,15 +455,16 @@ Computes the full X matrix of xₘₙ=⟨m|x|n⟩. Just a multithreaded wrapper 
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
+- `billiard::Bi`: The billiard geometry.
 
 # Returns
 - `Matrix{T}`: The full X matrix of xₘₙ=⟨m|x|n⟩. It's real!
 """
-function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
+function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
     full_matrix = fill(0.0, length(ks), length(ks))
     pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
     sz = length(pts)
-    pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true)
+    pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) # only compute once
     Threads.@threads for i in eachindex(ks)
         for j in eachindex(ks)
             full_matrix[i,j] = X_mn_standard(ks[i], ks[j], vec_us[i], vec_us[j], vec_bdPoints[j], vec_bdPoints[j], x_grid, y_grid, pts_mask)
@@ -415,7 +474,7 @@ function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
 end
 
 """
-    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
+    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
 
 Standard `[x(t),p(0)]` OTOC B matrix construction, where we do not need to explicitely construct the Pₘₙ matrix since we only need Xₘₙ. This is based on the paper: Out-of-time-order correlators in quantum mechanics; Koji Hashimoto, Keiju Murata and Ryosuke Yoshii, specifically chapters 2 and 5.
 
@@ -426,13 +485,14 @@ Standard `[x(t),p(0)]` OTOC B matrix construction, where we do not need to expli
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
 - `t::T`: Time parameter.
+- `billiard::Bi`: The billiard geometry.
 
 # Returns
 - `Matrix{Complex{T}}`: The full B matrix of Bₘₙ=⟨m|B|n⟩. It's complex!
 """
-function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
+function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
     Es = ks .^2 # get energies
-    X_matrix = X_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid)
+    X_matrix = X_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, billiard)
     B_matrix = fill(Complex(0.0), length(ks), length(ks))
     Threads.@threads for i in eachindex(ks)
         local_result = Vector{Complex{T}}(undef, length(ks))  # Thread-local storage for row `i`
@@ -454,7 +514,7 @@ function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
 end
 
 """
-    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
 
 High level wrapper for standard `[x(t),p(0)]` OTOC B matrix construction. It just iterates the base `B_standard` function over a time interval.
 
@@ -465,16 +525,17 @@ High level wrapper for standard `[x(t),p(0)]` OTOC B matrix construction. It jus
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
 - `ts::Vector{T}`: Vector of time parameters.
+- `billiard::Bi`: The billiard geometry.
 
 # Returns
 - `Vector{Matrix{Complex{T}}}`: Vector of B matrices for each time parameter in `ts`. The matrix elements are Complex.
 """
-function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
-    return [B_standard(ks, vec_us, vec_bdPoints,x_grid, y_grid,t) for t in ts]
+function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    return [B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard) for t in ts]
 end
 
 """
-    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::T) where {T<:Real}
+    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
 
 Computes the microcanonical cₙ(t) for all n for a time t.
 
@@ -484,13 +545,31 @@ Computes the microcanonical cₙ(t) for all n for a time t.
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
-- `ts::T`: Time parameter.
+- `alphas::Vector{Complex{T}}`: Expansion coefficients for the Gaussian wavepacket in the eigenbasis.
+- `t::T`: Time parameter.
+- `billiard::Bi`: The billiard geometry.
+
+# Returns
+- `T`: The microcanonical cₙ(t) for all n.
 """
-function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
-    B_standard_matrix = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t)
-    # Compute c_n(t) = sum_m |b_{nm}(t)|^2 for each row n
-    c = sum(abs2, B_standard_matrix; dims=2)  # abs2 computes |b_{nm}|^2, dims=2 sums over columns (m)
-    return vec(c)  # Flatten the result into a 1D vector
+function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    B_standard_matrix = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard)
+    total_iterations = length(ks) * length(ks)
+    progress = Progress(total_iterations, desc="Computing single-time c_φ(t)")
+    c = Threads.Atomic{Complex{T}}(0.0)  # Thread-safe atomic variable
+
+    Threads.@threads for n in eachindex(ks)
+        local_sum = zero(Complex{T})  # Thread-local accumulator
+        for m in eachindex(ks)
+            alpha_factor = conj(alphas[n]) * alphas[m]  # Precompute αₙ* * αₘ since not depend on k
+            for k in eachindex(ks)
+                local_sum += alpha_factor * B_standard_matrix[n, k] * B_standard_matrix[k, m]
+            end
+            next!(progress)  # Update m+=1 otherwise bloat
+        end
+        Threads.atomic_add!(c, local_sum)  # Safely accumulate into the global result
+    end
+    return real(c[])  # Return real part / sanity check
 end
 
 """
@@ -504,20 +583,35 @@ Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts`.
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
 - `x_grid::Vector{T}`: Vector of x grid points.
 - `y_grid::Vector{T}`: Vector of y grid points.
+- `alphas::Vector{Complex{T}}`: Expansion coefficients for the Gaussian wavepacket in the eigenbasis.
 - `ts::Vector{T}`: Vector of time points.
+- `billiard::Bi`: The billiard geometry.
 
 # Returns
-- `Matrix{T}`: A matrix where each row corresponds to a time `t` and each column to an eigenstate `n`.
+- `Vector{T}`: Vector of `cₙ(t) values for each t in ts.
 """
-function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
-    B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts)
-    result = Matrix{T}(undef, length(ts), length(ks))
+function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, alphas::Vector{Complex{T}}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    total_iterations = length(ts) * length(ks) * length(ks)
+    progress = Progress(total_iterations, desc="Computing multi-time c_φ(t)")
+    B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
+    result = Vector{T}(undef, length(ts))  # Store c_φ(t) for each time step
     Threads.@threads for t_idx in eachindex(ts)
-        B_matrix = B_matrices[t_idx]  # Get the B-matrix for time ts[t_idx]
-        c_t = sum(abs2, B_matrix; dims=2)
-        result[t_idx, :] = vec(c_t)
+        B_standard_matrix = B_matrices[t_idx]
+        c = Threads.Atomic{Complex{T}}(0.0)  # Thread-safe accumulator for the current t_idx
+        Threads.@threads for n in eachindex(ks)
+            local_sum = zero(Complex{T})  # Thread-local accumulator
+            for m in eachindex(ks)
+                alpha_factor = conj(alphas[n]) * alphas[m]  # Precompute αₙ* * αₘ
+                for k in eachindex(ks)
+                    local_sum += alpha_factor * B_standard_matrix[n, k] * B_standard_matrix[k, m]
+                end
+                next!(progress)  # Update progress for the `m` loop
+            end
+            Threads.atomic_add!(c, local_sum)  # Accumulate into thread-safe atomic
+        end
+        result[t_idx] = real(c[])  # Store the real part for this time step
     end
-    return result
+    return result  # Return a vector of c_φ(t) values for each t
 end
 
 """
@@ -582,14 +676,74 @@ function plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, i
 end
 
 
+### NO WAVEPACKET VERSIONS FOR Cₙ(t)
+
+"""
+    microcanonical_Cn_no_wavepacket(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+
+Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts` without using wavepacket coefficients.
+
+# Arguments
+- `ks::Vector{T}`: Vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
+- `x_grid::Vector{T}`: Vector of x grid points.
+- `y_grid::Vector{T}`: Vector of y grid points.
+- `ts::Vector{T}`: Vector of time points.
+- `billiard::Bi`: The billiard geometry.
+
+# Returns
+- `Matrix{T}`: A matrix where each row corresponds to a time `t` and each column to an eigenstate `n`.
+"""
+function microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},x_grid::Vector{T},y_grid::Vector{T},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    # Precompute B matrices for all time values
+    B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
+    total_iterations = length(ts) * length(ks)
+    progress = Progress(total_iterations, desc="Computing cₙ(t) without wavepacket coefficients")
+    result = Matrix{T}(undef, length(ts), length(ks))  # Store cₙ(t) for each time step
+    Threads.@threads for t_idx in eachindex(ts)
+        B_standard_matrix = B_matrices[t_idx]
+        local_result = Vector{T}(undef, length(ks))  # Store cₙ(t) for this `t_idx`
+        Threads.@threads for n in eachindex(ks)  # Compute cₙ(t) = ∑ₘ |b_{nm}(t)|² for each row n
+            local_result[n] = sum(abs2, B_standard_matrix[n, :])  # Sum over m
+            next!(progress)  # Update the progress bar
+        end
+        result[t_idx, :] = local_result  # Store results for this time
+    end
+    return result  # Return a matrix where each row corresponds to cₙ(t) at different times
+end
+
+"""
+    plot_microcanonical_Cn_no_wavepacket!(ax::Axis, c_values::Matrix{T}, ts::Vector{T}, indices::Vector{Int}) where {T<:Real}
+
+Plots the microcanonical `cₙ(t)` values for specific `n` indices over time. NOT FOR THE WAVEPACKET VERSION
+
+# Arguments
+- `ax::Axis`: Axis object from CairoMakie for the plot.
+- `c_values::Matrix{T}`: The matrix of `cₙ(t)` values where each row corresponds to a time `t` and each column to an eigenstate `n`.
+- `ts::Vector{T}`: Vector of time points corresponding to the rows of `c_values`.
+- `indices::Vector{Int}`: Vector of indices specifying which `n` values to plot.
+"""
+function plot_microcanonical_Cn_no_wavepacket!(ax::Axis, c_values::Matrix{T}, ts::Vector{T}, indices::Vector{Int}) where {T<:Real}
+    for n in indices
+        if n > size(c_values, 2)
+            warn("Index $n is out of bounds for c_values with size $(size(c_values, 2))")
+            continue
+        end
+        plot!(ax, ts, c_values[:, n], label="n = $n")
+    end
+    ax.xlabel = "Time (t)"
+    ax.ylabel = "cₙ(t)"
+    ax.title = "Microcanonical cₙ(t) for Selected n"
+    ax.legend = true
+end
 
 
 
 
 
 
-
-### PLOTTING LOGIC AND EFFICIENT CONSTRUCTIONS
+### PLOTTING LOGIC AND EFFICIENT CONSTRUCTIONS - OK
 
 """
     ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)

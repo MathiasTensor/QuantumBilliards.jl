@@ -150,7 +150,7 @@ export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_lo
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
 include("spectra/otoc.jl")
-export plot_wavefunctions, wavefunction_multi, X_mn_standard, X_standard, B_standard, microcanocinal_Cn_standard, plot_microcanonical_Cn!
+export plot_wavefunctions, wavefunction_multi, X_mn_standard, X_standard, B_standard, microcanocinal_Cn_standard, plot_microcanonical_Cn!, microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
 include("spectra/classical_transport_time.jl")
 export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_chaotic_init_conditions_to_cartesian, simulate_trajectories, plot_p2_stats!, generate_intervals_from_limits
 end
