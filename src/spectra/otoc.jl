@@ -440,8 +440,8 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
             xy_s_n = bdPoints_n.xy[j]
             contribution = us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
             Threads.atomic_add!(result, contribution)
-            next!(progress)
         end
+        next!(progress)
     end
     return result[] / 4.0  # Multiply by 1/4 as per the formula
 end
