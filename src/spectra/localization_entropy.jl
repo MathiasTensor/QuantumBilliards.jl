@@ -174,6 +174,7 @@ Plots the P(M,A) 2d heatmap along with 16 random representative chaotic Poincare
 # Returns
 - `fig::Figure`: Figure object from Makie to save or display.
 """
+#=
 function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
@@ -193,7 +194,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     end
 
     # Main grid P(A,M)
-    fig = Figure(resolution=(1200, 1000))
+    fig = Figure(resolution=(1500, 1000), size=(1500,1000))
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
     heatmap!(ax, As_grid, Ms_grid, grid; colormap=Reverse(:gist_heat))
 
@@ -234,5 +235,83 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     end
     rowgap!(husimi_grid, 5)
     colgap!(husimi_grid, 5)
+    return fig
+end
+=#
+function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
+    # Compute M and A values
+    Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+    As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
+
+    # Define bin edges and centers for A and M
+    As_edges = collect(range(0.0, maximum(As), length=101))  # 100 bins for A-axis
+    Ms_edges = collect(range(-1.0, 1.0, length=101))         # 100 bins for M-axis
+    As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
+    Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
+
+    # Create the 2D grid for counts
+    grid = fill(0, length(Ms_bin_centers), length(As_bin_centers))
+    H_to_bin = Dict{Int, Tuple{Int, Int}}()
+
+    # Map each Husimi function to its bin (M_bin, A_bin)
+    for (i, (M, A)) in enumerate(zip(Ms, As))
+        A_index = findfirst(x -> x > A, As_edges) - 1
+        M_index = findfirst(x -> x > M, Ms_edges) - 1
+        if A_index in 1:length(As_bin_centers) && M_index in 1:length(Ms_bin_centers)
+            grid[M_index, A_index] += 1
+            H_to_bin[i] = (M_index, A_index)
+        end
+    end
+
+    # Create main figure and 2D heatmap
+    fig = Figure(resolution=(1200, 1000))
+    ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
+    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat))
+
+    # Select 16 random Husimi matrices and label them
+    selected_indices = rand(1:length(Hs_list), 16)
+    for (j, random_index) in enumerate(selected_indices)
+        bin_coords = H_to_bin[random_index]
+        M_index, A_index = bin_coords
+        roman_label = int_to_roman(j)
+
+        # Use bin centers for accurate label placement
+        M_center = Ms_bin_centers[M_index]
+        A_center = As_bin_centers[A_index]
+        text!(ax, A_center, M_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
+    end
+
+    # Husimi function grid layout
+    husimi_grid = fig[2:3, 1] = GridLayout()
+    row = 1
+    col = 1
+    for (j, random_index) in enumerate(selected_indices)
+        H = Hs_list[random_index]
+        qs_i = qs_list[random_index]
+        ps_i = ps_list[random_index]
+        
+        # Create projection grid and chaotic mask
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
+        H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
+        roman_label = int_to_roman(j)
+
+        # Plot individual Husimi functions
+        ax_husimi = Axis(husimi_grid[row, col], title=roman_label, 
+                          xticksvisible=false, yticksvisible=false, 
+                          xgridvisible=false, ygridvisible=false, 
+                          xticklabelsvisible=false, yticklabelsvisible=false)
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
+        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 1))
+        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
+
+        col += 1
+        if col > 4
+            col = 1
+            row += 1
+        end
+    end
+    rowgap!(husimi_grid, 5)
+    colgap!(husimi_grid, 5)
+
     return fig
 end
