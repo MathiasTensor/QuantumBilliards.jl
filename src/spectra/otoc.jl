@@ -432,6 +432,9 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
         return sum(integrand) * dxdy
     end
     # Compute the full double boundary integral
+    println("length us_m=", length(us_m))
+    println("length us_n=", length(us_n))
+    
     result = Threads.Atomic{T}(0.0)
     progress = Progress(length(us_m), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     Threads.@threads for i in eachindex(us_m)
