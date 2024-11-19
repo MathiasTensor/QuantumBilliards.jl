@@ -243,9 +243,13 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
 
+    # Dynamically extend the range of A
+    max_A = maximum(As)
+    A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
+
     # Define bin edges and centers for A and M
-    As_edges = collect(range(0.0, maximum(As), length=101))  # 100 bins for A-axis
-    Ms_edges = collect(range(-1.0, 1.0, length=101))         # 100 bins for M-axis
+    As_edges = collect(range(0.0, A_max_range, length=101))  # Dynamically adjusted bins for A-axis
+    Ms_edges = collect(range(-1.0, 1.0, length=101))         # Fixed bins for M-axis
     As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
     Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
 
