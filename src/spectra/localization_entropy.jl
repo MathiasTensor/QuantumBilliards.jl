@@ -265,6 +265,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         if A_index in 1:length(As_bin_centers) && M_index in 1:length(Ms_bin_centers)
             grid[M_index, A_index] += 1
             H_to_bin[i] = (M_index, A_index)
+        else
+            println("DEBUG: Skipped invalid bin for Husimi index $i (A=$A, M=$M, A_index=$A_index, M_index=$M_index)")
         end
     end
 
