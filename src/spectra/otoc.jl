@@ -433,12 +433,14 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
     end
     # Compute the full double boundary integral
     result = Threads.Atomic{T}(0.0)
+    progress = Progress(length(us_m), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     Threads.@threads for i in eachindex(us_m)
         for j in eachindex(us_n)
             xy_s_m = bdPoints_m.xy[i]
             xy_s_n = bdPoints_n.xy[j]
             contribution = us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
             Threads.atomic_add!(result, contribution)
+            next!(progress)
         end
     end
     return result[] / 4.0  # Multiply by 1/4 as per the formula
