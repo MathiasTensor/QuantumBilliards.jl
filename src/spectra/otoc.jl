@@ -433,7 +433,7 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
     end
     # Compute the full double boundary integral
     total_result = Threads.Atomic{T}(0.0)
-    progress(length(us_m)*length(us_n), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
+    progress = Progress(length(us_m)*length(us_n), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     #println("Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     Threads.@threads for i in eachindex(us_m)
         local_result = zero(T)  # Thread-local accumulator
