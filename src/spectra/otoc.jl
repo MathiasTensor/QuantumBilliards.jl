@@ -414,6 +414,22 @@ function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
     return full_matrix
 end
 
+"""
+    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
+
+Standard `[x(t),p(0)]` OTOC B matrix construction, where we do not need to explicitely construct the Pₘₙ matrix since we only need Xₘₙ. This is based on the paper: Out-of-time-order correlators in quantum mechanics; Koji Hashimoto, Keiju Murata and Ryosuke Yoshii, specifically chapters 2 and 5.
+
+# Arguements
+- `ks::Vector{T}`: Vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
+- `x_grid::Vector{T}`: Vector of x grid points.
+- `y_grid::Vector{T}`: Vector of y grid points.
+- `t::T`: Time parameter.
+
+# Returns
+- `Matrix{Complex{T}}`: The full B matrix of Bₘₙ=⟨m|B|n⟩. It's complex!
+"""
 function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
     Es = ks .^2 # get energies
     X_matrix = X_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid)
@@ -437,14 +453,140 @@ function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vect
     return 0.5*B_matrix
 end
 
+"""
+    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+
+High level wrapper for standard `[x(t),p(0)]` OTOC B matrix construction. It just iterates the base `B_standard` function over a time interval.
+
+# Arguments
+- `ks::Vector{T}`: Vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
+- `x_grid::Vector{T}`: Vector of x grid points.
+- `y_grid::Vector{T}`: Vector of y grid points.
+- `ts::Vector{T}`: Vector of time parameters.
+
+# Returns
+- `Vector{Matrix{Complex{T}}}`: Vector of B matrices for each time parameter in `ts`. The matrix elements are Complex.
+"""
 function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
     return [B_standard(ks, vec_us, vec_bdPoints,x_grid, y_grid,t) for t in ts]
 end
 
-#TODO finish the standard OTOC for p,x
+"""
+    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::T) where {T<:Real}
+
+Computes the microcanonical cₙ(t) for all n for a time t.
+
+# Arguments
+- `ks::Vector{T}`: Vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
+- `x_grid::Vector{T}`: Vector of x grid points.
+- `y_grid::Vector{T}`: Vector of y grid points.
+- `ts::T`: Time parameter.
+"""
 function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T) where {T<:Real}
-    
+    B_standard_matrix = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t)
+    # Compute c_n(t) = sum_m |b_{nm}(t)|^2 for each row n
+    c = sum(abs2, B_standard_matrix; dims=2)  # abs2 computes |b_{nm}|^2, dims=2 sums over columns (m)
+    return vec(c)  # Flatten the result into a 1D vector
 end
+
+"""
+    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+
+Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts`.
+
+# Arguments
+- `ks::Vector{T}`: Vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
+- `x_grid::Vector{T}`: Vector of x grid points.
+- `y_grid::Vector{T}`: Vector of y grid points.
+- `ts::Vector{T}`: Vector of time points.
+
+# Returns
+- `Matrix{T}`: A matrix where each row corresponds to a time `t` and each column to an eigenstate `n`.
+"""
+function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}) where {T<:Real}
+    B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts)
+    result = Matrix{T}(undef, length(ts), length(ks))
+    Threads.@threads for t_idx in eachindex(ts)
+        B_matrix = B_matrices[t_idx]  # Get the B-matrix for time ts[t_idx]
+        c_t = sum(abs2, B_matrix; dims=2)
+        result[t_idx, :] = vec(c_t)
+    end
+    return result
+end
+
+"""
+    plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, n::Int; log_scale::Bool=false) where {T<:Real}
+
+Plots the microcanonical `cₙ(t)` for a given eigenstate `n` over times `ts`.
+
+# Arguments
+- `ax::Axis`: Axis object from CairoMakie for plotting.
+- `ts::Vector{T}`: Vector of time points.
+- `c_values::Matrix{T}`: Matrix of cₙ(t) values. Rows correspond to times, columns to eigenstates.
+- `n::Int`: Index of the eigenstate to plot.
+- `log_scale::Bool=false`: Whether to use a logarithmic scale for the y-axis.
+
+# Returns
+- `Nothing`
+"""
+function plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, n::Int; log_scale::Bool=false) where {T<:Real}
+    @assert n > 0 && n <= size(c_values, 2) "Index `n` out of range for the c_values matrix." # Sanity check
+    cn_t = c_values[:, n]
+    if log_scale
+        lines!(ax, ts, log10.(cn_t), linewidth=2, color=:blue, label="c_$(n)(t)")
+        ax.ylabel = "log10(cₙ(t))"
+    else
+        lines!(ax, ts, cn_t, linewidth=2, color=:blue, label="c_$(n)(t)")
+        ax.ylabel = "cₙ(t)"
+    end
+    ax.xlabel = "t"
+    ax.title = "Microcanonical cₙ(t) for n = $n"
+    axislegend(ax)
+end
+
+"""
+    plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, indices::Vector{Int}; log_scale::Bool=false) where {T<:Real}
+
+Plots the microcanonical `cₙ(t)` for a set of eigenstates `indices` over times `ts`.
+
+# Arguments
+- `ax::Axis`: Axis object from CairoMakie for plotting.
+- `ts::Vector{T}`: Vector of time points.
+- `c_values::Matrix{T}`: Matrix of `cₙ(t)` values. Rows correspond to times, columns to eigenstates.
+- `indices::Vector{Int}`: Indices of the eigenstates to plot.
+- `log_scale::Bool=false`: Whether to use a logarithmic scale for the y-axis.
+
+# Returns
+- `Nothing`
+"""
+function plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, indices::Vector{Int}; log_scale::Bool=false) where {T<:Real}
+    for n in indices
+        @assert n > 0 && n <= size(c_values, 2) "Index `n` out of range for the c_values matrix."
+        cn_t = c_values[:, n]
+        if log_scale
+            lines!(ax, ts, log10.(cn_t), linewidth=2, label="c_$(n)(t)")
+        else
+            lines!(ax, ts, cn_t, linewidth=2, label="c_$(n)(t)")
+        end
+    end
+    ax.xlabel = "t"
+    ax.ylabel = log_scale ? "log10(cₙ(t))" : "cₙ(t)"
+    ax.title = "Microcanonical cₙ(t) for n ∈ $(indices)"
+    axislegend(ax)
+end
+
+
+
+
+
+
+
 
 
 ### PLOTTING LOGIC AND EFFICIENT CONSTRUCTIONS
