@@ -432,10 +432,9 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
         return sum(integrand) * dxdy
     end
     # Compute the full double boundary integral
-    println("length us_m=", length(us_m))
-    println("length us_n=", length(us_n))
     total_result = Threads.Atomic{T}(0.0)
-    println("Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
+    progress(length(us_m)*length(us_n), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
+    #println("Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
     Threads.@threads for i in eachindex(us_m)
         local_result = zero(T)  # Thread-local accumulator
         println("Thread $(Threads.threadid()): Starting i=", i)  # Thread-safe thread ID
@@ -445,7 +444,8 @@ function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoint
             local_result += us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
         end
         Threads.atomic_add!(total_result, local_result)
-        println("Thread $(Threads.threadid()): Done i=", i)  # Thread-safe completion log
+        #println("Thread $(Threads.threadid()): Done i=", i)  # Thread-safe completion log
+        next!(progress)
     end
     return total_result[] / 4.0
 end
