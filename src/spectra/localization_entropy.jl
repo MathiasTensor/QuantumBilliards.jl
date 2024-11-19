@@ -238,66 +238,89 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     return fig
 end
 =#
-function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
+function heatmap_M_vs_A_2d_split(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
     # Compute M and A values
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
 
-    # Define bin edges and centers for A and M
-    As_edges = collect(range(0.0, maximum(As), length=101))  # 100 bins for A-axis
-    Ms_edges = collect(range(-1.0, 1.0, length=101))         # 100 bins for M-axis
-    As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
+    # Determine dynamic range for the second heatmap if necessary
+    max_A = maximum(As)
+    A_split_2 = max(0.7, max_A)  # Extend to max(A) if needed
+
+    # Define heatmap 1 (A ∈ [0, 0.4])
+    As_edges_1 = collect(range(0.0, 0.4, length=101))
+    As_bin_centers_1 = [(As_edges_1[i] + As_edges_1[i + 1]) / 2 for i in 1:(length(As_edges_1) - 1)]
+    
+    # Define heatmap 2 (A ∈ [0.4, A_split_2])
+    As_edges_2 = collect(range(0.4, A_split_2, length=101))
+    As_bin_centers_2 = [(As_edges_2[i] + As_edges_2[i + 1]) / 2 for i in 1:(length(As_edges_2) - 1)]
+
+    # Define M grid
+    Ms_edges = collect(range(-1.0, 1.0, length=101))
     Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
 
-    # Create the 2D grid for counts
-    grid = fill(0, length(Ms_bin_centers), length(As_bin_centers))
-    H_to_bin = Dict{Int, Tuple{Int, Int}}()
+    # Create grids for both heatmaps
+    grid_1 = fill(0, length(Ms_bin_centers), length(As_bin_centers_1))
+    grid_2 = fill(0, length(Ms_bin_centers), length(As_bin_centers_2))
 
-    # Map each Husimi function to its bin (M_bin, A_bin)
+    # Map Husimi functions to bins
+    H_to_bin_1 = Dict{Int, Tuple{Int, Int}}()
+    H_to_bin_2 = Dict{Int, Tuple{Int, Int}}()
+
     for (i, (M, A)) in enumerate(zip(Ms, As))
-        A_index = findfirst(x -> x > A, As_edges)
-        M_index = findfirst(x -> x > M, Ms_edges)
-        
-        # Use fallback indices if findfirst returns nothing
-        A_index = A_index === nothing ? length(As_bin_centers) : A_index - 1
-        M_index = M_index === nothing ? length(Ms_bin_centers) : M_index - 1
-        
-        if A_index in 1:length(As_bin_centers) && M_index in 1:length(Ms_bin_centers)
-            grid[M_index, A_index] += 1
-            H_to_bin[i] = (M_index, A_index)
-        else
-            println("DEBUG: Skipped invalid bin for Husimi index $i (A=$A, M=$M, A_index=$A_index, M_index=$M_index)")
+        if A <= 0.4
+            A_index = findfirst(x -> x > A, As_edges_1) - 1
+            M_index = findfirst(x -> x > M, Ms_edges) - 1
+            if A_index in 1:length(As_bin_centers_1) && M_index in 1:length(Ms_bin_centers)
+                grid_1[M_index, A_index] += 1
+                H_to_bin_1[i] = (M_index, A_index)
+            end
+        elseif A > 0.4
+            A_index = findfirst(x -> x > A, As_edges_2) - 1
+            M_index = findfirst(x -> x > M, Ms_edges) - 1
+            if A_index in 1:length(As_bin_centers_2) && M_index in 1:length(Ms_bin_centers)
+                grid_2[M_index, A_index] += 1
+                H_to_bin_2[i] = (M_index, A_index)
+            end
         end
     end
 
-    # Create main figure and 2D heatmap
-    fig = Figure(resolution=(1200, 1000))
-    ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
-    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat))
+    # Create figure with two heatmaps
+    fig = Figure(resolution=(1600, 800))
+    ax1 = Axis(fig[1, 1], title="P(A,M) [0, 0.4]", xlabel="A", ylabel="M")
+    heatmap!(ax1, As_bin_centers_1, Ms_bin_centers, grid_1; colormap=Reverse(:gist_heat))
 
-    # Select 16 random Husimi matrices and label them
+    ax2 = Axis(fig[1, 2], title="P(A,M) [0.4, $A_split_2]", xlabel="A", ylabel="M")
+    heatmap!(ax2, As_bin_centers_2, Ms_bin_centers, grid_2; colormap=Reverse(:gist_heat))
+
+    # Randomly select Husimi matrices for labeling and plot
     selected_indices = rand(1:length(Hs_list), 16)
     for (j, random_index) in enumerate(selected_indices)
-        bin_coords = H_to_bin[random_index]
-        M_index, A_index = bin_coords
-        roman_label = int_to_roman(j)
-
-        # Use bin centers for accurate label placement
-        M_center = Ms_bin_centers[M_index]
-        A_center = As_bin_centers[A_index]
-        text!(ax, A_center, M_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
+        if haskey(H_to_bin_1, random_index)
+            bin_coords = H_to_bin_1[random_index]
+            M_index, A_index = bin_coords
+            roman_label = int_to_roman(j)
+            M_center = Ms_bin_centers[M_index]
+            A_center = As_bin_centers_1[A_index]
+            text!(ax1, A_center, M_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
+        elseif haskey(H_to_bin_2, random_index)
+            bin_coords = H_to_bin_2[random_index]
+            M_index, A_index = bin_coords
+            roman_label = int_to_roman(j)
+            M_center = Ms_bin_centers[M_index]
+            A_center = As_bin_centers_2[A_index]
+            text!(ax2, A_center, M_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
+        end
     end
 
     # Husimi function grid layout
-    husimi_grid = fig[2:3, 1] = GridLayout()
+    husimi_grid = fig[2, 1:2] = GridLayout()
     row = 1
     col = 1
     for (j, random_index) in enumerate(selected_indices)
         H = Hs_list[random_index]
         qs_i = qs_list[random_index]
         ps_i = ps_list[random_index]
-        
-        # Create projection grid and chaotic mask
         projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
         H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
         roman_label = int_to_roman(j)
