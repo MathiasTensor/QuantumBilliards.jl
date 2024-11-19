@@ -704,6 +704,7 @@ Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts` wi
 - `Matrix{T}`: A matrix where each row corresponds to a time `t` and each column to an eigenstate `n`.
 """
 function microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
+    b = 5.0
     k_max = maximum(ks)
     type = eltype(k_max)
     L = billiard.length
