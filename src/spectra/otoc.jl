@@ -689,7 +689,7 @@ end
 ### NO WAVEPACKET VERSIONS FOR Cₙ(t)
 
 """
-    microcanonical_Cn_no_wavepacket(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, ts::Vector{T}) where {T<:Real}
+    microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
 
 Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts` without using wavepacket coefficients.
 
