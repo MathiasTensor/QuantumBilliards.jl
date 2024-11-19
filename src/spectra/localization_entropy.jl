@@ -151,11 +151,19 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
 end
 =#
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
+    # Chaotic regions: Keep Husimi values as they are
     chaotic_H = projection_grid .== 1
+
+    # Regular regions: Keep Husimi values as they are
     regular_H = projection_grid .== -1
-    # Adjust background with a constant value for non-chaotic, non-regular regions
-    background = projection_grid .== 0  # Default 0
-    return H .* (chaotic_H .+ regular_H) .+ background .* 0.1  # Add 0.1 for visual clarity
+
+    # Neutral regions: Fill with a small constant (e.g., 0.1) or a neutral background
+    neutral_H = projection_grid .== 0
+
+    # Combine all contributions
+    H_bg = H .* (chaotic_H .+ regular_H)  # Retain values for chaotic and regular regions
+    H_bg .+= neutral_H .* minimum(H[chaotic_H .+ regular_H]) / 10  # Neutral regions are dimmed
+    return H_bg
 end
 
 """
