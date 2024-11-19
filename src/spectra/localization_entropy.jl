@@ -242,7 +242,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     # Compute M and A values
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
-    println(As)
+
     # Dynamically extend the range of A
     max_A = maximum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
@@ -276,7 +276,9 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
 
     # Create main figure and 2D heatmap
     fig = Figure(resolution=(1200, 1000))
-    ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
+    ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M",
+              xticks=collect(0.0:0.1:A_max_range),  # Explicit x-axis ticks
+              yticks=collect(-1.0:0.2:1.0))        # Explicit y-axis ticks
     heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat))
 
     # Select 16 random Husimi matrices and label them
