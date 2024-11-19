@@ -273,7 +273,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     # Create main figure and 2D heatmap
     fig = Figure(resolution=(1200, 1000))
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
-    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat), xticks=LinearTicks(10))
+    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat), xticks=collect(range(0.0, 0.7, length=10)))
 
     # Select 16 random Husimi matrices and label them
     selected_indices = rand(1:length(Hs_list), 16)
