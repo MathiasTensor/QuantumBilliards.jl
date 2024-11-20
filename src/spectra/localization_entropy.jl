@@ -337,14 +337,7 @@ end
 using CairoMakie
 using LinearAlgebra
 
-function heatmap_M_vs_A_2d(
-    Hs_list::Vector,
-    qs_list::Vector,
-    ps_list::Vector,
-    classical_chaotic_s_vals::Vector,
-    classical_chaotic_p_vals::Vector,
-    chaotic_classical_phase_space_vol_fraction::T
-) where {T<:Real}
+function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector,chaotic_classical_phase_space_vol_fraction::T;desired_samples::Int = 12) where {T<:Real}
 
     # Compute R and A values
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
@@ -356,7 +349,6 @@ function heatmap_M_vs_A_2d(
     R_max = maximum(Rs) * 1.2
 
     # Define the number of bins along the A-axis
-    desired_samples = 12
     num_bins_A = round(Int, sqrt(desired_samples))  # e.g., 4 bins
     As_edges = collect(range(min_A, max_A, length=num_bins_A + 1))
 
@@ -411,22 +403,13 @@ function heatmap_M_vs_A_2d(
 
     # Now proceed with plotting
     fig = Figure(resolution=(2000, 1500), size=(2000, 1500))
-    ax = Axis(
-        fig[1, 1],
-        title="P(A,R)",
-        xlabel="A",
-        ylabel="R",
-        xtickformat="{:.2f}",
-        ytickformat="{:.2f}"
-    )
-
+    ax = Axis(fig[1, 1],title="P(A,R)",xlabel="A",ylabel="R",xtickformat="{:.2f}",ytickformat="{:.2f}")
     # Plot the heatmap
     As_edges_heatmap = collect(range(0.0, A_max_range, length=201))  # For heatmap
     Rs_edges_heatmap = collect(range(R_min, R_max, length=201))      # For heatmap
     As_bin_centers_heatmap = [(As_edges_heatmap[i] + As_edges_heatmap[i + 1]) / 2 for i in 1:(length(As_edges_heatmap) - 1)]
     Rs_bin_centers_heatmap = [(Rs_edges_heatmap[i] + Rs_edges_heatmap[i + 1]) / 2 for i in 1:(length(Rs_edges_heatmap) - 1)]
     grid = zeros(length(As_bin_centers_heatmap), length(Rs_bin_centers_heatmap))
-
     # Map data points to heatmap grid
     for (i, (A, R)) in enumerate(zip(As, Rs))
         A_index = findfirst(x -> x > A, As_edges_heatmap)
@@ -446,47 +429,20 @@ function heatmap_M_vs_A_2d(
         A = As[selected_index]
         R = Rs[selected_index]
         roman_label = int_to_roman(j)
-
         # Plot a black square marker (outline) at the data point with transparent fill
-        scatter!(
-            ax,
-            [A],
-            [R],
-            marker=:rect,
-            color=:transparent,
-            markersize=8,
-            strokecolor=:black,
-            strokewidth=1.5
-        )
-
+        scatter!(ax,[A],[R],marker=:rect,color=:transparent,markersize=8,strokecolor=:black,strokewidth=1.5)
         # Alternate angles for label placement
         if isodd(j)
             angle = 2π / 3
         else
             angle = -π / 3
         end
-
         # Set fixed distance for label offset
-        label_distance = 0.0 * sqrt(
-            (maximum(As) - minimum(As))^2 +
-            (maximum(Rs) - minimum(Rs))^2
-        )
-        label_offset = (
-            label_distance * cos(angle),
-            label_distance * sin(angle)
-        )
+        label_distance = 0.0
+        label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A + label_offset[1], R + label_offset[2])
         # Place the text inside the square
-        text!(
-            ax,
-            label_position[1],
-            label_position[2],
-            text=roman_label,
-            color=:black,
-            fontsize=20#,
-            #halign=:center,
-            #valign=:center
-        )
+        text!(ax,label_position[1],label_position[2],text=roman_label,color=:black,fontsize=20)
     end
 
     # Husimi function grid layout
