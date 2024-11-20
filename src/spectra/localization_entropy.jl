@@ -313,9 +313,9 @@ function heatmap_M_vs_A_2d(
         scatter!(ax, [A_center], [R_center],
                  marker=:rect,
                  color=:white,
-                 markersize=10,
+                 markersize=5,
                  strokecolor=:black,
-                 strokewidth=2)
+                 strokewidth=1)
 
         # Offset the label position
         label_offset = (
