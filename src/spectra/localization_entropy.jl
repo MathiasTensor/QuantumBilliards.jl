@@ -487,9 +487,6 @@ function heatmap_M_vs_A_2d(
             halign=:center,
             valign=:center
         )
-
-        # Draw a line from the data point to the closest corner of the square
-        lines!(ax, [A, corner_x], [R, corner_y], color=:black)
     end
 
     # Husimi function grid layout
