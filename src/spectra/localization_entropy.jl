@@ -252,6 +252,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     Ms_edges = collect(range(-1.0, 1.0, length=101))         # Fixed bins for M-axis
     As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
     Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
+    println("As_bin_centers: ", As_bin_centers)
+    println("Ms_bin_centers: ", Ms_bin_centers)
 
     # Create the 2D grid for counts
     grid = fill(0, length(Ms_bin_centers), length(As_bin_centers))
