@@ -421,8 +421,8 @@ function heatmap_M_vs_A_2d(
     )
 
     # Plot the heatmap
-    As_edges_heatmap = collect(range(0.0, A_max_range, length=1001))  # For heatmap
-    Rs_edges_heatmap = collect(range(R_min, R_max, length=1001))      # For heatmap
+    As_edges_heatmap = collect(range(0.0, A_max_range, length=201))  # For heatmap
+    Rs_edges_heatmap = collect(range(R_min, R_max, length=201))      # For heatmap
     As_bin_centers_heatmap = [(As_edges_heatmap[i] + As_edges_heatmap[i + 1]) / 2 for i in 1:(length(As_edges_heatmap) - 1)]
     Rs_bin_centers_heatmap = [(Rs_edges_heatmap[i] + Rs_edges_heatmap[i + 1]) / 2 for i in 1:(length(Rs_edges_heatmap) - 1)]
     grid = zeros(length(As_bin_centers_heatmap), length(Rs_bin_centers_heatmap))
