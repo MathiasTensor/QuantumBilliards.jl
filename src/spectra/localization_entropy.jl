@@ -313,7 +313,7 @@ function heatmap_M_vs_A_2d(
         # Use bin centers for accurate label placement
         R_center = Rs_bin_centers[R_index]
         A_center = As_bin_centers[A_index]
-        text!(ax, A_center, R_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
+        text!(ax, A_center, R_center, text=roman_label, color=:red, align=(:center, :center), fontsize=20)
     end
 
     # Husimi function grid layout
