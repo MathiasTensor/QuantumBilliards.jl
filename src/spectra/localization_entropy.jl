@@ -224,15 +224,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     return fig
 end
 =#
-function heatmap_M_vs_A_2d(
-    Hs_list::Vector,
-    qs_list::Vector,
-    ps_list::Vector,
-    classical_chaotic_s_vals::Vector,
-    classical_chaotic_p_vals::Vector,
-    chaotic_classical_phase_space_vol_fraction::T
-) where {T<:Real}
-
+function heatmap_M_vs_A_2d(Hs_list::Vector,qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
     # Compute R and A values
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
@@ -266,20 +258,11 @@ function heatmap_M_vs_A_2d(
         end
     end
 
-    fig = Figure(resolution=(2000, 1500), size=(2000, 1500))
-    ax = Axis(
-        fig[1, 1],
-        title="P(A,R)",
-        xlabel="A",
-        ylabel="R",
-        xticks=As_bin_centers[1:10:end],
-        yticks=Rs_bin_centers[1:10:end],
-        xtickformat="{:.1f}",
-        ytickformat="{:.1f}"
-    )
+    fig = Figure(resolution=(2000, 1500),size=(2000,1500))
+    ax = Axis(fig[1, 1], title="P(A,R)", xlabel="A", ylabel="R", xticks=As_bin_centers[1:10:end], yticks=Rs_bin_centers[1:10:end], xtickformat="{:.1f}", ytickformat="{:.1f}")
     heatmap!(ax, As_bin_centers, Rs_bin_centers, grid; colormap=Reverse(:gist_heat))
 
-    # Select 12 random Husimi matrices and label them
+    # Select 16 random Husimi matrices and label them
     selected_indices = rand(1:length(Hs_list), 12)
     for (j, random_index) in enumerate(selected_indices)
         bin_coords = H_to_bin[random_index]
@@ -289,79 +272,21 @@ function heatmap_M_vs_A_2d(
         # Use bin centers for label placement
         R_center = Rs_bin_centers[R_index]
         A_center = As_bin_centers[A_index]
-
         # Plot a black square marker (outline) at the data point with transparent fill
-        scatter!(
-            ax,
-            [A_center],
-            [R_center],
-            marker=:rect,
-            color=:transparent,
-            markersize=8,
-            strokecolor=:black,
-            strokewidth=1.5
-        )
-
-        # Choose angle based on index to alternate label positions
+        scatter!(ax, [A_center], [R_center],marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=1.5)
         if isodd(j) # for better viewing
-            angle = 2π / 3
+            angle = 2*pi/3
         else
-            angle = -π / 3
+            angle = -pi/3
         end
-
         # Set fixed distance for label offset
-        label_distance = 0.02 * sqrt(
-            (maximum(As_bin_centers) - minimum(As_bin_centers))^2 +
-            (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2
-        )
-        label_offset = (
-            label_distance * cos(angle),
-            label_distance * sin(angle)
-        )
+        label_distance = 0.02 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A_center + label_offset[1], R_center + label_offset[2])
-
-        # Define square size
-        square_size = label_distance * 0.8  # Adjust as needed
-
-        # Calculate the corners of the square
-        half_size = square_size / 2
-        corners = [
-            (label_position[1] - half_size, label_position[2] - half_size),  # bottom left
-            (label_position[1] + half_size, label_position[2] - half_size),  # bottom right
-            (label_position[1] + half_size, label_position[2] + half_size),  # top right
-            (label_position[1] - half_size, label_position[2] + half_size)   # top left
-        ]
-
-        # Calculate distances from data point to each corner
-        distances = [hypot(A_center - corner[1], R_center - corner[2]) for corner in corners]
-
-        # Find the closest corner
-        min_dist_index = argmin(distances)
-        corner_x, corner_y = corners[min_dist_index]
-
-        # Draw the rectangle (square) at label_position
-        rect!(
-            ax,
-            Rect(label_position[1] - half_size, label_position[2] - half_size, square_size, square_size),
-            color=:white,
-            strokecolor=:black,
-            strokewidth=1.5
-        )
-
-        # Place the text inside the square
-        text!(
-            ax,
-            label_position[1],
-            label_position[2],
-            text=roman_label,
-            color=:black,
-            fontsize=30,
-            halign=:center,
-            valign=:center
-        )
-
-        # Draw a line from the data point to the closest corner of the square
-        lines!(ax, [A_center, corner_x], [R_center, corner_y], color=:black)
+        # Add the text label at the offset position
+        text!(ax, label_position[1], label_position[2], text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+        # Draw a line from the data point to the label
+        lines!(ax, [A_center, label_position[1]], [R_center, label_position[2]], color=:black)
     end
 
     # Husimi function grid layout
@@ -374,12 +299,7 @@ function heatmap_M_vs_A_2d(
         ps_i = ps_list[random_index]
 
         # Create projection grid and chaotic mask
-        projection_grid = classical_phase_space_matrix(
-            classical_chaotic_s_vals,
-            classical_chaotic_p_vals,
-            qs_i,
-            ps_i
-        )
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
         H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
         roman_label = int_to_roman(j)
 
@@ -395,13 +315,7 @@ function heatmap_M_vs_A_2d(
             yticklabelsvisible=false
         )
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-        heatmap!(
-            ax_husimi,
-            chaotic_mask;
-            colormap=cgrad([:white, :black]),
-            alpha=0.05,
-            colorrange=(0, 1)
-        )
+        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 1))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
 
         col += 1
