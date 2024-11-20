@@ -242,8 +242,8 @@ function heatmap_M_vs_A_2d(
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
 
     # Dynamically set the range for R
-    R_min = minimum(Rs) * 0.9
-    R_max = maximum(Rs) * 1.1
+    R_min = minimum(Rs) * 0.8
+    R_max = maximum(Rs) * 1.2
 
     # Define bin edges and centers for A and R
     As_edges = collect(range(0.0, A_max_range, length=101))  # Dynamically adjusted bins for A-axis
@@ -318,7 +318,7 @@ function heatmap_M_vs_A_2d(
         end
         
         # Set fixed distance for label offset
-        label_distance = 0.05 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        label_distance = 0.08 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
         # Calculate label offset
         label_offset = (
             label_distance * cos(angle),
