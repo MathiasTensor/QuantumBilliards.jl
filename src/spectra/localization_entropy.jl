@@ -313,7 +313,7 @@ function heatmap_M_vs_A_2d(
         scatter!(ax, [A_center], [R_center],
                  marker=:rect,
                  color=:white,
-                 markersize=5,
+                 markersize=8,
                  strokecolor=:black,
                  strokewidth=1)
 
