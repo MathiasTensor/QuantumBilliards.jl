@@ -334,9 +334,6 @@ function heatmap_M_vs_A_2d(Hs_list::Vector,qs_list::Vector, ps_list::Vector, cla
 end
 =#
 
-using CairoMakie
-using LinearAlgebra
-
 function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector,chaotic_classical_phase_space_vol_fraction::T;desired_samples::Int = 12) where {T<:Real}
 
     # Compute R and A values
@@ -453,38 +450,16 @@ function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
         H = Hs_list[selected_index]
         qs_i = qs_list[selected_index]
         ps_i = ps_list[selected_index]
-
         # Create projection grid and chaotic mask
-        projection_grid = classical_phase_space_matrix(
-            classical_chaotic_s_vals,
-            classical_chaotic_p_vals,
-            qs_i,
-            ps_i
-        )
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals,classical_chaotic_p_vals,qs_i,ps_i)
         H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
         roman_label = int_to_roman(j)
-
         # Plot individual Husimi functions
-        ax_husimi = Axis(
-            husimi_grid[row, col],
-            title=roman_label,
-            xticksvisible=false,
-            yticksvisible=false,
-            xgridvisible=false,
-            ygridvisible=false,
-            xticklabelsvisible=false,
-            yticklabelsvisible=false
+        ax_husimi = Axis(husimi_grid[row, col],title=roman_label,xticksvisible=false,yticksvisible=false,xgridvisible=false,ygridvisible=false,xticklabelsvisible=false,yticklabelsvisible=false
         )
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-        heatmap!(
-            ax_husimi,
-            chaotic_mask;
-            colormap=cgrad([:white, :black]),
-            alpha=0.05,
-            colorrange=(0, 1)
-        )
+        heatmap!(ax_husimi,chaotic_mask;colormap=cgrad([:white, :black]),alpha=0.05,colorrange=(0, 1))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
-
         col += 1
         if col > 4
             col = 1
