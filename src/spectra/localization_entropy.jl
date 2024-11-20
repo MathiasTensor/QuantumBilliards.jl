@@ -517,16 +517,24 @@ function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
     return fig
 end
 
+"""
+    combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T; desired_samples::Int = 12) where {T<:Real}
 
-function combined_heatmaps_with_husimi(
-    Hs_list::Vector,
-    qs_list::Vector,
-    ps_list::Vector,
-    classical_chaotic_s_vals::Vector,
-    classical_chaotic_p_vals::Vector,
-    chaotic_classical_phase_space_vol_fraction::T;
-    desired_samples::Int = 12
-) where {T<:Real}
+Plots the P(M,A) 2d heatmap and P(R,A) 2d heatmap along with random representative chaotic Poincare-Husimi functions for that joint probability distributions (M/R,A), where M is the overlap index of the Poincare-Husimi function and R is the normalized inverse participation ratio.
+
+# Arguments
+- `Hs_list::Vector{Matrix}`: A list of Husimi function (matrices).
+- `qs_list::Vector{Vector}`: Vector of Vectors that represent the qs for each Husimi matrix.
+- `ps_list::Vector{Vector}`: Vector of Vectors that represent the ps for each Husimi matrix.
+- `classical_chaotic_s_vals::Vector`: Vector of classical chaotic s values for a trajectory.
+- `classical_chaotic_p_vals::Vector`: Vector of classical chaotic p values for a trajectory.
+- `chaotic_classical_phase_space_vol_fraction::T`: The chaotic classical phase space volume fraction.
+- `desired_samples::Integer=12`: The number of husimi data samples to choose from and display.
+
+# Returns
+- `fig::Figure`: Figure object from Makie to save or display.
+"""
+function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T; desired_samples::Int = 12) where {T<:Real}
 
     # Compute M, R, and A values
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
