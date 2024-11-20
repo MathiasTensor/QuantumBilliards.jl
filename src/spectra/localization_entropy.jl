@@ -248,8 +248,8 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
 
     # Define bin edges and centers for A and M
-    As_edges = collect(range(0.0, A_max_range, length=100))  # Dynamically adjusted bins for A-axis
-    Ms_edges = collect(range(-1.0, 1.0, length=100))         # Fixed bins for M-axis
+    As_edges = collect(range(0.0, A_max_range, length=101))  # Dynamically adjusted bins for A-axis
+    Ms_edges = collect(range(-1.0, 1.0, length=101))         # Fixed bins for M-axis
     As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
     Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
 
