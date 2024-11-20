@@ -280,7 +280,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector,qs_list::Vector, ps_list::Vector, cla
             angle = -pi/3
         end
         # Set fixed distance for label offset
-        label_distance = 0.01 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        label_distance = 0.02 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
         label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A_center + label_offset[1], R_center + label_offset[2])
         # Add the text label at the offset position
