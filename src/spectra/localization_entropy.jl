@@ -252,8 +252,6 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     Ms_edges = collect(range(-1.0, 1.0, length=101))         # Fixed bins for M-axis
     As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
     Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
-    println("As_bin_centers: ", As_bin_centers)
-    println("Ms_bin_centers: ", Ms_bin_centers)
 
     # Create the 2D grid for counts
     grid = fill(0, length(Ms_bin_centers), length(As_bin_centers))
@@ -276,11 +274,17 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
         end
     end
 
+    # Debugging the grid and bin centers
+    println("DEBUG: Heatmap grid values:")
+    println(grid)
+    println("DEBUG: As_bin_centers = ", As_bin_centers)
+    println("DEBUG: Ms_bin_centers = ", Ms_bin_centers)
+
     # Create main figure and 2D heatmap
     fig = Figure(resolution=(1200, 1000))
     ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M",
-              xticks=collect(0.0:0.1:A_max_range),  # Explicit x-axis ticks
-              yticks=collect(-1.0:0.2:1.0))        # Explicit y-axis ticks
+              xticks=As_bin_centers[1:10:end],  # Fewer ticks for clarity
+              yticks=Ms_bin_centers[1:10:end])
     heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat))
 
     # Select 16 random Husimi matrices and label them
