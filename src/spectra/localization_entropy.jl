@@ -483,9 +483,9 @@ function heatmap_M_vs_A_2d(
             label_position[2],
             text=roman_label,
             color=:black,
-            fontsize=20,
-            halign=:center,
-            valign=:center
+            fontsize=20#,
+            #halign=:center,
+            #valign=:center
         )
     end
 
