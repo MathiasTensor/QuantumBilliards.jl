@@ -289,7 +289,7 @@ function heatmap_M_vs_A_2d(
     heatmap!(ax, As_bin_centers, Rs_bin_centers, grid; colormap=Reverse(:gist_heat))
 
     # Select 16 random Husimi matrices and label them
-    selected_indices = rand(1:length(Hs_list), 16)
+    selected_indices = rand(1:length(Hs_list), 12)
     for (j, random_index) in enumerate(selected_indices)
         if !haskey(H_to_bin, random_index)
             println("DEBUG: Missing bin mapping for Husimi index $random_index")
