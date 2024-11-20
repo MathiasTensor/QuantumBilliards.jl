@@ -317,7 +317,7 @@ function heatmap_R_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
         R = Rs[selected_index]
         roman_label = int_to_roman(j)
         # Plot a black square marker (outline) at the data point with transparent fill
-        scatter!(ax,[A],[R],marker=:rect,color=:transparent,markersize=8,strokecolor=:black,strokewidth=1.5)
+        scatter!(ax,[A],[R],marker=:rect,color=:transparent,markersize=8,strokecolor=:black,strokewidth=3.5)
         # Alternate angles for label placement
         if isodd(j)
             angle = 2π / 3
@@ -472,7 +472,7 @@ function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
         M = Ms[selected_index]
         roman_label = int_to_roman(j)
         # Plot a black square marker (outline) at the data point with transparent fill
-        scatter!(ax,[A],[M],marker=:rect,color=:transparent,markersize=8,strokecolor=:black,strokewidth=1.5)
+        scatter!(ax,[A],[M],marker=:rect,color=:transparent,markersize=8,strokecolor=:black,strokewidth=3.5)
         # Alternate angles for label placement
         if isodd(j)
             angle = 2π / 3
