@@ -559,7 +559,7 @@ function separate_regular_and_chaotic_states(
 end
 
 """
-    save_separation_parameters(Ms::Vector, ρs::Vector, regular_idx::Vector{Bool}; filename::String="separation_params_#k_#geometry...#.jld2")
+    save_separation_parameters(Ms::Vector, ρs::Vector, regular_idx::Vector{Int}; filename::String="separation_params_#k_#geometry...#.jld2")
 
 Saves the chaotic/regular states separation parameters for a set of eigenstates (Poincare-Husimi functions). Useful if for calcualtions on chaotic states we need them since separation is a lengthy procedure each time.
 
@@ -572,7 +572,7 @@ Saves the chaotic/regular states separation parameters for a set of eigenstates 
 - `Nothing`
 """ 
 function save_separation_parameters!(Ms::Vector, ρs::Vector, regular_idx::Vector; filename::String="separation_params_#k_#geometry...#.jld2")
-    @save filename Ms, ρs, regular_idx
+    @save filename Ms ρs regular_idx
 end
 
 """
