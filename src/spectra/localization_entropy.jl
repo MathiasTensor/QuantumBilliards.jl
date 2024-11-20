@@ -233,39 +233,42 @@ function heatmap_M_vs_A_2d(
     chaotic_classical_phase_space_vol_fraction::T
 ) where {T<:Real}
 
-    # Compute M and A values
-    #Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
-    Ms = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
+    # Compute R and A values
+    Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
 
     # Dynamically extend the range of A
     max_A = maximum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
 
-    # Define bin edges and centers for A and M
+    # Dynamically set the range for R
+    R_min = minimum(Rs) * 0.9
+    R_max = maximum(Rs) * 1.1
+
+    # Define bin edges and centers for A and R
     As_edges = collect(range(0.0, A_max_range, length=101))  # Dynamically adjusted bins for A-axis
-    Ms_edges = collect(range(-1.0, 1.0, length=101))         # Fixed bins for M-axis
+    Rs_edges = collect(range(R_min, R_max, length=101))       # Dynamically adjusted bins for R-axis
     As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
-    Ms_bin_centers = [(Ms_edges[i] + Ms_edges[i + 1]) / 2 for i in 1:(length(Ms_edges) - 1)]
+    Rs_bin_centers = [(Rs_edges[i] + Rs_edges[i + 1]) / 2 for i in 1:(length(Rs_edges) - 1)]
 
     # Initialize the grid with swapped dimensions
-    grid = fill(0, length(As_bin_centers), length(Ms_bin_centers))
+    grid = fill(0, length(As_bin_centers), length(Rs_bin_centers))
     H_to_bin = Dict{Int, Tuple{Int, Int}}()
 
-    # Map each Husimi function to its bin (A_bin, M_bin)
-    for (i, (M, A)) in enumerate(zip(Ms, As))
+    # Map each Husimi function to its bin (A_bin, R_bin)
+    for (i, (R, A)) in enumerate(zip(Rs, As))
         A_index = findfirst(x -> x > A, As_edges)
-        M_index = findfirst(x -> x > M, Ms_edges)
+        R_index = findfirst(x -> x > R, Rs_edges)
 
         # Handle cases where indices are out of bounds
         A_index = A_index === nothing ? length(As_bin_centers) : max(1, A_index - 1)
-        M_index = M_index === nothing ? length(Ms_bin_centers) : max(1, M_index - 1)
+        R_index = R_index === nothing ? length(Rs_bin_centers) : max(1, R_index - 1)
 
-        if A_index in 1:length(As_bin_centers) && M_index in 1:length(Ms_bin_centers)
-            grid[A_index, M_index] += 1  # Swap indices here
-            H_to_bin[i] = (A_index, M_index)  # Swap indices here
+        if A_index in 1:length(As_bin_centers) && R_index in 1:length(Rs_bin_centers)
+            grid[A_index, R_index] += 1  # Swap indices here
+            H_to_bin[i] = (A_index, R_index)  # Swap indices here
         else
-            println("DEBUG: Skipped invalid bin for Husimi index $i (A=$A, M=$M, A_index=$A_index, M_index=$M_index)")
+            println("DEBUG: Skipped invalid bin for Husimi index $i (A=$A, R=$R, A_index=$A_index, R_index=$R_index)")
         end
     end
 
@@ -273,20 +276,22 @@ function heatmap_M_vs_A_2d(
     println("DEBUG: Heatmap grid values:")
     println(grid)
     println("DEBUG: As_bin_centers = ", As_bin_centers)
-    println("DEBUG: Ms_bin_centers = ", Ms_bin_centers)
+    println("DEBUG: Rs_bin_centers = ", Rs_bin_centers)
     println("DEBUG: Grid size = ", size(grid))
 
     # Create main figure and 2D heatmap
     fig = Figure(resolution=(1200, 1000))
-    ax = Axis(fig[1, 1],
-              title="P(A,M)",
-              xlabel="A",
-              ylabel="M",
-              xticks=As_bin_centers[1:10:end],  # Fewer ticks for clarity
-              yticks=Ms_bin_centers[1:10:end])
+    ax = Axis(
+        fig[1, 1],
+        title="P(A,R)",
+        xlabel="A",
+        ylabel="R",
+        xticks=As_bin_centers[1:10:end],  # Fewer ticks for clarity
+        yticks=Rs_bin_centers[1:10:end]
+    )
 
     # Plot the heatmap without transposing the grid
-    heatmap!(ax, As_bin_centers, Ms_bin_centers, grid; colormap=Reverse(:gist_heat))
+    heatmap!(ax, As_bin_centers, Rs_bin_centers, grid; colormap=Reverse(:gist_heat))
 
     # Select 16 random Husimi matrices and label them
     selected_indices = rand(1:length(Hs_list), 16)
@@ -296,19 +301,19 @@ function heatmap_M_vs_A_2d(
             continue
         end
         bin_coords = H_to_bin[random_index]
-        A_index, M_index = bin_coords  # Swap indices here
+        A_index, R_index = bin_coords  # Swap indices here
         roman_label = int_to_roman(j)
 
         # Debugging output for each label
         println("DEBUG: Roman numeral $roman_label -> Husimi index $random_index")
-        println("DEBUG: M = $(Ms[random_index]), A = $(As[random_index])")
-        println("DEBUG: M_index = $M_index, A_index = $A_index")
-        println("DEBUG: M_center = $(Ms_bin_centers[M_index]), A_center = $(As_bin_centers[A_index])")
+        println("DEBUG: R = $(Rs[random_index]), A = $(As[random_index])")
+        println("DEBUG: R_index = $R_index, A_index = $A_index")
+        println("DEBUG: R_center = $(Rs_bin_centers[R_index]), A_center = $(As_bin_centers[A_index])")
 
         # Use bin centers for accurate label placement
-        M_center = Ms_bin_centers[M_index]
+        R_center = Rs_bin_centers[R_index]
         A_center = As_bin_centers[A_index]
-        text!(ax, A_center, M_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
+        text!(ax, A_center, R_center, text=roman_label, color=:red, align=(:center, :center), fontsize=10)
     end
 
     # Husimi function grid layout
