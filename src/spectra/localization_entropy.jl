@@ -280,7 +280,9 @@ function heatmap_M_vs_A_2d(
         xlabel="A",
         ylabel="R",
         xticks=As_bin_centers[1:10:end],  # Fewer ticks for clarity
-        yticks=Rs_bin_centers[1:10:end]
+        yticks=Rs_bin_centers[1:10:end],
+        xtickformat="{:.1f}",
+        ytickformat="{:.1f}"
     )
 
     # Plot the heatmap without transposing the grid
