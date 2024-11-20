@@ -233,7 +233,6 @@ function heatmap_M_vs_A_2d(
     chaotic_classical_phase_space_vol_fraction::T
 ) where {T<:Real}
 
-    
     # Compute R and A values
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
@@ -273,13 +272,6 @@ function heatmap_M_vs_A_2d(
         end
     end
 
-    # Debugging the grid and bin centers
-    println("DEBUG: Heatmap grid values:")
-    println(grid)
-    println("DEBUG: As_bin_centers = ", As_bin_centers)
-    println("DEBUG: Rs_bin_centers = ", Rs_bin_centers)
-    println("DEBUG: Grid size = ", size(grid))
-
     # Create main figure and 2D heatmap
     fig = Figure(resolution=(1200, 1000))
     ax = Axis(
@@ -309,19 +301,23 @@ function heatmap_M_vs_A_2d(
         R_center = Rs_bin_centers[R_index]
         A_center = As_bin_centers[A_index]
 
-        # Plot a black square marker (outline) at the data point
+        # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax, [A_center], [R_center],
                  marker=:rect,
-                 color=:white,
-                 markersize=8,
+                 color=:transparent,
+                 markersize=8,  # Reduced size
                  strokecolor=:black,
-                 strokewidth=1)
+                 strokewidth=1.5)
 
-        # Offset the label position
+        # Randomly choose an angle for label offset
+        angle = rand() * 2π
+        # Set fixed distance for label offset
+        label_distance = 0.07 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        # Calculate label offset
         label_offset = (
-            0.05 * (maximum(As_bin_centers) - minimum(As_bin_centers)),
-            0.05 * (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))
-        )  # Adjust as needed
+            label_distance * cos(angle),
+            label_distance * sin(angle)
+        )
         label_position = (A_center + label_offset[1], R_center + label_offset[2])
 
         # Add the text label at the offset position
@@ -332,7 +328,7 @@ function heatmap_M_vs_A_2d(
             text=roman_label,
             color=:black,
             fontsize=20,
-            halign=:left,
+            halign=:center,
             valign=:center
         )
 
