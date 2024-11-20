@@ -496,14 +496,7 @@ function heatmap_M_vs_A_2d(
         min_dist_index = argmin(distances)
         corner_x, corner_y = corners[min_dist_index]
 
-        # Draw the rectangle (square) at label_position
-        rect!(
-            ax,
-            Rect(label_position[1] - half_size, label_position[2] - half_size, square_size, square_size),
-            color=:white,
-            strokecolor=:black,
-            strokewidth=1.5
-        )
+        
 
         # Place the text inside the square
         text!(
