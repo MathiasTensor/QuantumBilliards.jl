@@ -233,6 +233,7 @@ function heatmap_M_vs_A_2d(
     chaotic_classical_phase_space_vol_fraction::T
 ) where {T<:Real}
 
+    
     # Compute R and A values
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
@@ -304,16 +305,39 @@ function heatmap_M_vs_A_2d(
         A_index, R_index = bin_coords  # Swap indices here
         roman_label = int_to_roman(j)
 
-        # Debugging output for each label
-        println("DEBUG: Roman numeral $roman_label -> Husimi index $random_index")
-        println("DEBUG: R = $(Rs[random_index]), A = $(As[random_index])")
-        println("DEBUG: R_index = $R_index, A_index = $A_index")
-        println("DEBUG: R_center = $(Rs_bin_centers[R_index]), A_center = $(As_bin_centers[A_index])")
-
         # Use bin centers for accurate label placement
         R_center = Rs_bin_centers[R_index]
         A_center = As_bin_centers[A_index]
-        text!(ax, A_center, R_center, text=roman_label, color=:red, align=(:center, :center), fontsize=20)
+
+        # Plot a black square marker (outline) at the data point
+        scatter!(ax, [A_center], [R_center],
+                 marker=:rect,
+                 color=:white,
+                 markersize=10,
+                 strokecolor=:black,
+                 strokewidth=2)
+
+        # Offset the label position
+        label_offset = (
+            0.05 * (maximum(As_bin_centers) - minimum(As_bin_centers)),
+            0.05 * (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))
+        )  # Adjust as needed
+        label_position = (A_center + label_offset[1], R_center + label_offset[2])
+
+        # Add the text label at the offset position
+        text!(
+            ax,
+            label_position[1],
+            label_position[2],
+            text=roman_label,
+            color=:black,
+            fontsize=20,
+            halign=:left,
+            valign=:center
+        )
+
+        # Draw a line from the data point to the label
+        lines!(ax, [A_center, label_position[1]], [R_center, label_position[2]], color=:black)
     end
 
     # Husimi function grid layout
