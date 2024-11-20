@@ -520,13 +520,13 @@ function separate_regular_and_chaotic_states(
         println("Theoretical ρ_reg: $(round(ρ_regular_classic, digits=6))")
         relative_closeness = abs(ρ_numeric_reg - ρ_regular_classic) / ρ_regular_classic * 100
         println("Relative closeness: $(round(relative_closeness, digits=4))%")
-        if relative_closeness < 2
+        if relative_closeness < 5
             break
         end
 
         # Adjust decrease_step_size if ρ_numeric_reg has gone below ρ_regular_classic
         if ρ_numeric_reg < ρ_regular_classic
-            if relative_closeness < 2
+            if relative_closeness < 5
                 break
             end
             if inner_iterations > max_inner_iterations
