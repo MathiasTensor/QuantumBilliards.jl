@@ -467,7 +467,7 @@ function heatmap_M_vs_A_2d(
         end
 
         # Set fixed distance for label offset
-        label_distance = 0.02 * sqrt(
+        label_distance = 0.04 * sqrt(
             (maximum(As) - minimum(As))^2 +
             (maximum(Rs) - minimum(Rs))^2
         )
