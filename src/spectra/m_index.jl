@@ -601,6 +601,39 @@ function separate_Hs_by_classical_indices(Hs_list::Vector, regular_idx::Vector{I
 end
 
 """
+    separate_by_classical_indices(Hs_list::Vector, qs_list::Vector, ps_list::Vector, regular_idx::Vector{Int})
+
+Separates the Husimi function matrices `Hs_list`, `qs_list`, and `ps_list` into regular and chaotic based on the indices of regular states.
+
+# Arguments:
+- `Hs_list::Vector{Matrix}`: A vector containing the Husimi function matrices.
+- `qs_list::Vector{Vector}`: A vector containing the `q` components corresponding to the Husimi function matrices.
+- `ps_list::Vector{Vector}`: A vector containing the `p` components corresponding to the Husimi function matrices.
+- `regular_idx::Vector{Int}`: A vector of indices corresponding to the regular states.
+
+# Returns:
+- `Hs_regular::Vector{Matrix}`: A vector containing the Husimi function matrices corresponding to the regular states.
+- `Hs_chaotic::Vector{Matrix}`: A vector containing the Husimi function matrices corresponding to the chaotic states.
+- `qs_regular::Vector{Vector}`: A vector containing the `q` components corresponding to the regular states.
+- `qs_chaotic::Vector{Vector}`: A vector containing the `q` components corresponding to the chaotic states.
+- `ps_regular::Vector{Vector}`: A vector containing the `p` components corresponding to the regular states.
+- `ps_chaotic::Vector{Vector}`: A vector containing the `p` components corresponding to the chaotic states.
+"""
+function separate_by_classical_indices(Hs_list::Vector, qs_list::Vector, ps_list::Vector, regular_idx::Vector{Int})
+    @assert length(qs_list) == length(ps_list) "ps and qs lists should be same length"
+    @assert length(qs_list) == length(Hs_list) "qs and Hs lists should be same length"
+    Hs_regular = Hs_list[regular_idx]
+    qs_regular = qs_list[regular_idx]
+    ps_regular = ps_list[regular_idx]
+    all_indices = Set(1:length(Hs_list))
+    chaotic_idx = sort(collect(setdiff(all_indices, regular_idx)))
+    Hs_chaotic = Hs_list[chaotic_idx]
+    qs_chaotic = qs_list[chaotic_idx]
+    ps_chaotic = ps_list[chaotic_idx]
+    return Hs_regular, Hs_chaotic, qs_regular, qs_chaotic, ps_regular, ps_chaotic
+end
+
+"""
     separate_ks_and_Hs_by_classical_indices(ks::Vector, Hs_list::Vector, regular_idx::Vector{Int})
 
  Separates `ks` and `Hs_list` into regular and chaotic based on the indices of regular states.
