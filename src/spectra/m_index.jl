@@ -559,6 +559,41 @@ function separate_regular_and_chaotic_states(
 end
 
 """
+    save_separation_parameters(Ms::Vector, ρs::Vector, regular_idx::Vector{Bool}; filename::String="separation_params_#k_#geometry...#.jld2")
+
+Saves the chaotic/regular states separation parameters for a set of eigenstates (Poincare-Husimi functions). Useful if for calcualtions on chaotic states we need them since separation is a lengthy procedure each time.
+
+# Arguments
+- `Ms::Vector`: A vector containing the threshold `M_thresh` values.
+- `ρs::Vector`: A vector containing the calculated volumes for each `M_thresh`.
+- `regular_idx::Vector{Bool}`: A vector of booleans indicating whether the corresponding `M_thresh` value corresponds to a regular state (true) or a chaotic state
+
+# Returns
+- `Nothing`
+""" 
+function save_separation_parameters!(Ms::Vector, ρs::Vector, regular_idx::Vector{Bool}; filename::String="separation_params_#k_#geometry...#.jld2")
+    @save filename Ms, ρs, regular_idx
+end
+
+"""
+    load_separation_parameters(filename::String)
+
+Loads the separation params for a set of eigenstates (Poincare-Husimi functions).
+
+# Arguments
+- `filename::String`: The filename containing the separation parameters.
+
+# Returns
+- `Ms::Vector`: A vector containing the threshold `M_thresh` values.
+- `ρs::Vector`: A vector containing the calculated volumes for each `M_thresh`.
+- `regular_idx::Vector{Bool}`: A vector of booleans indicating whether the corresponding `M_thresh` value corresponds to a regular state (true) or a chaotic state
+"""
+function load_separation_parameters(filename::String)
+    @load filename Ms ρs regular_idx
+    return Ms, ρs, regular_idx
+end
+
+"""
     separate_ks_by_classical_indices(ks::Vector, regular_idx::Vector{Int})
 
 Separate `ks` values into regular and chaotic based on the indices of regular states.
