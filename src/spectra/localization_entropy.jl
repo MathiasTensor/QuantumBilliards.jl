@@ -329,7 +329,7 @@ function heatmap_R_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
         label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A + label_offset[1], R + label_offset[2])
         # Place the text inside the square
-        text!(ax,label_position[1],label_position[2],text=roman_label,color=:black,fontsize=20)
+        text!(ax,label_position[1],label_position[2],text=roman_label,color=:black,fontsize=30)
     end
 
     # Husimi function grid layout
@@ -484,7 +484,7 @@ function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
         label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A + label_offset[1], M + label_offset[2])
         # Place the text inside the square
-        text!(ax,label_position[1],label_position[2],text=roman_label,color=:black,fontsize=20)
+        text!(ax,label_position[1],label_position[2],text=roman_label,color=:black,fontsize=30)
     end
 
     # Husimi function grid layout
