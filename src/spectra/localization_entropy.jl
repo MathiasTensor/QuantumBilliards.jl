@@ -319,7 +319,7 @@ function heatmap_M_vs_A_2d(
             angle = -pi/3 + rand()*pi/6
         end
         # Set fixed distance for label offset
-        label_distance = rand()*0.08 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        label_distance = 0.08 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
         # Calculate label offset
         label_offset = (
             label_distance * cos(angle),
