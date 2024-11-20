@@ -224,9 +224,118 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     return fig
 end
 =#
+
+
+#=
+function heatmap_M_vs_A_2d(Hs_list::Vector,qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T; N_to_plot=12) where {T<:Real}
+    # Compute R and A values
+    Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
+    As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
+    max_A = maximum(As)
+    A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
+    R_min = minimum(Rs) * 0.8
+    R_max = maximum(Rs) * 1.2
+
+    # Define bin edges and centers for A and R
+    As_edges = collect(range(0.0, A_max_range, length=101))  # Dynamically adjusted bins for A-axis
+    Rs_edges = collect(range(R_min, R_max, length=101))       # Dynamically adjusted bins for R-axis
+    As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:(length(As_edges) - 1)]
+    Rs_bin_centers = [(Rs_edges[i] + Rs_edges[i + 1]) / 2 for i in 1:(length(Rs_edges) - 1)]
+
+    # Initialize the grid with swapped dimensions due to Makie
+    grid = fill(0, length(As_bin_centers), length(Rs_bin_centers))
+    H_to_bin = Dict{Int, Tuple{Int, Int}}()
+
+    # Map each Husimi function to its bin (A_bin, R_bin)
+    for (i, (R, A)) in enumerate(zip(Rs, As))
+        A_index = findfirst(x -> x > A, As_edges)
+        R_index = findfirst(x -> x > R, Rs_edges)
+        # Handle cases where indices are out of bounds
+        A_index = A_index === nothing ? length(As_bin_centers) : max(1, A_index - 1)
+        R_index = R_index === nothing ? length(Rs_bin_centers) : max(1, R_index - 1)
+        if A_index in 1:length(As_bin_centers) && R_index in 1:length(Rs_bin_centers)
+            grid[A_index, R_index] += 1  # Swap indices here
+            H_to_bin[i] = (A_index, R_index)  # Swap indices here
+        else
+            println("DEBUG: Skipped invalid bin for Husimi index $i (A=$A, R=$R, A_index=$A_index, R_index=$R_index)")
+        end
+    end
+
+    fig = Figure(resolution=(2000, 1500),size=(2000,1500))
+    ax = Axis(fig[1, 1], title="P(A,R)", xlabel="A", ylabel="R", xticks=As_bin_centers[1:10:end], yticks=Rs_bin_centers[1:10:end], xtickformat="{:.1f}", ytickformat="{:.1f}")
+    heatmap!(ax, As_bin_centers, Rs_bin_centers, grid; colormap=Reverse(:gist_heat))
+
+    # Select 16 random Husimi matrices and label them
+    selected_indices = rand(1:length(Hs_list), N_to_plot)
+    for (j, random_index) in enumerate(selected_indices)
+        bin_coords = H_to_bin[random_index]
+        A_index, R_index = bin_coords  # Swap indices here
+        roman_label = int_to_roman(j)
+
+        # Use bin centers for label placement
+        R_center = Rs_bin_centers[R_index]
+        A_center = As_bin_centers[A_index]
+        # Plot a black square marker (outline) at the data point with transparent fill
+        scatter!(ax, [A_center], [R_center],marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=1.5)
+        if isodd(j) # for better viewing
+            angle = 2*pi/3
+        else
+            angle = -pi/3
+        end
+        # Set fixed distance for label offset
+        label_distance = 0.02 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        label_offset = (label_distance * cos(angle),label_distance * sin(angle))
+        label_position = (A_center + label_offset[1], R_center + label_offset[2])
+        # Add the text label at the offset position
+        text!(ax, label_position[1], label_position[2], text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+        # Draw a line from the data point to the label
+        lines!(ax, [A_center, label_position[1]], [R_center, label_position[2]], color=:black)
+    end
+
+    # Husimi function grid layout
+    husimi_grid = fig[2, 1] = GridLayout()
+    row = 1
+    col = 1
+    for (j, random_index) in enumerate(selected_indices)
+        H = Hs_list[random_index]
+        qs_i = qs_list[random_index]
+        ps_i = ps_list[random_index]
+
+        # Create projection grid and chaotic mask
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
+        H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
+        roman_label = int_to_roman(j)
+
+        # Plot individual Husimi functions
+        ax_husimi = Axis(
+            husimi_grid[row, col],
+            title=roman_label,
+            xticksvisible=false,
+            yticksvisible=false,
+            xgridvisible=false,
+            ygridvisible=false,
+            xticklabelsvisible=false,
+            yticklabelsvisible=false
+        )
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
+        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 1))
+        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
+
+        col += 1
+        if col > 4
+            col = 1
+            row += 1
+        end
+    end
+    rowgap!(husimi_grid, 5)
+    colgap!(husimi_grid, 5)
+
+    return fig
+end
+=#
+
 using CairoMakie
 using LinearAlgebra
-using Statistics  # For quantile function
 
 function heatmap_M_vs_A_2d(
     Hs_list::Vector,
@@ -241,75 +350,63 @@ function heatmap_M_vs_A_2d(
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
     max_A = maximum(As)
-    A_max_range = max(0.7, max_A)
+    min_A = minimum(As)
+    A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
+    R_min = minimum(Rs) * 0.8
+    R_max = maximum(Rs) * 1.2
 
-    # Define the number of bins
+    # Define the number of bins along the A-axis
     desired_samples = 12
-    num_bins = ceil(Int, sqrt(desired_samples))  # e.g., 4 bins along each axis
+    num_bins_A = round(Int, sqrt(desired_samples))  # e.g., 4 bins
+    As_edges = collect(range(min_A, max_A, length=num_bins_A + 1))
 
-    # Use quantiles for adaptive binning
-    As_edges = quantile(As, range(0, 1, length=num_bins + 1))
-    Rs_edges = quantile(Rs, range(0, 1, length=num_bins + 1))
+    # Initialize bin mappings
+    bin_to_indices = Dict{Int, Vector{Int}}()
 
-    # Bin centers can be midpoints of the edges
-    As_bin_centers = [(As_edges[i] + As_edges[i + 1]) / 2 for i in 1:num_bins]
-    Rs_bin_centers = [(Rs_edges[i] + Rs_edges[i + 1]) / 2 for i in 1:num_bins]
+    # Map each Husimi function to its bin (A_bin)
+    for (i, A) in enumerate(As)
+        A_index = findfirst(x -> x > A, As_edges)
+        A_index = A_index === nothing ? num_bins_A : max(1, A_index - 1)
+        # Handle edge cases
+        A_index = clamp(A_index, 1, num_bins_A)
 
-    # Initialize the grid and bin mappings
-    grid = fill(0, num_bins, num_bins)
-    H_to_bin = Dict{Int, Tuple{Int, Int}}()
-    bin_to_indices = Dict{Tuple{Int, Int}, Vector{Int}}()
-
-    # Map each Husimi function to its bin
-    for (i, (R, A)) in enumerate(zip(Rs, As))
-        A_index = findfirst(x -> x >= A, As_edges)
-        R_index = findfirst(x -> x >= R, Rs_edges)
-        # Adjust indices
-        A_index = A_index === nothing ? num_bins : max(1, A_index - 1)
-        R_index = R_index === nothing ? num_bins : max(1, R_index - 1)
-        if A_index in 1:num_bins && R_index in 1:num_bins
-            grid[A_index, R_index] += 1
-            H_to_bin[i] = (A_index, R_index)
-            bin_key = (A_index, R_index)
-            bin_to_indices[bin_key] = get(bin_to_indices, bin_key, Int[])  # Initialize if not present
-            push!(bin_to_indices[bin_key], i)
-        end
+        # Add index to the bin
+        bin_to_indices[A_index] = get(bin_to_indices, A_index, Int[])
+        push!(bin_to_indices[A_index], i)
     end
 
-    # Select one representative index from each non-empty bin
+    # Initialize selected indices and bins
     selected_indices = []
-    for bin_key in keys(bin_to_indices)
-        indices_in_bin = bin_to_indices[bin_key]
-        # Select the data point closest to the bin center
-        A_center = As_bin_centers[bin_key[1]]
-        R_center = Rs_bin_centers[bin_key[2]]
-        distances = [(As[i] - A_center)^2 + (Rs[i] - R_center)^2 for i in indices_in_bin]
-        min_dist_index = indices_in_bin[argmin(distances)]
-        push!(selected_indices, min_dist_index)
-    end
+    bins_available = collect(keys(bin_to_indices))
 
-    # Adjust the number of selected indices to desired_samples
-    if length(selected_indices) > desired_samples
-        # Randomly select desired number
-        selected_indices = selected_indices[randperm(length(selected_indices))[1:desired_samples]]
-    elseif length(selected_indices) < desired_samples
-        # Select additional data points from bins with more data
-        remaining_needed = desired_samples - length(selected_indices)
-        # Flatten all indices from bins with more than one data point
-        extra_indices = []
-        for indices_in_bin in values(bin_to_indices)
-            if length(indices_in_bin) > 1
-                extra_indices = vcat(extra_indices, indices_in_bin[2:end])
+    # Iteratively select data points from bins
+    while length(selected_indices) < desired_samples && !isempty(bins_available)
+        # Make a copy of bins_available to iterate over
+        bins_to_iterate = copy(bins_available)
+        for bin_index in bins_to_iterate
+            indices_in_bin = bin_to_indices[bin_index]
+            if !isempty(indices_in_bin)
+                # Randomly select a data point from the bin
+                random_pos = rand(1:length(indices_in_bin))
+                selected_index = indices_in_bin[random_pos]
+                push!(selected_indices, selected_index)
+                # Remove selected index from bin
+                deleteat!(indices_in_bin, random_pos)
+                # If bin is empty, remove it from bins_available
+                if isempty(indices_in_bin)
+                    delete!(bin_to_indices, bin_index)
+                    filter!(x -> x != bin_index, bins_available)
+                end
+                # Check if we have reached desired samples
+                if length(selected_indices) >= desired_samples
+                    break
+                end
+            else
+                # Bin is empty, remove it from bins_available
+                delete!(bin_to_indices, bin_index)
+                filter!(x -> x != bin_index, bins_available)
             end
         end
-        # If still not enough, select from all data points
-        if length(extra_indices) < remaining_needed
-            all_indices = collect(1:length(Hs_list))
-            remaining_indices = setdiff(all_indices, selected_indices)
-            extra_indices = vcat(extra_indices, remaining_indices)
-        end
-        extra_indices = extra_indices[randperm(length(extra_indices))[1:remaining_needed]]
-        selected_indices = vcat(selected_indices, extra_indices)
     end
 
     # Now proceed with plotting
@@ -319,30 +416,42 @@ function heatmap_M_vs_A_2d(
         title="P(A,R)",
         xlabel="A",
         ylabel="R",
-        xticks=As_bin_centers,
-        yticks=Rs_bin_centers,
         xtickformat="{:.2f}",
         ytickformat="{:.2f}"
     )
 
     # Plot the heatmap
-    heatmap!(ax, As_bin_centers, Rs_bin_centers, grid; colormap=Reverse(:gist_heat))
+    As_edges_heatmap = collect(range(0.0, A_max_range, length=101))  # For heatmap
+    Rs_edges_heatmap = collect(range(R_min, R_max, length=101))      # For heatmap
+    As_bin_centers_heatmap = [(As_edges_heatmap[i] + As_edges_heatmap[i + 1]) / 2 for i in 1:(length(As_edges_heatmap) - 1)]
+    Rs_bin_centers_heatmap = [(Rs_edges_heatmap[i] + Rs_edges_heatmap[i + 1]) / 2 for i in 1:(length(Rs_edges_heatmap) - 1)]
+    grid = zeros(length(As_bin_centers_heatmap), length(Rs_bin_centers_heatmap))
+
+    # Map data points to heatmap grid
+    for (i, (A, R)) in enumerate(zip(As, Rs))
+        A_index = findfirst(x -> x > A, As_edges_heatmap)
+        R_index = findfirst(x -> x > R, Rs_edges_heatmap)
+        # Adjust indices
+        A_index = A_index === nothing ? length(As_bin_centers_heatmap) : max(1, A_index - 1)
+        R_index = R_index === nothing ? length(Rs_bin_centers_heatmap) : max(1, R_index - 1)
+        if A_index in 1:length(As_bin_centers_heatmap) && R_index in 1:length(Rs_bin_centers_heatmap)
+            grid[A_index, R_index] += 1
+        end
+    end
+
+    heatmap!(ax, As_bin_centers_heatmap, Rs_bin_centers_heatmap, grid; colormap=Reverse(:gist_heat))
 
     # Now use selected_indices for labeling and plotting
     for (j, selected_index) in enumerate(selected_indices)
-        bin_coords = H_to_bin[selected_index]
-        A_index, R_index = bin_coords  # Swap indices here
+        A = As[selected_index]
+        R = Rs[selected_index]
         roman_label = int_to_roman(j)
-
-        # Use bin centers for label placement
-        R_center = Rs_bin_centers[R_index]
-        A_center = As_bin_centers[A_index]
 
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(
             ax,
-            [A_center],
-            [R_center],
+            [A],
+            [R],
             marker=:rect,
             color=:transparent,
             markersize=8,
@@ -359,14 +468,14 @@ function heatmap_M_vs_A_2d(
 
         # Set fixed distance for label offset
         label_distance = 0.02 * sqrt(
-            (maximum(As_bin_centers) - minimum(As_bin_centers))^2 +
-            (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2
+            (maximum(As) - minimum(As))^2 +
+            (maximum(Rs) - minimum(Rs))^2
         )
         label_offset = (
             label_distance * cos(angle),
             label_distance * sin(angle)
         )
-        label_position = (A_center + label_offset[1], R_center + label_offset[2])
+        label_position = (A + label_offset[1], R + label_offset[2])
 
         # Define square size
         square_size = label_distance * 0.8  # Adjust as needed
@@ -381,7 +490,7 @@ function heatmap_M_vs_A_2d(
         ]
 
         # Calculate distances from data point to each corner
-        distances = [hypot(A_center - corner[1], R_center - corner[2]) for corner in corners]
+        distances = [hypot(A - corner[1], R - corner[2]) for corner in corners]
 
         # Find the closest corner
         min_dist_index = argmin(distances)
@@ -409,7 +518,7 @@ function heatmap_M_vs_A_2d(
         )
 
         # Draw a line from the data point to the closest corner of the square
-        lines!(ax, [A_center, corner_x], [R_center, corner_y], color=:black)
+        lines!(ax, [A, corner_x], [R, corner_y], color=:black)
     end
 
     # Husimi function grid layout
