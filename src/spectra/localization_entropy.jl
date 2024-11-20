@@ -284,7 +284,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector,qs_list::Vector, ps_list::Vector, cla
         label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A_center + label_offset[1], R_center + label_offset[2])
         # Add the text label at the offset position
-        text!(ax, label_position[1], label_position[2], text=roman_label, color=:black, fontsize=20, halign=:center, valign=:center)
+        text!(ax, label_position[1], label_position[2], text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
         # Draw a line from the data point to the label
         lines!(ax, [A_center, label_position[1]], [R_center, label_position[2]], color=:black)
     end
