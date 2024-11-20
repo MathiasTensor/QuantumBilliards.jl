@@ -345,7 +345,7 @@ function heatmap_R_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
     R_max = maximum(Rs) * 1.2
 
     # Define the number of bins along the A-axis
-    num_bins_A = round(Int, sqrt(desired_samples))  # e.g., 4 bins
+    num_bins_A = 2*round(Int, sqrt(desired_samples))  # e.g., 4 bins
     As_edges = collect(range(min_A, max_A, length=num_bins_A + 1))
 
     # Initialize bin mappings
@@ -500,7 +500,7 @@ function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
     M_max = maximum(Ms) * 1.2
 
     # Define the number of bins along the A-axis
-    num_bins_A = round(Int, sqrt(desired_samples))  # e.g., 4 bins
+    num_bins_A = 2*round(Int, sqrt(desired_samples))  # e.g., 4 bins
     As_edges = collect(range(min_A, max_A, length=num_bins_A + 1))
 
     # Initialize bin mappings
