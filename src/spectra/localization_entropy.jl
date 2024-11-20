@@ -224,15 +224,7 @@ function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, cl
     return fig
 end
 =#
-function heatmap_M_vs_A_2d(
-    Hs_list::Vector,
-    qs_list::Vector,
-    ps_list::Vector,
-    classical_chaotic_s_vals::Vector,
-    classical_chaotic_p_vals::Vector,
-    chaotic_classical_phase_space_vol_fraction::T
-) where {T<:Real}
-
+function heatmap_M_vs_A_2d(Hs_list::Vector,qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
     # Compute R and A values
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
@@ -266,31 +258,13 @@ function heatmap_M_vs_A_2d(
         end
     end
 
-    fig = Figure(resolution=(2000, 1500), size=(2000, 1500))
-    ax = Axis(
-        fig[1, 1],
-        title="P(A,R)",
-        xlabel="A",
-        ylabel="R",
-        xticks=As_bin_centers[1:10:end],
-        yticks=Rs_bin_centers[1:10:end],
-        xtickformat="{:.1f}",
-        ytickformat="{:.1f}"
-    )
+    fig = Figure(resolution=(2000, 1500),size=(2000,1500))
+    ax = Axis(fig[1, 1], title="P(A,R)", xlabel="A", ylabel="R", xticks=As_bin_centers[1:10:end], yticks=Rs_bin_centers[1:10:end], xtickformat="{:.1f}", ytickformat="{:.1f}")
     heatmap!(ax, As_bin_centers, Rs_bin_centers, grid; colormap=Reverse(:gist_heat))
 
-    # Select 12 random Husimi matrices and sort them by A values
+    # Select 16 random Husimi matrices and label them
     selected_indices = rand(1:length(Hs_list), 12)
-    selected_indices_sorted = sort(selected_indices, by = i -> As[i])
-
-    # Define a list of angles to cycle through
-    angle_list = [π/2, π/4, 0, -π/4, -π/2, -3π/4, π, 3π/4]
-    num_angles = length(angle_list)
-
-    # Initialize label positions list to check for overlaps (optional)
-    label_positions = []
-
-    for (j, random_index) in enumerate(selected_indices_sorted)
+    for (j, random_index) in enumerate(selected_indices)
         bin_coords = H_to_bin[random_index]
         A_index, R_index = bin_coords  # Swap indices here
         roman_label = int_to_roman(j)
@@ -298,79 +272,34 @@ function heatmap_M_vs_A_2d(
         # Use bin centers for label placement
         R_center = Rs_bin_centers[R_index]
         A_center = As_bin_centers[A_index]
-
         # Plot a black square marker (outline) at the data point with transparent fill
-        scatter!(
-            ax,
-            [A_center],
-            [R_center],
-            marker=:rect,
-            color=:transparent,
-            markersize=8,
-            strokecolor=:black,
-            strokewidth=1.5
-        )
-
-        # Assign angle from the angle_list
-        angle = angle_list[mod(j - 1, num_angles) + 1]
-
+        scatter!(ax, [A_center], [R_center],marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=1.5)
+        if isodd(j) # for better viewing
+            angle = 2*pi/3
+        else
+            angle = -pi/3
+        end
         # Set fixed distance for label offset
-        label_distance = 0.06 * sqrt(
-            (maximum(As_bin_centers) - minimum(As_bin_centers))^2 +
-            (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2
-        )
-
-        # Calculate label offset
-        label_offset = (
-            label_distance * cos(angle),
-            label_distance * sin(angle)
-        )
+        label_distance = 0.01 * sqrt((maximum(As_bin_centers) - minimum(As_bin_centers))^2 + (maximum(Rs_bin_centers) - minimum(Rs_bin_centers))^2)
+        label_offset = (label_distance * cos(angle),label_distance * sin(angle))
         label_position = (A_center + label_offset[1], R_center + label_offset[2])
-
-        # Optional: Adjust label_position to stay within plot boundaries
-        label_position = (
-            clamp(label_position[1], minimum(As_bin_centers), maximum(As_bin_centers)),
-            clamp(label_position[2], minimum(Rs_bin_centers), maximum(Rs_bin_centers))
-        )
-
-        # Optional: Check for overlaps and adjust angle if necessary
-        # This step can be more complex and may require iterative adjustments
-
         # Add the text label at the offset position
-        text!(
-            ax,
-            label_position[1],
-            label_position[2],
-            text=roman_label,
-            color=:black,
-            fontsize=30,
-            halign=:center,
-            valign=:center
-        )
-
+        text!(ax, label_position[1], label_position[2], text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
         # Draw a line from the data point to the label
         lines!(ax, [A_center, label_position[1]], [R_center, label_position[2]], color=:black)
-
-        # Keep track of label positions (optional)
-        push!(label_positions, label_position)
     end
 
     # Husimi function grid layout
     husimi_grid = fig[2, 1] = GridLayout()
     row = 1
     col = 1
-    for (j, random_index) in enumerate(selected_indices_sorted)
+    for (j, random_index) in enumerate(selected_indices)
         H = Hs_list[random_index]
         qs_i = qs_list[random_index]
         ps_i = ps_list[random_index]
 
         # Create projection grid and chaotic mask
-        projection_grid = classical_phase_space_matrix(
-            classical_chaotic_s_vals,
-            classical_chaotic_p_vals,
-            qs_i,
-            ps_i
-        )
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
         H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
         roman_label = int_to_roman(j)
 
@@ -386,13 +315,7 @@ function heatmap_M_vs_A_2d(
             yticklabelsvisible=false
         )
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-        heatmap!(
-            ax_husimi,
-            chaotic_mask;
-            colormap=cgrad([:white, :black]),
-            alpha=0.05,
-            colorrange=(0, 1)
-        )
+        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 1))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
 
         col += 1
