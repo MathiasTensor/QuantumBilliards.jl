@@ -312,7 +312,7 @@ function heatmap_M_vs_A_2d(
         # Randomly choose an angle for label offset
         #angle = rand() * 2π
         if isodd(j)
-            angle = (-1)^j*2*pi/3
+            angle = 2*pi/3
         else
             angle = -pi/3
         end
