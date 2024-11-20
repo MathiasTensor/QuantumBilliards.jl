@@ -476,28 +476,6 @@ function heatmap_M_vs_A_2d(
             label_distance * sin(angle)
         )
         label_position = (A + label_offset[1], R + label_offset[2])
-
-        # Define square size
-        square_size = label_distance * 0.8  # Adjust as needed
-
-        # Calculate the corners of the square
-        half_size = square_size / 2
-        corners = [
-            (label_position[1] - half_size, label_position[2] - half_size),  # bottom left
-            (label_position[1] + half_size, label_position[2] - half_size),  # bottom right
-            (label_position[1] + half_size, label_position[2] + half_size),  # top right
-            (label_position[1] - half_size, label_position[2] + half_size)   # top left
-        ]
-
-        # Calculate distances from data point to each corner
-        distances = [hypot(A - corner[1], R - corner[2]) for corner in corners]
-
-        # Find the closest corner
-        min_dist_index = argmin(distances)
-        corner_x, corner_y = corners[min_dist_index]
-
-        
-
         # Place the text inside the square
         text!(
             ax,
@@ -505,7 +483,7 @@ function heatmap_M_vs_A_2d(
             label_position[2],
             text=roman_label,
             color=:black,
-            fontsize=30,
+            fontsize=20,
             halign=:center,
             valign=:center
         )
