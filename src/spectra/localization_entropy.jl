@@ -136,21 +136,7 @@ function int_to_roman(n::Int)
     return n <= length(romans) ? romans[n] : string(n)
 end
 
-# INTERNAL gray background for husimi matrix plot when no 0.0 husimi value there
-#= UNUSED
-function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
-    H_bg = fill(NaN, size(H))
-    Threads.@threads for idx in eachindex(projection_grid)
-        if projection_grid[idx] == -1 # regular
-            H_bg[idx] = H[idx]
-        elseif projection_grid[idx] == 1 # chaotic
-            H_bg[idx] = isapprox(H[idx], 0.0, atol=1e-1) ? NaN : H[idx]
-        end
-    end
-    return H_bg
-end
-=#
-# INTERNAL new one
+# INTERNAL construct a gray chaotic background for the husimi plots
 function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
      # Create a binary mask for chaotic regions
      chaotic_mask = projection_grid .== 1
@@ -248,7 +234,8 @@ function heatmap_M_vs_A_2d(
 ) where {T<:Real}
 
     # Compute M and A values
-    Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+    #Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+    Ms = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
 
     # Dynamically extend the range of A
