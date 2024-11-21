@@ -1024,6 +1024,80 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
     return f
 end
 
+"""
+    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+
+Plots the wavefunctions into a grid (only the fundamental boundary) together with the respective husimi function matrices on the provided grids. The x_grid and y_grid is supplied from the wavefunction_multi or a similar function, and the ps and qs grids mudt also be supplied for plotting the Husimi functions. This version also accepts the us boundary functions and the corresponding arclength evaluation point (us_all -> Vector{Vector{T}} and s_vals_all -> Vector{Vector{T}}) that this function was evaluated on.
+
+# Arguments
+- `ks`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Vector of 2D wavefunction matrices.
+- `x_grid::Vector{<:Real}`: Vector of x-coordinates for the grid.
+- `y_grid::Vector{<:Real}`: Vector of y-coordinates for the grid.
+- `Hs_list::Vector{Matrix}`: Vector of 2D husimi function matrices.
+- `ps_list::Vector{Vector}`: Vector of ps grids for the husimi matrices.
+- `qs_list::Vector{Vector}`: Vector of qs grids for the husimi matrices.
+- `billiard<:AbsBilliard`: The billiard geometry.
+- `us_all::Vector{Vector{T}}`: Vector of us boundary functions.
+- `s_vals_all::Vector{Vector{T}}`: Vector of arclength evaluation points.
+- `b::Float64=5.0`: The point scaling factor.
+- `width_ax::Integer=500`: The size of each axis in the grid layout.
+- `height_ax::Integer=500`: The size of each axis in the grid layout.
+- `max_cols::Integer=6`: The maximum number of columns in the grid layout.
+- `fundamental::Bool=true`: If plotting just the desymmetrized part.
+
+ # Returns
+- `f::Figure`: A Figure object containing the grid of wavefunctions.
+"""
+function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+    L = billiard.length
+    if fundamental
+        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+    else
+        xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+    end
+
+    L_corners = 0.0
+    res = Dict{Float64, Bool}()  # Dictionary to store length and type (true for real, false for virtual)
+
+    for crv in billiard.full_boundary
+        if typeof(crv) <: AbsRealCurve
+            L_corners += crv.length
+            res[L_corners] = true  # Add length with true (real curve)
+        elseif typeof(crv) <: AbsVirtualCurve
+            L_corners += crv.length
+            res[L_corners] = false  # Add length with false (virtual curve)
+        end
+    end
+
+    f = Figure()
+    row = 1
+    col = 1
+    for j in eachindex(ks)
+        local ax_wave = Axis(f[row, col][1, 1], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
+        hm_wave = heatmap!(ax_wave, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
+        plot_boundary!(ax_wave, billiard, fundamental_domain=fundamental, plot_normal=false)
+        xlims!(ax_wave, xlim)
+        ylims!(ax_wave, ylim)
+        local ax_husimi = Axis(f[row, col][1, 2], width=width_ax, height=height_ax)
+        hm_husimi = heatmap!(ax_husimi, qs_list[j], ps_list[j], Hs_list[j]; colormap=Reverse(:gist_heat))
+        local ax_boundary = Axis(f[row, col][2, 1:2], xlabel="s", ylabel="u(s)", width=2*width_ax, height=height_ax/2)
+        lines!(ax_boundary, s_vals_all[j], us_all[j], label="u(s)", linewidth=2)
+
+        for (length, is_real) in res
+            vlines!(ax_boundary, [length], color=(is_real ? :blue : :red), linestyle=(is_real ? :solid : :dash))
+        end
+        # Move to the next column
+        col += 1
+        if col > max_cols
+            row += 1 
+            col = 1
+        end
+    end
+    resize_to_layout!(f)
+    return f
+end
+
 # OTOC constructions
 
 
