@@ -153,6 +153,27 @@ function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; 
 end
 
 """
+    husimi_functions_from_us_and_boundary_points(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi) where {Bi<:AbsBilliard,T<:Real}
+
+Efficient way to construct the husimi functions (`Vector{Matrix}`) and their grids from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
+
+# Arguments
+- `ks::Vector{T}`: A vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: A vector of `BoundaryPoints` objects.
+
+# Returns
+- `Hs::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
+"""
+function husimi_functions_from_us_and_boundary_points(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi) where {Bi<:AbsBilliard,T<:Real}
+    vec_of_s_vals = [bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list, ps_list, qs_list = husimi_functions_from_boundary_functions(ks, vec_us, vec_of_s_vals, billiard)
+    return Hs_list, ps_list, qs_list
+end
+
+"""
     save_husimi_functions(Hs::Vector{Matrix}, ps::Vector{Vector}, qs::Vector{Vector}; filename::String="husimi.jld2")
 
 Saves the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) to the filename using JLD2.
