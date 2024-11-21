@@ -1116,7 +1116,8 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
         end
     end
 
-    f = Figure()
+    n_rows = ceil(Int, length(ks) / max_cols)
+    f = Figure(resolution = (width_ax * max_cols, height_ax * n_rows))
     row = 1
     col = 1
     for j in eachindex(ks)
@@ -1140,7 +1141,7 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
             col = 1
         end
     end
-    resize_to_layout!(f)
+    #resize_to_layout!(f)
     return f
 end
 
