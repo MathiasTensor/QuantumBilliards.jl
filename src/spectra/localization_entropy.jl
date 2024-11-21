@@ -707,3 +707,280 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     return fig
 end
+
+"""
+    combined_heatmaps_with_husimi( Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T, Psi2ds::Vector{Matrix}, x_grid::Vector{<:Real}, y_grid::Vector{<:Real}, billiard::Bi; desired_samples::Int = 12,
+) where {T<:Real, Bi<:AbsBilliard}
+
+Plots the P(M,A) 2d heatmap and P(R,A) 2d heatmap along with random representative chaotic Poincare-Husimi functions for that joint probability distributions (M/R,A), where M is the overlap index of the Poincare-Husimi function and R is the normalized inverse participation ratio. Additionaly also on the sides plots the wavefunctions that correspond to these husimi plots.
+
+# Arguments
+- `Hs_list::Vector{Matrix}`: A list of Husimi function (matrices).
+- `qs_list::Vector{Vector}`: Vector of Vectors that represent the qs for each Husimi matrix.
+- `ps_list::Vector{Vector}`: Vector of Vectors that represent the ps for each Husimi matrix.
+- `classical_chaotic_s_vals::Vector`: Vector of classical chaotic s values for a trajectory.
+- `classical_chaotic_p_vals::Vector`: Vector of classical chaotic p values for a trajectory.
+- `chaotic_classical_phase_space_vol_fraction::T`: The chaotic classical phase space volume fraction.
+- `Psi2ds::Vector{Matrix}`: A list of wavefunctions (matrices).
+- `x_grid::Vector{<:Real}`: Vector of x grid points for the wavefunctions.
+- `y_grid::Vector{<:Real}`: Vector of y grid points for the wavefunctions.
+- `billiard<:AbsBilliard`: The billiard object.
+- `desired_samples::Integer=12`: The number of husimi data samples to choose from and display.
+
+# Returns
+- `fig::Figure`: Figure object from Makie to save or display.
+"""
+function combined_heatmaps_with_husimi( Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; desired_samples::Int = 12,
+) where {T<:Real, Bi<:AbsBilliard}
+
+    # Compute M, R, and A values
+    Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+    Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
+    As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
+
+    max_A = maximum(As)
+    min_A = minimum(As)
+    A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
+    M_min = minimum(Ms) * 0.8
+    M_max = maximum(Ms) * 1.2
+    R_min = minimum(Rs) * 0.8
+    R_max = maximum(Rs) * 1.2
+
+    # Define the number of bins along the A-axis
+    num_bins_A = 2 * round(Int, sqrt(desired_samples))  # e.g., 4 bins
+    As_edges = collect(range(min_A, max_A, length=num_bins_A + 1))
+
+    # Initialize bin mappings
+    bin_to_indices = Dict{Int, Vector{Int}}()
+
+    # Map each Husimi function to its bin (A_bin)
+    for (i, A) in enumerate(As)
+        A_index = findfirst(x -> x > A, As_edges)
+        A_index = A_index === nothing ? num_bins_A : max(1, A_index - 1)
+        # Handle edge cases
+        A_index = clamp(A_index, 1, num_bins_A)
+
+        # Add index to the bin
+        bin_to_indices[A_index] = get(bin_to_indices, A_index, Int[])
+        push!(bin_to_indices[A_index], i)
+    end
+
+    # Initialize selected indices and bins
+    selected_indices = []
+    bins_available = collect(keys(bin_to_indices))
+
+    # Iteratively select data points from bins
+    while length(selected_indices) < desired_samples && !isempty(bins_available)
+        # Make a copy of bins_available to iterate over
+        bins_to_iterate = copy(bins_available)
+        for bin_index in bins_to_iterate
+            indices_in_bin = bin_to_indices[bin_index]
+            if !isempty(indices_in_bin)
+                # Randomly select a data point from the bin
+                random_pos = rand(1:length(indices_in_bin))
+                selected_index = indices_in_bin[random_pos]
+                push!(selected_indices, selected_index)
+                # Remove selected index from bin
+                deleteat!(indices_in_bin, random_pos)
+                # If bin is empty, remove it from bins_available
+                if isempty(indices_in_bin)
+                    delete!(bin_to_indices, bin_index)
+                    filter!(x -> x != bin_index, bins_available)
+                end
+                # Check if we have reached desired samples
+                if length(selected_indices) >= desired_samples
+                    break
+                end
+            else
+                # Bin is empty, remove it from bins_available
+                delete!(bin_to_indices, bin_index)
+                filter!(x -> x != bin_index, bins_available)
+            end
+        end
+    end
+
+    # Prepare for plotting
+    # Figure layout with left and right columns for wavefunctions, middle column for heatmaps and Husimi functions
+    fig = Figure(resolution=(2000, 2500), fontsize=14)
+
+    # Define the grid layout
+    grid = fig[1, 1] = GridLayout()
+
+    # Left wavefunction plots
+    left_grid = grid[1, 1] = GridLayout()
+    # Middle plots (heatmaps and Husimi functions)
+    middle_grid = grid[1, 2] = GridLayout()
+    # Right wavefunction plots
+    right_grid = grid[1, 3] = GridLayout()
+
+    # Adjust column widths
+    colsize!(grid, 1, Relative(1))  # Left wavefunctions
+    colsize!(grid, 2, Relative(2))  # Middle plots
+    colsize!(grid, 3, Relative(1))  # Right wavefunctions
+
+    ### Plot Left Wavefunctions ###
+    # Left side wavefunctions (2 columns, 3 rows)
+    num_left = div(desired_samples, 2)
+    rows_left = ceil(Int, num_left / 2)
+    row = 1
+    col = 1
+    for i in 1:num_left
+        idx = selected_indices[i]
+        roman_label = int_to_roman(i)
+        ax_wf = Axis(
+            left_grid[row, col],
+            title=roman_label,
+            aspect=DataAspect(),
+            xticksvisible=false,
+            yticksvisible=false,
+            xgridvisible=false,
+            ygridvisible=false
+        )
+        # Plot the wavefunction
+        Psi = Psi2ds[idx]
+        hm = heatmap!(ax_wf, x_grid, y_grid, Psi; colormap=:balance, colorrange=(-maximum(abs, Psi), maximum(abs, Psi)))
+        # Plot billiard boundary
+        plot_boundary!(ax_wf, billiard; fundamental_domain=true, plot_normal=false)
+        col += 1
+        if col > 2
+            col = 1
+            row += 1
+        end
+    end
+
+    ### Plot Middle Heatmaps and Husimi Functions ###
+    # Middle Grid
+    middle_grid[1, 1] = GridLayout()
+    middle_subgrid = middle_grid[1, 1]
+
+    # Top Plot: P(A, M)
+    ax_top = Axis(middle_subgrid[1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    # Plot the heatmap for P(A, M)
+    As_edges_heatmap_M = collect(range(0.0, A_max_range, length=201))
+    Ms_edges_heatmap = collect(range(M_min, M_max, length=201))
+    As_bin_centers_heatmap_M = [(As_edges_heatmap_M[i] + As_edges_heatmap_M[i + 1]) / 2 for i in 1:(length(As_edges_heatmap_M) - 1)]
+    Ms_bin_centers_heatmap = [(Ms_edges_heatmap[i] + Ms_edges_heatmap[i + 1]) / 2 for i in 1:(length(Ms_edges_heatmap) - 1)]
+    grid_M = zeros(length(As_bin_centers_heatmap_M), length(Ms_bin_centers_heatmap))
+    # Map data points to heatmap grid for P(A, M)
+    for (i, (A, M)) in enumerate(zip(As, Ms))
+        A_index = findfirst(x -> x > A, As_edges_heatmap_M)
+        M_index = findfirst(x -> x > M, Ms_edges_heatmap)
+        # Adjust indices
+        A_index = A_index === nothing ? length(As_bin_centers_heatmap_M) : max(1, A_index - 1)
+        M_index = M_index === nothing ? length(Ms_bin_centers_heatmap) : max(1, M_index - 1)
+        if A_index in 1:length(As_bin_centers_heatmap_M) && M_index in 1:length(Ms_bin_centers_heatmap)
+            grid_M[A_index, M_index] += 1
+        end
+    end
+    heatmap!(ax_top, As_bin_centers_heatmap_M, Ms_bin_centers_heatmap, grid_M; colormap=Reverse(:gist_heat), alpha=0.7)
+
+    # Label the selected points on the P(A, M) plot
+    for (j, selected_index) in enumerate(selected_indices)
+        A = As[selected_index]
+        M = Ms[selected_index]
+        roman_label = int_to_roman(j)
+        # Plot a black square marker (outline) at the data point with transparent fill
+        scatter!(ax_top, [A], [M], marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=3.5)
+        # Place the text inside the square
+        text!(ax_top, A, M, text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+    end
+
+    # Middle Plot: P(A, R)
+    ax_middle = Axis(middle_subgrid[2, 1], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    # Plot the heatmap for P(A, R)
+    As_edges_heatmap_R = collect(range(0.0, A_max_range, length=201))
+    Rs_edges_heatmap = collect(range(R_min, R_max, length=201))
+    As_bin_centers_heatmap_R = [(As_edges_heatmap_R[i] + As_edges_heatmap_R[i + 1]) / 2 for i in 1:(length(As_edges_heatmap_R) - 1)]
+    Rs_bin_centers_heatmap = [(Rs_edges_heatmap[i] + Rs_edges_heatmap[i + 1]) / 2 for i in 1:(length(Rs_edges_heatmap) - 1)]
+    grid_R = zeros(length(As_bin_centers_heatmap_R), length(Rs_bin_centers_heatmap))
+    # Map data points to heatmap grid for P(A, R)
+    for (i, (A, R)) in enumerate(zip(As, Rs))
+        A_index = findfirst(x -> x > A, As_edges_heatmap_R)
+        R_index = findfirst(x -> x > R, Rs_edges_heatmap)
+        # Adjust indices
+        A_index = A_index === nothing ? length(As_bin_centers_heatmap_R) : max(1, A_index - 1)
+        R_index = R_index === nothing ? length(Rs_bin_centers_heatmap) : max(1, R_index - 1)
+        if A_index in 1:length(As_bin_centers_heatmap_R) && R_index in 1:length(Rs_bin_centers_heatmap)
+            grid_R[A_index, R_index] += 1
+        end
+    end
+    heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
+
+    # Label the selected points on the P(A, R) plot
+    for (j, selected_index) in enumerate(selected_indices)
+        A = As[selected_index]
+        R = Rs[selected_index]
+        roman_label = int_to_roman(j)
+        # Plot a black square marker (outline) at the data point with transparent fill
+        scatter!(ax_middle, [A], [R], marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=3.5)
+        # Place the text inside the square
+        text!(ax_middle, A, R, text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+    end
+
+    # Husimi Functions at the Bottom
+    husimi_grid = middle_subgrid[3, 1] = GridLayout()
+    row = 1
+    col = 1
+    for (j, selected_index) in enumerate(selected_indices)
+        H = Hs_list[selected_index]
+        qs_i = qs_list[selected_index]
+        ps_i = ps_list[selected_index]
+        # Create projection grid and chaotic mask
+        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
+        H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
+        roman_label = int_to_roman(j)
+        # Plot individual Husimi functions
+        ax_husimi = Axis(
+            husimi_grid[row, col],
+            title=roman_label,
+            xticksvisible=false,
+            yticksvisible=false,
+            xgridvisible=false,
+            ygridvisible=false,
+            xticklabelsvisible=false,
+            yticklabelsvisible=false
+        )
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
+        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 1))
+        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
+        col += 1
+        if col > 4
+            col = 1
+            row += 1
+        end
+    end
+    rowgap!(husimi_grid, 5)
+    colgap!(husimi_grid, 5)
+
+    ### Plot Right Wavefunctions ###
+    # Right side wavefunctions (2 columns, 3 rows)
+    num_right = desired_samples - num_left
+    rows_right = ceil(Int, num_right / 2)
+    row = 1
+    col = 1
+    for i in (num_left + 1):desired_samples
+        idx = selected_indices[i]
+        roman_label = int_to_roman(i)
+        ax_wf = Axis(
+            right_grid[row, col],
+            title=roman_label,
+            aspect=DataAspect(),
+            xticksvisible=false,
+            yticksvisible=false,
+            xgridvisible=false,
+            ygridvisible=false
+        )
+        # Plot the wavefunction
+        Psi = Psi2ds[idx]
+        hm = heatmap!(ax_wf, x_grid, y_grid, Psi; colormap=:balance, colorrange=(-maximum(abs, Psi), maximum(abs, Psi)))
+        # Plot billiard boundary
+        plot_boundary!(ax_wf, billiard; fundamental_domain=true, plot_normal=false)
+        col += 1
+        if col > 2
+            col = 1
+            row += 1
+        end
+    end
+
+    return fig
+end
