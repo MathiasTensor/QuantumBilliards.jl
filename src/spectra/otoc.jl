@@ -954,7 +954,8 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
     else
         xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
     end
-    f = Figure()
+    n_rows = ceil(Int, length(ks) / max_cols)
+    f = Figure(resolution=(1*width_ax * max_cols, 1*height_ax * n_rows), size=(1*width_ax * max_cols, 1*height_ax * n_rows))
     row = 1
     col = 1
     for j in eachindex(ks)
@@ -969,7 +970,6 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
             col = 1
         end
     end
-    resize_to_layout!(f)
     return f
 end
 
@@ -1000,7 +1000,8 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, 
     else
         xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
     end
-    f = Figure()
+    n_rows = ceil(Int, length(ks) / max_cols)
+    f = Figure(resolution=(1*width_ax * max_cols, 1*height_ax * n_rows), size=(1*width_ax * max_cols, 1*height_ax * n_rows))
     row = 1
     col = 1
     for j in eachindex(ks)
@@ -1015,7 +1016,6 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, 
             col = 1
         end
     end
-    resize_to_layout!(f)
     return f
 end
 
@@ -1049,7 +1049,8 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
     else
         xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
     end
-    f = Figure()
+    n_rows = ceil(Int, length(ks) / max_cols)
+    f = Figure(resolution=(3*width_ax * max_cols, 1*height_ax * n_rows), size=(3*width_ax * max_cols, 1*height_ax * n_rows))
     row = 1
     col = 1
     for j in eachindex(ks)
@@ -1066,7 +1067,6 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
             col = 1
         end
     end
-    resize_to_layout!(f)
     return f
 end
 
@@ -1141,7 +1141,6 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
             col = 1
         end
     end
-    #resize_to_layout!(f)
     return f
 end
 
