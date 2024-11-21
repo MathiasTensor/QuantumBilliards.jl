@@ -1064,11 +1064,9 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
         if crv isa AbsRealCurve
             L_corners += crv.length
             res[L_corners] = true  # Add length with true (real curve)
-            println("true")
         elseif crv isa AbsVirtualCurve
             L_corners += crv.length
             res[L_corners] = false  # Add length with false (virtual curve)
-            println("false")
         end
     end
 
