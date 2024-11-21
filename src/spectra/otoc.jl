@@ -822,13 +822,14 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `vec_us::Vector{Vector}`: Vector of the boundary functions
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
+- `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true) where {Bi<:AbsBilliard,T<:Real}
     k_max = maximum(ks)
     type = eltype(k_max)
     L = billiard.length
@@ -839,7 +840,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
     sz = length(pts)
     # Determine points inside the billiard only once if inside_only is true
-    pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) : fill(true, sz)
+    pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=fundamental) : fill(true, sz)
     pts_masked_indices = findall(pts_mask)
     # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
     function ϕ(x, y, k, bdPoints::BoundaryPoints, us::Vector)
@@ -875,6 +876,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `vec_us::Vector{Vector}`: Vector of the boundary functions
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
+- `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
@@ -884,7 +886,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true) where {Bi<:AbsBilliard,T<:Real}
     k_max = maximum(ks)
     type = eltype(k_max)
     L = billiard.length
@@ -898,7 +900,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
     sz = length(pts)
     # Determine points inside the billiard only once if inside_only is true
-    pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) : fill(true, sz)
+    pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=fundamental) : fill(true, sz)
     pts_masked_indices = findall(pts_mask)
     # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
     function ϕ(x, y, k, bdPoints::BoundaryPoints, us::Vector)
