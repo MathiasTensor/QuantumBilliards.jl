@@ -95,6 +95,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
     us = Vector{Vector{eltype(ks)}}(undef, length(ks))
     s_vals = Vector{Vector{eltype(ks)}}(undef, length(ks))
     norms = Vector{eltype(ks)}(undef, length(ks))
+    progress = Progress(length(ks); desc="Constructing the u(s)...")
     for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
@@ -104,6 +105,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         us[i] = u
         s_vals[i] = s
         norms[i] = norm
+        next!(progress)
     end
     return ks, us, s_vals, norms
 end
@@ -129,6 +131,7 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
     X = state_data.X
     us_all = Vector{Vector{eltype(ks)}}(undef, length(ks))
     pts_all = Vector{BoundaryPoints{eltype(ks)}}(undef, length(ks))
+    progress = Progress(length(ks); desc="Constructing the u(s)...")
     Threads.@threads for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
@@ -137,6 +140,7 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
         u, pts, _ = setup_momentum_density(state; b=b) # pts is BoundaryPoints and has information on ds and x
         us_all[i] = u
         pts_all[i] = pts
+        next!(progress)
     end
     return ks, us_all, pts_all
 end
