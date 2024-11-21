@@ -1061,10 +1061,10 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
     res = Dict{Float64, Bool}()  # Dictionary to store length and type (true for real, false for virtual)
 
     for crv in billiard.full_boundary
-        if typeof(crv) <: AbsRealCurve
+        if crv isa AbsRealCurve
             L_corners += crv.length
             res[L_corners] = true  # Add length with true (real curve)
-        elseif typeof(crv) <: AbsVirtualCurve
+        elseif crv isa AbsVirtualCurve
             L_corners += crv.length
             res[L_corners] = false  # Add length with false (virtual curve)
         end
