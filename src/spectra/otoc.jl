@@ -1059,7 +1059,7 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
 
     L_corners = 0.0
     res = Dict{Float64, Bool}()  # Dictionary to store length and type (true for real, false for virtual)
-
+    res[L_corners] = true # we should start at the real curve anyway
     for crv in billiard.full_boundary
         if crv isa AbsRealCurve
             L_corners += crv.length
@@ -1094,7 +1094,7 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
             col = 1
         end
     end
-    #resize_to_layout!(f)
+    resize_to_layout!(f)
     return f
 end
 
