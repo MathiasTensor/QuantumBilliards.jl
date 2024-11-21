@@ -928,7 +928,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the wavefunction_multi or a similar function.
 
@@ -960,6 +960,52 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
     for j in eachindex(ks)
         local ax = Axis(f[row,col], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
         hm = heatmap!(ax, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
+        plot_boundary!(ax, billiard, fundamental_domain=fundamental, plot_normal=false)
+        xlims!(ax, xlim)
+        ylims!(ax, ylim)
+        col += 1
+        if col > max_cols
+            row += 1
+            col = 1
+        end
+    end
+    resize_to_layout!(f)
+    return f
+end
+
+"""
+    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+
+Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the `wavefunctions` method since it expects for each wavefunctions it's separate x and y grid.
+
+# Arguments
+- `ks`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Vector of 2D wavefunction matrices.
+- `x_grid::Vector{Vector}`: Vector of x-coordinates for the grid for each wavefunction.
+- `y_grid::Vector{Vector}`: Vector of y-coordinates for the grid for each wavefunction.
+- `billiard<:AbsBilliard`: The billiard geometry.
+- `b::Float64=5.0`: The point scaling factor.
+- `width_ax::Integer=500`: The size of each axis in the grid layout.
+- `height_ax::Integer=500`: The size of each axis in the grid layout.
+- `max_cols::Integer=6`: The maximum number of columns in the grid layout.
+- `fundamental::Bool=true`: If plotting just the desymmetrized part.
+
+ # Returns
+- `f::Figure`: A Figure object containing the grid of wavefunctions.
+"""
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+    L = billiard.length
+    if fundamental
+        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+    else
+        xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+    end
+    f = Figure()
+    row = 1
+    col = 1
+    for j in eachindex(ks)
+        local ax = Axis(f[row,col], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
+        hm = heatmap!(ax, x_grid[j], y_grid[j], Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
         plot_boundary!(ax, billiard, fundamental_domain=fundamental, plot_normal=false)
         xlims!(ax, xlim)
         ylims!(ax, ylim)
