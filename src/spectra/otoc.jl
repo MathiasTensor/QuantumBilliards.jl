@@ -1094,7 +1094,7 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
             col = 1
         end
     end
-    resize_to_layout!(f)
+    #resize_to_layout!(f)
     return f
 end
 
