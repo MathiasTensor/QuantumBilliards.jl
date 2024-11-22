@@ -82,7 +82,7 @@ function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, de
 end
 
 """
-    function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::Bool=true, dens::Float64=5.0, plot_normal::Bool=true) where {Bi<:AbsBilliard}
+    function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::Bool=true, dens::Float64=5.0, plot_normal::Bool=true, desymmetrized_full_domain=false) where {Bi<:AbsBilliard}
 
 Plots the boundary orientation as a sequence of arrows for the points that form the given curve segments in the billiard boundary (either fundamental or full)
 
