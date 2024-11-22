@@ -947,7 +947,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L = billiard.length
     if fundamental
         xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
@@ -993,7 +993,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=1000, height_ax::Integer=1000, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L = billiard.length
     if fundamental
         xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
@@ -1042,7 +1042,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=1000, height_ax::Integer=1000, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L = billiard.length
     if fundamental
         xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
@@ -1095,7 +1095,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=1000, height_ax::Integer=1000, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L = billiard.length
     if fundamental
         xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
