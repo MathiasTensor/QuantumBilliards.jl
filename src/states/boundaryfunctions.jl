@@ -286,13 +286,24 @@ function construct_full_boundary_for_boundary_function(billiard::Bi, basis::Ba; 
         if hasproperty(billiard, :y_axis)
             y_axis = billiard.y_axis
         end
-        for crv in boundary
+        idx = 0
+        for (i, crv) in enumerate(boundary)
+            # form a line that goes through this point and one of the endpoints for a line object. If the normal of that line is (a,0) then this line is vertical line passing through this point, therefore the symmetry axis
             if crv isa VirtualLineSegment || crv isa LineSegment
                 pt1 = crv.pt1 # get a point
-                
+                v = SVector(pt1[1] - x_axis, pt1[2]) # line vec
+                normal = SVector(v[2], -v[1]) # if normal[2] ≈ 0
+                if isapprox(normal[2],0.0,atol=1e-10)
+                    idx = i
+                    break
+                end
+            else
+                if crv isa AbsVirtualCurve
+                    
+                end
             end
         end
-        # form a line that goes through this point and one of the endpoints for a line object. If the normal of that line is (a,0) then this line is vertical line passing through this point, therefore the symmetry axis
+
     end
 end
 
