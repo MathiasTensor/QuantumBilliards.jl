@@ -265,19 +265,29 @@ end
 
 ###### ADDITIONS ########
 
+#=
 function construct_full_boundary_for_boundary_function(billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    # get fundamental boundary
-    boundary = billiard.fundamental_boundary
-    L = billiard.length
+    symmetries = basis.symmetries # get symmetries, Vector but could be nothing
     k = basis.k
-    N = max(round(Int, k*L*b/(2*pi)), 512)
-    # get symmetries
-    symmetries = basis.symmetries # Vector but could ne nothing
+    L = billiard.length
     if isnothing(symmetries)
-        return boundary # sa fundamental and full are the same if no symmetries
+        boundary = billiard.full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        N = max(round(Int, k*L*b/(2*pi)), 512)
+        sampler = FourierNodes([2,3,5],crv_lengths)
+        pts = boundary_coords(billiard, sampler, N)
+        return pts # break here since no symmetries
+    else
+        boundary = billiard.desymmetrized_full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        N = max(round(Int, k*L*b/(2*pi)), round(Int, 512/length(symmetries))) # same num of points as with no symmetries
+        sampler = FourierNodes([2,3,5],crv_lengths)
+        pts = boundary_coords(billiard, sampler, N)
     end
-    # for any symmetry it is a line type
-    if all([sym isa Reflection for sym in symmetries])  # Handle reflections
+    
+    # Check if the symmetries involve reflections
+    if all([sym isa Reflection for sym in symmetries])
+        # Initialize symmetry axes
         x_axis = 0.0
         y_axis = 0.0
         if hasproperty(billiard, :x_axis)
@@ -286,34 +296,36 @@ function construct_full_boundary_for_boundary_function(billiard::Bi, basis::Ba; 
         if hasproperty(billiard, :y_axis)
             y_axis = billiard.y_axis
         end
-        idx_vertical = nothing
-        idx_horizontal = nothing
-        idx_rotation = nothing
-        for (i, crv) in enumerate(boundary)
-            # form a line that goes through this point and one of the endpoints for a line object. If the normal of that line is (a,0) then this line is vertical line passing through this point, therefore the symmetry axis
-            if crv isa VirtualLineSegment || crv isa LineSegment
-                pt1 = crv.pt1 # get a point
-                v = SVector(pt1[1] - x_axis, pt1[2]) # line vec
-                normal = SVector(v[2], -v[1]) # if normal[2] ≈ 0
-                if isapprox(normal[2],0.0,atol=eps(k))
-                    idx_vertical = i
-                    continue
-                end
-                if isapprox(normal[1],0.0,atol=eps(k)) # if normal[1] ≈ 0
-                    idx_horizontal = i
-                    continue
-                end
-            else
-                if crv isa AbsVirtualCurve
-                    
-                end
+        pts = [(x - x_axis, y - y_axis) for (x, y) in pts] # Adjust points for the shifted axes
+        reflected_pts = []
+        for sym in symmetries
+            if sym.axis == :x_axis
+                # Reflect across x-axis
+                reflected_pts = vcat(reflected_pts, [(x, -y) for (x, y) in pts])
+            elseif sym.axis == :y_axis
+                # Reflect across y-axis
+                reflected_pts = vcat(reflected_pts, [(-x, y) for (x, y) in pts])
+            elseif sym.axis == :origin
+                # Reflect over both axes (x -> -x, y -> -y)
+                reflected_pts = vcat(reflected_pts, [(-x, -y) for (x, y) in pts])
             end
         end
 
+        # Combine original and reflected points
+        pts = vcat(pts, reflected_pts)
+
+        # Remove duplicate points and sort
+        pts = unique(pts)
+        pts = sort(pts, by = x -> (x[1], x[2]))
+
+        # Shift back to the original axes
+        pts = [(x + x_axis, y + y_axis) for (x, y) in pts]
     end
+
+    return pts
 end
 
-
+=#
 
 
 
