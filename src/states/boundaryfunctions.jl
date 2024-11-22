@@ -265,7 +265,31 @@ end
 
 ###### ADDITIONS ########
 
-
+function construct_full_boundary_for_boundary_function(billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    # get fundamental boundary
+    boundary = billiard.fundamental_boundary
+    L = billiard.length
+    k = basis.k
+    N = max(round(Int, k*L*b/(2*pi)), 512)
+    # get symmetries
+    symmetries = basis.symmetries # Vector but could ne nothing
+    if isnothing(symmetries)
+        return boundary # sa fundamental and full are the same if no symmetries
+    end
+    # for any symmetry it is a line type
+    if all([sym isa Reflection for sym in symmetries])  # Handle reflections
+        x_axis = 0.0
+        y_axis = 0.0
+        if hasproperty(billiard, :x_axis)
+            x_axis = billiard.x_axis
+            # find the line segment that passes through it 
+        end
+        if hasproperty(billiard, :y_axis)
+            y_axis = billiard.y_axis
+        end
+        
+    end
+end
 
 
 
