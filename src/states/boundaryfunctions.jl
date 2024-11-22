@@ -282,12 +282,17 @@ function construct_full_boundary_for_boundary_function(billiard::Bi, basis::Ba; 
         y_axis = 0.0
         if hasproperty(billiard, :x_axis)
             x_axis = billiard.x_axis
-            # find the line segment that passes through it 
         end
         if hasproperty(billiard, :y_axis)
             y_axis = billiard.y_axis
         end
-        
+        for crv in boundary
+            if crv isa VirtualLineSegment || crv isa LineSegment
+                pt1 = crv.pt1 # get a point
+                
+            end
+        end
+        # form a line that goes through this point and one of the endpoints for a line object. If the normal of that line is (a,0) then this line is vertical line passing through this point, therefore the symmetry axis
     end
 end
 
