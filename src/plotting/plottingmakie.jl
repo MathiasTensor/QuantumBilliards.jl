@@ -68,13 +68,14 @@ function plot_curve!(ax, crv::AbsVirtualCurve; plot_normal=false, dens = 10.0, c
     ax.aspect=DataAspect()
 end
 
-function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, dens = 100.0, plot_normal=true, color_crv=:grey)
-    if fundamental_domain 
-        boundary = billiard.fundamental_boundary  
+function plot_boundary!(ax, billiard::AbsBilliard; fundamental_domain = true, desymmetrized_full_domain=false, dens = 100.0, plot_normal=true, color_crv=:grey)
+    if fundamental_domain
+        boundary = billiard.fundamental_boundary
+    elseif desymmetrized_full_domain
+        boundary = billiard.desymmetrized_full_boundary
     else
         boundary = billiard.full_boundary
     end
-    
     for curve in boundary 
         plot_curve!(ax, curve; dens = dens, plot_normal = plot_normal, color_crv=color_crv)
     end
@@ -91,9 +92,11 @@ Plots the boundary orientation as a sequence of arrows for the points that form 
 - `fundamental_domain::Bool=true`: Whether to plot the boundary in the fundamental domain (default: true)
 - `dens::Float64=5.0`: The density of points to plot on the boundary (default: 5.0, should be small as to )
 """
-function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::Bool=true, dens::Float64=5.0, plot_normal::Bool=true) where {Bi<:AbsBilliard}
+function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::Bool=true, dens::Float64=5.0, plot_normal::Bool=true, desymmetrized_full_domain=false) where {Bi<:AbsBilliard}
     if fundamental_domain
         boundary = billiard.fundamental_boundary
+    elseif desymmetrized_full_domain
+        boundary = billiard.desymmetrized_full_boundary
     else
         boundary = billiard.full_boundary
     end
@@ -140,6 +143,10 @@ function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::
     else
         println("Signed area: $(area)!!")
     end
+end
+
+function plot_boundary_for_boundary_function()
+    
 end
 
 function plot_domain_fun!(f, curve::C; xlim=(-1.0,1.0),ylim=(-1.0,1.0), dens=100.0, hmargs=Dict(),cmap=:binary) where {C<:AbsCurve}
@@ -202,7 +209,7 @@ function plot_wavefunction!(f,state::AbsState; b=5.0,dens = 10.0, fundamental_do
     #Psi[Psi .== zero(eltype(Psi))] .= NaN
     billiard = state.billiard
     hmap, ax = plot_heatmap_balaced!(f,x,y,Psi ;vmax = vmax, cmap=cmap,hmargs=hmargs,axargs=axargs)
-    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, fundamental_domain=fundamental_domain)
+    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, fundamental_domain=fundamental_domain, desymmetrized_full_domain=false)
     return ax, hmap
 end
 
@@ -211,7 +218,7 @@ function plot_wavefunction!(f,state::BasisState, billiard::AbsBilliard; b=5.0,de
     Psi, x, y = wavefunction(state;b=b)
     #Psi[Psi .== zero(eltype(Psi))] .= NaN
     hmap, ax = plot_heatmap_balaced!(f,x,y,Psi ;vmax = vmax, cmap=cmap,hmargs=hmargs,axargs=axargs)
-    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal)
+    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, desymmetrized_full_domain=false)
     return ax, hmap
 end
 
@@ -222,7 +229,7 @@ function plot_wavefunction_gradient!(f,state::AbsState; b=5.0,dens = 10.0, insid
     dX, dY, x_grid, y_grid =  wavefunction_gradient(state;b=b, inside_only=inside_only)
     arrows!(ax,x_grid,y_grid, dX,dY, color = :black, lengthscale = lengthscale)
     billiard = state.billiard
-    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal)
+    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, desymmetrized_full_domain=false)
     ax.aspect=DataAspect()
 end
 

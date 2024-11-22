@@ -142,7 +142,7 @@ Defines a Mushroom billiard with a rectangular stem and a circular cap.
 # Fields
 - `fundamental_boundary::Vector{Union{LineSegment, CircleSegment}}`: The boundary segments of the half mushroom.
 - `full_boundary::Vector{Union{LineSegment, CircleSegment}}`: The boundary segments of the full mushroom.
-- `half_boundary::Vector{Union{LineSegment, CircleSegment}}`: The real half mushroom boundary that is used to construct the boundary function.
+- `desymmetrized_full_boundary::Vector{Union{LineSegment, CircleSegment}}`: The real half mushroom boundary that is used to construct the boundary function.
 - `length::T`: The total length of the boundary.
 - `area::T`: The total area of the mushroom.
 - `stem_width::T`: The width of the stem.
@@ -153,7 +153,7 @@ Defines a Mushroom billiard with a rectangular stem and a circular cap.
 struct Mushroom{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
     full_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
-    half_boundary::Vector{Union{LineSegment, CircleSegment}}
+    desymmetrized_full_boundary::Vector{Union{LineSegment, CircleSegment}}
     length::T
     length_fundamental::T
     area::T
@@ -196,9 +196,9 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
     area_fundamental = area/2
     length = sum([crv.length for crv in full_boundary])
-    half_boundary, _ = make_half_full_boundary_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
+    desymmetrized_full_boundary, _ = make_half_full_boundary_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
     angles_fundamental = [3*pi/2, pi/2, pi/2]
-    return Mushroom(fundamental_boundary, full_boundary, half_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection)
+    return Mushroom(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection)
 end
