@@ -196,7 +196,7 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
     area_fundamental = area/2
     length = sum([crv.length for crv in full_boundary])
-    half_boundary = make_half_full_boundary_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
+    half_boundary, _ = make_half_full_boundary_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
     angles_fundamental = [3*pi/2, pi/2, pi/2]
