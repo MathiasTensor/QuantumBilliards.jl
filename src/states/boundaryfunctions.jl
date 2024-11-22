@@ -16,7 +16,7 @@ function regularize!(u)
     end
 end
 
-#=
+
 function boundary_function(state::S; b=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -42,8 +42,8 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         return u, pts.s::Vector{type}, norm
     end
 end
-=#
 
+#=
 function boundary_function(state::S; b=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard = state.billiard
         type = eltype(vec)
@@ -116,7 +116,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         return full_u, full_s, norm
     end
 end
-
+=#
 function boundary_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
     let X = state_bundle.X, k_basis = state_bundle.k_basis, ks = state_bundle.ks, new_basis = state_bundle.basis, billiard=state_bundle.billiard 
         type = eltype(X)
