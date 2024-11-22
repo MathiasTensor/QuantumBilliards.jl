@@ -1001,7 +1001,7 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, 
         xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
     end
     n_rows = ceil(Int, length(ks) / max_cols)
-    f = Figure(resolution=(1*width_ax * max_cols, 1*height_ax * n_rows), size=(round(Int, 1.2*width_ax * max_cols), round(Int, 1*height_ax * n_rows)))
+    f = Figure(resolution=(1*width_ax * max_cols, 1*height_ax * n_rows), size=(round(Int, 2.0*width_ax * max_cols), round(Int, 1.5*height_ax * n_rows)))
     row = 1
     col = 1
     for j in eachindex(ks)
