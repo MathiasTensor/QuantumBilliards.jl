@@ -94,6 +94,47 @@ function make_full_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zer
 end
 
 """
+    make_half_full_boundary_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+
+Constructs a half mushroom billiard with a rectangular stem and a circular cap. The virtual line segments become real line segments and the symmetry axis is removed. This mimics the true desymmetrized mushroom. This one is used for construction of the boundary function.
+
+# Arguments
+- `stem_width::T`: The width of the stem.
+- `stem_height::T`: The height of the stem.
+- `cap_radius::T`: The radius of the circular cap.
+- `x0::T=zero(T)`: The x-coordinate of the origin (center of the semicircle cap).
+- `y0::T=zero(T)`: The y-coordinate of the origin (center of the semicircle cap).
+- `rot_angle::T=zero(T)`: The rotation angle of the billiard table.
+
+# Returns
+- A tuple containing:
+  - `boundary::Vector{Union{LineSegment, CircleSegment}}`: The boundary segments of the half mushroom with no symmetry axis and only real segments.
+  - `corners::Vector{SVector{2,T}}`: The corners of this geometry.
+"""
+function make_half_full_boundary_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+    stem_width = stem_width/2 # Because desymmetrized we only take half of the full width
+    origin = SVector(x0, y0)
+
+    # Define the cap: a quarter circle with radius `cap_radius` centered at (-stem_width + cap_radius, 0)
+    cap_center_point = SVector(stem_width, zero(T))
+    cap_segment = CircleSegment(cap_radius, 0.5*pi, 0.5*pi, cap_center_point[1], cap_center_point[2]; origin=origin, rot_angle=rot_angle)
+    
+    stem_bottom_right_corner = SVector(stem_width, -stem_height)
+    stem_bottom_left_corner = SVector(zero(T), -stem_height)
+    stem_top_left_corner = SVector(zero(T), zero(T))
+    
+    # Line segments for the stem that are not symmetry axes
+    stem_bottom_side = LineSegment(stem_bottom_left_corner, stem_bottom_right_corner; origin=origin, rot_angle=rot_angle)
+    stem_left_side = LineSegment(stem_top_left_corner, stem_bottom_left_corner; origin=origin, rot_angle=rot_angle)
+    cap_stem_connector = LineSegment(SVector(-(cap_radius - stem_width), zero(T)), stem_top_left_corner; origin=origin, rot_angle=rot_angle)
+    # Anticlockwise ordering of the real half mushroom boundary
+    boundary = Union{LineSegment, CircleSegment}[cap_segment, cap_stem_connector, stem_left_side, stem_bottom_side]
+
+    corners = [stem_bottom_left_corner, stem_top_left_corner] # only 2 corners
+    return boundary, corners
+end
+
+"""
     struct Mushroom{T} <: AbsBilliard where {T<:Real}
 
 Defines a Mushroom billiard with a rectangular stem and a circular cap.
@@ -101,6 +142,7 @@ Defines a Mushroom billiard with a rectangular stem and a circular cap.
 # Fields
 - `fundamental_boundary::Vector{Union{LineSegment, CircleSegment}}`: The boundary segments of the half mushroom.
 - `full_boundary::Vector{Union{LineSegment, CircleSegment}}`: The boundary segments of the full mushroom.
+- `half_boundary::Vector{Union{LineSegment, CircleSegment}}`: The real half mushroom boundary that is used to construct the boundary function.
 - `length::T`: The total length of the boundary.
 - `area::T`: The total area of the mushroom.
 - `stem_width::T`: The width of the stem.
@@ -111,6 +153,7 @@ Defines a Mushroom billiard with a rectangular stem and a circular cap.
 struct Mushroom{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
     full_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
+    half_boundary::Vector{Union{LineSegment, CircleSegment}}
     length::T
     length_fundamental::T
     area::T
@@ -153,9 +196,9 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     area = stem_width * stem_height + 0.5 * pi * cap_radius^2
     area_fundamental = area/2
     length = sum([crv.length for crv in full_boundary])
-    #length_fundamental = sum([crv.length for crv in fundamental_boundary])
+    half_boundary = make_half_full_boundary_mushroom(stem_width, stem_height, cap_radius; x0=x0, y0=y0, rot_angle=rot_angle)
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
     angles_fundamental = [3*pi/2, pi/2, pi/2]
-    return Mushroom(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection)
+    return Mushroom(fundamental_boundary, full_boundary, half_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection)
 end
