@@ -122,6 +122,20 @@ end
 
 #### ADDITION FOR BOUNDARY FUNCTIONS #####
 # Since the default one just uses the full boundary
+"""
+    boundary_coords_desymmetrized_full_boundary(billiard::Bi, sampler::FourierNodes, N) where {Bi<:AbsBilliard}
+
+#INTERNAL
+Specialized boundary points construction function used exclusively for the boundary_function where we need to take into account the desymmetrized_full_boundary. Not used anywhere else.
+
+# Arguments
+- `billiard::Bi`: a billiard geometry
+- `sampler::FourierNodes`: a sampler for Fourier nodes. Must be this one for consistency with boundary_function.
+- `N`: the number of points to sample
+
+# Returns
+- `BoundaryPoints`: a struct containing the boundary points, normals, arc lengths, and integration weights for the boundary_function.
+"""
 function boundary_coords_desymmetrized_full_boundary(billiard::Bi, sampler::FourierNodes, N) where {Bi<:AbsBilliard}
     let boundary = billiard.desymmetrized_full_boundary
         ts, dts = sample_points(sampler, N)
