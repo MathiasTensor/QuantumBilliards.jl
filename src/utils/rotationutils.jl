@@ -251,3 +251,127 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
     return crop_grid_with_full_boundary(new_Psi_grid, new_x_grid, new_y_grid, billiard)
 end
 
+"""
+    apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Union{Vector{Any},Nothing}, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+
+Convenience function that construct new BoundaryPoints object from the old BoundaryPoints object such that it extends it with the correct symmetries.
+
+# Arguments
+- `pts`: Original BoundaryPoints object
+- `symmetries`: Vector of symmetry operations (Reflection, Rotation) to be applied. If `Nothing`, symmetries are not applied. Do not mix and match rotation/reflections.
+- `billiard`: Billiard object used to determine if the symmetry axes are shifted wrt origin.
+
+# Returns
+- `BoundaryPoints`: The new symmetry adapted boundary points.
+"""
+function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Union{Vector{Any},Nothing}, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+    if isnothing(symmetries)
+        return pts
+    end
+    
+    # desymmetrized boundary points
+    full_xy = copy(pts.xy)
+    full_normal = copy(pts.normal)
+    full_s = copy(pts.s)
+    full_ds = copy(pts.ds)
+    max_s = maximum(pts.s)
+
+    # shifts for symmetry axes when the billiard's reflections centers do not include the origin
+    x_axis, y_axis = 0.0, 0.0
+    if hasproperty(billiard, :x_axis)
+        x_axis = billiard.x_axis
+    end
+    if hasproperty(billiard, :y_axis)
+        y_axis = billiard.y_axis
+    end
+
+    # pre-shift to align symmetry axes with the origin, does nothing if no shifts
+    shifted_xy = [SVector(x-x_axis, y-y_axis) for SVector(x, y) in full_xy]
+    #shifted_normal = [SVector(nx, ny) for SVector(nx, ny) in full_normal]
+    shifted_normal = full_normal  # normals are unaffected by shifts, no need for this
+
+    for sym in symmetries
+        if sym isa Reflection
+            if sym.axis == :y_axis
+                # reflect across the vertical reflection axis (at x = x_axis)
+                reflected_xy = [SVector(-x, y) for SVector(x, y) in shifted_xy]
+                reflected_normal = [SVector(-nx, ny) for SVector(nx, ny) in shifted_normal]
+                reflected_s = 2*max_s .- reverse(full_s[1:end-1])
+                reflected_ds = reverse(full_ds[1:end-1])
+            elseif sym.axis == :x_axis
+                # reflect across the horizontal reflection axis (at y = y_axis)
+                reflected_xy = [SVector(x, -y) for SVector(x, y) in shifted_xy]
+                reflected_normal = [SVector(nx, -ny) for SVector(nx, ny) in shifted_normal]
+                reflected_s = 2*max_s .- reverse(full_s[1:end-1])
+                reflected_ds = reverse(full_ds[1:end-1])
+            elseif sym.axis == :origin
+                # reflect across both axes (origin reflection, combining shifts)
+                reflected_xy = [SVector(-x, -y) for SVector(x, y) in shifted_xy]
+                reflected_normal = [SVector(-nx, -ny) for SVector(nx, ny) in shifted_normal]
+                reflected_s = 2*(2*max_s) .- reverse(full_s[1:end-1]) 
+                reflected_ds = reverse(full_ds[1:end-1])     
+            end
+            # shift back reflected coordinates back to the original alignment
+            shifted_back_xy = [SVector(x + x_axis, y + y_axis) for SVector(x, y) in reflected_xy]
+            # combine the reflected components with the originals
+            full_xy = vcat(full_xy, shifted_back_xy)
+            full_normal = vcat(full_normal, reflected_normal)
+            full_s = vcat(full_s, reflected_s)
+            full_ds = vcat(full_ds, reflected_ds)
+        
+        elseif sym isa Rotation
+            θ = 2π / sym.n 
+            R = SMatrix{2, 2, Float64}([cos(θ) -sin(θ); sin(θ) cos(θ)])
+            # Apply the rotation sym.n - 1 times
+            current_xy = shifted_xy
+            current_normal = shifted_normal
+            for i in 1:(sym.n-1)
+                # Rotate points and normals
+                rotated_xy = [R*SVector(x, y) for SVector(x, y) in current_xy]
+                rotated_normal = [R*SVector(nx, ny) for SVector(nx, ny) in current_normal]
+                # shift rotated coordinates back to the original alignment
+                shifted_back_rot_xy = [SVector(x + x_axis, y + y_axis) for SVector(x, y) in rotated_xy]
+                full_xy = vcat(full_xy, shifted_back_rot_xy)
+                full_normal = vcat(full_normal, rotated_normal)
+                # Extend s arc length and ds
+                rotated_s = full_s[1:end-1] .+ maximum(full_s)
+                full_s = vcat(full_s, rotated_s)
+                full_ds = vcat(full_ds, full_ds[1:end-1])
+                current_xy = rotated_xy  # Update current_xy and current_normal for the next rotation
+                current_normal = rotated_normal
+            end
+        else
+            error("Unknown symmetry type: $(typeof(sym))")
+        end
+    end
+    return BoundaryPoints(full_xy, full_normal, full_s, full_ds)
+end
+
+"""
+    difference_boundary_points(pts_new::BoundaryPoints{T}, pts_old::BoundaryPoints{T}) where {T<:Real}
+
+Compute the difference between two `BoundaryPoints` objects. The returned `BoundaryPoints` object contains
+only the elements in `pts_new` that are not present in `pts_old`. Throws errors if the lengths of the `Vector` fields in either the old or new inputs is not the same
+
+# Arguments
+- `pts_new::BoundaryPoints`: The updated `BoundaryPoints` object that contains all the points.
+- `pts_old::BoundaryPoints`: The original `BoundaryPoints` object whose data is a subset of `pts_new`.
+
+# Returns
+- A new `BoundaryPoints` object containing the fields (`xy`, `normal`, `s`, `ds`) from `pts_new`
+  starting from the index where `pts_old` ends.
+"""
+function difference_boundary_points(pts_new::BoundaryPoints{T}, pts_old::BoundaryPoints{T}) where {T<:Real}
+    if !(length(pts_new.xy) == length(pts_new.normal) == length(pts_new.s) == length(pts_new.ds))
+        error("Fields of pts_new are not consistent in length")
+    end
+    if !(length(pts_old.xy) == length(pts_old.normal) == length(pts_old.s) == length(pts_old.ds))
+        error("Fields of pts_old are not consistent in length")
+    end
+    start_index = length(pts_old.xy)+1
+    new_xy = pts_new.xy[start_index:end]
+    new_normal = pts_new.normal[start_index:end]
+    new_s = pts_new.s[start_index:end]
+    new_ds = pts_new.ds[start_index:end]
+    return BoundaryPoints(new_xy, new_normal, new_s, new_ds)
+end
