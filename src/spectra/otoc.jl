@@ -907,6 +907,10 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
         target_point = SVector(x, y)
         distances = norm.(Ref(target_point) .- bdPoints.xy)
         weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds
+        println("Size of xy: ", size(bdPoints.xy))
+        println("Size of distances: ", size(distances))
+        println("Size of us: ", size(us))
+        println("Size of ds: ", size(bdPoints.ds))
         sum(weighted_bessel_values) / 4
     end
     Psi2ds = Vector{Matrix{type}}(undef, length(ks))
