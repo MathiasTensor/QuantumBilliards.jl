@@ -319,11 +319,33 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
                     reflected_normal = reverse(reflected_normal)
                 end
             elseif sym.axis == :origin
-                # reflect across both axes (origin reflection, combining shifts)
-                reflected_xy = [SVector(-v[1], -v[2]) for v in shifted_xy]
-                reflected_normal = [SVector(-n[1], -n[2]) for n in shifted_normal]
-                reflected_s = 2*(2*max_s) .- reverse(full_s) 
-                reflected_ds = reverse(full_ds)     
+                # reflect across the vertical axis (x-axis reflection at x = x_axis)
+                vertical_reflected_xy = [SVector(-v[1], v[2]) for v in shifted_xy]
+                vertical_reflected_normal = [SVector(-n[1], n[2]) for n in shifted_normal]
+                vertical_reflected_s = 2 * max_s .- full_s
+                vertical_reflected_ds = full_ds
+                # resolve direction if `same_direction=true` for vertical reflection
+                if same_direction
+                    vertical_reflected_xy = reverse(vertical_reflected_xy)
+                    vertical_reflected_normal = reverse(vertical_reflected_normal)
+                end
+                # reflect the vertically reflected points across the horizontal axis (y-axis reflection at y = y_axis)
+                horizontal_reflected_xy = [SVector(v[1], -v[2]) for v in vertical_reflected_xy]
+                horizontal_reflected_normal = [SVector(n[1], -n[2]) for n in vertical_reflected_normal]
+                horizontal_reflected_s = 2*(2*max_s) .- vertical_reflected_s
+                horizontal_reflected_ds = vertical_reflected_ds
+                # resolve direction if `same_direction=true` for horizontal reflection
+                if same_direction
+                    horizontal_reflected_xy = reverse(horizontal_reflected_xy)
+                    horizontal_reflected_normal = reverse(horizontal_reflected_normal)
+                end
+                # shift back reflected coordinates back to the original alignment
+                shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in horizontal_reflected_xy]
+                # Update reflected values do to compounded logic
+                reflected_xy = shifted_back_xy
+                reflected_normal = horizontal_reflected_normal
+                reflected_s = horizontal_reflected_s
+                reflected_ds = horizontal_reflected_ds     
             end
             
             # combine the reflected components with the originals
