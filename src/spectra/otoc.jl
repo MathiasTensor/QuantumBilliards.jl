@@ -915,6 +915,9 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     end
     Psi2ds = Vector{Matrix{type}}(undef, length(ks))
     progress = Progress(length(ks), desc="Constructing wavefunction matrices...")
+    println("Size of all ks: ", size(ks))
+    println("Size of all vec bd points: ", size(vec_bdPoints))
+    println("Size of all us: ", size(vec_us))
     Threads.@threads for i in eachindex(ks)
         k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
         Psi_flat = zeros(type, sz)
