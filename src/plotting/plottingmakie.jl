@@ -179,11 +179,11 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     # desymmetrized points, plot in red
     pts_desym = BoundaryPoints(xy_all,normal_all,s_all,ds_all) 
     lines!(ax_main,pts_desym.xy, color=:red, linewidth=0.75)
-    arrows!(ax_main,getindex.(pts_desym,1),getindex.(pts_desym,2), getindex.(pts_desym.normal,1),getindex.(pts_desym.normal,2), color=:black, lengthscale=0.1)
+    arrows!(ax_main,getindex.(pts_desym.xy,1),getindex.(pts_desym.xy,2), getindex.(pts_desym.normal,1),getindex.(pts_desym.normal,2), color=:black, lengthscale=0.1)
     pts_new = apply_symmetries_to_boundary_points(pts_desym, basis.symmetries, billiard)
     pts_diff = difference_boundary_points(pts_new, pts_desym)
     lines!(ax_main,pts_diff.xy, color=:green, linewidth=0.75)
-    arrows!(ax_main,getindex.(pts_diff,1),getindex.(pts_diff,2), getindex.(pts_diff.normal,1),getindex.(pts_diff.normal,2), color=:black, lengthscale=0.1)
+    arrows!(ax_main,getindex.(pts_diff.xy,1),getindex.(pts_diff.xy,2), getindex.(pts_diff.normal,1),getindex.(pts_diff.normal,2), color=:black, lengthscale=0.1)
     # s and ds part
     lines!(ax_s, pts_desym.s, color=:red, linewidth=0.75)
     lines!(ax_s, pts_diff.s, color=:green, linewidth=0.75)
