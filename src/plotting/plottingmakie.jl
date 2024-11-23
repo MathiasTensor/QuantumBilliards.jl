@@ -145,8 +145,50 @@ function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::
     end
 end
 
-function plot_boundary_for_boundary_function()
-    
+function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=30) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+    f = Figure(size=(1500,1000), resolution=(1500,1000))
+    ax_ol = Axis(f[1,1][1,1:2], title="Desymmetrized boundary w/ Symmetry", width=500, height=500)
+    ax_s = Axis(f[1,2][1,1], title="Arclengths")
+    ax_ds = Axis(f[1,2[1,2], title="ds"])
+    sampler_lin = LinearNodes()
+    if fundamental_or_desymmetrized_full
+        boundary = billiard.fundamental_boundary
+    else
+        boundary = billiard.desymmetrized_full_boundary
+    end
+    # generate first points without symmetry
+    L = symmetry_accounted_fundamental_boundary_length(boundary)
+    Lc = boundary[1].length
+    Nc = round(Int, N*Lc/L)
+    xy_all, normal_all, s_all, ds_all = boundary_coords(boundary[1],sampler,Nc)
+    l = boundary[1].length #cumulative length
+    for crv in boundary[2:end]
+        if (typeof(crv) <: AbsRealCurve) # in the case of desymmetrized full all will be real
+            Lc = crv.length
+            Nc = round(Int, N*Lc/L)
+            xy,nxy,s,ds = boundary_coords(crv,sampler,Nc)
+            append!(xy_all, xy)
+            append!(normal_all, nxy)
+            s = s .+ l
+            append!(s_all, s)
+            append!(ds_all, ds)
+            l += Lc
+        end    
+    end
+    # desymmetrized points, plot in red
+    pts_desym = BoundaryPoints(xy_all,normal_all,s_all,ds_all) 
+    lines!(ax_main,pts_desym.xy, color=:red, linewidth=0.75)
+    arrows!(ax_main,getindex.(pts_desym,1),getindex.(pts_desym,2), getindex.(pts_desym.normal,1),getindex.(pts_desym.normal,2), color=:black, lengthscale=0.1)
+    pts_new = apply_symmetries_to_boundary_points(pts_desym, basis.symmetries, billiard)
+    pts_diff = difference_boundary_points(pts_new, pts_desym)
+    lines!(ax_main,pts_diff.xy, color=:green, linewidth=0.75)
+    arrows!(ax_main,getindex.(pts_diff,1),getindex.(pts_diff,2), getindex.(pts_diff.normal,1),getindex.(pts_diff.normal,2), color=:black, lengthscale=0.1)
+    # s and ds part
+    lines!(ax_s, pts_desym.s, color=:red, linewidth=0.75)
+    lines!(ax_s, pts_diff.s, color=:green, linewidth=0.75)
+    lines!(ax_ds, pts_desym.ds, color=:red, linewidth=0.75)
+    lines!(ax_ds, pts_diff.ds, color=:green, linewidth=0.75)
+    return f
 end
 
 function plot_domain_fun!(f, curve::C; xlim=(-1.0,1.0),ylim=(-1.0,1.0), dens=100.0, hmargs=Dict(),cmap=:binary) where {C<:AbsCurve}

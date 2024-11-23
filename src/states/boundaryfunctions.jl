@@ -16,7 +16,7 @@ function regularize!(u)
     end
 end
 
-#=
+
 function boundary_function(state::S; b=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -40,80 +40,6 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         norm = sum(integrand)/(2*k^2)
         #println(norm)
         return u, pts.s::Vector{type}, norm
-    end
-end
-=#
-
-function boundary_function(state::S; b=5.0) where {S<:AbsState}
-    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard = state.billiard
-        type = eltype(vec)
-        symmetries = new_basis.symmetries  # Extract symmetries
-        boundary = billiard.desymmetrized_full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2, 3, 5], crv_lengths)
-        L = billiard.length
-        N = max(round(Int, k * L * b / (2 * pi)), 512)
-
-        # Compute u and s for the desymmetrized boundary
-        pts = boundary_coords(billiard, sampler, N)  # BoundaryPoints object
-        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        nx = getindex.(pts.normal, 1)
-        ny = getindex.(pts.normal, 2)
-        dX = nx .* dX 
-        dY = ny .* dY
-        U::Array{type, 2} = dX .+ dY
-        u::Vector{type} = U * vec
-        regularize!(u)
-        s = pts.s
-
-        # Extend u and s to the full boundary using symmetries
-        full_u = copy(u)
-        full_s = copy(s)
-        max_s = maximum(s)  # Maximum arc length in the desymmetrized boundary
-
-        for sym in symmetries
-            if sym.axis == :x_axis
-                # Reflect u and s across the x-axis
-                reflected_u = reverse(sym.parity .* u)
-                reflected_s = 2 * max_s .- reverse(s[1:end-1])  # Avoid duplicate max_s
-                full_u = vcat(full_u, reflected_u)
-                full_s = vcat(full_s, reflected_s)
-
-            elseif sym.axis == :y_axis
-                # Reflect u and s across the y-axis
-                reflected_u = reverse(sym.parity .* u)
-                reflected_s = 2 * max_s .- reverse(s[1:end-1])  # Avoid duplicate max_s
-                full_u = vcat(full_u, reflected_u)
-                full_s = vcat(full_s, reflected_s)
-
-            elseif sym.axis == :origin
-                # Reflect u and s for origin (combined x and y reflection)
-
-                # First, reflect across the x-axis
-                reflected_u_x = reverse(sym.parity[1] .* u)
-                reflected_s_x = 2 * max_s .- reverse(s[1:end-1])  # Avoid duplicate max_s
-
-                # Then, reflect the x-reflected results across the y-axis
-                reflected_u_xy = reverse(sym.parity[2] .* reflected_u_x)
-                reflected_s_xy = 2 * (2 * max_s) .- reverse(reflected_s_x[1:end-1])  # Avoid duplicate max_s again
-
-                # Combine reflected values
-                full_u = vcat(full_u, reflected_u_x, reflected_u_xy)
-                full_s = vcat(full_s, reflected_s_x, reflected_s_xy)
-            end
-        end
-
-        # Sort and deduplicate by arc length
-        sorted_indices = sortperm(full_s)
-        full_s = full_s[sorted_indices]
-        full_u = full_u[sorted_indices]
-
-        # Compute the boundary norm
-        w = dot.(pts.normal, pts.xy) .* pts.ds
-        integrand = abs2.(u) .* w
-        norm = sum(integrand) / (2 * k^2)
-
-        return full_u, full_s, norm
     end
 end
 
