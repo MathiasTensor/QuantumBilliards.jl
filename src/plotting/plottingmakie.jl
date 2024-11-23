@@ -147,7 +147,7 @@ end
 
 function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=30) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
     f = Figure(size=(1500,1000), resolution=(1500,1000))
-    ax_ol = Axis(f[1,1][1,1:2], title="Desymmetrized boundary w/ Symmetry", width=500, height=500)
+    ax_main = Axis(f[1,1][1,1:2], title="Desymmetrized boundary w/ Symmetry", width=500, height=500)
     ax_s = Axis(f[1,2][1,1], title="Arclengths")
     ax_ds = Axis(f[1,2][1,2], title="ds")
     sampler = LinearNodes()
