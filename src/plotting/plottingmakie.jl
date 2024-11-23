@@ -223,6 +223,28 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     idx_diff_ds = collect(length(idx_ds) + 1:length(idx_ds) + length(pts_diff.ds))
     lines!(ax_ds, idx_ds, pts_desym.ds, color=:red, linewidth=0.75)
     lines!(ax_ds, idx_diff_ds, pts_diff.ds, color=:green, linewidth=0.75)
+
+    # Add markers for start and end points
+    start_desym = pts_desym.xy[1]
+    end_desym = pts_desym.xy[end]
+    start_diff = pts_diff.xy[1]
+    end_diff = pts_diff.xy[end]
+    # Markers on boundary plot
+    scatter!(ax_main, [start_desym[1]], [start_desym[2]]; color=:black, markersize=8, label="Start Desym")
+    scatter!(ax_main, [end_desym[1]], [end_desym[2]]; color=:orange, markersize=8, label="End Desym")
+    scatter!(ax_main, [start_diff[1]], [start_diff[2]]; color=:blue, markersize=8, label="Start Diff")
+    scatter!(ax_main, [end_diff[1]], [end_diff[2]]; color=:purple, markersize=8, label="End Diff")
+    # Markers on s plot
+    scatter!(ax_s, [idx_s[1]], [pts_desym.s[1]]; color=:black, markersize=8)
+    scatter!(ax_s, [idx_s[end]], [pts_desym.s[end]]; color=:orange, markersize=8)
+    scatter!(ax_s, [idx_diff_s[1]], [pts_diff.s[1]]; color=:blue, markersize=8)
+    scatter!(ax_s, [idx_diff_s[end]], [pts_diff.s[end]]; color=:purple, markersize=8)
+    # Markers on ds plot
+    scatter!(ax_ds, [idx_ds[1]], [pts_desym.ds[1]]; color=:black, markersize=8)
+    scatter!(ax_ds, [idx_ds[end]], [pts_desym.ds[end]]; color=:orange, markersize=8)
+    scatter!(ax_ds, [idx_diff_ds[1]], [pts_diff.ds[1]]; color=:blue, markersize=8)
+    scatter!(ax_ds, [idx_diff_ds[end]], [pts_diff.ds[end]]; color=:purple, markersize=8)
+
     if print_symmetrized_sizes
         println("NEW ONES")
         println("length xy: ", length(pts_new.xy))
