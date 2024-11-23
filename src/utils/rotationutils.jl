@@ -363,9 +363,17 @@ only the elements in `pts_new` that are not present in `pts_old`. Throws errors 
 """
 function difference_boundary_points(pts_new::BoundaryPoints{T}, pts_old::BoundaryPoints{T}) where {T<:Real}
     if !(length(pts_new.xy) == length(pts_new.normal) == length(pts_new.s) == length(pts_new.ds))
+        println("length xy: ", length(pts_new.xy))
+        println("length normal: ", length(pts_new.normal))
+        println("length s: ", length(pts_new.s))
+        println("length ds: ", length(pts_new.ds))
         error("Fields of pts_new are not consistent in length")
     end
     if !(length(pts_old.xy) == length(pts_old.normal) == length(pts_old.s) == length(pts_old.ds))
+        println("length xy: ", length(pts_old.xy))
+        println("length normal: ", length(pts_old.normal))
+        println("length s: ", length(pts_old.s))
+        println("length ds: ", length(pts_old.ds))
         error("Fields of pts_old are not consistent in length")
     end
     start_index = length(pts_old.xy)+1
