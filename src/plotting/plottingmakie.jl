@@ -186,7 +186,7 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     arrows!(ax_main,getindex.(pts_diff.xy,1),getindex.(pts_diff.xy,2), getindex.(pts_diff.normal,1),getindex.(pts_diff.normal,2), color=:black, lengthscale=0.1)
     # s and ds part
     lines!(ax_s, pts_desym.s, color=:red, linewidth=0.75)
-    lines!(ax_s, pts_diff.s + maximum(pts_desym.s), color=:green, linewidth=0.75)
+    lines!(ax_s, pts_diff.s .+ maximum(pts_desym.s), color=:green, linewidth=0.75)
     lines!(ax_ds, pts_desym.ds, color=:red, linewidth=0.75)
     lines!(ax_ds, pts_diff.ds, color=:green, linewidth=0.75)
     return f
