@@ -919,6 +919,9 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     println("Size of all vec bd points: ", size(vec_bdPoints))
     println("Size of all us: ", size(vec_us))
     Threads.@threads for i in eachindex(ks)
+        println("Size of k[$i]: ", ks[i])
+        println("Size of vec[$i]: ", size(vec_bdPoints[i]))
+        println("Size of all us[$i]: ", size(vec_us[i]))
         k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
         Psi_flat = zeros(type, sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
