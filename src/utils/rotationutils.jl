@@ -288,7 +288,6 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
 
     # pre-shift to align symmetry axes with the origin, does nothing if no shifts
     shifted_xy = [SVector(v[1]-x_axis, v[2]-y_axis) for v in full_xy]
-    #shifted_normal = [SVector(nx, ny) for SVector(nx, ny) in full_normal]
     shifted_normal = full_normal  # normals are unaffected by shifts, no need for this
 
     for sym in symmetries
@@ -299,12 +298,26 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
                 reflected_normal = [SVector(-n[1], n[2]) for n in shifted_normal]
                 reflected_s = 2*max_s .- reverse(full_s)
                 reflected_ds = reverse(full_ds)
+                # shift back reflected coordinates back to the original alignment
+                shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in reflected_xy]
+                # Reverse direction if same_direction=true
+                if same_direction # reverse only for xy and normals since s and ds are already correctly set up
+                    shifted_back_xy = reverse(shifted_back_xy)
+                    reflected_normal = reverse(reflected_normal)
+                end
             elseif sym.axis == :x_axis
                 # reflect across the horizontal reflection axis (at y = y_axis)
                 reflected_xy = [SVector(v[1], -v[2]) for v in shifted_xy]
                 reflected_normal = [SVector(n[1], -n[2]) for n in shifted_normal]
                 reflected_s = 2*max_s .- reverse(full_s)
                 reflected_ds = reverse(full_ds)
+                # shift back reflected coordinates back to the original alignment
+                shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in reflected_xy]
+                # Reverse direction if same_direction=true
+                if same_direction # reverse only for xy and normals since s and ds are already correctly set up
+                    shifted_back_xy = reverse(shifted_back_xy)
+                    reflected_normal = reverse(reflected_normal)
+                end
             elseif sym.axis == :origin
                 # reflect across both axes (origin reflection, combining shifts)
                 reflected_xy = [SVector(-v[1], -v[2]) for v in shifted_xy]
@@ -312,13 +325,7 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
                 reflected_s = 2*(2*max_s) .- reverse(full_s) 
                 reflected_ds = reverse(full_ds)     
             end
-            # shift back reflected coordinates back to the original alignment
-            shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in reflected_xy]
-            # Reverse direction if same_direction=true
-            if same_direction # reverse only for xy and normals since s and ds are already correctly set up
-                shifted_back_xy = reverse(shifted_back_xy)
-                reflected_normal = reverse(reflected_normal)
-            end
+            
             # combine the reflected components with the originals
             full_xy = vcat(full_xy, shifted_back_xy)
             full_normal = vcat(full_normal, reflected_normal)
