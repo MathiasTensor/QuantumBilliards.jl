@@ -205,7 +205,7 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     desym_start_y = getindex.(pts_desym.xy, 2)[1:end-1]
     desym_dir_x = getindex.(pts_desym.xy, 1)[2:end] .- desym_start_x
     desym_dir_y = getindex.(pts_desym.xy, 2)[2:end] .- desym_start_y
-    arrows!(ax_main, desym_start_x, desym_start_y, desym_dir_x, desym_dir_y; color=:blue, lengthscale=0.2)
+    arrows!(ax_main, desym_start_x, desym_start_y, desym_dir_x, desym_dir_y; color=:red, lengthscale=0.2)
 
     # Plot direction vectors for pts_diff
     diff_start_x = getindex.(pts_diff.xy, 1)[1:end-1]
