@@ -318,8 +318,6 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
             if same_direction
                 shifted_back_xy = reverse(shifted_back_xy)
                 reflected_normal = reverse(reflected_normal)
-                reflected_s = reverse(reflected_s)
-                reflected_ds = reverse(reflected_ds)
             end
             # combine the reflected components with the originals
             full_xy = vcat(full_xy, shifted_back_xy)
