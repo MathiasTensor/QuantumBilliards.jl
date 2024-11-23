@@ -184,24 +184,15 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     pts_diff = difference_boundary_points(pts_new, pts_desym)
     lines!(ax_main,pts_diff.xy, color=:green, linewidth=0.75)
     arrows!(ax_main,getindex.(pts_diff.xy,1),getindex.(pts_diff.xy,2), getindex.(pts_diff.normal,1),getindex.(pts_diff.normal,2), color=:black, lengthscale=0.1)
-    # s and ds part
-    #lines!(ax_s, collect(1:N), pts_desym.s, color=:red, linewidth=0.75)
-    #lines!(ax_s, collect(N:N+length(pts_diff.s)), pts_diff.s, color=:green, linewidth=0.75)
-    #lines!(ax_ds, pts_desym.ds, color=:red, linewidth=0.75)
-    #lines!(ax_ds, pts_diff.ds, color=:green, linewidth=0.75)
-    # Plot s and ds sequentially
+    # plot s and ds sequentially
     idx_s = collect(1:length(pts_desym.s))
     idx_diff_s = collect(length(idx_s) + 1:length(idx_s) + length(pts_diff.s))
-    
     lines!(ax_s, idx_s, pts_desym.s, color=:red, linewidth=0.75)
     lines!(ax_s, idx_diff_s, pts_diff.s, color=:green, linewidth=0.75)
-
     idx_ds = collect(1:length(pts_desym.ds))
     idx_diff_ds = collect(length(idx_ds) + 1:length(idx_ds) + length(pts_diff.ds))
-    
     lines!(ax_ds, idx_ds, pts_desym.ds, color=:red, linewidth=0.75)
     lines!(ax_ds, idx_diff_ds, pts_diff.ds, color=:green, linewidth=0.75)
-    
     return f
 end
 
