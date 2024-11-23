@@ -145,7 +145,7 @@ function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::
     end
 end
 
-function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=100) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=100, print_symmetrized_sizes=true) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
     f = Figure(size=(1500,1000), resolution=(1500,1000))
     ax_main = Axis(f[1,1][1,1:2], title="Desymmetrized boundary w/ Symmetry", width=500, height=500)
     ax_s = Axis(f[1,2][1,1], title="Arclengths")
@@ -193,6 +193,17 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     idx_diff_ds = collect(length(idx_ds) + 1:length(idx_ds) + length(pts_diff.ds))
     lines!(ax_ds, idx_ds, pts_desym.ds, color=:red, linewidth=0.75)
     lines!(ax_ds, idx_diff_ds, pts_diff.ds, color=:green, linewidth=0.75)
+    if print_symmetrized_sizes
+        println("length xy: ", length(pts_new.xy))
+        println("length normal: ", length(pts_new.normal))
+        println("length s: ", length(pts_new.s))
+        println("length ds: ", length(pts_new.ds))
+        println()
+        println("length xy: ", length(pts_old.xy))
+        println("length normal: ", length(pts_old.normal))
+        println("length s: ", length(pts_old.s))
+        println("length ds: ", length(pts_old.ds))
+    end
     return f
 end
 
