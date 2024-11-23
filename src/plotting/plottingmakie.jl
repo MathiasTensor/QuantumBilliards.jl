@@ -199,6 +199,17 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     pts_diff = difference_boundary_points(pts_new, pts_desym)
     lines!(ax_main,pts_diff.xy, color=:green, linewidth=0.75)
     arrows!(ax_main,getindex.(pts_diff.xy,1),getindex.(pts_diff.xy,2), getindex.(pts_diff.normal,1),getindex.(pts_diff.normal,2), color=:black, lengthscale=0.1)
+    
+    # Plot direction vectors for pts_desym
+    desym_start_points = pts_desym.xy[1:end-1]
+    desym_directions = [pts_desym.xy[i + 1] - pts_desym.xy[i] for i in 1:(length(pts_desym.xy) - 1)]
+    arrows!(ax_main, desym_start_points, desym_directions; color=:blue, linewidth=1, arrowsize=6.0, arrowcolor=:black)
+
+    # Plot direction vectors for pts_diff
+    diff_start_points = pts_diff.xy[1:end-1]
+    diff_directions = [pts_diff.xy[i + 1] - pts_diff.xy[i] for i in 1:(length(pts_diff.xy) - 1)]
+    arrows!(ax_main, diff_start_points, diff_directions; color=:green, linewidth=1, arrowsize=6.0, arrowcolor=:black)
+    
     # plot s and ds sequentially
     idx_s = collect(1:length(pts_desym.s))
     idx_diff_s = collect(length(idx_s) + 1:length(idx_s) + length(pts_diff.s))
