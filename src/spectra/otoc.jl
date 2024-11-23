@@ -922,7 +922,9 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     println("Size of all us: ", size(vec_us))
     Threads.@threads for i in eachindex(ks)
         println("Size of k[$i]: ", ks[i])
-        println("Size of vec[$i]: ", size(vec_bdPoints[i]))
+        println("Size of vec[$i] xy: ", size(vec_bdPoints[i].xy))
+        println("Size of vec[$i] s: ", size(vec_bdPoints[i].s))
+        println("Size of vec[$i] ds: ", size(vec_bdPoints[i].ds))
         println("Size of all us[$i]: ", size(vec_us[i]))
         k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
         Psi_flat = zeros(type, sz)
