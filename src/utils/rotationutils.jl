@@ -315,7 +315,7 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
             # shift back reflected coordinates back to the original alignment
             shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in reflected_xy]
             # Reverse direction if same_direction=true
-            if same_direction
+            if same_direction # reverse only for xy and normals since s and ds are already correctly set up
                 shifted_back_xy = reverse(shifted_back_xy)
                 reflected_normal = reverse(reflected_normal)
             end
