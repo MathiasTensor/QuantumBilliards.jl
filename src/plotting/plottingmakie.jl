@@ -150,7 +150,7 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     ax_ol = Axis(f[1,1][1,1:2], title="Desymmetrized boundary w/ Symmetry", width=500, height=500)
     ax_s = Axis(f[1,2][1,1], title="Arclengths")
     ax_ds = Axis(f[1,2][1,2], title="ds")
-    sampler_lin = LinearNodes()
+    sampler = LinearNodes()
     if fundamental_or_desymmetrized_full
         boundary = billiard.fundamental_boundary
     else
