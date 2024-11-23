@@ -397,14 +397,14 @@ only the elements in `pts_new` that are not present in `pts_old`. Throws errors 
   starting from the index where `pts_old` ends.
 """
 function difference_boundary_points(pts_new::BoundaryPoints{T}, pts_old::BoundaryPoints{T}) where {T<:Real}
-    if !(length(pts_new.xy) == length(pts_new.normal) == length(pts_new.s) == length(pts_new.ds))
+    if !(length(pts_new.xy)==length(pts_new.normal)==length(pts_new.s)==length(pts_new.ds))
         println("length xy: ", length(pts_new.xy))
         println("length normal: ", length(pts_new.normal))
         println("length s: ", length(pts_new.s))
         println("length ds: ", length(pts_new.ds))
         error("Fields of pts_new are not consistent in length")
     end
-    if !(length(pts_old.xy) == length(pts_old.normal) == length(pts_old.s) == length(pts_old.ds))
+    if !(length(pts_old.xy)==length(pts_old.normal)==length(pts_old.s)==length(pts_old.ds))
         println("length xy: ", length(pts_old.xy))
         println("length normal: ", length(pts_old.normal))
         println("length s: ", length(pts_old.s))
@@ -417,4 +417,47 @@ function difference_boundary_points(pts_new::BoundaryPoints{T}, pts_old::Boundar
     new_s = pts_new.s[start_index:end]
     new_ds = pts_new.ds[start_index:end]
     return BoundaryPoints(new_xy, new_normal, new_s, new_ds)
+end
+
+"""
+    apply_symmetries_to_boundary_function(u::Vector{T}, symmetries::Union{Vector{Any}, Nothing}) where {T<:Real}
+
+Applies symmetries to the desymmetrized_full_boundary BoundaryPoints constructed u(s) boundary function. Needed for the correct whole boundary.
+
+# Arguments
+- `u::Vector{T}`: The desymmetrized boundary function `u(s)`.
+- `symmetries::Union{Vector{Any}, Nothing}`: The symmetries to apply to the boundary function. If `Nothing`, no symmetries are applied.
+
+# Returns
+- A `Vector{T}` containing the symmetrized boundary function `u(s)`.
+"""
+function apply_symmetries_to_boundary_function(u::Vector{T}, symmetries::Union{Vector{Any}, Nothing}) where {T<:Real}
+    if isnothing(symmetries)
+        return u
+    end
+    full_u = copy(u)
+    for sym in symmetries
+        if sym isa Reflection
+            if sym.axis == :y_axis
+                reflected_u = sym.parity .* reverse(u)
+            elseif sym.axis == :x_axis
+                reflected_u = sym.parity .* reverse(u)
+            elseif sym.axis == :origin
+                vertical_reflected_u = sym.parity[1] .* reverse(u)
+                combined_u = vcat(u, vertical_reflected_u)
+                reflected_u = sym.parity[2] .* reverse(combined_u)
+            end
+            full_u = vcat(full_u, reflected_u)
+        elseif sym isa Rotation
+            current_u = u
+            for i in 1:(sym.n-1)
+                rotated_u = sym.parity .* current_u
+                full_u = vcat(full_u, rotated_u)
+                current_u = rotated_u
+            end
+        else
+            error("Unknown symmetry type: $(typeof(sym))")
+        end
+    end
+    return full_u
 end

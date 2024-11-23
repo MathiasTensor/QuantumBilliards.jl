@@ -16,7 +16,7 @@ function regularize!(u)
     end
 end
 
-
+#=
 function boundary_function(state::S; b=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -34,6 +34,35 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         U::Array{type,2} = dX .+ dY
         u::Vector{type} = U * vec
         regularize!(u)
+        #compute the boundary norm
+        w = dot.(pts.normal, pts.xy) .* pts.ds
+        integrand = abs2.(u) .* w
+        norm = sum(integrand)/(2*k^2)
+        #println(norm)
+        return u, pts.s::Vector{type}, norm
+    end
+end
+=#
+
+function boundary_function(state::S; b=5.0) where {S<:AbsState}
+    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
+        type = eltype(vec)
+        boundary = billiard.desymmetrized_full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        sampler = FourierNodes([2,3,5],crv_lengths)
+        L = billiard.length
+        N = max(round(Int, k*L*b/(2*pi)), 512)
+        pts = boundary_coords(billiard, sampler, N)
+        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
+        nx = getindex.(pts.normal,1)
+        ny = getindex.(pts.normal,2)
+        dX = nx .* dX 
+        dY = ny .* dY
+        U::Array{type,2} = dX .+ dY
+        u::Vector{type} = U * vec
+        regularize!(u)
+        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
+        u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
@@ -356,6 +385,7 @@ The function internally calls `boundary_coords` to obtain the boundary coordinat
 - The parameter `b` affects the number of boundary points used in the computation. A higher value results in more points.
 - Ensure that the `state` object contains the necessary attributes (`vec`, `k`, `k_basis`, `basis`, `billiard`).
 """
+#=
 function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -375,6 +405,31 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         U = dX .+ dY
         u_values = U * vec
         regularize!(u_values)
+        return u_values, pts, k
+    end
+end
+=#
+function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
+    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
+        type = eltype(vec)
+        boundary = billiard.desymmetrized_full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        sampler = FourierNodes([2,3,5], crv_lengths)
+        L = billiard.length
+        N = max(round(Int, k*L*b/(2*pi)), 512)
+        # Call boundary_coords to get pts
+        pts = boundary_coords(billiard, sampler, N)
+        # Compute U as in boundary_function
+        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
+        nx = getindex.(pts.normal,1)
+        ny = getindex.(pts.normal,2)
+        dX = nx .* dX
+        dY = ny .* dY
+        U = dX .+ dY
+        u_values = U * vec
+        regularize!(u_values)
+        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
+        u_values = apply_symmetries_to_boundary_function(u_values, new_basis.symmetries)
         return u_values, pts, k
     end
 end
