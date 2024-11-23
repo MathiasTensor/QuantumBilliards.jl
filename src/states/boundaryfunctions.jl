@@ -52,7 +52,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         sampler = FourierNodes([2,3,5],crv_lengths)
         L = billiard.length
         N = max(round(Int, k*L*b/(2*pi)), 512)
-        pts = boundary_coords(billiard, sampler, N)
+        pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
         nx = getindex.(pts.normal,1)
         ny = getindex.(pts.normal,2)
@@ -418,7 +418,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         L = billiard.length
         N = max(round(Int, k*L*b/(2*pi)), 512)
         # Call boundary_coords to get pts
-        pts = boundary_coords(billiard, sampler, N)
+        pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
         # Compute U as in boundary_function
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
         nx = getindex.(pts.normal,1)

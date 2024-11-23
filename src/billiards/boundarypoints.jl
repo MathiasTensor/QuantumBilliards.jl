@@ -118,3 +118,31 @@ function dilated_boundary_points(billiard::Bi, sampler::S, N, k) where {Bi<:AbsB
     n = pts.normal
     return xy .+ lam .* n
 end
+
+
+#### ADDITION FOR BOUNDARY FUNCTIONS #####
+# Since the default one just uses the full boundary
+function boundary_coords_desymmetrized_full_boundary(billiard::Bi, sampler::S, N) where {Bi<:AbsBilliard, S<:AbsSampler}
+    let boundary = billiard.desymmetrized_full_boundary
+            L = symmetry_accounted_fundamental_boundary_length(boundary)
+            Lc = boundary[1].length
+            Nc = round(Int, N*Lc/L)
+            xy_all, normal_all, s_all, ds_all = boundary_coords(boundary[1],sampler,Nc)
+            #println(s_all)
+            l = boundary[1].length #cumulative length
+            for crv in boundary[2:end]
+                if (typeof(crv) <: AbsRealCurve )
+                    Lc = crv.length
+                    Nc = round(Int, N*Lc/L)
+                    xy,nxy,s,ds = boundary_coords(crv,sampler,Nc)
+                    append!(xy_all, xy)
+                    append!(normal_all, nxy)
+                    s = s .+ l
+                    append!(s_all, s)
+                    append!(ds_all, ds)
+                    l += Lc
+                end    
+            end
+        return BoundaryPoints(xy_all,normal_all,s_all,ds_all) 
+    end
+end
