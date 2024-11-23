@@ -1,7 +1,7 @@
-
+include("../billiards/boundarypoints.jl")
 using CoordinateTransformations
 using StaticArrays
-
+struct BoundaryPoints{T} <: AbsPoints where {T<:Real}; end
 
 reflect_x = LinearMap(SMatrix{2,2}([-1.0 0.0;0.0 1.0]))
 reflect_y = LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
