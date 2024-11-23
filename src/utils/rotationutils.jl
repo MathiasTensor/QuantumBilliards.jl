@@ -296,20 +296,20 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
                 # reflect across the vertical reflection axis (at x = x_axis)
                 reflected_xy = [SVector(-v[1], v[2]) for v in shifted_xy]
                 reflected_normal = [SVector(-n[1], n[2]) for n in shifted_normal]
-                reflected_s = 2*max_s .- reverse(full_s[1:end-1])
-                reflected_ds = reverse(full_ds[1:end-1])
+                reflected_s = 2*max_s .- reverse(full_s)
+                reflected_ds = reverse(full_ds)
             elseif sym.axis == :x_axis
                 # reflect across the horizontal reflection axis (at y = y_axis)
                 reflected_xy = [SVector(v[1], -v[2]) for v in shifted_xy]
                 reflected_normal = [SVector(n[1], -n[2]) for n in shifted_normal]
-                reflected_s = 2*max_s .- reverse(full_s[1:end-1])
-                reflected_ds = reverse(full_ds[1:end-1])
+                reflected_s = 2*max_s .- reverse(full_s)
+                reflected_ds = reverse(full_ds)
             elseif sym.axis == :origin
                 # reflect across both axes (origin reflection, combining shifts)
                 reflected_xy = [SVector(-v[1], -v[2]) for v in shifted_xy]
                 reflected_normal = [SVector(-n[1], -n[2]) for n in shifted_normal]
-                reflected_s = 2*(2*max_s) .- reverse(full_s[1:end-1]) 
-                reflected_ds = reverse(full_ds[1:end-1])     
+                reflected_s = 2*(2*max_s) .- reverse(full_s) 
+                reflected_ds = reverse(full_ds)     
             end
             # shift back reflected coordinates back to the original alignment
             shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in reflected_xy]
@@ -334,9 +334,9 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
                 full_xy = vcat(full_xy, shifted_back_rot_xy)
                 full_normal = vcat(full_normal, rotated_normal)
                 # Extend s arc length and ds
-                rotated_s = full_s[1:end-1] .+ maximum(full_s)
+                rotated_s = full_s .+ maximum(full_s)
                 full_s = vcat(full_s, rotated_s)
-                full_ds = vcat(full_ds, full_ds[1:end-1])
+                full_ds = vcat(full_ds, full_ds)
                 current_xy = rotated_xy  # Update current_xy and current_normal for the next rotation
                 current_normal = rotated_normal
             end
