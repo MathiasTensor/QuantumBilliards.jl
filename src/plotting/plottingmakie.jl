@@ -194,15 +194,16 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     lines!(ax_ds, idx_ds, pts_desym.ds, color=:red, linewidth=0.75)
     lines!(ax_ds, idx_diff_ds, pts_diff.ds, color=:green, linewidth=0.75)
     if print_symmetrized_sizes
+        println("NEW ONES")
         println("length xy: ", length(pts_new.xy))
         println("length normal: ", length(pts_new.normal))
         println("length s: ", length(pts_new.s))
         println("length ds: ", length(pts_new.ds))
-        println()
-        println("length xy: ", length(pts_old.xy))
-        println("length normal: ", length(pts_old.normal))
-        println("length s: ", length(pts_old.s))
-        println("length ds: ", length(pts_old.ds))
+        println("OLD ONES")
+        println("length xy: ", length(pts_desym.xy))
+        println("length normal: ", length(pts_desym.normal))
+        println("length s: ", length(pts_desym.s))
+        println("length ds: ", length(pts_desym.ds))
     end
     return f
 end
