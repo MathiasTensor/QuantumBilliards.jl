@@ -252,7 +252,7 @@ function get_full_area_with_manual_binning(x_grid::Vector{T}, y_grid::Vector{T},
 end
 
 """
-    apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Union{Vector{Any},Nothing}, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+    apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Union{Vector{Any},Nothing}, billiard::Bi; same_direction::Bool=true) where {Bi<:AbsBilliard, T<:Real}
 
 Convenience function that construct new BoundaryPoints object from the old BoundaryPoints object such that it extends it with the correct symmetries.
 
@@ -260,11 +260,12 @@ Convenience function that construct new BoundaryPoints object from the old Bound
 - `pts`: Original BoundaryPoints object
 - `symmetries`: Vector of symmetry operations (Reflection, Rotation) to be applied. If `Nothing`, symmetries are not applied. Do not mix and match rotation/reflections.
 - `billiard`: Billiard object used to determine if the symmetry axes are shifted wrt origin.
+- `same_direction::Bool=true`: Reverse the direction of the points construction such that the direction of the new points is anti-clockwise. If false it creates a perfect symmetry (e.g. for reflection the point direction will also be mirror reflected)
 
 # Returns
 - `BoundaryPoints`: The new symmetry adapted boundary points.
 """
-function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Union{Vector{Any},Nothing}, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Union{Vector{Any},Nothing}, billiard::Bi; same_direction::Bool=true) where {Bi<:AbsBilliard, T<:Real}
     if isnothing(symmetries)
         return pts
     end
@@ -313,6 +314,13 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
             end
             # shift back reflected coordinates back to the original alignment
             shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in reflected_xy]
+            # Reverse direction if same_direction=true
+            if same_direction
+                shifted_back_xy = reverse(shifted_back_xy)
+                reflected_normal = reverse(reflected_normal)
+                reflected_s = reverse(reflected_s)
+                reflected_ds = reverse(reflected_ds)
+            end
             # combine the reflected components with the originals
             full_xy = vcat(full_xy, shifted_back_xy)
             full_normal = vcat(full_normal, reflected_normal)
