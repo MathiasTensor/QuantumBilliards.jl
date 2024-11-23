@@ -158,6 +158,7 @@ function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_
     end
     # generate first points without symmetry
     L = symmetry_accounted_fundamental_boundary_length(boundary)
+    println(boundary)
     Lc = boundary[1].length
     Nc = round(Int, N*Lc/L)
     xy_all, normal_all, s_all, ds_all = boundary_coords(boundary[1],sampler,Nc)
