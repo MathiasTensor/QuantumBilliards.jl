@@ -490,6 +490,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
             println("starting point b_f before circshift and after symmetry: ", pts.xy[1])
+            println("starting s: ", pts.s[1])
             println("s shift ", shift_s)
             L_effective = maximum(pts.s)  # total effective length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
