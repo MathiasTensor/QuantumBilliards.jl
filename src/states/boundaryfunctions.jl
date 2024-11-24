@@ -78,14 +78,21 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
-            shift_s = billiard.shift_s
-            L_effective = maximum(pts.s)  # total length
-            println("eff l: ",L_effective)
-            println("l total: ",billiard.length)
-            shifted_s = mod.(pts.s .+ shift_s, L_effective/2)  # shift and wrap around
-            #sorted_indices = sortperm(shifted_s)  # s-values  ordered
-            #shifted_s = shifted_s[sorted_indices]
-            pts = BoundaryPoints(pts.xy, pts.normal, shifted_s, pts.ds)
+            shift_s = billiard.shift_s  # The amount to shift arclengths by
+            L_effective = maximum(pts.s)  # Total length of the boundary
+        
+            # Find where the new starting point is
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # Shift and wrap around
+            start_index = argmin(shifted_s)  # Find the index of the smallest shifted_s value
+        
+            # Perform cyclic shift on all fields
+            reordered_s = circshift(shifted_s, -start_index + 1)
+            reordered_xy = circshift(pts.xy, -start_index + 1)
+            reordered_normal = circshift(pts.normal, -start_index + 1)
+            reordered_ds = circshift(pts.ds, -start_index + 1)
+        
+            # Create a new BoundaryPoints object
+            pts = BoundaryPoints(reordered_xy, reordered_normal, reordered_s, reordered_ds)
         end
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
@@ -478,14 +485,21 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u_values = apply_symmetries_to_boundary_function(u_values, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
-            shift_s = billiard.shift_s
-            L_effective = maximum(pts.s)  # total length
-            println("eff l: ",L_effective)
-            println("l total: ",billiard.length)
-            shifted_s = mod.(pts.s .+ shift_s, L_effective/2)  # shift and wrap around
-            #sorted_indices = sortperm(shifted_s)  # s-values  ordered
-            #shifted_s = shifted_s[sorted_indices]
-            pts = BoundaryPoints(pts.xy, pts.normal, shifted_s, pts.ds)
+            shift_s = billiard.shift_s  # The amount to shift arclengths by
+            L_effective = maximum(pts.s)  # Total length of the boundary
+        
+            # Find where the new starting point is
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # Shift and wrap around
+            start_index = argmin(shifted_s)  # Find the index of the smallest shifted_s value
+        
+            # Perform cyclic shift on all fields
+            reordered_s = circshift(shifted_s, -start_index + 1)
+            reordered_xy = circshift(pts.xy, -start_index + 1)
+            reordered_normal = circshift(pts.normal, -start_index + 1)
+            reordered_ds = circshift(pts.ds, -start_index + 1)
+        
+            # Create a new BoundaryPoints object
+            pts = BoundaryPoints(reordered_xy, reordered_normal, reordered_s, reordered_ds)
         end
         return u_values, pts, k
     end
