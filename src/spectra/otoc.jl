@@ -893,9 +893,9 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
     dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
     nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
-    println("nx: ", nx)
-    println("ny: ", ny)
-    println("Length of u(s) start, finish: ", length(vec_us[1]), ", ", length(vec_us[end]))
+    #println("nx: ", nx)
+    #println("ny: ", ny)
+    #println("Length of u(s) start, finish: ", length(vec_us[1]), ", ", length(vec_us[end]))
     x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
     pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
     sz = length(pts)
@@ -915,17 +915,20 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     end
     Psi2ds = Vector{Matrix{type}}(undef, length(ks))
     progress = Progress(length(ks), desc="Constructing wavefunction matrices...")
-    println("Size of all ks: ", size(ks))
-    println("Size of all vec bd points xy: ", size(vec_bdPoints[1].xy))
-    println("Size of all vec bd points s: ", size(vec_bdPoints[1].s))
-    println("Size of all vec bd points ds: ", size(vec_bdPoints[1].ds))
-    println("Size of all us: ", size(vec_us))
+    #println("Size of all ks: ", size(ks))
+    #println("Size of all vec bd points xy: ", size(vec_bdPoints[1].xy))
+    #println("Size of all vec bd points s: ", size(vec_bdPoints[1].s))
+    #println("Size of all vec bd points ds: ", size(vec_bdPoints[1].ds))
+    #println("Size of all us: ", size(vec_us))
+
     for i in eachindex(ks)
         #println("Size of k[$i]: ", ks[i])
         #println("Size of vec[$i] xy: ", size(vec_bdPoints[i].xy))
         #println("Size of vec[$i] s: ", size(vec_bdPoints[i].s))
         #println("Size of vec[$i] ds: ", size(vec_bdPoints[i].ds))
         #println("Size of all us[$i]: ", size(vec_us[i]))
+        println("starting point xy: ", vec_bdPoints[i].xy[1])
+        println("ending point xy: ", vec_bdPoints[i].xy[end])
         k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
         Psi_flat = zeros(type, sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
