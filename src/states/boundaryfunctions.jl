@@ -83,11 +83,11 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
             start_index = argmin(shifted_s)  # cind the new starting index
             # cyclically shift all fields
-            shifted_s = circshift(shifted_s, -start_index + 1)
-            shifted_u = circshift(u, -start_index + 1)
-            xy = circshift(pts.xy, -start_index + 1)
-            normal = circshift(pts.normal, -start_index + 1)
-            ds = circshift(pts.ds, -start_index + 1)
+            shifted_s = circshift(shifted_s, -start_index)
+            shifted_u = circshift(u, -start_index)
+            xy = circshift(pts.xy, -start_index)
+            normal = circshift(pts.normal, -start_index)
+            ds = circshift(pts.ds, -start_index)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
             u = shifted_u
         end
@@ -487,11 +487,11 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
             start_index = argmin(shifted_s)  # find the new starting index
             # cyclically shift all fields
-            shifted_s = circshift(shifted_s, -start_index+1)
-            shifted_u = circshift(u, -start_index+1) 
-            xy = circshift(pts.xy, -start_index+1)
-            normal = circshift(pts.normal, -start_index+1)
-            ds = circshift(pts.ds, -start_index+1)
+            shifted_s = circshift(shifted_s, -start_index)
+            shifted_u = circshift(u, -start_index) 
+            xy = circshift(pts.xy, -start_index)
+            normal = circshift(pts.normal, -start_index)
+            ds = circshift(pts.ds, -start_index)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
             u = shifted_u
         end
