@@ -75,6 +75,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         U::Array{type,2} = dX .+ dY
         u::Vector{type} = U * vec
         regularize!(u)
+        println("starting point b_f before symmetry: ", pts.xy[1])
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
@@ -483,6 +484,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         U = dX .+ dY
         u = U * vec
         regularize!(u)
+        println("starting point b_f before symmetry: ", pts.xy[1])
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
