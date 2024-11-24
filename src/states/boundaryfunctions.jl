@@ -91,6 +91,8 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
             u = shifted_u
         end
+        println("starting point b_f: ", pts.xy[1])
+        println("end point b_f: ", pts.xy[end])
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
@@ -495,6 +497,8 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
             u = shifted_u
         end
+        println("starting point b_f: ", pts.xy[1])
+        println("end point b_f: ", pts.xy[end])
         return u, pts, k
     end
 end
