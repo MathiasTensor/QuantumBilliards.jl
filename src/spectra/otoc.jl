@@ -929,6 +929,8 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
         #println("Size of all us[$i]: ", size(vec_us[i]))
         println("starting point xy: ", vec_bdPoints[i].xy[1])
         println("ending point xy: ", vec_bdPoints[i].xy[end])
+        println("starting s: ", vec_bdPoints[i].s[1])
+        println("ending s: ", vec_bdPoints[i].s[end])
         k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
         Psi_flat = zeros(type, sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
