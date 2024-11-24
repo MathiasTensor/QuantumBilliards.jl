@@ -79,11 +79,11 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
-            L_effective = maximum(pts.s)  # effective length
-            pts.s .= mod.(pts.s .+ shift_s, L_effective)  # wrap around
-            sorted_indices = sortperm(pts.s)  # ordering just in case
-            pts.s = pts.s[sorted_indices]
-            #u = u[sorted_indices]
+            L_effective = maximum(pts.s)  # total length
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
+            sorted_indices = sortperm(shifted_s)  # s-values  ordered
+            shifted_s = shifted_s[sorted_indices]
+            pts = BoundaryPoints(pts.xy, pts.normal, shifted_s, pts.ds)
         end
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
@@ -477,11 +477,11 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         u_values = apply_symmetries_to_boundary_function(u_values, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
-            L_effective = maximum(pts.s)  # effective length
-            pts.s .= mod.(pts.s .+ shift_s, L_effective)  # wrap around
-            sorted_indices = sortperm(pts.s)  # ordering just in case
-            pts.s = pts.s[sorted_indices]
-            #u_values = u_values[sorted_indices]
+            L_effective = maximum(pts.s)  # total length
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
+            sorted_indices = sortperm(shifted_s)  # s-values  ordered
+            shifted_s = shifted_s[sorted_indices]
+            pts = BoundaryPoints(pts.xy, pts.normal, shifted_s, pts.ds)
         end
         return u_values, pts, k
     end
