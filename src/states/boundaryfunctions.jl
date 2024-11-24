@@ -79,55 +79,31 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
-            #=
             shift_s = billiard.shift_s
-            println("starting point b_f before circshift: ", pts.xy[1])
-            println("s shift ", shift_s)
-            L_effective = maximum(pts.s)  # total effective length
-            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
-            start_index = argmin(shifted_s)  # cind the new starting index
-            # cyclically shift all fields
-            shifted_s = circshift(shifted_s, -start_index+1)
-            shifted_u = circshift(u, -start_index+1)
-            xy = circshift(pts.xy, -start_index+1)
-            normal = circshift(pts.normal, -start_index+1)
-            ds = circshift(pts.ds, -start_index+1)
-            pts = BoundaryPoints(xy, normal, shifted_s, ds)
-            u = shifted_u
-            =#
-            shift_s = billiard.shift_s
-            println("Starting point b_f before shift: ", pts.xy[1])
-            println("Starting s before shift: ", pts.s[1])
-            println("s_shift: ", shift_s)
-
-            # Total effective length
+            #println("Starting point b_f before shift: ", pts.xy[1])
+            #println("Starting s before shift: ", pts.s[1])
+            #println("s_shift: ", shift_s)
             L_effective = maximum(pts.s)
-
             # Find the index of the point where `s` is closest to `s_shift`
             start_index = argmin(abs.(pts.s .- shift_s))
-            println("New starting index: ", start_index)
-
+            #println("New starting index: ", start_index)
             # Reorder all fields so that `start_index` becomes the first point
             shifted_s = circshift(pts.s, -start_index + 1)
             shifted_u = circshift(u, -start_index + 1)
             shifted_xy = circshift(pts.xy, -start_index + 1)
             shifted_normal = circshift(pts.normal, -start_index + 1)
             shifted_ds = circshift(pts.ds, -start_index + 1)
-
             # Wrap around the `s` values to maintain continuity
             s_offset = shifted_s[1]
             shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
             shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
-
-            # Update the `pts` and `u` fields
             pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
             u = shifted_u
-
-            println("Starting point b_f after shift: ", pts.xy[1])
-            println("Starting s after shift: ", pts.s[1])
+            #println("Starting point b_f after shift: ", pts.xy[1])
+            #println("Starting s after shift: ", pts.s[1])
         end
-        println("starting point b_f: ", pts.xy[1])
-        println("end point b_f: ", pts.xy[end])
+        #println("starting point b_f: ", pts.xy[1])
+        #println("end point b_f: ", pts.xy[end])
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
@@ -520,60 +496,31 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
-            #=
             shift_s = billiard.shift_s
-            println("starting point b_f before circshift and after symmetry: ", pts.xy[1])
-            println("starting s: ", pts.s[1])
-            println("s shift ", shift_s)
-            L_effective = maximum(pts.s)  # total effective length
-            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
-            println("s before shift (every 10th element): ", pts.s[1:10:end])
-            println("s after shift (every 10th element): ", shifted_s[1:10:end])
-            # find the new starting index
-            start_index = argmin(shifted_s)  # find the new starting index
-            # cyclically shift all fields
-            shifted_s = circshift(shifted_s, -start_index+1)
-            shifted_u = circshift(u, -start_index+1) 
-            xy = circshift(pts.xy, -start_index+1)
-            normal = circshift(pts.normal, -start_index+1)
-            ds = circshift(pts.ds, -start_index+1)
-            pts = BoundaryPoints(xy, normal, shifted_s, ds)
-            println("starting point b_f after circshift and after symmetry: ", pts.xy[1])
-            u = shifted_u
-            =#
-            shift_s = billiard.shift_s
-            println("Starting point b_f before shift: ", pts.xy[1])
-            println("Starting s before shift: ", pts.s[1])
-            println("s_shift: ", shift_s)
-
-            # Total effective length
+            #println("Starting point b_f before shift: ", pts.xy[1])
+            #println("Starting s before shift: ", pts.s[1])
+            #println("s_shift: ", shift_s)
             L_effective = maximum(pts.s)
-
             # Find the index of the point where `s` is closest to `s_shift`
             start_index = argmin(abs.(pts.s .- shift_s))
-            println("New starting index: ", start_index)
-
+            #println("New starting index: ", start_index)
             # Reorder all fields so that `start_index` becomes the first point
             shifted_s = circshift(pts.s, -start_index + 1)
             shifted_u = circshift(u, -start_index + 1)
             shifted_xy = circshift(pts.xy, -start_index + 1)
             shifted_normal = circshift(pts.normal, -start_index + 1)
             shifted_ds = circshift(pts.ds, -start_index + 1)
-
             # Wrap around the `s` values to maintain continuity
             s_offset = shifted_s[1]
             shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
             shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
-
-            # Update the `pts` and `u` fields
             pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
             u = shifted_u
-
-            println("Starting point b_f after shift: ", pts.xy[1])
-            println("Starting s after shift: ", pts.s[1])
+            #println("Starting point b_f after shift: ", pts.xy[1])
+            #println("Starting s after shift: ", pts.s[1])
         end
-        println("starting point b_f: ", pts.xy[1])
-        println("end point b_f: ", pts.xy[end])
+        #println("starting point b_f: ", pts.xy[1])
+        #println("end point b_f: ", pts.xy[end])
         return u, pts, k
     end
 end
