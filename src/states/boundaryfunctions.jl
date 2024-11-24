@@ -79,17 +79,17 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
-            L_effective = maximum(pts.s)  # Total effective length
-            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # Shift and wrap around
-            start_index = argmin(shifted_s)  # Find the new starting index
-            # Cyclically shift all fields
+            L_effective = maximum(pts.s)  # total effective length
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
+            start_index = argmin(shifted_s)  # cind the new starting index
+            # cyclically shift all fields
             shifted_s = circshift(shifted_s, -start_index + 1)
             shifted_u = circshift(u, -start_index + 1)
             xy = circshift(pts.xy, -start_index + 1)
             normal = circshift(pts.normal, -start_index + 1)
             ds = circshift(pts.ds, -start_index + 1)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
-            u = shifted_u 
+            u = reverse(shifted_u)
         end
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
@@ -483,18 +483,17 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
-            L_effective = maximum(pts.s)  # Total effective length
-            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # Shift and wrap around
-            start_index = argmin(shifted_s)  # Find the new starting index
-            # Cyclically shift all fields
+            L_effective = maximum(pts.s)  # total effective length
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
+            start_index = argmin(shifted_s)  # find the new starting index
+            # cyclically shift all fields
             shifted_s = circshift(shifted_s, -start_index+1)
-            shifted_u = circshift(u, -start_index+1)  # Shift boundary function \( u(s) \) as well
+            shifted_u = circshift(u, -start_index+1) 
             xy = circshift(pts.xy, -start_index+1)
             normal = circshift(pts.normal, -start_index+1)
             ds = circshift(pts.ds, -start_index+1)
-            # Create a new BoundaryPoints object with shifted values since pts immutable
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
-            u = shifted_u 
+            u = reverse(shifted_u)
         end
         return u, pts, k
     end
