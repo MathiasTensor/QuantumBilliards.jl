@@ -149,6 +149,10 @@ Defines a Mushroom billiard with a rectangular stem and a circular cap.
 - `stem_height::T`: The height of the stem.
 - `cap_radius::T`: The radius of the circular cap.
 - `corners::Vector{SVector{2,T}}`: The corner points of the stem.
+- `angles::Vector`: The angles of the boundary segments in radians.
+- `angles_fundamental::Vector`: The angles of the fundamental boundary segments in radians.
+- `x_axis::T`: The actual "axis" of reflection, shifted from the origin.
+- `shift_s::T`: For shifting the arclengths for the husimi function construction.
 """
 struct Mushroom{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{LineSegment, CircleSegment, VirtualLineSegment}}
@@ -165,6 +169,7 @@ struct Mushroom{T} <: AbsBilliard where {T<:Real}
     angles::Vector
     angles_fundamental::Vector
     x_axis::T # For correct reflection. This is the actual "axis" of reflection
+    shift_s::T # for shifting the arclenthgs for the husimi function.
 end
 
 function make_mushroom_and_basis(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{Mushroom, CornerAdaptedFourierBessel} where {T<:Real}
@@ -200,5 +205,6 @@ function Mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=z
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = [3*pi/2, pi/2, pi/2, 3*pi/2]
     angles_fundamental = [3*pi/2, pi/2, pi/2]
-    return Mushroom(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection)
+    shift_s = sum(crv.length for crv in desymmetrized_full_boundary[1:3]) # so that the start of the arclength will be at the bottom left corner of the full mushroom boundary
+    return Mushroom(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, area, area_fundamental, stem_width, stem_height, cap_radius, corners, angles, angles_fundamental, x_axis_reflection, shift_s)
 end
