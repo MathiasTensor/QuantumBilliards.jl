@@ -489,7 +489,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
-            println("starting point b_f before circshift: ", pts.xy[1])
+            println("starting point b_f before circshift and after symmetry: ", pts.xy[1])
             println("s shift ", shift_s)
             L_effective = maximum(pts.s)  # total effective length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
@@ -501,6 +501,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             normal = circshift(pts.normal, -start_index+1)
             ds = circshift(pts.ds, -start_index+1)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
+            println("starting point b_f after circshift and after symmetry: ", pts.xy[1])
             u = shifted_u
         end
         println("starting point b_f: ", pts.xy[1])
