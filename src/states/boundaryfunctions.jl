@@ -81,8 +81,8 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             shift_s = billiard.shift_s
             L_effective = maximum(pts.s)  # total length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
-            sorted_indices = sortperm(shifted_s)  # s-values  ordered
-            shifted_s = shifted_s[sorted_indices]
+            #sorted_indices = sortperm(shifted_s)  # s-values  ordered
+            #shifted_s = shifted_s[sorted_indices]
             pts = BoundaryPoints(pts.xy, pts.normal, shifted_s, pts.ds)
         end
         #compute the boundary norm
@@ -479,8 +479,8 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             shift_s = billiard.shift_s
             L_effective = maximum(pts.s)  # total length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
-            sorted_indices = sortperm(shifted_s)  # s-values  ordered
-            shifted_s = shifted_s[sorted_indices]
+            #sorted_indices = sortperm(shifted_s)  # s-values  ordered
+            #shifted_s = shifted_s[sorted_indices]
             pts = BoundaryPoints(pts.xy, pts.normal, shifted_s, pts.ds)
         end
         return u_values, pts, k
