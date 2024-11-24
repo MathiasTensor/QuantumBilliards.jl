@@ -80,6 +80,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
             L_effective = maximum(pts.s)  # total length
+            println("eff l: ",L_effective)
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
             #sorted_indices = sortperm(shifted_s)  # s-values  ordered
             #shifted_s = shifted_s[sorted_indices]
