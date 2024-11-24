@@ -79,6 +79,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         if hasproperty(billiard, :shift_s)
+            #=
             shift_s = billiard.shift_s
             println("starting point b_f before circshift: ", pts.xy[1])
             println("s shift ", shift_s)
@@ -93,6 +94,31 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             ds = circshift(pts.ds, -start_index+1)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
             u = shifted_u
+            =#
+            shift_s = billiard.shift_s
+            println("starting point b_f before shift and after symmetry: ", pts.xy[1])
+            println("starting s: ", pts.s[1])
+            println("s shift: ", shift_s)
+            L_effective = maximum(pts.s)  # Total effective length
+
+            # Apply the shift and wrap around
+            shifted_s = mod.(pts.s .+ shift_s, L_effective)
+            println("s before shift (every 10th element): ", pts.s[1:10:end])
+            println("s after shift (every 10th element): ", shifted_s[1:10:end])
+
+            # Sort based on the shifted `s` values
+            sorted_indices = sortperm(shifted_s)  # Get sorting indices
+            shifted_s = shifted_s[sorted_indices]  # Reorder `s`
+            shifted_u = u[sorted_indices]          # Reorder `u`
+            xy = pts.xy[sorted_indices]           # Reorder `xy`
+            normal = pts.normal[sorted_indices]   # Reorder `normal`
+            ds = pts.ds[sorted_indices]           # Reorder `ds`
+
+            # Construct the new BoundaryPoints object
+            pts = BoundaryPoints(xy, normal, shifted_s, ds)
+            println("starting point b_f after shift: ", pts.xy[1])
+            println("starting s after shift: ", pts.s[1])
+            u = shifted_u  # Update `u` to the reordered version
         end
         println("starting point b_f: ", pts.xy[1])
         println("end point b_f: ", pts.xy[end])
