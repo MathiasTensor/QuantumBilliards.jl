@@ -77,6 +77,14 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         regularize!(u)
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
+        if hasproperty(billiard, :shift_s)
+            shift_s = billiard.shift_s
+            L_effective = maximum(pts.s)  # effective length
+            pts.s .= mod.(pts.s .+ shift_s, L_effective)  # wrap around
+            sorted_indices = sortperm(pts.s)  # ordering just in case
+            pts.s = pts.s[sorted_indices]
+            #u = u[sorted_indices]
+        end
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
@@ -467,6 +475,14 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         regularize!(u_values)
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u_values = apply_symmetries_to_boundary_function(u_values, new_basis.symmetries)
+        if hasproperty(billiard, :shift_s)
+            shift_s = billiard.shift_s
+            L_effective = maximum(pts.s)  # effective length
+            pts.s .= mod.(pts.s .+ shift_s, L_effective)  # wrap around
+            sorted_indices = sortperm(pts.s)  # ordering just in case
+            pts.s = pts.s[sorted_indices]
+            #u_values = u_values[sorted_indices]
+        end
         return u_values, pts, k
     end
 end
