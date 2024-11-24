@@ -115,7 +115,9 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             shifted_ds = circshift(pts.ds, -start_index + 1)
 
             # Wrap around the `s` values to maintain continuity
-            shifted_s .= mod.(shifted_s, L_effective)
+            s_offset = shifted_s[1]
+            shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
+            shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
 
             # Update the `pts` and `u` fields
             pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
@@ -559,7 +561,9 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             shifted_ds = circshift(pts.ds, -start_index + 1)
 
             # Wrap around the `s` values to maintain continuity
-            shifted_s .= mod.(shifted_s, L_effective)
+            s_offset = shifted_s[1]
+            shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
+            shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
 
             # Update the `pts` and `u` fields
             pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
