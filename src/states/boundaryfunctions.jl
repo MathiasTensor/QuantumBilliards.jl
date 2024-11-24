@@ -44,6 +44,20 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
 end
 =#
 
+"""
+    boundary_function(state::S; b=5.0) where {S<:AbsState}
+
+Low-level function that constructs the boundary function and it's associated arclength `s` values alond the `desymmetrized_full_boundary` to which symmetries are being applied. This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`. It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
+
+# Arguments
+- `state<:AbsState`: typically the eigenstate associated with a particular solution to the problem on the fundamental boundary.
+- `b=5.0`: optional parameter for point scaling in the construction of evaluation points on the boundary.
+
+# Returns
+- `u::Vector{<:Real}`: the boundary function evaluated at the points on the boundary.
+- `pts.s::Vector{<:Real}`: the arclength s values along the boundary.
+- `norm<:Real`: the norm of the boundary function on the whole boundary.
+"""
 function boundary_function(state::S; b=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -72,6 +86,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
     end
 end
 
+#=
 function boundary_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
     let X = state_bundle.X, k_basis = state_bundle.k_basis, ks = state_bundle.ks, new_basis = state_bundle.basis, billiard=state_bundle.billiard 
         type = eltype(X)
@@ -91,6 +106,52 @@ function boundary_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
         for u in eachcol(u_bundle)
             regularize!(u)
         end
+        #compute the boundary norm
+        w = dot.(pts.normal, pts.xy) .* pts.ds
+        norms = [sum(abs2.(u_bundle[:,i]) .* w)/(2*ks[i]^2) for i in eachindex(ks)]
+        #println(norm)
+        us::Vector{Vector{type}} = [u for u in eachcol(u_bundle)]
+        return us, pts.s, norms
+    end
+end
+=#
+
+"""
+    boundary_function(state::S; b=5.0) where {S<:AbsState}
+
+Multi-solution version of the commonly used `state` version of the `boundary_function`.
+Low-level function that constructs the boundary function and it's associated arclength `s` values alond the `desymmetrized_full_boundary` to which symmetries are being applied. This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`. It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
+
+# Arguments
+- `state<:AbsState`: typically the eigenstate associated with a particular solution to the problem on the fundamental boundary.
+- `b=5.0`: optional parameter for point scaling in the construction of evaluation points on the boundary.
+
+# Returns
+- `u::Vector{<:Real}`: the boundary function evaluated at the points on the boundary.
+- `pts.s::Vector{<:Real}`: the arclength s values along the boundary.
+- `norm<:Real`: the norm of the boundary function on the whole boundary.
+"""
+function boundary_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
+    let X = state_bundle.X, k_basis = state_bundle.k_basis, ks = state_bundle.ks, new_basis = state_bundle.basis, billiard=state_bundle.billiard 
+        type = eltype(X)
+        boundary = billiard.desymmetrized_full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        sampler = FourierNodes([2,3,5],crv_lengths)
+        L = billiard.length
+        N = max(round(Int, k_basis*L*b/(2*pi)), 512)
+        pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
+        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
+        nx = getindex.(pts.normal,1)
+        ny = getindex.(pts.normal,2)
+        dX = nx .* dX 
+        dY = ny .* dY
+        U::Array{type,2} = dX .+ dY
+        u_bundle::Matrix{type} = U * X
+        for u in eachcol(u_bundle)
+            regularize!(u)
+            u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
+        end
+        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
         norms = [sum(abs2.(u_bundle[:,i]) .* w)/(2*ks[i]^2) for i in eachindex(ks)]
@@ -385,30 +446,6 @@ The function internally calls `boundary_coords` to obtain the boundary coordinat
 - The parameter `b` affects the number of boundary points used in the computation. A higher value results in more points.
 - Ensure that the `state` object contains the necessary attributes (`vec`, `k`, `k_basis`, `basis`, `billiard`).
 """
-#=
-function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
-    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
-        type = eltype(vec)
-        boundary = billiard.full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5], crv_lengths)
-        L = billiard.length
-        N = max(round(Int, k*L*b/(2*pi)), 512)
-        # Call boundary_coords to get pts
-        pts = boundary_coords(billiard, sampler, N)
-        # Compute U as in boundary_function
-        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        nx = getindex.(pts.normal,1)
-        ny = getindex.(pts.normal,2)
-        dX = nx .* dX
-        dY = ny .* dY
-        U = dX .+ dY
-        u_values = U * vec
-        regularize!(u_values)
-        return u_values, pts, k
-    end
-end
-=#
 function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
@@ -433,6 +470,31 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         return u_values, pts, k
     end
 end
+
+#= ORIGINAL
+function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
+    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
+        type = eltype(vec)
+        boundary = billiard.full_boundary
+        crv_lengths = [crv.length for crv in boundary]
+        sampler = FourierNodes([2,3,5], crv_lengths)
+        L = billiard.length
+        N = max(round(Int, k*L*b/(2*pi)), 512)
+        # Call boundary_coords to get pts
+        pts = boundary_coords(billiard, sampler, N)
+        # Compute U as in boundary_function
+        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
+        nx = getindex.(pts.normal,1)
+        ny = getindex.(pts.normal,2)
+        dX = nx .* dX
+        dY = ny .* dY
+        U = dX .+ dY
+        u_values = U * vec
+        regularize!(u_values)
+        return u_values, pts, k
+    end
+end
+=#
 
 """
     momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
