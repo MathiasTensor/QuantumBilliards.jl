@@ -494,7 +494,8 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             println("s shift ", shift_s)
             L_effective = maximum(pts.s)  # total effective length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
-            start_index = argmin(shifted_s)  # find the new starting index
+            #start_index = argmin(shifted_s)  # find the new starting index
+            start_index = argmin(pts.s .+ shift_s)
             # cyclically shift all fields
             shifted_s = circshift(shifted_s, -start_index+1)
             shifted_u = circshift(u, -start_index+1) 
