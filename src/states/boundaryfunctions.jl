@@ -89,7 +89,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             normal = circshift(pts.normal, -start_index + 1)
             ds = circshift(pts.ds, -start_index + 1)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
-            u = reverse(shifted_u)
+            u = shifted_u
         end
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
@@ -493,7 +493,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             normal = circshift(pts.normal, -start_index+1)
             ds = circshift(pts.ds, -start_index+1)
             pts = BoundaryPoints(xy, normal, shifted_s, ds)
-            u = reverse(shifted_u)
+            u = shifted_u
         end
         return u, pts, k
     end
