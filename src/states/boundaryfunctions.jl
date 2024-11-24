@@ -80,7 +80,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
             println("starting point b_f before circshift: ", pts.xy[1])
-            println("ending point b_f after circshift: ", pts.xy[end])
+            println("s shift ", shift_s)
             L_effective = maximum(pts.s)  # total effective length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
             start_index = argmin(shifted_s)  # cind the new starting index
@@ -488,7 +488,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
             println("starting point b_f before circshift: ", pts.xy[1])
-            println("ending point b_f after circshift: ", pts.xy[end])
+            println("s shift ", shift_s)
             L_effective = maximum(pts.s)  # total effective length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
             start_index = argmin(shifted_s)  # find the new starting index
