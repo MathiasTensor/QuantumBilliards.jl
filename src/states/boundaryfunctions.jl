@@ -494,8 +494,8 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             println("s shift ", shift_s)
             L_effective = maximum(pts.s)  # total effective length
             shifted_s = mod.(pts.s .+ shift_s, L_effective)  # shift and wrap around
-            println("s before shift: ", pts.s)
-            println("s after shift: ", shifted_s)
+            println("s before shift (every 10th element): ", pts.s[1:10:end])
+            println("s after shift (every 10th element): ", shifted_s[1:10:end])
             # find the new starting index
             start_index = argmin(shifted_s)  # find the new starting index
             # cyclically shift all fields
