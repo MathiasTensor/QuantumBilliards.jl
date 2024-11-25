@@ -234,7 +234,16 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         println("length of vec before resize_basis call: ", dim)
         println("dimension of basis before resize_basis call: ", basis.dim)
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
-            new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(dim,basis.symmetries,basis.angle_arc,basis.angle_shift,basis.angles,basis.parity_x,basis.parity_y,basis.sampler)
+            new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(
+    dim,
+    basis.symmetries,
+    basis.angle_arc,
+    basis.angle_shift,
+    range(basis.angle_shift, stop=basis.angle_arc + basis.angle_shift, length=dim),  # angles
+    repeat(basis.parity_x, outer=dim ÷ length(basis.parity_x)),  # parity_x
+    repeat(basis.parity_y, outer=dim ÷ length(basis.parity_y)),  # parity_y
+    basis.sampler
+)
         else
             new_basis = resize_basis(basis, billiard, dim, ks[i])
         end
@@ -275,7 +284,16 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
         vec = X[i] # vector of vectors
         dim = length(vec)
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
-            new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(dim,basis.symmetries,basis.angle_arc,basis.angle_shift,basis.angles,basis.parity_x,basis.parity_y,basis.sampler)
+            new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(
+    dim,
+    basis.symmetries,
+    basis.angle_arc,
+    basis.angle_shift,
+    range(basis.angle_shift, stop=basis.angle_arc + basis.angle_shift, length=dim),  # angles
+    repeat(basis.parity_x, outer=dim ÷ length(basis.parity_x)),  # parity_x
+    repeat(basis.parity_y, outer=dim ÷ length(basis.parity_y)),  # parity_y
+    basis.sampler
+)
         else
             new_basis = resize_basis(basis, billiard, dim, ks[i])
         end
