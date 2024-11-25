@@ -66,6 +66,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         sampler = FourierNodes([2,3,5],crv_lengths)
         L = billiard.length
         N = max(round(Int, k*L*b/(2*pi)), 512)
+        println("N: ", N)
         pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
         println("dX: ", size(dX))
