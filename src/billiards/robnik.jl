@@ -101,6 +101,32 @@ function make_half_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) wher
     return boundary, corners
 end
 
+function make_desymmetrized_full_boundary(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+    if ε < zero(T)
+        error("ε must be non-negative.")
+    end
+    origin = SVector(x0, y0)
+    θ_multiplier = 1.0  # t from 0 to 1 maps to θ from 0 to π
+    # Define the radial function for the half Robnik billiard
+    r_func = t -> begin
+        θ = θ_multiplier * π * t  # θ ranges from 0 to π
+        r = one(T) + ε * cos(θ)
+        x = r * cos(θ)
+        y = r * sin(θ)
+        SVector(x, y)
+    end
+    # Create the half Robnik billiard segment
+    half_robnik_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
+    # Compute the start and end points of the half segment
+    pt0 = curve(half_robnik_segment, zero(T))  # Start point at θ = 0
+    pt1 = curve(half_robnik_segment, one(T))   # End point at θ = π
+    # Construct the boundary
+    boundary = PolarSegment{T}[half_robnik_segment]
+    # Corners are pt0 and pt1
+    corners = [pt0, pt1]
+    return boundary, corners
+end
+
 
 
 """
@@ -119,6 +145,7 @@ Defines a Robnik billiard with a full and half boundary.
 struct RobnikBilliard{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
+    desymmetrized_full_boundary::Vector
     length::T
     length_fundamental::T
     epsilon::T
@@ -127,6 +154,7 @@ struct RobnikBilliard{T} <: AbsBilliard where {T<:Real}
     area_fundamental::T
     angles::Vector
     angles_fundamental::Vector
+    s_shift::T
 end
 
 
@@ -150,12 +178,14 @@ function RobnikBilliard(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Rob
     # Create the half and full boundaries
     fundamental_boundary, corners = make_half_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, _ , area_full = make_full_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
+    desymmetrized_full_boundary, _ = make_desymmetrized_full_boundary(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     area_fundamental = area_full/2
     length = sum([crv.length for crv in full_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = []
     angles_fundamental = []
-    return RobnikBilliard(fundamental_boundary, full_boundary, length, length_fundamental, ε, corners, area_full, area_fundamental, angles, angles_fundamental)
+    s_shift = 0.0
+    return RobnikBilliard(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, ε, corners, area_full, area_fundamental, angles, angles_fundamental, s_shift)
 end
 
 
