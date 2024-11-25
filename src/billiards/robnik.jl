@@ -210,6 +210,6 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
 function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, CornerAdaptedFourierBessel} where {T<:Real}
     robnik_billiard = RobnikBilliard(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([YReflection(-1)])
-    basis = CornerAdaptedFourierBessel(10, pi, SVector(zero(T), zero(T)), 0.0, symmetry)
+    basis = CornerAdaptedFourierBessel(10, Float64(pi), SVector(zero(T), zero(T)), 0.0, symmetry)
     return robnik_billiard, basis
 end
