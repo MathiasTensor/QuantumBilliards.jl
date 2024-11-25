@@ -84,7 +84,19 @@ function RealPlaneWaves(dim; angle_arc = pi, angle_shift=0.0, sampler=LinearNode
 end
 
 function resize_basis(basis::Ba, billiard::Bi, dim::Int, k) where {Ba<:RealPlaneWaves,Bi<:AbsBilliard}
-    return RealPlaneWaves(dim, basis.symmetries; angle_arc = basis.angle_arc, angle_shift=basis.angle_shift, sampler=basis.sampler)
+    println("Inside resize_basis:")
+    println("Input dimension (dim): ", dim)
+    println("Original basis dimension: ", basis.dim)
+    println("Symmetries: ", basis.symmetries)
+
+    new_basis = RealPlaneWaves(dim, basis.symmetries;
+                               angle_arc=basis.angle_arc,
+                               angle_shift=basis.angle_shift,
+                               sampler=basis.sampler)
+
+    println("New basis dimension: ", new_basis.dim)
+    return new_basis
+    #return RealPlaneWaves(dim, basis.symmetries; angle_arc = basis.angle_arc, angle_shift=basis.angle_shift, sampler=basis.sampler)
 end
 
 @inline function rpw(arg, parity::Int64)
