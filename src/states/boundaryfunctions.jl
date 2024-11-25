@@ -109,6 +109,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         println("length normal: ", length(pts.normal))
         println("length ds: ", length(pts.ds))
         println("length s: ", length(pts.s))
+        println("length u: ", length(u))
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
         norm = sum(integrand)/(2*k^2)
