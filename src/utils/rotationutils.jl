@@ -461,6 +461,7 @@ function apply_symmetries_to_boundary_function(u::Vector{T}, symmetries::Union{V
                 vertical_reflected_u = sym.parity[1] .* reverse(u)
                 combined_u = vcat(u, vertical_reflected_u)
                 reflected_u = sym.parity[2] .* reverse(combined_u)
+                reflected_u = vcat(vertical_reflected_u, reflected_u) # same trick as the boundary point case
             end
             full_u = vcat(full_u, reflected_u)
         elseif sym isa Rotation
