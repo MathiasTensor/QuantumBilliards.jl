@@ -73,6 +73,8 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         dX = nx .* dX 
         dY = ny .* dY
         U::Array{type,2} = dX .+ dY
+        println("size of U: ", size(U))
+        println("length vec: ", length(vec))
         u::Vector{type} = U * vec
         regularize!(u)
         #println("starting point b_f before symmetry: ", pts.xy[1])
