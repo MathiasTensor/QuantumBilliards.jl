@@ -344,13 +344,17 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries:
                     horizontal_reflected_xy = reverse(horizontal_reflected_xy)
                     horizontal_reflected_normal = reverse(horizontal_reflected_normal)
                 end
-                # Shift back reflected coordinates back to the original alignment
-                shifted_back_xy = [SVector(v[1]+x_axis, v[2]+y_axis) for v in horizontal_reflected_xy]
-                # Update reflected values due to compounded logic
+                final_xy = vcat(vertical_reflected_xy, horizontal_reflected_xy)
+                final_normal = vcat(vertical_reflected_normal, horizontal_reflected_normal)
+                final_s = vcat(vertical_reflected_s, horizontal_reflected_s)
+                final_ds = vcat(vertical_reflected_ds, horizontal_reflected_ds)
+                # Shift back reflected coordinates to the original alignment
+                shifted_back_xy = [SVector(v[1] + x_axis, v[2] + y_axis) for v in final_xy]
+                # Update reflected values
                 reflected_xy = shifted_back_xy
-                reflected_normal = horizontal_reflected_normal
-                reflected_s = horizontal_reflected_s
-                reflected_ds = horizontal_reflected_ds     
+                reflected_normal = final_normal
+                reflected_s = final_s
+                reflected_ds = final_ds     
             end
             
             # combine the reflected components with the originals
