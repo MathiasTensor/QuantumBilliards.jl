@@ -60,6 +60,43 @@ function make_quarter_prosen(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) wh
     return boundary, corners
 end
 
+"""
+    make_prosen_desymmetrized_full_boundary(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+
+Constructs the quarter of the actual full boundary for the `ProsenBilliard`. Used for the construction of the boundary function through `boundary_function`.
+
+# Arguments
+- `a::T`: The deformation parameter.
+- `x0::T=zero(T)`: The x-coordinate of the center of the billiard.
+- `y0::T=zero(T)`: The y-coordinate of the center of the billiard.
+- `rot_angle::T=zero(T)`: The rotation angle of the billiard.
+
+# Returns
+- A tuple containing:
+  - `boundary::Vector{PolarSegment{T}}`: The `PolarSegment` boundary segment of the quarter `ProsenBilliard`.
+  - `nothing`: An empty `Nothing` value (no corners for the quarter billiard).
+"""
+function make_prosen_desymmetrized_full_boundary(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+    origin = SVector(x0, y0)
+    φ_multiplier = 0.5  # t from 0 to 1 maps to φ from 0 to π/2
+    # Define the radial function for the quarter Prosen billiard
+    r_func = t -> begin
+        φ = φ_multiplier * π * t  # φ ranges from 0 to π/2
+        r = one(T) + a * cos(4 * φ)
+        x = r * cos(φ)
+        y = r * sin(φ)
+        SVector(x, y)
+    end
+    # Create the quarter Prosen billiard segment
+    quarter_prosen_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
+    # Compute the start and end points of the quarter segment
+    pt0 = curve(quarter_prosen_segment, zero(T))  # Start point at φ = 0
+    pt1 = curve(quarter_prosen_segment, one(T))   # End point at φ = π/2
+    # Construct the boundary
+    boundary = PolarSegment{T}[quarter_prosen_segment]
+    return boundary, nothing
+end
+
 
 
 """
@@ -118,6 +155,7 @@ Defines a Prosen billiard with quarter, half, and full boundaries.
 struct ProsenBilliard{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
+    desymmetrized_full_boundary::Vector
     length::T
     length_fundamental::T
     a::T
@@ -126,6 +164,7 @@ struct ProsenBilliard{T} <: AbsBilliard where {T<:Real}
     area_fundamental::T
     angles::Vector
     angles_fundamental::Vector
+    s_shift::T
 end
 
 
@@ -147,18 +186,20 @@ function ProsenBilliard(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Pros
     # Create the quarter and full boundaries
     fundamental_boundary, corners = make_quarter_prosen(a; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, _, area_full = make_full_prosen(a; x0=x0, y0=y0, rot_angle=rot_angle)
+    desymmetrized_full_boundary, _ = make_prosen_desymmetrized_full_boundary(a; x0=x0, y0=y0, rot_angle=rot_angle)
     area_fundamental = area_full * 0.25
     length = sum([crv.length for crv in full_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = []
     angles_fundamental = [pi/2]
-    return ProsenBilliard(fundamental_boundary, full_boundary, length, length_fundamental, a, corners, area_full, area_fundamental, angles, angles_fundamental)
+    s_shift = 0.0
+    return ProsenBilliard(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, a, corners, area_full, area_fundamental, angles, angles_fundamental, s_shift)
 end
 
 
 
 """
-    make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, QuantumBilliards.RealPlaneWaves} where {T<:Real}
+    make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, CornerAdaptedFourierBessel} where {T<:Real}
 
 Constructs a Prosen billiard and the corresponding symmetry-adapted basis.
 
@@ -171,13 +212,13 @@ Constructs a Prosen billiard and the corresponding symmetry-adapted basis.
 # Returns
 - A tuple containing:
   - `prosen_billiard::ProsenBilliard`: The constructed Prosen billiard.
-  - `basis::QuantumBilliards.RealPlaneWaves`: The symmetry-adapted basis.
+  - `basis::CornerAdaptedFourierBessel`: The symmetry-adapted basis.
 """
-function make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, RealPlaneWaves} where {T<:Real}
+function make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, CornerAdaptedFourierBessel} where {T<:Real}
     prosen_billiard = ProsenBilliard(a; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([XYReflection(-1, -1)])
-    #basis = CornerAdaptedFourierBessel(10, pi/2, SVector(x0,y0), rot_angle, symmetry)
-    basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
+    basis = CornerAdaptedFourierBessel(10, Float64(pi/2), SVector(x0,y0), rot_angle, symmetry)
+    #basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
     return prosen_billiard, basis
 end
 
