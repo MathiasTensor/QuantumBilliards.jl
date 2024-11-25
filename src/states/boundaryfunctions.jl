@@ -68,8 +68,12 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         N = max(round(Int, k*L*b/(2*pi)), 512)
         pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
+        println("dX: ", size(dX))
+        println("dY: ", size(dY))
         nx = getindex.(pts.normal,1)
         ny = getindex.(pts.normal,2)
+        println("nx: ", length(nx))
+        println("ny: ", length(ny))
         dX = nx .* dX 
         dY = ny .* dY
         U::Array{type,2} = dX .+ dY
