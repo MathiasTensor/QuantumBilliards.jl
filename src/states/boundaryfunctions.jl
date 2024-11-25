@@ -233,6 +233,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         dim = length(vec)
         println("length of vec before resize_basis call: ", dim)
         new_basis = resize_basis(basis, billiard, dim, ks[i])
+        println("length of vec after resize_basis call: ", new_basis.dim)
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, s, norm = boundary_function(state; b=b)
         us[i] = u
