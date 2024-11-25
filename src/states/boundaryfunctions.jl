@@ -231,6 +231,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
     for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
+        println("length of vec before resize_basis call: ", dim)
         new_basis = resize_basis(basis, billiard, dim, ks[i])
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, s, norm = boundary_function(state; b=b)
