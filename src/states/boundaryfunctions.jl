@@ -233,7 +233,11 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         dim = length(vec)
         println("length of vec before resize_basis call: ", dim)
         println("dimension of basis before resize_basis call: ", basis.dim)
-        new_basis = resize_basis(basis, billiard, dim, ks[i])
+        if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
+            new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(dim,basis.symmetries,basis.angle_arc,basis.angle_shift,basis.angles,basis.parity_x,basis.parity_y,basis.sampler)
+        else
+            new_basis = resize_basis(basis, billiard, dim, ks[i])
+        end
         println("dimension of basis after resize_basis call: ", new_basis.dim)
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, s, norm = boundary_function(state; b=b)
@@ -270,7 +274,11 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
     Threads.@threads for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
-        new_basis = resize_basis(basis, billiard, dim, ks[i])
+        if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
+            new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(dim,basis.symmetries,basis.angle_arc,basis.angle_shift,basis.angles,basis.parity_x,basis.parity_y,basis.sampler)
+        else
+            new_basis = resize_basis(basis, billiard, dim, ks[i])
+        end
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, pts, _ = setup_momentum_density(state; b=b) # pts is BoundaryPoints and has information on ds and x
         us_all[i] = u
