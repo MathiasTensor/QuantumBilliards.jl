@@ -445,6 +445,7 @@ function separate_regular_and_chaotic_states(
 )
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
 
+    #=
     function calc_ρ(M_thresh)
         n = length(ks)
         regular_mask = zeros(Bool, n)
@@ -477,6 +478,27 @@ function separate_regular_and_chaotic_states(
             next!(progress)
         end
 
+        ρ_numeric_reg = count(regular_mask) / n
+        regular_idx = findall(regular_mask)
+        return ρ_numeric_reg, regular_idx
+    end
+    =#
+    n = length(ks)
+    M_vals = zeros(Float64, n)
+
+    # Precompute M_vals once
+    progress = Progress(n; desc="Computing M_vals")
+    Threads.@threads for i in 1:n
+        H = H_list[i]
+        qs = qs_list[i]
+        ps = ps_list[i]
+        proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
+        M_vals[i] = compute_M(proj_grid, H)
+        Threads.atomic_add!(progress, 1)
+    end
+
+    function calc_ρ(M_thresh)
+        regular_mask = M_vals .< M_thresh
         ρ_numeric_reg = count(regular_mask) / n
         regular_idx = findall(regular_mask)
         return ρ_numeric_reg, regular_idx
