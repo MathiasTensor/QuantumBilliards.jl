@@ -236,10 +236,10 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         println("type of symmetry: ", typeof(basis.symmetries[1]))
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             if isnothing(basis.symmetries[1])
-                dim = Int(dim/4)
+                dim = Int(dim/4) # always works by construction of parity_pattern
             elseif (basis.symmetries[1] isa Reflection)
                 if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
-                    dim = Int(dim/2)
+                    dim = Int(dim/2) # always works by construction of parity_pattern
                 end
             end
         end
@@ -283,10 +283,10 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
         println("type of symmetry: ", typeof(basis.symmetries[1]))
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             if isnothing(basis.symmetries[1])
-                dim = Int(dim/4)
+                dim = Int(dim/4) # always works by construction of parity_pattern
             elseif (basis.symmetries[1] isa Reflection)
                 if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
-                    dim = Int(dim/2)
+                    dim = Int(dim/2) # always works by construction of parity_pattern
                 end
             end
         end
