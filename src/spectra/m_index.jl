@@ -554,7 +554,6 @@ function separate_regular_and_chaotic_states(
             throw(ArgumentError("M_thresh must be positive"))
         end
     end
-
     return Ms, ρs, regular_idx
 end
 
