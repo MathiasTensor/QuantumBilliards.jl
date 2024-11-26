@@ -237,8 +237,10 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             if isnothing(basis.symmetries[1])
                 dim = dim/4
-            elseif (basis.symmetries[1] isa XReflection) || (basis.symmetries[1] isa YReflection)
-                dim = dim/2
+            elseif (basis.symmetries[1] isa Reflection)
+                if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
+                    dim = dim/2
+                end
             end
         end
         new_basis = resize_basis(basis, billiard, dim, ks[i])
@@ -282,8 +284,10 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             if isnothing(basis.symmetries[1])
                 dim = dim/4
-            elseif (basis.symmetries[1] isa XReflection) || (basis.symmetries[1] isa YReflection)
-                dim = dim/2
+            elseif (basis.symmetries[1] isa Reflection)
+                if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
+                    dim = dim/2
+                end
             end
         end
         new_basis = resize_basis(basis, billiard, dim, ks[i])
