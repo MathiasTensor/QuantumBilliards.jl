@@ -192,7 +192,7 @@ end
 
 
 """
-    make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, QuantumBilliards.CornerAdaptedFourierBessel} where {T<:Real}
+    make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, QuantumBilliards.Ba} where {T<:Real, Ba<:AbsBasis}
 
 Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
 
@@ -207,7 +207,7 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
   - `robnik_billiard::RobnikBilliard`: The constructed Robnik billiard.
   - `basis::QuantumBilliards.Ba`: The symmetry-adapted basis.
 """
-function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:cafb) :: Tuple{RobnikBilliard{T}, Ba} where {T<:Real, Ba<:AbsBasis}
+function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:cafb) where {T<:Real}
     robnik_billiard = RobnikBilliard(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([YReflection(-1)])
     if basis_type == :cafb
