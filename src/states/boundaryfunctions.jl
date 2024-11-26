@@ -233,6 +233,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         dim = length(vec)
         #println("length of vec before resize_basis call: ", dim)
         #println("dimension of basis before resize_basis call: ", basis.dim)
+        println(typeof(basis.symmetries[1]))
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             if isnothing(basis.symmetries[1])
                 dim = dim/4
@@ -277,6 +278,7 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
     Threads.@threads for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
+        println(typeof(basis.symmetries[1]))
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             if isnothing(basis.symmetries[1])
                 dim = dim/4
