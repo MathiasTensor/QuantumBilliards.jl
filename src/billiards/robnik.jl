@@ -205,11 +205,15 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
 # Returns
 - A tuple containing:
   - `robnik_billiard::RobnikBilliard`: The constructed Robnik billiard.
-  - `basis::QuantumBilliards.CornerAdaptedFourierBessel`: The symmetry-adapted basis.
+  - `basis::QuantumBilliards.Ba`: The symmetry-adapted basis.
 """
-function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, CornerAdaptedFourierBessel} where {T<:Real}
+function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:cafb) :: Tuple{RobnikBilliard{T}, Ba} where {T<:Real, Ba<:AbsBasis}
     robnik_billiard = RobnikBilliard(ε; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([YReflection(-1)])
-    basis = CornerAdaptedFourierBessel(10, Float64(pi), SVector(zero(T), zero(T)), 0.0, symmetry)
+    if basis_type == :cafb
+        basis = CornerAdaptedFourierBessel(10, Float64(pi), SVector(zero(T), zero(T)), 0.0, symmetry)
+    elseif basis_type == :rpw
+        basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi))
+    end
     return robnik_billiard, basis
 end
