@@ -66,22 +66,22 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         sampler = FourierNodes([2,3,5],crv_lengths)
         L = billiard.length
         N = max(round(Int, k*L*b/(2*pi)), 512)
-        println("N: ", N)
-        println("Basis dimension: ", new_basis.dim)
+        #println("N: ", N)
+        #println("Basis dimension: ", new_basis.dim)
         pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
-        println("pts length: ", length(pts.xy))
+        #println("pts length: ", length(pts.xy))
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        println("dX: ", size(dX))
-        println("dY: ", size(dY))
+        #println("dX: ", size(dX))
+        #println("dY: ", size(dY))
         nx = getindex.(pts.normal,1)
         ny = getindex.(pts.normal,2)
-        println("nx: ", length(nx))
-        println("ny: ", length(ny))
+        #println("nx: ", length(nx))
+        #println("ny: ", length(ny))
         dX = nx .* dX 
         dY = ny .* dY
         U::Array{type,2} = dX .+ dY
-        println("size of U: ", size(U))
-        println("length vec: ", length(vec))
+        #println("size of U: ", size(U))
+        #println("length vec: ", length(vec))
         u::Vector{type} = U * vec
         regularize!(u)
         #println("starting point b_f before symmetry: ", pts.xy[1])
@@ -231,8 +231,8 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
     for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
-        println("length of vec before resize_basis call: ", dim)
-        println("dimension of basis before resize_basis call: ", basis.dim)
+        #println("length of vec before resize_basis call: ", dim)
+        #println("dimension of basis before resize_basis call: ", basis.dim)
          #=
         if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
             new_basis = RealPlaneWaves{typeof(basis.angle_arc), typeof(basis.sampler)}(dim,basis.symmetries,basis.angle_arc,basis.angle_shift,range(basis.angle_shift, stop=basis.angle_arc + basis.angle_shift, length=dim),repeat(basis.parity_x, outer=dim ÷ length(basis.parity_x)), repeat(basis.parity_y, outer=dim ÷ length(basis.parity_y)),basis.sampler)
@@ -241,7 +241,7 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
         end
         =#
         new_basis = resize_basis(basis, billiard, dim, ks[i])
-        println("dimension of basis after resize_basis call: ", new_basis.dim)
+        #println("dimension of basis after resize_basis call: ", new_basis.dim)
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, s, norm = boundary_function(state; b=b)
         us[i] = u
