@@ -494,7 +494,7 @@ function separate_regular_and_chaotic_states(
         ps = ps_list[i]
         proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
         M_vals[i] = compute_M(proj_grid, H)
-        Threads.atomic_add!(progress, 1)
+        next!(progress)
     end
 
     function calc_ρ(M_thresh)
