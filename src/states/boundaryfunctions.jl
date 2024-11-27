@@ -91,6 +91,31 @@ function shift_starting_arclength(billiard::Bi, us::Vector{Vector{T}}, pts::Boun
 end
 
 """
+    rescale_rpw_dimension(basis::Ba, dim::T) where {T<:Real, Ba<:AbsBasis}
+
+Helper/hack function to rescaled the dimension of RealPlaneWaves struct b/c due to the basis unique parity_pattern function which rescales the basis in a way that it multiplies it with the length of possible parity combinations. Since we require one in the fundamental domain for boundary function construction this effectively divides the dimension of the basis with the parity combination length.
+
+# Arguments
+- `basis::Ba`: the basis object.
+- `dim::Integer`: the dimension to rescale.
+
+# Returns
+- `dim::Integer`: the rescaled dimension.
+"""
+function rescale_rpw_dimension(basis::Ba, dim::Integer) where {Ba<:AbsBasis}
+    if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
+        if isnothing(basis.symmetries[1])
+            dim = Int(dim/4) # always works by construction of parity_pattern
+        elseif (basis.symmetries[1] isa Reflection)
+            if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
+                dim = Int(dim/2) # always works by construction of parity_pattern
+            end
+        end
+    end
+    return dim
+end
+
+"""
     boundary_function(state::S; b=5.0) where {S<:AbsState}
 
 Low-level function that constructs the boundary function and it's associated arclength `s` values alond the `desymmetrized_full_boundary` to which symmetries are being applied. This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`. It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
@@ -236,20 +261,8 @@ function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0
     for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
-        #println("length of vec before resize_basis call: ", dim)
-        #println("dimension of basis before resize_basis call: ", basis.dim)
-        println("type of symmetry: ", typeof(basis.symmetries[1]))
-        if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
-            if isnothing(basis.symmetries[1])
-                dim = Int(dim/4) # always works by construction of parity_pattern
-            elseif (basis.symmetries[1] isa Reflection)
-                if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
-                    dim = Int(dim/2) # always works by construction of parity_pattern
-                end
-            end
-        end
+        dim = rescale_rpw_dimension(basis, dim)
         new_basis = resize_basis(basis, billiard, dim, ks[i])
-        #println("dimension of basis after resize_basis call: ", new_basis.dim)
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, s, norm = boundary_function(state; b=b)
         us[i] = u
@@ -285,16 +298,7 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
     Threads.@threads for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
-        println("type of symmetry: ", typeof(basis.symmetries[1]))
-        if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
-            if isnothing(basis.symmetries[1])
-                dim = Int(dim/4) # always works by construction of parity_pattern
-            elseif (basis.symmetries[1] isa Reflection)
-                if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
-                    dim = Int(dim/2) # always works by construction of parity_pattern
-                end
-            end
-        end
+        dim = rescale_rpw_dimension(basis, dim)
         new_basis = resize_basis(basis, billiard, dim, ks[i])
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         u, pts, _ = setup_momentum_density(state; b=b) # pts is BoundaryPoints and has information on ds and x
