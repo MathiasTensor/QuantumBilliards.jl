@@ -144,71 +144,6 @@ function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
      return H_bg, chaotic_mask
 end
 
-#=
-function heatmap_M_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
-    Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
-    As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
-    As_grid = collect(range(0.0, maximum(As), length=100)) # Create 2D grid for M and A with 100x100 bins
-    Ms_grid = collect(range(-1.0, 1.0, length=100))
-    grid = fill(0, length(Ms_grid), length(As_grid))  # Integer grid for counts
-    H_to_bin = Dict{Int, Tuple{Int, Int}}() # Initialize a dictionary to map each Husimi matrix to its (M_index, A_index) bin
-    
-    # Dict for H -> (M,A)
-    for (i, (M, A)) in enumerate(zip(Ms, As))
-        A_index = findfirst(x -> x >= A, As_grid) - 1
-        M_index = findfirst(x -> x >= M, Ms_grid) - 1
-        if A_index in eachindex(As_grid) && M_index in eachindex(Ms_grid) # indices withing bounds, sanity check for findfirst
-            grid[M_index, A_index] += 1
-            H_to_bin[i] = (M_index, A_index)
-        end
-    end
-
-    # Main grid P(A,M)
-    fig = Figure(resolution=(1500, 1000), size=(1500,1000))
-    ax = Axis(fig[1, 1], title="P(A,M)", xlabel="A", ylabel="M")
-    heatmap!(ax, As_grid, Ms_grid, grid; colormap=Reverse(:gist_heat))
-
-    selected_indices = rand(1:length(Hs_list), 16) # Choose 16 random Husimi matrices and label them with Roman numerals
-    for (j, random_index) in enumerate(selected_indices)
-        bin_coords = H_to_bin[random_index]
-        M_index, A_index = bin_coords
-        roman_label = int_to_roman(j)
-        text!(ax, As_grid[A_index], Ms_grid[M_index], text=roman_label, color=:red, align=(:center, :center), fontsize=10)
-    end
-
-    # get the classical phase space matrix so we can make the gray spots on the chaotic grid whenever there is a 0.0 value of the chaotic husimi on it
-    husimi_grid = fig[2:3, 1] = GridLayout()
-    row = 1
-    col = 1
-    for (j, random_index) in enumerate(selected_indices)
-        H = Hs_list[random_index]
-        qs_i = qs_list[random_index]
-        ps_i = ps_list[random_index]
-        projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
-        H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
-        roman_label = int_to_roman(j)
-        ax_husimi = Axis(husimi_grid[row, col], title=roman_label, xticksvisible=false, yticksvisible=false, xgridvisible=false, ygridvisible=false, xticklabelsvisible=false, yticklabelsvisible=false)
-        #heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), nan_color=:lightgray) # Plot the Husimi matrix with NaN values as light gray
-        #heatmap!(ax_husimi, H; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H)))
-
-        # Overlay the chaotic mask with transparency
-        colormap = cgrad([:white, :black])  # Linear gradient from white to black
-        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-        heatmap!(ax_husimi, chaotic_mask; colormap=colormap, alpha=0.05, colorrange=(0, 1))
-
-        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10) # Label the top left corner with the Roman numeral
-        col += 1
-        if col > 4  # Move to the next row after 4 columns
-            col = 1
-            row += 1
-        end
-    end
-    rowgap!(husimi_grid, 5)
-    colgap!(husimi_grid, 5)
-    return fig
-end
-=#
-
 """
     heatmap_R_vs_A_2d(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T; desired_samples::Int = 12) where {T<:Real}
 
@@ -291,6 +226,9 @@ function heatmap_R_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
     # Now proceed with plotting
     fig = Figure(resolution=(2000, 1500), size=(2000, 1500))
     ax = Axis(fig[1, 1],title="P(A,R)",xlabel="A",ylabel="R",xtickformat="{:.2f}",ytickformat="{:.2f}")
+    ax.xticks = range(min_A, max_A, 20) 
+    ax.yticks = range(R_min, R_max, 10) 
+    ax.xticklabelrotation = pi/2
     # Plot the heatmap
     As_edges_heatmap = collect(range(0.0, A_max_range, length=201))  # For heatmap
     Rs_edges_heatmap = collect(range(R_min, R_max, length=201))      # For heatmap
@@ -446,6 +384,9 @@ function heatmap_M_vs_A_2d( Hs_list::Vector,qs_list::Vector,ps_list::Vector,clas
     # Now proceed with plotting
     fig = Figure(resolution=(2000, 1500), size=(2000, 1500))
     ax = Axis(fig[1, 1],title="P(A,M)",xlabel="A",ylabel="M",xtickformat="{:.2f}",ytickformat="{:.2f}")
+    ax.xticks = range(min_A, max_A, 20) 
+    ax.yticks = range(M_min, M_max, 10) 
+    ax.xticklabelrotation = pi/2
     # Plot the heatmap
     As_edges_heatmap = collect(range(0.0, A_max_range, length=201))  # For heatmap
     Ms_edges_heatmap = collect(range(M_min, M_max, length=201))      # For heatmap
@@ -607,6 +548,9 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     ### Top Plot: P(A, M) ###
     ax_top = Axis(fig[1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax_top.xticks = range(min_A, max_A, 20) 
+    ax_top.yticks = range(M_min, M_max, 10) 
+    ax_top.xticklabelrotation = pi/2
     # Plot the heatmap for P(A, M)
     As_edges_heatmap_M = collect(range(0.0, A_max_range, length=201))
     Ms_edges_heatmap = collect(range(M_min, M_max, length=201))
@@ -639,6 +583,9 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     ### Middle Plot: P(A, R) ###
     ax_middle = Axis(fig[2, 1], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax_middle.xticks = range(min_A, max_A, 20) 
+    ax_middle.yticks = range(R_min, R_max, 10) 
+    ax_middle.xticklabelrotation = pi/2
     # Plot the heatmap for P(A, R)
     As_edges_heatmap_R = collect(range(0.0, A_max_range, length=201))
     Rs_edges_heatmap = collect(range(R_min, R_max, length=201))
