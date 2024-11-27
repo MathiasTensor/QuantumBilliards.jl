@@ -112,62 +112,18 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         sampler = FourierNodes([2,3,5],crv_lengths)
         L = billiard.length
         N = max(round(Int, k*L*b/(2*pi)), 512)
-        #println("N: ", N)
-        #println("Basis dimension: ", new_basis.dim)
         pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
-        #println("pts length: ", length(pts.xy))
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        #println("dX: ", size(dX))
-        #println("dY: ", size(dY))
         nx = getindex.(pts.normal,1)
         ny = getindex.(pts.normal,2)
-        #println("nx: ", length(nx))
-        #println("ny: ", length(ny))
         dX = nx .* dX 
         dY = ny .* dY
         U::Array{type,2} = dX .+ dY
-        #println("size of U: ", size(U))
-        #println("length vec: ", length(vec))
         u::Vector{type} = U * vec
         regularize!(u)
-        #println("starting point b_f before symmetry: ", pts.xy[1])
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         pts, u = shift_starting_arclength(billiard, u, pts)
-        #=
-        if hasproperty(billiard, :shift_s)
-            shift_s = billiard.shift_s
-            #println("Starting point b_f before shift: ", pts.xy[1])
-            #println("Starting s before shift: ", pts.s[1])
-            #println("s_shift: ", shift_s)
-            L_effective = maximum(pts.s)
-            # Find the index of the point where `s` is closest to `s_shift`
-            start_index = argmin(abs.(pts.s .- shift_s))
-            #println("New starting index: ", start_index)
-            # Reorder all fields so that `start_index` becomes the first point
-            shifted_s = circshift(pts.s, -start_index + 1)
-            shifted_u = circshift(u, -start_index + 1)
-            shifted_xy = circshift(pts.xy, -start_index + 1)
-            shifted_normal = circshift(pts.normal, -start_index + 1)
-            shifted_ds = circshift(pts.ds, -start_index + 1)
-            # Wrap around the `s` values to maintain continuity
-            s_offset = shifted_s[1]
-            shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
-            shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
-            pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
-            u = shifted_u
-            #println("Starting point b_f after shift: ", pts.xy[1])
-            #println("Starting s after shift: ", pts.s[1])
-        end
-        =#
-        #println("starting point b_f: ", pts.xy[1])
-        #println("end point b_f: ", pts.xy[end])
-        #compute the boundary norm
-        #println("length xy: ", length(pts.xy))
-        #println("length normal: ", length(pts.normal))
-        #println("length ds: ", length(pts.ds))
-        #println("length s: ", length(pts.s))
-        #println("length u: ", length(u))
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
         norm = sum(integrand)/(2*k^2)
@@ -567,9 +523,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         sampler = FourierNodes([2,3,5], crv_lengths)
         L = billiard.length
         N = max(round(Int, k*L*b/(2*pi)), 512)
-        # Call boundary_coords to get pts
         pts = boundary_coords_desymmetrized_full_boundary(billiard, sampler, N)
-        # Compute U as in boundary_function
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
         nx = getindex.(pts.normal,1)
         ny = getindex.(pts.normal,2)
@@ -578,38 +532,9 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         U = dX .+ dY
         u = U * vec
         regularize!(u)
-        #println("starting point b_f before symmetry: ", pts.xy[1])
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         pts, u = shift_starting_arclength(billiard, u, pts)
-        #=
-        if hasproperty(billiard, :shift_s)
-            shift_s = billiard.shift_s
-            #println("Starting point b_f before shift: ", pts.xy[1])
-            #println("Starting s before shift: ", pts.s[1])
-            #println("s_shift: ", shift_s)
-            L_effective = maximum(pts.s)
-            # Find the index of the point where `s` is closest to `s_shift`
-            start_index = argmin(abs.(pts.s .- shift_s))
-            #println("New starting index: ", start_index)
-            # Reorder all fields so that `start_index` becomes the first point
-            shifted_s = circshift(pts.s, -start_index + 1)
-            shifted_u = circshift(u, -start_index + 1)
-            shifted_xy = circshift(pts.xy, -start_index + 1)
-            shifted_normal = circshift(pts.normal, -start_index + 1)
-            shifted_ds = circshift(pts.ds, -start_index + 1)
-            # Wrap around the `s` values to maintain continuity
-            s_offset = shifted_s[1]
-            shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
-            shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
-            pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
-            u = shifted_u
-            #println("Starting point b_f after shift: ", pts.xy[1])
-            #println("Starting s after shift: ", pts.s[1])
-        end
-        =#
-        #println("starting point b_f: ", pts.xy[1])
-        #println("end point b_f: ", pts.xy[end])
         return u, pts, k
     end
 end
