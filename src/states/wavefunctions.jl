@@ -451,6 +451,15 @@ function wavefunctions(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, in
     for i in eachindex(ks) 
         vec = X[i] # vector of vectors
         dim = length(vec)
+        if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
+            if isnothing(basis.symmetries[1])
+                dim = Int(dim/4) # always works by construction of parity_pattern
+            elseif (basis.symmetries[1] isa Reflection)
+                if (basis.symmetries[1].axis == :x_axis) || (basis.symmetries[1].axis == :y_axis)
+                    dim = Int(dim/2) # always works by construction of parity_pattern
+                end
+            end
+        end
         new_basis = resize_basis(basis, billiard, dim, ks[i])
         state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
         Psi2d, x_grid, y_grid = wavefunction(state; b=b, inside_only=inside_only, fundamental_domain=fundamental_domain, memory_limit=memory_limit)
