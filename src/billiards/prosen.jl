@@ -199,7 +199,7 @@ end
 
 
 """
-    make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, CornerAdaptedFourierBessel} where {T<:Real}
+    make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, Ba} where {T<:Real, Ba<:AbsBasis}
 
 Constructs a Prosen billiard and the corresponding symmetry-adapted basis.
 
@@ -208,17 +208,23 @@ Constructs a Prosen billiard and the corresponding symmetry-adapted basis.
 - `x0::T=zero(T)`: The x-coordinate of the center of the billiard.
 - `y0::T=zero(T)`: The y-coordinate of the center of the billiard.
 - `rot_angle::T=zero(T)`: The rotation angle of the billiard.
+- `basis_type::Symbol=:cafb`: The type of basis to use, possible are :rpw and :cafb.
 
 # Returns
 - A tuple containing:
   - `prosen_billiard::ProsenBilliard`: The constructed Prosen billiard.
-  - `basis::CornerAdaptedFourierBessel`: The symmetry-adapted basis.
+  - `basis<:AbsBasis`: The symmetry-adapted basis.
 """
-function make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{ProsenBilliard{T}, CornerAdaptedFourierBessel} where {T<:Real}
+function make_prosen_and_basis(a::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:cafb) where {T<:Real}
     prosen_billiard = ProsenBilliard(a; x0=x0, y0=y0, rot_angle=rot_angle)
     symmetry = Vector{Any}([XYReflection(-1, -1)])
-    basis = CornerAdaptedFourierBessel(10, Float64(pi/2), SVector(x0,y0), rot_angle, symmetry)
-    #basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
+    if basis_type == :cafb
+        basis = CornerAdaptedFourierBessel(10, Float64(pi/2), SVector(x0,y0), rot_angle, symmetry)
+    elseif basis_type == :rpw
+        basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
+    else
+        throw(ArgumentError("basis_type must be either :rpw or :cafb"))
+    end
     return prosen_billiard, basis
 end
 
