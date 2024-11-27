@@ -58,7 +58,7 @@ When constructing the boundary function u we need to sometimes shift the startin
 - `BoundaryPoints`: the struct containing the boundary points on the full_boundary with the starting point shifted.
 - `u::Vector`: the boundary function vector that is correctly shifted.
 """
-function shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) where {Bi<:AbsBilliard}
+function shift_starting_arclength(billiard::Bi, u::Vector{T}, pts::BoundaryPoints{T}) where {Bi<:AbsBilliard, T<:Real}
     if hasproperty(billiard, :shift_s)
         shift_s = billiard.shift_s
         L_effective = maximum(pts.s)
@@ -78,6 +78,16 @@ function shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) 
         u = shifted_u
     end
     return pts, u
+end
+
+# Wrapper for multi u case
+function shift_starting_arclength(billiard::Bi, us::Vector{Vector{T}}, pts::BoundaryPoints{T}) where {Bi<:AbsBilliard, T<:Real}
+    us_return = Vector{Vector{T}}(undef, length(us))
+    pts = shift_starting_arclength(billiard, us[1], pts)[1]
+    for (i,u) in eachindex(us)
+        us_return[i] = shift_starting_arclength(billiard,u,pts)[1]
+    end
+    return pts, us_return
 end
 
 """
