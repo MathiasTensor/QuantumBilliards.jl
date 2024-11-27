@@ -45,6 +45,42 @@ end
 =#
 
 """
+    shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) where {Bi<:AbsBilliard}
+
+When constructing the boundary function u we need to sometimes shift the starting point on the full boundary. This is a helper function that shifts all the fields in the BoundaryPoints struct such that all of them are shifted by the shift_s field in the billiard struct.
+
+# Arguments
+- `billiard::Bi<:AbsBilliard`: the billiard object.
+- `u::Vector`: the boundary function vector obtained from the ull_boundary.
+- `pts::BoundaryPoints`: the struct containing the boundary points on the full_boundary.
+
+# Returns
+- `BoundaryPoints`: the struct containing the boundary points on the full_boundary with the starting point shifted.
+- `u::Vector`: the boundary function vector that is correctly shifted.
+"""
+function shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) where {Bi<:AbsBilliard}
+    if hasproperty(billiard, :shift_s)
+        shift_s = billiard.shift_s
+        L_effective = maximum(pts.s)
+        # Find the index of the point where `s` is closest to `s_shift`
+        start_index = argmin(abs.(pts.s .- shift_s))
+        # Reorder all fields so that `start_index` becomes the first point
+        shifted_s = circshift(pts.s, -start_index + 1)
+        shifted_u = circshift(u, -start_index + 1)
+        shifted_xy = circshift(pts.xy, -start_index + 1)
+        shifted_normal = circshift(pts.normal, -start_index + 1)
+        shifted_ds = circshift(pts.ds, -start_index + 1)
+        # Wrap around the `s` values to maintain continuity
+        s_offset = shifted_s[1]
+        shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
+        shifted_s .= mod.(shifted_s, L_effective)  # Wrap around to maintain continuity
+        pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
+        u = shifted_u
+    end
+    return pts, u
+end
+
+"""
     boundary_function(state::S; b=5.0) where {S<:AbsState}
 
 Low-level function that constructs the boundary function and it's associated arclength `s` values alond the `desymmetrized_full_boundary` to which symmetries are being applied. This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`. It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
@@ -87,6 +123,8 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         #println("starting point b_f before symmetry: ", pts.xy[1])
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
+        pts, u = shift_starting_arclength(billiard, u, pts)
+        #=
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
             #println("Starting point b_f before shift: ", pts.xy[1])
@@ -111,6 +149,7 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
             #println("Starting point b_f after shift: ", pts.xy[1])
             #println("Starting s after shift: ", pts.s[1])
         end
+        =#
         #println("starting point b_f: ", pts.xy[1])
         #println("end point b_f: ", pts.xy[end])
         #compute the boundary norm
@@ -532,6 +571,8 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         #println("starting point b_f before symmetry: ", pts.xy[1])
         pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
+        pts, u = shift_starting_arclength(billiard, u, pts)
+        #=
         if hasproperty(billiard, :shift_s)
             shift_s = billiard.shift_s
             #println("Starting point b_f before shift: ", pts.xy[1])
@@ -556,6 +597,7 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
             #println("Starting point b_f after shift: ", pts.xy[1])
             #println("Starting s after shift: ", pts.s[1])
         end
+        =#
         #println("starting point b_f: ", pts.xy[1])
         #println("end point b_f: ", pts.xy[end])
         return u, pts, k
