@@ -2,6 +2,7 @@
 
 using CircularArrays
 using JLD2
+using LinearAlgebra
 
 function antisym_vec(x)
     v = reverse(-x[2:end])
@@ -91,6 +92,68 @@ end
 =#
 
 ### NEW ###
+
+"""
+    husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
+
+Calculates the Poincaré-Husimi function at point (q, p) in the quantum phase space.
+
+Arguments:
+- `k::T`: Wavenumber of the eigenstate.
+- `s::Vector{T}`: Array of points on the boundary.
+- `u::Vector{T}`: Array of boundary function values.
+- `L::T`: Total length of the boundary (maximum(s)).
+- `q::T`: Position coordinate in phase space.
+- `p::T`: Momentum coordinate in phase space.
+
+Returns:
+- Husimi function value at (q, p).
+"""
+function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
+    ss = s.-q
+    width = 4/sqrt(k)
+    indx = findall(x->abs(x)<width, ss)
+    si = ss[indx]
+    ui = u[indx]
+    ds = diff(s)  # length N-1
+    ds = vcat(ds, L + s[1] - s[end]) # add Nth
+    dsi = ds[indx]
+    w = sqrt(sqrt(k/π)).*exp.(-0.5*k*si.*si).*dsi
+    cr = w.*cos.(k*p*si)  # Coherent state real part
+    ci = w.*sin.(k*p*si)  # Coherent state imaginary part
+    h = dot(cr-im*ci,ui)  # Husimi integral (minus because of conjugation)
+    return abs2(h)/(2*π*k) # not the actual normalization
+end
+
+"""
+    husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+
+Evaluates the Poincaré-Husimi function on a grid defined by the sizes nx for q and ny for p. The grids are then automatically generated from 0 -> L and -1 -> 1.
+
+Arguments:
+- `k`: Wavenumber of the eigenstate.
+- `s`: Array of points on the boundary.
+- `u`: Array of boundary function values.
+- `L`: Total length of the boundary (maximum(s)).
+- `nx`: Number of grid points in the position coordinate (q).
+- `ny`: Number of grid points in the momentum coordinate (p).
+
+Returns:
+- `H`: Husimi function matrix of size (ny, nx).
+- `qs`: Array of q values used in the grid.
+- `ps`: Array of p values used in the grid.
+"""
+function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+    qs = range(0.0,stop=L,length = nx)
+    ps = range(-1.0,stop=1.0,length = ny)
+    H = zeros(T, ny, nx)
+    Threads.@threads for (idx_p, p) in enumerate(ps)
+        for (idx_q, q) in enumerate(qs)
+            H[idx_p, idx_q] = husimiAtPoint(k,s,u,L,q,p)
+        end
+    end
+    return H./sum(H), qs, ps
+end
 
 """
     function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) :: Tuple{Vector{Matrix{T}}, Vector{Vector{T}}, Vector{Vector{T}}} where {T<:Real, Bi<:AbsBilliard, Ba<:AbsBasis}
