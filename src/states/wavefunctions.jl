@@ -127,6 +127,7 @@ end
 function compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
     eps = set_precision(vec[1])
     dim = length(vec) # only way to get dim of basis implicitely
+    dim = rescale_rpw_dimension(basis, dim) # hack for rpw
     basis = resize_basis(basis, billiard, dim, k) # since we dont have the solver for adjust basis and samplers
     sz = length(x_grid)*length(y_grid)
     pts = collect(SVector(x,y) for y in y_grid for x in x_grid)
