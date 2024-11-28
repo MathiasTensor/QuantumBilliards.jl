@@ -131,12 +131,12 @@ end
 Evaluates the Poincaré-Husimi function on a grid defined by the sizes nx for q and ny for p. The grids are then automatically generated from 0 -> L and -1 -> 1.
 
 Arguments:
-- `k`: Wavenumber of the eigenstate.
-- `s`: Array of points on the boundary.
-- `u`: Array of boundary function values.
-- `L`: Total length of the boundary (maximum(s)).
-- `nx`: Number of grid points in the position coordinate (q).
-- `ny`: Number of grid points in the momentum coordinate (p).
+- `k::T`: Wavenumber of the eigenstate.
+- `s::Vector{T}`: Array of points on the boundary.
+- `u::Vector{T}`: Array of boundary function values.
+- `L::T`: Total length of the boundary (maximum(s)).
+- `nx::Integer`: Number of grid points in the position coordinate (q).
+- `ny::Integer`: Number of grid points in the momentum coordinate (p).
 
 Returns:
 - `H::Matrix{T}`: Husimi function matrix of size (ny, nx).
