@@ -38,6 +38,152 @@ function normalized_inverse_participation_ratio_R(H::Matrix{T}) where {T<:Real}
 end
 
 """
+    correlation_matrix(H1::Matrix{T}, H2::Matrix{T})
+
+Computes the corelation matrix between the Husimi functions.
+
+```math
+Cₙₘ = 1/{QₙQₘ}∑HⁿᵢⱼHᵐᵢⱼ
+```
+
+# Arguments
+- `H1::Matrix{T}`: First Husimi function.
+- `H2::Matrix{T}`: Second Husimi function.
+
+# Returns
+- `T`: The value of the nm-correlation matrix element.
+""" 
+function correlation_matrix(H1::Matrix{T}, H2::Matrix{T}) where {T<:Real}
+    numerator = sum(H1.*H2)
+    denominator = sqrt(sum(H1.^2)*sum(H2.^2))
+    if denominator == 0.0
+        throw(ErrorException("Denominator cannot be zero"))
+    end
+    return numerator/denominator
+end
+
+"""
+    group_Hs_by_A_bins(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol_fraction::T; dA::T = 0.02) where {T<:Real}
+
+Groups the `Vector` oh Husimi matrices into `A` intervals with length `[A,A+dA]` and return the interval midpoints and the indexes of the Husimi functions inside each interval.
+
+# Arguments
+- `Hs::Vector{Matrix{T}}`: Vector of Husimi matrices.
+- `chaotic_classical_phase_space_vol_fraction::T`: Fraction of the chaotic classical phase space (The fraction of chaotic grid cells for the PH Matrix).
+- `dA::T = 0.02`: Size of the bins for localization entropy, depends on the number of Husimi functions. For a large sample size use a smaller `dA`.
+
+# Returns
+- `bin_centers::Vector{T}`: Vector of bin centers.
+- `binned_indices::Dict{T, Vector{Int}}`: Dictionary with bin centers as keys and the corresponding Husimi matrix indices as values.
+"""
+function group_Hs_by_A_bins(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; dA::T = 0.02) where {T<:Real}
+    n = length(Hs)
+    As = Vector{T}(undef, n)  # Preallocate the vector for entropy values
+    # Step 1: Compute localization entropy values in parallel
+    Threads.@threads for i in eachindex(Hs)
+        As[i] = localization_entropy(Hs[i], chaotic_classical_phase_space_vol_fraction)
+    end
+    # Step 2: Define bins over the range of A values
+    A_min, A_max = minimum(As), maximum(As)
+    bin_edges = collect(A_min:dA:A_max+dA)  # Ensure coverage up to A_max
+    bin_centers = bin_edges[1:end-1].+dA/2  # Find midpoints
+    bin_indices = searchsortedfirst.(Ref(bin_edges), As) # find the A or equivalently the H index.
+    binned_indices = Dict(bin => Int[] for bin in bin_centers)  # Key: bin center -> indices of Husimi matrices
+    for (i, bin_idx) in enumerate(bin_indices) # Assign Husimi indices to bins
+        bin_center_idx = max(bin_idx - 1, 1)  # Adjust bin index to match bin_centers, as not < 1
+        bin_center = bin_centers[bin_center_idx] # find the bin center through it's index 
+        push!(binned_indices[bin_center], i)
+    end
+    return bin_centers, binned_indices
+end
+
+"""
+    compute_average_correlation_per_bin(Hs::Vector{Matrix{T}}, binned_indices::Dict{T, Vector{Int}}) where {T<:Real}
+
+Compues the correlation matrix Cₙₘ for all the Husimi functions in each bin. From the binned_indices dictionary we get for each bin the indexes Vector{Int} of husimi matrices that are in Hs. In the end we average the values of the correlation matrices in each bin and return a Dict object with the average correlation matrix value for each bin center.
+
+# Arguments
+- `Hs::Vector{Matrix{T}}`: Vector of Husimi matrices.
+- `binned_indices::Dict{T, Vector{Int}}`: Dictionary with bin centers as keys and the corresponding Husimi matrix indices from Hs as values.
+
+# Returns
+- `Dict{T, Float64}`: Dictionary with bin centers as keys and the corresponding average correlation matrix value as values. If there are less than 2 Husimi functions in a bin, the average correlation is NaN. To handle this we enforce the Float64 return type.
+"""
+function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T, Vector{Int}}) where {T<:Real}
+    avg_correlation_per_bin = Dict{T, Float64}()
+    bin_centers = collect(keys(binned_indices))
+    lock = ReentrantLock()
+    Threads.@threads for idx in eachindex(bin_centers)
+        bin_center = bin_centers[idx]
+        indices = binned_indices[bin_center]
+        n = length(indices)
+        if n < 2
+            local_avg_correlation = NaN
+        else # Compute all pairwise correlations
+            correlations = Float64[]
+            for i = 1:(n-1)
+                idx_i = indices[i]
+                H_i = Hs[idx_i]
+                for j = (i+1):n
+                    idx_j = indices[j]
+                    H_j = Hs[idx_j]
+                    c = correlation_matrix(H_i, H_j)
+                    push!(correlations, c)
+                end
+            end
+            local_avg_correlation = mean(correlations)
+        end
+        lock(lock) do # thread safety
+            avg_correlation_per_bin[bin_center] = local_avg_correlation
+        end
+    end
+    return avg_correlation_per_bin
+end
+
+"""
+    plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; dA::T = 0.02) where {T<:Real}
+
+Plots the correaltion matrix averages per each bin and tries a linear fit on the data.
+
+# Arguements
+- `Hs::Vector{Matrix{T}}`: Vector of Husimi matrices.
+- `chaotic_classical_phase_space_vol_fraction::T`: Fraction of the chaotic classical phase space (The fraction of chaotic grid cells for the PH Matrix).
+- `dA::T = 0.02`: Size of the bins for localization entropy, depends on the number of Husimi functions. For a large sample size use a smaller `dA`
+
+# Returns
+- `Figure`: A figure with the correlation matrix averages per each bin and the linear fit on the data.
+"""
+function plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; dA::T = 0.02) where {T<:Real}
+    bin_centers, binned_indices = group_Hs_by_A_bins(Hs, chaotic_classical_phase_space_vol_fraction, dA=dA)
+    avg_correlations = compute_average_correlation_per_bin(Hs, binned_indices)
+    # sort them just in case
+    sorted_indices = sortperm(bin_centers)
+    bin_centers_sorted = bin_centers[sorted_indices]
+    avg_correlations_sorted = avg_correlations[sorted_indices]
+    function linear_model(bin_centers, params)
+        a, b = params 
+        result = Vector{Float64}(undef, length(bin_centers))
+        for i in eachindex(bin_centers)
+            result[i] = a*bin_centers[i]+b
+        end
+        return result
+    end
+    initial_guess = [0.7 0.0]  # Initial guesses for a and b 
+    fit_result = curve_fit((bc, params) -> beta_model(bc, params), bin_centers_sorted, avg_correlations_sorted, initial_guess)
+    optimal_a, optimal_b = fit_result.param
+    f = Figure(size=(800,800),resolution=(800,800))
+    ax = Axis(f[1,1], title="⟨C⟩ vs. ⟨A⟩", xlabel=L"⟨A⟩", ylabel=L"⟨C⟩", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax.xticks = range(minimum(bin_centers_sorted)+0.05, maximum(bin_centers_sorted)-0.05, 20) 
+    ax.yticks = range(minimum(avg_correlations_sorted)+0.05, maximum(avg_correlations_sorted)-0.05, 10) 
+    ax.xticklabelrotation = pi/2
+    scatter!A(ax ,bin_centers_sorted, avg_correlations_sorted, marker=:rect, label=L"⟨C⟩")
+    xs = extrema(bin_centers_sorted)
+    ys = optimal_a.*xs.+optimal_b
+    lines!(ax, xs, ys, label="$(round(optimal_a; digits=3))*x+$(round(optimal_b; digits=3))")
+    return f
+end
+
+"""
     P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
 
 Calculates the pdf data for plotting the localization entropy A using a histogram.
