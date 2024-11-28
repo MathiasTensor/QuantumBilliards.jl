@@ -9,6 +9,115 @@ using StaticArrays, JLD2, ProgressMeter
 ## NEW ##
 
 """
+    symmetrize_Psi(Psi2d::Matrix, x_grid::Vector, y_grid::Vector, billiard::Bi, symmetries::Union{Nothing,Vector{Any}}, fundamental_domain::Bool) where {Bi<:AbsBilliard}
+
+Implements symmmetries of the system into the wavefunction Matrix and it's grids and forms new instances of them that are fully symmetrized.
+
+# Arguments
+- `Psi2d::Matrix`: 2D wavefunction matrix
+- `x_grid::Vector`: x-axis grid
+- `y_grid::Vector`: y-axis grid
+- `billiard::Bi`: Billiard type
+- `symmetries::Union{Nothing,Vector{Any}}`: Vector of symmetries to apply (either `Reflection` or `Rotation` or `nothing`)
+- `fundamental_domain::Bool`: Whether to apply symmetries to the fundamental domain only
+
+# Returns
+- `Psi2d::Matrix`: Symmetrized 2D wavefunction matrix
+- `x_grid::Vector`: Symmetrized x-axis grid
+- `y_grid::Vector`: Symmetrized y-axis grid
+"""
+function symmetrize_Psi(Psi2d::Matrix, x_grid::Vector, y_grid::Vector, billiard::Bi, symmetries::Union{Nothing,Vector{Any}}, fundamental_domain::Bool) where {Bi<:AbsBilliard}
+    if ~fundamental_domain 
+        if ~isnothing(symmetries)
+            if all([sym isa Reflection for sym in symmetries])
+                x_axis = 0.0
+                y_axis = 0.0
+                if hasproperty(billiard, :x_axis)
+                    x_axis = billiard.x_axis
+                end
+                if hasproperty(billiard, :y_axis)
+                    y_axis = billiard.y_axis
+                end
+                Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
+            elseif all([sym isa Rotation for sym in symmetries])
+                if length(symmetries) > 1
+                    @error "Only one Rotation symmetry allowed"
+                end
+                center = SVector{2, Float64}(0.0, 0.0)
+                if hasproperty(billiard, :center)
+                    center = SVector{2, Float64}(billiard.center)
+                end
+                Psi2d, x_grid, y_grid = rotate_wavefunction(Psi2d,x_grid,y_grid,symmetries[1], billiard; center=center)
+            else
+                @error "Do not mix Reflections with Rotations"
+            end
+        end
+    end
+    return Psi2d, x_grid, y_grid
+end
+
+"""
+    symmetrize_Psi(Psi2d::Vector{Matrix}, x_grid::Vector, y_grid::Vector, billiard::Bi, symmetries::Union{Nothing,Vector{Any}}, fundamental_domain::Bool) where {Bi<:AbsBilliard}
+
+Implements symmmetries of the system into the wavefunction matrices and it's grids and forms new instances of them that are fully symmetrized. This is compatible with the functions that have `EigenstateBundle` as input.
+
+# Arguments
+- `Psi2d::Vector{Matrix}`: 2D wavefunction matrices
+- `x_grid::Vector`: x-axis grid
+- `y_grid::Vector`: y-axis grid
+- `billiard::Bi`: Billiard type
+- `symmetries::Union{Nothing,Vector{Any}}`: Vector of symmetries to apply (either `Reflection` or `Rotation` or `nothing`)
+- `fundamental_domain::Bool`: Whether to apply symmetries to the fundamental domain only
+
+# Returns
+- `Psi2d::Vector{Matrix}`: Symmetrized 2D wavefunction matrices in the bundle
+- `x_grid::Vector`: Symmetrized x-axis grid for the whole bundle
+- `y_grid::Vector`: Symmetrized y-axis grid for the whole bundle
+"""
+function symmetrize_Psi(Psi2d::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi, symmetries::Union{Nothing,Vector{Any}}, fundamental_domain::Bool) where {Bi<:AbsBilliard}
+    if !fundamental_domain
+        if !isnothing(symmetries)
+            if all([sym isa Reflection for sym in symmetries])
+                # Handle reflections
+                x_axis = 0.0
+                y_axis = 0.0
+                if hasproperty(billiard, :x_axis)
+                    x_axis = billiard.x_axis
+                end
+                if hasproperty(billiard, :y_axis)
+                    y_axis = billiard.y_axis
+                end
+                for i in eachindex(Psi2d)
+                    Psi_new, x_grid_new, y_grid_new = reflect_wavefunction(Psi2d[i], x_grid, y_grid, symmetries; x_axis=x_axis,y_axis=y_axis)
+                    Psi2d[i] = Psi_new
+                end
+                x_grid = x_grid_new
+                y_grid = y_grid_new
+            elseif all([sym isa Rotation for sym in symmetries])
+                println("We have a rotation")
+                if length(symmetries) > 1
+                    @error "Only one Rotation symmetry allowed"
+                end
+                center = SVector{2, T}(0.0, 0.0)
+                if hasproperty(billiard, :center)
+                    center = SVector{2, T}(billiard.center...)
+                end
+                # Apply rotation to each wavefunction
+                for i in eachindex(Psi2d)
+                    Psi_new, x_grid_new, y_grid_new = rotate_wavefunction(Psi2d[i], x_grid, y_grid, symmetries[1], billiard; center=center)
+                    Psi2d[i] = Psi_new
+                end
+                x_grid = x_grid_new
+                y_grid = y_grid_new
+            else
+                @error "Do not mix Reflections with Rotations"
+            end
+        end
+    end
+    return Psi2d, x_grid, y_grid
+end
+
+"""
     billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
 
 Given <:AbsBilliard object, computes the points on the boundary of the billiard that are equidistant from each other, with the total number of points being N_polygon_checks.
@@ -305,11 +414,9 @@ end
 # MAIN ONE USED, JUST HAS ADDITIONAL LOGIC INTRODUCED FOR SYMMETRIES
 function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {S<:AbsState}
     let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries       
-        #println(new_basis.dim)
         type = eltype(state.vec)
         #try to find a lazy way to do this
         L = billiard.length
-        
         xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
         dx = xlim[2] - xlim[1]
         dy = ylim[2] - ylim[1]
@@ -318,8 +425,9 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         x_grid::Vector{type} = collect(type,range(xlim... , nx))
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
         Psi::Vector{type} = compute_psi(state,x_grid,y_grid; inside_only, memory_limit) 
-        #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
+        Psi2d, x_grid, y_grid = symmetrize_Psi(Psi2d, x_grid, y_grid, billiard, symmetries, fundamental_domain)
+        #=
         if ~fundamental_domain 
             if ~isnothing(symmetries)
                 if all([sym isa Reflection for sym in symmetries])
@@ -346,6 +454,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                 end
             end
         end
+        =#
         return Psi2d, x_grid, y_grid
     end
 end
@@ -435,6 +544,8 @@ function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_
     Psi::Vector{type} = compute_psi(vec,k,billiard,basis,x_grid,y_grid; inside_only=inside_only, memory_limit=memory_limit) 
     #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
     Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
+    Psi2d, x_grid, y_grid = symmetrize_Psi(Psi2d, x_grid, y_grid, billiard, symmetries, fundamental_domain)
+    #=
     if ~fundamental_domain 
         if ~isnothing(symmetries)
             if all([sym isa Reflection for sym in symmetries])
@@ -461,6 +572,7 @@ function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_
             end
         end
     end
+    =#
     return Psi2d, x_grid, y_grid
 end
 
@@ -543,9 +655,24 @@ function wavefunctions(state_data::StateData, billiard::Bi, basis::Ba; b=5.0, in
     return ks, Psi2ds, x_grids, y_grids
 end
 
+"""
+    wavefunction(state::BasisState; xlim =(-2.0,2.0), ylim=(-2.0,2.0), b=5.0) 
+
+Construct the wavefunction for a given basis function defined from a `BasisState` object. It is useful for visualizing the varius basis functions in the chosen basis.
+
+# Arguments
+- `state::BasisState`: An object representing the basis function.
+- `xlim::Tuple{Float64,Float64}`: The range of x values for the wavefunction. Default is `(-2.0, 2.0)`.
+- `ylim::Tuple{Float64,Float64}`: The range of y values for the wavefunction. Default is `(-2.0, 2.0)`.
+- `b::Float64`: The point scalling factor. Default is 5.0.
+
+# Returns
+- `Psi2d::Array{Float64,2}`: The 2D wavefunction matrix for the given basis matrix.
+- `x_grid::Vector{<:Real}`: The x grid formed from the `xlim`.
+- `y_grid::Vector{<:Real}`: The y grid formed from the `ylim`.
+"""
 function wavefunction(state::BasisState; xlim =(-2.0,2.0), ylim=(-2.0,2.0), b=5.0) 
     let k = state.k, basis=state.basis      
-        #println(new_basis.dim)
         type = eltype(state.vec)
         #try to find a lazy way to do this
         dx = xlim[2] - xlim[1]
@@ -556,14 +683,27 @@ function wavefunction(state::BasisState; xlim =(-2.0,2.0), ylim=(-2.0,2.0), b=5.
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
         pts_grid = [SVector(x,y) for y in y_grid for x in x_grid]
         Psi::Vector{type} = basis_fun(basis,state.idx,k,pts_grid) 
-        #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
         return Psi2d, x_grid, y_grid
     end
 end
 
 #this can be optimized
+"""
+    compute_psi(state_bundle::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:EigenstateBundle}
 
+Computs the wavefunction Matrix on an x_grid and y_grid from an EigenstateBundle object. All the matrices in the state bundle are computed on the same grid.
+
+# Arguments
+- `state_bundle::S`: An object representing the bundle of eigenstate.
+- `x_grid::Vector{<:Real}`: A vector representing the x grid.
+- `y_grid::Vector{<:Real}`: A vector representing the y grid.
+- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
+- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the non-multithread implementation.
+
+# Returns
+- `Psi_bundle::Matrix{<:Real}`: A matrix containing the wavefunction for each state in the bundle on the given grid.
+"""
 function compute_psi(state_bundle::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:EigenstateBundle}
     let k = state_bundle.k_basis, basis=state_bundle.basis, billiard=state_bundle.billiard, X=state_bundle.X #basis is correct size
         sz = length(x_grid)*length(y_grid)
@@ -644,6 +784,8 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
         Psi_bundle::Matrix{Complex{T}} = compute_psi(state_bundle,x_grid,y_grid;inside_only=inside_only,memory_limit=memory_limit)
         # Reshape each column of Psi_bundle into a matrix
         Psi2d::Vector{Matrix{Complex{T}}} = [reshape(Psi, (nx, ny)) for Psi in eachcol(Psi_bundle)]
+        Psi2d, x_grid, y_grid = symmetrize_Psi(Psi2d, x_grid, y_grid, billiard, symmetries, fundamental_domain)
+        #=
         if !fundamental_domain
             if !isnothing(symmetries)
                 if all([sym isa Reflection for sym in symmetries])
@@ -683,6 +825,7 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
                 end
             end
         end
+        =#
         return Psi2d, x_grid, y_grid
     end
 end
@@ -725,7 +868,7 @@ end
 """
     wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 10.0e9) where {S<:AbsState, T<:Real}
 
-Constructs the wavefunction on fixed x and y grids of size `nx` and `ny` respectively. The wavefunction `Matrix` itself is constructed from an `Eigenstate` struct.
+Constructs the wavefunction on fixed x and y grids of size `nx` and `ny` respectively. The wavefunction `Matrix` itself is constructed from an `Eigenstate` struct. It is always constructed on the `fundamental_boundary`.
 
 # Arguments
 - `state::S`: The `Eigenstate` struct containing the wavefunction.
@@ -749,6 +892,8 @@ function wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 
         Psi::Vector{type} = compute_psi(state,x_grid,y_grid; inside_only=true, memory_limit=memory_limit) 
         #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
+        Psi2d, x_grid, y_grid = symmetrize_Psi(Psi2d, x_grid, y_grid, billiard, symmetries, false)
+        #=
         if ~false 
             if ~isnothing(symmetries)
                 if all([sym isa Reflection for sym in symmetries])
@@ -775,6 +920,7 @@ function wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 
                 end
             end
         end
+        =#
         return Psi2d, x_grid, y_grid
     end
 end
