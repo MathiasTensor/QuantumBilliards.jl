@@ -107,7 +107,7 @@ Arguments:
 - `p::T`: Momentum coordinate in phase space.
 
 Returns:
-- Husimi function value at (q, p).
+- `T`: Husimi function value at (q, p).
 """
 function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
     ss = s.-q
@@ -139,17 +139,17 @@ Arguments:
 - `ny`: Number of grid points in the momentum coordinate (p).
 
 Returns:
-- `H`: Husimi function matrix of size (ny, nx).
-- `qs`: Array of q values used in the grid.
-- `ps`: Array of p values used in the grid.
+- `H::Matrix{T}`: Husimi function matrix of size (ny, nx).
+- `qs::Vector{T}`: Array of q values used in the grid.
+- `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
     qs = range(0.0,stop=L,length = nx)
     ps = range(-1.0,stop=1.0,length = ny)
     H = zeros(T, ny, nx)
-    Threads.@threads for (idx_p, p) in enumerate(ps)
-        for (idx_q, q) in enumerate(qs)
-            H[idx_p, idx_q] = husimiAtPoint(k,s,u,L,q,p)
+    Threads.@threads for idx_p in eachindex(ps)
+        for idx_q in eachindex(qs)
+            H[idx_p, idx_q] = husimiAtPoint(k,s,u,L,qs[idx_q],ps[idx_p])
         end
     end
     return H./sum(H), qs, ps
