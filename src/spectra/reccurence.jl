@@ -34,17 +34,11 @@ function S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) whe
         local_recurrence_times[i] = Dict{Tuple{Int, Int}, Vector{Int}}()
         local_last_visit[i] = Dict{Tuple{Int, Int}, Int}()
     end
-
-    # Progress bar
     progress = Progress(max_collisions, desc="Processing collisions")
     counter = Threads.Atomic{Int}(0)
-
     Threads.@threads for collision in eachindex(bmap)
         s, p_coord = bmap[collision]
-        
         # Determine cell indices in the grid
-        #s_idx = findfirst(x -> x >= s, s_edges) - 1 # the previous one is therefore the wanted one
-        #p_idx = findfirst(x -> x >= p_coord, p_edges) - 1 # the previous one is therefore the wanted one
         s_idx = findfirst(x -> x >= s, s_edges)
         p_idx = findfirst(x -> x >= p_coord, p_edges)
 
@@ -58,8 +52,6 @@ function S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) whe
             thread_id = Threads.threadid() 
             # Calculate recurrence time if this cell was visited before on this thread
             if haskey(local_last_visit[thread_id], cell)
-                #recurrence_time = collision - local_last_visit[thread_id][cell]
-                #push!(get!(local_recurrence_times[thread_id], cell, []), recurrence_time)
                 last_time = local_last_visit[thread_id][cell]
                 if last_time !== nothing
                     recurrence_time = collision - last_time
@@ -220,13 +212,8 @@ function plot_S_heatmaps!(f::Figure, S_grids::Vector, s_edges::Vector, p_edges::
     col = 1
     heatmaps = []
     for idx in eachindex(S_grids) 
-        #S_grid = convert(Matrix{Float32}, S_grids[idx])
-        #s_edge = convert(Vector{Float32}, s_edges[idx])
-        #p_edge = convert(Vector{Float32}, p_edges[idx])
-
         ax = Axis(f[row, col], title="S-plot " * additional_texts[idx], xlabel="s", ylabel="p")
         hmap = heatmap!(ax, s_edges[idx][1:end-1], p_edges[idx][1:end-1], S_grids[idx]; colormap=Reverse(:gist_heat), nan_color=:white, colorrange=(0, 15))
-
         push!(heatmaps, hmap)
         col += 1
         if col > max_cols
@@ -235,5 +222,4 @@ function plot_S_heatmaps!(f::Figure, S_grids::Vector, s_edges::Vector, p_edges::
         end
     end
     colorbar = Colorbar(f[row + 1, 1:max_cols], heatmaps[1], vertical=:false, ticks=0:1:15)
-    #rowgap!(f.layout, row, Relative(1/10))
 end
