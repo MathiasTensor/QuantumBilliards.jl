@@ -16,7 +16,7 @@ A struct representing the case where we wish to visualize the Gaussian distribut
 - `eps::T`: The precision of the wavevector from k.
 - `basis<:AbsBasis`: The underlying basis we will construct
 """
-struct GaussianRandomState{K,T} <: AbsState where {K<:Number, T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+struct GaussianRandomState{K,T,Bi,Ba} <: AbsState where {K<:Number, T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
     k::K
     billiard::Bi
     k_basis::K

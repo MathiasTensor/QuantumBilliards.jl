@@ -2,6 +2,11 @@
 #include("../utils/billiardutils.jl")
 #include("../utils/typeutils.jl")
 
+"""
+    BasisState{K,T,Ba} <: StationaryState 
+
+Constructs a 
+"""
 struct BasisState{K,T,Ba} <: StationaryState 
     k::K
     k_basis::K
