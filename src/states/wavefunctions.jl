@@ -8,7 +8,19 @@ using StaticArrays, JLD2, ProgressMeter
 
 ## NEW ##
 
+"""
+    billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
 
+Given <:AbsBilliard object, computes the points on the boundary of the billiard that are equidistant from each other, with the total number of points being N_polygon_checks.
+    
+# Arguments
+- `billiard`: A billiard object with a fundamental_boundary or full_boundary field.
+- `N_polygon_checks`: The total number of points to be distributed along the boundary.
+- `fundamental_domain::Bool=true`: A flag indicating whether to compute points on the fundamental or full boundary.
+
+# Returns
+- `Vector{Vector{SVector{2,<:Real}}}`: For each crv in the billiard boundary (chosen by the flag fundamental_domain) form a Vector{SVector{2,<:Real}} object containing the discretization points for that curve. 
+"""
 function billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
     if fundamental_domain
         boundary = billiard.fundamental_boundary
@@ -33,12 +45,37 @@ end
 
 
 # Helper function to check if a point is left of an edge
+"""
+    is_left(p1::SVector{2,T}, p2::SVector{2,T}, pt::SVector{2,T}) where {T<:Real}
+
+Determines whether the point `pt` is to the left of the line segment defined by `p1` and `p2`.
+
+# Arguments
+- `p1::SVector{2,T}`: The first point defining the line segment.
+- `p2::SVector{2,T}`: The second point defining the line segment.
+- `pt::SVector{2,T}`: The point to check.
+
+# Returns
+- `T`: + or - value depending if the point is to the left or right of the line segment.
+"""
 function is_left(p1::SVector{2,T}, p2::SVector{2,T}, pt::SVector{2,T}) where {T<:Real}
     return (p2[1] - p1[1]) * (pt[2] - p1[2]) - (pt[1] - p1[1]) * (p2[2] - p1[2])
 end
 
 
 # Winding number algorithm to check if a point is inside a polygon
+"""
+    is_point_in_polygon(polygon::Vector{SVector{2,T}}, point::SVector{2,T})::Bool where T
+
+Determines whether a single `point` is inside a billiard `polygon` formed by it's boundary points. It implements a winding number algorithm for the checking.
+
+# Arguments
+- `polygon::Vector{SVector{2,T}}`: A vector of points representing the boundary of the polygon.
+- `point::SVector{2,T}`: A point to check if it's inside the polygon.
+
+# Returns
+- `Bool`: `true` if the point is inside the polygon, `false` otherwise.
+"""
 function is_point_in_polygon(polygon::Vector{SVector{2,T}}, point::SVector{2,T})::Bool where T
     winding_number = 0
     num_points = length(polygon)
@@ -59,7 +96,20 @@ function is_point_in_polygon(polygon::Vector{SVector{2,T}}, point::SVector{2,T})
     return winding_number != 0
 end
 
+"""
+    points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
 
+Determines whether the `pts` are in the billiard polygon formed from `N_polygon_check` points.
+
+# Arguments
+- `pts::Vector{SVector{2,T}}`: A vector of points to check.
+- `billiard::Bi`: An `AbsBilliard` struct representing the billiard.
+- `N_polygon_checks::Int`: The number of points to sample for the entire billiard polygon.
+- `fundamental_domain::Bool=true`: If `true`, use the fundamental domain for the billiard polygon.
+
+# Returns
+- `Vector{Bool}`: A vector of `true` if the corresponding point in `pts` is in the billiard polygon, `false` otherwise.
+"""
 function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
     # Get the polygon points from the billiard boundary
     polygon_xy_vectors = billiard_polygon(billiard, N_polygon_checks; fundamental_domain=fundamental_domain)
@@ -71,14 +121,24 @@ function points_in_billiard_polygon(pts::Vector{SVector{2,T}}, billiard::Bi, N_p
     return mask
 end
 
-
 ## NEW ##
 
+"""
+    compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:AbsState}
 
+Constructs the wavefunction as a `Matrix` from an `Eigenstate` struct on a grid of vectors `x_grid` and `y_grid`.
 
+# Arguments
+- `state::S`: An `Eigenstate` struct with a `vec` field representing the wavefunction, a `k_basis` field representing the wavefunction basis, a `basis` field representing the basis set, a `billiard` field representing the billiard.
+- `x_grid::Vector`: A vector of `x` coordinates on which to evaluate the wavefunction.
+- `y_grid::Vector`: A vector of `y` coordinates on which to evaluate the wavefunction.
+- `inside_only::Bool` (optional, default `true`): If `true`, only evaluate the wavefunction inside the billiard.
+- `memory_limit::Real` (optional, default `10.0e9`): The maximum memory limit in bytes to use for constructing the wavefunction. If the memory required exceeds this multithreading is disabled.
 
-
-function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:AbsState}
+# Returns
+- `Psi::Matrix`: A `Matrix` representing the wavefunction evaluated on the grid.
+"""
+function compute_psi(state::S, x_grid::Vector, y_grid::Vector; inside_only=true, memory_limit = 10.0e9) where {S<:AbsState}
     let vec = state.vec, k = state.k_basis, basis=state.basis, billiard=state.billiard, eps=state.eps #basis is correct size
         sz = length(x_grid)*length(y_grid)
         pts = collect(SVector(x,y) for y in y_grid for x in x_grid)
@@ -124,7 +184,26 @@ end
 
 
 # INTERNAL FOR COMPUTING WAVEFUNCTIONS FROM STATE DATA WHERE WE TAKE THE ONLY THE VECTOR OF COEFFICIENTS OF THE LINEAR EXPANSIONS AND THE K EIGENVALUE
-function compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
+"""
+    compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
+
+Computs the wavefunction as a `Matrix` on a grid formed by the vectors `x_grid` and `y_grid`. This is a lower level function for wrappers that require the construction of a wavefunction from a vector of linear expansion coefficients and being constructed on a commom grid.
+
+# Arguments
+- `vec::Vector{T}`: A vector of coefficients representing the linear expansion coefficients of the wavefunction.
+- `k::T`: The k-eigenvalue at which the wavefunction is evaluated.
+- `billiard<:AbsBilliard`: An instance of the abstract billiard type representing the physical billiard.
+- `basis<:AbsBasis`: An instance of the abstract basis type representing the linear expansion basis.
+- `x_grid::Vector{T}`: A vector of x-coordinates at which the wavefunction should be evaluated.
+- `y_grid::Vector{T}`: A vector of y-coordinates at which the wavefunction should be evaluated.
+# Keyword arguments
+- `inside_only::Bool=true`: If true, only points inside the billiard are considered for evaluation.
+- `memory_limit=10.0e9`: A limit on the memory usage for the computation in bytes. If the memory usage exceeds this limit, multithreading is disabled for the matrix construction.
+
+# Returns
+- `Psi::Matrix{T}`: A matrix representing the wavefunction evaluated on the grid formed by the vectors x_grid and y_grid.
+"""
+function compute_psi(vec::Vector, k::T, billiard::Bi, basis::Ba, x_grid::Vector, y_grid::Vector; inside_only=true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}
     eps = set_precision(vec[1])
     dim = length(vec) # only way to get dim of basis implicitely
     dim = rescale_rpw_dimension(basis, dim) # hack for rpw
@@ -247,11 +326,9 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                     x_axis = 0.0
                     y_axis = 0.0
                     if hasproperty(billiard, :x_axis)
-                        #println(nameof(typeof(billiard)), " has the :x_axis reflection")
                         x_axis = billiard.x_axis
                     end
                     if hasproperty(billiard, :y_axis)
-                        #println(nameof(typeof(billiard)), " has the :y_axis reflection")
                         y_axis = billiard.y_axis
                     end
                     Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
@@ -364,11 +441,9 @@ function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_
                 x_axis = 0.0
                 y_axis = 0.0
                 if hasproperty(billiard, :x_axis)
-                    #println(nameof(typeof(billiard)), " has the :x_axis reflection")
                     x_axis = billiard.x_axis
                 end
                 if hasproperty(billiard, :y_axis)
-                    #println(nameof(typeof(billiard)), " has the :y_axis reflection")
                     y_axis = billiard.y_axis
                 end
                 Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
@@ -488,6 +563,7 @@ function wavefunction(state::BasisState; xlim =(-2.0,2.0), ylim=(-2.0,2.0), b=5.
 end
 
 #this can be optimized
+
 function compute_psi(state_bundle::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9) where {S<:EigenstateBundle}
     let k = state_bundle.k_basis, basis=state_bundle.basis, billiard=state_bundle.billiard, X=state_bundle.X #basis is correct size
         sz = length(x_grid)*length(y_grid)
@@ -530,6 +606,23 @@ function compute_psi(state_bundle::S, x_grid, y_grid; inside_only=true, memory_l
 end
 
 # NEW STATE BUNDLE ONE; NEEDS FURTHER TESTING
+"""
+    wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_domain=true, memory_limit=10.0e9) where {S<:EigenstateBundle}
+
+Construct the wavefunction matrices from an EigenstateBundle on a common grid. Useful for a smaller number of wavefunctions.
+
+# Arguments
+- `state_bundle::S`: An object representing the bundle of eigenstates.
+- `b`: The point scalling factor. Default is 5.0.
+- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
+- `fundamental_domain::Bool`: If true, the wavefunction is only constructed in the fundamental domain. Default is true.
+- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the non-multithreaded implementation.
+
+# Returns
+- `Psi2ds::Vector{Matrix{<:Real}}`: A vector of `Matrix` objects containing the wavefunction for each state in the bundle.
+- `x_grid::Vector{<:Real}`: A vector of x grid points common for the entire bundle.
+- `y_grid::Vector{<:Real}`: A vector of y grid points common for the entire bundle.
+"""
 function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_domain=true, memory_limit=10.0e9) where {S<:EigenstateBundle}
     let
         k = state_bundle.k_basis
@@ -548,13 +641,7 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
         ny = max(round(Int, k * dy * b / (2 * pi)), 512)
         x_grid::Vector{T} = collect(range(xlim..., nx))
         y_grid::Vector{T} = collect(range(ylim..., ny))
-        Psi_bundle::Matrix{Complex{T}} = compute_psi(
-            state_bundle,
-            x_grid,
-            y_grid;
-            inside_only=inside_only,
-            memory_limit=memory_limit
-        )
+        Psi_bundle::Matrix{Complex{T}} = compute_psi(state_bundle,x_grid,y_grid;inside_only=inside_only,memory_limit=memory_limit)
         # Reshape each column of Psi_bundle into a matrix
         Psi2d::Vector{Matrix{Complex{T}}} = [reshape(Psi, (nx, ny)) for Psi in eachcol(Psi_bundle)]
         if !fundamental_domain
@@ -635,6 +722,21 @@ end
 
 
 ### INTERNAL - ONLY FOR OTOC WHERE WE NEED BOTH WAVEFUNCTION MATRICES OF SAME SIZE
+"""
+    wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 10.0e9) where {S<:AbsState, T<:Real}
+
+Constructs the wavefunction on fixed x and y grids of size `nx` and `ny` respectively. The wavefunction `Matrix` itself is constructed from an `Eigenstate` struct.
+
+# Arguments
+- `state::S`: The `Eigenstate` struct containing the wavefunction.
+- `nx::T`: The number of grid points in the x direction.
+- `ny::T`: The number of grid points in the y direction.
+- `b::Real=5.0`: The point scaling factor. Default is 5.0.
+- `memory_limit::Real=10.0e9`: The memory limit for multithreaded wavefunction construction. Default is `10.0e9`. If surpassed the `Matrix` is conctructed row wise in a non-multithreaded for loop.
+
+# Returns
+- `Psi::Matrix{T}`: The 2D wavefunction matrix on the fixed grid.
+"""
 function wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 10.0e9) where {S<:AbsState, T<:Real}
     let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries       
         #println(new_basis.dim)
@@ -653,11 +755,9 @@ function wavefunction_fixed_grid_(state::S, nx::T, ny::T; b=5.0, memory_limit = 
                     x_axis = 0.0
                     y_axis = 0.0
                     if hasproperty(billiard, :x_axis)
-                        #println(nameof(typeof(billiard)), " has the :x_axis reflection")
                         x_axis = billiard.x_axis
                     end
                     if hasproperty(billiard, :y_axis)
-                        #println(nameof(typeof(billiard)), " has the :y_axis reflection")
                         y_axis = billiard.y_axis
                     end
                     Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries; x_axis=x_axis, y_axis=y_axis)
