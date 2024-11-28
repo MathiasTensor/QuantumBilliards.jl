@@ -114,11 +114,13 @@ function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, ba
     ps_return = Vector{Vector}(undef, length(ks))
     qs_return = Vector{Vector}(undef, length(ks))
     ks, us, s_vals, _ = boundary_function(state_data, billiard, basis; b=b)
+    p = Progress(length(ks); desc="Constructing husimi matrices...")
     Threads.@threads for i in eachindex(ks) 
         H, qs, ps = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
         Hs_return[i] = H
         ps_return[i] = ps
         qs_return[i] = qs
+        next!(p)
     end
     return Hs_return, ps_return, qs_return
 end
@@ -143,11 +145,13 @@ function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; 
     Hs_return = Vector{Matrix}(undef, length(ks))
     ps_return = Vector{Vector}(undef, length(ks))
     qs_return = Vector{Vector}(undef, length(ks))
+    p = Progress(length(ks); desc="Constructing husimi matrices...")
     Threads.@threads for i in eachindex(ks) 
         H, qs, ps = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
         Hs_return[i] = H
         ps_return[i] = ps
         qs_return[i] = qs
+        next!(p)
     end
     return Hs_return, ps_return, qs_return
 end
