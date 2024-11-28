@@ -338,8 +338,11 @@ Computes the wavefunction matrix and the x and y grids for heatmap plotting. It 
 """
 function wavefunction(vec::Vector, k::T, billiard::Bi, basis::Ba; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis, T<:Real}     
     dim = length(vec)
+    println("Starting dim: ", dim)
     dim = rescale_rpw_dimension(basis, dim)
+    println("Rescaled rpw dim: ", dim)
     basis = resize_basis(basis, billiard, dim, k)
+    println("New basis dim: ", dim)
     symmetries = basis.symmetries
     type = eltype(vec)
     L = billiard.length
