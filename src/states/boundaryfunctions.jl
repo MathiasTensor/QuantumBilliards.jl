@@ -16,34 +16,6 @@ function regularize!(u)
     end
 end
 
-#=
-function boundary_function(state::S; b=5.0) where {S<:AbsState}
-    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
-        type = eltype(vec)
-        boundary = billiard.full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5],crv_lengths)
-        L = billiard.length
-        N = max(round(Int, k*L*b/(2*pi)), 512)
-        pts = boundary_coords(billiard, sampler, N)
-        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        nx = getindex.(pts.normal,1)
-        ny = getindex.(pts.normal,2)
-        dX = nx .* dX 
-        dY = ny .* dY
-        U::Array{type,2} = dX .+ dY
-        u::Vector{type} = U * vec
-        regularize!(u)
-        #compute the boundary norm
-        w = dot.(pts.normal, pts.xy) .* pts.ds
-        integrand = abs2.(u) .* w
-        norm = sum(integrand)/(2*k^2)
-        #println(norm)
-        return u, pts.s::Vector{type}, norm
-    end
-end
-=#
-
 """
     shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) where {Bi<:AbsBilliard}
 
@@ -81,13 +53,41 @@ function shift_starting_arclength(billiard::Bi, u::Vector{T}, pts::BoundaryPoint
 end
 
 # Wrapper for multi u case
-function shift_starting_arclength(billiard::Bi, us::Vector{Vector{T}}, pts::BoundaryPoints{T}) where {Bi<:AbsBilliard, T<:Real}
-    us_return = Vector{Vector{T}}(undef, length(us))
-    pts = shift_starting_arclength(billiard, us[1], pts)[1]
-    for (i,u) in eachindex(us)
-        us_return[i] = shift_starting_arclength(billiard,u,pts)[1]
+"""
+    shift_starting_arclength(billiard::Bi, u_bundle::Matrix, pts::BoundaryPoints) where {Bi<:AbsBilliard}
+
+Wrapper for the arclength shift when we have a StateBundle as the input to the boundary_function. This is the an efficient way to handle many boundary u functions.
+
+# Arguments
+- `billiard::Bi<:AbsBilliard`: the billiard object.
+- `u_bundle::Matrix`: the boundary function matrix obtained from the StateBundle input.
+- `pts::BoundaryPoints`: the struct containing the boundary points on the full_boundary.
+
+# Returns
+- `BoundaryPoints`: the struct containing the boundary points on the full_boundary with the starting point shifted.
+- `u_bundle::Matrix`: the boundary function matrix that is shifted.
+"""
+function shift_starting_arclength(billiard::Bi, u_bundle::Matrix, pts::BoundaryPoints) where {Bi<:AbsBilliard}
+    if hasproperty(billiard, :shift_s)
+        shift_s = billiard.shift_s
+        L_effective = maximum(pts.s)
+        start_index = argmin(abs.(pts.s .- shift_s))
+        shifted_s = circshift(pts.s, -start_index + 1)
+        shifted_xy = circshift(pts.xy, -start_index + 1)
+        shifted_normal = circshift(pts.normal, -start_index + 1)
+        shifted_ds = circshift(pts.ds, -start_index + 1)
+        s_offset = shifted_s[1]
+        shifted_s .= shifted_s .- s_offset
+        shifted_s .= mod.(shifted_s, L_effective)
+        shifted_u_bundle = similar(u_bundle)
+        for i in 1:size(u_bundle, 2)
+            shifted_u_bundle[:, i] .= circshift(u_bundle[:, i], -start_index + 1)
+        end
+        pts = BoundaryPoints(shifted_xy, shifted_normal, shifted_s, shifted_ds)
+        return pts, shifted_u_bundle
+    else
+        return pts, u_bundle
     end
-    return pts, us_return
 end
 
 """
@@ -152,40 +152,9 @@ function boundary_function(state::S; b=5.0) where {S<:AbsState}
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
         norm = sum(integrand)/(2*k^2)
-        #println(norm)
         return u, pts.s::Vector{type}, norm
     end
 end
-
-#=
-function boundary_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
-    let X = state_bundle.X, k_basis = state_bundle.k_basis, ks = state_bundle.ks, new_basis = state_bundle.basis, billiard=state_bundle.billiard 
-        type = eltype(X)
-        boundary = billiard.full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5],crv_lengths)
-        L = billiard.length
-        N = max(round(Int, k_basis*L*b/(2*pi)), 512)
-        pts = boundary_coords(billiard, sampler, N)
-        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        nx = getindex.(pts.normal,1)
-        ny = getindex.(pts.normal,2)
-        dX = nx .* dX 
-        dY = ny .* dY
-        U::Array{type,2} = dX .+ dY
-        u_bundle::Matrix{type} = U * X
-        for u in eachcol(u_bundle)
-            regularize!(u)
-        end
-        #compute the boundary norm
-        w = dot.(pts.normal, pts.xy) .* pts.ds
-        norms = [sum(abs2.(u_bundle[:,i]) .* w)/(2*ks[i]^2) for i in eachindex(ks)]
-        #println(norm)
-        us::Vector{Vector{type}} = [u for u in eachcol(u_bundle)]
-        return us, pts.s, norms
-    end
-end
-=#
 
 """
     boundary_function(state::S; b=5.0) where {S<:AbsState}
@@ -218,15 +187,14 @@ function boundary_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
         dY = ny .* dY
         U::Array{type,2} = dX .+ dY
         u_bundle::Matrix{type} = U * X
+        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
         for u in eachcol(u_bundle)
             regularize!(u)
             u = apply_symmetries_to_boundary_function(u, new_basis.symmetries)
         end
-        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
-        #compute the boundary norm
+        pts, u_bundle = shift_starting_arclength(billiard, u_bundle, pts)
         w = dot.(pts.normal, pts.xy) .* pts.ds
         norms = [sum(abs2.(u_bundle[:,i]) .* w)/(2*ks[i]^2) for i in eachindex(ks)]
-        #println(norm)
         us::Vector{Vector{type}} = [u for u in eachcol(u_bundle)]
         return us, pts.s, norms
     end
@@ -422,80 +390,6 @@ function momentum_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
     return mfs, ks
 end
 
-
-
-
-
-
-###### ADDITIONS ########
-
-#=
-function construct_full_boundary_for_boundary_function(billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    symmetries = basis.symmetries # get symmetries, Vector but could be nothing
-    k = basis.k
-    L = billiard.length
-    if isnothing(symmetries)
-        boundary = billiard.full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        N = max(round(Int, k*L*b/(2*pi)), 512)
-        sampler = FourierNodes([2,3,5],crv_lengths)
-        pts = boundary_coords(billiard, sampler, N)
-        return pts # break here since no symmetries
-    else
-        boundary = billiard.desymmetrized_full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        N = max(round(Int, k*L*b/(2*pi)), round(Int, 512/length(symmetries))) # same num of points as with no symmetries
-        sampler = FourierNodes([2,3,5],crv_lengths)
-        pts = boundary_coords(billiard, sampler, N)
-    end
-    
-    # Check if the symmetries involve reflections
-    if all([sym isa Reflection for sym in symmetries])
-        # Initialize symmetry axes
-        x_axis = 0.0
-        y_axis = 0.0
-        if hasproperty(billiard, :x_axis)
-            x_axis = billiard.x_axis
-        end
-        if hasproperty(billiard, :y_axis)
-            y_axis = billiard.y_axis
-        end
-        pts = [(x - x_axis, y - y_axis) for (x, y) in pts] # Adjust points for the shifted axes
-        reflected_pts = []
-        for sym in symmetries
-            if sym.axis == :x_axis
-                # Reflect across x-axis
-                reflected_pts = vcat(reflected_pts, [(x, -y) for (x, y) in pts])
-            elseif sym.axis == :y_axis
-                # Reflect across y-axis
-                reflected_pts = vcat(reflected_pts, [(-x, y) for (x, y) in pts])
-            elseif sym.axis == :origin
-                # Reflect over both axes (x -> -x, y -> -y)
-                reflected_pts = vcat(reflected_pts, [(-x, -y) for (x, y) in pts])
-            end
-        end
-
-        # Combine original and reflected points
-        pts = vcat(pts, reflected_pts)
-
-        # Remove duplicate points and sort
-        pts = unique(pts)
-        pts = sort(pts, by = x -> (x[1], x[2]))
-
-        # Shift back to the original axes
-        pts = [(x + x_axis, y + y_axis) for (x, y) in pts]
-    end
-
-    return pts
-end
-
-=#
-
-
-
-
-
-
 # Helper for momentum function calculations. We need this one since we will require much point information like xy, s,...
 """
     setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
@@ -542,31 +436,6 @@ function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
         return u, pts, k
     end
 end
-
-#= ORIGINAL
-function setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
-    let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
-        type = eltype(vec)
-        boundary = billiard.full_boundary
-        crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5], crv_lengths)
-        L = billiard.length
-        N = max(round(Int, k*L*b/(2*pi)), 512)
-        # Call boundary_coords to get pts
-        pts = boundary_coords(billiard, sampler, N)
-        # Compute U as in boundary_function
-        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy)
-        nx = getindex.(pts.normal,1)
-        ny = getindex.(pts.normal,2)
-        dX = nx .* dX
-        dY = ny .* dY
-        U = dX .+ dY
-        u_values = U * vec
-        regularize!(u_values)
-        return u_values, pts, k
-    end
-end
-=#
 
 """
     momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
