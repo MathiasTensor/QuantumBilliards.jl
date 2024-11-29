@@ -247,7 +247,7 @@ function husimiOnGridOptimized(
 
     # Preallocate arrays to avoid repeated allocations
     ss = similar(s)
-    window = BitVector(N)
+    window = abs.(ss).<width
     w = similar(s)
     cr = similar(s)
     ci = similar(s)
