@@ -177,7 +177,7 @@ function husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::I
         @views ui_window = u[idx_start:idx_end]
         @views dsi_window = ds[idx_start:idx_end]
         si_window = si[1:len_window]
-        @inbounds @. si_window = s_window - q
+        @inbounds @. si_window = s_window-q
         @inbounds @. w[1:len_window] = norm_factor*exp.(-0.5*k*si_window.^2).*dsi_window
         for i_p = 1:ny
             p = ps[i_p]
