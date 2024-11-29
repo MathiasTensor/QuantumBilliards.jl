@@ -300,7 +300,7 @@ function husimiOnGridOptimized(
         @inbounds H ./= total
     end
 
-    return H, qs, ps
+    return H', qs, ps
 end
 
 """
