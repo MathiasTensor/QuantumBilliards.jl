@@ -181,6 +181,7 @@ function husimiOnGridOptimized(
     - `qs`: Array of q values used in the grid.
     - `ps`: Array of p values used in the grid.
     """
+    #=
     # Construct grids for qs and ps
     qs = range(0.0,stop=L,length=nx)
     ps = range(-1.0,stop=1.0,length=ny)
@@ -225,6 +226,69 @@ function husimiOnGridOptimized(
     abs_h_squared = reshape(abs_h_squared, nx, ny)  # (ny, nx)
     H = abs_h_squared/(2*π*k)
     return H./sum(H),qs,ps
+    =#
+    qs = range(0.0, stop = L, length = nx)
+    ps = range(-1.0, stop = 1.0, length = ny)
+
+    N = length(s)
+
+    # Compute integration weights ds
+    ds = diff(s)
+    last_ds = L + s[1] - s[end]
+    ds = vcat(ds, last_ds)  # Now ds has length N
+
+    # Precompute constants
+    sqrt_k_pi = sqrt(k / π)
+    norm_factor = sqrt(sqrt_k_pi)
+    width = 4 / sqrt(k)
+
+    H = zeros(Float64, ny, nx)
+
+    # Precompute k * s
+    ks = k .* s
+
+    # Multithreaded loop over ps
+    Threads.@threads for i_p = 1:ny
+        p = ps[i_p]
+        kp = k * p
+        # Precompute cos(kp * s) and sin(kp * s)
+        cos_kp_s = cos.(kp .* s)
+        sin_kp_s = sin.(kp .* s)
+
+        for i_q = 1:nx
+            q = qs[i_q]
+            ss = s .- q
+            # Apply window function
+            window = abs.(ss) .< width
+            idx = findall(window)
+
+            if isempty(idx)
+                H[i_p, i_q] = 0.0
+                continue
+            end
+
+            si = ss[idx]
+            ui = u[idx]
+            dsi = ds[idx]
+
+            w = norm_factor .* exp.(-0.5 * k .* si .* si) .* dsi
+            cr = w .* cos_kp_s[idx]
+            ci = w .* sin_kp_s[idx]
+
+            h_real = sum(cr .* ui)
+            h_imag = -sum(ci .* ui)  # Negative sign due to conjugation
+
+            H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
+        end
+    end
+
+    # Normalize H
+    total = sum(H)
+    if total != 0.0
+        H /= total
+    end
+
+    return H, qs, ps
 end
 
 """
