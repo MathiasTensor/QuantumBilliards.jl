@@ -184,7 +184,7 @@ function plot_gap_ratios(ax::Axis, energies::Vector{T}; nbins::Int=50, μ_c::Uni
     
     if !isnothing(μ_c)
         mixed = [P_r_normalized(r,μ_c) for r in r_values]
-        lines!(ax, r_values, mixed, label="m=2 components, rho=$(round(μ_c; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+        lines!(ax, r_values, mixed, label="Theory, ρ=$(round(μ_c; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
     end
     xlims!(ax, extrema(r_values))
     axislegend(ax, position=:rt)
