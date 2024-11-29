@@ -176,7 +176,7 @@ function plot_gap_ratios(ax::Axis, energies::Vector{T}; nbins::Int=50, μ_c::Uni
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
     bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
     #scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
-    barplot!(ax, bin_centers, bin_counts, label="Numerical", color=:lightblue, transparency=0.1, alpha=0.3, width=diff(hist.edges[1])[1], gap=0.0)
+    barplot!(ax, bin_centers, bin_counts, label="Numerical", color=:lightblue, transparency=0.1, alpha=0.1, width=diff(hist.edges[1])[1], gap=0.0, strokecolor=:black, strokewidth=1)
     r_values = range(0, stop=maximum(bin_centers), length=1000)
     integrable = [P_integrable(r) for r in r_values]
     chaotic = [P_chaotic(r,1) for r in r_values] # GOE 
