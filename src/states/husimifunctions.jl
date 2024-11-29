@@ -305,30 +305,22 @@ function husimiOnGridOptimized(
     sqrt_k_pi = sqrt(k/π)
     norm_factor = sqrt(sqrt_k_pi)
     width = 4/sqrt(k)
-    H = zeros(T, ny, nx)
+    H = zeros(T,ny,nx)
     Threads.@threads for i_q = 1:nx
         q = qs[i_q]
         si = similar(s)
         w = similar(s)
         cr = similar(s)
         ci = similar(s)
-        idx_start = searchsortedfirst(s, q - width) # Find indices within the window 
-        idx_end = searchsortedlast(s, q + width)
-
-        # Handle case if no indexes
-        if idx_start > idx_end || idx_start > N 
-            @inbounds H[:, i_q] .= 0.0
-            println("No indexes found")
-            continue
-        end
-
+        idx_start = searchsortedfirst(s,q-width) # Find indices within the window 
+        idx_end = searchsortedlast(s,q+width)
         len_window = idx_end - idx_start + 1
         @views s_window = s[idx_start:idx_end] # Extract windowed data
         @views ui_window = u[idx_start:idx_end]
         @views dsi_window = ds[idx_start:idx_end]
         si_window = si[1:len_window]
         @inbounds @. si_window = s_window - q
-        @inbounds @. w[1:len_window] = norm_factor * exp.(-0.5*k*si_window.^2).*dsi_window
+        @inbounds @. w[1:len_window] = norm_factor*exp.(-0.5*k*si_window.^2).*dsi_window
         for i_p = 1:ny
             p = ps[i_p]
             kp = k*p
@@ -339,17 +331,7 @@ function husimiOnGridOptimized(
             @inbounds H[i_p,i_q] = (h_real^2+h_imag^2)/(2*π*k)
         end
     end
-    #=
-    # Normalize H
-    total = sum(H)
-    if total != 0.0
-        @inbounds H ./= total
-    end
-
-    # Transpose H if needed
-    H = H'  # Transpose to match desired dimensions
-    =#
-    return H'./sum(H), qs, ps
+    return H'./sum(H),qs,ps
 end
 
 """
