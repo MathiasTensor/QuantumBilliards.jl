@@ -110,6 +110,7 @@ Compues the correlation matrix Cₙₘ for all the Husimi functions in each bin.
 - `Dict{T, Float64}`: Dictionary with bin centers as keys and the corresponding average correlation matrix value as values. If there are less than 2 Husimi functions in a bin, the average correlation is NaN. To handle this we enforce the Float64 return type.
 """
 function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T, Vector{Int}}) where {T<:Real}
+    #=
     avg_correlation_per_bin = Dict{T, Float64}()
     bin_centers = collect(keys(binned_indices))
     lock = ReentrantLock()
@@ -138,6 +139,47 @@ function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T,
         end
     end
     return avg_correlation_per_bin
+    =#
+    # Create an atomic-safe dictionary to store results
+    avg_correlation_per_bin = Dict{T, Atomic{Float64}}()
+    bin_centers = collect(keys(binned_indices))
+
+    # Initialize dictionary with atomic values
+    for bin_center in bin_centers
+        avg_correlation_per_bin[bin_center] = Atomic{Float64}(NaN)
+    end
+
+    # Multithreading
+    Threads.@threads for idx in eachindex(bin_centers)
+        bin_center = bin_centers[idx]
+        indices = binned_indices[bin_center]
+        n = length(indices)
+
+        if n < 2
+            # Less than 2 elements means no pairwise correlations
+            avg_correlation_per_bin[bin_center][] = NaN
+        else
+            # Compute all pairwise correlations
+            correlations = Float64[]
+            for i = 1:(n-1)
+                idx_i = indices[i]
+                H_i = Hs[idx_i]
+                for j = (i+1):n
+                    idx_j = indices[j]
+                    H_j = Hs[idx_j]
+                    c = correlation_matrix(H_i, H_j) # Assuming this function exists
+                    push!(correlations, c)
+                end
+            end
+            local_avg_correlation = mean(correlations)
+
+            # Atomically update the result
+            avg_correlation_per_bin[bin_center][] = local_avg_correlation
+        end
+    end
+
+    # Convert Atomic values back to Float64 for final results
+    return Dict(bin_center => avg_correlation_per_bin[bin_center][] for bin_center in bin_centers)
 end
 
 """
