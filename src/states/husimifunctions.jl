@@ -307,7 +307,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
         Hs_list[i] = H
         next!(p)
     end
-    return Hs_list,ps,qs
+    return Hs_list,collect(ps),collect(qs)
 end
 
 """
