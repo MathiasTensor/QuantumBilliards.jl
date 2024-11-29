@@ -140,50 +140,54 @@ function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T,
     end
     return avg_correlation_per_bin
     =#
-    # Create an atomic-safe dictionary to store results
-    # Thread-local storage for intermediate results
-    thread_results = Vector{Dict{T, Float64}}(undef, Threads.nthreads())
-    for t in 1:Threads.nthreads()
-        thread_results[t] = Dict{T, Float64}()
-    end
+    bin_centers = collect(keys(binned_indices))
+    n_bins = length(bin_centers)
 
-    # Multithreading
-    Threads.@threads for bin_center in keys(binned_indices)
+    # Preallocate an array to store average correlations
+    avg_correlations = Vector{Float64}(undef, n_bins)
+
+    # Multithreading over bins
+    Threads.@threads for idx in 1:n_bins
+        bin_center = bin_centers[idx]
         indices = binned_indices[bin_center]
         n = length(indices)
 
-        # Skip bins with fewer than 2 elements
         if n < 2
+            # If fewer than 2 matrices, set average correlation to NaN
+            avg_correlations[idx] = NaN
             continue
         end
 
+        # Preallocate correlations array
+        n_corr = n * (n - 1) ÷ 2  # Number of pairwise correlations
+        correlations = Vector{Float64}(undef, n_corr)
+        idx_corr = 1
+
         # Compute all pairwise correlations
-        correlations = Float64[]
-        for i in 1:(n-1)
+        for i in 1:(n - 1)
             idx_i = indices[i]
             H_i = Hs[idx_i]
-            for j in (i+1):n
+            for j in (i + 1):n
                 idx_j = indices[j]
                 H_j = Hs[idx_j]
-                c = correlation_matrix(H_i, H_j) # Assuming this function exists
-                push!(correlations, c)
+                c = correlation_matrix(H_i, H_j)  # Assuming this function exists
+                correlations[idx_corr] = c
+                idx_corr += 1
             end
         end
-        local_avg_correlation = mean(correlations)
 
-        # Store result in thread-local dictionary
-        thread_results[Threads.threadid()][bin_center] = local_avg_correlation
+        # Compute the average correlation for this bin
+        avg_correlations[idx] = mean(correlations)
     end
 
-    # Combine thread-local results into a single dictionary
-    final_results = Dict{T, Float64}()
-    for t in 1:Threads.nthreads()
-        for (bin_center, avg_correlation) in thread_results[t]
-            final_results[bin_center] = avg_correlation
-        end
+    # Construct the final dictionary mapping bin centers to average correlations
+    avg_correlation_per_bin = Dict{T, Float64}()
+    for idx in 1:n_bins
+        bin_center = bin_centers[idx]
+        avg_correlation_per_bin[bin_center] = avg_correlations[idx]
     end
 
-    return final_results
+    return avg_correlation_per_bin
 end
 
 """
