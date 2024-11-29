@@ -171,7 +171,7 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
             H[idx_q, idx_p] = husimiAtPoint(k,s,u,L,qs[idx_q],ps[idx_p])
         end
     end
-    
+    return H./sum(H),qs,ps
     #=
     Threads.@threads for idx_p in eachindex(ps)
         p = ps[idx_p]
@@ -184,6 +184,76 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     end
     return H./sum(H),qs,ps
     =#
+end
+
+function husimiOnGridOptimized(
+    k::Real,
+    s::AbstractVector{T},
+    u::AbstractVector{T},
+    L::Real,
+    nx::Int,
+    ny::Int,
+) where {T<:Real}
+    """
+    Evaluates the Poincaré-Husimi function on a grid using vectorized operations.
+
+    Arguments:
+    - `k`: Wavenumber of the eigenstate.
+    - `s`: Array of points on the boundary.
+    - `u`: Array of boundary function values.
+    - `L`: Total length of the boundary (maximum(s)).
+    - `nx`: Number of grid points in the position coordinate (q).
+    - `ny`: Number of grid points in the momentum coordinate (p).
+
+    Returns:
+    - `H`: Husimi function matrix of size (ny, nx).
+    - `qs`: Array of q values used in the grid.
+    - `ps`: Array of p values used in the grid.
+    """
+    # Construct grids for qs and ps
+    qs = range(0.0,stop=L,length=nx)
+    ps = range(-1.0,stop=1.0,length=ny)
+    ds = diff(s)
+    last_ds = L+s[1]-s[end]
+    ds = vcat(ds,last_ds)  # Now ds has length N
+    sqrt_k_pi = sqrt(k/π)
+    norm_factor = sqrt(sqrt_k_pi)
+    # Prepare s and u as arrays
+    s_array = s
+    u_array = u
+    H = zeros(T,ny,nx)
+    # Convert s_array, ds, u_array to column vectors for broadcasting
+    s_vec = reshape(s_array,:,1)  # Shape (N, 1)
+    ds_vec = reshape(ds,:,1)      # Shape (N, 1)
+    u_vec = reshape(u_array,:,1)  # Shape (N, 1)
+    ss = s_vec.-qs  # (N, nx)
+    width = 4/sqrt(k)
+    window = abs.(ss).<width  # (N, nx)
+    si = ss.*window  # (N, nx), zeros where window is false
+    dsi = ds_vec.*window  # (N, nx)
+    ui = u_vec.*window  # (N, nx)
+    w = norm_factor .* exp.(-0.5 * k .* si .* si) .* dsi  # (N, nx)
+    k_p = k.*ps  # (ny)
+    k_p_matrix = reshape(k_p,1,ny)  # Shape (1, ny)
+    # Compute coherent state components
+    # For broadcasting, reshape si to (N, nx, 1)
+    si_expanded = reshape(si,size(si,1), size(si,2),1)  # (N, nx, 1)
+    k_p_expanded = reshape(k_p,1,1,ny)  # (1, 1, ny)
+    k_p_si = k_p_expanded.*si_expanded  # (N, nx, ny)
+    cos_terms = cos.(k_p_si)  # (N, nx, ny)
+    sin_terms = sin.(k_p_si)  # (N, nx, ny)
+    # Compute h for all grid points
+    w_ui = w.*ui  # (N, nx)
+    w_ui_expanded = reshape(w_ui,size(w_ui,1), size(w_ui,2),1) # (N, nx, 1)
+    cr = w_ui_expanded.*cos_terms  # (N, nx, ny)
+    ci = w_ui_expanded.*sin_terms  # (N, nx, ny)
+    # Compute h by summing over s (the first dimension)
+    h_real = sum(cr,dims=1) # (1, nx, ny)
+    h_imag = sum(-ci,dims=1) # (1, nx, ny), negative sign due to conjugation
+    abs_h_squared = h_real.*h_real.+h_imag.*h_imag  # (1, nx, ny)
+    abs_h_squared = reshape(abs_h_squared, nx, ny)  # (ny, nx)
+    H = abs_h_squared/(2*π*k)
+    return H./sum(H),qs,ps
 end
 
 """

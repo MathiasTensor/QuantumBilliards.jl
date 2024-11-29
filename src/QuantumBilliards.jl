@@ -111,7 +111,7 @@ include("states/boundaryfunctions.jl")
 include("states/husimifunctions.jl")
 
 export wavefunction #wavefunction_norm 
-export boundary_function, momentum_function, husimi_function, husimi_functions_from_us_and_boundary_points, husimiAtPoint, husimiOnGrid
+export boundary_function, momentum_function, husimi_function, husimi_functions_from_us_and_boundary_points, husimiAtPoint, husimiOnGrid, husimiOnGridOptimized
 export billiard_polygon
 export wavefunctions
 export read_boundary_function, save_boundary_function!
