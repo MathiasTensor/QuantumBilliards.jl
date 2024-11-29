@@ -227,6 +227,7 @@ function husimiOnGridOptimized(
     H = abs_h_squared/(2*π*k)
     return H./sum(H),qs,ps
     =#
+    # Construct grids for qs and ps
     qs = range(0.0, stop = L, length = nx)
     ps = range(-1.0, stop = 1.0, length = ny)
 
@@ -244,48 +245,66 @@ function husimiOnGridOptimized(
 
     H = zeros(Float64, ny, nx)
 
-    # Precompute k * s
-    ks = k .* s
+    # Preallocate arrays to avoid repeated allocations
+    ss = similar(s)
+    window = BitVector(N)
+    si = similar(s)
+    dsi = similar(s)
+    ui_windowed = similar(u)
+    w = similar(s)
+    cr = similar(s)
+    ci = similar(s)
 
-    # Multithreaded loop over ps
-    Threads.@threads for i_p = 1:ny
-        p = ps[i_p]
-        kp = k * p
-        # Precompute cos(kp * s) and sin(kp * s)
-        cos_kp_s = cos.(kp .* s)
-        sin_kp_s = sin.(kp .* s)
+    # Main loops
+    for i_q = 1:nx
+        q = qs[i_q]
+        # Compute ss and window function
+        @inbounds @. ss = s - q
+        @inbounds @. window = abs(ss) < width
 
-        for i_q = 1:nx
-            q = qs[i_q]
-            ss = s .- q
-            # Apply window function
-            window = abs.(ss) .< width
-            idx = findall(window)
+        idx_start = findfirst(window)
+        idx_end = findlast(window)
 
-            if isempty(idx)
-                H[i_p, i_q] = 0.0
-                continue
-            end
+        if idx_start === nothing
+            @inbounds H[:, i_q] .= 0.0
+            continue
+        end
 
-            si = ss[idx]
-            ui = u[idx]
-            dsi = ds[idx]
+        len_window = idx_end - idx_start + 1
 
-            w = norm_factor .* exp.(-0.5 * k .* si .* si) .* dsi
-            cr = w .* cos_kp_s[idx]
-            ci = w .* sin_kp_s[idx]
+        # Extract windowed data
+        @views si_window = ss[idx_start:idx_end]
+        @views ui_window = u[idx_start:idx_end]
+        @views dsi_window = ds[idx_start:idx_end]
 
-            h_real = sum(cr .* ui)
-            h_imag = -sum(ci .* ui)  # Negative sign due to conjugation
+        # Precompute w
+        @inbounds @. w[1:len_window] = norm_factor * exp(-0.5 * k * si_window^2) * dsi_window
 
-            H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
+        # Precompute k * si for all ps
+        @views ksi = k .* si_window  # (len_window)
+
+        # Loop over ps
+        for i_p = 1:ny
+            p = ps[i_p]
+            kp = k * p
+
+            # Compute cos and sin terms
+            @inbounds @. cr[1:len_window] = w[1:len_window] * cos(kp * si_window)
+            @inbounds @. ci[1:len_window] = w[1:len_window] * sin(kp * si_window)
+
+            # Compute h_real and h_imag
+            h_real = @inbounds sum(@view cr[1:len_window] .* ui_window)
+            h_imag = -@inbounds sum(@view ci[1:len_window] .* ui_window)  # Negative due to conjugation
+
+            # Compute H
+            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
         end
     end
 
     # Normalize H
     total = sum(H)
     if total != 0.0
-        H /= total
+        @inbounds H ./= total
     end
 
     return H, qs, ps
