@@ -140,51 +140,28 @@ function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T,
     end
     return avg_correlation_per_bin
     =#
-    bin_centers = collect(keys(binned_indices))
-    n_bins = length(bin_centers)
-
-    # Preallocate an array to store average correlations
-    avg_correlations = Vector{Float64}(undef, n_bins)
-
-    # Multithreading over bins
-    Threads.@threads for idx in 1:n_bins
-        bin_center = bin_centers[idx]
-        indices = binned_indices[bin_center]
-        n = length(indices)
-
-        if n < 2
-            # If fewer than 2 matrices, set average correlation to NaN
-            avg_correlations[idx] = NaN
-            continue
-        end
-
-        # Preallocate correlations array
-        n_corr = n * (n - 1) ÷ 2  # Number of pairwise correlations
-        correlations = Vector{Float64}(undef, n_corr)
-        idx_corr = 1
-
-        # Compute all pairwise correlations
-        for i in 1:(n - 1)
-            idx_i = indices[i]
-            H_i = Hs[idx_i]
-            for j in (i + 1):n
-                idx_j = indices[j]
-                H_j = Hs[idx_j]
-                c = correlation_matrix(H_i, H_j)  # Assuming this function exists
-                correlations[idx_corr] = c
-                idx_corr += 1
-            end
-        end
-
-        # Compute the average correlation for this bin
-        avg_correlations[idx] = mean(correlations)
-    end
-
-    # Construct the final dictionary mapping bin centers to average correlations
     avg_correlation_per_bin = Dict{T, Float64}()
-    for idx in 1:n_bins
-        bin_center = bin_centers[idx]
-        avg_correlation_per_bin[bin_center] = avg_correlations[idx]
+
+    for (bin_center, indices) in binned_indices
+        n = length(indices)
+        if n < 2
+            avg_correlation_per_bin[bin_center] = NaN
+        else
+            # Compute all pairwise correlations
+            n_corr = n * (n - 1) ÷ 2  # Number of pairwise correlations
+            correlations = Vector{Float64}(undef, n_corr)
+            idx_corr = 1
+            for i in 1:(n - 1)
+                H_i = Hs[indices[i]]
+                for j in (i + 1):n
+                    H_j = Hs[indices[j]]
+                    c = correlation_matrix(H_i, H_j)
+                    correlations[idx_corr] = c
+                    idx_corr += 1
+                end
+            end
+            avg_correlation_per_bin[bin_center] = mean(correlations)
+        end
     end
 
     return avg_correlation_per_bin
