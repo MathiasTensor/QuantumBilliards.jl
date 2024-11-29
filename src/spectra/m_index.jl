@@ -432,7 +432,7 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `ρs::Vector`: The calculated volumes for each M_thresh.
 - `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
 """
-function separate_regular_and_chaotic_states(ks::Vector,H_list::Vector{Matrix},qs_list::Vector{Vector},ps_list::Vector{Vector},classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector,ρ_regular_classic::Float64;decrease_step_size=0.05,relative_closeness_perc=5)
+function separate_regular_and_chaotic_states(ks::Vector,H_list::Vector,qs_list::Vector,ps_list::Vector,classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector,ρ_regular_classic::Float64;decrease_step_size=0.05,relative_closeness_perc=5)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
     n = length(ks)
     M_vals = zeros(Float64, n)
