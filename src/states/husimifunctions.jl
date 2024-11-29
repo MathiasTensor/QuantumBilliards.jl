@@ -278,7 +278,7 @@ function husimiOnGridOptimized(
         @inbounds @. w[1:len_window] = norm_factor * exp(-0.5 * k * si_window^2) * dsi_window
 
         # Loop over ps
-        Threads.@threads for i_p = 1:ny
+        for i_p = 1:ny
             p = ps[i_p]
             kp = k * p
 
