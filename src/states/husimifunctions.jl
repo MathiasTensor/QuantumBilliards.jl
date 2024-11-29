@@ -151,7 +151,7 @@ function husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny:
     
     Threads.@threads for idx_p in eachindex(ps)
         for idx_q in eachindex(qs)
-            H[idx_q, idx_p] = husimiAtPoint(k,s,u,L,qs[idx_q],ps[idx_p])
+            H[idx_q, idx_p] = husimiAtPoint_LEGACY(k,s,u,L,qs[idx_q],ps[idx_p])
         end
     end
     return H./sum(H),qs,ps
