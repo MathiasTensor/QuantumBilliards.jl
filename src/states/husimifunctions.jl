@@ -290,7 +290,7 @@ function husimiOnGridOptimized(
             h_imag = -@inbounds sum(ci[1:len_window] .* ui_window)  # Negative due to conjugation
 
             # Compute H
-            @inbounds H[i_q, i_p] = (h_real^2 + h_imag^2) / (2 * π * k)
+            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
         end
     end
 
