@@ -142,7 +142,10 @@ function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T,
     =#
     # Create an atomic-safe dictionary to store results
     # Thread-local storage for intermediate results
-    thread_results = Threads.Atomic{Vector{Pair{T, Float64}}}(Vector{Pair{T, Float64}}())
+    thread_results = Vector{Dict{T, Float64}}(undef, Threads.nthreads())
+    for t in 1:Threads.nthreads()
+        thread_results[t] = Dict{T, Float64}()
+    end
 
     # Multithreading
     Threads.@threads for bin_center in keys(binned_indices)
@@ -168,14 +171,17 @@ function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T,
         end
         local_avg_correlation = mean(correlations)
 
-        # Safely append to thread-local results
-        Threads.atomic_add!(thread_results) do result
-            push!(result, bin_center => local_avg_correlation)
-        end
+        # Store result in thread-local dictionary
+        thread_results[Threads.threadid()][bin_center] = local_avg_correlation
     end
 
-    # Combine results from all threads
-    final_results = Dict(thread_results[]...)
+    # Combine thread-local results into a single dictionary
+    final_results = Dict{T, Float64}()
+    for t in 1:Threads.nthreads()
+        for (bin_center, avg_correlation) in thread_results[t]
+            final_results[bin_center] = avg_correlation
+        end
+    end
 
     return final_results
 end
