@@ -94,7 +94,7 @@ end
 ### NEW ###
 
 """
-    husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
+    husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
 
 Calculates the Poincaré-Husimi function at point (q, p) in the quantum phase space.
 
@@ -109,7 +109,7 @@ Arguments:
 Returns:
 - `T`: Husimi function value at (q, p).
 """
-function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
+function husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
     # original algorithm by Benjamin Batistić in python (https://github.com/clozej/quantum_billiards/blob/crt_public/src/CoreModules/HusimiFunctionsOld.py)
     ss = s.-q
     width = 4/sqrt(k)
@@ -127,7 +127,7 @@ function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:
 end
 
 """
-    husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+    husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
 
 Evaluates the Poincaré-Husimi function on a grid defined by the sizes nx for q and ny for p. The grids are then automatically generated from 0 -> L and -1 -> 1.
 
@@ -144,7 +144,7 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+function husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
     qs = range(0.0,stop=L,length = nx)
     ps = range(-1.0,stop=1.0,length = ny)
     H = zeros(T, nx, ny)
@@ -175,7 +175,7 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGridOptimized(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
+function husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
     qs = range(0.0,stop=L,length=nx)
     ps = range(-1.0,stop=1.0,length=ny)
     N = length(s)
