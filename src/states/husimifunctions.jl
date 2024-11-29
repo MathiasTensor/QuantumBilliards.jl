@@ -256,7 +256,7 @@ function husimiOnGridOptimized(
     ci = similar(s)
 
     # Main loops
-    for i_q = 1:nx
+    Threads.@threads for i_q = 1:nx
         q = qs[i_q]
         # Compute ss and window function
         @inbounds @. ss = s - q
@@ -297,7 +297,7 @@ function husimiOnGridOptimized(
             h_imag = -@inbounds sum(@view ci[1:len_window] .* ui_window)  # Negative due to conjugation
 
             # Compute H
-            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
+            @inbounds H[i_q, i_p] = (h_real^2 + h_imag^2) / (2 * π * k)
         end
     end
 
