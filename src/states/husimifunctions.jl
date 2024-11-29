@@ -248,9 +248,6 @@ function husimiOnGridOptimized(
     # Preallocate arrays to avoid repeated allocations
     ss = similar(s)
     window = BitVector(N)
-    si = similar(s)
-    dsi = similar(s)
-    ui_windowed = similar(u)
     w = similar(s)
     cr = similar(s)
     ci = similar(s)
@@ -280,9 +277,6 @@ function husimiOnGridOptimized(
         # Precompute w
         @inbounds @. w[1:len_window] = norm_factor * exp(-0.5 * k * si_window^2) * dsi_window
 
-        # Precompute k * si for all ps
-        @views ksi = k .* si_window  # (len_window)
-
         # Loop over ps
         for i_p = 1:ny
             p = ps[i_p]
@@ -293,11 +287,11 @@ function husimiOnGridOptimized(
             @inbounds @. ci[1:len_window] = w[1:len_window] * sin(kp * si_window)
 
             # Compute h_real and h_imag
-            h_real = @inbounds sum(@view cr[1:len_window] .* ui_window)
-            h_imag = -@inbounds sum(@view ci[1:len_window] .* ui_window)  # Negative due to conjugation
+            h_real = @inbounds sum(cr[1:len_window] .* ui_window)
+            h_imag = -@inbounds sum(ci[1:len_window] .* ui_window)  # Negative due to conjugation
 
             # Compute H
-            @inbounds H[i_q, i_p] = (h_real^2 + h_imag^2) / (2 * π * k)
+            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
         end
     end
 
