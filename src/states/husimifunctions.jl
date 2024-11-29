@@ -297,78 +297,49 @@ function husimiOnGridOptimized(
     end
     return H./abs(H)', qs, ps
     =#
-
-    # Construct grids for qs and ps
-    qs = range(0.0, stop = L, length = nx)
-    ps = range(-1.0, stop = 1.0, length = ny)
-
+    qs = range(0.0,stop=L,length=nx)
+    ps = range(-1.0,stop=1.0,length=ny)
     N = length(s)
-
-    # Compute integration weights ds
-    ds = diff(s)
-    last_ds = L + s[1] - s[end]
-    ds = vcat(ds, last_ds)  # Now ds has length N
-
-    # Precompute constants
-    sqrt_k_pi = sqrt(k / π)
+    ds = diff(s) # integration weights ds
+    ds = vcat(ds,L+s[1]-s[end]) # ds has length N
+    sqrt_k_pi = sqrt(k/π)
     norm_factor = sqrt(sqrt_k_pi)
-    width = 4 / sqrt(k)
-
-    H = zeros(Float64, ny, nx)
-
-    # Multithreaded outer loop
+    width = 4/sqrt(k)
+    H = zeros(T, ny, nx)
     Threads.@threads for i_q = 1:nx
         q = qs[i_q]
-
-        # Each thread needs its own local variables
-        # Preallocate arrays inside the loop to make them thread-local
         si = similar(s)
         w = similar(s)
         cr = similar(s)
         ci = similar(s)
-
-        # Find indices within the window using efficient search
-        idx_start = searchsortedfirst(s, q - width)
+        idx_start = searchsortedfirst(s, q - width) # Find indices within the window 
         idx_end = searchsortedlast(s, q + width)
 
-        # Handle case where no indices are found
-        if idx_start > idx_end || idx_start > N
+        # Handle case if no indexes
+        if idx_start > idx_end || idx_start > N 
             @inbounds H[:, i_q] .= 0.0
+            println("No indexes found")
             continue
         end
 
         len_window = idx_end - idx_start + 1
-
-        # Extract windowed data
-        @views s_window = s[idx_start:idx_end]
+        @views s_window = s[idx_start:idx_end] # Extract windowed data
         @views ui_window = u[idx_start:idx_end]
         @views dsi_window = ds[idx_start:idx_end]
-
-        # Compute si_window = s_window - q
         si_window = si[1:len_window]
         @inbounds @. si_window = s_window - q
-
-        # Precompute w
-        @inbounds @. w[1:len_window] = norm_factor * exp.(-0.5 * k * si_window.^2) .* dsi_window
-
-        # Loop over ps
+        @inbounds @. w[1:len_window] = norm_factor * exp.(-0.5*k*si_window.^2).*dsi_window
         for i_p = 1:ny
             p = ps[i_p]
-            kp = k * p
-
-            # Compute cos and sin terms
-            @inbounds @. cr[1:len_window] = w[1:len_window] .* cos.(kp .* si_window)
-            @inbounds @. ci[1:len_window] = w[1:len_window] .* sin.(kp .* si_window)
-
-            # Compute h_real and h_imag
-            h_real = @inbounds sum(cr[1:len_window] .* ui_window)
-            h_imag = -@inbounds sum(ci[1:len_window] .* ui_window)  # Negative due to conjugation
-
-            # Compute H
-            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
+            kp = k*p
+            @inbounds @. cr[1:len_window] = w[1:len_window].*cos.(kp.*si_window)
+            @inbounds @. ci[1:len_window] = w[1:len_window].*sin.(kp.*si_window)
+            h_real = @inbounds sum(cr[1:len_window].*ui_window)
+            h_imag = -@inbounds sum(ci[1:len_window].*ui_window)  # Negative due to conjugation
+            @inbounds H[i_p,i_q] = (h_real^2+h_imag^2)/(2*π*k)
         end
     end
-
+    #=
     # Normalize H
     total = sum(H)
     if total != 0.0
@@ -377,8 +348,8 @@ function husimiOnGridOptimized(
 
     # Transpose H if needed
     H = H'  # Transpose to match desired dimensions
-
-    return H, qs, ps
+    =#
+    return H./sum(H)', qs, ps
 end
 
 """
