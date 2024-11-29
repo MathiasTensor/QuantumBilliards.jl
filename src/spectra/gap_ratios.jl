@@ -180,12 +180,12 @@ function plot_gap_ratios(ax::Axis, energies::Vector{T}; nbins::Int=50, μ_c::Uni
     r_values = range(0, stop=maximum(bin_centers), length=1000)
     integrable = [P_integrable(r) for r in r_values]
     chaotic = [P_chaotic(r,1) for r in r_values] # GOE 
-    lines!(ax, r_values, integrable, label="Integrable", color=:blue, linestyle=:dash, linewidth=1)
-    lines!(ax, r_values, chaotic, label="Chaotic", color=:green, linestyle=:dot, linewidth=1)
+    lines!(ax, r_values, integrable, label="Integrable", color=:blue, linestyle=:dash, linewidth=3)
+    lines!(ax, r_values, chaotic, label="Chaotic", color=:green, linestyle=:dot, linewidth=3)
     
     if !isnothing(μ_c)
         mixed = [P_r_normalized(r,μ_c) for r in r_values]
-        lines!(ax, r_values, mixed, label="Theory, ρ=$(round(μ_c; sigdigits=5))", color=:black, linestyle=:solid, linewidth=1)
+        lines!(ax, r_values, mixed, label="Theory, ρ=$(round(μ_c; sigdigits=5))", color=:black, linestyle=:solid, linewidth=3)
     end
     xlims!(ax, extrema(r_values))
     axislegend(ax, position=:rt)
