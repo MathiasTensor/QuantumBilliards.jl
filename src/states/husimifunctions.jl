@@ -147,7 +147,7 @@ Returns:
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
     qs = range(0.0,stop=L,length = nx)
     ps = range(-1.0,stop=1.0,length = ny)
-    H = zeros(T, ny, nx)
+    H = zeros(T, nx, ny)
     
     Threads.@threads for idx_p in eachindex(ps)
         for idx_q in eachindex(qs)
@@ -157,146 +157,25 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     return H./sum(H),qs,ps
 end
 
-function husimiOnGridOptimized(
-    k::Real,
-    s::AbstractVector{T},
-    u::AbstractVector{T},
-    L::Real,
-    nx::Int,
-    ny::Int,
-) where {T<:Real}
-    """
-    Evaluates the Poincaré-Husimi function on a grid using vectorized operations.
+"""
+    husimiOnGridOptimized(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
 
-    Arguments:
-    - `k`: Wavenumber of the eigenstate.
-    - `s`: Array of points on the boundary.
-    - `u`: Array of boundary function values.
-    - `L`: Total length of the boundary (maximum(s)).
-    - `nx`: Number of grid points in the position coordinate (q).
-    - `ny`: Number of grid points in the momentum coordinate (p).
+Evaluates the Poincaré-Husimi function on a grid using vectorized operations.
 
-    Returns:
-    - `H`: Husimi function matrix of size (ny, nx).
-    - `qs`: Array of q values used in the grid.
-    - `ps`: Array of p values used in the grid.
-    """
-    #=
-    # Construct grids for qs and ps
-    qs = range(0.0,stop=L,length=nx)
-    ps = range(-1.0,stop=1.0,length=ny)
-    ds = diff(s)
-    last_ds = L+s[1]-s[end]
-    ds = vcat(ds,last_ds)  # Now ds has length N
-    sqrt_k_pi = sqrt(k/π)
-    norm_factor = sqrt(sqrt_k_pi)
-    # Prepare s and u as arrays
-    s_array = s
-    u_array = u
-    H = zeros(T,ny,nx)
-    # Convert s_array, ds, u_array to column vectors for broadcasting
-    s_vec = reshape(s_array,:,1)  # Shape (N, 1)
-    ds_vec = reshape(ds,:,1)      # Shape (N, 1)
-    u_vec = reshape(u_array,:,1)  # Shape (N, 1)
-    ss = s_vec.-qs'  # (N, nx)
-    width = 4/sqrt(k)
-    window = abs.(ss).<width  # (N, nx)
-    si = ss.*window  # (N, nx), zeros where window is false
-    dsi = ds_vec.*window  # (N, nx)
-    ui = u_vec.*window  # (N, nx)
-    w = norm_factor .* exp.(-0.5 * k .* si .* si) .* dsi  # (N, nx)
-    k_p = k.*ps  # (ny)
-    k_p_matrix = reshape(k_p,1,ny)  # Shape (1, ny)
-    # Compute coherent state components
-    # For broadcasting, reshape si to (N, nx, 1)
-    si_expanded = reshape(si,size(si,1), size(si,2),1)  # (N, nx, 1)
-    k_p_expanded = reshape(k_p,1,1,ny)  # (1, 1, ny)
-    k_p_si = k_p_expanded.*si_expanded  # (N, nx, ny)
-    cos_terms = cos.(k_p_si)  # (N, nx, ny)
-    sin_terms = sin.(k_p_si)  # (N, nx, ny)
-    # Compute h for all grid points
-    w_ui = w.*ui  # (N, nx)
-    w_ui_expanded = reshape(w_ui,size(w_ui,1), size(w_ui,2),1) # (N, nx, 1)
-    cr = w_ui_expanded.*cos_terms  # (N, nx, ny)
-    ci = w_ui_expanded.*sin_terms  # (N, nx, ny)
-    # Compute h by summing over s (the first dimension)
-    h_real = sum(cr,dims=1) # (1, nx, ny)
-    h_imag = sum(-ci,dims=1) # (1, nx, ny), negative sign due to conjugation
-    abs_h_squared = h_real.*h_real.+h_imag.*h_imag  # (1, nx, ny)
-    abs_h_squared = reshape(abs_h_squared, nx, ny)  # (ny, nx)
-    H = abs_h_squared/(2*π*k)
-    return H./sum(H),qs,ps
-    =#
+Arguments:
+- `k::T`: Wavenumber of the eigenstate.
+- `s::Vector{T}`: Array of points on the boundary.
+- `u::Vector{T}`: Array of boundary function values.
+- `L::T`: Total length of the boundary (maximum(s)).
+- `nx::Integer`: Number of grid points in the position coordinate (q).
+- `ny::Integer`: Number of grid points in the momentum coordinate (p).
 
-    #=
-    qs = range(0.0, stop = L, length = nx)
-    ps = range(-1.0, stop = 1.0, length = ny)
-
-    N = length(s)
-
-    # Compute integration weights ds
-    ds = diff(s)
-    last_ds = L + s[1] - s[end]
-    ds = vcat(ds, last_ds)  # Now ds has length N
-
-    # Precompute constants
-    sqrt_k_pi = sqrt(k / π)
-    norm_factor = sqrt(sqrt_k_pi)
-    width = 4 / sqrt(k)
-
-    H = zeros(Float64, ny, nx)
-
-    # Preallocate arrays to avoid repeated allocations
-    ss = similar(s)
-    window =  abs.(ss).<width
-    w = similar(s)
-    cr = similar(s)
-    ci = similar(s)
-
-    # Main loops
-    for i_q = 1:nx
-        q = qs[i_q]
-        # Compute ss and window function
-        @inbounds @. ss = s - q
-        @inbounds @. window = abs(ss) < width
-
-        idx_start = findfirst(window)
-        idx_end = findlast(window)
-
-        if idx_start === nothing
-            @inbounds H[:, i_q] .= 0.0
-            continue
-        end
-
-        len_window = idx_end - idx_start + 1
-
-        # Extract windowed data
-        @views si_window = ss[idx_start:idx_end]
-        @views ui_window = u[idx_start:idx_end]
-        @views dsi_window = ds[idx_start:idx_end]
-
-        # Precompute w
-        @inbounds @. w[1:len_window] = norm_factor * exp(-0.5 * k * si_window^2) * dsi_window
-
-        # Loop over ps
-        for i_p = 1:ny
-            p = ps[i_p]
-            kp = k * p
-
-            # Compute cos and sin terms
-            @inbounds @. cr[1:len_window] = w[1:len_window] * cos(kp * si_window)
-            @inbounds @. ci[1:len_window] = w[1:len_window] * sin(kp * si_window)
-
-            # Compute h_real and h_imag
-            h_real = @inbounds sum(cr[1:len_window] .* ui_window)
-            h_imag = -@inbounds sum(ci[1:len_window] .* ui_window)  # Negative due to conjugation
-
-            # Compute H
-            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
-        end
-    end
-    return H./abs(H)', qs, ps
-    =#
+Returns:
+- `H::Matrix{T}`: Husimi function matrix of size (ny, nx).
+- `qs::Vector{T}`: Array of q values used in the grid.
+- `ps::Vector{T}`: Array of p values used in the grid.
+"""
+function husimiOnGridOptimized(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
     qs = range(0.0,stop=L,length=nx)
     ps = range(-1.0,stop=1.0,length=ny)
     N = length(s)
