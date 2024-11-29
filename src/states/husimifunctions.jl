@@ -214,7 +214,7 @@ function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, ba
     ps_return = Vector{Vector}(undef, length(ks))
     qs_return = Vector{Vector}(undef, length(ks))
     ks, us, s_vals, _ = boundary_function(state_data, billiard, basis; b=b)
-    p = Progress(length(ks); desc="Constructing husimi matrices...")
+    p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks) 
         H, qs, ps = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
         Hs_return[i] = H
@@ -245,7 +245,7 @@ function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; 
     Hs_return = Vector{Matrix}(undef, length(ks))
     ps_return = Vector{Vector}(undef, length(ks))
     qs_return = Vector{Vector}(undef, length(ks))
-    p = Progress(length(ks); desc="Constructing husimi matrices...")
+    p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks) 
         H, qs, ps = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
         Hs_return[i] = H
@@ -301,7 +301,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
     Hs_list = Vector{Matrix{T}}(undef, length(ks))
     H,qs,ps = husimiOnGrid(ks[1], vec_of_s_vals[1], vec_us[1], L, nx, ny)
     Hs_list[1] = H
-    p = Progress(length(ks); desc="Constructing husimi matrices...")
+    p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)[2:end]
         H,_,_ = husimiOnGrid(ks[i], vec_of_s_vals[i], vec_us[i], L, nx, ny)
         Hs_list[i] = H
