@@ -432,57 +432,8 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `ρs::Vector`: The calculated volumes for each M_thresh.
 - `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
 """
-function separate_regular_and_chaotic_states(
-    ks::Vector,
-    H_list::Vector{Matrix},
-    qs_list::Vector{Vector},
-    ps_list::Vector{Vector},
-    classical_chaotic_s_vals::Vector,
-    classical_chaotic_p_vals::Vector,
-    ρ_regular_classic::Float64;
-    decrease_step_size=0.05,
-    relative_closeness_perc=5
-)
+function separate_regular_and_chaotic_states(ks::Vector,H_list::Vector{Matrix},qs_list::Vector{Vector},ps_list::Vector{Vector},classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector,ρ_regular_classic::Float64;decrease_step_size=0.05,relative_closeness_perc=5)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
-
-    #=
-    function calc_ρ(M_thresh)
-        n = length(ks)
-        regular_mask = zeros(Bool, n)
-        progress = Progress(n; desc="Calculating for M_thresh = $(round(M_thresh, digits=3))")
-        nthreads = Threads.nthreads()
-        # Initialize per-thread caches
-        thread_caches = [Dict{UInt64, Any}() for _ in 1:nthreads]
-        Threads.@threads for i in 1:n
-            try
-                thread_id = Threads.threadid()
-                cache = thread_caches[thread_id]
-                H = H_list[i]
-                qs = qs_list[i]
-                ps = ps_list[i]
-                # Create a hash key based on the size of H, qs, and ps
-                key = hash((size(H), qs, ps))
-                if haskey(cache, key)
-                    proj_grid = cache[key] # So we dont have to always construct a new projection grid if the size of the Husimi function is the same
-                else
-                    proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
-                    cache[key] = proj_grid
-                end
-                M_val = compute_M(proj_grid, H)
-                if M_val < M_thresh
-                    regular_mask[i] = true
-                end
-            catch e
-                @warn "Failed to compute overlap for k = $(ks[i]): $(e)"
-            end
-            next!(progress)
-        end
-
-        ρ_numeric_reg = count(regular_mask) / n
-        regular_idx = findall(regular_mask)
-        return ρ_numeric_reg, regular_idx
-    end
-    =#
     n = length(ks)
     M_vals = zeros(Float64, n)
 
