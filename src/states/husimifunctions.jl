@@ -111,7 +111,7 @@ Returns:
 """
 function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
     # original algorithm by Benjamin Batistić in python (https://github.com/clozej/quantum_billiards/blob/crt_public/src/CoreModules/HusimiFunctionsOld.py)
-    #=
+    
     ss = s.-q
     width = 4/sqrt(k)
     indx = findall(x->abs(x)<width, ss)
@@ -125,7 +125,8 @@ function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:
     ci = w.*sin.(k*p*si)  # Coherent state imaginary part
     h = dot(cr-im*ci,ui)  # Husimi integral (minus because of conjugation)
     return abs2(h)/(2*π*k) # not the actual normalization
-    =#
+    
+    #=
     width = 4/sqrt(k)
     sqrt_factor = sqrt(sqrt(k/π))
     ss = s.-q
@@ -139,6 +140,7 @@ function husimiAtPoint(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:
     ci = w.* sin.(k*p.*si)  # Coherent state imaginary part
     h = dot(cr-im*ci,ui)
     return abs2(h)/(2*π*k)
+    =#
 end
 
 """
@@ -163,13 +165,14 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     qs = range(0.0,stop=L,length = nx)
     ps = range(-1.0,stop=1.0,length = ny)
     H = zeros(T, ny, nx)
-    #=
+    
     Threads.@threads for idx_p in eachindex(ps)
         for idx_q in eachindex(qs)
             H[idx_q, idx_p] = husimiAtPoint(k,s,u,L,qs[idx_q],ps[idx_p])
         end
     end
-    =#
+    
+    #=
     Threads.@threads for idx_p in eachindex(ps)
         p = ps[idx_p]
         local_H = zeros(T,nx)
@@ -180,6 +183,7 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
         @views H[idx_p, :].=local_H 
     end
     return H./sum(H),qs,ps
+    =#
 end
 
 """
