@@ -349,7 +349,7 @@ function husimiOnGridOptimized(
     # Transpose H if needed
     H = H'  # Transpose to match desired dimensions
     =#
-    return H./sum(H)', qs, ps
+    return H'./sum(H), qs, ps
 end
 
 """
