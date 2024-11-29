@@ -252,7 +252,7 @@ function husimiOnGridOptimized(
     ci = similar(s)
 
     # Main loops
-    for i_q = 1:nx
+    Threads.@threads for i_q = 1:nx
         q = qs[i_q]
         # Compute ss and window function
         @inbounds @. ss = s - q
