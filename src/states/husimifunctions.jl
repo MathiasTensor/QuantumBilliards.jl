@@ -113,7 +113,7 @@ function husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) whe
     # original algorithm by Benjamin Batistić in python (https://github.com/clozej/quantum_billiards/blob/crt_public/src/CoreModules/HusimiFunctionsOld.py)
     ss = s.-q
     width = 4/sqrt(k)
-    indx = findall(x->abs(x)<width, ss)
+    indx = findall(x->abs(x)<width,ss)
     si = ss[indx]
     ui = u[indx]
     ds = diff(s)  # length N-1
@@ -145,10 +145,9 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
-    qs = range(0.0,stop=L,length = nx)
-    ps = range(-1.0,stop=1.0,length = ny)
-    H = zeros(T, nx, ny)
-    
+    qs = range(0.0,stop=L,length=nx)
+    ps = range(-1.0,stop=1.0,length=ny)
+    H = zeros(T,nx,ny)
     Threads.@threads for idx_p in eachindex(ps)
         for idx_q in eachindex(qs)
             H[idx_q, idx_p] = husimiAtPoint_LEGACY(k,s,u,L,qs[idx_q],ps[idx_p])
@@ -193,7 +192,7 @@ function husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::I
         ci = similar(s)
         idx_start = searchsortedfirst(s,q-width) # Find indices within the window 
         idx_end = searchsortedlast(s,q+width)
-        len_window = idx_end - idx_start + 1
+        len_window = idx_end-idx_start+1
         @views s_window = s[idx_start:idx_end] # Extract windowed data
         @views ui_window = u[idx_start:idx_end]
         @views dsi_window = ds[idx_start:idx_end]
@@ -296,6 +295,37 @@ function husimi_functions_from_us_and_boundary_points(ks::Vector{T}, vec_us::Vec
     vec_of_s_vals = [bdPoints.s for bdPoints in vec_bdPoints]
     Hs_list, ps_list, qs_list = husimi_functions_from_boundary_functions(ks, vec_us, vec_of_s_vals, billiard)
     return Hs_list, ps_list, qs_list
+end
+
+"""
+    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+
+Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
+
+# Arguments
+- `ks::Vector{T}`: A vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: A vector of `BoundaryPoints` objects.
+- `billiard::Bi`: The billiard geometry for the total length. Faster than calling `maximum(s)`.
+- `nx::Interger`: The size of linearly spaced q grid.
+- `ny::Interger`: The size of linearly spaced p grid.
+
+# Returns
+- `Hs_list::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
+- `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
+"""
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+    L = billiard.length
+    vec_of_s_vals = [bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list = Vector{Matrix{T}}(undef, length(ks))
+    H,qs,ps = husimiOnGrid(ks[1], vec_of_s_vals[1], vec_us[1], L, nx, ny)
+    Hs_list[1] = H
+    Threads.@threads for i in eachindex(ks)[2:end]
+        H,_,_ = husimiOnGrid(ks[i], vec_of_s_vals[i], vec_us[i], L, nx, ny)
+        Hs_list[i] = H
+    end
+    return Hs_list,ps,qs
 end
 
 """

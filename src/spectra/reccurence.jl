@@ -2,20 +2,20 @@ using ProgressMeter
 
 
 """
-    S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) where {T<:Real}
+    S(bmap::Vector{T}, L::T; max_collisions::Int=10^8, num_bins::Int=1000) where {T<:Real}
 
 The S-plot matrix (of size (num_bins+1)x(num_bins+1)) along with the s and p edges for heatmap plotting. Good for showing stickiness regions.
 
 # Arguments
-- `bmap::Vector{SVector}`: A `Vector` of `SVector(s, p)` coordinates representing the trajectories for each collision up to `max_collisions`.
+- `bmap::Vector{SVector{2,T}}`: A `Vector` of `SVector(s, p)` coordinates representing the trajectories for each collision up to `max_collisions`.
 - `L::T`: The total length of the phase space.
 - `max_collisions::Int=10^8`: (Optional) The maximum number of collisions to process.
 - `num_bins::Int=1000`: (Optional) The number of bins in the phase space grid, same in s and p direction.
 
 # Returns
-- `S_grid::Matrix`: The S-plot matrix of size (num_bins+1)x(num_bins+1)
-- `s_edges::Vector`: The edges of the phase space grid in the s direction of length (num_bins+1).
-- `p_edges::Vector`: The edges of the phase space grid in the p direction of length (num_bins+1).
+- `S_grid::Matrix{T}`: The S-plot matrix of size (num_bins+1)x(num_bins+1)
+- `s_edges::Vector{T}`: The edges of the phase space grid in the s direction of length (num_bins+1).
+- `p_edges::Vector{T}`: The edges of the phase space grid in the p direction of length (num_bins+1).
 """
 function S(bmap::Vector, L::T; max_collisions::Int=10^8, num_bins::Int=1000) where {T<:Real}
     # phase space grid (s, p)
@@ -101,9 +101,9 @@ High-level wrapper for the S-plot function. It just takes the function that for 
 - `num_bins::Int=1000`: (Optional) The number of bins in the phase space grid, same in s and p direction.
 
 # Returns
-- `S_grid::Matrix`: The S-plot matrix of size (num_bins+1)x(num_bins+1)
-- `s_edges::Vector`: The edges of the phase space grid in the s direction of length (num_bins+1).
-- `p_edges::Vector`: The edges of the phase space grid in the p direction of length (num_bins+1).
+- `S_grid::Matrix{<:Real}`: The S-plot matrix of size (num_bins+1)x(num_bins+1)
+- `s_edges::Vector{<:Real}`: The edges of the phase space grid in the s direction of length (num_bins+1).
+- `p_edges::Vector{<:Real}`: The edges of the phase space grid in the p direction of length (num_bins+1).
 
 # Example
 Here is an example of such a wrapper function for the mushroom billiard using `DynamicalBilliards.jl` and it's `MushroomTools`.
@@ -142,9 +142,9 @@ High-level wrapper for the S-plot function. It just takes the function that for 
 - `num_bins::Int=1000`: (Optional) The number of bins in the phase space grid, same in s and p direction.
 
 # Returns
-- `S_grid::Matrix`: The S-plot matrix of size (num_bins+1)x(num_bins+1)
-- `s_edges::Vector`: The edges of the phase space grid in the s direction of length (num_bins+1).
-- `p_edges::Vector`: The edges of the phase space grid in the p direction of length (num_bins+1).
+- `S_grid::Matrix{T}`: The S-plot matrix of size (num_bins+1)x(num_bins+1)
+- `s_edges::Vector{T}`: The edges of the phase space grid in the s direction of length (num_bins+1).
+- `p_edges::Vector{T}`: The edges of the phase space grid in the p direction of length (num_bins+1).
 
 # Example
 Here is an example of such a wrapper function for the mushroom billiard using `DynamicalBilliards.jl` and it's `MushroomTools`.
