@@ -443,6 +443,9 @@ function separate_regular_and_chaotic_states(ks::Vector,H_list::Vector,qs_list::
         H = H_list[i]
         qs = qs_list[i]
         ps = ps_list[i]
+        println("qs: ", length(qs))
+        println("ps: ", length(ps))
+        println("H: ", size(H))
         proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
         M_vals[i] = compute_M(proj_grid, H)
         next!(progress)
