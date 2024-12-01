@@ -98,7 +98,7 @@ function group_Hs_by_A_bins(Hs::Vector, chaotic_classical_phase_space_vol_fracti
 end
 
 """
-    compute_average_correlation_per_bin(Hs::Vector{Matrix{T}}, binned_indices::Dict{T, Vector{Int}}) where {T<:Real}
+    compute_average_correlation_per_bin(Hs::Vector{Matrix{T}}, binned_indices::Dict{T, Vector{Int}}) :: Dict{T,T} where {T<:Real}
 
 Compues the correlation matrix Cₙₘ for all the Husimi functions in each bin. From the binned_indices dictionary we get for each bin the indexes Vector{Int} of husimi matrices that are in Hs. In the end we average the values of the correlation matrices in each bin and return a Dict object with the average correlation matrix value for each bin center.
 
@@ -110,60 +110,29 @@ Compues the correlation matrix Cₙₘ for all the Husimi functions in each bin.
 - `Dict{T, Float64}`: Dictionary with bin centers as keys and the corresponding average correlation matrix value as values. If there are less than 2 Husimi functions in a bin, the average correlation is NaN. To handle this we enforce the Float64 return type.
 """
 function compute_average_correlation_per_bin(Hs::Vector, binned_indices::Dict{T, Vector{Int}}) where {T<:Real}
-    #=
-    avg_correlation_per_bin = Dict{T, Float64}()
-    bin_centers = collect(keys(binned_indices))
-    lock = ReentrantLock()
-    Threads.@threads for idx in eachindex(bin_centers)
-        bin_center = bin_centers[idx]
-        indices = binned_indices[bin_center]
-        n = length(indices)
-        if n < 2
-            local_avg_correlation = NaN
-        else # Compute all pairwise correlations
-            correlations = Float64[]
-            for i = 1:(n-1)
-                idx_i = indices[i]
-                H_i = Hs[idx_i]
-                for j = (i+1):n
-                    idx_j = indices[j]
-                    H_j = Hs[idx_j]
-                    c = correlation_matrix(H_i, H_j)
-                    push!(correlations, c)
-                end
-            end
-            local_avg_correlation = mean(correlations)
-        end
-        lock(lock) do # thread safety
-            avg_correlation_per_bin[bin_center] = local_avg_correlation
-        end
-    end
-    return avg_correlation_per_bin
-    =#
-    avg_correlation_per_bin = Dict{T, Float64}()
-
+    #TODO FIx this so it will work for the multithread version and also be performant/save
+    avg_correlation_per_bin = Dict{T, T}()
     for (bin_center, indices) in binned_indices
         n = length(indices)
         if n < 2
-            avg_correlation_per_bin[bin_center] = NaN
+            continue
         else
             # Compute all pairwise correlations
-            n_corr = n * (n - 1) ÷ 2  # Number of pairwise correlations
-            correlations = Vector{Float64}(undef, n_corr)
+            n_corr = n*(n-1)÷2  # Number of pairwise correlations
+            correlations = Vector{T}(undef, n_corr)
             idx_corr = 1
-            for i in 1:(n - 1)
+            for i in 1:(n-1) # take an i and then compute the correlation will all the next ones in the bin. When done with that index we have all the correlations for that one and then when we go to i+1 we calculate only from i+2 onward since we have exhaused the i-th index.
                 H_i = Hs[indices[i]]
-                for j in (i + 1):n
+                for j in (i+1):n
                     H_j = Hs[indices[j]]
                     c = correlation_matrix(H_i, H_j)
                     correlations[idx_corr] = c
-                    idx_corr += 1
+                    idx_corr += 1 # make this one atomic so we can parallelize the outer for loop.
                 end
             end
             avg_correlation_per_bin[bin_center] = mean(correlations)
         end
     end
-
     return avg_correlation_per_bin
 end
 
