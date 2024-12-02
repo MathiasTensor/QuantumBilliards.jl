@@ -152,6 +152,8 @@ Plots the correaltion matrix averages per each bin and tries a linear fit on the
 function plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; dA::T = 0.02) where {T<:Real}
     bin_centers, binned_indices = group_Hs_by_A_bins(Hs, chaotic_classical_phase_space_vol_fraction, dA=dA)
     avg_correlations = compute_average_correlation_per_bin(Hs, binned_indices)
+    println("bin centers: ", bin_centers)
+    println("average correlations: ", avg_correlations)
     # sort them just in case
     sorted_indices = sortperm(bin_centers)
     bin_centers_sorted = bin_centers[sorted_indices]
