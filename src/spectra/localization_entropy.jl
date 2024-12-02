@@ -172,7 +172,7 @@ function plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_sp
         return result
     end
     initial_guess = [0.7 0.0]  # Initial guesses for a and b 
-    fit_result = curve_fit((bc, params) -> beta_model(bc, params), bin_centers_sorted, avg_correlations_sorted, initial_guess)
+    fit_result = curve_fit((bc, params) -> linear_model(bc, params), bin_centers_sorted, avg_correlations_sorted, initial_guess)
     optimal_a, optimal_b = fit_result.param
     f = Figure(size=(800,800),resolution=(800,800))
     ax = Axis(f[1,1], title="⟨C⟩ vs. ⟨A⟩", xlabel=L"⟨A⟩", ylabel=L"⟨C⟩", xtickformat="{:.2f}", ytickformat="{:.2f}")
