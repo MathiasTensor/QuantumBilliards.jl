@@ -163,6 +163,7 @@ function plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_sp
     =#
     bin_centers_sorted = bin_centers
     avg_correlations_sorted = avg_correlations
+    avg_correlations_sorted = [avg_correlations[center] for center in bin_centers_sorted]
     function linear_model(bin_centers, params)
         a, b = params 
         result = Vector{Float64}(undef, length(bin_centers))
