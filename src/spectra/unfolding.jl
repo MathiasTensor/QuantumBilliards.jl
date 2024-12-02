@@ -104,19 +104,19 @@ function dos_weyl(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi
 end
 
 """
-    k_at_state(state::Int, billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
+    k_at_state(state::T, billiard::Bi; fundamental::Bool=true) -> Real where {T<:Real, Bi<:AbsBilliard}
 
 Calculates the wave number `k` corresponding to a given state number using the inverted Weyl's law, including corner and curvature corrections.
 
 # Arguments
-- `state::Int`: The eigenvalue index (state number).
+- `state::T`: The eigenvalue index (state number).
 - `billiard::Bi`: The billiard instance containing area, length, and angle information.
 - `fundamental::Bool=true`: If `true`, uses `area_fundamental`, `length_fundamental`, and `angles_fundamental`; otherwise, uses full geometry properties.
 
 # Returns
 - `k::Real`: The estimated wave number corresponding to the given state.
 """
-function k_at_state(state::Int, billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
+function k_at_state(state::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
     A = fundamental ? billiard.area_fundamental : billiard.area
     L = fundamental ? billiard.length_fundamental : billiard.length
     
