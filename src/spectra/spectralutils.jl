@@ -283,6 +283,7 @@ end
 # NEW WITH ADAPTIVE tol
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2; tol=1e-4, N_expect = 3, dk_threshold=0.05, fundamental=true)
     # Estimate the number of intervals and store the dk values
+    println("Starting spectrum computation...")
     k0 = k1
     dk_values = []
     while k0 < k2
@@ -308,12 +309,14 @@ function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 
     # Actual computation using precomputed dk values
     k0 = k1
+    println("Initial solve...")
     @time k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk_values[1] + tol)
     control = [false for i in 1:length(k_res)]
 
     for i in eachindex(dk_values)
         dk = dk_values[i]
         k0 += dk
+        println("Doing k: ", k0, " to: ", k0+dk+tol)
         @time k_new, ten_new = solve_spectrum(solver, basis, billiard, k0, dk + tol)
         overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0 - dk, k0; tol=tol)
         next!(p)
