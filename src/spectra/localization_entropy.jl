@@ -179,7 +179,7 @@ function plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_sp
     ax.xticks = range(minimum(bin_centers_sorted)+0.05, maximum(bin_centers_sorted)-0.05, 20) 
     ax.yticks = range(minimum(avg_correlations_sorted)+0.05, maximum(avg_correlations_sorted)-0.05, 10) 
     ax.xticklabelrotation = pi/2
-    scatter!A(ax ,bin_centers_sorted, avg_correlations_sorted, marker=:rect, label=L"⟨C⟩")
+    scatter!(ax ,bin_centers_sorted, avg_correlations_sorted, marker=:rect, label=L"⟨C⟩")
     xs = extrema(bin_centers_sorted)
     ys = optimal_a.*xs.+optimal_b
     lines!(ax, xs, ys, label="$(round(optimal_a; digits=3))*x+$(round(optimal_b; digits=3))")
