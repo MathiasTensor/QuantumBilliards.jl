@@ -747,7 +747,7 @@ Plots the difference between the empirical level count `N_count(k)` and the Weyl
     2. The averaged difference over intervals of size `bin_size` as a line plot.
 
 """
-function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_size::T = T(20.0), fundamental::Bool=true) where {Bi<:AbsBilliard, T<:Real} 
+function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_size::T = T(20.0), fundamental::Bool=true, offset=0.0) where {Bi<:AbsBilliard, T<:Real} 
     A = T(fundamental ? billiard.area_fundamental : billiard.area)
     L = T(fundamental ? billiard.length_fundamental : billiard.length)
     C = T(curvature_and_corner_corrections(billiard; fundamental=fundamental))
@@ -755,7 +755,7 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
     # Standard Weyl procedure
     ys = [count(_k -> _k < k, arr) for k in arr]
     Ns = [(A/(4*pi)*k^2 - L/(4*pi)*k + C) for k in arr]
-    new_ys = [y - N for (y, N) in zip(ys, Ns)]
+    new_ys = [y - N + offset for (y, N) in zip(ys, Ns)]
 
     # Binning Algorithm
     # Determine the range and bin size
