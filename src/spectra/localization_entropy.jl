@@ -156,6 +156,7 @@ function plot_correlation_matrix_averages(Hs::Vector, chaotic_classical_phase_sp
     println("average correlations: ", avg_correlations)
     # sort them just in case
     sorted_indices = sortperm(bin_centers)
+    println("sorted indices: ", sorted_indices)
     bin_centers_sorted = bin_centers[sorted_indices]
     avg_correlations_sorted = avg_correlations[sorted_indices]
     function linear_model(bin_centers, params)
