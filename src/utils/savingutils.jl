@@ -107,6 +107,26 @@ function read_numerical_ks(filename::String)
 end
 
 """
+    filter_and_save_ks_and_tensions(input_filename::String, output_filename::String, k_min::T, k_max::T) where {T<:Real}
+
+Filters a read .csv file containing the `k` and `tensions` header using the `k_min` and `k_max` as the lower and upper bounds and then saves it.
+
+# Arguments
+- `input_filename::String`: Name of the input CSV file containing the `k` and `tension` header.
+- `output_filename::String`: Name of the output CSV file to save the filtered data.
+- `k_min::T`: Lower bound for the `k` values.
+- `k_max::T`: Upper bound for the `k` values.
+
+# Returns
+`Nothing`
+"""
+function filter_and_save_ks_and_tensions!(input_filename::String, output_filename::String, k_min::T, k_max::T) where {T<:Real}
+    df = CSV.read(input_filename, DataFrame)
+    filtered_df = filter(row->k_min<=row.k<=k_max,df)
+    CSV.write(output_filename, filtered_df)
+end
+
+"""
     compute_and_save_closest_pairs!(ksA::Vector{T}, ksB::Vector{T}, A::T, filename::String; unique=true, tolerance::Float64=1e-6) where {T<:Real}
 
 Compute and save the closest pairs between numerical and analytical eigenvalues.
