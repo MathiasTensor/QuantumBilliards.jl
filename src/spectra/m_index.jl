@@ -135,8 +135,8 @@ Generates and saves visualizations of the quantum-classical overlap for each lev
 # Returns
 - `Nothing`
 """
-function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
-    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; save_path::String = "Overlap_visualization")
+function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector, qs_list::Vector, 
+    ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; save_path::String = "Overlap_visualization")
     if !isdir(save_path)
         mkdir(save_path)
     end
@@ -223,8 +223,8 @@ Generates and saves visualizations of the quantum-classical overlap for each lev
 # Returns
 - `Nothing`
 """
-function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector{Matrix}, qs_list::Vector{Vector}, 
-    ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
+function visualize_quantum_classical_overlap_of_levels!(ks::Vector, H_list::Vector, qs_list::Vector, 
+    ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, 
     state_data::StateData, billiard::Bi, basis::Ba; 
     b = 5.0, inside_only = true, fundamental_domain = true, memory_limit = 10.0e9, save_path::String = "Overlap_visualization") where {Bi<:AbsBilliard, Ba<:AbsBasis}
     if !isdir(save_path)
@@ -390,7 +390,7 @@ Computes the overlaps of the classical phase space matrix of {+1,-1} depending o
 # Returns
 - `Ms::Vector{Float64}`: Vector of overlaps for each Husimi function with the classical phase space grid
 """
-function compute_overlaps(H_list::Vector{Matrix}, qs_list::Vector{Vector}, ps_list::Vector{Vector}, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
+function compute_overlaps(H_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector)
     @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
     Ms = Vector{Union{Float64, Nothing}}(undef, length(H_list))
     Threads.@threads for i in eachindex(qs_list) 
