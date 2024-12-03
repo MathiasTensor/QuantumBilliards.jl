@@ -146,7 +146,7 @@ include("spectra/gap_ratios.jl")
 export P_chaotic, P_integrable, P_r_normalized, plot_gap_ratios, average_gap_ratio
 export compute_spectrum_with_state, StateData, solve_state_data_bundle, husimi_functions_from_boundary_functions, husimi_functions_from_StateData, match_wavenumbers_with_X, overlap_and_merge_state!
 include("spectra/localization_entropy.jl")
-export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d, heatmap_R_vs_A_2d, combined_heatmaps_with_husimi, plot_correlation_matrix_averages, group_Hs_by_A_bins, compute_average_correlation_per_bin, correlation_matrix
+export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d, heatmap_R_vs_A_2d, combined_heatmaps_with_husimi, plot_correlation_matrix_averages, group_Hs_by_A_bins, compute_average_correlation_per_bin, correlation_matrix, correlation_matrix_and_average
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
 include("spectra/otoc.jl")
