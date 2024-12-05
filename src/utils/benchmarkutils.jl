@@ -59,7 +59,7 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
         if typeof(solver) <:AcceleratedSolver
             sol, decomp_time = run(solve, solver, mat_res[1],mat_res[2],k,dk)
             println(typeof(sol))
-            sol = Tuple([[sol[1][i], sol[2][i]] for i in eachindex(sol[1])])
+            sol = Tuple([[a,b] for (a,b) in zip(sol[1],sol[2])])
             #ks, ten = sol
             #idx = findmin(abs.(ks.-k))[2]
             #res = ks[idx], ten[idx]
