@@ -58,8 +58,8 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
         
         if typeof(solver) <:AcceleratedSolver
             sol, decomp_time = run(solve, solver, mat_res[1],mat_res[2],k,dk)
-            sorted_pairs = sort(zip(sol[1], sol[2])) do x, y x[2] < y[2] ? true : false end
-            sol = Tuple([[a, b] for (a, b) in sorted_pairs][1:min(5, length(sol[1]))])
+            sorted_pairs = sort(zip(sol[1],sol[2]); by =x->x[2])
+            sol = Tuple([[a,b] for (a,b) in sorted_pairs][1:min(5,length(sol[1]))])
             #ks, ten = sol
             #idx = findmin(abs.(ks.-k))[2]
             #res = ks[idx], ten[idx]
