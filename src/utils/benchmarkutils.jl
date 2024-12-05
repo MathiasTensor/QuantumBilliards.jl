@@ -58,10 +58,10 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
         
         if typeof(solver) <:AcceleratedSolver
             sol, decomp_time = run(solve, solver, mat_res[1],mat_res[2],k,dk)
-            ks, ten = sol
-            idx = findmin(abs.(ks.-k))[2]
-            res = ks[idx], ten[idx]
-            info = BenchmarkInfo(solver,mat_dim,mat_mem,mat_time,decomp_time,mat_time+decomp_time,res)
+            #ks, ten = sol
+            #idx = findmin(abs.(ks.-k))[2]
+            #res = ks[idx], ten[idx]
+            info = BenchmarkInfo(solver,mat_dim,mat_mem,mat_time,decomp_time,mat_time+decomp_time,sol)
         end
         
         if typeof(solver) <:SweepSolver
