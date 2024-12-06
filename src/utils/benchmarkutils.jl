@@ -6,6 +6,19 @@ using Makie
 
 memory_size(a) = Base.format_bytes(Base.summarysize(a)) 
 
+"""
+    BenchmarkInfo
+
+Stores benchmark information for a given solver, matrix dimensions, memory usage, construction, decomposition, solution times and eigenvalue results.
+
+- `solver::AbsSolver`: The solver to benchmark.
+- `matrix_dimensions::Vector`: The dimensions of the matrices to benchmark.
+- `matrix_memory::Vector`: Memory usage of the matrices.
+- `construction_time::Float64`: Construction time for the benchmark.
+- `decomposition_time::Float64`: Decomposition time for the benchmark.
+- `solution_time::Float64`: Solution time for the benchmark.
+- `results::Tuple`: Eigenvalue results for the benchmark.
+"""
 struct BenchmarkInfo
     solver::AbsSolver
     matrix_dimensions::Vector
@@ -16,6 +29,7 @@ struct BenchmarkInfo
     results::Tuple
 end
 
+# Helper function that prints the structs values
 function print_benchmark_info(info::BenchmarkInfo)
     println("Solver: $(info.solver)")
     for i in eachindex(info.matrix_dimensions)
@@ -27,7 +41,30 @@ function print_benchmark_info(info::BenchmarkInfo)
     println("Results: $(info.results)")
 end
 
-function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k, dk; btimes = 1, print_info=true, plot_matrix=false,log=false, kwargs...) 
+"""
+    benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k::T, dk::T; btimes = 1, print_info=true, plot_matrix=false,log=false, return_mat=false, kwargs...) where {T<:Real}
+
+Construct and solve benchmark problems for a given solver, basis, billiard, k, dk with optional kwargs.
+
+# Arguments:
+- `solver::AbsSolver`: The solver to benchmark.
+- `basis::AbsBasis`: The basis to use for the benchmark.
+- `billiard::AbsBilliard`: The billiard to use for the benchmark.
+- `k::T`: the wavevector reference point
+- `dk::T`: tolerance cutoff for ks in solving the eigenvalue problem.
+- `btimes::Int=1`: Number of benchmark runs.
+- `print_info::Bool=true`: Whether to print benchmark information.
+- `plot_matrix::Bool=false`: Whether to plot the basis matrix.
+- `log::Bool=false`: Whether to log the benchmark results.
+- `return_mat::Bool=false`: Whether to return the basis matrix.
+- `kwargs...`: Additional keyword arguments to pass to the solver and billiard.
+
+# Returns:
+- `BenchmarkInfo`: A BenchmarkInfo object containing the benchmark results.
+- `Tuple{BenchmarkInfo,Tuple{Matrix{T}}}`: benchmark info the and the matrices for saving.
+
+"""
+function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k::T, dk::T; btimes = 1, print_info=true, plot_matrix=false,log=false, return_mat=false, kwargs...) where {T<:Real}
     let L = billiard.length, dim = round(Int, L*k*solver.dim_scaling_factor/(2*pi))
         basis_new = resize_basis(basis,billiard, dim, k)
         pts = evaluate_points(solver, billiard, k)
@@ -84,13 +121,31 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
             end
             display(f)
         end
-
-        return info
-
+        if return_mat
+            return info, mat_res
+        else
+            return info
+        end
     end
 end
 
+"""
+    compute_benchmarks(solver, basis, billiard, k, dk; d_range = [2.0], b_range=[2.0],btimes=1)
 
+Wrapper for benchmark_solver that also iterates over a d and b range to chekc when we have unchanging solutions to the eigenvalues and tensions.
+
+# Arguments
+- `solver::AbsSolver`: The solver to benchmark.
+- `basis::AbsBasis`: The basis to use for the benchmark.
+- `billiard::AbsBilliard`: The billiard to use for the benchmark.
+- `k::T`: the wavevector reference point
+- `dk::T`: tolerance cutoff for ks in solving the eigenvalue problem.
+- `d_range::Vector{T}`: Range of d values to benchmark.
+- `b_range::Vector{T}`: Range of b values to benchmark.
+
+# Returns
+- `Vector{BenchmarkInfo}`: A vector of BenchmarkInfo objects for each combination of d and b in the given ranges.
+"""
 function compute_benchmarks(solver, basis, billiard, k, dk; d_range = [2.0], b_range=[2.0],btimes=1)
     #eps = solver.eps
     make_solver(solver,d,b) = typeof(solver)(d,b) 
