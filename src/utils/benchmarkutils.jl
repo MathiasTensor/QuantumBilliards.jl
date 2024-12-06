@@ -79,9 +79,8 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
             end
             return values[1], mean(times)
         end
-        if print_info
+        if print_info  #returns also information about the basis matrix in the last element
             mat_res, mat_time = run(construct_matrices_benchmark, solver, basis_new, pts, k)
-        #returns also inforamtion about the basis matrix in the last element
         else
             mat_res, mat_time = run(construct_matrices, solver, basis_new, pts, k)
     
@@ -97,9 +96,6 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
             sol, decomp_time = run(solve, solver, mat_res[1],mat_res[2],k,dk)
             sorted_pairs = sort(collect(zip(sol[1], sol[2])), by = x -> x[2])
             sol = Tuple([[a,b] for (a,b) in sorted_pairs][1:min(5,length(sol[1]))])
-            #ks, ten = sol
-            #idx = findmin(abs.(ks.-k))[2]
-            #res = ks[idx], ten[idx]
             info = BenchmarkInfo(solver,mat_dim,mat_mem,mat_time,decomp_time,mat_time+decomp_time,sol)
         end
         
