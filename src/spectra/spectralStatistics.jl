@@ -373,7 +373,7 @@ end
 Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energy levels, along with theoretical distributions (Poisson, GOE, GUE). Optionally, the Berry-Robnik distribution can also be included if a `rho` value is provided.
 
 # Arguments
-- `unfolded_energies::Vector{T}`: A vector of unfolded energy eigenvalues.
+- `unfolded_energies::Vector`: A vector of unfolded energy eigenvalues. Can be Vector{Vector}.
 - `nbins::Int=200`: The number of bins for the histogram of spacings. Defaults to `200`.
 - `rho::Union{Nothing, T}=nothing`: The Berry-Robnik parameter. If provided, the Berry-Robnik distribution is plotted. If set to `nothing`, the Berry-Robnik distribution is excluded.
 - `fit_brb::Bool=false`: If the numerical data requires a fitting of the Berry-Robnik_Brody P(s) distribution, displaying the optimal beta and rho parameter in the legend.
@@ -387,9 +387,9 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector{T}; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false, plot_standard_error::Bool=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false, plot_standard_error::Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings
-    spacings = diff(unfolded_energies)
+    spacings = calculate_spacings(unfolded_energies)
     # Create a normalized histogram
     hist = Distributions.fit(StatsBase.Histogram, spacings; nbins=nbins)
     bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
@@ -479,7 +479,7 @@ end
 Plots the cumulative distribution function (CDF) of the nearest-neighbor level spacings (NNLS) for unfolded energy eigenvalues. Optionally, the Berry-Robnik CDF can be plotted if a `rho` value is provided.
 
 # Arguments
-- `unfolded_energy_eigenvalues::Vector{T}`: A vector of unfolded energy eigenvalues.
+- `unfolded_energy_eigenvalues::Vector`: A vector of unfolded energy eigenvalues. Can be Vector{Vector}
 - `rho::Union{Nothing, T}=nothing`: The Liouville reg. phase space portion for the Berry-Robnik distribution. If `nothing`, the Berry-Robnik CDF is not plotted. Defaults to `nothing`.
 - `plot_GUE::Bool=false`: Whether to plot the GUE curve. Defaults to `false`.
 - `plot_inset::Bool=true`: Whether to plot an inset of small spacings. Defaults to `true`.
@@ -490,9 +490,9 @@ Plots the cumulative distribution function (CDF) of the nearest-neighbor level s
 # Returns
 - `Figure`.
 """
-function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector{T}; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false, fited_rho::Union{Nothing, T} = nothing, plot_log::Bool=false) where {T <: Real}
+function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vector; rho::Union{Nothing, T}=nothing, plot_GUE=false, plot_inset=true, fit_brb_cumul::Bool=false, fit_only_beta=false, fited_rho::Union{Nothing, T} = nothing, plot_log::Bool=false) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
-    spacings = diff(sort(unfolded_energy_eigenvalues))
+    spacings = calculate_spacings(unfolded_energy_eigenvalues)
     sorted_spacings = sort(spacings)
     N = length(sorted_spacings)
 
@@ -647,9 +647,25 @@ function plot_cumulative_spacing_distribution(unfolded_energy_eigenvalues::Vecto
     return fig
 end
 
-function plot_U_diff(unfolded_energy_eigenvalues::Vector{T}; rho::T, fit_brb_cumul::Bool=false, fit_only_beta=false, num_bins = 100, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
+"""
+    plot_U_diff(unfolded_energy_eigenvalues::Vector; rho::T, fit_brb_cumul::Bool=false, fit_only_beta=false, num_bins = 100, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
+
+Calculates and plots the U transform of the cumulative distribution of spacings U(W(s)). It is defined as: U(W(s)) = 2/π*acos(√{1-W(s)}). This version has the same statistical error over the whole interval.
+
+# Arguments
+- `unfolded_energy_eigenvalues::Vector`: Vector of unfolded energy eigenvalues.
+- `rho::T`: Value of the correlation coefficient (ρ) for the Berry-Robnik distribution.
+- `fit_brb_cumul::Bool=false`: If `true`, fits the Berry-Robnik-Brody distribution to the cumulative distribution of spacings.
+- `fit_only_beta::Bool=false`: If `true`, only fits the Berry-Robnik-Brody distribution to the cumulative distribution of spacings using only the specified ρ.
+- `num_bins = 100`: Number of bins to use for histogramming the cumulative distribution of spacings.
+- `fited_rho::Union{Nothing, T} = nothing`: If provided, uses this value for the correlation coefficient (ρ) during the fit of the Berry-Robnik distribution.
+
+# Returns
+- `fig`: A Plotly figure containing the U transform plot.
+"""
+function plot_U_diff(unfolded_energy_eigenvalues::Vector; rho::T, fit_brb_cumul::Bool=false, fit_only_beta=false, num_bins = 100, fited_rho::Union{Nothing, T} = nothing) where {T <: Real}
     # Compute nearest neighbor spacings and sort them
-    spacings = diff(sort(unfolded_energy_eigenvalues))
+    spacings = calculate_spacings(unfolded_energy_eigenvalues)
     sorted_spacings = collect(sort(spacings))
     N = length(sorted_spacings)
     # Compute the empirical CDF

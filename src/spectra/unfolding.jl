@@ -103,6 +103,18 @@ function dos_weyl(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi
     return ρ_k
 end
 
+# INTERNAL
+# Calculate spacings of a multi-sequence of eigenvalues
+function calculate_spacings(unfolded_energies::Vector{Vector{T}}) where {T<:Real}
+    return vcat([diff(sort(energies)) for energies in unfolded_energies]...)
+end
+
+# INTERNAL
+# Calculate spacings of a single-sequence of eigenvalues
+function calculate_spacings(unfolded_energies::Vector{T}) where {T<:Real}
+    return diff(sort(unfolded_energies))
+end
+
 """
     k_at_state(state::T, billiard::Bi; fundamental::Bool=true) -> Real where {T<:Real, Bi<:AbsBilliard}
 
