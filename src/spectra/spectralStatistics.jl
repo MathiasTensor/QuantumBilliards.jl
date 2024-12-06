@@ -463,7 +463,7 @@ function plot_nnls(unfolded_energies::Vector; nbins::Int=200, rho::Union{Nothing
     end
     if plot_tunneling_distorted_brb && !log_scale # we dont want the log scale for now
         σ_fit = fit_br_tunneling_distorted_sigma(collect(bin_centers), collect(bin_counts), rho)
-        lines!(ax, s_values, [probability_tunneling_distorted_berry_robnik(s, rho, σ_fit) for s in s_values], label="Tunneling distorted BR")
+        lines!(ax, s_values, [probability_tunneling_distorted_berry_robnik(s, rho, σ_fit) for s in s_values], label="Tunneling distorted BR, σ_fit=$(round(σ_fit; sigdigits=4))")
     end
     xlims!(ax, extrema(s_values))
     if log_scale
