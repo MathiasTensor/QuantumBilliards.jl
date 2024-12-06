@@ -382,12 +382,13 @@ Plots the nearest-neighbor level spacing (NNLS) distribution from unfolded energ
 - `fited_rho::Union{Nothing, T} = nothing`: The fitted Berry-Robnik parameter provided by the user. Use a non-nothing value only if the `curve_fit` gives non-sensible fit.
 - `plot_standard_error::Bool=false`: Whether we plot the standard error of the bin counts.
 - `plot_tunneling_distorted_brb`: Whether we plot the tunneling distorted Berry-Robnik.
+- `plot_GUE::Bool=false`: Whether we plot the Gaussian Unitary Ensemble (GUE) distribution.
 
 # Returns
 - A `Figure` object containing the NNLS distribution plot, showing the empirical histogram and theoretical curves (Poisson, GOE, GUE). The Berry-Robnik curve is added if `rho` is provided.
 
 """
-function plot_nnls(unfolded_energies::Vector; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false, plot_standard_error::Bool=false) where {T <: Real}
+function plot_nnls(unfolded_energies::Vector; nbins::Int=200, rho::Union{Nothing, T}=nothing, fit_brb::Bool=false, fit_only_beta=false, log_scale=false, fited_rho::Union{Nothing, T} = nothing, plot_tunneling_distorted_brb=false, plot_standard_error::Bool=false, plot_GUE=false) where {T <: Real}
     # Compute nearest neighbor spacings
     spacings = calculate_spacings(unfolded_energies)
     # Create a normalized histogram
@@ -426,11 +427,11 @@ function plot_nnls(unfolded_energies::Vector; nbins::Int=200, rho::Union{Nothing
     if log_scale
         lines!(ax, s_values, log10.(poisson_pdf.(abs.(s_values))), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
         lines!(ax, s_values, log10.(goe_pdf.(abs.(s_values))), label="GOE", color=:green, linestyle=:dot, linewidth=1)
-        lines!(ax, s_values, log10.(gue_pdf.(abs.(s_values))), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+        plot_GUE ? lines!(ax, s_values, log10.(gue_pdf.(abs.(s_values))), label="GUE", color=:red, linestyle=:dashdot, linewidth=1) : nothing
     else
         lines!(ax, s_values, poisson_pdf.(abs.(s_values)), label="Poisson", color=:blue, linestyle=:dash, linewidth=1)
         lines!(ax, s_values, goe_pdf.(abs.(s_values)), label="GOE", color=:green, linestyle=:dot, linewidth=1)
-        lines!(ax, s_values, gue_pdf.(abs.(s_values)), label="GUE", color=:red, linestyle=:dashdot, linewidth=1)
+        plot_GUE ? lines!(ax, s_values, gue_pdf.(abs.(s_values)), label="GUE", color=:red, linestyle=:dashdot, linewidth=1) : nothing
     end
     
     if berry_robnik_pdf !== nothing
