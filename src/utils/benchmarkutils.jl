@@ -44,7 +44,7 @@ end
 """
     benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k::T, dk::T; btimes = 1, print_info=true, plot_matrix=false,log=false, return_mat=false, kwargs...) where {T<:Real}
 
-Construct and solve benchmark problems for a given solver, basis, billiard, k, dk with optional kwargs.
+Construct and solve benchmark problems for a given solver, basis, billiard, k, dk with optional kwargs. This is a manual check if the chosen solver params are correct.
 
 # Arguments:
 - `solver::AbsSolver`: The solver to benchmark.
@@ -68,7 +68,6 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     let L = billiard.length, dim = round(Int, L*k*solver.dim_scaling_factor/(2*pi))
         basis_new = resize_basis(basis,billiard, dim, k)
         pts = evaluate_points(solver, billiard, k)
-
         function run(fun, args...; kwargs...)
             times = Float64[]
             values = []
@@ -83,7 +82,6 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
             mat_res, mat_time = run(construct_matrices_benchmark, solver, basis_new, pts, k)
         else
             mat_res, mat_time = run(construct_matrices, solver, basis_new, pts, k)
-    
         end
         mat_dim = []
         mat_mem = []
@@ -91,24 +89,20 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
             push!(mat_dim, size(A))
             push!(mat_mem, memory_size(A))
         end
-        
         if typeof(solver) <:AcceleratedSolver
             sol, decomp_time = run(solve, solver, mat_res[1],mat_res[2],k,dk)
             sorted_pairs = sort(collect(zip(sol[1], sol[2])), by = x -> x[2])
             sol = Tuple([[a,b] for (a,b) in sorted_pairs][1:min(5,length(sol[1]))])
             info = BenchmarkInfo(solver,mat_dim,mat_mem,mat_time,decomp_time,mat_time+decomp_time,sol)
         end
-        
         if typeof(solver) <:SweepSolver
             t, decomp_time = run(solve, solver, mat_res[1],mat_res[2])
             res, sol_time = run(solve_wavenumber,solver, basis, billiard,k,dk)
             info = BenchmarkInfo(solver,mat_dim,mat_mem,mat_time,decomp_time,sol_time,res) 
-        end
-                
+        end  
         if print_info
             print_benchmark_info(info)
         end
-        
         if plot_matrix
             mat_n = length(mat_res)
             f = Figure(resolution = (500*mat_n,500))
@@ -226,7 +220,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             mat=construct_matrices(solver,basis_new,pts,k_end)
             if length(mat)==1 # BIM 
                 mat[abs.(mat).<eps(T)].=NaN
-                has_nan_column = any(all(isnan,matrix[:,col]) for col in axes(matrix,2)) # test whether a column is all NaN which means we have reached a satisfactory d. Could use just the end column for NaN test but this is matrix orientation independant and more general. Not crucial step so we can leave it as-is
+                has_nan_column=any(all(isnan,matrix[:,col]) for col in axes(matrix,2)) # test whether a column is all NaN which means we have reached a satisfactory d. Could use just the end column for NaN test but this is matrix orientation independant and more general. Not crucial step so we can leave it as-is
                 if has_nan_column 
                     matrices_k_dict[k_end]=[mat] # the b variation will not show in the matrices so we can return them at this step
                     ds[i]=d
@@ -235,9 +229,9 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             else # Scaling, Decomposition or PSM
                 m1,m2=mat
                 m1[abs.(m1).<eps(T)].=NaN;m2[abs.(m2).<eps(T)].=NaN
-                has_nan_column1 = any(all(isnan,m1[:,col]) for col in axes(m1,2))
-                has_nan_column2 = any(all(isnan,m2[:,col]) for col in axes(m2,2))
-                if has_nan_column1 && has_nan_column2
+                has_nan_column1=any(all(isnan,m1[:,col]) for col in axes(m1,2))
+                has_nan_column2=any(all(isnan,m2[:,col]) for col in axes(m2,2))
+                if has_nan_column1&&has_nan_column2
                     matrices_k_dict[k_end]=[m1,m2]
                     ds[i]=d
                     converged=true # break
@@ -257,8 +251,8 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
             k_res,_=res
             if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
-                converged = true
-                bs[i] = b
+                converged=true
+                bs[i]=b
             end
             previous_ks[i]=k_res
             b+=db
@@ -275,6 +269,9 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         end
         display(f)
     end
+    println("k evaluation point: ", ks_ends)
+    println("Optimal d: ", ds)
+    println("Optimal b: ", bs)
     solvers=[construct_solver(d,b,solver_type) for (d,b) in zip(ds,bs)]
     if return_benchmarked_matrices
         return matrices_k_dict, solvers
