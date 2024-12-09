@@ -211,7 +211,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         solvers=Vector{BoundaryIntegralMethod}(undef,partitions)
     end
     # iterate over the ks at the ends and start the next d when the previous smaller k ends. THIS ONE JUST DETERMINES D. WHEN THIS ONE IS OK WE DETERMINE B.
-    ks_ends=[(k2-k1)/partitions*i for i in 1:partitions]
+    ks_ends=collect(range(k1,k2,partitions))
     b=b0 # placeholder for part 1
     @showprogress "Determining optimal d values..." for (i,k_end) in enumerate(ks_ends) 
         d=d0 # start anew for next k
