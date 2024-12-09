@@ -242,8 +242,8 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         end
     end
     previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
+    ks_min=Vector{Tuple{T,T,T}}[]
     @showprogress "Determining optimal b values..." for (i,k_end) in enumerate(ks_ends) 
-        ks_min=Vector{Tuple{T,T}}[]
         b=b0
         converged=false 
         while !converged
@@ -257,7 +257,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
                 converged=true
                 bs[i]=b
             end
-            push!(ks_min,(k_res,ten))
+            push!(ks_min,(k_end,k_res,ten))
             previous_ks[i]=k_res
             b+=db
         end
@@ -274,7 +274,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         println(bs)
         printstyled("Eigenvalues:",italic=true,color=:cyan,bold=true)
         println()
-        println([(k,ten) for (k,ten) in ks_min])
+        println([(k_e,k,ten) for (k_e,k,ten) in ks_min])
     end
     if display_benchmarked_matrices
         f=Figure(resolution=(500*length(keys(matrices_k_dict)),500*length(first(values(matrices_k_dict)))))
