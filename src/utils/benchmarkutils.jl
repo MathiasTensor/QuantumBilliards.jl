@@ -123,7 +123,7 @@ end
 plot_Z!(f::Figure, Z::AbstractMatrix; title::AbstractString="")
 
 Plots the heatmap of a given matrix `Z` with significance levels adjusted based on a 
-specified threshold of eps(), and overlays a color bar.
+specified threshold of eps(), and overlays a color bar. Also plots the lines where the first row/col is 0.0.
 
 # Arguments
 - `f::Figure`: A `Figure` object where the heatmap will be plotted.
@@ -139,9 +139,14 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     Z = deepcopy(Z)
     ax=Axis(f[i,j][1,1];title=title)
     m = findmax(abs.(Z))[1]
-    Z[abs.(Z).<eps()].=0.0
+    Z[abs.(Z).<eps()].=NaN
+    nan_row = findfirst(row->all(isnan,Z[row,:]),axes(Z,1))
+    nan_col = findfirst(col->all(isnan,Z[:,col]),axes(Z,2))
+    Z[isnan.(Z)].=0.0
     range_val=(-m,m) 
     hmap=heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
+    lines!(ax,[1,size(Z,2)],[nan_row,nan_row],color=:black,linewidth=2,linestyle=:dash)
+    lines!(ax,[nan_col,nan_col],[1,size(Z,1)],color=:black,linewidth=2,linestyle=:dash)
     ax.yreversed=false
     ax.aspect=DataAspect()
     Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
