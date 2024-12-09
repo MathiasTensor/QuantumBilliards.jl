@@ -153,7 +153,7 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
 end
 
 """
-    dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi;d0::T = T(1.0), b0::T = T(2.0), dk::T = T(0.1),solver_type::Symbol = :Accelerated, partitions::Integer = 10,samplers::Vector{Sam}, min_dim::Integer = 100, min_pts::Integer = 500,dd::T = T(0.1), db::T = T(0.3),return_benchmarked_matrices::Bool = true, display_benchmarked_matrices::Bool = true) where {T<:Real, Sam<:AbsSampler, Ba<:AbsBasis, Bi<:AbsBilliard}
+    dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi;d0::T = T(1.0), b0::T = T(2.0),solver_type::Symbol = :Accelerated, partitions::Integer = 10,samplers::Vector{Sam}, min_dim::Integer = 100, min_pts::Integer = 500,dd::T = T(0.1), db::T = T(0.3),return_benchmarked_matrices::Bool = true, display_benchmarked_matrices::Bool = true) where {T<:Real, Sam<:AbsSampler, Ba<:AbsBasis, Bi<:AbsBilliard}
 
 Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimizing for parameters `d` and `b`. This functions allows the user to not have to make manual tests for when the solvers are optimal in a given range of ks, since these parameters change (albeit slowly) throughout the spectrum computations.
 
@@ -166,7 +166,6 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
 - `billiard::Bi`: Billiard object specifying the geometry of the problem.
 - `d0::T`: Initial value for parameter `d` (default: 1.0).
 - `b0::T`: Initial value for parameter `b` (default: 2.0).
-- `dk::T`: Step size for wavenumber adjustments (default: 0.1).
 - `solver_type::Symbol`: Type of solver to use. Options are:
   - `:Accelerated`
   - `:ParticularSolutions`
