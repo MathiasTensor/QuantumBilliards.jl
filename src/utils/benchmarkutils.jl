@@ -286,9 +286,11 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         for (key,vals) in matrices_k_dict
             k=key
             n=length(vals)
+            j=1
             for i in 1:n 
-                plot_Z!(f[1,i],vals[i];title="$k")
+                plot_Z!(f[j,i],vals[i];title="$k")
             end
+            j+=1
         end
         display(f)
     end
