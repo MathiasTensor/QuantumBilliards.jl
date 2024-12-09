@@ -243,7 +243,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         end
     end
     previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
-    ks_min=Vector{Tuple{T,T,T}}[]
+    ks_min=Vector{Tuple{T,T,T}}()
     @showprogress "Determining optimal b values..." for (i,k_end) in enumerate(ks_ends) 
         b=b0
         converged=false 
@@ -258,7 +258,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
                 converged=true
                 bs[i]=b
             end
-            push!(ks_min,[(k_end,k_res,ten)])
+            push!(ks_min,(k_end,k_res,ten))
             previous_ks[i]=k_res
             b+=db
         end
