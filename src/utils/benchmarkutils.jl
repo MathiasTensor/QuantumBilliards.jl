@@ -259,9 +259,15 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             b+=db
         end
     end
-    println("k evaluation point: ", ks_ends)
-    println("Optimal d: ", ds)
-    println("Optimal b: ", bs)
+    printstyled("k evaluation point:", italic=true, color=:cyan)
+    println()
+    println(ks_ends)
+    printstyled("Optimal d:", italic=true, color=:cyan)
+    println()
+    println(ds)
+    printstyled("Optimal b:", italic=true, color=:cyan)
+    println()
+    println(bs)
     if display_benchmarked_matrices
         f=Figure(resolution=(500*length(keys(matrices_k_dict)),500*length(first(values(matrices_k_dict)))))
         for (key,vals) in matrices_k_dict
