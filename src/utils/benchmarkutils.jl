@@ -145,7 +145,6 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     ax.yreversed=false
     ax.aspect=DataAspect()
     Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
-    #rowsize!(f.layout,1,ax.scene.px_area[].widths[2])
 end
 
 """
@@ -255,7 +254,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             solver=construct_solver(ds[i],b,solver_type)
             L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
             basis_new=resize_basis(basis,billiard,dim,k_end)
-            dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi))
+            dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi)) # this ensures a minimum will be found due to weyl's law
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
             k_res,ten=res
             if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
@@ -283,14 +282,14 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     if display_benchmarked_matrices
         f=Figure(resolution=(500*length(first(values(matrices_k_dict))),500*partitions))
+        r=1 
         for (key,vals) in matrices_k_dict
-            k=key
-            n=length(vals)
-            j=1
-            for i in 1:n 
-                plot_Z!(f,i,j,vals[i];title="$k")
+            c=1
+            for val in vals
+                plot_Z!(f,r,c,val;title="$key")
+                c+=1 
             end
-            j+=1
+            r+=1 
         end
         display(f)
     end
