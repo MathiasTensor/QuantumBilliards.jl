@@ -1,7 +1,7 @@
 #include("../abstracttypes.jl")
 #include("../solvers/particularsolutionsmethod.jl")
 #include("../plotting/matrixplotting.jl")
-using Makie
+using Makie, ProgressMeter
 
 
 memory_size(a) = Base.format_bytes(Base.summarysize(a)) 
@@ -125,6 +125,66 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
     end
 end
 
+"""
+plot_Z!(f::Figure, Z::AbstractMatrix; title::AbstractString="")
+
+Plots the heatmap of a given matrix `Z` with significance levels adjusted based on a 
+specified threshold of eps(), and overlays a color bar.
+
+# Arguments
+- `f::Figure`: A `Figure` object where the heatmap will be plotted.
+- `Z::Matrix`: A matrix representing the data to be visualized.
+- `title::String`: A string specifying the title of the plot (default: "").
+
+# Details
+- Entries in `Z` below machine epsilon (`eps()`) are treated as NaN and ignored in the plot.
+- The color range is automatically balanced around the maximum absolute value in `Z`.
+- A color bar is displayed alongside the plot to indicate the data scale.
+"""
+function plot_Z!(f,Z;title="")
+    Z = deepcopy(Z)
+    ax = Axis(f[1,1], title=title)
+    m = findmax(abs.(Z))[1]
+    Z[abs.(Z).<eps()] .= NaN # useful to see when there is no significance to the F and Fk matrices
+    range_val = (-m,m) 
+    hmap=heatmap!(ax,Z,colormap=:balance, colorrange=range_val)
+    ax.yreversed=false
+    ax.aspect=DataAspect()
+    Colorbar(f[1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
+    rowsize!(f.layout,1,ax.scene.px_area[].widths[2])
+end
+
+"""
+    dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi;d0::T = T(1.0), b0::T = T(2.0), dk::T = T(0.1),solver_type::Symbol = :Accelerated, partitions::Integer = 10,samplers::Vector{Sam}, min_dim::Integer = 100, min_pts::Integer = 500,dd::T = T(0.1), db::T = T(0.3),return_benchmarked_matrices::Bool = true, display_benchmarked_matrices::Bool = true) where {T<:Real, Sam<:AbsSampler, Ba<:AbsBasis, Bi<:AbsBilliard}
+
+Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimizing for parameters `d` and `b`. This functions allows the user to not have to make manual tests for when the solvers are optimal in a given range of ks, since these parameters change (albeit slowly) throughout the spectrum computations.
+
+# Arguments
+- `k1::T`, `k2::T`: Start and end wavenumbers for the solver.
+- `basis::Ba`: Basis object to be resized for the solvers.
+- `billiard::Bi`: Billiard object specifying the geometry of the problem.
+- `d0::T`: Initial value for parameter `d` (default: 1.0).
+- `b0::T`: Initial value for parameter `b` (default: 2.0).
+- `dk::T`: Step size for wavenumber adjustments (default: 0.1).
+- `solver_type::Symbol`: Type of solver to use. Options are:
+  - `:Accelerated`
+  - `:ParticularSolutions`
+  - `:Decomposition`
+  - `:BoundaryIntegralMethod`
+- `partitions::Integer`: Number of partitions to divide the `k1` to `k2` range (default: 10).
+- `samplers::Vector{Sam}`: Vector of samplers for the solver.
+- `min_dim::Integer`: Minimum dimension for the solver's basis (default: 100).
+- `min_pts::Integer`: Minimum number of points for evaluation (default: 500).
+- `dd::T`: Increment step for parameter `d` during optimization (default: 0.1).
+- `db::T`: Increment step for parameter `b` during optimization (default: 0.3).
+- `return_benchmarked_matrices::Bool`: If `true`, returns the benchmarked matrices (default: `true`).
+- `display_benchmarked_matrices::Bool`: If `true`, displays the matrices as heatmaps (default: `true`).
+
+# Returns
+- If `return_benchmarked_matrices` is `true`: A tuple `(matrices_k_dict, solvers)`, where:
+  - `matrices_k_dict::Dict{T, Vector{Matrix{T}}}`: Dictionary mapping wavenumbers to matrices.
+  - `solvers::Vector`: List of constructed solvers.
+- If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
 function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), dk::T=T(0.1), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}, min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
     L = billiard.length;dim=round(Int,L*k*solver.dim_scaling_factor/(2*pi))
