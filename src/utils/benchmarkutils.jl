@@ -278,7 +278,12 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         println(bs)
         printstyled("Eigenvalues:",italic=true,color=:cyan,bold=true)
         println()
-        println([(k_e,k,ten) for (k_e,k,ten) in ks_min])
+        colors=[:red,:green,:blue,:yellow,:cyan,:magenta] # Define some colors
+        for (i,tuple) in enumerate(ks_min)
+            color=colors[mod(i-1,length(colors))+1]
+            printstyled(tuple,color=color)
+            println()
+        end
     end
     sorted_entries::Vector{Pair{T,Vector{Matrix{T}}}}=sort(collect(matrices_k_dict);by=x->x[1])
     if display_benchmarked_matrices

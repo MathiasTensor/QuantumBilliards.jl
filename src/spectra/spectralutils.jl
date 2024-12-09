@@ -356,45 +356,52 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 """
 function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, k1::T, k2::T; tol::T = T(1e-4), N_expect::Int = 3, dk_threshold::T = T(0.05), fundamental::Bool = true) where {T<:Real}
     # Estimate the number of intervals and store the dk values
-    k0 = k1
-    dk_values = []
-    while k0 < k2
+    k0=k1
+    dk_values=[]
+    while k0<k2
         if fundamental
-            dk = N_expect / (billiard.area_fundamental * k0 / (2*pi) - billiard.length_fundamental/(4*pi))
+            dk=N_expect/(billiard.area_fundamental*k0/(2*pi)-billiard.length_fundamental/(4*pi))
         else
-            dk = N_expect / (billiard.area * k0 / (2*pi) - billiard.length/(4*pi))
+            dk=N_expect/(billiard.area*k0/(2*pi)-billiard.length/(4*pi))
         end
-        if dk < 0.0
-            dk = -dk
+        if dk<0.0
+            dk=-dk
         end
-        if dk > dk_threshold # For small k this limits the size of the interval
-            dk = dk_threshold
+        if dk>dk_threshold # For small k this limits the size of the interval
+            dk=dk_threshold
         end
-        push!(dk_values, dk)
-        k0 += dk
+        push!(dk_values,dk)
+        k0+=dk
     end
-    println("min/max dk value: ", extrema(dk_values))
+    println("min/max dk value: ",extrema(dk_values))
     # Initialize the progress bar with estimated number of intervals
     println("Scaling Method w/ StateData...")
-    p = Progress(length(dk_values), 1)
+    p=Progress(length(dk_values),1)
     # Actual computation using precomputed dk values
-    k0 = k1
-    state_res::StateData{T, T} = solve_state_data_bundle(solver, basis, billiard, k0, dk_values[1] + tol)
-    control::Vector{Bool} = [false for _ in 1:length(state_res.ks)]
-
+    k0=k1
+    state_res::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk_values[1]+tol)
+    control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
     for i in eachindex(dk_values)[2:end]
-        dk = dk_values[i]
-        k0 += dk
-        state_new::StateData{T, T} = solve_state_data_bundle(solver, basis, billiard, k0, dk + tol)
+        dk=dk_values[i]
+        k0+=dk
+        state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol)
         # Merge the new state into the accumulated state
         overlap_and_merge_state!(
-            state_res.ks, state_res.tens, state_res.X,
-            state_new.ks, state_new.tens, state_new.X,
-            control, k0 - dk, k0; tol=tol
+            state_res.ks,state_res.tens,state_res.X,
+            state_new.ks,state_new.tens,state_new.X,
+            control,k0-dk,k0;tol=tol
         )
         next!(p)
     end
-    return state_res, control
+    return state_res,control
+end
+
+function compute_spectrum_optimized()
+    
+end
+
+function compute_spectrum_optimized()
+    
 end
 
 """
