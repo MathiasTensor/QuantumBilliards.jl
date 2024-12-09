@@ -126,6 +126,103 @@ function benchmark_solver(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilli
 end
 
 """
+function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), dk::T=T(0.1), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}, min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
+    L = billiard.length;dim=round(Int,L*k*solver.dim_scaling_factor/(2*pi))
+    basis_new = resize_basis(basis,billiard,dim,k)
+    ds=Vector{T}(undef,partitions) # temp storage for part 1
+    bs=Vector{T}(undef,partitions) # together with ds construct returned solvers
+    matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
+    # helper solver constructor
+    construct_solver(_d,_b,type_sol) = begin
+        if type_sol==:Accelerated
+            return ScalingMethodA(_d,_b,samplers;min_dim=min_dim,min_pts=min_pts)
+        elseif type_sol==:ParticularSolutions
+            return ParticularSolutionsMethod(_d,_b,_b,samplers;min_dim=min_dim,min_pts=min_pts,min_int_pts=min_pts)
+        elseif type_sol==:Decomposition
+            return DecompositionMethod(_d,_b,samplers;min_dim=min_dim,min_pts=min_pts)
+        elseif type_sol==:BoundaryIntegralMethod
+            return BoundaryIntegralMethod(_b,samplers;min_pts=min_pts)
+        end
+    end
+    # preallocate solver vectors
+    if solver_type==:Accelerated
+        solvers=Vector{AcceleratedSolver}(undef,partitions)
+    elseif solver_type==:ParticularSolutions
+        solvers=Vector{ParticularSolutionsMethod}(undef,partitions)
+    elseif solver_type==:Decomposition
+        solvers=Vector{DecompositionMethod}(undef,partitions)
+    elseif solver_type==:BoundaryIntegralMethod
+        solvers=Vector{BoundaryIntegralMethod}(undef,partitions)
+    end
+    # iterate over the ks at the ends and start the next d when the previous smaller k ends. THIS ONE JUST DETERMINES D. WHEN THIS ONE IS OK WE DETERMINE B.
+    ks_ends=[(k2-k1)/partitions*i for i in 1:partitions]
+    b=b0 # placeholder for part 1
+    @showprogress "Determining optimal d values..." for (i,k_end) in enumerate(ks_ends) 
+        d=d0 # start anew for next k
+        converged=false 
+        while !converged
+            solver=construct_solver(d,b,solver_type)
+            pts=evaluate_points(solver,billiard,k_end) # this is already the correct BoundaryPoints type based on the solver type
+            mat=construct_matrices(solver,basis_new,pts,k_end)
+            if length(mat)==1 # BIM 
+                mat[abs.(mat).<eps(T)].=NaN
+                has_nan_column = any(all(isnan,matrix[:,col]) for col in axes(matrix,2)) # test whether a column is all NaN which means we have reached a satisfactory d. Could use just the end column for NaN test but this is matrix orientation independant and more general. Not crucial step so we can leave it as-is
+                if has_nan_column 
+                    matrices_k_dict[k_end]=[mat] # the b variation will not show in the matrices so we can return them at this step
+                    ds[i]=d
+                    converged=true # break
+                end
+            else # Scaling, Decomposition or PSM
+                m1,m2=mat
+                m1[abs.(m1).<eps(T)].=NaN;m2[abs.(m2).<eps(T)].=NaN
+                has_nan_column1 = any(all(isnan,m1[:,col]) for col in axes(m1,2))
+                has_nan_column2 = any(all(isnan,m2[:,col]) for col in axes(m2,2))
+                if has_nan_column1 && has_nan_column2
+                    matrices_k_dict[k_end]=[m1,m2]
+                    ds[i]=d
+                    converged=true # break
+                end
+            end
+            d+=dd
+        end
+    end
+    previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
+    @showprogress "Determining optimal b values..." for (i,k_end) in enumerate(ks_ends) 
+        b=b0
+        converged=false 
+        while !converged
+            solver=construct_solver(ds[i],b,solver_type)
+            # res containts the (k,t) where k is the wavenumber and t is the tension. When we change b this k value should not change more than sqrt(eps) to achieve convergence in b
+            res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
+            k_res,_=res
+            if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
+                converged = true
+                bs[i] = b
+            end
+            previous_ks[i]=k_res
+            b+=db
+        end
+    end
+    if display_benchmarked_matrices
+        f = Figure(resolution=(500*length(keys(matrices_k_dict))),500*length(first(values(matrices_k_dict))))
+        for (key,vals) in matrices_k_dict
+            k=key
+            n=length(vals)
+            for i in 1:n 
+                plot_Z!(f[1,i],vals[i];title="$k")
+            end
+        end
+        display(f)
+    end
+    solvers=[construct_solver(d,b,solver_type) for (d,b) in zip(ds,bs)]
+    if return_benchmarked_matrices
+        return matrices_k_dict, solvers
+    else
+        return solvers
+    end
+end
+
+"""
     compute_benchmarks(solver, basis, billiard, k, dk; d_range = [2.0], b_range=[2.0],btimes=1)
 
 Wrapper for benchmark_solver that also iterates over a d and b range to chekc when we have unchanging solutions to the eigenvalues and tensions.
