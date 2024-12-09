@@ -222,21 +222,23 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             basis_new = resize_basis(basis,billiard,dim,k_end)
             pts=evaluate_points(solver,billiard,k_end) # this is already the correct BoundaryPoints type based on the solver type
             mat=construct_matrices(solver,basis_new,pts,k_end)
+            M=deepcopy(mat)
             if length(mat)==1 # BIM 
                 mat[abs.(mat).<eps(T)].=NaN
                 has_nan_column=any(all(isnan,matrix[:,col]) for col in axes(matrix,2)) # test whether a column is all NaN which means we have reached a satisfactory d. Could use just the end column for NaN test but this is matrix orientation independant and more general. Not crucial step so we can leave it as-is
                 if has_nan_column 
-                    matrices_k_dict[k_end]=[mat] # the b variation will not show in the matrices so we can return them at this step
+                    matrices_k_dict[k_end]=[M] # the b variation will not show in the matrices so we can return them at this step
                     ds[i]=d
                     converged=true # break
                 end
             else # Scaling, Decomposition or PSM
                 m1,m2=mat
+                M1=deepcopy(m1);M2=deepcopy(m2)
                 m1[abs.(m1).<eps(T)].=NaN;m2[abs.(m2).<eps(T)].=NaN
                 has_nan_column1=any(all(isnan,m1[:,col]) for col in axes(m1,2))
                 has_nan_column2=any(all(isnan,m2[:,col]) for col in axes(m2,2))
                 if has_nan_column1&&has_nan_column2
-                    matrices_k_dict[k_end]=[m1,m2]
+                    matrices_k_dict[k_end]=[M1,M2]
                     ds[i]=d
                     converged=true # break
                 end
