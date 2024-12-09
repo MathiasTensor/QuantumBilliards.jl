@@ -179,7 +179,7 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
 
 # Returns
 - If `return_benchmarked_matrices` is `true`: A tuple `(matrices_k_dict, solvers)`, where:
-  - `matrices_k_dict::Dict{T, Vector{Matrix{T}}}`: Dictionary mapping wavenumbers to matrices.
+  - `sorted_entries::Vector{Pair{T,Vector{Matrix{T}}}}`: collected dictionary mapping wavenumbers to matrices.
   - `solvers::Vector`: List of constructed solvers.
 - If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
@@ -280,11 +280,11 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         println()
         println([(k_e,k,ten) for (k_e,k,ten) in ks_min])
     end
-    matrices_k_dict=Dict(sort(collect(matrices_k_dict);by=x->x[1]))
+    sorted_entries::Vector{Pair{T,Vector{Matrix{T}}}}=sort(collect(matrices_k_dict);by=x->x[1])
     if display_benchmarked_matrices
         f=Figure(resolution=(500*length(first(values(matrices_k_dict))),500*partitions))
         r=1 
-        for (key,vals) in matrices_k_dict
+        for (key,vals) in sorted_entries
             c=1
             for val in vals
                 plot_Z!(f,r,c,val;title="$key")
@@ -296,7 +296,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     solvers=[construct_solver(d,b,solver_type) for (d,b) in zip(ds,bs)]
     if return_benchmarked_matrices
-        return matrices_k_dict, solvers
+        return sorted_entries, solvers
     else
         return solvers
     end
