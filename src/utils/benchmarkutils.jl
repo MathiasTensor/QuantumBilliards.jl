@@ -140,11 +140,9 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     ax=Axis(f[i,j][1,1];title=title)
     m = findmax(abs.(Z))[1]
     Z[abs.(Z).<eps()].=NaN
-    #nan_row=findfirst(row->all(isnan,Z[row,:]),axes(Z,1))
-    #nan_col=findfirst(col->all(isnan,Z[:,col]),axes(Z,2))
-    nan_row = first(filter(row -> all(isnan, Z[row, :]), axes(Z, 1)))
-    nan_col = first(filter(col -> all(isnan, Z[:, col]), axes(Z, 2)))
-    Z[isnan.(Z)].=0.0
+    nan_row=findfirst(row->all(isnan,Z[row,:]),axes(Z,1))
+    nan_col=findfirst(col->all(isnan,Z[:,col]),axes(Z,2))
+    Z[isnan.(Z)].=m
     range_val=(-m,m) 
     hmap=heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
     lines!(ax,[1,size(Z,2)],[nan_row,nan_row],color=:black,linewidth=2,linestyle=:dash)
