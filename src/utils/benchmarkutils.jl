@@ -135,17 +135,17 @@ specified threshold of eps(), and overlays a color bar.
 - The color range is automatically balanced around the maximum absolute value in `Z`.
 - A color bar is displayed alongside the plot to indicate the data scale.
 """
-function plot_Z!(f,Z;title="")
+function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     Z = deepcopy(Z)
-    ax = Axis(f[1,1], title=title)
+    ax=Axis(f[i,j][1,1];title=title)
     m = findmax(abs.(Z))[1]
-    Z[abs.(Z).<eps()] .= 0.0 # useful to see when there is no significance to the F and Fk matrices
-    range_val = (-m,m) 
-    hmap=heatmap!(ax,Z,colormap=:balance, colorrange=range_val)
+    Z[abs.(Z).<eps()].=0.0
+    range_val=(-m,m) 
+    hmap=heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
     ax.yreversed=false
     ax.aspect=DataAspect()
-    Colorbar(f[1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
-    rowsize!(f.layout,1,ax.scene.px_area[].widths[2])
+    Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
+    #rowsize!(f.layout,1,ax.scene.px_area[].widths[2])
 end
 
 """
@@ -288,7 +288,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             n=length(vals)
             j=1
             for i in 1:n 
-                plot_Z!(f[j,i],vals[i];title="$k")
+                plot_Z!(f,j,i,vals[i];title="$k")
             end
             j+=1
         end
