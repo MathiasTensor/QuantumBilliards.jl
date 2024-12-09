@@ -216,50 +216,6 @@ function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left, k_ri
     append!(control_left, [false for _ in idx_last:length(k_right)])
 end
 
-#=
-function overlap_and_merge!(k_left, ten_left, k_right, ten_right, control_left, kl, kr; tol=1e-3)
-    #check if intervals are empty 
-    if isempty(k_left)
-        #println("Left interval is empty.")
-        append!(k_left, k_right)
-        append!(ten_left, ten_right)
-        append!(control_left, [false for i in 1:length(k_right)])
-        return nothing #return short circuits further evaluation
-    end
-
-    #if right is empty just skip the mergeing
-    if isempty(k_right)
-        #println("Right interval is empty.")
-        return nothing
-    end
-    
-    #find overlaps in interval [k1,k2]
-    idx_l = k_left .> (kl-tol) .&& k_left .< (kr+tol)
-    idx_r = k_right .> (kl-tol) .&& k_right .< (kr+tol)
-    
-    ks_l,ts_l,ks_r,ts_r = k_left[idx_l], ten_left[idx_l], k_right[idx_r], ten_right[idx_r]
-    #check if wavnumbers match in overlap interval
-    ks, ts, control = match_wavenumbers(ks_l,ts_l,ks_r,ts_r)
-    #println("left: $ks_l")
-    #println("right: $ks_r")
-    #println("overlaping: $ks")
-    #i_l = idx_l[1]
-    #i_r = idx_r[end]+1
-    deleteat!(k_left, idx_l)
-    append!(k_left, ks)
-    deleteat!(ten_left, idx_l)
-    append!(ten_left, ts)
-    deleteat!(control_left, idx_l)
-    append!(control_left, control)
-
-    fl = findlast(idx_r)
-    idx_last = isnothing(fl) ? 1 : fl + 1
-    append!(k_left, k_right[idx_last:end])
-    append!(ten_left, ten_right[idx_last:end])
-    append!(control_left, [false for i in idx_last:length(k_right)])
-end
-=#
-
 # OLD
 function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4)
     k0 = k1
@@ -397,10 +353,37 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
 end
 
 function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions, samplers=samplers)
-    # separate the problem into smaller intervals
-    for interval in intervals
-        
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers)
+    dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
+    for (i,interval) in enumerate(intervals)
+        k1,k2=interval # interval::Tuple{T,T}
+        k0=k1;dk_values=Vector{T}()
+        while k0<k2
+            if fundamental
+                dk=N_expect/(billiard.area_fundamental*k0/(2*pi)-billiard.length_fundamental/(4*pi))
+            else
+                dk=N_expect/(billiard.area*k0/(2*pi)-billiard.length/(4*pi))
+            end
+            dk<0.0 ? -dk : dk
+            dk>dk_threshold ? dk=dk_threshold : nothing # For small k this limits the size of the interval
+            push!(dk_values,dk)
+            k0+=dk
+        end
+        dk_vals_all[i]=dk_values
+        println("min/max dk value for interval [$k1,$k2]: ",extrema(dk_values))
+        k0=k1
+        println("Initial solve for interval [$k1,$k2]...")
+        @time k_res,ten_res=solve_spectrum(solvers[i],basis,billiard,k0,dk_values[1]+tol)
+        control=[false for _ in 1:length(k_res)]
+        @showprogress for i in eachindex(dk_values)
+            dk=dk_values[i]
+            k0+=dk
+            println("Doing k: ",k0," to: ",k0+dk+tol)
+            @time k_new,ten_new=solve_spectrum(solvers[i],basis,billiard,k0,dk+tol)
+            overlap_and_merge!(k_res,ten_res,k_new,ten_new,control,k0-dk,k0;tol=tol)
+            next!(p)
+        end
+        k_res,ten_res,control
     end
 end
 
