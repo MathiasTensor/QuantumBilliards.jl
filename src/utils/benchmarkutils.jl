@@ -154,6 +154,9 @@ end
 
 Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimizing for parameters `d` and `b`. This functions allows the user to not have to make manual tests for when the solvers are optimal in a given range of ks, since these parameters change (albeit slowly) throughout the spectrum computations.
 
+# Description of Return
+
+
 # Arguments
 - `k1::T`, `k2::T`: Start and end wavenumbers for the solver.
 - `basis::Ba`: Basis object to be resized for the solvers.
@@ -313,8 +316,7 @@ Wrapper for benchmark_solver that also iterates over a d and b range to chekc wh
 # Returns
 - `Vector{BenchmarkInfo}`: A vector of BenchmarkInfo objects for each combination of d and b in the given ranges.
 """
-function compute_benchmarks(solver, basis, billiard, k, dk; d_range = [2.0], b_range=[2.0],btimes=1)
-    #eps = solver.eps
+function compute_benchmarks(solver::Sol, basis::Ba, billiard::Bi, k::T, dk::T; d_range=[2.0], b_range=[2.0], btimes=1) where {Sol<:AbsSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     make_solver(solver,d,b) = typeof(solver)(d,b) 
     grid_indices = CartesianIndices((length(d_range), length(b_range)))
     info_matrix = [benchmark_solver(make_solver(solver,d_range[i[1]],b_range[i[2]]),basis,billiard,k,dk;print_info=false,btimes=btimes) for i in grid_indices]
