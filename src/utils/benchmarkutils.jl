@@ -145,8 +145,8 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     Z[isnan.(Z)].=m
     range_val=(-m,m) 
     hmap=heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
-    lines!(ax,[1,size(Z,2)],[nan_row,nan_row],color=:black,linewidth=2,linestyle=:dash)
-    lines!(ax,[nan_col,nan_col],[1,size(Z,1)],color=:black,linewidth=2,linestyle=:dash)
+    lines!(ax,[1,size(Z,2)],[nan_row,nan_row],color=:green,linewidth=2,linestyle=:dash)
+    lines!(ax,[nan_col,nan_col],[1,size(Z,1)],color=:green,linewidth=2,linestyle=:dash)
     ax.yreversed=false
     ax.aspect=DataAspect()
     Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
