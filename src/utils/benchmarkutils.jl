@@ -173,6 +173,7 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
 - `db::T`: Increment step for parameter `b` during optimization (default: 0.3).
 - `return_benchmarked_matrices::Bool`: If `true`, returns the benchmarked matrices (default: `true`).
 - `display_benchmarked_matrices::Bool`: If `true`, displays the matrices as heatmaps (default: `true`).
+- `print_params::Bool`: If printing d,b determined params. Default is `true`.
 
 # Returns
 - If `return_benchmarked_matrices` is `true`: A tuple `(matrices_k_dict, solvers)`, where:
@@ -180,7 +181,7 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
   - `solvers::Vector`: List of constructed solvers.
 - If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
-function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
+function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true, print_params=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
     ds=Vector{T}(undef,partitions) # temp storage for part 1
     bs=Vector{T}(undef,partitions) # together with ds construct returned solvers
     matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
@@ -242,6 +243,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
     @showprogress "Determining optimal b values..." for (i,k_end) in enumerate(ks_ends) 
+        ks_min=Vector{Tuple{T,T}}[]
         b=b0
         converged=false 
         while !converged
@@ -250,24 +252,30 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             basis_new = resize_basis(basis,billiard,dim,k_end)
             dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi))
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
-            k_res,_=res
+            k_res,ten=res
             if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
                 converged=true
                 bs[i]=b
             end
+            push!(ks_min,(k_res,ten))
             previous_ks[i]=k_res
             b+=db
         end
     end
-    printstyled("k evaluation point:", italic=true, color=:cyan)
-    println()
-    println(ks_ends)
-    printstyled("Optimal d:", italic=true, color=:cyan)
-    println()
-    println(ds)
-    printstyled("Optimal b:", italic=true, color=:cyan)
-    println()
-    println(bs)
+    if print_params
+        printstyled("k evaluation point:",italic=true,color=:cyan,bold=true)
+        println()
+        println(ks_ends)
+        printstyled("Optimal d:",italic=true,color=:cyan,bold=true)
+        println()
+        println(ds)
+        printstyled("Optimal b:",italic=true,color=:cyan,bold=true)
+        println()
+        println(bs)
+        printstyled("Eigenvalues:",italic=true,color=:cyan,bold=true)
+        println()
+        println([(k,ten) for (k,ten) in ks_min])
+    end
     if display_benchmarked_matrices
         f=Figure(resolution=(500*length(keys(matrices_k_dict)),500*length(first(values(matrices_k_dict)))))
         for (key,vals) in matrices_k_dict
