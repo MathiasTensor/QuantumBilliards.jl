@@ -3,7 +3,7 @@
 #include("../plotting/matrixplotting.jl")
 using Makie, ProgressMeter
 
-
+# helper for determining the byte size of object "a"
 memory_size(a) = Base.format_bytes(Base.summarysize(a)) 
 
 """
@@ -142,7 +142,7 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     Z[abs.(Z).<eps()].=NaN
     nan_row=findfirst(row->all(isnan,Z[row,:]),axes(Z,1))
     nan_col=findfirst(col->all(isnan,Z[:,col]),axes(Z,2))
-    Z[isnan.(Z)].=m
+    Z[isnan.(Z)].=m # to better see
     range_val=(-m,m) 
     hmap=heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
     lines!(ax,[1,size(Z,2)],[nan_row,nan_row],color=:green,linewidth=2,linestyle=:dash)
@@ -189,8 +189,8 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
 - If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
 function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true, print_params=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
-    ds=Vector{T}(undef,partitions) # temp storage for part 1
-    bs=Vector{T}(undef,partitions) # together with ds construct returned solvers
+    ds=Vector{T}(undef,partitions-1) # temp storage for part 1
+    bs=Vector{T}(undef,partitions-1) # together with ds construct returned solvers
     matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
     # helper solver constructor
     construct_solver(_d,_b,type_sol) = begin
@@ -206,18 +206,19 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     # preallocate solver vectors
     if solver_type==:Accelerated
-        solvers=Vector{AcceleratedSolver}(undef,partitions)
+        solvers=Vector{AcceleratedSolver}(undef,partitions-1)
     elseif solver_type==:ParticularSolutions
-        solvers=Vector{ParticularSolutionsMethod}(undef,partitions)
+        solvers=Vector{ParticularSolutionsMethod}(undef,partitions-1)
     elseif solver_type==:Decomposition
-        solvers=Vector{DecompositionMethod}(undef,partitions)
+        solvers=Vector{DecompositionMethod}(undef,partitions-1)
     elseif solver_type==:BoundaryIntegralMethod
-        solvers=Vector{BoundaryIntegralMethod}(undef,partitions)
+        solvers=Vector{BoundaryIntegralMethod}(undef,partitions-1)
     end
     # iterate over the ks at the ends and start the next d when the previous smaller k ends. THIS ONE JUST DETERMINES D. WHEN THIS ONE IS OK WE DETERMINE B.
     ks_ends=collect(range(k1,k2,partitions))
+    intervals = [(ks_ends[i],ks_ends[i+1]) for i in 1:(length(ks_ends)-1)]
     b=b0 # placeholder for part 1
-    @showprogress "Determining optimal d values..." for (i,k_end) in enumerate(ks_ends) 
+    @showprogress "Determining optimal d values..." for (i,(_,k_end)) in enumerate(intervals)
         d=d0 # start anew for next k
         converged=false 
         while !converged
@@ -252,7 +253,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
     ks_min=Vector{Tuple{T,T,T}}()
-    @showprogress "Determining optimal b values..." for (i,k_end) in enumerate(ks_ends) 
+    @showprogress "Determining optimal b values..." for (i,(_,k_end)) in enumerate(intervals)
         b=b0
         converged=false 
         while !converged
@@ -306,9 +307,9 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     solvers=[construct_solver(d,b,solver_type) for (d,b) in zip(ds,bs)]
     if return_benchmarked_matrices
-        return sorted_entries, solvers
+        return sorted_entries, solvers, intervals
     else
-        return solvers
+        return solvers, intervals
     end
 end
 

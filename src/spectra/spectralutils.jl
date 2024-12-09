@@ -396,7 +396,7 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
     return state_res,control
 end
 
-function compute_spectrum_optimized()
+function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), partitions::Integer=10) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis}
     
 end
 
