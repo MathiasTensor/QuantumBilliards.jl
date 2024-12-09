@@ -180,7 +180,7 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
   - `solvers::Vector`: List of constructed solvers.
 - If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
-function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), dk::T=T(0.1), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
+function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
     ds=Vector{T}(undef,partitions) # temp storage for part 1
     bs=Vector{T}(undef,partitions) # together with ds construct returned solvers
     matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
@@ -248,6 +248,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             solver=construct_solver(ds[i],b,solver_type)
             L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
             basis_new = resize_basis(basis,billiard,dim,k_end)
+            dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi))
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
             k_res,_=res
             if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
@@ -258,6 +259,9 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             b+=db
         end
     end
+    println("k evaluation point: ", ks_ends)
+    println("Optimal d: ", ds)
+    println("Optimal b: ", bs)
     if display_benchmarked_matrices
         f=Figure(resolution=(500*length(keys(matrices_k_dict)),500*length(first(values(matrices_k_dict)))))
         for (key,vals) in matrices_k_dict
@@ -269,9 +273,6 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         end
         display(f)
     end
-    println("k evaluation point: ", ks_ends)
-    println("Optimal d: ", ds)
-    println("Optimal b: ", bs)
     solvers=[construct_solver(d,b,solver_type) for (d,b) in zip(ds,bs)]
     if return_benchmarked_matrices
         return matrices_k_dict, solvers
