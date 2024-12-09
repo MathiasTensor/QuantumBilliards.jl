@@ -219,7 +219,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         while !converged
             solver=construct_solver(d,b,solver_type)
             L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
-            basis_new = resize_basis(basis,billiard,dim,k_end)
+            basis_new=resize_basis(basis,billiard,dim,k_end)
             pts=evaluate_points(solver,billiard,k_end) # this is already the correct BoundaryPoints type based on the solver type
             mat=construct_matrices(solver,basis_new,pts,k_end)
             M=deepcopy(mat)
@@ -254,7 +254,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         while !converged
             solver=construct_solver(ds[i],b,solver_type)
             L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
-            basis_new = resize_basis(basis,billiard,dim,k_end)
+            basis_new=resize_basis(basis,billiard,dim,k_end)
             dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi))
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
             k_res,ten=res
@@ -282,7 +282,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         println([(k_e,k,ten) for (k_e,k,ten) in ks_min])
     end
     if display_benchmarked_matrices
-        f=Figure(resolution=(500*partitions,500*length(first(values(matrices_k_dict)))))
+        f=Figure(resolution=(500*length(first(values(matrices_k_dict))),500*partitions))
         for (key,vals) in matrices_k_dict
             k=key
             n=length(vals)
