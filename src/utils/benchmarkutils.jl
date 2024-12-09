@@ -282,7 +282,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         println([(k_e,k,ten) for (k_e,k,ten) in ks_min])
     end
     if display_benchmarked_matrices
-        f=Figure(resolution=(500*length(keys(matrices_k_dict)),500*length(first(values(matrices_k_dict)))))
+        f=Figure(resolution=(500*partitions,500*length(first(values(matrices_k_dict)))))
         for (key,vals) in matrices_k_dict
             k=key
             n=length(vals)
