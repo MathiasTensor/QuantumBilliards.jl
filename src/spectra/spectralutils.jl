@@ -398,6 +398,10 @@ end
 
 function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions, samplers=samplers)
+    # separate the problem into smaller intervals
+    for interval in intervals
+        
+    end
 end
 
 function compute_spectrum_with_state_optimized()
