@@ -257,7 +257,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
                 converged=true
                 bs[i]=b
             end
-            push!(ks_min,(k_end,k_res,ten))
+            push!(ks_min,[(k_end,k_res,ten)])
             previous_ks[i]=k_res
             b+=db
         end
