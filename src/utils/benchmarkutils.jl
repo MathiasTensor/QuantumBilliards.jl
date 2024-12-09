@@ -137,10 +137,9 @@ specified threshold of eps(), and overlays a color bar.
 """
 function plot_Z!(f,Z;title="")
     Z = deepcopy(Z)
-    #ax = Axis(f[1,1], title=title)
-    ax = Axis(f[1,1])
+    ax = Axis(f[1,1], title=title)
     m = findmax(abs.(Z))[1]
-    Z[abs.(Z).<eps()] .= NaN # useful to see when there is no significance to the F and Fk matrices
+    Z[abs.(Z).<eps()] .= 0.0 # useful to see when there is no significance to the F and Fk matrices
     range_val = (-m,m) 
     hmap=heatmap!(ax,Z,colormap=:balance, colorrange=range_val)
     ax.yreversed=false
