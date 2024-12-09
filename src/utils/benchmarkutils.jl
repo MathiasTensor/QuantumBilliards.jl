@@ -137,7 +137,8 @@ specified threshold of eps(), and overlays a color bar.
 """
 function plot_Z!(f,Z;title="")
     Z = deepcopy(Z)
-    ax = Axis(f[1,1], title=title)
+    #ax = Axis(f[1,1], title=title)
+    ax = Axis(f[1,1])
     m = findmax(abs.(Z))[1]
     Z[abs.(Z).<eps()] .= NaN # useful to see when there is no significance to the F and Fk matrices
     range_val = (-m,m) 
