@@ -187,8 +187,6 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
 - If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
 function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), dk::T=T(0.1), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
-    L = billiard.length;dim=round(Int,L*k*solver.dim_scaling_factor/(2*pi))
-    basis_new = resize_basis(basis,billiard,dim,k)
     ds=Vector{T}(undef,partitions) # temp storage for part 1
     bs=Vector{T}(undef,partitions) # together with ds construct returned solvers
     matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
@@ -222,6 +220,8 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         converged=false 
         while !converged
             solver=construct_solver(d,b,solver_type)
+            L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
+            basis_new = resize_basis(basis,billiard,dim,k_end)
             pts=evaluate_points(solver,billiard,k_end) # this is already the correct BoundaryPoints type based on the solver type
             mat=construct_matrices(solver,basis_new,pts,k_end)
             if length(mat)==1 # BIM 
@@ -252,7 +252,8 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
         converged=false 
         while !converged
             solver=construct_solver(ds[i],b,solver_type)
-            # res containts the (k,t) where k is the wavenumber and t is the tension. When we change b this k value should not change more than sqrt(eps) to achieve convergence in b
+            L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
+            basis_new = resize_basis(basis,billiard,dim,k_end)
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
             k_res,_=res
             if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
