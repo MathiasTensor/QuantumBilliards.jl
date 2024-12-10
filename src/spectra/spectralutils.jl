@@ -518,7 +518,7 @@ function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard
         println("min/max dk value for interval [$k1,$k2]: ",extrema(dk_values))
         k0=k1
         @time state_res::StateData{T,T}=solve_state_data_bundle(solvers[i],basis,billiard,k0,dk_values[1]+tol)
-        control=[false for _ in 1:length(k_res)]
+        control=[false for _ in 1:length(state_res.ks)]
         @showprogress for i in eachindex(dk_values)[2:end]
             dk=dk_values[i]
             k0+=dk
