@@ -397,6 +397,7 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
 - `partitions::Integer=10`: The number of partitions for dividing the interval `[k1, k2]`.
 - `samplers::Vector{Sam}=[GaussLegendreNodes()]`: A vector of samplers used for quadrature, with elements of type `AbsSampler`.
 - `fundamental::Bool=true`: If `true`, use the fundamental domain properties (area and length) for the Weyl estimate.
+- `display_basis_matrices::Bool=false`: Whether to display the construced basis with the optimal d.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}, Vector{Bool}}`: A tuple containing:
@@ -404,8 +405,12 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
   - A vector of eigenvalue tensions (`tensions`).
   - A vector of control flags (`controls`).
 """
-function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
+function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
+    for (i,solver) in solvers 
+        println("Solver $i d: ", solver.dim_scaling_factor)
+        println("Solver $i b: ", solver.pts_scaling_factor)
+    end
     dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
     ks=Vector{Vector{T}}(undef,length(intervals))
     tensions=Vector{Vector{T}}(undef,length(intervals))
@@ -481,6 +486,7 @@ This function partitions the interval `[k1, k2]` into smaller sub-intervals base
 - `partitions::Integer=10`: Number of partitions to divide the interval `[k1, k2]` into.
 - `samplers::Vector{Sam}=[GaussLegendreNodes()]`: Vector of samplers used for solving. Each sampler must be a subtype of `AbsSampler`.
 - `fundamental::Bool=true`: Whether to use fundamental billiard geometry for calculations. If `true`, uses the fundamental area and length.
+- `display_basis_matrices::Bool=false`: Whether to display the construced basis with the optimal d.
 
 ## Returns
 A tuple containing:
@@ -490,8 +496,12 @@ A tuple containing:
    - `tens::Vector{T}`: Corresponding tensions for checking the correctness of the eigenvalues.
 2. `controls::Vector{T}`: Control flags to see which of the eigenvalues were compared w/ another wrt. lower tension value. 
 """
-function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
+function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
+    for (i,solver) in solvers 
+        println("Solver $i d: ", solver.dim_scaling_factor)
+        println("Solver $i b: ", solver.pts_scaling_factor)
+    end
     dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
     mul_state_data=Vector{StateData{T,T}}(undef,length(intervals))
     controls=Vector{Vector{T}}(undef,length(intervals))
@@ -501,7 +511,6 @@ function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard
     L_full=billiard.length
     for (i,interval) in enumerate(intervals)
         k1,k2=interval # interval::Tuple{T,T}
-        println("Interval: ", k1,", ", k2)
         k0=k1
         dk_values=Vector{T}() # length not known
         while k0<k2
