@@ -407,8 +407,8 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
 function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
     dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
-    ks=Vector{Vector{T}}(undef,length(intervals));tensions=Vector{Vector{T}}(undef,length(intervals)),controls=Vector{Vector{T}}(undef,length(intervals))
-    A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
+    ks=Vector{Vector{T}}(undef,length(intervals)),tensions=Vector{Vector{T}}(undef,length(intervals)),controls=Vector{Vector{T}}(undef,length(intervals))
+    A_fund=billiard.area_fundamental,L_fund=billiard.length_fundamental,A_full=billiard.area,L_full=billiard.length
     for (i,interval) in enumerate(intervals)
         k1,k2=interval # interval::Tuple{T,T}
         k0=k1;dk_values=Vector{T}() # length not known
@@ -436,8 +436,8 @@ function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_exp
             next!(p)
         end
         idxs_contain=findall(k->(k1<k&&k<k2),k_res) # trim the edges from tol
-        k_res=k_res[idxs_contain];ten_res=ten_res[idxs_contain];control=control[idxs_contain]
-        ks[i]=k_res;tensions[i]=ten_res;controls[i]=control
+        k_res=k_res[idxs_contain],ten_res=ten_res[idxs_contain],control=control[idxs_contain]
+        ks[i]=k_res,tensions[i]=ten_res,controls[i]=control
     end
     return vcat(ks...),vcat(tensions...),vcat(controls...)
 end
@@ -483,8 +483,8 @@ A tuple containing:
 function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
     dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
-    mul_state_data=Vector{StateData{T,T}}(undef,length(intervals));controls=Vector{Vector{T}}(undef,length(intervals))
-    A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
+    mul_state_data=Vector{StateData{T,T}}(undef,length(intervals)),controls=Vector{Vector{T}}(undef,length(intervals))
+    A_fund=billiard.area_fundamental,L_fund=billiard.length_fundamental,A_full=billiard.area,L_full=billiard.length
     for (i,interval) in enumerate(intervals)
         k1,k2=interval # interval::Tuple{T,T}
         k0=k1;dk_values=Vector{T}() # length not known
@@ -510,11 +510,11 @@ function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard
             state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol)
             overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
         end
-        state_ks=state_res.ks;state_tensions=state_res.tens;state_X=state_res.X
-        idxs_contain = findall(k->(k1<k&&k<k2),state_ks) # trim the edges from tol
+        state_ks=state_res.ks,state_tensions=state_res.tens,state_X=state_res.X
+        idxs_contain=findall(k->(k1<k&&k<k2),state_ks) # trim the edges from tol
         trimmed_state=StateData(state_ks[idxs_contain],state_X[idxs_contain],state_tensions[idxs_contain])
         control=control[idxs_contain]
-        mul_state_data[i]=trimmed_state;controls[i]=control
+        mul_state_data[i]=trimmed_state,controls[i]=control
     end
     return merge_state_data(mul_state_data),vcat(controls...)
 end
