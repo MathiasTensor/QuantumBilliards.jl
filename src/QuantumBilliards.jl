@@ -109,6 +109,7 @@ export compute_eigenstate, compute_eigenstate_bundle
 include("states/wavefunctions.jl")
 include("states/boundaryfunctions.jl")
 include("states/husimifunctions.jl")
+include("states/wavefunctions_from_boundary.jl")
 
 export wavefunction #wavefunction_norm 
 export boundary_function, momentum_function, husimi_function, husimi_functions_from_us_and_boundary_points, husimiAtPoint_LEGACY, husimiOnGrid_LEGACY, husimiOnGrid, husimi_functions_from_us_and_boundary_points_FIXED_GRID
@@ -116,6 +117,7 @@ export billiard_polygon
 export wavefunctions
 export read_boundary_function, save_boundary_function!
 export save_husimi_functions!, load_husimi_functions, save_vec_from_StateData!, load_vec_from_file, save_BoundaryPoints!, read_BoundaryPoints
+export ϕ, wavefunction_multi, wavefunction_multi_with_husimi, plot_wavefunctions, plot_wavefunctions_with_husimi
 
 #plotting functions in Makie
 #include("plotting/Plotting.jl")

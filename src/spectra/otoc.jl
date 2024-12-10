@@ -773,7 +773,7 @@ end
 
 
 
-
+#=
 
 
 ### PLOTTING LOGIC AND EFFICIENT CONSTRUCTIONS - OK
@@ -976,26 +976,26 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
-    L = billiard.length
+    L=billiard.length
     if fundamental
-        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     else
-        xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
-    n_rows = ceil(Int, length(ks) / max_cols)
-    f = Figure(resolution=(round(Int, 1.5*width_ax * max_cols), round(Int, 2*height_ax * n_rows)), size=(round(Int, 1.5*width_ax * max_cols), round(Int, 2*height_ax * n_rows)))
-    row = 1
-    col = 1
+    n_rows=ceil(Int,length(ks)/max_cols)
+    f=Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)))
+    row=1
+    col=1
     for j in eachindex(ks)
-        local ax = Axis(f[row,col], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
-        hm = heatmap!(ax, x_grid[j], y_grid[j], Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
-        plot_boundary!(ax, billiard, fundamental_domain=fundamental, plot_normal=false)
-        xlims!(ax, xlim)
-        ylims!(ax, ylim)
-        col += 1
-        if col > max_cols
-            row += 1
-            col = 1
+        local ax=Axis(f[row,col],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
+        plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
+        xlims!(ax,xlim)
+        ylims!(ax,ylim)
+        col+=1
+        if col>max_cols
+            row+=1
+            col=1
         end
     end
     return f
@@ -1025,28 +1025,28 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
-    L = billiard.length
+    L=billiard.length
     if fundamental
-        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     else
-        xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
-    n_rows = ceil(Int, length(ks) / max_cols)
-    f = Figure(resolution=(3*width_ax * max_cols, 1.5*height_ax * n_rows), size=(3*width_ax * max_cols, 1.5*height_ax * n_rows))
-    row = 1
-    col = 1
+    n_rows=ceil(Int,length(ks)/max_cols)
+    f = Figure(resolution=(3*width_ax*max_cols,1.5*height_ax*n_rows),size=(3*width_ax*max_cols,1.5*height_ax*n_rows))
+    row=1
+    col=1
     for j in eachindex(ks)
-        local ax = Axis(f[row,col][1,1], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
-        local ax_h = Axis(f[row,col][1,2], width=width_ax, height=height_ax)
-        hm = heatmap!(ax, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
-        plot_boundary!(ax, billiard, fundamental_domain=fundamental, plot_normal=false)
-        hm_h = heatmap!(ax_h, qs_list[j], ps_list[j], Hs_list[j]; colormap=Reverse(:gist_heat))
-        xlims!(ax, xlim)
-        ylims!(ax, ylim)
-        col += 1
-        if col > max_cols
-            row += 1
-            col = 1
+        local ax=Axis(f[row,col][1,1],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
+        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
+        plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
+        hm_h=heatmap!(ax_h,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
+        xlims!(ax,xlim)
+        ylims!(ax,ylim)
+        col+=1
+        if col>max_cols
+            row+=1
+            col=1
         end
     end
     return f
@@ -1078,58 +1078,54 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
-    L = billiard.length
+    L=billiard.length
     if fundamental
-        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     else
-        xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
-
-    L_corners = 0.0
-    res = Dict{Float64, Bool}()  # Dictionary to store length and type (true for real, false for virtual)
-    res[L_corners] = true # we should start at the real curve anyway
+    L_corners=0.0
+    res=Dict{Float64, Bool}()  # Dictionary to store length and type (true for real, false for virtual)
+    res[L_corners]=true # we should start at the real curve anyway
     for crv in billiard.full_boundary
         if crv isa AbsRealCurve
-            L_corners += crv.length
-            res[L_corners] = true  # Add length with true (real curve)
+            L_corners+=crv.length
+            res[L_corners]=true  # Add length with true (real curve)
         elseif crv isa AbsVirtualCurve
-            L_corners += crv.length
-            res[L_corners] = false  # Add length with false (virtual curve)
+            L_corners+=crv.length
+            res[L_corners]=false  # Add length with false (virtual curve)
         end
     end
-
-    n_rows = ceil(Int, length(ks) / max_cols)
-    f = Figure(resolution=(3*width_ax * max_cols, 2*height_ax * n_rows), size=(3*width_ax * max_cols, 2*height_ax * n_rows))
-    row = 1
-    col = 1
+    n_rows=ceil(Int,length(ks)/max_cols)
+    f=Figure(resolution=(3*width_ax*max_cols,2*height_ax*n_rows),size=(3*width_ax*max_cols,2*height_ax*n_rows))
+    row=1
+    col=1
     for j in eachindex(ks)
-        local ax_wave = Axis(f[row, col][1, 1], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
-        hm_wave = heatmap!(ax_wave, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
-        plot_boundary!(ax_wave, billiard, fundamental_domain=fundamental, plot_normal=false)
-        xlims!(ax_wave, xlim)
-        ylims!(ax_wave, ylim)
-        local ax_husimi = Axis(f[row, col][1, 2], width=width_ax, height=height_ax)
-        hm_husimi = heatmap!(ax_husimi, qs_list[j], ps_list[j], Hs_list[j]; colormap=Reverse(:gist_heat))
-        local ax_boundary = Axis(f[row, col][2, 1:2], xlabel="s", ylabel="u(s)", width=2*width_ax, height=height_ax/2)
-        lines!(ax_boundary, s_vals_all[j], us_all[j], label="u(s)", linewidth=2)
-
+        local ax_wave=Axis(f[row, col][1, 1],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
+        plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
+        xlims!(ax_wave,xlim)
+        ylims!(ax_wave,ylim)
+        local ax_husimi=Axis(f[row, col][1, 2],width=width_ax,height=height_ax)
+        hm_husimi=heatmap!(ax_husimi,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
+        local ax_boundary = Axis(f[row, col][2, 1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
+        lines!(ax_boundary,s_vals_all[j],us_all[j],label="u(s)",linewidth=2)
         for (length, is_real) in res
-            vlines!(ax_boundary, [length], color=(is_real ? :blue : :red), linestyle=(is_real ? :solid : :dash))
+            vlines!(ax_boundary,[length],color=(is_real ? :blue : :red),linestyle=(is_real ? :solid : :dash))
         end
         # Move to the next column
-        col += 1
-        if col > max_cols
-            row += 1 
-            col = 1
+        col+=1
+        if col>max_cols
+            row+=1 
+            col=1
         end
     end
     return f
 end
 
-# OTOC constructions
 
 
-
+=#
 
 
 
