@@ -405,7 +405,7 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
   - A vector of control flags (`controls`).
 """
 function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated)
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
     dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
     ks=Vector{Vector{T}}(undef,length(intervals));tensions=Vector{Vector{T}}(undef,length(intervals)),controls=Vector{Vector{T}}(undef,length(intervals))
     A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
@@ -481,7 +481,7 @@ A tuple containing:
 2. `controls::Vector{T}`: Control flags to see which of the eigenvalues were compared w/ another wrt. lower tension value. 
 """
 function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated)
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=false,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
     dk_vals_all=Vector{Vector{T}}(undef,length(intervals)) # contains all the dk values for each interval in that is part of intervals
     mul_state_data=Vector{StateData{T,T}}(undef,length(intervals));controls=Vector{Vector{T}}(undef,length(intervals))
     A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
