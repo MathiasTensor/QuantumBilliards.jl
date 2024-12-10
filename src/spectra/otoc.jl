@@ -801,13 +801,12 @@ end
 
 # Returns
 - `ϕ::T`: The value of the wavefunction at the given point (x,y).
-
 """
-function ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector) where {T<:Real}
-    target_point = SVector(x, y)
-    distances = norm.(Ref(target_point) .- bdPoints.xy)
-    weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds
-    return sum(weighted_bessel_values) / 4
+function ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
+    target_point=SVector(x,y)
+    distances=norm.(Ref(target_point).-bdPoints.xy)
+    weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
+    return sum(weighted_bessel_values)/4
 end
 
 """
@@ -830,38 +829,31 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
 function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true) where {Bi<:AbsBilliard,T<:Real}
-    k_max = maximum(ks)
-    type = eltype(k_max)
-    L = billiard.length
-    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
-    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
-    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
-    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
-    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
-    sz = length(pts)
+    k_max=maximum(ks)
+    type=eltype(k_max)
+    L=billiard.length
+    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
+    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
+    x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
+    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+    sz=length(pts)
     # Determine points inside the billiard only once if inside_only is true
-    pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=fundamental) : fill(true, sz)
-    pts_masked_indices = findall(pts_mask)
-    # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
-    function ϕ(x, y, k, bdPoints::BoundaryPoints, us::Vector)
-        target_point = SVector(x, y)
-        distances = norm.(Ref(target_point) .- bdPoints.xy)
-        weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds
-        sum(weighted_bessel_values) / 4
-    end
-    Psi2ds = Vector{Matrix{type}}(undef, length(ks))
-    progress = Progress(length(ks), desc="Constructing wavefunction matrices...")
+    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
+    pts_masked_indices=findall(pts_mask)
+    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     Threads.@threads for i in eachindex(ks)
-        k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
-        Psi_flat = zeros(type, sz)
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        Psi_flat=zeros(type,sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
-            x, y = pts[idx]
-            Psi_flat[idx] = ϕ(x, y, k, bdPoints, us)
+            x,y=pts[idx]
+            Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
         end
-        Psi2ds[i] = reshape(Psi_flat, ny, nx)
+        Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
-    return Psi2ds, x_grid, y_grid
+    return Psi2ds,x_grid,y_grid
 end
 
 """
@@ -887,63 +879,34 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
 function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true) where {Bi<:AbsBilliard,T<:Real}
-    k_max = maximum(ks)
-    type = eltype(k_max)
-    L = billiard.length
-    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
-    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
-    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
-    #println("nx: ", nx)
-    #println("ny: ", ny)
-    #println("Length of u(s) start, finish: ", length(vec_us[1]), ", ", length(vec_us[end]))
-    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
-    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
-    sz = length(pts)
+    k_max=maximum(ks)
+    type=eltype(k_max)
+    L=billiard.length
+    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
+    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
+    x_grid,y_grid=collect(type,range(xlim...,nx)),collect(type,range(ylim...,ny))
+    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+    sz=length(pts)
     # Determine points inside the billiard only once if inside_only is true
-    pts_mask = inside_only ? points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=fundamental) : fill(true, sz)
-    pts_masked_indices = findall(pts_mask)
-    # wavefunction via boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds
-    function ϕ(x, y, k, bdPoints::BoundaryPoints, us::Vector)
-        target_point = SVector(x, y)
-        distances = norm.(Ref(target_point) .- bdPoints.xy)
-        weighted_bessel_values = Bessels.bessely0.(k * distances) .* us .* bdPoints.ds
-        #println("Size of xy: ", size(bdPoints.xy))
-        #println("Size of distances: ", size(distances))
-        #println("Size of us: ", size(us))
-        #println("Size of ds: ", size(bdPoints.ds))
-        sum(weighted_bessel_values) / 4
-    end
-    Psi2ds = Vector{Matrix{type}}(undef, length(ks))
-    progress = Progress(length(ks), desc="Constructing wavefunction matrices...")
-    #println("Size of all ks: ", size(ks))
-    #println("Size of all vec bd points xy: ", size(vec_bdPoints[1].xy))
-    #println("Size of all vec bd points s: ", size(vec_bdPoints[1].s))
-    #println("Size of all vec bd points ds: ", size(vec_bdPoints[1].ds))
-    #println("Size of all us: ", size(vec_us))
-
+    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
+    pts_masked_indices=findall(pts_mask)
+    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     Threads.@threads for i in eachindex(ks)
-        #println("Size of k[$i]: ", ks[i])
-        #println("Size of vec[$i] xy: ", size(vec_bdPoints[i].xy))
-        #println("Size of vec[$i] s: ", size(vec_bdPoints[i].s))
-        #println("Size of vec[$i] ds: ", size(vec_bdPoints[i].ds))
-        #println("Size of all us[$i]: ", size(vec_us[i]))
-        #println("starting point xy: ", vec_bdPoints[i].xy[1])
-        #println("ending point xy: ", vec_bdPoints[i].xy[end])
-        #println("starting s: ", vec_bdPoints[i].s[1])
-        #println("ending s: ", vec_bdPoints[i].s[end])
-        k, bdPoints, us = ks[i], vec_bdPoints[i], vec_us[i]
-        Psi_flat = zeros(type, sz)
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        Psi_flat=zeros(type,sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
-            x, y = pts[idx]
-            Psi_flat[idx] = ϕ(x, y, k, bdPoints, us)
+            x,y=pts[idx]
+            Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
         end
-        Psi2ds[i] = reshape(Psi_flat, ny, nx)
+        Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
     # husimi
-    vec_of_s_vals = [bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list, ps_list, qs_list = husimi_functions_from_boundary_functions(ks, vec_us, vec_of_s_vals, billiard)
-    return Psi2ds, x_grid, y_grid, Hs_list, ps_list, qs_list
+    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
+    return Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list
 end
 
 """
@@ -967,26 +930,26 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
-    L = billiard.length
+    L=billiard.length
     if fundamental
-        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     else
-        xlim,ylim = boundary_limits(billiard.full_boundary; grd=max(1000,round(Int, maximum(ks)*L*b/(2*pi))))
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
-    n_rows = ceil(Int, length(ks) / max_cols)
-    f = Figure(rresolution=(round(Int, 1.5*width_ax * max_cols), round(Int, 2*height_ax * n_rows)), size=(round(Int, 1.5*width_ax * max_cols), round(Int, 2*height_ax * n_rows)))
-    row = 1
-    col = 1
+    n_rows=ceil(Int,length(ks)/max_cols)
+    f = Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)))
+    row=1
+    col=1
     for j in eachindex(ks)
-        local ax = Axis(f[row,col], title="$(ks[j])", aspect=DataAspect(), width=width_ax, height=height_ax)
-        hm = heatmap!(ax, x_grid, y_grid, Psi2ds[j], colormap=:balance, colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
-        plot_boundary!(ax, billiard, fundamental_domain=fundamental, plot_normal=false)
-        xlims!(ax, xlim)
-        ylims!(ax, ylim)
-        col += 1
-        if col > max_cols
-            row += 1
-            col = 1
+        local ax=Axis(f[row,col],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
+        plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
+        xlims!(ax,xlim)
+        ylims!(ax,ylim)
+        col+=1
+        if col>max_cols
+            row+=1
+            col=1
         end
     end
     return f
