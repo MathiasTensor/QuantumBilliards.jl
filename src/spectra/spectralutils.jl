@@ -501,6 +501,7 @@ function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard
     L_full=billiard.length
     for (i,interval) in enumerate(intervals)
         k1,k2=interval # interval::Tuple{T,T}
+        println("Interval: ", k1,", ", k2)
         k0=k1
         dk_values=Vector{T}() # length not known
         while k0<k2
