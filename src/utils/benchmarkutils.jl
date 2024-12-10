@@ -215,7 +215,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     # iterate over the ks at the ends and start the next d when the previous smaller k ends. THIS ONE JUST DETERMINES D. WHEN THIS ONE IS OK WE DETERMINE B.
     ks_ends=collect(range(k1,k2,partitions))
-    intervals::Vector{Tuple{T,T}} = [(ks_ends[i],ks_ends[i+1]) for i in 1:(length(ks_ends)-1)]
+    intervals::Vector{Tuple{T,T}}=[(ks_ends[i],ks_ends[i+1]) for i in 1:(length(ks_ends)-1)]
     b=b0 # placeholder for part 1
     @showprogress "Determining optimal d values..." for (i,(_,k_end)) in enumerate(intervals)
         d=d0 # start anew for next k
@@ -238,7 +238,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             else # Scaling, Decomposition or PSM
                 m1,m2=mat
                 M1=deepcopy(m1);M2=deepcopy(m2)
-                m1[abs.(m1).<eps(T)].=NaN;m2[abs.(m2).<eps(T)].=NaN
+                m1[abs.(m1).<eps(T)].=NaN, m2[abs.(m2).<eps(T)].=NaN
                 has_nan_column1=any(all(isnan,m1[:,col]) for col in axes(m1,2))
                 has_nan_column2=any(all(isnan,m2[:,col]) for col in axes(m2,2))
                 if has_nan_column1&&has_nan_column2
