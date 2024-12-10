@@ -434,8 +434,8 @@ function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_exp
         k0=k1
         @time k_res,ten_res=solve_spectrum(solvers[i],basis,billiard,k0,dk_values[1]+tol)
         control=[false for _ in 1:length(k_res)]
-        @showprogress for i in eachindex(dk_values)
-            dk=dk_values[i]
+        @showprogress for j in eachindex(dk_values)
+            dk=dk_values[j]
             k0+=dk
             @time k_new,ten_new=solve_spectrum(solvers[i],basis,billiard,k0,dk+tol)
             overlap_and_merge!(k_res,ten_res,k_new,ten_new,control,k0-dk,k0;tol=tol)
@@ -520,8 +520,8 @@ function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard
         k0=k1
         @time state_res::StateData{T,T}=solve_state_data_bundle(solvers[i],basis,billiard,k0,dk_values[1]+tol)
         control=[false for _ in 1:length(state_res.ks)]
-        @showprogress for i in eachindex(dk_values)[2:end]
-            dk=dk_values[i]
+        @showprogress for j in eachindex(dk_values)[2:end]
+            dk=dk_values[j]
             k0+=dk
             state_new::StateData{T,T}=solve_state_data_bundle(solvers[i],basis,billiard,k0,dk+tol)
             overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
