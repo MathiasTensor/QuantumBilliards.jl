@@ -238,7 +238,8 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             else # Scaling, Decomposition or PSM
                 m1,m2=mat
                 M1=deepcopy(m1);M2=deepcopy(m2)
-                m1[abs.(m1).<eps(T)].=NaN, m2[abs.(m2).<eps(T)].=NaN
+                m1[abs.(m1).<eps(T)].=NaN 
+                m2[abs.(m2).<eps(T)].=NaN
                 has_nan_column1=any(all(isnan,m1[:,col]) for col in axes(m1,2))
                 has_nan_column2=any(all(isnan,m2[:,col]) for col in axes(m2,2))
                 if has_nan_column1&&has_nan_column2
