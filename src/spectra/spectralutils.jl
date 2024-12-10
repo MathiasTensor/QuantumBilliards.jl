@@ -232,24 +232,23 @@ function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left, k_ri
     ts_r=ten_right[idx_r]
     Xs_r=X_right[idx_r]
     # Check if wavenumbers match in overlap interval
-    ks, ts, Xs, control = match_wavenumbers_with_X(ks_l, ts_l, Xs_l, ks_r, ts_r, Xs_r)
+    ks,ts,Xs,control=match_wavenumbers_with_X(ks_l,ts_l,Xs_l,ks_r,ts_r,Xs_r)
     # For all those that matched we put them in the location where there was ambiguity (overlap) for merging ks_r into ks_l. So we delete all the k_left that were in the overlap interval and merged the matched results into the correct location where we deleted from idx_l
-    deleteat!(k_left, findall(idx_l))
-    append!(k_left, ks)
-    deleteat!(ten_left, findall(idx_l))
-    append!(ten_left, ts)
-    deleteat!(X_left, findall(idx_l))
-    append!(X_left, Xs)
-    deleteat!(control_left, findall(idx_l))
-    append!(control_left, control)
-
+    deleteat!(k_left,findall(idx_l))
+    append!(k_left,ks)
+    deleteat!(ten_left,findall(idx_l))
+    append!(ten_left,ts)
+    deleteat!(X_left,findall(idx_l))
+    append!(X_left,Xs)
+    deleteat!(control_left,findall(idx_l))
+    append!(control_left,control)
     # After we are done with in-tolerance ks safely append what is let to the final results. This is the part where
-    fl = findlast(idx_r)
-    idx_last = isnothing(fl) ? 1 : fl + 1
-    append!(k_left, k_right[idx_last:end])
-    append!(ten_left, ten_right[idx_last:end])
-    append!(X_left, X_right[idx_last:end])
-    append!(control_left, [false for _ in idx_last:length(k_right)])
+    fl=findlast(idx_r)
+    idx_last=isnothing(fl) ? 1 : fl + 1
+    append!(k_left,k_right[idx_last:end])
+    append!(ten_left,ten_right[idx_last:end])
+    append!(X_left,X_right[idx_last:end])
+    append!(control_left,[false for _ in idx_last:length(k_right)])
 end
 
 # OLD
