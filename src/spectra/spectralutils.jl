@@ -430,7 +430,7 @@ function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_exp
             k0+=dk
         end
         dk_vals_all[i]=dk_values
-        println("min/max dk value for interval [$k1,$k2]: ",extrema(dk_values))
+        println("min/max dk value for interval [$k1, $k2]: ",extrema(dk_values))
         k0=k1
         @time k_res,ten_res=solve_spectrum(solvers[i],basis,billiard,k0,dk_values[1]+tol)
         control=[false for _ in 1:length(k_res)]
