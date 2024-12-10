@@ -407,7 +407,7 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
 """
 function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
-    for (i,solver) in solvers 
+    for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
         println("Solver $i b: ", solver.pts_scaling_factor)
     end
@@ -498,7 +498,7 @@ A tuple containing:
 """
 function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
-    for (i,solver) in solvers 
+    for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
         println("Solver $i b: ", solver.pts_scaling_factor)
     end
