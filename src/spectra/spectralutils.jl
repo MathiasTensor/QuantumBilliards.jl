@@ -522,7 +522,7 @@ function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard
         @showprogress for i in eachindex(dk_values)[2:end]
             dk=dk_values[i]
             k0+=dk
-            state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol)
+            state_new::StateData{T,T}=solve_state_data_bundle(solvers[i],basis,billiard,k0,dk+tol)
             overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
         end
         state_ks=state_res.ks
