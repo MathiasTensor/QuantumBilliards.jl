@@ -261,9 +261,9 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
     ks_min=Vector{Tuple{T,T,T}}()
-    previous_mat=nothing  # variable to store the previous matrix
     @showprogress "Determining optimal b values..." for (i,(_,k_end)) in enumerate(intervals)
         b=b0
+        previous_mat=nothing  # variable to store the previous matrix
         converged=false 
         while !converged
             solver=construct_solver(ds[i],b,solver_type)
