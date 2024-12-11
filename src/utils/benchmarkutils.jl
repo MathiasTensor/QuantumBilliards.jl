@@ -154,7 +154,7 @@ end
 
 function is_converged_pairwise(current::Matrix{T}, previous::Matrix{T}, tol::T=T(1e-6)) where {T<:Real}
     @assert size(current)==size(previous) "Matrices must have the same dimensions for comparison."
-    valid_mask=.!isnan(current).&.!isnan(previous)
+    valid_mask=.!isnan.(current).&.!isnan.(previous)
     max_diff=maximum(abs.(current[valid_mask].-previous[valid_mask]))
     return max_diff<tol
 end
