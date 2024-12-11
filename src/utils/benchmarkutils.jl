@@ -152,6 +152,19 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
 end
 
+"""
+    is_converged_pairwise(current::Matrix{T}, previous::Matrix{T}, tol::T=T(1e-6)) where {T<:Real}
+
+Checks each elemement of the 2 same sized matrices and finds the largest difference between the matrix elemets.
+
+# Arguements
+- `current::Matrix{T}`: Current matrix to compare.
+- `previous::Matrix{T}`: Previous matrix to compare.
+- `tol::T`: Tolerance for comparison (default: 1e-6).
+
+# Returns
+- `Bool`: Returns `true` if the largest difference between the matrix elements is less than the tolerance, `false` otherwise.
+"""
 function is_converged_pairwise(current::Matrix{T}, previous::Matrix{T}, tol::T=T(1e-6)) where {T<:Real}
     @assert size(current)==size(previous) "Matrices must have the same dimensions for comparison."
     valid_mask=.!isnan.(current).&.!isnan.(previous)
@@ -165,7 +178,6 @@ end
 Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimizing for parameters `d` and `b`. This functions allows the user to not have to make manual tests for when the solvers are optimal in a given range of ks, since these parameters change (albeit slowly) throughout the spectrum computations.
 
 # Description of Return
-
 
 # Arguments
 - `k1::T`, `k2::T`: Start and end wavenumbers for the solver.
