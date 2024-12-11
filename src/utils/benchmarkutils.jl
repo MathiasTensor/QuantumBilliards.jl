@@ -152,6 +152,13 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="")
     Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
 end
 
+function is_converged_pairwise(current::Matrix{T}, previous::Matrix{T}, tol::T=T(1e-6)) where {T<:Real}
+    @assert size(current)==size(previous) "Matrices must have the same dimensions for comparison."
+    valid_mask=.!isnan(current).&.!isnan(previous)
+    max_diff=maximum(abs.(current[valid_mask].-previous[valid_mask]))
+    return max_diff<tol
+end
+
 """
     dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi;d0::T = T(1.0), b0::T = T(2.0),solver_type::Symbol = :Accelerated, partitions::Integer = 10,samplers::Vector{Sam}, min_dim::Integer = 100, min_pts::Integer = 500,dd::T = T(0.1), db::T = T(0.3),return_benchmarked_matrices::Bool = true, display_benchmarked_matrices::Bool = true, print_params=true) where {T<:Real, Sam<:AbsSampler, Ba<:AbsBasis, Bi<:AbsBilliard}
 
@@ -237,7 +244,8 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
                 end
             else # Scaling, Decomposition or PSM
                 m1,m2=mat
-                M1=deepcopy(m1);M2=deepcopy(m2)
+                M1=deepcopy(m1)
+                M2=deepcopy(m2)
                 m1[abs.(m1).<eps(T)].=NaN 
                 m2[abs.(m2).<eps(T)].=NaN
                 has_nan_column1=any(all(isnan,m1[:,col]) for col in axes(m1,2))
@@ -253,6 +261,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
     end
     previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
     ks_min=Vector{Tuple{T,T,T}}()
+    previous_mat=nothing  # variable to store the previous matrix
     @showprogress "Determining optimal b values..." for (i,(_,k_end)) in enumerate(intervals)
         b=b0
         converged=false 
@@ -263,16 +272,20 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi)) # this ensures a minimum will be found due to weyl's law
             res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
             k_res,ten=res
-            if !isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
+            pts=evaluate_points(solver,billiard,k_end)
+            mat=construct_matrices(solver,basis_new,pts,k_end)[2]  # Fk is the most varying one
+            eigenvalue_converged=!isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
+            matrix_converged=previous_mat!==nothing&&is_converged_pairwise(mat,previous_mat) # checks max difference between the previous and current mat
+            if eigenvalue_converged&&matrix_converged
                 converged=true
                 bs[i]=b
             end
+            previous_mat = deepcopy(mat)
             push!(ks_min,(k_end,k_res,ten))
             previous_ks[i]=k_res
             b+=db
         end
     end
-    bs.+=1 # needs this as the optimal b is sometimes just shy of being enough sometimes
     if print_params
         printstyled("k evaluation point:",italic=true,color=:cyan,bold=true)
         println()
