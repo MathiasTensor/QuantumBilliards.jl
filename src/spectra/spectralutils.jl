@@ -398,6 +398,8 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
 - `samplers::Vector{Sam}=[GaussLegendreNodes()]`: A vector of samplers used for quadrature, with elements of type `AbsSampler`.
 - `fundamental::Bool=true`: If `true`, use the fundamental domain properties (area and length) for the Weyl estimate.
 - `display_basis_matrices::Bool=false`: Whether to display the construced basis with the optimal d.
+- `d0::T`: Starting basis dimension scaling factor.
+- `b0::T`: Starting basis length scaling factor.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}, Vector{Bool}}`: A tuple containing:
@@ -405,8 +407,8 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
   - A vector of eigenvalue tensions (`tensions`).
   - A vector of control flags (`controls`).
 """
-function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
+function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0),partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false,d0=d0,b0=b0)
     for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
         println("Solver $i b: ", solver.pts_scaling_factor)
@@ -487,6 +489,8 @@ This function partitions the interval `[k1, k2]` into smaller sub-intervals base
 - `samplers::Vector{Sam}=[GaussLegendreNodes()]`: Vector of samplers used for solving. Each sampler must be a subtype of `AbsSampler`.
 - `fundamental::Bool=true`: Whether to use fundamental billiard geometry for calculations. If `true`, uses the fundamental area and length.
 - `display_basis_matrices::Bool=false`: Whether to display the construced basis with the optimal d.
+- `d0::T`: Starting basis dimension scaling factor.
+- `b0::T`: Starting basis length scaling factor.
 
 ## Returns
 A tuple containing:
@@ -496,8 +500,8 @@ A tuple containing:
    - `tens::Vector{T}`: Corresponding tensions for checking the correctness of the eigenvalues.
 2. `controls::Vector{T}`: Control flags to see which of the eigenvalues were compared w/ another wrt. lower tension value. 
 """
-function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
-    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false)
+function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+    solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false,d0=d0,b0=b0)
     for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
         println("Solver $i b: ", solver.pts_scaling_factor)
