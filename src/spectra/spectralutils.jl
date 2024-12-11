@@ -381,7 +381,7 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
 end
 
 """
-    compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold::T=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) -> Tuple{Vector{T}, Vector{T}, Vector{Bool}}
+    compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0),partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
 
 Compute the eigenvalue spectrum for a given billiard system, optimizing over intervals defined by a dynamical solver.
 The function partitions the interval `[k1, k2]` into subintervals and constructs solvers dynamically for each subinterval. A step size (`dk`) for wavenumbers is computed using the Weyl estimate and adjusted based on the `dk_threshold`. For each subinterval, eigenvalues and their corresponding tensions are computed iteratively. Overlapping eigenvalues are merged to ensure continuity, and results are filtered to retain eigenvalues within the target interval. The method supports computation on either the fundamental or full billiard domain.
@@ -468,7 +468,7 @@ function merge_state_data(A::Vector{StateData{T,T}}) where {T<:Real}
 end
 
 """
-    compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+    compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
 
 Compute the spectrum of a quantum billiard system with state optimization. The function iteratively solves for eigenvalues (`ks`) and tensions (`tens`) over partitioned intervals of wave numbers, merging the resulting state data (`StateData`) objects from each interval. This version explicitly returns merged state data.
 
