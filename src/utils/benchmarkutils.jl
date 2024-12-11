@@ -275,12 +275,12 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             pts=evaluate_points(solver,billiard,k_end)
             mat=construct_matrices(solver,basis_new,pts,k_end)[2]  # Fk is the most varying one
             eigenvalue_converged=!isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
-            matrix_converged=previous_mat!==nothing&&is_converged_pairwise(mat,previous_mat) # checks max difference between the previous and current mat
+            matrix_converged=!isnothing(previous_mat)&&is_converged_pairwise(mat,previous_mat) # checks max difference between the previous and current mat
             if eigenvalue_converged&&matrix_converged
                 converged=true
                 bs[i]=b
             end
-            previous_mat = deepcopy(mat)
+            previous_mat=deepcopy(mat)
             push!(ks_min,(k_end,k_res,ten))
             previous_ks[i]=k_res
             b+=db
