@@ -272,6 +272,7 @@ function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0
             b+=db
         end
     end
+    bs.+=1 # needs this as the optimal b is sometimes just shy of being enough sometimes
     if print_params
         printstyled("k evaluation point:",italic=true,color=:cyan,bold=true)
         println()
