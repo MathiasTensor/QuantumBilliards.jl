@@ -194,7 +194,7 @@ Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimiz
   - `solvers::Vector`: List of constructed solvers.
 - If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
 """
-function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(2.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true, print_params=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
+function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(4.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true, print_params=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
     ds=Vector{T}(undef,partitions-1) # temp storage for part 1
     bs=Vector{T}(undef,partitions-1) # together with ds construct returned solvers
     matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
