@@ -165,7 +165,7 @@ function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
         start_idx=(i-1)*N+1
         end_idx=min(i*N,length(ks))
         range=start_idx:end_idx
-        batched_args=map(arg->arg[range],args) # Extract the batched arguments
+        batched_args=map(arg->try arg[range] catch arg end,args) # Extract the batched arguments
         figures[i]=plot_func(batched_args...;kwargs...) # Call the original plotting function for the batch
     end
     return figures
