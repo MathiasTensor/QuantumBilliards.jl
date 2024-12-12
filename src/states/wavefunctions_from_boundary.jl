@@ -485,4 +485,14 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
     batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,s_vals_all;N=N,kwargs...)
 end
 
+# for getting the ks of the partitioning of the batched ks
+function partition_vector(ks::Vector, N::Integer)
+    chunk_size,remainder=divrem(length(ks),N)
+    partitions=[ks[(i-1)*chunk_size+1:i*chunk_size] for i in 1:N]
+    if remainder>0
+        partitions=vcat(partitions,[ks[end-remainder+1:end]])
+    end
+    return partitions
+end
+
 
