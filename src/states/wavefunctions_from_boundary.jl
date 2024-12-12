@@ -135,7 +135,44 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+    batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
+
+Splits a large dataset into batches and calls the provided plotting function on each batch. 
+
+This is useful when plotting a large number of wavefunctions or other data items at once would 
+either be too large or time-consuming. By batching, you can generate multiple figures, each 
+containing a subset of the data.
+
+# Arguments
+- `plot_func::Function`: The plotting function to be called for each batch.
+- `args...`: The argument lists. The first argument should be a vector (e.g., `ks`) that 
+   determines the number of data items. All other arguments must also be indexable and have 
+   a compatible length.
+- `N::Integer=100`: Number of items per batch.
+- `kwargs...`: Additional keyword arguments passed on to `plot_func`.
+
+# Returns
+- `figures::Vector{Figure}`: A vector of `Figure` objects, each produced by `plot_func` 
+   on a batch of data.
+"""
+function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
+    # Extract the data vectors and the number of items
+    ks=args[1] # Assuming ks is always the first argument
+    @assert length(ks)>0 "ks cannot be empty."
+    num_batches=ceil(Int,length(ks)/N)
+    figures=Vector{Figure}(undef,num_batches)
+    for i in 1:num_batches
+        start_idx=(i-1)*N+1
+        end_idx=min(i*N,length(ks))
+        range=start_idx:end_idx
+        batched_args=map(arg->arg[range],args) # Extract the batched arguments
+        figures[i]=plot_func(batched_args...;kwargs...) # Call the original plotting function for the batch
+    end
+    return figures
+end
+
+"""
+    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the wavefunction_multi or a similar function.
 
@@ -154,7 +191,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -181,7 +218,7 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the `wavefunctions` method since it expects for each wavefunctions it's separate x and y grid.
 
@@ -200,7 +237,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -227,7 +264,54 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, 
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+
+Plots the wavefunctions specified by `Psi2ds` on the domain defined by `x_grid` and `y_grid`, 
+for the billiard geometry `billiard`. The eigenvalues are provided in `ks`. When the number of 
+wavefunctions is large, this function automatically splits the data into batches of size `N` 
+and generates multiple figures.
+
+# Arguments
+- `ks::Vector`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Vector of 2D wavefunction matrices corresponding to `ks`.
+- `x_grid::Vector{<:Real}`: Vector of x-coordinates for the grid.
+- `y_grid::Vector{<:Real}`: Vector of y-coordinates for the grid.
+- `billiard::Bi<:AbsBilliard`: The billiard geometry.
+- `N::Integer=100`: The number of items per batch. If `length(ks) > N`, multiple figures are produced.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+
+# Returns
+- `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch.
+"""
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+    batch_wrapper(plot_wavefunctions_BATCH,ks,Psi2ds,x_grid,y_grid,billiard;N=N,kwargs...)
+end
+
+"""
+    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+
+Similar to `plot_wavefunctions` above, but this version allows for a distinct `(x_grid, y_grid)` 
+for each wavefunction in `Psi2ds`. This is useful if each wavefunction was computed on a different 
+grid. Automatically splits the data into batches of size `N` if `ks` is large.
+
+# Arguments
+- `ks::Vector`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Vector of 2D wavefunction matrices, one for each `(x_grid[j], y_grid[j])`.
+- `x_grid::Vector{Vector{<:Real}}`: A vector of x-coordinate vectors, one per wavefunction.
+- `y_grid::Vector{Vector{<:Real}}`: A vector of y-coordinate vectors, one per wavefunction.
+- `billiard::Bi<:AbsBilliard`: The billiard geometry.
+- `N::Integer=100`: The number of items per batch.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+
+# Returns
+- `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch of wavefunctions.
+"""
+function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+    batch_wrapper(plot_wavefunctions_BATCH,ks,Psi2ds,x_grid,y_grid,billiard;N=N,kwargs...)
+end
+
+"""
+    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary) together with the respective husimi function matrices on the provided grids. The x_grid and y_grid is supplied from the wavefunction_multi or a similar function, and the ps and qs grids mudt also be supplied for plotting the Husimi functions.
 
@@ -249,7 +333,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -278,7 +362,7 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary) together with the respective husimi function matrices on the provided grids. The x_grid and y_grid is supplied from the wavefunction_multi or a similar function, and the ps and qs grids mudt also be supplied for plotting the Husimi functions. This version also accepts the us boundary functions and the corresponding arclength evaluation point (us_all -> Vector{Vector{T}} and s_vals_all -> Vector{Vector{T}}) that this function was evaluated on.
 
@@ -302,7 +386,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -346,6 +430,59 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
         end
     end
     return f
+end
+
+"""
+    plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; N=100, kwargs...) where {Bi<:AbsBilliard}
+
+Plots the wavefunctions along with their corresponding Husimi distributions. Automatically 
+splits large datasets into batches of size `N`.
+
+# Arguments
+- `ks::Vector`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Wavefunction matrices.
+- `x_grid::Vector{<:Real}`: X-coordinates for the wavefunction grid.
+- `y_grid::Vector{<:Real}`: Y-coordinates for the wavefunction grid.
+- `Hs_list::Vector{Matrix}`: Husimi function matrices associated with each wavefunction.
+- `ps_list::Vector{Vector{<:Real}}`: Momentum-like coordinate grids for the Husimi functions.
+- `qs_list::Vector{Vector{<:Real}}`: Position-like coordinate grids for the Husimi functions.
+- `billiard::Bi<:AbsBilliard`: The billiard geometry.
+- `N::Integer=100`: Number of items per batch.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+
+# Returns
+- `figures::Vector{Figure}`: A vector of `Figure` objects with wavefunction and Husimi plots, one per batch.
+"""
+function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; N=100, kwargs...) where {Bi<:AbsBilliard}
+    batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard;N=N,kwargs...)
+end
+
+"""
+    plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; N=100, kwargs...) where {Bi<:AbsBilliard}
+
+Plots the wavefunctions along with their Husimi distributions and boundary functions `us_all` 
+evaluated at `s_vals_all`. This function also handles a large number of wavefunctions by batching 
+the data into sets of size `N`.
+
+# Arguments
+- `ks::Vector`: Vector of eigenvalues.
+- `Psi2ds::Vector{Matrix}`: Wavefunction matrices.
+- `x_grid::Vector{<:Real}`: X-coordinates for the wavefunction grid.
+- `y_grid::Vector{<:Real}`: Y-coordinates for the wavefunction grid.
+- `Hs_list::Vector{Matrix}`: Husimi function matrices.
+- `ps_list::Vector{Vector{<:Real}}`: Momentum-like coordinates for Husimi functions.
+- `qs_list::Vector{Vector{<:Real}}`: Position-like coordinates for Husimi functions.
+- `billiard::Bi<:AbsBilliard`: The billiard geometry.
+- `us_all::Vector{Vector{T}}`: Boundary functions.
+- `s_vals_all::Vector{Vector{T}}`: Arclength evaluation points for the boundary functions.
+- `N::Integer=100`: Number of items per batch.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+
+# Returns
+- `figures::Vector{Figure}`: A vector of `Figure` objects, each containing wavefunction, Husimi plots, and boundary functions, one per batch.
+"""
+function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; N=100, kwargs...) where {Bi<:AbsBilliard}
+    batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,s_vals_all;N=N,kwargs...)
 end
 
 
