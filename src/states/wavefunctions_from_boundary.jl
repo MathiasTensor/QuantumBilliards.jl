@@ -496,17 +496,7 @@ end
 
 # for getting the ks of the partitioning of the batched ks
 function partition_vector(ks::Vector, N::Integer)
-    chunk_size=ceil(Int,length(ks)/N)
-    partitions=Vector{Vector{eltype(ks)}}()
-    for i in 1:N
-        start_idx=(i-1)*chunk_size+1
-        end_idx=min(i*chunk_size,length(ks))
-        if i==1
-            push!(partitions,ks[start_idx:end_idx])
-        else
-            push!(partitions,ks[start_idx-1:end_idx])
-        end
-    end
+    partitions=[ks[i:min(i+N-1,length(ks))] for i in 1:N:length(ks)]
     return partitions
 end
 
