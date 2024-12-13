@@ -166,8 +166,12 @@ function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
         end_idx=min(i*N,length(ks))
         range=start_idx:end_idx
         batched_args=map(arg-> 
-        if arg isa AbstractVector  # Check if the argument is a vector
-            arg[range]
+        if arg isa AbstractVector  # check if the argument is a vector
+            if length(arg)==length(ks)  # slice if it matches `ks`
+                arg[range]
+            else
+                arg  # x_grid, y_grid
+            end
         else
             arg 
         end,args)
