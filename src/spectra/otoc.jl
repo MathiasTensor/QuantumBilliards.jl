@@ -94,6 +94,7 @@ end
 
 For a single state |φₘ⟩ constructs the projection coefficient for the gaussian 2d wavepacket:
 αₘ = ⟨Φ|φₘ⟩ = 1/4*∮dsuₘ(s)*[∫∫Yₒ(kₘ|(x,y)-(x(s),y(s)|))*Φ(x,y)dxdy]
+Since the wavefunction Φ(x,y)==0 outside the boundary we apply a mask to the wavefunction.
 
 # Arguments
 - `k::T`: Eigenvalue k.
@@ -156,7 +157,7 @@ function compute_all_projection_coefficients(ks::Vector{T},vec_us::Vector{Vector
     pts_masked=create_masked_points(x_grid,y_grid,pts_mask)
     projection_coefficients=Vector{T}(undef,length(ks))
     # Compute each projection coefficient in parallel
-    progress = Progress(length(ks),desc="Computing α_m for each k...")
+    progress=Progress(length(ks),desc="Computing α_m for each k...")
     Threads.@threads for i in eachindex(ks)
         k=ks[i]
         us=vec_us[i]
