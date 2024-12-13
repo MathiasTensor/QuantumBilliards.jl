@@ -325,11 +325,11 @@ function plot_wavefunction!(f,state::AbsState; b=5.0,dens = 10.0, fundamental_do
 end
 
 function plot_wavefunction!(f,state::BasisState, billiard::AbsBilliard; b=5.0,dens = 10.0, 
-    plot_normal=false, vmax = 1.0, cmap=Reverse(:balance),hmargs=Dict(),axargs=Dict())
+    plot_normal=false, vmax = 1.0, cmap=Reverse(:balance),hmargs=Dict(),axargs=Dict(), color_crv=:grey)
     Psi, x, y = wavefunction(state;b=b)
     #Psi[Psi .== zero(eltype(Psi))] .= NaN
     hmap, ax = plot_heatmap_balaced!(f,x,y,Psi ;vmax = vmax, cmap=cmap,hmargs=hmargs,axargs=axargs)
-    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, desymmetrized_full_domain=false)
+    plot_boundary!(ax, billiard; dens = dens, plot_normal=plot_normal, desymmetrized_full_domain=false, color_crv=color_crv)
     return ax, hmap
 end
 
