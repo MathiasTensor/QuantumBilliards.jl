@@ -169,6 +169,18 @@ end
 
 
 
+### PLotting Gaussian wavepacket
+
+function plot_gaussian_wavepacket(x_grid::Vector, y_grid::Vector, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    mat=abs.(gaussian_wavepacket_2d(x_grid, y_grid, x0,y0,sigma_x,sigma_y,kx0,ky0))
+    f=Figure()
+    ax=Axis(f[1,1])
+    heatmap!(ax, x_grid, y_grid, mat)
+    return f
+end
+
+
+
 
 
 
