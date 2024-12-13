@@ -173,7 +173,7 @@ function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
                 arg  # x_grid, y_grid
             end
         else
-            arg 
+            arg # legacy for billiard arg, remove later
         end,args)
         figures[i]=plot_func(batched_args...;kwargs...) # Call the original plotting function for the batch
     end
@@ -496,10 +496,16 @@ end
 
 # for getting the ks of the partitioning of the batched ks
 function partition_vector(ks::Vector, N::Integer)
-    chunk_size,remainder=divrem(length(ks),N)
-    partitions=[ks[(i-1)*chunk_size+1:i*chunk_size] for i in 1:N]
-    if remainder>0
-        partitions=vcat(partitions,[ks[end-remainder+1:end]])
+    chunk_size=ceil(Int,length(ks)/N)
+    partitions=Vector{Vector{eltype(ks)}}()
+    for i in 1:N
+        start_idx=(i-1)*chunk_size+1
+        end_idx=min(i*chunk_size,length(ks))
+        if i==1
+            push!(partitions,ks[start_idx:end_idx])
+        else
+            push!(partitions,ks[start_idx-1:end_idx])
+        end
     end
     return partitions
 end
