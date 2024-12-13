@@ -157,7 +157,8 @@ containing a subset of the data.
 """
 function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
     # Extract the data vectors and the number of items
-    ks=args[1] # Assuming ks is always the first argument
+    ks=args[1] # ks is always the first argument
+    println("starting k: ", ks[1], " ending k: ", ks[2])
     @assert length(ks)>0 "ks cannot be empty."
     num_batches=ceil(Int,length(ks)/N)
     figures=Vector{Figure}(undef,num_batches)
@@ -166,8 +167,12 @@ function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
         end_idx=min(i*N,length(ks))
         range=start_idx:end_idx
         batched_args=map(arg-> 
-            if arg isa AbstractVector # only slice vectors
-                arg[range]
+        if arg isa AbstractVector  # Check if the argument is a vector
+            if arg[1] isa AbstractVector  # Vector{Vector} case
+                arg[range]  # Slice the outer vector
+            else
+                arg[range]  # Slice normal vectors
+            end
             else
                 arg 
             end,args)
