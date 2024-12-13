@@ -162,7 +162,7 @@ function compute_all_projection_coefficients(ks::Vector{T},vec_us::Vector{Vector
         k=ks[i]
         us=vec_us[i]
         bdPoints=vec_bdPoints[i]
-        projection_coefficients[i]=gaussian_wavepacket_eigenbasis_expansion_coefficient(k, us, bdPoints, x_grid, y_grid, x0, y0, sigma_x, sigma_y, kx0, ky0, pts_mask)
+        projection_coefficients[i]=gaussian_wavepacket_eigenbasis_expansion_coefficient(k, us, bdPoints, x_grid, y_grid, pts_mask, x0, y0, sigma_x, sigma_y, kx0, ky0)
         next!(progress)
     end
     return projection_coefficients
