@@ -5,7 +5,7 @@ include("../states/wavefunctions.jl")
 
 # EFFICIENT CONSTRUCTION AND PLOTTING
 # TODO Fix sampling for small u(s)
-
+# TODO Gaussian wavepacket does not work correctly!
 # TODO Put the puts_masked_indices outside the gaussian_2d_wavepacket projection to overcalculating them
 
 ### MATRIX ELEMENTS - PROJECTIONS OF 2D GAUSSIAN TO BASIS SET
