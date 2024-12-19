@@ -453,7 +453,7 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     bim_solver = QuantumBilliards.BoundaryIntegralMethod(b,sampler,billiard;symmetries=symmetries)
     pts=QuantumBilliards.evaluate_points(bim_solver,billiard,sample_k)
     fredholm_sample=QuantumBilliards.fredholm_matrix(pts,symmetryBIM,sample_k)
-    fig=Figure(resolution =(800, 800))
+    fig=Figure(resolution =(1500, 1500))
     ax_real=Axis(fig[1,1][1,1],title="real(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)",aspect=DataAspect())
     ax_imag=Axis(fig[1,1][1,2],title="imag(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)",aspect=DataAspect())
     heatmap_real=real.(fredholm_sample)
