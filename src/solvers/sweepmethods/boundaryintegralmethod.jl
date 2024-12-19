@@ -112,7 +112,7 @@ function evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k) where 
             append!(w_all, ds)
         end
     end
-    return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all,ts_all)
+    return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all)
 end
 
 function apply_reflection(p::SVector{2, T}, rule::SymmetryRuleBIM{T}) where {T}
