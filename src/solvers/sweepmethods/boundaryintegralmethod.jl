@@ -27,6 +27,10 @@ end
 
 struct AbstractHankelBasis <: AbsBasis end
 
+function resize_basis(basis::Ba, billiard::Bi, dim::Int, k) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
+    return AbstractHankelBasis()
+end
+
 function SymmetryRuleBIM(billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D, y_bc=:D) where {Bi <: AbsBilliard}
     T = eltype([hasproperty(billiard, :x_axis) ? billiard.x_axis : 0.0, hasproperty(billiard, :y_axis) ? billiard.y_axis : 0.0])
     shift_x = hasproperty(billiard, :x_axis) ? billiard.x_axis : T(0.0)
