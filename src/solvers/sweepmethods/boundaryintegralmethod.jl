@@ -155,7 +155,7 @@ end
 function default_helmholtz_kernel(p1::SVector{2, T}, p2::SVector{2, T}, normal1::SVector{2, T}, k::T, p1_curvature::T) where {T<:Real}
     dx, dy = p1[1] - p2[1], p1[2] - p2[2]
     distance12 = hypot(dx, dy)
-    return -im * k / 2.0 * compute_cos_phi(dx, dy, normal1, p1_curvature) * compute_hankel(distance12, k)
+    return abs(distance) < eps(T) ? Complex(1/(2*pi)*p1_curvature) : -im * k / 2.0 * compute_cos_phi(dx, dy, normal1, p1_curvature) * compute_hankel(distance12, k)
 end
 
 function compute_kernel_batch(p1::SVector{2, T}, p2_points::Vector{SVector{2, T}}, normal1::SVector{2, T}, curvature1::T, rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
