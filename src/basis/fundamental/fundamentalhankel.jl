@@ -17,10 +17,10 @@ function FundamentalHankel(dim; type=Float64)
     return FundamentalHankel{type,Nothing}(dim, nothing, return_type)
 end
 
-function FundamentalHankel(dim, symmetries::Union{Vector{Any},Nothing}; type=Float64) where {T<:Real, Sy<:Union{AbsSymmetry,Nothing}}
+function FundamentalHankel(dim, symmetries::Union{Vector{Any},Nothing}; type=Float64) where {T<:Real}
     #cs::PolarCS{T} #not fully implemented
     return_type = Complex{type}
-    return FundamentalHankel{type,Sy}(dim, symmetries, return_type)
+    return FundamentalHankel{type,typeof(symmetries)}(dim, symmetries, return_type)
 end
 
 function resize_basis(basis::Ba, billiard::Bi, dim::Int, k) where {T<:Real, Sy<:Union{AbsSymmetry,Nothing}, Ba<:FundamentalHankel{T,Sy}, Bi<:AbsBilliard}
