@@ -459,12 +459,12 @@ function test_hankel(solver::BoundaryIntegralMethod, billiard::Bi; k=50) where {
 
     # Plot the magnitude of the Hankel matrix
     fig = Figure()
-    ax = Axis(fig[1, 1],
-        title = "Magnitude of Hankel Function Matrix for Quarter-Circle Billiard",
+    ax = Axis(fig[1,1][1,1],
+        title = "|H₀⁽¹⁾(k·distance)|",
         xlabel = "Boundary Point Index (p2)",
         ylabel = "Boundary Point Index (p1)"
     )
-    heatmap!(ax, abs.(hankel_matrix))
-    Colorbar(fig[1, 2], ax, label = "|H₀⁽¹⁾(k·distance)|")
+    hmap=heatmap!(ax, abs.(hankel_matrix))
+    Colorbar(fig[1,1][1,2], hmap)
     return fig
 end
