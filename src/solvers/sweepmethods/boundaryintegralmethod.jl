@@ -1,23 +1,61 @@
 using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 
+"""
+    struct SymmetryRuleBIM{T<:Real}
+
+Represents symmetry rules for the boundary integral method.
+
+# Fields
+- `symmetry_type::Symbol`: Type of symmetry (:x, :y, :xy, or :nothing).
+- `x_bc::Symbol`: Boundary condition on the x-axis (:D for Dirichlet, :N for Neumann).
+- `y_bc::Symbol`: Boundary condition on the y-axis (:D for Dirichlet, :N for Neumann).
+- `shift_x::T`: Shift along the x-axis.
+- `shift_y::T`: Shift along the y-axis.
+"""
 struct SymmetryRuleBIM{T<:Real}
-    symmetry_type::Symbol         # :x, :y, :xy, or :nothing
-    x_bc::Symbol                  # :D (Dirichlet) or :N (Neumann)
-    y_bc::Symbol                  # :D (Dirichlet) or :N (Neumann)
+    symmetry_type::Symbol        
+    x_bc::Symbol                  
+    y_bc::Symbol                
     shift_x::T
     shift_y::T
 end
 
+
+"""
+    struct BoundaryIntegralMethod{T<:Real}
+
+Represents the configuration for the boundary integral method.
+
+# Fields
+- `dim_scaling_factor::T`: Scaling factor for the boundary dimensions (compatibility).
+- `pts_scaling_factor::Vector{T}`: Scaling factors for the boundary points.
+- `sampler::Vector`: Sampling strategy for the boundary points.
+- `eps::T`: Numerical tolerance.
+- `min_dim::Int64`: Minimum dimensions (compatibility field).
+- `min_pts::Int64`: Minimum points for evaluation.
+- `rule::SymmetryRuleBIM`: Symmetry rule for the configuration.
+"""
 struct BoundaryIntegralMethod{T} <: SweepSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
     eps::T
-    min_dim::Int64 #for compatibiliy remove later
+    min_dim::Int64 
     min_pts::Int64
     rule::SymmetryRuleBIM
 end
 
+"""
+    struct BoundaryPointsBIM{T<:Real}
+
+Represents the boundary points used in the method.
+
+# Fields
+- `xy::Vector{SVector{2,T}}`: Coordinates of the boundary points.
+- `normal::Vector{SVector{2,T}}`: Normal vectors at the boundary points.
+- `curvature::Vector{T}`: Curvatures at the boundary points.
+- `ds::Vector{T}`: Arc lengths between consecutive boundary points.
+"""
 struct BoundaryPointsBIM{T} <: AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}}
     normal::Vector{SVector{2,T}}
@@ -25,29 +63,53 @@ struct BoundaryPointsBIM{T} <: AbsPoints where {T<:Real}
     ds::Vector{T}
 end
 
+"""
+    struct AbstractHankelBasis <: AbsBasis
+
+Compatibility placeholder.
+"""
 struct AbstractHankelBasis <: AbsBasis end
 
-function resize_basis(basis::Ba, billiard::Bi, dim::Int, k) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
+"""
+    resize_basis(basis::Ba, billiard::Bi, dim::Int, k::Real) -> AbstractHankelBasis
+
+Compatibility placeholder.
+"""
+function resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
     return AbstractHankelBasis()
 end
 
-function SymmetryRuleBIM(billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D, y_bc=:D) where {Bi <: AbsBilliard}
-    T = eltype([hasproperty(billiard, :x_axis) ? billiard.x_axis : 0.0, hasproperty(billiard, :y_axis) ? billiard.y_axis : 0.0])
-    shift_x = hasproperty(billiard, :x_axis) ? billiard.x_axis : T(0.0)
-    shift_y = hasproperty(billiard, :y_axis) ? billiard.y_axis : T(0.0)
-    if hasproperty(billiard, :x_axis)
-        shift_x = billiard.x_axis
+"""
+    SymmetryRuleBIM(billiard::Bi; symmetries=Nothing, x_bc=:D, y_bc=:D) -> SymmetryRuleBIM
+
+Constructs a `SymmetryRuleBIM` based on the billiard's properties and symmetry configuration.
+
+# Arguments
+- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
+- `symmetries::Union{Vector{Any},Nothing}`: Symmetry definitions (optional).
+- `x_bc::Symbol`: Boundary condition on the x-axis (:D for Dirichlet, :N for Neumann).
+- `y_bc::Symbol`: Boundary condition on the y-axis (:D for Dirichlet, :N for Neumann).
+
+# Returns
+- `SymmetryRuleBIM`: Constructed symmetry rule.
+"""
+function SymmetryRuleBIM(billiard::Bi;symmetries::Union{Vector{Any},Nothing}=nothing,x_bc=:D,y_bc=:D) where {Bi <: AbsBilliard}
+    T = eltype([hasproperty(billiard,:x_axis) ? billiard.x_axis : 0.0, hasproperty(billiard,:y_axis) ? billiard.y_axis : 0.0])
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    if hasproperty(billiard,:x_axis)
+        shift_x=billiard.x_axis
     end
-    if hasproperty(billiard, :y_axis)
-        shift_y = billiard.y_axis
+    if hasproperty(billiard,:y_axis)
+        shift_y=billiard.y_axis
     end
     if isnothing(symmetries)
         return SymmetryRuleBIM{T}(:nothing,x_bc,y_bc,shift_x,shift_y)
     end
-    if length(symmetries) > 1
+    if length(symmetries)>1
         throw(ArgumentError("There should be only 1 symmetry"))
     end
-    symmetries = symmetries[1]
+    symmetries=symmetries[1]
     if symmetries isa Reflection
         if symmetries.axis == :y_axis
             return SymmetryRuleBIM{T}(:x,x_bc,y_bc,shift_x,shift_y)
@@ -63,264 +125,289 @@ function SymmetryRuleBIM(billiard::Bi; symmetries::Union{Vector{Any},Nothing}=no
     end
 end
 
-function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}}, billiard::Bi; min_pts = 20, symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D, y_bc=:D) where {T<:Real, Bi<:AbsBilliard}
-    bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler = [GaussLegendreNodes()]
-    return BoundaryIntegralMethod{T}(1.0, bs, sampler, eps(T), min_pts, min_pts, SymmetryRuleBIM(billiard, symmetries=symmetries, x_bc=x_bc, y_bc=y_bc))
+"""
+    BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
+
+Creates a boundary integral method solver configuration.
+
+# Arguments
+- `pts_scaling_factor::Union{T,Vector{T}}`: Scaling factors for the boundary points.
+- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
+- `min_pts::Int`: Minimum number of boundary points (default: 20).
+- `symmetries::Union{Vector{Any},Nothing}`: Symmetry definitions (optional).
+- `x_bc::Symbol`: Boundary condition on the x-axis (:D for Dirichlet, :N for Neumann).
+- `y_bc::Symbol`: Boundary condition on the y-axis (:D for Dirichlet, :N for Neumann).
+
+# Returns
+- `BoundaryIntegralMethod`: Constructed solver configuration.
+"""
+function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetries::Union{Vector{Any},Nothing}=nothing,x_bc=:D,y_bc=:D) where {T<:Real, Bi<:AbsBilliard}
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[GaussLegendreNodes()]
+    return BoundaryIntegralMethod{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
 end
 
-function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector, billiard::Bi; min_pts = 20, symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D, y_bc=:D) where {T<:Real, Bi<:AbsBilliard} 
-    bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    return BoundaryIntegralMethod{T}(1.0, bs, samplers, eps(T), min_pts, min_pts, SymmetryRuleBIM(billiard, symmetries=symmetries, x_bc=x_bc, y_bc=y_bc))
+function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts = 20,symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D,y_bc=:D) where {T<:Real, Bi<:AbsBilliard} 
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    return BoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
 end
 
-function evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
-    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
-    curves = billiard.fundamental_boundary
-    type = eltype(solver.pts_scaling_factor)
-    
-    xy_all = Vector{SVector{2,type}}()
-    normal_all = Vector{SVector{2,type}}()
-    kappa_all = Vector{type}()
-    w_all = Vector{type}()
-   
+"""
+    evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k::Real) -> BoundaryPointsBIM
+
+Evaluates the boundary points and associated properties for the given solver and billiard.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: Boundary integral method configuration.
+- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
+- `k::Real`: Wavenumber.
+
+# Returns
+- `BoundaryPointsBIM`: Evaluated boundary points and properties.
+"""
+function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
+    bs,samplers=adjust_scaling_and_samplers(solver, billiard)
+    curves=billiard.fundamental_boundary
+    type=eltype(solver.pts_scaling_factor)
+    xy_all=Vector{SVector{2,type}}()
+    normal_all=Vector{SVector{2,type}}()
+    kappa_all=Vector{type}()
+    w_all=Vector{type}()
     for i in eachindex(curves)
-        crv = curves[i]
-        if typeof(crv) <: AbsRealCurve
-            L = crv.length
-            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
-            sampler = samplers[i]
+        crv=curves[i]
+        if typeof(crv)<:AbsRealCurve
+            L=crv.length
+            N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi)))
+            sampler=samplers[i]
             if crv isa PolarSegment
                 if sampler isa PolarSampler
-                    t, dt = sample_points(sampler, crv, N)
+                    t,dt=sample_points(sampler,crv,N)
                 else
-                    t, dt = sample_points(sampler, N)
+                    t,dt=sample_points(sampler,N)
                 end
-                s = arc_length(crv,t)
-                ds = diff(s)
-                append!(ds, L + s[1] - s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
+                s=arc_length(crv,t)
+                ds=diff(s)
+                append!(ds,L+s[1]-s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
             else
-                t, dt = sample_points(sampler,N)
-                ds = L.*dt
+                t,dt=sample_points(sampler,N)
+                ds=L.*dt
             end
-            xy = curve(crv,t)
-            normal = normal_vec(crv,t)
-            kappa = curvature(crv,t)
-            append!(xy_all, xy)
-            append!(normal_all, normal)
-            append!(kappa_all, kappa)
-            append!(w_all, ds)
+            xy=curve(crv,t)
+            normal=normal_vec(crv,t)
+            kappa=curvature(crv,t)
+            append!(xy_all,xy)
+            append!(normal_all,normal)
+            append!(kappa_all,kappa)
+            append!(w_all,ds)
         end
     end
     return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all)
 end
 
-function apply_reflection(p::SVector{2, T}, rule::SymmetryRuleBIM{T}) where {T}
+"""
+    apply_reflection(p::SVector{2,T}, rule::SymmetryRuleBIM{T}) -> SVector{2,T}
+
+Applies symmetry reflection rules to a point.
+
+# Arguments
+- `p::SVector{2,T}`: Original point.
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
+
+# Returns
+- `SVector{2,T}`: Reflected point.
+"""
+function apply_reflection(p::SVector{2,T},rule::SymmetryRuleBIM{T}) where {T}
     shift_x, shift_y = rule.shift_x, rule.shift_y
-    if rule.symmetry_type == :x
-        return SVector(2*shift_x - p[1], p[2])
-    elseif rule.symmetry_type == :y
-        return SVector(p[1], 2*shift_y - p[2])
-    elseif rule.symmetry_type == :xy
-        return SVector(2*shift_x - p[1], 2*shift_y - p[2])
+    if rule.symmetry_type==:x
+        return SVector(2*shift_x-p[1],p[2])
+    elseif rule.symmetry_type==:y
+        return SVector(p[1],2*shift_y-p[2])
+    elseif rule.symmetry_type==:xy
+        return SVector(2*shift_x-p[1],2*shift_y-p[2])
     else
-        return p  # :nothing or no symmetry
+        return p
     end
 end
 
+"""
+    compute_hankel(distance12::T, k::T) -> Complex{T}
+
+Computes the Hankel function of the first kind for the given distance and wavenumber.
+
+# Arguments
+- `distance12::T`: Distance between two points.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: Hankel function value. Handles singularity by returning a small complex value.
+"""
 function compute_hankel(distance12::T, k::T) where {T<:Real}
-    if abs(distance12::T) < eps(T) # Avoid division by zero
-        return Complex(eps(T), eps(T))  
+    if abs(distance12::T)<eps(T) # Avoid division by zero
+        return Complex(eps(T),eps(T))  
     end
-    return Bessels.hankelh1(1, k * distance12::T)
+    return Bessels.hankelh1(1,k*distance12::T)
 end
 
-function compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2, T}, p1_curvature::T) where {T<:Real}
-    distance12 = hypot(dx12, dy12)
-    if distance12 < eps(T)
-        return p1_curvature / (2.0 * π)
+"""
+    compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2,T}, p1_curvature::T) -> T
+
+Computes the cosine of the angle φ between the normal vector and the vector connecting two points.
+
+# Arguments
+- `dx12::T`: x-component of the vector between two points.
+- `dy12::T`: y-component of the vector between two points.
+- `normal1::SVector{2,T}`: Normal vector at the first point.
+- `p1_curvature::T`: Curvature at the first point.
+
+# Returns
+- `T`: Computed cos(φ) value. Handles singularity by using the curvature term.
+"""
+function compute_cos_phi(dx12::T,dy12::T,normal1::SVector{2,T},p1_curvature::T) where {T<:Real}
+    distance12=hypot(dx12,dy12)
+    if distance12<eps(T)
+        return p1_curvature/(2.0*π)
     else
-        return (normal1[1] * dx12 + normal1[2] * dy12) / distance12
+        return (normal1[1]*dx12+normal1[2]*dy12)/distance12
     end
 end
 
-# Currently not needed
+"""
+    greens_function(distance12::T, k::T) -> Complex{T}
+
+Computes the Green's function for the given distance and wavenumber.
+
+# Arguments
+- `distance12::T`: Distance between two points.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: Green's function value. Handles singularity by suppressing the term.
+"""
 function greens_function(distance12::T, k::T) where {T<:Real}
-    if abs(distance12) < eps(T) # handle singularity, this is supressed by the cosphi term
-        return 0.0 + 0.0im  
+    if abs(distance12)<eps(T) # handle singularity, this is supressed by the cosphi term
+        return 0.0+0.0im  
     end
-    return -im * k / 4 * Bessels.hankelh1(0, k * distance12)
+    return -im*k/4*Bessels.hankelh1(0,k*distance12)
 end
 
-function default_helmholtz_kernel(p1::SVector{2, T}, p2::SVector{2, T}, normal1::SVector{2, T}, k::T, p1_curvature::T) where {T<:Real}
-    dx, dy = p1[1] - p2[1], p1[2] - p2[2]
-    distance12 = hypot(dx, dy)
-    return abs(distance12) < eps(T) ? Complex(1/(2*pi)*p1_curvature) : -im * k / 2.0 * compute_cos_phi(dx, dy, normal1, p1_curvature) * compute_hankel(distance12, k)
+"""
+    default_helmholtz_kernel(p1::SVector{2,T}, p2::SVector{2,T}, normal1::SVector{2,T}, k::T, p1_curvature::T) -> Complex{T}
+
+Computes the Helmholtz kernel for the given points and properties.
+
+# Arguments
+- `p1::SVector{2,T}`: First point.
+- `p2::SVector{2,T}`: Second point.
+- `normal1::SVector{2,T}`: Normal vector at the first point.
+- `k::T`: Wavenumber.
+- `p1_curvature::T`: Curvature at the first point.
+
+# Returns
+- `Complex{T}`: Computed Helmholtz kernel. Handles singularity using curvature.
+"""
+function default_helmholtz_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
+    dx, dy = p1[1]-p2[1], p1[2]-p2[2]
+    distance12=hypot(dx,dy)
+    return abs(distance12)<eps(T) ? Complex(1/(2*pi)*p1_curvature) : -im*k/2.0*compute_cos_phi(dx,dy,normal1,p1_curvature)*compute_hankel(distance12,k)
 end
 
+"""
+    compute_kernel(
+        p1::SVector{2,T}, p2::SVector{2,T}, 
+        normal1::SVector{2,T}, curvature1::T, 
+        reflected_p2_x::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_y::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
+        rule::SymmetryRuleBIM{T}, k::T
+    ) -> Complex{T}
 
-#=
-function compute_kernel(
-    p1::SVector{2, T}, p2::SVector{2, T},
-    normal1::SVector{2, T}, curvature1::T,
-    rule::SymmetryRuleBIM{T}, k::T
-) where {T<:Real}
-    # Base kernel computation
-    base_kernel = default_helmholtz_kernel(p1, p2, normal1, k, curvature1)
-    kernel_value = base_kernel
+Computes the kernel value for a given pair of points, incorporating symmetry reflections.
 
-    # Handle symmetry reflections
-    if rule.symmetry_type in [:x, :xy]
-        reflected_p2_x = apply_reflection(p2, SymmetryRuleBIM(:x, rule.x_bc, rule.y_bc, rule.shift_x, rule.shift_y))  # Reflection across x-axis
-        if rule.x_bc == :D
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
-        elseif rule.x_bc == :N
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
+# Arguments
+- `p1::SVector{2,T}`: First point.
+- `p2::SVector{2,T}`: Second point.
+- `normal1::SVector{2,T}`: Normal vector at the first point.
+- `curvature1::T`: Curvature at the first point.
+- `reflected_p2_x::Union{SVector{2,T}, Nothing}`: Reflected second point across the x-axis (if applicable).
+- `reflected_p2_y::Union{SVector{2,T}, Nothing}`: Reflected second point across the y-axis (if applicable).
+- `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes (if applicable).
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: Computed kernel value.
+"""
+function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
+    kernel_value=default_helmholtz_kernel(p1,p2,normal1,k,curvature1) # Base kernel computation
+    if !isnothing(reflected_p2_x) # Handle x-reflection
+        if rule.x_bc==:D
+            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_x,normal1,k,curvature1)
+        elseif rule.x_bc==:N
+            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_x,normal1,k,curvature1)
         end
     end
-
-    if rule.symmetry_type in [:y, :xy]
-        reflected_p2_y = apply_reflection(p2, SymmetryRuleBIM(:y, rule.x_bc, rule.y_bc, rule.shift_x, rule.shift_y))  # Reflection across y-axis
-        if rule.y_bc == :D
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_y, normal1, k, curvature1)
-        elseif rule.y_bc == :N
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_y, normal1, k, curvature1)
+    if !isnothing(reflected_p2_y) # Handle y-reflection
+        if rule.y_bc==:D
+            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_y,normal1,k,curvature1)
+        elseif rule.y_bc==:N
+            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_y,normal1,k,curvature1)
         end
     end
-
-    if rule.symmetry_type == :xy
-        reflected_p2_xy = apply_reflection(p2, rule)  # Reflection across both axes
-        if rule.x_bc == :D && rule.y_bc == :D
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        elseif rule.x_bc == :D && rule.y_bc == :N
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        elseif rule.x_bc == :N && rule.y_bc == :D
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        elseif rule.x_bc == :N && rule.y_bc == :N
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
+    if !isnothing(reflected_p2_xy) # Handle xy-reflection
+        if rule.x_bc==:D && rule.y_bc==:D
+            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:D && rule.y_bc==:N
+            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:D
+            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:N
+            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
-
     return kernel_value
 end
 
-function fredholm_matrix(
-    boundary_points::BoundaryPointsBIM{T},
-    symmetry_rule::SymmetryRuleBIM{T}, k::T
-) where {T<:Real}
-    xy_points = boundary_points.xy
-    normals = boundary_points.normal
-    curvatures = boundary_points.curvature
-    ds = boundary_points.ds
-    N = length(xy_points)
+"""
+    fredholm_matrix(boundary_points::BoundaryPointsBIM, symmetry_rule::SymmetryRuleBIM, k::Real) -> Matrix{Complex{T}}
 
-    # Initialize Fredholm matrix
-    fredholm_matrix = Matrix{Complex{T}}(I, N, N)
+Constructs the Fredholm matrix for the boundary integral method.
 
-    # Fill the matrix pairwise in a double for loop
+# Arguments
+- `boundary_points::BoundaryPointsBIM`: Evaluated boundary points.
+- `symmetry_rule::SymmetryRuleBIM`: Symmetry rule for the boundary points.
+- `k::Real`: Wavenumber.
+
+# Returns
+- `Matrix{Complex{T}}`: Constructed Fredholm matrix.
+"""
+function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
+    xy_points=boundary_points.xy
+    normals=boundary_points.normal
+    curvatures=boundary_points.curvature
+    ds=boundary_points.ds
+    N=length(xy_points)
+    reflected_points_x = symmetry_rule.symmetry_type in [:x,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y = symmetry_rule.symmetry_type in [:y,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
+        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
+    fredholm_matrix = Matrix{Complex{T}}(I,N,N)
     Threads.@threads for i in 1:N
-        p1 = xy_points[i]
-        normal1 = normals[i]
-        curvature1 = curvatures[i]
-        ds1 = ds[i]
-
+        p1=xy_points[i]
+        normal1=normals[i]
+        curvature1=curvatures[i]
+        ds1=ds[i]
         for j in 1:N
-            p2 = xy_points[j]
-            kernel_value = compute_kernel(p1, p2, normal1, curvature1, symmetry_rule, k)
-            fredholm_matrix[i, j] -= ds1 * kernel_value
+            p2=xy_points[j]
+            kernel_value=compute_kernel(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k)
+            fredholm_matrix[i, j]-=ds1*kernel_value
         end
     end
-
-    return fredholm_matrix
-end
-=#
-
-function compute_kernel(
-    p1::SVector{2, T}, p2::SVector{2, T},
-    normal1::SVector{2, T}, curvature1::T,
-    reflected_p2_x::Union{SVector{2, T}, Nothing},
-    reflected_p2_y::Union{SVector{2, T}, Nothing},
-    reflected_p2_xy::Union{SVector{2, T}, Nothing},
-    rule::SymmetryRuleBIM{T}, k::T
-) where {T<:Real}
-    # Base kernel computation
-    kernel_value = default_helmholtz_kernel(p1, p2, normal1, k, curvature1)
-
-    # Handle x-reflection
-    if !isnothing(reflected_p2_x)
-        if rule.x_bc == :D
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
-        elseif rule.x_bc == :N
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
-        end
-    end
-
-    # Handle y-reflection
-    if !isnothing(reflected_p2_y)
-        if rule.y_bc == :D
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_y, normal1, k, curvature1)
-        elseif rule.y_bc == :N
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_y, normal1, k, curvature1)
-        end
-    end
-
-    # Handle xy-reflection
-    if !isnothing(reflected_p2_xy)
-        if rule.x_bc == :D && rule.y_bc == :D
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        elseif rule.x_bc == :D && rule.y_bc == :N
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        elseif rule.x_bc == :N && rule.y_bc == :D
-            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        elseif rule.x_bc == :N && rule.y_bc == :N
-            kernel_value += default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
-        end
-    end
-
-    return kernel_value
-end
-
-function fredholm_matrix(
-    boundary_points::BoundaryPointsBIM{T},
-    symmetry_rule::SymmetryRuleBIM{T}, k::T
-) where {T<:Real}
-    xy_points = boundary_points.xy
-    normals = boundary_points.normal
-    curvatures = boundary_points.curvature
-    ds = boundary_points.ds
-    N = length(xy_points)
-
-    # Precompute reflected points
-    reflected_points_x = symmetry_rule.symmetry_type in [:x, :xy] ?
-        [apply_reflection(p, SymmetryRuleBIM(:x, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_y = symmetry_rule.symmetry_type in [:y, :xy] ?
-        [apply_reflection(p, SymmetryRuleBIM(:y, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_xy = symmetry_rule.symmetry_type == :xy ?
-        [apply_reflection(p, symmetry_rule) for p in xy_points] : nothing
-
-    # Initialize Fredholm matrix
-    fredholm_matrix = Matrix{Complex{T}}(I, N, N)
-
-    # Fill the matrix pairwise in a double for loop
-    Threads.@threads for i in 1:N
-        p1 = xy_points[i]
-        normal1 = normals[i]
-        curvature1 = curvatures[i]
-        ds1 = ds[i]
-
-        for j in 1:N
-            p2 = xy_points[j]
-            kernel_value = compute_kernel(
-                p1, p2, normal1, curvature1,
-                reflected_points_x === nothing ? nothing : reflected_points_x[j],
-                reflected_points_y === nothing ? nothing : reflected_points_y[j],
-                reflected_points_xy === nothing ? nothing : reflected_points_xy[j],
-                symmetry_rule, k
-            )
-            fredholm_matrix[i, j] -= ds1 * kernel_value
-        end
-    end
-
     return fredholm_matrix
 end
 
