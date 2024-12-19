@@ -44,7 +44,7 @@ function evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k) where 
    
     for i in eachindex(curves)
         crv = curves[i]
-        if typeof(crv) <: AbsRealCurve
+        if typeof(crv) <: AbsCurve # here I try with just every curve since BIM is different from scaling methods. Default is AbsRealCurve
             L = crv.length
             N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
             sampler = samplers[i]
