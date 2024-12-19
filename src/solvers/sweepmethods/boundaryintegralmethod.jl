@@ -543,3 +543,43 @@ function test_hankel(solver::BoundaryIntegralMethod, billiard::Bi; k=50) where {
     Colorbar(fig[1,1][1,2], hmap)
     return fig
 end
+
+function test_reflections(
+    boundary_points::BoundaryPointsBIM{T},
+    symmetry_rule::SymmetryRuleBIM{T}
+) where {T<:Real}
+    original_points = boundary_points.xy
+
+    # Compute reflected points
+    reflected_x = symmetry_rule.symmetry_type in [:x, :xy] ?
+        [apply_reflection(p, symmetry_rule) for p in original_points] : []
+    reflected_y = symmetry_rule.symmetry_type in [:y, :xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:y, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in original_points] : []
+    reflected_xy = symmetry_rule.symmetry_type == :xy ?
+        [apply_reflection(p, symmetry_rule) for p in original_points] : []
+
+    # Plot original and reflected points
+    fig = Figure(resolution=(800, 800))
+    ax = Axis(fig[1, 1], aspect=1)
+    
+    # Original points
+    scatter!(ax, [p[1] for p in original_points], [p[2] for p in original_points], label="Original Points", color=:blue)
+
+    # Reflected across x-axis
+    if !isempty(reflected_x)
+        scatter!(ax, [p[1] for p in reflected_x], [p[2] for p in reflected_x], label="Reflected (x-axis)", color=:red)
+    end
+
+    # Reflected across y-axis
+    if !isempty(reflected_y)
+        scatter!(ax, [p[1] for p in reflected_y], [p[2] for p in reflected_y], label="Reflected (y-axis)", color=:green)
+    end
+
+    # Reflected across both axes
+    if !isempty(reflected_xy)
+        scatter!(ax, [p[1] for p in reflected_xy], [p[2] for p in reflected_xy], label="Reflected (xy-axis)", color=:purple)
+    end
+
+    axislegend(ax, position=:rt)
+    return fig
+end
