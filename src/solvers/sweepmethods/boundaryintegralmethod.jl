@@ -458,14 +458,14 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     largest_matrix_size = size(QuantumBilliards.fredholm_matrix(pts_max, symmetryBIM, max_k))
     max_rows, max_cols = largest_matrix_size
 
+    # Prepare grids for heatmaps
+    x_grid = 1:max_cols
+    y_grid = 1:max_rows
+
     # Prepare figure
     fig = Figure(resolution = (1500, 1500))
     ax_real = Axis(fig[1, 1][1, 1], title = "real(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)")
     ax_imag = Axis(fig[1, 1][1, 2], title = "imag(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)")
-
-    # Define x and y grids for the heatmap
-    x_grid = 1:max_cols
-    y_grid = 1:max_rows
 
     # Initialize with the first matrix
     sample_k = first(k_range)
@@ -497,8 +497,8 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
         heatmap_imag[1:size(fredholm, 1), 1:size(fredholm, 2)] .= imag.(fredholm)
 
         # Update heatmap data
-        heatmap_plot_real[1] = heatmap_real
-        heatmap_plot_imag[1] = heatmap_imag
+        heatmap_plot_real[1] = (x_grid, y_grid, heatmap_real)
+        heatmap_plot_imag[1] = (x_grid, y_grid, heatmap_imag)
 
         # Update titles
         ax_real.title = "real(Fredholm) at k = $(round(k, digits = 4))"
