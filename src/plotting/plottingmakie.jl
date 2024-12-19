@@ -707,6 +707,18 @@ function plot_point_distribution!(f::Figure, billiard::Bi, solver::Sol; plot_idx
     end
 end
 
+function plot_curvature_distribution!(f::Figure, billiard::Bi; k=100.0, b=4.0) where {Bi<:AbsBilliard}
+    ax=Axis(f[1,1][1,1],aspect=DataAspect())
+    solver=BoundaryIntegralMethod(b0,[LinearNodes()]) # use linear for better viewing
+    pts::BoundaryPointsBIM=evaluate_points(solver,billiard,k)
+    xy=pts.xy
+    x=getindex.(xy,1)
+    y=getindex.(xy,2)
+    curvature=pts.curvature
+    sc=scatter!(ax,x,y,color=curvature,colormap=:viridis,markersize=5) 
+    Colorbar(fig[1, 2],sc,label="Curvature")  # Add colorbar
+end
+
 """
     plot_mean_level_spacing!(ax::Axis, billiard::Bi; avg_smallest_tension=1e-5, fundamental::Bool=true, step_size=0.01) where {Bi<:AbsBilliard}
 
