@@ -1,6 +1,6 @@
 using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 
-struct SymmetryRuleBIM{T} where {T<:Real}
+struct SymmetryRuleBIM{T<:Real}
     symmetry_type::Symbol         # :x, :y, :xy, or :nothing
     x_bc::Symbol                  # :D (Dirichlet) or :N (Neumann)
     y_bc::Symbol                  # :D (Dirichlet) or :N (Neumann)
