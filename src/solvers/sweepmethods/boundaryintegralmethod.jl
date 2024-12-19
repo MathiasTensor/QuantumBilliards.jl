@@ -252,11 +252,11 @@ end
 
 # high level
 
-function construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k) where {Ba<:AbsFundamentalBasis}
+function construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     return fredholm_matrix(pts, solver.rule, k)
 end
 
-function solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k) where {Ba<:AbsFundamentalBasis}
+function solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     A = construct_matrices(solver, basis, pts, k)
     mu = svdvals(A)
     lam0 = mu[end]
