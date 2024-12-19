@@ -28,8 +28,8 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     num_intervals = length(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p = Progress(num_intervals, 1)
-    for (i,k) in enumerate(ks)
-        res[i] = solve(solver,new_basis,pts,k)
+    Threads.@threads for i in eachindex(ks)
+        res[i] = solve(solver,new_basis,pts,ks[i])
         next!(p)
     end
     return res
