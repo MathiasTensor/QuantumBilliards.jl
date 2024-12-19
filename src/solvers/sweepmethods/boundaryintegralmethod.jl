@@ -158,100 +158,8 @@ function default_helmholtz_kernel(p1::SVector{2, T}, p2::SVector{2, T}, normal1:
     return abs(distance12) < eps(T) ? Complex(1/(2*pi)*p1_curvature) : -im * k / 2.0 * compute_cos_phi(dx, dy, normal1, p1_curvature) * compute_hankel(distance12, k)
 end
 
+
 #=
-function compute_kernel_batch(p1::SVector{2, T}, p2_points::Vector{SVector{2, T}}, normal1::SVector{2, T}, curvature1::T, rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
-    N = length(p2_points)
-    kernel_values = Vector{Complex{T}}(undef, N)
-
-    # Precompute reflected points if applicable (when :xy we need to always compute the :x and :y reflections)
-    reflected_p2_x = rule.symmetry_type in [:x, :xy] ?
-        [apply_reflection(p2, rule) for p2 in p2_points] : nothing
-    reflected_p2_y = rule.symmetry_type in [:y, :xy] ?
-        [apply_reflection(p2, SymmetryRuleBIM(:y, rule.x_bc, rule.y_bc, rule.shift_x, rule.shift_y)) for p2 in p2_points] : nothing
-    reflected_p2_xy = rule.symmetry_type == :xy ?
-        [apply_reflection(p2, rule) for p2 in p2_points] : nothing
-
-    # Compute kernel values
-    for j in 1:N
-        p2 = p2_points[j]
-        base_kernel = default_helmholtz_kernel(p1, p2, normal1, k, curvature1)
-        kernel_value = base_kernel
-
-        # Incorporate reflections
-        if rule.symmetry_type == :x && reflected_p2_x !== nothing
-            reflected_p2 = reflected_p2_x[j]
-            if rule.x_bc == :D
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2, normal1, k, curvature1)
-            elseif rule.x_bc == :N
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2, normal1, k, curvature1)
-            end
-        end
-
-        if rule.symmetry_type == :y && reflected_p2_y !== nothing
-            reflected_p2 = reflected_p2_y[j]
-            if rule.y_bc == :D
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2, normal1, k, curvature1)
-            elseif rule.y_bc == :N
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2, normal1, k, curvature1)
-            end
-        end
-
-        if rule.symmetry_type == :xy && reflected_p2_xy !== nothing
-            reflected_p2x = reflected_p2_x[j]
-            reflected_p2y = reflected_p2_y[j]
-            reflected_p2xy = reflected_p2_xy[j]
-            if rule.x_bc == :D && rule.y_bc == :D
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2x, normal1, k, curvature1)
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2y, normal1, k, curvature1)
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2xy, normal1, k, curvature1)
-            elseif rule.x_bc == :D && rule.y_bc == :N
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2x, normal1, k, curvature1)
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2y, normal1, k, curvature1)
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2xy, normal1, k, curvature1)
-            elseif rule.x_bc == :N && rule.y_bc == :D
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2x, normal1, k, curvature1)
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2y, normal1, k, curvature1)
-                kernel_value -= default_helmholtz_kernel(p1, reflected_p2xy, normal1, k, curvature1)
-            elseif rule.x_bc == :N && rule.y_bc == :N
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2x, normal1, k, curvature1)
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2y, normal1, k, curvature1)
-                kernel_value += default_helmholtz_kernel(p1, reflected_p2xy, normal1, k, curvature1)
-            end
-        end
-
-        kernel_values[j] = kernel_value
-    end
-    return kernel_values
-end
-
-function fredholm_matrix(boundary_points::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
-    xy_points = boundary_points.xy
-    normals = boundary_points.normal
-    curvatures = boundary_points.curvature
-    ds = boundary_points.ds
-    N = length(xy_points)
-
-    # Initialize Fredholm matrix
-    fredholm_matrix = Matrix{Complex{T}}(I, N, N)
-
-    # Compute rows of the matrix
-    for i in 1:N
-        p1 = xy_points[i]
-        normal1 = normals[i]
-        curvature1 = curvatures[i]
-        ds1 = ds[i]
-
-        # Compute kernel for all p2 values for the current p1
-        kernel_row = compute_kernel_batch(p1, xy_points, normal1, curvature1, symmetry_rule, k)
-
-        # Update the matrix row
-        fredholm_matrix[i, :] -= ds1 .* kernel_row
-    end
-
-    return fredholm_matrix
-end
-=#
-
 function compute_kernel(
     p1::SVector{2, T}, p2::SVector{2, T},
     normal1::SVector{2, T}, curvature1::T,
@@ -319,6 +227,96 @@ function fredholm_matrix(
         for j in 1:N
             p2 = xy_points[j]
             kernel_value = compute_kernel(p1, p2, normal1, curvature1, symmetry_rule, k)
+            fredholm_matrix[i, j] -= ds1 * kernel_value
+        end
+    end
+
+    return fredholm_matrix
+end
+=#
+
+function compute_kernel(
+    p1::SVector{2, T}, p2::SVector{2, T},
+    normal1::SVector{2, T}, curvature1::T,
+    reflected_p2_x::Union{SVector{2, T}, Nothing},
+    reflected_p2_y::Union{SVector{2, T}, Nothing},
+    reflected_p2_xy::Union{SVector{2, T}, Nothing},
+    rule::SymmetryRuleBIM{T}, k::T
+) where {T<:Real}
+    # Base kernel computation
+    kernel_value = default_helmholtz_kernel(p1, p2, normal1, k, curvature1)
+
+    # Handle x-reflection
+    if !isnothing(reflected_p2_x)
+        if rule.x_bc == :D
+            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
+        elseif rule.x_bc == :N
+            kernel_value += default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
+        end
+    end
+
+    # Handle y-reflection
+    if !isnothing(reflected_p2_y)
+        if rule.y_bc == :D
+            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_y, normal1, k, curvature1)
+        elseif rule.y_bc == :N
+            kernel_value += default_helmholtz_kernel(p1, reflected_p2_y, normal1, k, curvature1)
+        end
+    end
+
+    # Handle xy-reflection
+    if !isnothing(reflected_p2_xy)
+        if rule.x_bc == :D && rule.y_bc == :D
+            kernel_value += default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
+        elseif rule.x_bc == :D && rule.y_bc == :N
+            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
+        elseif rule.x_bc == :N && rule.y_bc == :D
+            kernel_value -= default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
+        elseif rule.x_bc == :N && rule.y_bc == :N
+            kernel_value += default_helmholtz_kernel(p1, reflected_p2_xy, normal1, k, curvature1)
+        end
+    end
+
+    return kernel_value
+end
+
+function fredholm_matrix(
+    boundary_points::BoundaryPointsBIM{T},
+    symmetry_rule::SymmetryRuleBIM{T}, k::T
+) where {T<:Real}
+    xy_points = boundary_points.xy
+    normals = boundary_points.normal
+    curvatures = boundary_points.curvature
+    ds = boundary_points.ds
+    N = length(xy_points)
+
+    # Precompute reflected points
+    reflected_points_x = symmetry_rule.symmetry_type in [:x, :xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:x, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y = symmetry_rule.symmetry_type in [:y, :xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:y, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy = symmetry_rule.symmetry_type == :xy ?
+        [apply_reflection(p, symmetry_rule) for p in xy_points] : nothing
+
+    # Initialize Fredholm matrix
+    fredholm_matrix = Matrix{Complex{T}}(I, N, N)
+
+    # Fill the matrix pairwise in a double for loop
+    Threads.@threads for i in 1:N
+        p1 = xy_points[i]
+        normal1 = normals[i]
+        curvature1 = curvatures[i]
+        ds1 = ds[i]
+
+        for j in 1:N
+            p2 = xy_points[j]
+            kernel_value = compute_kernel(
+                p1, p2, normal1, curvature1,
+                reflected_points_x === nothing ? nothing : reflected_points_x[j],
+                reflected_points_y === nothing ? nothing : reflected_points_y[j],
+                reflected_points_xy === nothing ? nothing : reflected_points_xy[j],
+                symmetry_rule, k
+            )
             fredholm_matrix[i, j] -= ds1 * kernel_value
         end
     end
