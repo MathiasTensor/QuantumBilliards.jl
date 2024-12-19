@@ -140,7 +140,7 @@ function compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2, T}, p1_curvature:
     if distance12 < eps(T)
         return p1_curvature / (2.0 * π)
     else
-        return (normal1[1] * dx + normal1[2] * dy) / distance12
+        return (normal1[1] * dx12 + normal1[2] * dy12) / distance12
     end
 end
 
