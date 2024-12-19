@@ -467,6 +467,8 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
         fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
         heatmap_plot_real[1]=real.(fredholm)  # Update 
         heatmap_plot_imag[1]=imag.(fredholm)  # Update
+        ax_real.limits=(1,size(heatmap_real,1),1,size(heatmap_real,2))
+        ax_imag.limits=(1,size(heatmap_imag,1),1,size(heatmap_imag,2))
         ax_real.title="real at k = $(round(k,digits=4))" 
         ax_imag.title="imag at k = $(round(k,digits=4))"
     end
