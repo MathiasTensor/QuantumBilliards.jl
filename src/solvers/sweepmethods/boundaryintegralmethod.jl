@@ -567,16 +567,19 @@ function test_reflections(
 
     # Reflected across x-axis
     if !isempty(reflected_x)
+        println("reflected x is not empy")
         scatter!(ax, [p[1] for p in reflected_x], [p[2] for p in reflected_x], label="Reflected (x-axis)", color=:red)
     end
 
     # Reflected across y-axis
     if !isempty(reflected_y)
+        println("reflected y is not empty")
         scatter!(ax, [p[1] for p in reflected_y], [p[2] for p in reflected_y], label="Reflected (y-axis)", color=:green)
     end
 
     # Reflected across both axes
     if !isempty(reflected_xy)
+        println("reflected xy is not empty")
         scatter!(ax, [p[1] for p in reflected_xy], [p[2] for p in reflected_xy], label="Reflected (xy-axis)", color=:purple)
     end
 
