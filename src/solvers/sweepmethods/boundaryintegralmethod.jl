@@ -395,3 +395,46 @@ function solve_vect(solver::DecompositionMethod,basis::AbsBasis, pts::BoundaryPo
     return  t, x./sqrt(lam0)
 end
 =#
+
+
+
+
+
+
+
+
+
+
+
+
+#### TESTING #####
+
+function test_cos_phi_matrix(solver::BoundaryIntegralMethod, billiard::Bi, k=50) where {Bi<:AbsBilliard}
+    # Evaluate boundary points, normals, and curvatures
+    boundary_points = evaluate_points(solver,billiard,k)
+
+    # Extract boundary information
+    xy_points = boundary_points.xy
+    normals = boundary_points.normal
+    curvatures = boundary_points.curvature
+    n = length(xy_points)
+
+    # Initialize cosPhi matrix
+    cos_phi_matrix = Matrix{Float64}(undef, n, n)
+
+    # Compute cosPhi for all point pairs
+    for i in 1:n
+        for j in 1:n
+            p1, p2 = xy_points[i], xy_points[j]
+            dx, dy = p1[1] - p2[1], p1[2] - p2[2]
+            cos_phi_matrix[i, j] = compute_cos_phi(dx, dy, normals[i], curvatures[i])
+        end
+    end
+
+    # Visualize the cosPhi matrix
+    fig = Figure(resolution=(800, 800))
+    ax = Axis(fig[1, 1], title="cos(ϕ) Matrix for Quarter-Circle Billiard", xlabel="Boundary Point Index (p2)", ylabel="Boundary Point Index (p1)")
+    hm = heatmap!(ax, cos_phi_matrix; colormap=:viridis)
+    Colorbar(fig[1, 2], hm, label="cos(ϕ)")
+    return fig
+end
