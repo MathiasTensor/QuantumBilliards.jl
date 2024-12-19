@@ -409,7 +409,7 @@ end
 
 #### TESTING #####
 
-function test_cos_phi_matrix(solver::BoundaryIntegralMethod, billiard::Bi, k=50) where {Bi<:AbsBilliard}
+function test_cos_phi_matrix(solver::BoundaryIntegralMethod, billiard::Bi; k=50) where {Bi<:AbsBilliard}
     # Evaluate boundary points, normals, and curvatures
     boundary_points = evaluate_points(solver,billiard,k)
 
