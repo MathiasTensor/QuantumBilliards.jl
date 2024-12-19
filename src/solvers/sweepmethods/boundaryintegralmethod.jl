@@ -552,7 +552,7 @@ function test_reflections(
 
     # Compute reflected points
     reflected_x = symmetry_rule.symmetry_type in [:x, :xy] ?
-        [apply_reflection(p, symmetry_rule) for p in original_points] : []
+        [apply_reflection(p, SymmetryRuleBIM(:x, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in original_points] : []
     reflected_y = symmetry_rule.symmetry_type in [:y, :xy] ?
         [apply_reflection(p, SymmetryRuleBIM(:y, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in original_points] : []
     reflected_xy = symmetry_rule.symmetry_type == :xy ?
