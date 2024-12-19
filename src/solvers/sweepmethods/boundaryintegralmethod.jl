@@ -433,7 +433,7 @@ function test_cos_phi_matrix(solver::BoundaryIntegralMethod, billiard::Bi; k=50)
 
     # Visualize the cosPhi matrix
     fig = Figure(resolution=(800, 800))
-    ax = Axis(fig[1, 1], title="cos(ϕ) Matrix for Quarter-Circle Billiard", xlabel="Boundary Point Index (p2)", ylabel="Boundary Point Index (p1)")
+    ax = Axis(fig[1, 1], title="cos(ϕ) Matrix for Quarter-Circle Billiard, diag=$(cos_phi_matrix[1,1])", xlabel="Boundary Point Index (p2)", ylabel="Boundary Point Index (p1)")
     hm = heatmap!(ax, cos_phi_matrix; colormap=:viridis)
     Colorbar(fig[1, 2], hm, label="cos(ϕ)")
     return fig
