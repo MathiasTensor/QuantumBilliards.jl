@@ -467,10 +467,11 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     record(fig,output_path,k_range;framerate=30) do k
         pts=QuantumBilliards.evaluate_points(bim_solver,billiard,k)
         fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
-        x_grid=1:size(fredholm,2)
-        y_grid=1:size(fredholm,1)
-        heatmap_plot_real[1]=(x_grid,y_grid,real.(fredholm))  # Update 
-        heatmap_plot_imag[1]=(x_grid,y_grid,imag.(fredholm))  # Update
+        heatmap_plot_real[1][] = real.(fredholm)
+        heatmap_plot_imag[1][] = imag.(fredholm)
+        # Update grid and axis labels if the matrix size changes
+        ax_real.limits[] = (1, size(fredholm, 2), 1, size(fredholm, 1))
+        ax_imag.limits[] = (1, size(fredholm, 2), 1, size(fredholm, 1))
         ax_real.title="real at k = $(round(k,digits=4))" 
         ax_imag.title="imag at k = $(round(k,digits=4))"
     end
