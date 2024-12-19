@@ -1,16 +1,4 @@
 using LinearAlgebra
-#=
-function GESVDVALS(A, B; eps=1e-14)
-    M = reduce(vcat, [A, B]) #concatenate columns
-    Q, R =  qr(M)
-    _ , sv_r, Vt_r = svd(R)
-    mask = sv_r .> eps
-    #println(mask)
-    V1t = Vt_r[ : , mask]
-
-    return svdvals((A * V1t), (B * V1t))
-end
-=#
 
 """
     generalized_eigen(A::Symmetric,B::Symmetric;eps=1e-15)
@@ -40,20 +28,6 @@ Reference: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html
 - `C_scaled::Matrix`: Scaled eigenvector matrix corresponding to the truncated basis.
 """
 function generalized_eigen(A,B;eps=1e-15)
-    
-    d, S = eigen(A)
-    idx = (d/maximum(d)) .> eps
-    q = 1.0 ./ sqrt.(d[idx])
-    #println(length(q))
-    C = q' .* S[:,idx] 
-    D = B * C
-    #println(size(D))
-    E = Symmetric(C' * D)
-    #println(size(E))
-    mu, Z = eigen(E) #check eigenvectors
-    return mu, Z, C
-    
-    #=
     d,S=eigen(Symmetric(A))
     idx=d.>eps*maximum(d)
     q=1.0./sqrt.(d[idx])
@@ -66,7 +40,6 @@ function generalized_eigen(A,B;eps=1e-15)
     mul!(E,C_scaled',tmp)
     mu,Z=eigen(Symmetric(E))
     return mu,Z,C_scaled
-    =#
 end
 
 """
@@ -94,22 +67,7 @@ Reference: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html
 # Returns
 - `mu::Vector`: Vector of generalized eigenvalues.
 """
-function generalized_eigvals(A,B;eps=1e-15)
-    
-    d, S = eigen(A)
-    idx = (d/maximum(d)) .> eps
-    q = 1.0 ./ sqrt.(d[idx])
-    #println(length(q))
-    C = q' .* S[:,idx] 
-    #println(size(C))
-    D = B * C
-    #println(size(D))
-    E = Symmetric(C' * D)
-    #println(size(E))
-    mu = eigvals(E)
-    return mu
-    
-    #=
+function generalized_eigvals(A,B;eps=1e-15)    
     d,S=eigen(Symmetric(A))
     maxd=maximum(d)
     idx=d.>eps*maxd 
@@ -121,8 +79,7 @@ function generalized_eigvals(A,B;eps=1e-15)
     E=Matrix{eltype(B)}(undef,n,n) 
     mul!(tmp,B,C_scaled)
     mul!(E,C_scaled',tmp)
-    return eigvals(Symmetric(E))
-    =#
+    return eigvals(Symmetric(E))  
 end
 
 """
