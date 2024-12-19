@@ -716,7 +716,7 @@ function plot_curvature_distribution!(f::Figure, billiard::Bi; k=100.0, b=4.0) w
     y=getindex.(xy,2)
     curvature=pts.curvature
     sc=scatter!(ax,x,y,color=curvature,colormap=:viridis,markersize=5) 
-    Colorbar(fig[1, 2],sc,label="Curvature")  # Add colorbar
+    Colorbar(f[1, 2],sc,label="Curvature")  # Add colorbar
 end
 
 """
