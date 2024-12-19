@@ -260,7 +260,7 @@ end
 function solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     A = construct_matrices(solver, basis, pts, k)
     mu = svdvals(A)
-    lam0 = mu[end]
+    lam0 = findmin(mu)[1]
     t = lam0
     return  t
 end
