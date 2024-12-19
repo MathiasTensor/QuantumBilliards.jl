@@ -263,7 +263,7 @@ function compute_kernel(
 
     # Handle symmetry reflections
     if rule.symmetry_type in [:x, :xy]
-        reflected_p2_x = apply_reflection(p2, rule)  # Reflection across x-axis
+        reflected_p2_x = apply_reflection(p2, SymmetryRuleBIM(:x, rule.x_bc, rule.y_bc, rule.shift_x, rule.shift_y))  # Reflection across x-axis
         if rule.x_bc == :D
             kernel_value -= default_helmholtz_kernel(p1, reflected_p2_x, normal1, k, curvature1)
         elseif rule.x_bc == :N
