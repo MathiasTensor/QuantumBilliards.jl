@@ -425,7 +425,44 @@ function solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM
     return  t
 end
 
+"""
+    create_fredholm_movie!(
+        k_range::Vector{T}, billiard::Bi; 
+        symmetries::Union{Vector{Any}, Nothing} = nothing, 
+        b::T = 15.0, 
+        sampler = [GaussLegendreNodes()], 
+        output_path::String = "fredholm_movie.mp4"
+    ) where {T <: Real, Bi <: AbsBilliard}
 
+Creates an animated movie of Fredholm matrices over a range of `k` values for a given billiard geometry.
+
+# Arguments
+- `k_range::Vector{T}`: A vector of wavenumbers (`k`) over which the Fredholm matrix is computed.
+- `billiard::Bi`: The billiard geometry (must be a subtype of `AbsBilliard`).
+- `symmetries::Union{Vector{Any}, Nothing}`: Optional symmetries to apply to the billiard. Default is `nothing`.
+- `b::T`: Scaling factor for the boundary integral method. Default is `15.0`.
+- `sampler`: Sampling strategy for the boundary points. Default is `[GaussLegendreNodes()]`.
+- `output_path::String`: Path to save the generated animation file. Default is `"fredholm_movie.mp4"`.
+
+# Returns
+- None.
+"""
+function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, b=15.0, sampler=[GaussLegendreNodes()], output_path::String="fredholm_movie.mp4") where {T<:Real,Bi<:AbsBilliard}
+    symmetryBIM=QuantumBilliards.SymmetryRuleBIM(billiard; symmetries=symmetries)
+    sample_k=first(k_range)
+    bim_solver = QuantumBilliards.BoundaryIntegralMethod(b,sampler,billiard;symmetries=symmetries)
+    pts=QuantumBilliards.evaluate_points(bim_solver,billiard,sample_k)
+    fredholm_sample=QuantumBilliards.fredholm_matrix(pts,symmetryBIM,sample_k)
+    fig = Figure(resolution =(800, 800))
+    ax = Axis(fig[1,1],title="Fredholm Matrix over k",xlabel="Index (i)",ylabel="Index (j)")
+    heatmap_data=abs.(fredholm_sample)
+    heatmap_plot=heatmap!(ax,heatmap_data,colormap=:viridis)
+    record(fig,output_path,k_range;framerate=30) do k
+        fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
+        heatmap_plot[1]=abs.(fredholm)  # Update 
+        ax.title="Fredholm Matrix at k = $(round(k,digits=4))" 
+    end
+end
 
 
 
