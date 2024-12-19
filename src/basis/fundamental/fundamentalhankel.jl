@@ -8,7 +8,7 @@ dH0(x) = -Bessels.hankelh1(1, x)
 struct FundamentalHankel{T,Sy} <: AbsFundamentalBasis where {T<:Real, Sy<:Union{AbsSymmetry,Nothing}}
     #cs::PolarCS{T} #not fully implemented
     dim::Int64 #using concrete type
-    symmetries::Union{Vector{Sy},Nothing}
+    symmetries::Union{Vector{Any},Nothing}
     return_type::Type
 end
 
@@ -17,7 +17,7 @@ function FundamentalHankel(dim; type=Float64)
     return FundamentalHankel{type,Nothing}(dim, nothing, return_type)
 end
 
-function FundamentalHankel(dim, symmetries::Vector{Sy}; type=Float64) where {T<:Real, Sy<:Union{AbsSymmetry,Nothing}}
+function FundamentalHankel(dim, symmetries::Union{Vector{Any},Nothing}; type=Float64) where {T<:Real, Sy<:Union{AbsSymmetry,Nothing}}
     #cs::PolarCS{T} #not fully implemented
     return_type = Complex{type}
     return FundamentalHankel{type,Sy}(dim, symmetries, return_type)
