@@ -454,8 +454,8 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     pts=QuantumBilliards.evaluate_points(bim_solver,billiard,sample_k)
     fredholm_sample=QuantumBilliards.fredholm_matrix(pts,symmetryBIM,sample_k)
     fig=Figure(resolution =(800, 800))
-    ax_real=Axis(fig[1,1],title="real(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)")
-    ax_imag=Axis(fig[1,2],title="imag(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)")
+    ax_real=Axis(fig[1,1],title="real(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)",aspect=DataAspect())
+    ax_imag=Axis(fig[1,2],title="imag(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)",aspect=DataAspect())
     heatmap_real=real.(fredholm_sample)
     heatmap_imag=imag.(fredholm_sample)
     heatmap_plot_real=heatmap!(ax_real,heatmap_real)
@@ -464,8 +464,8 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
         fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
         heatmap_plot_real[1]=real.(fredholm)  # Update 
         heatmap_plot_imag[1]=imag.(fredholm)  # Update
-        ax_real.title="real(Fredholm) at k = $(round(k,digits=4))" 
-        ax_imag.title="imag(Fredholm) at k = $(round(k,digits=4))"
+        ax_real.title="real at k = $(round(k,digits=4))" 
+        ax_imag.title="imag at k = $(round(k,digits=4))"
     end
 end
 
