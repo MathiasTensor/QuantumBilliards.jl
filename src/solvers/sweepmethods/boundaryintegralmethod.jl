@@ -463,6 +463,7 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     Colorbar(fig[1,1][1,1][1,2],heatmap_plot_real)
     Colorbar(fig[1,1][1,2][1,2],heatmap_plot_imag)
     record(fig,output_path,k_range;framerate=30) do k
+        pts=QuantumBilliards.evaluate_points(bim_solver,billiard,k)
         fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
         heatmap_plot_real[1]=real.(fredholm)  # Update 
         heatmap_plot_imag[1]=imag.(fredholm)  # Update
