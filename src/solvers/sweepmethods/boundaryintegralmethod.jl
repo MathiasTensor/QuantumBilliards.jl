@@ -135,7 +135,8 @@ function compute_hankel(distance12::T, k::T) where {T<:Real}
     return hankelh1(1, k * distance12::T)
 end
 
-function compute_cos_phi(distance12::T, normal1::SVector{2, T}, p1_curvature::T) where {T<:Real}
+function compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2, T}, p1_curvature::T) where {T<:Real}
+    distance12 = hypot(dx12, dy12)
     if distance12 < eps(T)
         return p1_curvature / (2.0 * π)
     else
@@ -148,13 +149,13 @@ function greens_function(distance12::T, k::T) where {T<:Real}
     if abs(distance12) < eps(T) # handle singularity
         return 0.0 + 0.0im  
     end
-    return -im * k / 4 * hankelh1(0, k * distance12)
+    return -im * k / 4 * Bessels.hankelh1(0, k * distance12)
 end
 
 function default_helmholtz_kernel(p1::SVector{2, T}, p2::SVector{2, T}, normal1::SVector{2, T}, k::T, p1_curvature::T) where {T<:Real}
     dx, dy = p1[1] - p2[1], p1[2] - p2[2]
     distance12 = hypot(dx, dy)
-    return -im * k / 2.0 * compute_cos_phi(distance12, normal1, p1_curvature) * compute_hankel(distance12, k)
+    return -im * k / 2.0 * compute_cos_phi(dx, dy, normal1, p1_curvature) * compute_hankel(distance12, k)
 end
 
 function compute_kernel_batch(p1::SVector{2, T}, p2_points::Vector{SVector{2, T}}, normal1::SVector{2, T}, curvature1::T, rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
