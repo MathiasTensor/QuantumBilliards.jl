@@ -234,7 +234,7 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T}, symmetry_rule::S
     fredholm_matrix = Matrix{Complex{T}}(I, N, N)
 
     # Compute rows of the matrix
-    Threads.@threads for i in 1:N
+    for i in 1:N
         p1 = xy_points[i]
         normal1 = normals[i]
         curvature1 = curvatures[i]
@@ -260,7 +260,7 @@ end
 function solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     A = construct_matrices(solver, basis, pts, k)
     mu = svdvals(A)
-    lam0 = findmin(mu)[1]
+    lam0 = mu[end]
     t = lam0
     return  t
 end
