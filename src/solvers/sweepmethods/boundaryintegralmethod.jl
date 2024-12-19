@@ -458,13 +458,14 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     ax_imag=Axis(fig[1,2],title="imag(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)")
     heatmap_real=real.(fredholm_sample)
     heatmap_imag=imag.(fredholm_sample)
-    heatmap_plot_real=heatmap!(ax_real,heatmap_real,colormap=:viridis)
-    heatmap_plot_imag=heatmap!(ax_imag,heatmap_imag,colormap=:viridis)
+    heatmap_plot_real=heatmap!(ax_real,heatmap_real)
+    heatmap_plot_imag=heatmap!(ax_imag,heatmap_imag)
     record(fig,output_path,k_range;framerate=30) do k
         fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
         heatmap_plot_real[1]=real.(fredholm)  # Update 
         heatmap_plot_imag[1]=imag.(fredholm)  # Update
-        ax.title="Fredholm Matrix at k = $(round(k,digits=4))" 
+        ax_real.title="real(Fredholm) at k = $(round(k,digits=4))" 
+        ax_imag.title="imag(Fredholm) at k = $(round(k,digits=4))"
     end
 end
 
