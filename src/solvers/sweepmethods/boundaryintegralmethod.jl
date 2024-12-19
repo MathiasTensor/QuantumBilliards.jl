@@ -459,8 +459,8 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     max_rows, max_cols = largest_matrix_size
 
     # Prepare grids for heatmaps
-    x_grid = 1:max_cols
-    y_grid = 1:max_rows
+    x_grid = collect(1:max_cols)
+    y_grid = collect(1:max_rows)
 
     # Prepare figure
     fig = Figure(resolution = (1500, 1500))
@@ -497,8 +497,8 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
         heatmap_imag[1:size(fredholm, 1), 1:size(fredholm, 2)] .= imag.(fredholm)
 
         # Update heatmap data
-        heatmap_plot_real[1] = (x_grid, y_grid, heatmap_real)
-        heatmap_plot_imag[1] = (x_grid, y_grid, heatmap_imag)
+        heatmap_plot_real[1] = heatmap_real
+        heatmap_plot_imag[1] = heatmap_imag
 
         # Update titles
         ax_real.title = "real(Fredholm) at k = $(round(k, digits = 4))"
