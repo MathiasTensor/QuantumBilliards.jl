@@ -438,3 +438,33 @@ function test_cos_phi_matrix(solver::BoundaryIntegralMethod, billiard::Bi; k=50)
     Colorbar(fig[1, 2], hm, label="cos(ϕ)")
     return fig
 end
+
+
+function test_hankel(solver::BoundaryIntegralMethod, billiard::Bi; k=50) where {Bi<:AbsBilliard}
+    # Evaluate points on the billiard's boundary
+    boundary_points = evaluate_points(solver, billiard, k)
+    xy_points = boundary_points.xy
+    N = length(xy_points)
+
+    # Create the Hankel matrix
+    hankel_matrix = zeros(ComplexF64, N, N)
+    for i in 1:N
+        for j in 1:N
+            dx = xy_points[i][1] - xy_points[j][1]
+            dy = xy_points[i][2] - xy_points[j][2]
+            distance = hypot(dx, dy)
+            hankel_matrix[i, j] = abs(distance) < eps(Float64) ? 0.0 + 0.0im : Bessels.hankelh1(0, k * distance)
+        end
+    end
+
+    # Plot the magnitude of the Hankel matrix
+    fig = Figure()
+    ax = Axis(fig[1, 1],
+        title = "Magnitude of Hankel Function Matrix for Quarter-Circle Billiard",
+        xlabel = "Boundary Point Index (p2)",
+        ylabel = "Boundary Point Index (p1)"
+    )
+    heatmap!(ax, abs.(hankel_matrix))
+    Colorbar(fig[1, 2], ax, label = "|H₀⁽¹⁾(k·distance)|")
+    return fig
+end
