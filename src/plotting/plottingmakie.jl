@@ -709,7 +709,7 @@ end
 
 function plot_curvature_distribution!(f::Figure, billiard::Bi; k=100.0, b=4.0) where {Bi<:AbsBilliard}
     ax=Axis(f[1,1][1,1],aspect=DataAspect())
-    solver=BoundaryIntegralMethod(b0,[LinearNodes()]) # use linear for better viewing
+    solver=BoundaryIntegralMethod(b,[LinearNodes()]) # use linear for better viewing
     pts::BoundaryPointsBIM=evaluate_points(solver,billiard,k)
     xy=pts.xy
     x=getindex.(xy,1)
