@@ -132,7 +132,7 @@ function compute_hankel(distance12::T, k::T) where {T<:Real}
     if abs(distance12::T) < eps(T) # Avoid division by zero
         return Complex(eps(T), eps(T))  
     end
-    return hankelh1(1, k * distance12::T)
+    return Bessels.hankelh1(1, k * distance12::T)
 end
 
 function compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2, T}, p1_curvature::T) where {T<:Real}
