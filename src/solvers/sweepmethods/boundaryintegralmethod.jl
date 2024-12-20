@@ -1,4 +1,4 @@
-using LinearAlgebra, StaticArrays, TimerOutputs, Bessels, VideoIO
+using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 
 """
     struct SymmetryRuleBIM{T<:Real}
@@ -448,55 +448,30 @@ Creates an animated movie of Fredholm matrices over a range of `k` values for a 
 - None.
 """
 function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, b=15.0, sampler=[GaussLegendreNodes()], output_path::String="fredholm_movie.mp4") where {T<:Real,Bi<:AbsBilliard}
-    # Initialize symmetry and solver
-    symmetryBIM = QuantumBilliards.SymmetryRuleBIM(billiard; symmetries = symmetries)
-    bim_solver = QuantumBilliards.BoundaryIntegralMethod(b, sampler, billiard; symmetries = symmetries)
-    
-    # Calculate maximum grid size
-    pts_max = QuantumBilliards.evaluate_points(bim_solver, billiard, last(k_range))
-    fredholm_max = QuantumBilliards.fredholm_matrix(pts_max, symmetryBIM, last(k_range))
-    max_rows, max_cols = size(fredholm_max)
-    x_grid_max = 1:max_cols
-    y_grid_max = 1:max_rows
-    
-    # Create figure and axes
-    fig = Figure(resolution = (1500, 1500))
-    ax_real = Axis(fig[1, 1], title = "real(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
-    ax_imag = Axis(fig[1, 2], title = "imag(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
-
-    # Initialize heatmaps
-    heatmap_plot_real = heatmap!(ax_real, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols))
-    heatmap_plot_imag = heatmap!(ax_imag, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols))
-    
-    # Create the movie frame by frame
-    frame_index = 1
-    video_writer = VideoWriter(output_path, framerate = 30)
-    for k in k_range
-        # Evaluate Fredholm matrix
-        pts = QuantumBilliards.evaluate_points(bim_solver, billiard, k)
-        fredholm = QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
-        
-        # Pad matrices to match maximum size
-        real_padded = zeros(Float64, max_rows, max_cols)
-        imag_padded = zeros(Float64, max_rows, max_cols)
-        real_padded[1:size(fredholm, 1), 1:size(fredholm, 2)] .= real.(fredholm)
-        imag_padded[1:size(fredholm, 1), 1:size(fredholm, 2)] .= imag.(fredholm)
-        
-        # Update heatmaps
-        heatmap_plot_real[1] = real_padded
-        heatmap_plot_imag[1] = imag_padded
-        
-        # Update titles
-        ax_real.title = "real(Fredholm) at k = $(round(k, digits = 4))"
-        ax_imag.title = "imag(Fredholm) at k = $(round(k, digits = 4))"
-        
-        # Capture frame
-        save_frame(video_writer, fig)
-        frame_index += 1
+    symmetryBIM=QuantumBilliards.SymmetryRuleBIM(billiard; symmetries=symmetries)
+    sample_k=first(k_range)
+    bim_solver = QuantumBilliards.BoundaryIntegralMethod(b,sampler,billiard;symmetries=symmetries)
+    pts=QuantumBilliards.evaluate_points(bim_solver,billiard,sample_k)
+    fredholm_sample=QuantumBilliards.fredholm_matrix(pts,symmetryBIM,sample_k)
+    x_grid=1:size(fredholm_sample,2)
+    y_grid=1:size(fredholm_sample,1)
+    fig=Figure(resolution =(1500, 1500))
+    ax_real=Axis(fig[1,1][1,1],title="real(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)",aspect=DataAspect())
+    ax_imag=Axis(fig[1,1][1,2],title="imag(Fredholm) over k",xlabel="Index (i)",ylabel="Index (j)",aspect=DataAspect())
+    heatmap_real=real.(fredholm_sample)
+    heatmap_imag=imag.(fredholm_sample)
+    heatmap_plot_real=heatmap!(ax_real,x_grid,y_grid,heatmap_real)
+    heatmap_plot_imag=heatmap!(ax_imag,x_grid,y_grid,heatmap_imag)
+    Colorbar(fig[1,1][1,1][1,2],heatmap_plot_real)
+    Colorbar(fig[1,1][1,2][1,2],heatmap_plot_imag)
+    record(fig,output_path,k_range;framerate=30) do k
+        pts=QuantumBilliards.evaluate_points(bim_solver,billiard,k)
+        fredholm=QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
+        heatmap_plot_real[1]=real.(fredholm)  # Update 
+        heatmap_plot_imag[1]=imag.(fredholm)  # Update
+        ax_real.title="real at k = $(round(k,digits=4))" 
+        ax_imag.title="imag at k = $(round(k,digits=4))"
     end
-    
-    close(video_writer)
-    println("Movie saved to $output_path")
 end
 
 
