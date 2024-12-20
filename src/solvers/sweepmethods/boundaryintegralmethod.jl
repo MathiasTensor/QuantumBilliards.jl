@@ -463,12 +463,10 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
     fig = Figure(resolution = (1500, 1500))
     ax_real = Axis(fig[1, 1], title = "real(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
     ax_imag = Axis(fig[1, 2], title = "imag(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
-    Colorbar(fig[1, 1], ax_real, vertical = false)
-    Colorbar(fig[1, 2], ax_imag, vertical = false)
-    
+
     # Initialize heatmaps
-    heatmap_plot_real = heatmap!(ax_real, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols), colormap = :viridis)
-    heatmap_plot_imag = heatmap!(ax_imag, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols), colormap = :viridis)
+    heatmap_plot_real = heatmap!(ax_real, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols))
+    heatmap_plot_imag = heatmap!(ax_imag, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols))
     
     # Create the movie frame by frame
     frame_index = 1
