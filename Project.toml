@@ -32,6 +32,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 LoggingExtras = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
+VideoIO = "d6d074c3-1acf-5d4c-9a43-ef38773959a2"
 
 
 [compat]
@@ -61,6 +62,7 @@ SpecialFunctions = "2.4.0"
 LoggingExtras = "1.0.3"
 JLD2 = "0.5.4"
 LsqFit = "0.15.0"
+VideoIO = "1.1.1"
 
 
 [extras]

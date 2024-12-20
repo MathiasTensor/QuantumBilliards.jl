@@ -1,4 +1,4 @@
-using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
+using LinearAlgebra, StaticArrays, TimerOutputs, Bessels, VideoIO
 
 """
     struct SymmetryRuleBIM{T<:Real}
