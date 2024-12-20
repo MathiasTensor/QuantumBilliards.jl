@@ -448,47 +448,57 @@ Creates an animated movie of Fredholm matrices over a range of `k` values for a 
 - None.
 """
 function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, b=15.0, sampler=[GaussLegendreNodes()], output_path::String="fredholm_movie.mp4") where {T<:Real,Bi<:AbsBilliard}
-    # Initialize parameters and sample points
+    # Initialize symmetry and solver
     symmetryBIM = QuantumBilliards.SymmetryRuleBIM(billiard; symmetries = symmetries)
     bim_solver = QuantumBilliards.BoundaryIntegralMethod(b, sampler, billiard; symmetries = symmetries)
     
+    # Calculate maximum grid size
+    pts_max = QuantumBilliards.evaluate_points(bim_solver, billiard, last(k_range))
+    fredholm_max = QuantumBilliards.fredholm_matrix(pts_max, symmetryBIM, last(k_range))
+    max_rows, max_cols = size(fredholm_max)
+    x_grid_max = 1:max_cols
+    y_grid_max = 1:max_rows
+    
+    # Create figure and axes
     fig = Figure(resolution = (1500, 1500))
     ax_real = Axis(fig[1, 1], title = "real(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
     ax_imag = Axis(fig[1, 2], title = "imag(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
-    
-    # Precompute the largest possible matrix size
-    pts_max = QuantumBilliards.evaluate_points(bim_solver, billiard, last(k_range))
-    fredholm_max = QuantumBilliards.fredholm_matrix(pts_max, symmetryBIM, last(k_range))
-    x_grid_max = 1:size(fredholm_max, 2)
-    y_grid_max = 1:size(fredholm_max, 1)
+    Colorbar(fig[1, 1], ax_real, vertical = false)
+    Colorbar(fig[1, 2], ax_imag, vertical = false)
     
     # Initialize heatmaps
-    heatmap_plot_real = heatmap!(ax_real, x_grid_max, y_grid_max, zeros(size(fredholm_max)), colormap = :viridis)
-    heatmap_plot_imag = heatmap!(ax_imag, x_grid_max, y_grid_max, zeros(size(fredholm_max)), colormap = :viridis)
+    heatmap_plot_real = heatmap!(ax_real, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols), colormap = :viridis)
+    heatmap_plot_imag = heatmap!(ax_imag, x_grid_max, y_grid_max, zeros(Float64, max_rows, max_cols), colormap = :viridis)
     
-    Colorbar(fig[1, 1][1, 1][1, 2], heatmap_plot_real)
-    Colorbar(fig[1, 2][1, 1][1, 2], heatmap_plot_imag)
-    
-    # Create the animation
-    frames = []
+    # Create the movie frame by frame
+    frame_index = 1
+    video_writer = VideoWriter(output_path, framerate = 30)
     for k in k_range
+        # Evaluate Fredholm matrix
         pts = QuantumBilliards.evaluate_points(bim_solver, billiard, k)
         fredholm = QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
         
-        heatmap_real = real.(fredholm)
-        heatmap_imag = imag.(fredholm)
+        # Pad matrices to match maximum size
+        real_padded = zeros(Float64, max_rows, max_cols)
+        imag_padded = zeros(Float64, max_rows, max_cols)
+        real_padded[1:size(fredholm, 1), 1:size(fredholm, 2)] .= real.(fredholm)
+        imag_padded[1:size(fredholm, 1), 1:size(fredholm, 2)] .= imag.(fredholm)
         
-        heatmap!(ax_real, x_grid_max, y_grid_max, heatmap_real, colormap = :viridis)
-        heatmap!(ax_imag, x_grid_max, y_grid_max, heatmap_imag, colormap = :viridis)
+        # Update heatmaps
+        heatmap_plot_real[1] = real_padded
+        heatmap_plot_imag[1] = imag_padded
         
-        ax_real.title = "real at k = $(round(k, digits = 4))"
-        ax_imag.title = "imag at k = $(round(k, digits = 4))"
+        # Update titles
+        ax_real.title = "real(Fredholm) at k = $(round(k, digits = 4))"
+        ax_imag.title = "imag(Fredholm) at k = $(round(k, digits = 4))"
         
-        push!(frames, deepcopy(fig))  # Store each frame
+        # Capture frame
+        save_frame(video_writer, fig)
+        frame_index += 1
     end
     
-    # Save the animation
-    save(output_path, frames; framerate = 30)
+    close(video_writer)
+    println("Movie saved to $output_path")
 end
 
 
