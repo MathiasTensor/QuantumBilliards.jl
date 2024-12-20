@@ -448,62 +448,53 @@ Creates an animated movie of Fredholm matrices over a range of `k` values for a 
 - None.
 """
 function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, b=15.0, sampler=[GaussLegendreNodes()], output_path::String="fredholm_movie.mp4") where {T<:Real,Bi<:AbsBilliard}
-    # Create symmetry rules and solver
+    # Initialize symmetry rules and solver
     symmetryBIM = QuantumBilliards.SymmetryRuleBIM(billiard; symmetries = symmetries)
     bim_solver = QuantumBilliards.BoundaryIntegralMethod(b, sampler, billiard; symmetries = symmetries)
 
-    # Find the largest matrix size in the range
-    max_k = last(k_range)
-    pts_max = QuantumBilliards.evaluate_points(bim_solver, billiard, max_k)
-    largest_matrix_size = size(QuantumBilliards.fredholm_matrix(pts_max, symmetryBIM, max_k))
-    max_rows, max_cols = largest_matrix_size
+    # Ensure the output directory exists
+    output_dir = joinpath(dirname(output_path), "frames")
+    mkpath(output_dir)
 
-    # Prepare grids for heatmaps
-    x_grid = collect(1:max_cols)
-    y_grid = collect(1:max_rows)
-
-    # Prepare figure
+    # Initialize figure
     fig = Figure(resolution = (1500, 1500))
-    ax_real = Axis(fig[1, 1][1, 1], title = "real(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)")
-    ax_imag = Axis(fig[1, 1][1, 2], title = "imag(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)")
-
-    # Initialize with the first matrix
-    sample_k = first(k_range)
-    pts = QuantumBilliards.evaluate_points(bim_solver, billiard, sample_k)
-    fredholm_sample = QuantumBilliards.fredholm_matrix(pts, symmetryBIM, sample_k)
-
-    # Pad initial matrices to match the largest size
-    heatmap_real = zeros(Float32, max_rows, max_cols)
-    heatmap_imag = zeros(Float32, max_rows, max_cols)
-    heatmap_real[1:size(fredholm_sample, 1), 1:size(fredholm_sample, 2)] .= real.(fredholm_sample)
-    heatmap_imag[1:size(fredholm_sample, 1), 1:size(fredholm_sample, 2)] .= imag.(fredholm_sample)
-
-    # Create heatmaps
-    heatmap_plot_real = heatmap!(ax_real, x_grid, y_grid, heatmap_real, colormap = :viridis)
-    heatmap_plot_imag = heatmap!(ax_imag, x_grid, y_grid, heatmap_imag, colormap = :viridis)
-    Colorbar(fig[1, 1][1, 1][1, 2], heatmap_plot_real)
-    Colorbar(fig[1, 1][1, 2][1, 2], heatmap_plot_imag)
-
-    # Record the movie
-    record(fig, output_path, k_range; framerate = 30) do k
-        # Recompute points and Fredholm matrix for current k
+    ax_real = Axis(fig[1, 1][1, 1], title = "real(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
+    ax_imag = Axis(fig[1, 1][1, 2], title = "imag(Fredholm) over k", xlabel = "Index (i)", ylabel = "Index (j)", aspect = DataAspect())
+    
+    # Iterate over the k_range and generate frames
+    frame_idx = 1
+    for k in k_range
+        # Compute points and Fredholm matrix
         pts = QuantumBilliards.evaluate_points(bim_solver, billiard, k)
         fredholm = QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
 
-        # Reset matrices and pad with zeros
-        heatmap_real .= 0.0
-        heatmap_imag .= 0.0
-        heatmap_real[1:size(fredholm, 1), 1:size(fredholm, 2)] .= real.(fredholm)
-        heatmap_imag[1:size(fredholm, 1), 1:size(fredholm, 2)] .= imag.(fredholm)
+        # Extract real and imaginary parts
+        heatmap_real = real.(fredholm)
+        heatmap_imag = imag.(fredholm)
 
-        # Update heatmap data
-        heatmap_plot_real[1] = heatmap_real
-        heatmap_plot_imag[1] = heatmap_imag
+        # Create grids
+        x_grid = 1:size(heatmap_real, 2)
+        y_grid = 1:size(heatmap_real, 1)
 
-        # Update titles
+        # Clear previous heatmaps and plot new ones
+        ax_real.scene.plots[] = []  # Clear all plots from the real axis
+        ax_imag.scene.plots[] = []  # Clear all plots from the imaginary axis
+        heatmap!(ax_real, x_grid, y_grid, heatmap_real, colormap = :viridis)
+        heatmap!(ax_imag, x_grid, y_grid, heatmap_imag, colormap = :viridis)
+
+        # Update axis titles
         ax_real.title = "real(Fredholm) at k = $(round(k, digits = 4))"
         ax_imag.title = "imag(Fredholm) at k = $(round(k, digits = 4))"
+
+        # Save the current frame
+        frame_path = joinpath(output_dir, "frame_$(lpad(frame_idx, 4, '0')).png")
+        save(frame_path, fig)
+        frame_idx += 1
     end
+
+    # Compile frames into a video using ffmpeg
+    ffmpeg_cmd = `ffmpeg -framerate 30 -i $(joinpath(output_dir, "frame_%04d.png")) -c:v libx264 -pix_fmt yuv420p $output_path`
+    run(ffmpeg_cmd)
 end
 
 
