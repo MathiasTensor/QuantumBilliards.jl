@@ -434,7 +434,7 @@ end
         output_path::String = "fredholm_movie.mp4"
     ) where {T <: Real, Bi <: AbsBilliard}
 
-Creates an animated movie of Fredholm matrices over a range of `k` values for a given billiard geometry.
+Creates an animated movie of Fredholm matrices over a range of `k` values for a given billiard geometry. USE ONLY FOR A NAROW k RANGE SINCE MATRIX DIM DOES NOT YET CHANGE.
 
 # Arguments
 - `k_range::Vector{T}`: A vector of wavenumbers (`k`) over which the Fredholm matrix is computed.
@@ -448,6 +448,7 @@ Creates an animated movie of Fredholm matrices over a range of `k` values for a 
 - None.
 """
 function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Union{Vector{Any},Nothing}=nothing, b=15.0, sampler=[GaussLegendreNodes()], output_path::String="fredholm_movie.mp4") where {T<:Real,Bi<:AbsBilliard}
+    #=
     symmetryBIM=QuantumBilliards.SymmetryRuleBIM(billiard; symmetries=symmetries)
     sample_k=first(k_range)
     bim_solver = QuantumBilliards.BoundaryIntegralMethod(b,sampler,billiard;symmetries=symmetries)
@@ -469,6 +470,86 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
         heatmap_plot_imag[1]=imag.(fredholm)  # Update
         ax_real.title="real at k = $(round(k,digits=4))" 
         ax_imag.title="imag at k = $(round(k,digits=4))"
+    end
+    =#
+    # Initialize symmetry and solver
+    symmetryBIM = QuantumBilliards.SymmetryRuleBIM(billiard; symmetries = symmetries)
+    bim_solver = QuantumBilliards.BoundaryIntegralMethod(b, sampler, billiard; symmetries = symmetries)
+    pts = QuantumBilliards.evaluate_points(bim_solver, billiard, first(k_range))
+    fredholm_sample = QuantumBilliards.fredholm_matrix(pts, symmetryBIM, first(k_range))
+
+    # Initialize figure and axes
+    fig = Figure(resolution = (1800, 1800))
+    ax_real = Axis(fig[1, 1], title = "Real(Fredholm)", xlabel = "Index (i)", ylabel = "Index (j)")
+    ax_imag = Axis(fig[1, 2], title = "Imag(Fredholm)", xlabel = "Index (i)", ylabel = "Index (j)")
+    ax_real_diff = Axis(fig[2, 1], title = "Diff(Real(Fredholm))", xlabel = "Index (i)", ylabel = "Index (j)")
+    ax_imag_diff = Axis(fig[2, 2], title = "Diff(Imag(Fredholm))", xlabel = "Index (i)", ylabel = "Index (j)")
+    ax_abs = Axis(fig[3, 1], title = "|Fredholm|", xlabel = "Index (i)", ylabel = "Index (j)")
+    ax_abs_diff = Axis(fig[3, 2], title = "Diff(|Fredholm|)", xlabel = "Index (i)", ylabel = "Index (j)")
+
+    # Initial heatmaps
+    heatmap_real = real.(fredholm_sample)
+    heatmap_imag = imag.(fredholm_sample)
+    heatmap_abs = abs.(fredholm_sample)
+    heatmap_real_diff = zeros(size(fredholm_sample))
+    heatmap_imag_diff = zeros(size(fredholm_sample))
+    heatmap_abs_diff = zeros(size(fredholm_sample))
+
+    heatmap_plot_real = heatmap!(ax_real, heatmap_real)
+    heatmap_plot_imag = heatmap!(ax_imag, heatmap_imag)
+    heatmap_plot_real_diff = heatmap!(ax_real_diff, heatmap_real_diff)
+    heatmap_plot_imag_diff = heatmap!(ax_imag_diff, heatmap_imag_diff)
+    heatmap_plot_abs = heatmap!(ax_abs, heatmap_abs)
+    heatmap_plot_abs_diff = heatmap!(ax_abs_diff, heatmap_abs_diff)
+
+    # Add colorbars
+    Colorbar(fig[1, 3], heatmap_plot_real)
+    Colorbar(fig[2, 3], heatmap_plot_imag)
+    Colorbar(fig[1, 4], heatmap_plot_real_diff)
+    Colorbar(fig[2, 4], heatmap_plot_imag_diff)
+    Colorbar(fig[3, 3], heatmap_plot_abs)
+    Colorbar(fig[3, 4], heatmap_plot_abs_diff)
+
+    # Recording loop
+    prev_real = heatmap_real
+    prev_imag = heatmap_imag
+    prev_abs = heatmap_abs
+
+    record(fig, output_path, k_range; framerate = 30) do k
+        # Update points and Fredholm matrix
+        pts = QuantumBilliards.evaluate_points(bim_solver, billiard, k)
+        fredholm = QuantumBilliards.fredholm_matrix(pts, symmetryBIM, k)
+
+        # Current values
+        current_real = real.(fredholm)
+        current_imag = imag.(fredholm)
+        current_abs = abs.(fredholm)
+
+        # Differences
+        current_real_diff = current_real .- prev_real
+        current_imag_diff = current_imag .- prev_imag
+        current_abs_diff = current_abs .- prev_abs
+
+        # Update heatmaps
+        heatmap_plot_real[1] = current_real
+        heatmap_plot_imag[1] = current_imag
+        heatmap_plot_real_diff[1] = current_real_diff
+        heatmap_plot_imag_diff[1] = current_imag_diff
+        heatmap_plot_abs[1] = current_abs
+        heatmap_plot_abs_diff[1] = current_abs_diff
+
+        # Update titles
+        ax_real.title = "Real(Fredholm) at k = $(round(k, digits = 4))"
+        ax_imag.title = "Imag(Fredholm) at k = $(round(k, digits = 4))"
+        ax_real_diff.title = "Diff(Real(Fredholm)) at k = $(round(k, digits = 4))"
+        ax_imag_diff.title = "Diff(Imag(Fredholm)) at k = $(round(k, digits = 4))"
+        ax_abs.title = "|Fredholm| at k = $(round(k, digits = 4))"
+        ax_abs_diff.title = "Diff(|Fredholm|) at k = $(round(k, digits = 4))"
+
+        # Store current as previous for next iteration
+        prev_real = current_real
+        prev_imag = current_imag
+        prev_abs = current_abs
     end
 end
 
