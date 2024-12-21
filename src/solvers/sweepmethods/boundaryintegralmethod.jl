@@ -596,7 +596,7 @@ function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts
     return A,dA,ddA
 end
 
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k, dk)
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k, dk) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid=abs.(λ).<dk
