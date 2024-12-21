@@ -96,7 +96,7 @@ A * u = λ * B * u
 - `B::AbstractMatrix`: Square matrix.
 
 # Returns
-- `λ::Vector{Complex{T}}`: Vector of filtered eigenvalues (excluding `NaN` and `Inf` values). NEEDS ORDERING
+- `λ::Vector{Complex{T}}`: Vector of ordered filtered eigenvalues (excluding `NaN` and `Inf` values).
 - `VR::Matrix{Complex{T}}`: Complex matrix where each column is a right eigenvector.
 - `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
 """
@@ -133,7 +133,7 @@ A * u = λ * B * u
 - `B::AbstractMatrix`: Square matrix.
 
 # Returns
-- `λ::Vector{Complex{T}}`: Vector of filtered eigenvalues (excluding `NaN` and `Inf` values). NEEDS ORDERING
+- `λ::Vector{Complex{T}}`: Vector of ordered filtered eigenvalues (excluding `NaN` and `Inf` values).
 - `VR::Matrix{Complex{T}}`: Complex matrix where each column is a right eigenvector.
 - `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
 """
@@ -168,7 +168,7 @@ A * u = λ * B * u
 - `B::AbstractMatrix`: Symmetric or Hermitian square matrix. DON'T USE `Symmetric(...)` or `Hermitian(...)` since LAPACK does not support it, use `Matrix(...)`
 
 # Returns
-- `λ::Vector{Real}`: Vector of filtered eigenvalues (excluding `NaN` and `Inf` values). NEEDS ORDERING
+- `λ::Vector{Real}`: Vector of ordered filtered eigenvalues (excluding `NaN` and `Inf` values).
 - `VR::Matrix{Complex{T}}`: Complex matrix where each column is a right eigenvector.
 - `VL::Matrix{Complex{T}}`: Same as `VR`, since left eigenvectors = right eigenvectors for symmetric matrices.
 """
