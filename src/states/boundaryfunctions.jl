@@ -321,8 +321,8 @@ Processes multiple boundary functions and their associated boundary points by ap
 - `Vector{Vector{T}}`: A vector of processed boundary functions corresponding to the processed boundary points.
 """
 function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector{Vector{T}}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
-    pts_ret=Vector{BoundaryPoints}(undef,length(us_all))
-    us_ret=Vector{Vector}(undef,length(us_all))
+    pts_ret=Vector{BoundaryPoints{T}}(undef,length(us_all))
+    us_ret=Vector{Vector{T}}(undef,length(us_all))
     for i in eachindex(us_all) 
         pts,u=boundary_function_BIM(solver,us_all[i],pts_all[i],billiard)
         pts_ret[i]=pts
