@@ -110,7 +110,11 @@ function generalized_eigen_all(A,B)
     λ=λ[valid_indices]
     VR=VR[:,valid_indices]
     VL=VL[:,valid_indices]
-    return λ,VR,VL
+    sort_order=sortperm(abs.(λ)) 
+    λ=λ[sort_order]
+    VR=VR[:,sort_order]
+    VL=VL[:,sort_order]
+    return λ,normalize!(VR),normalize!(VL)
 end
 
 """
@@ -140,13 +144,17 @@ function generalized_eigen_all_LAPACK_LEGACY(A,B)
     λ=λ[valid_indices]
     VR=VR[:,valid_indices]
     VL=VL[:,valid_indices]
-    return λ,VR,VL
+    sort_order=sortperm(abs.(λ)) 
+    λ=λ[sort_order]
+    VR=VR[:,sort_order]
+    VL=VL[:,sort_order]
+    return λ,normalize!(VR),normalize!(VL)
 end
 
 """
     generalized_eigen_symmetric_LAPACK_LEGACY(A::AbstractMatrix, B::AbstractMatrix) -> (Vector{Real}, Matrix{Complex{T}}, Matrix{Complex{T}}) where T <: Real
 
-! VERY EFFICIENT, at least a 2X improvement over the general LAPACK one !
+! VERY EFFICIENT, at least a 2X improvement over the general LAPACK one and the general eigen!(A,B)!
 Computes the generalized eigenvalues and eigenvectors for symmetric or Hermitian matrices `(A, B)` using LAPACK's `sygvd!` function. B MUST BE POSITIVE DEFINITE.
 
 This function is optimized for symmetric and Hermitian matrices. The left eigenvectors are identical to the right eigenvectors.
@@ -169,7 +177,10 @@ function generalized_eigen_symmetric_LAPACK_LEGACY(A,B)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
     VR=VR[:,valid_indices]
-    return λ,VR,VR 
+    sort_order=sortperm(abs.(λ)) 
+    λ=λ[sort_order]
+    VR=VR[:,sort_order]
+    return λ,normalize!(VR),normalize!(VR) 
 end
 
 """
