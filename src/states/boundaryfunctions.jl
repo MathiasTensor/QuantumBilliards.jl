@@ -280,32 +280,6 @@ end
 ### BIM ###
 
 """
-    BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
-
-Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
-
-# Arguments
-- `pts::BoundaryPointsBIM{T}`: An object containing:
-  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
-  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
-  - `ds::Vector{T}`: Integration weights (arc length differences between points).
-
-# Returns
-- `BoundaryPoints{T}`: An object containing:
-  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
-  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
-  - `s::Vector{T}`: Arc length coordinates (cumulative sum of `ds`).
-  - `ds::Vector{T}`: diff(s).
-"""
-function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
-    xy=pts.xy
-    normal=pts.normal
-    ds=pts.ds
-    s=cumsum(ds)
-    return BoundaryPoints{T}(xy,normal,s,ds)
-end
-
-"""
     boundary_function_BIM(symmetries::Union{Vector{Any}, Nothing}, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{T}} where {T<:Real, Bi<:AbsBilliard}
 
 Processes the boundary function and associated boundary points by applying symmetries and shifting the starting point of the arclengths if neccesery.

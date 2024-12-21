@@ -81,6 +81,8 @@ function resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:AbstractHank
     return AbstractHankelBasis()
 end
 
+### HELPERS ###
+
 """
     SymmetryRuleBIM(billiard::Bi; symmetries=Nothing, x_bc=:D, y_bc=:D) -> SymmetryRuleBIM
 
@@ -125,6 +127,83 @@ function SymmetryRuleBIM(billiard::Bi;symmetries::Union{Vector{Any},Nothing}=not
     else
         error("Unsupported symmetry type: $(typeof(symmetries))")
     end
+end
+
+"""
+    SymmetryRuleBIM_to_Symmetry(rule::SymmetryRuleBIM) :: Union{Nothing, Vector{Any}}
+
+Converts a `SymmetryRuleBIM` object into the corresponding symmetry transformation(s).
+
+# Arguments
+- `rule::SymmetryRuleBIM`: The symmetry rule containing the symmetry type and boundary conditions.
+
+# Returns
+- `nothing`: If there is no symmetry.
+- `Vector{Any}`: A vector of symmetry transformations (e.g., `XReflection`, `YReflection`, `XYReflection`).
+
+# Errors
+Raises an error for unsupported boundary conditions or unknown symmetry types.
+"""
+function SymmetryRuleBIM_to_Symmetry(rule::SymmetryRuleBIM)
+    if rule.symmetry_type==:nothing
+        return nothing
+    elseif rule.symmetry_type==:x
+        if rule.x_bc==:D
+            return Vector{Any}[XReflection(-1)]
+        elseif rule.x_bc==:N
+            return Vector{Any}[XReflection(1)]
+        else
+            error("Unsupported boundary condition: $(rule.x_bc)")
+        end
+    elseif rule.symmetry_type==:y
+        if rule.y_bc==:D
+            return Vector{Any}[YReflection(-1)]
+        elseif rule.y_bc==:N
+            return Vector{Any}[YReflection(1)]
+        else
+            error("Unsupported boundary condition: $(rule.x_bc)")
+        end
+    elseif rule.symmetry_type==:xy
+        if rule.x_bc==:D && rule.y_bc==:D
+            return Vector{Any}[XYReflection(-1,-1)]
+        elseif rule.x_bc ==:N && rule.y_bc==:D
+            return Vector{Any}[XYReflection(1,-1)]
+        elseif rule.x_bc==:D && rule.y_bc==:N
+            return Vector{Any}[XYReflection(-1,1)]
+        elseif rule.x_bc==:N && rule.y_bc==:N
+            return Vector{Any}[XYReflection(1,1)]
+        else
+            error("Unsupported boundary condition: $(rule.x_bc)")
+        end
+    else
+        error("Unknown symmetry type: $(rule.symmetry_type)")
+    end
+end
+
+"""
+    BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
+
+Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
+
+# Arguments
+- `pts::BoundaryPointsBIM{T}`: An object containing:
+  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
+  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
+  - `ds::Vector{T}`: Integration weights (arc length differences between points).
+
+# Returns
+- `BoundaryPoints{T}`: An object containing:
+  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
+  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
+  - `s::Vector{T}`: Arc length coordinates (cumulative sum of `ds`).
+  - `ds::Vector{T}`: diff(s).
+"""
+function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
+    xy=pts.xy
+    normal=pts.normal
+    ds=pts.ds
+    s=cumsum(ds)
+    return BoundaryPoints{T}(xy,normal,s,ds)
 end
 
 """
