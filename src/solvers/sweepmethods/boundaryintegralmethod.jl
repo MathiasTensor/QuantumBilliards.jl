@@ -571,9 +571,9 @@ Solve for the eigenvectors of the boundary integral method (BIM) for a range of 
 - `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
 - `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, containing the boundary points used for each wave number in `ks`.
 """
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T}) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{BoundaryPointsBIM}(undef,length(ks))
+    pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
     Threads.@threads for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
         _,u=solve_vect(solver,basis,pts,ks[i])
