@@ -48,6 +48,29 @@ function make_quarter_rectangle(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
     return boundary, corners
 end
 
+function make_quarter_full_desymmetrized_rectangle(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
+    type = typeof(width)
+    origin = SVector(x0, y0)
+    
+    # Define the corners of the quarter rectangle
+    half_width = width / 2
+    half_height = height / 2
+    bottom_right = SVector(half_width, 0.0)
+    top_right = SVector(half_width, half_height)
+    top_left = SVector(0.0, half_height)
+    
+    # Line segments for the quarter rectangle
+    right_side = LineSegment(bottom_right, top_right; origin=origin, rot_angle=rot_angle)
+    top_side = LineSegment(top_right, top_left; origin=origin, rot_angle=rot_angle)
+    
+    # Counterclockwise order
+    boundary = Union{LineSegment{type}, VirtualLineSegment{type}}[
+        right_side, top_side]
+    
+    corners = []
+    return boundary, corners
+end
+
 """
     make_full_rectangle(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
 
@@ -109,6 +132,7 @@ Defines a Rectangle billiard with specified width and height. It includes both t
 struct RectangleBilliard{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
+    desymmetrized_full_boundary::Vector
     length::T
     length_fundamental::T
     area::T
@@ -141,9 +165,10 @@ function RectangleBilliard(width, height; x0=0.0, y0=0.0, rot_angle=0.0)
     area_fundamental = area * 0.25
     length = sum([crv.length for crv in full_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
+    desymmetrized_full_boundary, _ = make_quarter_full_desymmetrized_rectangle(width, height; x0=x0, y0=y0, rot_angle=rot_angle)
     angles = [pi/2, pi/2, pi/2, pi/2]
     angles_fundamental = [pi/2, pi/2, pi/2, pi/2]
-    return RectangleBilliard(fundamental_boundary, full_boundary, length, length_fundamental, area, area_fundamental, width, height, corners, angles, angles_fundamental)
+    return RectangleBilliard(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, area, area_fundamental, width, height, corners, angles, angles_fundamental)
 end
 
 """
