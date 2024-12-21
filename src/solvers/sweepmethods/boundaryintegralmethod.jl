@@ -439,6 +439,16 @@ end
 
 #### EXPANDED BIM ####
 
+struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
+    dim_scaling_factor::T
+    pts_scaling_factor::Vector{T}
+    sampler::Vector
+    eps::T
+    min_dim::Int64 
+    min_pts::Int64
+    rule::SymmetryRuleBIM
+end
+
 function default_helmholtz_kernel_first_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
     dx, dy = p1[1]-p2[1], p1[2]-p2[2]
     distance12=hypot(dx,dy)
@@ -579,6 +589,28 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
     return fredholm_matrix
 end
 
+function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
+    A=fredholm_matrix(pts,solver.rule,k)
+    dA=fredholm_matrix_derivative(pts,solver.rule,k)
+    ddA=fredholm_matrix_second_derivative(pts,solver.rule,k)
+    return A,dA,ddA
+end
+
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k, dk)
+    A,dA,ddA=construct_matrices(solver,basis,pts,k)
+    λ,VR,VL=generalized_eigen_all(A,dA)
+    valid=abs.(λ).<dk
+    λ=λ[valid]
+    VR=VR[:,valid] # already normalized
+    VL=VL[:,valid] # already normalized
+    corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
+    numerators=[dot(VL[:,i],dA*VR[:,i]) for i in eachindex(λ)]
+    denominators=[dot(VL[:,i],ddA*VR[:,i]) for i in eachindex(λ)]
+    corr_2=-0.5*corr_1.^2 .* (numerators./denominators)
+    λ=k.+corr_1.+corr_2
+    idxs=(k-dk.< λ).&(λ.<k+dk)
+    return λ[idxs]
+end
 
 
 
