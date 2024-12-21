@@ -206,6 +206,8 @@ function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T
     return BoundaryPoints{T}(xy,normal,s,ds)
 end
 
+### STANDARD ###
+
 """
     BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
 
