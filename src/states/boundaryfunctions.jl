@@ -299,9 +299,9 @@ function boundary_function_BIM(solver::BoundaryIntegralMethod, u::Vector, pts::B
     pts=BoundaryPointsBIM_to_BoundaryPoints(pts)
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(Vector{eltype(u)}(u),symmetries)
-    pts,u=shift_starting_arclength(billiard,Vector{eltype(u)}(u),pts)
-    return pts,u::Vector{eltype(u)}
+    u=apply_symmetries_to_boundary_function(Vector{Float64}(u),symmetries)
+    pts,u=shift_starting_arclength(billiard,Vector{Float64}(u),pts)
+    return pts,u::Vector{Float64}
 end
 
 """
