@@ -277,6 +277,58 @@ function boundary_function_with_points(state_data::StateData, billiard::Bi, basi
     return ks, us_all, pts_all
 end
 
+### BIM ###
+
+"""
+    BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
+
+Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
+
+# Arguments
+- `pts::BoundaryPointsBIM{T}`: An object containing:
+  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
+  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
+  - `ds::Vector{T}`: Integration weights (arc length differences between points).
+
+# Returns
+- `BoundaryPoints{T}`: An object containing:
+  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
+  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
+  - `s::Vector{T}`: Arc length coordinates (cumulative sum of `ds`).
+  - `ds::Vector{T}`: diff(s).
+"""
+function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
+    xy=pts.xy
+    normal=pts.normal
+    ds=pts.ds
+    s=cumsum(ds)
+    return BoundaryPoints{T}(xy,normal,s,ds)
+end
+
+"""
+    boundary_function_BIM(symmetries::Union{Vector{Any}, Nothing}, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{T}} where {T<:Real, Bi<:AbsBilliard}
+
+Processes the boundary function and associated boundary points by applying symmetries and shifting the starting point of the arclengths if neccesery.
+
+# Arguments
+- `symmetries::Union{Vector{Any}, Nothing}`: Optional symmetries to be applied to the boundary points and function.
+- `u::Vector{T}`: The boundary function values.
+- `pts::BoundaryPointsBIM{T}`: The boundary points in BIM representation.
+- `billiard::Bi`: The billiard object defining the geometry.
+
+# Returns
+- `BoundaryPoints{T}`: The processed boundary points after applying symmetries and shifting the arclengths.
+- `Vector{T}`: The processed boundary function.
+"""
+function boundary_function_BIM(symmetries::Union{Vector{Any},Nothing}, u::Vector, pts::BoundaryPointsBIM, billiard::Bi) where {Bi<:AbsBilliard}
+    pts=BoundaryPointsBIM_to_BoundaryPoints(pts)
+    regularize!(u)
+    pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
+    u=apply_symmetries_to_boundary_function(u,symmetries)
+    pts,u=shift_starting_arclength(billiard,u,pts)
+    return pts,u
+end
+
 """
     save_boundary_function!(ks, us, s_vals; filename::String="boundary_values.jld2")
 

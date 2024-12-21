@@ -415,14 +415,64 @@ end
 
 #### BIM - MAIN
 
+"""
+    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real) -> Matrix{Complex{T}}
+
+Constructs the Fredholm matrix for the given boundary integral method, basis, and boundary points.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure with type `T`.
+- `k::Real`: The wave number.
+
+# Returns
+- `Matrix{Complex{T}}`: The constructed Fredholm matrix.
+"""
 function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     return fredholm_matrix(pts,solver.rule,k)
 end
 
+"""
+    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real) -> T
+
+Computes the smallest singular value of the Fredholm matrix.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure with type `T`.
+- `k::Real`: The wave number.
+
+# Returns
+- `T`: The smallest singular value of the matrix.
+"""
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k)
     mu=svdvals(A)
     return mu[end]
+end
+
+"""
+    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real) -> Tuple{T, Vector{T}}
+
+Computes the smallest singular value and its corresponding singular vector.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure with type `T`.
+- `k::Real`: The wave number.
+
+# Returns
+- `Tuple{T, Vector{T}}`: A tuple containing the smallest singular value and the corresponding singular vector.
+"""
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k)
+    F=svd(A)
+    mu=F.S[end]
+    u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
+    return mu,real.(u_mu)
 end
 
 
