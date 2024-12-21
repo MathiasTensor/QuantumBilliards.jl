@@ -548,12 +548,38 @@ Computes the smallest singular value and its corresponding singular vector.
 # Returns
 - `Tuple{T, Vector{T}}`: A tuple containing the smallest singular value and the corresponding singular vector.
 """
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k)
     F=svd(A)
     mu=F.S[end]
     u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
     return mu,real.(u_mu)
+end
+
+"""
+    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, basis::Ba, ks::Vector) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}} where {Ba<:AbstractHankelBasis, T<:Real}
+
+Solve for the eigenvectors of the boundary integral method (BIM) for a range of wave numbers `ks`. These wave numbers should be the actual eigenvalues of the billiard since no check is done in the function if the smallest singular value for that k in ks is really the locally smallest one.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver used to compute the eigenvectors.
+- `basis::Ba<:AbstractHankelBasis`: The basis functions used for solving the eigenvalue problem.
+- `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
+
+# Returns
+- `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
+- `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, containing the boundary points used for each wave number in `ks`.
+"""
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,basis::Ba,ks::Vector) where {Ba<:AbstractHankelBasis}
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPointsBIM}(undef,length(ks))
+    Threads.@threads for i in eachindex(ks)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i])
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
 end
 
 
