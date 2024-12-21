@@ -149,29 +149,29 @@ function SymmetryRuleBIM_to_Symmetry(rule::SymmetryRuleBIM)
         return nothing
     elseif rule.symmetry_type==:x
         if rule.x_bc==:D
-            return Vector{Any}[XReflection(-1)]
+            return [XReflection(-1)]
         elseif rule.x_bc==:N
-            return Vector{Any}[XReflection(1)]
+            return [XReflection(1)]
         else
             error("Unsupported boundary condition: $(rule.x_bc)")
         end
     elseif rule.symmetry_type==:y
         if rule.y_bc==:D
-            return Vector{Any}[YReflection(-1)]
+            return [YReflection(-1)]
         elseif rule.y_bc==:N
-            return Vector{Any}[YReflection(1)]
+            return [YReflection(1)]
         else
             error("Unsupported boundary condition: $(rule.x_bc)")
         end
     elseif rule.symmetry_type==:xy
         if rule.x_bc==:D && rule.y_bc==:D
-            return Vector{Any}[XYReflection(-1,-1)]
+            return [XYReflection(-1,-1)]
         elseif rule.x_bc ==:N && rule.y_bc==:D
-            return Vector{Any}[XYReflection(1,-1)]
+            return [XYReflection(1,-1)]
         elseif rule.x_bc==:D && rule.y_bc==:N
-            return Vector{Any}[XYReflection(-1,1)]
+            return [XYReflection(-1,1)]
         elseif rule.x_bc==:N && rule.y_bc==:N
-            return Vector{Any}[XYReflection(1,1)]
+            return [XYReflection(1,1)]
         else
             error("Unsupported boundary condition: $(rule.x_bc)")
         end
