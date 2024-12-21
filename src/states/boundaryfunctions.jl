@@ -320,7 +320,7 @@ Processes multiple boundary functions and their associated boundary points by ap
 - `Vector{BoundaryPoints{T}}`: A vector of processed boundary points after applying symmetries and shifting the arclengths.
 - `Vector{Vector{T}}`: A vector of processed boundary functions corresponding to the processed boundary points.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector{Vector{T}}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector{Vector}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     pts_ret=Vector{BoundaryPoints{T}}(undef,length(us_all))
     us_ret=Vector{Vector{T}}(undef,length(us_all))
     for i in eachindex(us_all) 
