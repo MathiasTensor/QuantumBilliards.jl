@@ -301,7 +301,7 @@ function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, u::Vector{T}, 
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
     u=apply_symmetries_to_boundary_function(u,symmetries)
     pts,u=shift_starting_arclength(billiard,u,pts)
-    return pts,u
+    return pts,u::Vector{T}
 end
 
 """
