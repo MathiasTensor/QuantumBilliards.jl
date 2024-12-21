@@ -83,6 +83,96 @@ function generalized_eigvals(A,B;eps=1e-15)
 end
 
 """
+    generalized_eigen_all(A::AbstractMatrix, B::AbstractMatrix) -> (Vector{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}) where T <: Real
+
+Computes the generalized eigenvalues and both left and right eigenvectors of the pair of matrices `(A, B)`. There are no further restrictions on the types of matrices `(A, B)`.
+
+```math
+A * u = λ * B * u
+```
+
+# Arguments
+- `A::AbstractMatrix`: Square matrix.
+- `B::AbstractMatrix`: Square matrix.
+
+# Returns
+- `λ::Vector{Complex{T}}`: Vector of filtered eigenvalues (excluding `NaN` and `Inf` values). NEEDS ORDERING
+- `VR::Matrix{Complex{T}}`: Complex matrix where each column is a right eigenvector.
+- `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
+"""
+function generalized_eigen_all(A,B)
+    F=eigen(A,B)
+    λ=F.values
+    VR=F.vectors # right eigenvectors
+    F_adj=eigen(A',B') # adjoint problem to find left eigenvectors
+    VL=F_adj.vectors 
+    valid_indices=.!isnan.(λ).&.!isinf.(λ)  # for singular matrices give NaN λ
+    λ=λ[valid_indices]
+    VR=VR[:,valid_indices]
+    VL=VL[:,valid_indices]
+    return λ,VR,VL
+end
+
+"""
+    generalized_eigen_all_LAPACK_LEGACY(A::AbstractMatrix, B::AbstractMatrix) -> (Vector{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}) where T <: Real
+
+Computes the generalized eigenvalues and both left and right eigenvectors of the pair of matrices `(A, B)` using LAPACK's `ggev!` function.
+
+This function is optimized for speed on small matrices (`dim < 350`) and can handle general square matrices.
+
+```math
+A * u = λ * B * u
+```
+
+# Arguments
+- `A::AbstractMatrix`: Square matrix.
+- `B::AbstractMatrix`: Square matrix.
+
+# Returns
+- `λ::Vector{Complex{T}}`: Vector of filtered eigenvalues (excluding `NaN` and `Inf` values). NEEDS ORDERING
+- `VR::Matrix{Complex{T}}`: Complex matrix where each column is a right eigenvector.
+- `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
+"""
+function generalized_eigen_all_LAPACK_LEGACY(A,B) 
+    α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(B))
+    λ=α./β
+    valid_indices=.!isnan.(λ).&.!isinf.(λ)
+    λ=λ[valid_indices]
+    VR=VR[:,valid_indices]
+    VL=VL[:,valid_indices]
+    return λ,VR,VL
+end
+
+"""
+    generalized_eigen_symmetric_LAPACK_LEGACY(A::AbstractMatrix, B::AbstractMatrix) -> (Vector{Real}, Matrix{Complex{T}}, Matrix{Complex{T}}) where T <: Real
+
+! VERY EFFICIENT, at least a 2X improvement over the general LAPACK one !
+Computes the generalized eigenvalues and eigenvectors for symmetric or Hermitian matrices `(A, B)` using LAPACK's `sygvd!` function. B MUST BE POSITIVE DEFINITE.
+
+This function is optimized for symmetric and Hermitian matrices. The left eigenvectors are identical to the right eigenvectors.
+
+```math
+A * u = λ * B * u
+```
+
+# Arguments
+- `A::AbstractMatrix`: Symmetric or Hermitian square matrix. DON'T USE `Symmetric(...)` or `Hermitian(...)` since LAPACK does not support it, use `Matrix(...)`
+- `B::AbstractMatrix`: Symmetric or Hermitian square matrix. DON'T USE `Symmetric(...)` or `Hermitian(...)` since LAPACK does not support it, use `Matrix(...)`
+
+# Returns
+- `λ::Vector{Real}`: Vector of filtered eigenvalues (excluding `NaN` and `Inf` values). NEEDS ORDERING
+- `VR::Matrix{Complex{T}}`: Complex matrix where each column is a right eigenvector.
+- `VL::Matrix{Complex{T}}`: Same as `VR`, since left eigenvectors = right eigenvectors for symmetric matrices.
+"""
+function generalized_eigen_symmetric_LAPACK_LEGACY(A,B)
+    λ,VR=LAPACK.sygvd!(1,'V','U',copy(A),copy(B))
+    valid_indices=.!isnan.(λ).&.!isinf.(λ)
+    λ=λ[valid_indices]
+    VR=VR[:,valid_indices]
+    return λ,VR,VR 
+end
+
+"""
     directsum(A::Matrix, B::Matrix)
 
 Constructs the direct sum of two matrices `A` and `B`. The result is a block diagonal matrix 

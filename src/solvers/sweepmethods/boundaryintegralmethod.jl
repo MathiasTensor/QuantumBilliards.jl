@@ -1,5 +1,7 @@
 using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 
+#### REGULAR BIM ####
+
 """
     struct SymmetryRuleBIM{T<:Real}
 
@@ -411,7 +413,7 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
     return fredholm_matrix
 end
 
-# high level
+#### BIM - MAIN
 
 function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
     return fredholm_matrix(pts,solver.rule,k)
@@ -422,6 +424,173 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, 
     mu=svdvals(A)
     return mu[end]
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### EXPANDED BIM ####
+
+function default_helmholtz_kernel_first_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
+    dx, dy = p1[1]-p2[1], p1[2]-p2[2]
+    distance12=hypot(dx,dy)
+    if abs(distance12)<eps(T)
+        return Complex(0.0,0.0)  # First derivative is zero when r -> 0
+    end
+    return -im/2*distance12*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance12) 
+end
+
+function default_helmholtz_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
+    dx, dy = p1[1]-p2[1], p1[2]-p2[2]
+    distance12=hypot(dx,dy)
+    if abs(distance12)<eps(T)
+        return Complex(0.0,0.0)  # Second derivative is zero when r -> 0
+    end
+    return im/(2*k)*compute_cos_phi(dx,dy,normal1,p1_curvature)*((-2+(k*distance12)^2)*Bessels.hankelh1(1,k*distance12)+k*distance12*Bessels.hankelh1(2,k*distance12))
+end
+
+function compute_kernel_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
+    kernel_value=default_helmholtz_kernel_first_derivative(p1,p2,normal1,k,curvature1) # Base kernel computation
+    if !isnothing(reflected_p2_x) # Handle x-reflection
+        if rule.x_bc==:D
+            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+        elseif rule.x_bc==:N
+            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+        end
+    end
+    if !isnothing(reflected_p2_y) # Handle y-reflection
+        if rule.y_bc==:D
+            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+        elseif rule.y_bc==:N
+            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+        end
+    end
+    if !isnothing(reflected_p2_xy) # Handle xy-reflection
+        if rule.x_bc==:D && rule.y_bc==:D
+            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:D && rule.y_bc==:N
+            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:D
+            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:N
+            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        end
+    end
+    return kernel_value
+end
+
+function compute_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
+    kernel_value=default_helmholtz_kernel_second_derivative(p1,p2,normal1,k,curvature1) # Base kernel computation
+    if !isnothing(reflected_p2_x) # Handle x-reflection
+        if rule.x_bc==:D
+            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+        elseif rule.x_bc==:N
+            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+        end
+    end
+    if !isnothing(reflected_p2_y) # Handle y-reflection
+        if rule.y_bc==:D
+            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+        elseif rule.y_bc==:N
+            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+        end
+    end
+    if !isnothing(reflected_p2_xy) # Handle xy-reflection
+        if rule.x_bc==:D && rule.y_bc==:D
+            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:D && rule.y_bc==:N
+            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:D
+            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:N
+            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+        end
+    end
+    return kernel_value
+end
+
+function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
+    xy_points=boundary_points.xy
+    normals=boundary_points.normal
+    curvatures=boundary_points.curvature
+    ds=boundary_points.ds
+    N=length(xy_points)
+    reflected_points_x = symmetry_rule.symmetry_type in [:x,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y = symmetry_rule.symmetry_type in [:y,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
+        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
+    fredholm_matrix = Matrix{Complex{T}}(I,N,N)
+    Threads.@threads for i in 1:N
+        p1=xy_points[i]
+        normal1=normals[i]
+        curvature1=curvatures[i]
+        ds1=ds[i]
+        for j in 1:N
+            p2=xy_points[j]
+            kernel_value=compute_kernel_derivative(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k)
+            fredholm_matrix[i, j]-=ds1*kernel_value
+        end
+    end
+    return fredholm_matrix
+end
+
+function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
+    xy_points=boundary_points.xy
+    normals=boundary_points.normal
+    curvatures=boundary_points.curvature
+    ds=boundary_points.ds
+    N=length(xy_points)
+    reflected_points_x = symmetry_rule.symmetry_type in [:x,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y = symmetry_rule.symmetry_type in [:y,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
+        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
+    fredholm_matrix = Matrix{Complex{T}}(I,N,N)
+    Threads.@threads for i in 1:N
+        p1=xy_points[i]
+        normal1=normals[i]
+        curvature1=curvatures[i]
+        ds1=ds[i]
+        for j in 1:N
+            p2=xy_points[j]
+            kernel_value=compute_kernel_second_derivative(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k)
+            fredholm_matrix[i, j]-=ds1*kernel_value
+        end
+    end
+    return fredholm_matrix
+end
+
+
+
+
+
+
+
+
+
+
+
+
+ #### USEFUL ####
 
 """
     create_fredholm_movie!(
