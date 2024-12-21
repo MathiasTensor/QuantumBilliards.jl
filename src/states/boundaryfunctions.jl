@@ -294,7 +294,7 @@ Processes the boundary function and associated boundary points by applying symme
 - `BoundaryPoints{T}`: The processed boundary points after applying symmetries and shifting the arclengths.
 - `Vector{T}`: The processed boundary function.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod, u::Vector, pts::BoundaryPointsBIM, billiard::Bi) where {Bi<:AbsBilliard}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     symmetries=SymmetryRuleBIM_to_Symmetry(solver.rule) 
     pts=BoundaryPointsBIM_to_BoundaryPoints(pts)
     regularize!(u)
@@ -320,7 +320,7 @@ Processes multiple boundary functions and their associated boundary points by ap
 - `Vector{BoundaryPoints{T}}`: A vector of processed boundary points after applying symmetries and shifting the arclengths.
 - `Vector{Vector{T}}`: A vector of processed boundary functions corresponding to the processed boundary points.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod, us_all::Vector, pts_all::Vector{BoundaryPointsBIM}, billiard::Bi) where {Bi<:AbsBilliard}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector{Vector{T}}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) where {Bi<:AbsBilliard}
     pts_ret=Vector{BoundaryPoints}(undef,length(us_all))
     us_ret=Vector{Vector}(undef,length(us_all))
     for i in eachindex(us_all) 
