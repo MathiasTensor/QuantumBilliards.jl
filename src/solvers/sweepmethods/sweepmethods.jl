@@ -43,7 +43,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
     k = k1
     
     # Iterate over the wavenumber range
-    while k < k2
+    @showprogress while k < k2
         dk = 0.025 * k^(-1/3)  # Interval size from Veble's paper
         λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk)
         
