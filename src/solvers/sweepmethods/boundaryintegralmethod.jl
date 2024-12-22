@@ -181,6 +181,66 @@ function SymmetryRuleBIM_to_Symmetry(rule::SymmetryRuleBIM)
 end
 
 """
+    Symmetry_to_SymmetryBIM(symmetry::Union{Vector{Any}, Nothing}, billiard::Bi) -> SymmetryRuleBIM
+
+Converts a symmetry object into a `SymmetryRuleBIM`.
+
+# Arguments
+- `symmetry::Union{Vector{Any}, Nothing}`: A vector containing a single symmetry (e.g., a `Reflection`) or `nothing` if no symmetry is provided.
+- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
+
+# Returns
+- `SymmetryRuleBIM{T}`: A `SymmetryRuleBIM` object encoding the symmetry type, boundary conditions, and axis shifts for the billiard.
+
+# Errors
+- Throws an error if the symmetry vector contains more than one element.
+- Throws an error for unsupported symmetry types, axes, or parity values.
+"""
+function Symmetry_to_SymmetryBIM(symmetry::Union{Vector{Any},Nothing},billiard::Bi) where {Bi<:AbsBilliard}
+    T = eltype([hasproperty(billiard,:x_axis) ? billiard.x_axis : 0.0, hasproperty(billiard,:y_axis) ? billiard.y_axis : 0.0])
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    if isnothing(symmetry)
+        return SymmetryRuleBIM{T}(:nothing,:D,:D,0.0,0.0)
+    end
+    if length(symmetry)>1
+        error("Only 1 symmetry supported")
+    end
+    if !(symmetry[1] isa Reflection)
+        error("Unsupported symmetry type: $(typeof(sym))")
+    end
+    if symmetry[1].axis==:y_axis
+        if symmetry[1].parity==-1
+            return SymmetryRuleBIM(:x,:D,:D,shift_x,shift_y)
+        elseif symmetry[1].parity==1
+            return SymmetryRuleBIM(:x,:N,:D,shift_x,shift_y)
+        else
+            error("Unsupported symmetry parity: $(symmetry[1].parity)")
+        end
+    elseif symmetry[1].axis==:x_axis
+        if symmetry[1].parity==-1
+            return SymmetryRuleBIM(:y,:D,:D,shift_x,shift_y)
+        elseif symmetry[1].parity==1
+            return SymmetryRuleBIM(:y,:D,:N,shift_x,shift_y)
+        end
+    elseif symmetry[1].axis==:origin
+        if symmetry[1].parity==[-1,-1]
+            return SymmetryRuleBIM(:xy,:D,:D,shift_x,shift_y)
+        elseif symmetry[1].parity==[-1,1]
+            return SymmetryRuleBIM(:xy,:D,:N,shift_x,shift_y)
+        elseif symmetry[1].parity==[1,-1]
+            return SymmetryRuleBIM(:xy,:N,:D,shift_x,shift_y)
+        elseif symmetry[1].parity==[1,1]
+            return SymmetryRuleBIM(:xy,:N,:N,shift_x,shift_y)
+        else
+            error("Unsupported symmetry parity: $(symmetry[1].parity)")
+        end
+    else
+        error("Unknown symmetry axis: $(symmetry[1].axis)")
+    end
+end
+
+"""
     BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
 
 Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
@@ -623,6 +683,17 @@ struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
     rule::SymmetryRuleBIM
 end
 
+function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetries::Union{Vector{Any},Nothing}=nothing,x_bc=:D,y_bc=:D) where {T<:Real, Bi<:AbsBilliard}
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[GaussLegendreNodes()]
+    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
+end
+
+function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts = 20,symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D,y_bc=:D) where {T<:Real, Bi<:AbsBilliard} 
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
+end
+
 """
     default_helmholtz_kernel_first_derivative(
         p1::SVector{2,T}, p2::SVector{2,T}, 
@@ -929,7 +1000,7 @@ end
         eps::Real = 1e-15
     ) -> Vector{T}
 
-Computes the corrected k0 for a given wavenumber range using the expanded boundary integral method.
+Computes the corrected k0 for a given wavenumber range using the expanded boundary integral method. This is done in an interval [k-dk,k+dk]
 
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The solver configuration.

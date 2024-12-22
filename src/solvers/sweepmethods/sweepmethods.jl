@@ -35,6 +35,15 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     return res
 end
 
-function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k,dk) where {Ba<:AbsBasis,Bi<:AbsBilliard}
-    
+function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k2) where {Bi<:AbsBilliard}
+    basis=AbstractHankelBasis()
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    λs_all=eltype(k1)[]
+    k=k1
+    while k<k2
+        dk=0.025*k^(-1/3) # [k-dk/2,k+dk/2] of 0.05*k^(-1/3) from Veble's paper
+        λs=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk)
+        push!(λs_all,λs)
+    end
+    return λs_all
 end
