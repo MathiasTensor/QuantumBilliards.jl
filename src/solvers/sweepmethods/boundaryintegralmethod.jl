@@ -1016,11 +1016,13 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;eps=1e-15) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
+    T=eltype(λ)
     valid=(abs.(λ).>eps) .& (abs.(λ).<dk) .& (imag.(λ).<sqrt(eps))
     if !any(valid) 
-        return T[]
+        return Vector{T}(),Vector{T}()
     end
     λ=λ[valid]
+    tens=λ.^2 # similar to scaling method but since these are smallest
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
@@ -1029,10 +1031,10 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     λ=k.+corr_1.+corr_2
     idxs=(k-dk.<λ).&(λ.<k+dk)
-    if !any(valid) 
-        return T[]
+    if !any(idxs)
+        return Vector{T}(),Vector{T}()
     end
-    return λ[idxs]
+    return λ[idxs],tens[idxs]
 end
 
 

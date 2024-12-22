@@ -38,12 +38,35 @@ end
 function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k2) where {Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    λs_all=eltype(k1)[]
-    k=k1
-    while k<k2
-        dk=0.025*k^(-1/3) # [k-dk/2,k+dk/2] of 0.05*k^(-1/3) from Veble's paper
-        λs=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk)
-        push!(λs_all,λs)
+    λs_all = Vector{Float64}()  # To accumulate all eigenvalues
+    tensions_all = Vector{Float64}()  # To accumulate corresponding tensions
+    k = k1
+    
+    # Iterate over the wavenumber range
+    while k < k2
+        dk = 0.025 * k^(-1/3)  # Interval size from Veble's paper
+        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk)
+        
+        # Append results only if there are valid eigenvalues
+        if !isempty(λs)
+            append!(λs_all, λs)  # Append eigenvalues
+            append!(tensions_all, tensions)  # Append corresponding tensions
+        end
+        
+        # Increment to the next interval
+        k += dk
     end
-    return λs_all
+    
+    # Ensure both lists have the same length
+    if length(λs_all) != length(tensions_all)
+        error("Mismatch between lengths of eigenvalues and tensions.")
+    end
+    
+    # Handle case of no eigenvalues found
+    if isempty(λs_all)
+        λs_all = [0.0]  # Assign a single zero value to avoid issues with `log`
+        tensions_all = [0.0]
+    end
+    
+    return λs_all, tensions_all
 end
