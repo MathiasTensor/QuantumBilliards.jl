@@ -764,9 +764,9 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
     numerators=[dot(VL[:,i],dA*VR[:,i]) for i in eachindex(λ)]
     denominators=[dot(VL[:,i],ddA*VR[:,i]) for i in eachindex(λ)]
-    corr_2=-0.5*corr_1.^2 .* (numerators./denominators)
+    corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     λ=k.+corr_1.+corr_2
-    idxs=(k-dk.< λ).&(λ.<k+dk)
+    idxs=(k-dk.<λ).&(λ.<k+dk)
     return λ[idxs]
 end
 
@@ -827,109 +827,4 @@ function create_fredholm_movie!(k_range::Vector{T}, billiard::Bi; symmetries::Un
         ax_real.title="real at k = $(round(k,digits=4))" 
         ax_imag.title="imag at k = $(round(k,digits=4))"
     end
-end
-
-#### TESTING #####
-
-function test_cos_phi_matrix(solver::BoundaryIntegralMethod, billiard::Bi; k=50) where {Bi<:AbsBilliard}
-    # Evaluate boundary points, normals, and curvatures
-    boundary_points = evaluate_points(solver,billiard,k)
-
-    # Extract boundary information
-    xy_points = boundary_points.xy
-    normals = boundary_points.normal
-    curvatures = boundary_points.curvature
-    n = length(xy_points)
-
-    # Initialize cosPhi matrix
-    cos_phi_matrix = Matrix{Float64}(undef, n, n)
-
-    # Compute cosPhi for all point pairs
-    for i in 1:n
-        for j in 1:n
-            p1, p2 = xy_points[i], xy_points[j]
-            dx, dy = p1[1] - p2[1], p1[2] - p2[2]
-            cos_phi_matrix[i, j] = compute_cos_phi(dx, dy, normals[i], curvatures[i])
-        end
-    end
-
-    # Visualize the cosPhi matrix
-    fig = Figure(resolution=(800, 800))
-    ax = Axis(fig[1, 1], title="cos(ϕ) Matrix for Quarter-Circle Billiard, diag=$(cos_phi_matrix[1,1])", xlabel="Boundary Point Index (p2)", ylabel="Boundary Point Index (p1)")
-    hm = heatmap!(ax, cos_phi_matrix; colormap=:viridis)
-    Colorbar(fig[1, 2], hm, label="cos(ϕ)")
-    return fig
-end
-
-
-function test_hankel(solver::BoundaryIntegralMethod, billiard::Bi; k=50) where {Bi<:AbsBilliard}
-    # Evaluate points on the billiard's boundary
-    boundary_points = evaluate_points(solver, billiard, k)
-    xy_points = boundary_points.xy
-    N = length(xy_points)
-
-    # Create the Hankel matrix
-    hankel_matrix = zeros(ComplexF64, N, N)
-    for i in 1:N
-        for j in 1:N
-            dx = xy_points[i][1] - xy_points[j][1]
-            dy = xy_points[i][2] - xy_points[j][2]
-            distance = hypot(dx, dy)
-            hankel_matrix[i, j] = abs(distance) < eps(Float64) ? 0.0 + 0.0im : Bessels.hankelh1(0, k * distance)
-        end
-    end
-
-    # Plot the magnitude of the Hankel matrix
-    fig = Figure()
-    ax = Axis(fig[1,1][1,1],
-        title = "|H₀⁽¹⁾(k·distance)|",
-        xlabel = "Boundary Point Index (p2)",
-        ylabel = "Boundary Point Index (p1)"
-    )
-    hmap=heatmap!(ax, abs.(hankel_matrix))
-    Colorbar(fig[1,1][1,2], hmap)
-    return fig
-end
-
-function test_reflections(
-    boundary_points::BoundaryPointsBIM{T},
-    symmetry_rule::SymmetryRuleBIM{T}
-) where {T<:Real}
-    original_points = boundary_points.xy
-
-    # Compute reflected points
-    reflected_x = symmetry_rule.symmetry_type in [:x, :xy] ?
-        [apply_reflection(p, SymmetryRuleBIM(:x, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in original_points] : []
-    reflected_y = symmetry_rule.symmetry_type in [:y, :xy] ?
-        [apply_reflection(p, SymmetryRuleBIM(:y, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in original_points] : []
-    reflected_xy = symmetry_rule.symmetry_type == :xy ?
-        [apply_reflection(p, symmetry_rule) for p in original_points] : []
-
-    # Plot original and reflected points
-    fig = Figure(resolution=(800, 800))
-    ax = Axis(fig[1, 1], aspect=1)
-    
-    # Original points
-    scatter!(ax, [p[1] for p in original_points], [p[2] for p in original_points], label="Original Points", color=:blue)
-
-    # Reflected across x-axis
-    if !isempty(reflected_x)
-        println("reflected x is not empy")
-        scatter!(ax, [p[1] for p in reflected_x], [p[2] for p in reflected_x], label="Reflected (x-axis)", color=:red)
-    end
-
-    # Reflected across y-axis
-    if !isempty(reflected_y)
-        println("reflected y is not empty")
-        scatter!(ax, [p[1] for p in reflected_y], [p[2] for p in reflected_y], label="Reflected (y-axis)", color=:green)
-    end
-
-    # Reflected across both axes
-    if !isempty(reflected_xy)
-        println("reflected xy is not empty")
-        scatter!(ax, [p[1] for p in reflected_xy], [p[2] for p in reflected_xy], label="Reflected (xy-axis)", color=:purple)
-    end
-
-    axislegend(ax, position=:rt)
-    return fig
 end
