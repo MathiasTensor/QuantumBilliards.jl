@@ -747,23 +747,23 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
     return fredholm_matrix
 end
 
-function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
+function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k) where {Ba<:AbstractHankelBasis}
     A=fredholm_matrix(pts,solver.rule,k)
     dA=fredholm_matrix_derivative(pts,solver.rule,k)
     ddA=fredholm_matrix_second_derivative(pts,solver.rule,k)
     return A,dA,ddA
 end
 
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k, dk) where {Ba<:AbstractHankelBasis}
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;eps=1e-15) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
-    valid=abs.(λ).<dk
+    valid=(abs.(λ).>eps) .& (abs.(λ).<dk) .& (imag.(λ).<sqrt(eps))
     λ=λ[valid]
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
-    numerators=[dot(VL[:,i],dA*VR[:,i]) for i in eachindex(λ)]
-    denominators=[dot(VL[:,i],ddA*VR[:,i]) for i in eachindex(λ)]
+    numerators=real.(sum(conj(VL).*(dA*VR),dims=1))  # Vectorized dot products
+    denominators=real.(sum(conj(VL).*(ddA*VR),dims=1))
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     λ=k.+corr_1.+corr_2
     idxs=(k-dk.<λ).&(λ.<k+dk)
