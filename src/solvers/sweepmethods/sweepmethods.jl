@@ -35,6 +35,6 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     return res
 end
 
-function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::AbsBilliard)
+function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k,dk) where {Ba<:AbsBasis,Bi<:AbsBilliard}
     
 end
