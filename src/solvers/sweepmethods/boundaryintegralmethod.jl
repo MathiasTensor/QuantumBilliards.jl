@@ -1021,7 +1021,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     if !any(valid) 
         return Vector{T}(),Vector{T}()
     end
-    λ=λ[valid]
+    λ=real.(λ[valid])
     tens=λ.^2 # similar to scaling method but since these are smallest
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
