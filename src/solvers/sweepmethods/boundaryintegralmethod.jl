@@ -1016,7 +1016,7 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;eps=1e-15) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
-    T=eltype(λ)
+    T=eltype(real.(λ))
     valid=(abs.(λ).>eps) .& (abs.(λ).<dk) .& (imag.(λ).<sqrt(eps))
     if !any(valid) 
         return Vector{T}(),Vector{T}()
