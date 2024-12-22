@@ -250,7 +250,8 @@ Evaluates the boundary points and associated properties for the given solver and
 """
 function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver, billiard)
-    curves=billiard.desymmetrized_full_boundary
+    #curves=billiard.desymmetrized_full_boundary
+    curves=billiard.fundamental_boundary
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     normal_all=Vector{SVector{2,type}}()
