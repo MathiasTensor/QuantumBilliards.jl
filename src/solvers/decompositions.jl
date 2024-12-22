@@ -123,6 +123,7 @@ end
 Computes the generalized eigenvalues and both left and right eigenvectors of the pair of matrices `(A, B)` using LAPACK's `ggev!` function.
 
 This function is optimized for speed on small matrices (`dim < 350`) and can handle general square matrices.
+!!! This function gives differently scaled correct solution for the same eigenvalue to the generalized eigenproblem than `eigen(A,B)` does!!!
 
 ```math
 A * u = λ * B * u
@@ -157,7 +158,7 @@ end
 ! VERY EFFICIENT, at least a 2X improvement over the general LAPACK one and the general eigen!(A,B)!
 Computes the generalized eigenvalues and eigenvectors for symmetric or Hermitian matrices `(A, B)` using LAPACK's `sygvd!` function. B MUST BE POSITIVE DEFINITE.
 
-This function is optimized for symmetric and Hermitian matrices. The left eigenvectors are identical to the right eigenvectors.
+This function is optimized for symmetric and Hermitian matrices. The left eigenvectors are identical to the right eigenvectors. This function gives the same scaled eigenvectors as `eigen(Symmetric(A),Symmetric)`.
 
 ```math
 A * u = λ * B * u
