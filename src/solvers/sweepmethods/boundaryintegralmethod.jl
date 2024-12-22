@@ -597,6 +597,20 @@ end
 
 #### EXPANDED BIM ####
 
+"""
+    struct ExpandedBoundaryIntegralMethod{T<:Real}
+
+Represents the configuration for the expanded boundary integral method.
+
+# Fields
+- `dim_scaling_factor::T`: Scaling factor for the boundary dimensions (compatibility).
+- `pts_scaling_factor::Vector{T}`: Scaling factors for the boundary points.
+- `sampler::Vector`: Sampling strategy for the boundary points.
+- `eps::T`: Numerical tolerance.
+- `min_dim::Int64`: Minimum dimensions (compatibility field).
+- `min_pts::Int64`: Minimum points for evaluation.
+- `rule::SymmetryRuleBIM`: Symmetry rule for the configuration.
+"""
 struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
@@ -607,6 +621,24 @@ struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
     rule::SymmetryRuleBIM
 end
 
+"""
+    default_helmholtz_kernel_first_derivative(
+        p1::SVector{2,T}, p2::SVector{2,T}, 
+        normal1::SVector{2,T}, k::T, p1_curvature::T
+    ) -> Complex{T}
+
+Computes the first derivative of the Helmholtz kernel with respect to the wavenumber.
+
+# Arguments
+- `p1::SVector{2,T}`: First point in the domain.
+- `p2::SVector{2,T}`: Second point in the domain.
+- `normal1::SVector{2,T}`: Normal vector at `p1`.
+- `k::T`: Wavenumber.
+- `p1_curvature::T`: Curvature at `p1`.
+
+# Returns
+- `Complex{T}`: First derivative of the Helmholtz kernel. Zero when the points coincide.
+"""
 function default_helmholtz_kernel_first_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
     dx, dy = p1[1]-p2[1], p1[2]-p2[2]
     distance12=hypot(dx,dy)
@@ -616,6 +648,24 @@ function default_helmholtz_kernel_first_derivative(p1::SVector{2,T},p2::SVector{
     return -im/2*distance12*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance12) 
 end
 
+"""
+    default_helmholtz_kernel_second_derivative(
+        p1::SVector{2,T}, p2::SVector{2,T}, 
+        normal1::SVector{2,T}, k::T, p1_curvature::T
+    ) -> Complex{T}
+
+Computes the second derivative of the Helmholtz kernel with respect to the wavenumber.
+
+# Arguments
+- `p1::SVector{2,T}`: First point in the domain.
+- `p2::SVector{2,T}`: Second point in the domain.
+- `normal1::SVector{2,T}`: Normal vector at `p1`.
+- `k::T`: Wavenumber.
+- `p1_curvature::T`: Curvature at `p1`.
+
+# Returns
+- `Complex{T}`: Second derivative of the Helmholtz kernel. Zero when the points coincide.
+"""
 function default_helmholtz_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
     dx, dy = p1[1]-p2[1], p1[2]-p2[2]
     distance12=hypot(dx,dy)
@@ -625,6 +675,35 @@ function default_helmholtz_kernel_second_derivative(p1::SVector{2,T},p2::SVector
     return im/(2*k)*compute_cos_phi(dx,dy,normal1,p1_curvature)*((-2+(k*distance12)^2)*Bessels.hankelh1(1,k*distance12)+k*distance12*Bessels.hankelh1(2,k*distance12))
 end
 
+"""
+    compute_kernel_derivative(
+        p1::SVector{2,T}, 
+        p2::SVector{2,T}, 
+        normal1::SVector{2,T}, 
+        curvature1::T, 
+        reflected_p2_x::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_y::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
+        rule::SymmetryRuleBIM{T}, 
+        k::T
+    ) -> Complex{T}
+
+Computes the first derivative of the kernel, incorporating symmetry reflections.
+
+# Arguments
+- `p1::SVector{2,T}`: First point in the domain.
+- `p2::SVector{2,T}`: Second point in the domain.
+- `normal1::SVector{2,T}`: Normal vector at `p1`.
+- `curvature1::T`: Curvature at `p1`.
+- `reflected_p2_x::Union{SVector{2,T}, Nothing}`: Reflected second point across the x-axis, if applicable.
+- `reflected_p2_y::Union{SVector{2,T}, Nothing}`: Reflected second point across the y-axis, if applicable.
+- `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes, if applicable.
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule for the kernel.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: First derivative of the kernel, with symmetry reflections applied.
+"""
 function compute_kernel_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
     kernel_value=default_helmholtz_kernel_first_derivative(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
@@ -655,6 +734,35 @@ function compute_kernel_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SV
     return kernel_value
 end
 
+"""
+    compute_kernel_second_derivative(
+        p1::SVector{2,T}, 
+        p2::SVector{2,T}, 
+        normal1::SVector{2,T}, 
+        curvature1::T, 
+        reflected_p2_x::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_y::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
+        rule::SymmetryRuleBIM{T}, 
+        k::T
+    ) -> Complex{T}
+
+Computes the second derivative of the kernel, incorporating symmetry reflections.
+
+# Arguments
+- `p1::SVector{2,T}`: First point in the domain.
+- `p2::SVector{2,T}`: Second point in the domain.
+- `normal1::SVector{2,T}`: Normal vector at `p1`.
+- `curvature1::T`: Curvature at `p1`.
+- `reflected_p2_x::Union{SVector{2,T}, Nothing}`: Reflected second point across the x-axis, if applicable.
+- `reflected_p2_y::Union{SVector{2,T}, Nothing}`: Reflected second point across the y-axis, if applicable.
+- `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes, if applicable.
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule for the kernel.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: Second derivative of the kernel, with symmetry reflections applied.
+"""
 function compute_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
     kernel_value=default_helmholtz_kernel_second_derivative(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
@@ -685,6 +793,23 @@ function compute_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},norm
     return kernel_value
 end
 
+"""
+    fredholm_matrix_derivative(
+        boundary_points::BoundaryPointsBIM{T}, 
+        symmetry_rule::SymmetryRuleBIM{T}, 
+        k::T
+    ) -> Matrix{Complex{T}}
+
+Constructs the derivative of the Fredholm matrix with respect to the wavenumber.
+
+# Arguments
+- `boundary_points::BoundaryPointsBIM{T}`: Evaluated boundary points.
+- `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rules for the matrix construction.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Matrix{Complex{T}}`: First derivative of the Fredholm matrix.
+"""
 function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
@@ -716,6 +841,23 @@ function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmet
     return fredholm_matrix
 end
 
+"""
+    fredholm_matrix_second_derivative(
+        boundary_points::BoundaryPointsBIM{T}, 
+        symmetry_rule::SymmetryRuleBIM{T}, 
+        k::T
+    ) -> Matrix{Complex{T}}
+
+Constructs the second derivative of the Fredholm matrix with respect to the wavenumber.
+
+# Arguments
+- `boundary_points::BoundaryPointsBIM{T}`: Evaluated boundary points.
+- `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rules for the matrix construction.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Matrix{Complex{T}}`: Second derivative of the Fredholm matrix.
+"""
 function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
@@ -747,6 +889,28 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
     return fredholm_matrix
 end
 
+"""
+    construct_matrices(
+        solver::ExpandedBoundaryIntegralMethod, 
+        basis::Ba, 
+        pts::BoundaryPointsBIM{T}, 
+        k::Real
+    ) -> Tuple{Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}}
+
+Constructs the Fredholm matrix and its derivatives for the expanded boundary integral method.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
+- `k::Real`: Wavenumber.
+
+# Returns
+- `Tuple{Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}}`:
+  - Fredholm matrix.
+  - First derivative of the Fredholm matrix.
+  - Second derivative of the Fredholm matrix.
+"""
 function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k) where {Ba<:AbstractHankelBasis}
     A=fredholm_matrix(pts,solver.rule,k)
     dA=fredholm_matrix_derivative(pts,solver.rule,k)
@@ -754,10 +918,35 @@ function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts
     return A,dA,ddA
 end
 
+"""
+    solve(
+        solver::ExpandedBoundaryIntegralMethod, 
+        basis::Ba, 
+        pts::BoundaryPointsBIM{T}, 
+        k::Real, dk::Real; 
+        eps::Real = 1e-15
+    ) -> Vector{T}
+
+Computes the corrected k0 for a given wavenumber range using the expanded boundary integral method.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
+- `k::Real`: Central wavenumber for corrections.
+- `dk::Real`: Correction range for wavenumber.
+- `eps::Real`: Tolerance for filtering valid eigenvalues.
+
+# Returns
+- `Vector{T}`: Corrected eigenvalues within the specified range.
+"""
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;eps=1e-15) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid=(abs.(λ).>eps) .& (abs.(λ).<dk) .& (imag.(λ).<sqrt(eps))
+    if !any(valid) 
+        return T[]
+    end
     λ=λ[valid]
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
@@ -767,6 +956,9 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     λ=k.+corr_1.+corr_2
     idxs=(k-dk.<λ).&(λ.<k+dk)
+    if !any(valid) 
+        return T[]
+    end
     return λ[idxs]
 end
 
