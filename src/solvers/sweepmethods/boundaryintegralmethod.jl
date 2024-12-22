@@ -1028,9 +1028,9 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
-    numerators=real.(sum(conj(VL).*(dA*VR),dims=1))  # Vectorized dot products
+    numerators=real.(dot(VL,dA,VR))  # Vectorized dot products
     println("typeof numerators: ", typeof(numerators))
-    denominators=real.(sum(conj(VL).*(ddA*VR),dims=1))
+    denominators=real.(dot(VL,ddA,VR))
     println("typeof denominators: ", typeof(denominators))
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     println("typeof corr_2: ", typeof(corr_2))
