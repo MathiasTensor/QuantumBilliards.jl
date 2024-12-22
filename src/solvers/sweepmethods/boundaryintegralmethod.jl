@@ -244,14 +244,13 @@ Evaluates the boundary points and associated properties for the given solver and
 - `solver::BoundaryIntegralMethod`: Boundary integral method configuration.
 - `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
 - `k::Real`: Wavenumber.
-- `desymmetrized_full_boundary::Bool=false`: If instead of the fundamental boundary we construct the points on the real curve constructed desymmetrized boundary. This can happen because of the choice of the basis in other methods that exploit the basis's symmetry. This now effectively becomes the fundamental_boundary if true.
 
 # Returns
 - `BoundaryPointsBIM`: Evaluated boundary points and properties.
 """
-function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k;desymmetrized_full_boundary=false) where {Bi<:AbsBilliard}
+function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver, billiard)
-    desymmetrized_full_boundary ? curves=billiard.desymmetrized_full_boundary : curves=billiard.fundamental_boundary
+    curves=billiard.desymmetrized_full_boundary
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     normal_all=Vector{SVector{2,type}}()
@@ -567,17 +566,16 @@ Solve for the eigenvectors of the boundary integral method (BIM) for a range of 
 - `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
 - `basis::Ba<:AbstractHankelBasis`: The basis functions used for solving the eigenvalue problem.
 - `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
-- `desymmetrized_full_boundary::Bool=false`: If instead of the fundamental boundary we construct the points on the real curve constructed desymmetrized boundary. This can happen because of the choice of the basis in other methods that exploit the basis's symmetry. This now effectively becomes the fundamental_boundary if true.
 
 # Returns
 - `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
 - `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, containing the boundary points used for each wave number in `ks`.
 """
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};desymmetrized_full_boundary::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T}) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
     Threads.@threads for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i];desymmetrized_full_boundary=desymmetrized_full_boundary)
+        pts=evaluate_points(solver,billiard,ks[i])
         _,u=solve_vect(solver,basis,pts,ks[i])
         us_all[i]=u
         pts_all[i]=pts
