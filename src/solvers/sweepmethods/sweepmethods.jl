@@ -38,23 +38,27 @@ end
 function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k2) where {Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    λs_all = Vector{Float64}()  # To accumulate all eigenvalues
-    tensions_all = Vector{Float64}()  # To accumulate corresponding tensions
+    # Precompute all wavenumbers from k1 to k2 using the dk formula
+    ks = []
     k = k1
+    while k < k2
+        push!(ks, k)
+        k += 0.025 * k^(-1/3)  # Increment by interval size from Veble's paper
+    end
     
-    # Iterate over the wavenumber range
-    @showprogress while k < k2
-        dk = 0.025 * k^(-1/3)  # Interval size from Veble's paper
-        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk)
+    # Initialize storage for eigenvalues and tensions
+    λs_all = Float64[]  # To accumulate all eigenvalues
+    tensions_all = Float64[]  # To accumulate corresponding tensions
+
+    # Iterate over the computed wavenumbers
+    @showprogress for k in ks
+        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, 0.025 * k^(-1/3))
         
         # Append results only if there are valid eigenvalues
         if !isempty(λs)
             append!(λs_all, λs)  # Append eigenvalues
             append!(tensions_all, tensions)  # Append corresponding tensions
         end
-        
-        # Increment to the next interval
-        k += dk
     end
     
     # Ensure both lists have the same length
