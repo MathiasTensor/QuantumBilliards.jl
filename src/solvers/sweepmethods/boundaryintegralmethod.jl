@@ -1018,19 +1018,25 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
     valid=(abs.(λ) .> eps) .& (abs.(λ) .< dk) .& (imag.(λ) .< sqrt(eps))
+    println("typeof valid: ", typeof(valid))
     if !any(valid) 
         return Vector{T}(),Vector{T}()
     end
     λ=real.(λ[valid])
+    println("typeof λ: ", typeof(λ))
     tens=λ.^2 # similar to scaling method but since these are smallest
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
     numerators=real.(sum(conj(VL).*(dA*VR),dims=1))  # Vectorized dot products
+    println("typeof numerators: ", typeof(numerators))
     denominators=real.(sum(conj(VL).*(ddA*VR),dims=1))
+    println("typeof denominators: ", typeof(denominators))
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
+    println("typeof corr_2: ", typeof(corr_2))
     λ=k.+corr_1.+corr_2
     idxs=((k - dk) .< λ) .& (λ .< (k + dk))
+    println("typeof idxs: ", typeof(idxs))
     if !any(idxs)
         return Vector{T}(),Vector{T}()
     end
