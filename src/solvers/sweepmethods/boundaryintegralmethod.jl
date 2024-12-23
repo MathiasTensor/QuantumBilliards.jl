@@ -1024,7 +1024,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     end
     λ=real.(λ[valid])
     println("typeof λ: ", typeof(λ))
-    tens=λ.^2 # similar to scaling method but since these are smallest
+    tens=λ # similar to scaling method but since these are smallest
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
