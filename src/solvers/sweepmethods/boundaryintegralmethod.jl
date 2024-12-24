@@ -895,8 +895,8 @@ function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmet
         [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
     reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    fredholm_matrix = Matrix{Complex{T}}(I,N,N)
-    #fredholm_matrix = fill(Complex(0.0,0.0),N,N)
+    #fredholm_matrix = Matrix{Complex{T}}(I,N,N)
+    fredholm_matrix = fill(Complex(0.0,0.0),N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
         normal1=normals[i]
@@ -944,8 +944,8 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
         [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
     reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    fredholm_matrix = Matrix{Complex{T}}(I,N,N)
-    #fredholm_matrix = fill(Complex(0.0,0.0),N,N)
+    #fredholm_matrix = Matrix{Complex{T}}(I,N,N)
+    fredholm_matrix = fill(Complex(0.0,0.0),N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
         normal1=normals[i]
@@ -1019,8 +1019,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
-    valid=(abs.(λ) .> eps) .& (abs.(λ) .< dk) .& (imag.(λ) .< sqrt(eps))
-    println("typeof valid: ", typeof(valid))
+    valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< sqrt(eps))
     if !any(valid) 
         return Vector{T}(),Vector{T}()
     end
@@ -1030,15 +1029,14 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
-    numerators = real.(sum(conj(VL) .* (dA * VR), dims=1))[:]  # Flatten to 1D
+    denominator = real.(sum(conj(VL) .* (dA * VR), dims=1))[:]  # Flatten to 1D
     println("typeof numerators: ", typeof(numerators))
-    denominators = real.(sum(conj(VL) .* (ddA * VR), dims=1))[:]  # Flatten to 1D 
+    numerator = real.(sum(conj(VL) .* (ddA * VR), dims=1))[:]  # Flatten to 1D 
     println("typeof denominators: ", typeof(denominators))
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     println("typeof corr_2: ", typeof(corr_2))
     λ=k.+corr_1.+corr_2
-    idxs=((k - dk) .< λ) .& (λ .< (k + dk))
-    println("typeof idxs: ", typeof(idxs))
+    idxs=((k-dk).< λ) .& (λ.<(k+dk))
     if !any(idxs)
         return Vector{T}(),Vector{T}()
     end
