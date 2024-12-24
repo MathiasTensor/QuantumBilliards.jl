@@ -1048,7 +1048,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     end
     return λ[idxs],tens[idxs]
     =#
-    return λ,tens
+    return k.+λ,tens
 end
 
 
