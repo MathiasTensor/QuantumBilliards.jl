@@ -1021,7 +1021,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ,VR,VL=generalized_eigen_all(A,dA)
     println("Computed λ,VR,VL, smallest λ:", findmin(abs,λ)[1])
     T=eltype(real.(λ))
-    valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< sqrt(eps))
+    valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< real.(λ))
     if !any(valid) 
         return Vector{T}(),Vector{T}()
     end
