@@ -43,7 +43,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
     k = k1
     while k < k2
         push!(ks, k)
-        k += dk  # Increment by interval size from Veble's paper
+        k += dk(k)  # Increment by interval size from Veble's paper
     end
     
     # Initialize storage for eigenvalues and tensions
@@ -52,7 +52,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
 
     # Iterate over the computed wavenumbers
     @showprogress for k in ks
-        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk)
+        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk(k))
         
         # Append results only if there are valid eigenvalues
         if !isempty(λs)
