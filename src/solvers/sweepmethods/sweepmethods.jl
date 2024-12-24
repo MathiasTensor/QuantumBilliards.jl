@@ -42,12 +42,12 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
     k=k1
     while k < k2
         push!(ks, k)
-        k+=dk(k)/2  # Increment by interval size from Veble's paper
+        k+=dk(k)  # Increment by interval size from Veble's paper
     end
     λs_all=Float64[] 
     tensions_all=Float64[]
     @showprogress for k in ks
-        λs, tensions = solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,1.5*dk(k))
+        λs, tensions = solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k)/2)
         if !isempty(λs)
             append!(λs_all,λs)
             append!(tensions_all,tensions) 
