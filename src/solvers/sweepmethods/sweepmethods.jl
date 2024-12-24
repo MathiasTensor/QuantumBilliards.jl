@@ -38,39 +38,28 @@ end
 function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k2;dk::Function=(k) -> (0.025*k^(-1/3))) where {Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    # Precompute all wavenumbers from k1 to k2 using the dk formula
-    ks = []
-    k = k1
+    ks=[]
+    k=k1
     while k < k2
         push!(ks, k)
-        k += dk(k)  # Increment by interval size from Veble's paper
+        k+=dk(k)/2  # Increment by interval size from Veble's paper
     end
-    
-    # Initialize storage for eigenvalues and tensions
-    λs_all = Float64[]  # To accumulate all eigenvalues
-    tensions_all = Float64[]  # To accumulate corresponding tensions
-
-    # Iterate over the computed wavenumbers
+    λs_all=Float64[] 
+    tensions_all=Float64[]
     @showprogress for k in ks
-        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk(k))
-        
-        # Append results only if there are valid eigenvalues
+        λs, tensions = solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k))
         if !isempty(λs)
-            append!(λs_all, λs)  # Append eigenvalues
-            append!(tensions_all, tensions)  # Append corresponding tensions
+            append!(λs_all,λs)
+            append!(tensions_all,tensions) 
         end
     end
-    
-    # Ensure both lists have the same length
     if length(λs_all) != length(tensions_all)
         error("Mismatch between lengths of eigenvalues and tensions.")
     end
-    
-    # Handle case of no eigenvalues found
-    if isempty(λs_all)
-        λs_all = [0.0]  # Assign a single zero value to avoid issues with `log`
-        tensions_all = [0.0]
+    if isempty(λs_all) # Handle case of no eigenvalues found
+        λs_all=[0.0]  # Assign a single zero value to avoid issues with `log`
+        tensions_all=[0.0]
     end
     
-    return λs_all, tensions_all
+    return λs_all,tensions_all
 end
