@@ -1027,14 +1027,13 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     end
     λ=real.(λ[valid])
     tens=abs.(λ)
-    #=
     println("typeof λ: ", typeof(λ))
     # similar to scaling method but since these are smallest
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
-    numerators = real.([dot(VL[:, i]', dA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
-    denominators = real.([dot(VL[:, i]', ddA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
+    numerators = real.([dot(VL[:, i]', ddA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
+    denominators = real.([dot(VL[:, i]', dA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
     #denominators = real.(sum(VL .* (dA * VR), dims=1))[:]  # Flatten to 1D
     println("typeof denominators: ", typeof(denominators))
     #numerators = real.(sum(VL .* (ddA * VR), dims=1))[:]  # Flatten to 1D 
@@ -1042,13 +1041,13 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     println("typeof corr_2: ", typeof(corr_2))
     λ=k.+corr_1.+corr_2
-    idxs=((k-dk).< λ) .& (λ.<(k+dk))
-    if !any(idxs)
-        return Vector{T}(),Vector{T}()
-    end
-    return λ[idxs],tens[idxs]
-    =#
-    return k.+λ,tens
+    #idxs=((k-dk).< λ) .& (λ.<(k+dk))
+    #if !any(idxs)
+    #    return Vector{T}(),Vector{T}()
+    #end
+    #return λ[idxs],tens[idxs]
+    return λ,tens
+    #return k.+λ,tens
 end
 
 
