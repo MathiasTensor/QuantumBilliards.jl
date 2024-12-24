@@ -43,6 +43,16 @@ function make_quarter_ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero
     return boundary, corners
 end
 
+function make_ellipse_desymmetrized_full_boundary(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+    origin = SVector(x0, y0)
+    r_func = t -> SVector(a * cos(0.5 * pi * t), b * sin(0.5 * pi * t))
+    quarter_ellipse_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
+    # The segments should be ordered counterclockwise: PolarSegment -> y_axis_segment -> x_axis_segment
+    boundary = Union{PolarSegment}[quarter_ellipse_segment]
+    corners = []
+    return boundary, corners
+end
+
 
 """
     make_full_ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
@@ -85,6 +95,7 @@ Defines an Ellipse billiard with a full and half boundary.
 # Fields
 - `fundamental_boundary::Vector`: The boundary segments of the half ellipse.
 - `full_boundary::Vector`: The boundary segments of the full ellipse.
+- `desymmetrized_full_boundary::Vector`: The boundary segments of the desymmetrized full ellipse.
 - `length::T`: The total length of the boundary.
 - `area::T`: The total area of the ellipse.
 - `semi_major_axis::T`: The semi-major axis of the ellipse.
@@ -95,6 +106,7 @@ Defines an Ellipse billiard with a full and half boundary.
 struct Ellipse{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector
     full_boundary::Vector
+    desymmetrized_full_boundary::Vector
     length::T
     length_fundamental::T
     area::T
@@ -124,13 +136,14 @@ Constructs an Ellipse billiard.
 function Ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Ellipse where {T<:Real}
     fundamental_boundary, _ = make_quarter_ellipse(a, b; x0=x0, y0=y0, rot_angle=rot_angle)
     full_boundary, corners, _ = make_full_ellipse(a, b; x0=x0, y0=y0, rot_angle=rot_angle)
+    desymmetrized_full_boundary, _ = make_ellipse_desymmetrized_full_boundary(a, b; x0=x0, y0=y0, rot_angle=rot_angle)
     area_full = pi * a * b
     area_fundamental = area_full * 0.25
     length = sum([crv.length for crv in full_boundary])
     length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     angles = []
     angles_fundamental = []
-    return Ellipse(fundamental_boundary, full_boundary, length, length_fundamental, area_full, a, b, corners, area_fundamental, angles, angles_fundamental)
+    return Ellipse(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, area_full, a, b, corners, area_fundamental, angles, angles_fundamental)
 end
 
 
