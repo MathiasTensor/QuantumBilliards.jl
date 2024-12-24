@@ -35,7 +35,7 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     return res
 end
 
-function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k2) where {Bi<:AbsBilliard}
+function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k2;dk::Function=(k) -> (0.025*k^(-1/3))) where {Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     # Precompute all wavenumbers from k1 to k2 using the dk formula
@@ -43,7 +43,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
     k = k1
     while k < k2
         push!(ks, k)
-        k += 0.025 * k^(-1/3)  # Increment by interval size from Veble's paper
+        k += dk  # Increment by interval size from Veble's paper
     end
     
     # Initialize storage for eigenvalues and tensions
@@ -52,7 +52,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
 
     # Iterate over the computed wavenumbers
     @showprogress for k in ks
-        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, 0.025 * k^(-1/3))
+        λs, tensions = solve(solver, basis, evaluate_points(bim_solver, billiard, k), k, dk)
         
         # Append results only if there are valid eigenvalues
         if !isempty(λs)
