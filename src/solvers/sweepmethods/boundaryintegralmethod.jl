@@ -1059,7 +1059,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     T = eltype(real.(λ))
     
     # Filter valid eigenvalues
-    valid = (abs.(λ) .> eps) .& (abs.(λ) .< dk) .& (imag.(λ) .< sqrt(eps))
+    valid = (abs.(λ) .< dk)
     if !any(valid)
         return Vector{T}(), Vector{T}()
     end
