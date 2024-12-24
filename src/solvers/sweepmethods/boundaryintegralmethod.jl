@@ -1019,8 +1019,8 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
-    valid=(abs.(λ).>eps) .& (abs.(λ).< dk)
-    #valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< sqrt(eps))
+    #valid=(abs.(λ).>eps) .& (abs.(λ).< dk)
+    valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< sqrt(eps))
     if !any(valid) 
         return Vector{T}(),Vector{T}()
     end
