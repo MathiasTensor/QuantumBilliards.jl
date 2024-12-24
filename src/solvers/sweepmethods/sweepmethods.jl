@@ -47,7 +47,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1,k
     λs_all=Float64[] 
     tensions_all=Float64[]
     @showprogress for k in ks
-        λs, tensions = solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k))
+        λs, tensions = solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,1.5*dk(k))
         if !isempty(λs)
             append!(λs_all,λs)
             append!(tensions_all,tensions) 

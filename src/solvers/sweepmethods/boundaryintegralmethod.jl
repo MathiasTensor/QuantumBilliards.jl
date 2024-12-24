@@ -1027,6 +1027,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     end
     λ=real.(λ[valid])
     tens=abs.(λ)
+    #=
     println("typeof λ: ", typeof(λ))
     # similar to scaling method but since these are smallest
     VR=VR[:,valid] # already normalized
@@ -1047,7 +1048,8 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     #end
     #return λ[idxs],tens[idxs]
     return λ,tens
-    #return k.+λ,tens
+    =#
+    return k.+λ,tens
 end
 
 
