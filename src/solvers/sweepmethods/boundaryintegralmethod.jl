@@ -1016,6 +1016,7 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;eps=1e-15) where {Ba<:AbstractHankelBasis}
+    #=
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     println("Constructed A,dA,ddA")
     λ,VR,VL=generalized_eigen_all(A,dA)
@@ -1051,6 +1052,51 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     return λ,tens
     =#
     return k.+λ,tens
+    =#
+    # Construct Fredholm matrix and derivatives
+    A, dA, ddA = construct_matrices(solver, basis, pts, k)
+    λ, VR, VL = generalized_eigen_all(A, dA)
+    T = eltype(real.(λ))
+    
+    # Filter valid eigenvalues
+    valid = (abs.(λ) .> eps) .& (abs.(λ) .< dk) .& (imag.(λ) .< sqrt(eps))
+    if !any(valid)
+        return Vector{T}(), Vector{T}()
+    end
+
+    λ = real.(λ[valid])
+    VR = VR[:, valid]
+    VL = VL[:, valid]
+
+    # Compute corrections using a loop over eigenvectors
+    corr_1 = Vector{T}(undef, length(λ))
+    corr_2 = Vector{T}(undef, length(λ))
+    for i in 1:length(λ)
+        # Extract the i-th right and left eigenvectors
+        v_right = VR[:, i]
+        v_left = VL[:, i]
+
+        # Numerator: v_left' * (ddA * v_right)
+        numerator = real(dot(v_left, ddA * v_right))
+        # Denominator: v_left' * (dA * v_right)
+        denominator = real(dot(v_left, dA * v_right))
+        
+        # Apply corrections
+        corr_1[i] = -λ[i]
+        corr_2[i] = -0.5 * corr_1[i]^2 * numerator / denominator
+    end
+
+    # Correct eigenvalues
+    λ_corrected = k .+ corr_1 .+ corr_2
+    tens = abs.(λ_corrected)
+
+    # Filter corrected eigenvalues within [k - dk, k + dk]
+    idxs = ((k - dk) .< λ_corrected) .& (λ_corrected .< (k + dk))
+    if !any(idxs)
+        return Vector{T}(), Vector{T}()
+    end
+
+    return λ_corrected[idxs], tens[idxs]
 end
 
 
