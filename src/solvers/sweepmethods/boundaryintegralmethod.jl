@@ -1088,7 +1088,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
 
     # Correct eigenvalues
     λ_corrected = k .+ corr_1 .+ corr_2
-    tens = abs.(λ_corrected)
+    tens = abs.(corr_1 .+ corr_2)
 
     # Filter corrected eigenvalues within [k - dk, k + dk]
     idxs = ((k - dk) .< λ_corrected) .& (λ_corrected .< (k + dk))
