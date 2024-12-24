@@ -994,13 +994,7 @@ function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts
 end
 
 """
-    solve(
-        solver::ExpandedBoundaryIntegralMethod, 
-        basis::Ba, 
-        pts::BoundaryPointsBIM{T}, 
-        k::Real, dk::Real; 
-        eps::Real = 1e-15
-    ) -> Vector{T}
+    solve(solver::ExpandedBoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real, dk::Real; eps::Real = 1e-15) -> Vector{T}
 
 Computes the corrected k0 for a given wavenumber range using the expanded boundary integral method. This is done in an interval [k-dk,k+dk]
 
@@ -1010,12 +1004,11 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
 - `k::Real`: Central wavenumber for corrections.
 - `dk::Real`: Correction range for wavenumber.
-- `eps::Real`: Tolerance for filtering valid eigenvalues.
 
 # Returns
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;eps=1e-15) where {Ba<:AbstractHankelBasis}
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk) where {Ba<:AbstractHankelBasis}
     #=
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     println("Constructed A,dA,ddA")
@@ -1053,50 +1046,38 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     =#
     return k.+λ,tens
     =#
-    # Construct Fredholm matrix and derivatives
-    A, dA, ddA = construct_matrices(solver, basis, pts, k)
-    λ, VR, VL = generalized_eigen_all(A, dA)
-    T = eltype(real.(λ))
-    
-    # Filter valid eigenvalues
-    valid = (abs.(λ) .< dk)
+
+    A,dA,ddA=construct_matrices(solver,basis,pts,k)
+    λ,VR,VL=generalized_eigen_all(A,dA)
+    T=eltype(real.(λ))
+    valid=abs.(λ).<dk
     if !any(valid)
-        return Vector{T}(), Vector{T}()
+        return Vector{T}(),Vector{T}() # early termination
     end
-
-    λ = real.(λ[valid])
-    VR = VR[:, valid]
-    VL = VL[:, valid]
-
-    # Compute corrections using a loop over eigenvectors
-    corr_1 = Vector{T}(undef, length(λ))
-    corr_2 = Vector{T}(undef, length(λ))
-    for i in 1:length(λ)
-        # Extract the i-th right and left eigenvectors
-        v_right = VR[:, i]
-        v_left = VL[:, i]
-
-        # Numerator: v_left' * (ddA * v_right)
-        numerator = real(dot(v_left, ddA * v_right))
-        # Denominator: v_left' * (dA * v_right)
-        denominator = real(dot(v_left, dA * v_right))
-        
-        # Apply corrections
-        corr_1[i] = -λ[i]
-        corr_2[i] = -0.5 * corr_1[i]^2 * numerator / denominator
+    λ=real.(λ[valid])
+    VR=VR[:,valid]
+    VL=VL[:,valid]
+    corr_1=Vector{T}(undef,length(λ))
+    corr_2=Vector{T}(undef,length(λ))
+    for i in eachindex(λ)
+        v_right=VR[:,i]
+        v_left=VL[:,i]
+        r_dA=similar(v_right)
+        r_ddA=similar(v_right)
+        mul!(r_ddA,ddA,v_right)
+        mul!(r_dA,dA,v_right)
+        numerator=real(dot(v_left,r_ddA)) # v_left' * (ddA * v_right)
+        denominator=real(dot(v_left,r_dA)) # v_left' * (dA * v_right)
+        corr_1[i]=-λ[i]
+        corr_2[i]=-0.5*corr_1[i]^2*numerator/denominator
     end
-
-    # Correct eigenvalues
-    λ_corrected = k .+ corr_1 .+ corr_2
-    tens = abs.(corr_1 .+ corr_2)
-
-    # Filter corrected eigenvalues within [k - dk, k + dk]
-    idxs = ((k - dk) .< λ_corrected) .& (λ_corrected .< (k + dk))
+    λ_corrected=k.+corr_1.+corr_2
+    tens=abs.(corr_1.+corr_2)
+    idxs=((k-dk).<λ_corrected) .& (λ_corrected.<(k+dk)) # Filter corrected eigenvalues within [k - dk, k + dk]
     if !any(idxs)
         return Vector{T}(), Vector{T}()
     end
-
-    return λ_corrected[idxs], tens[idxs]
+    return λ_corrected[idxs],tens[idxs]
 end
 
 
