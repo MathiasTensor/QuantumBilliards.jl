@@ -1019,8 +1019,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
-    #valid=(abs.(λ).>eps) .& (abs.(λ).< dk)
-    valid=(abs.(λ) .> eps) .& (abs.(λ) .< dk) .& (imag.(λ) .< sqrt(eps))
+    valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< sqrt(eps))
     if !any(valid) 
         return Vector{T}(),Vector{T}()
     end
@@ -1030,11 +1029,9 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     VR=VR[:,valid] # already normalized
     VL=VL[:,valid] # already normalized
     corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
-    numerators = real.([dot(VL[:, i], ddA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
-    denominators = real.([dot(VL[:, i], dA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
-    #denominator = real.(sum(conj(VL) .* (dA * VR), dims=1))[:]  # Flatten to 1D
+    denominator = real.(sum(conj(VL) .* (dA * VR), dims=1))[:]  # Flatten to 1D
     println("typeof numerators: ", typeof(numerators))
-    #numerator = real.(sum(conj(VL) .* (ddA * VR), dims=1))[:]  # Flatten to 1D 
+    numerator = real.(sum(conj(VL) .* (ddA * VR), dims=1))[:]  # Flatten to 1D 
     println("typeof denominators: ", typeof(denominators))
     corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
     println("typeof corr_2: ", typeof(corr_2))
