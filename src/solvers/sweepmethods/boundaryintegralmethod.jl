@@ -889,14 +889,13 @@ function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmet
     curvatures=boundary_points.curvature
     ds=boundary_points.ds
     N=length(xy_points)
-    reflected_points_x = symmetry_rule.symmetry_type in [:x,:xy] ?
+    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
         [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_y = symmetry_rule.symmetry_type in [:y,:xy] ?
+    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
         [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
+    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    #fredholm_matrix = Matrix{Complex{T}}(I,N,N)
-    fredholm_matrix = fill(Complex(0.0,0.0),N,N)
+    fredholm_matrix=fill(Complex(0.0,0.0),N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
         normal1=normals[i]
@@ -938,14 +937,13 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
     curvatures=boundary_points.curvature
     ds=boundary_points.ds
     N=length(xy_points)
-    reflected_points_x = symmetry_rule.symmetry_type in [:x,:xy] ?
+    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
         [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_y = symmetry_rule.symmetry_type in [:y,:xy] ?
+    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
         [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
+    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    #fredholm_matrix = Matrix{Complex{T}}(I,N,N)
-    fredholm_matrix = fill(Complex(0.0,0.0),N,N)
+    fredholm_matrix=fill(Complex(0.0,0.0),N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
         normal1=normals[i]
