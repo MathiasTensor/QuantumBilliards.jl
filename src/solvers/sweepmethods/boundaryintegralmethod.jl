@@ -718,7 +718,7 @@ function default_helmholtz_kernel_first_derivative(p1::SVector{2,T},p2::SVector{
     if abs(distance12)<eps(T)
         return Complex(0.0,0.0)  # First derivative is zero when r -> 0
     end
-    return -im/2*distance12*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance12) 
+    return -im*k/2*distance12*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance12) 
 end
 
 """
@@ -1046,7 +1046,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     =#
 
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
-    dA=dA+I
+    #dA=dA+I
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
     valid=abs.(λ).<dk
