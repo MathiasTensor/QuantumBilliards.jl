@@ -1051,10 +1051,10 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
     valid=abs.(λ).<dk
+    println("Smallest λ: ", λ[findmin(abs,λ)[2]])
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
     end
-    println("Smallest λ: ", λ[findmin(abs,λ)[2]])
     λ=real.(λ[valid])
     VR=VR[:,valid]
     VL=VL[:,valid]
