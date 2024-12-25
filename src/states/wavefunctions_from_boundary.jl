@@ -130,6 +130,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     end
     # husimi
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
     try
         Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
     catch e
