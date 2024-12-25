@@ -118,7 +118,7 @@ A * u = λ * B * u
 - `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
 """
 function generalized_eigen_all(A,B)
-    #=
+    
     F=eigen(A,B)
     λ=F.values
     VR=F.vectors # right eigenvectors
@@ -133,7 +133,8 @@ function generalized_eigen_all(A,B)
     VR=VR[:,sort_order]
     VL=VL[:,sort_order]
     return λ,normalize!(VR),normalize!(VL)
-    =#
+    
+    #=
     λ,VR=regularized_eigen_general_matrices(A,B)
     _,VL=regularized_eigen_general_matrices(A',B')
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
@@ -144,6 +145,7 @@ function generalized_eigen_all(A,B)
     VR=VR[:,sort_order]
     VL=VL[:,sort_order]
     return λ,normalize!(VR),normalize!(VL)
+    =#
 end
 
 """
