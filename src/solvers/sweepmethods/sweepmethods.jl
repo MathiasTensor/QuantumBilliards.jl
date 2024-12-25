@@ -90,7 +90,7 @@ function solve_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::
     k=k1
     while k<k2
         push!(ks,k)
-        k+=dk(k)  
+        k+=dk(k)/2 
     end
     λs_all=T[] 
     tensions_all=T[]
