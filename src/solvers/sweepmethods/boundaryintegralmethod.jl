@@ -1048,7 +1048,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     =#
 
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
-    dA=dA+I*1e-14
+    dA=dA+I*1e-7
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
     valid=abs.(λ).<dk
