@@ -82,23 +82,6 @@ function generalized_eigvals(A,B;eps=1e-15)
     return eigvals(Symmetric(E))  
 end
 
-function regularized_eigen_general_matrices(A,B;eps=1e-15)
-    d,S=eigen(A)
-    d=abs.(d)
-    maxd=maximum(d)
-    idx=d.>eps*maxd 
-    q=1.0./sqrt.(d[idx])
-    C=@view S[:,idx]
-    C_scaled=C.*q'
-    n=size(C_scaled,2)
-    tmp=Matrix{eltype(B)}(undef,size(B,1),n)  
-    E=Matrix{eltype(B)}(undef,n,n) 
-    mul!(tmp,B,C_scaled)
-    mul!(E,C_scaled',tmp)
-    F=eigen(E)
-    return F.values,C_scaled*F.vectors
-end
-
 """
     generalized_eigen_all(A::AbstractMatrix, B::AbstractMatrix) -> (Vector{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}) where T <: Real
 
@@ -118,7 +101,6 @@ A * u = λ * B * u
 - `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
 """
 function generalized_eigen_all(A,B)
-    
     F=eigen(A,B)
     λ=F.values
     VR=F.vectors # right eigenvectors
@@ -133,19 +115,6 @@ function generalized_eigen_all(A,B)
     VR=VR[:,sort_order]
     VL=VL[:,sort_order]
     return λ,normalize!(VR),normalize!(VL)
-    
-    #=
-    λ,VR=regularized_eigen_general_matrices(A,B)
-    _,VL=regularized_eigen_general_matrices(A',B')
-    valid_indices=.!isnan.(λ).&.!isinf.(λ)
-    VR=VR[:,valid_indices]
-    VL=VL[:,valid_indices]
-    sort_order=sortperm(abs.(λ)) 
-    λ=λ[sort_order]
-    VR=VR[:,sort_order]
-    VL=VL[:,sort_order]
-    return λ,normalize!(VR),normalize!(VL)
-    =#
 end
 
 """
