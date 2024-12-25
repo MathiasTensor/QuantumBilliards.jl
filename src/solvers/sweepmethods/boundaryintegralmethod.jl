@@ -1054,6 +1054,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
     end
+    println("λ: ",λ)
     λ=real.(λ[valid])
     VR=VR[:,valid]
     VL=VL[:,valid]
