@@ -614,7 +614,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     mu=F.S[end]
     u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
     u_mu=real.(u_mu)
-    u_mu.=ifelse.(abs.(u_mu).<eps(eltype(u_mu)),zero(eltype(u_mu)),u_mu)
+    #u_mu.=ifelse.(abs.(u_mu).<eps(eltype(u_mu)),zero(eltype(u_mu)),u_mu)
     return mu,u_mu
 end
 
