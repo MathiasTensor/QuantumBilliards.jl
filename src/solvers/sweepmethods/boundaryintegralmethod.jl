@@ -1007,46 +1007,7 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk) where {Ba<:AbstractHankelBasis}
-    #=
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
-    println("Constructed A,dA,ddA")
-    λ,VR,VL=generalized_eigen_all(A,dA)
-    println("Computed λ,VR,VL, smallest λ:", findmin(abs,λ)[1])
-    T=eltype(real.(λ))
-    #valid=(abs.(λ).>eps) .& (abs.(λ).< dk) .& (imag.(λ).< real.(λ))
-    valid=(abs.(λ).< dk)
-    if !any(valid) 
-        return Vector{T}(),Vector{T}()
-    end
-    λ=real.(λ[valid])
-    tens=abs.(λ)
-    #=
-    println("typeof λ: ", typeof(λ))
-    # similar to scaling method but since these are smallest
-    VR=VR[:,valid] # already normalized
-    VL=VL[:,valid] # already normalized
-    corr_1=-λ # consistency with taylor expansion expression A * u = - λ * B * u
-    numerators = real.([dot(VL[:, i]', ddA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
-    denominators = real.([dot(VL[:, i]', dA * VR[:, i]) for i in eachindex(1:size(VR, 2))])
-    #denominators = real.(sum(VL .* (dA * VR), dims=1))[:]  # Flatten to 1D
-    println("typeof denominators: ", typeof(denominators))
-    #numerators = real.(sum(VL .* (ddA * VR), dims=1))[:]  # Flatten to 1D 
-    println("typeof numerators: ", typeof(numerators))
-    corr_2=-0.5*corr_1.^2 .* real.(numerators./denominators)
-    println("typeof corr_2: ", typeof(corr_2))
-    λ=k.+corr_1.+corr_2
-    #idxs=((k-dk).< λ) .& (λ.<(k+dk))
-    #if !any(idxs)
-    #    return Vector{T}(),Vector{T}()
-    #end
-    #return λ[idxs],tens[idxs]
-    return λ,tens
-    =#
-    return k.+λ,tens
-    =#
-
-    A,dA,ddA=construct_matrices(solver,basis,pts,k)
-    #dA=dA+I
     λ,VR,VL=generalized_eigen_all(A,dA)
     T=eltype(real.(λ))
     valid=abs.(λ).<dk
