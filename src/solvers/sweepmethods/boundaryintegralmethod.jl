@@ -1008,7 +1008,8 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 """
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
-    λ,VR,VL=generalized_eigen_all(A,dA)
+    #λ,VR,VL=generalized_eigen_all(A,dA)
+    λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
     T=eltype(real.(λ))
     valid=abs.(λ).<dk
     println("Smallest λ: ", λ[findmin(abs,λ)[2]])
