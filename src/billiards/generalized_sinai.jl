@@ -76,8 +76,8 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
     right_arc=CircleSegment(rr,angle_right,T(pi)-angle_right,x0,y0)
     top_arc=CircleSegment(rt,angle_top,T(3*pi/2),x0,y0)
-    line_vertical=VirtualLineSegment(origin,top)
-    line_horizontal=VirtualLineSegment(right,origin)
+    line_vertical=VirtualLineSegment(top,origin)
+    line_horizontal=VirtualLineSegment(origin,right)
     boundary=Union{CircleSegment,VirtualLineSegment}[right_arc,top_arc,line_vertical,line_horizontal]
     corners=[origin]
     return boundary,corners
