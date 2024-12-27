@@ -35,19 +35,19 @@ end
 
 # INTERNAL -> not necessarily the same as the top right since circle is not on y-axis
 function circle_top_left(A::T, theta::T) where {T<:Real}
-    h,k,r=circle_top(A,theta)
+    h,k,r=circle_top_right(A,theta)
     return -h,k,r
 end
 
 # INTERNAL -> same as top right but -k
 function circle_bottom_right(A::T, theta::T) where {T<:Real}
-    h,k,r=circle_top(A,theta)
+    h,k,r=circle_top_right(A,theta)
     return h,-k,r
 end
 
 # INTERNAL -> same as top left but -k
 function circle_bottom_left(A::T, theta::T) where {T<:Real}
-    h,k,r=circle_top(A,theta)
+    h,k,r=circle_top_right(A,theta)
     return -h,-k,r
 end
 
@@ -164,7 +164,7 @@ function circle_left_up(B::T, theta::T) where {T<:Real}
 end
 
 function circle_left_down(B::T, theta::T) where {T<:Real}
-    h,k,r=circle_right(B,theta)
+    h,k,r=circle_right_up(B,theta)
     return -h,-k,r
 end
 
