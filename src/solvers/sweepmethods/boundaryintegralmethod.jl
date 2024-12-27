@@ -673,7 +673,7 @@ function sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billia
     Threads.@threads for i in eachindex(ks)
         A=construct_matrices(solver,AbstractHankelBasis(),pts,ks[i])
         res[i]=svdvals(A)[end]
-        discrepany[i]=norm(A-A',p=2)/norm(A,p=2)
+        discrepany[i]=norm(A-A')/norm(A)
         next!(p)
     end
     return res,discrepancy
