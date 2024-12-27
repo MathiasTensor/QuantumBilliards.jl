@@ -381,6 +381,48 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
 end
 
 """
+    compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05 * k^(-1/3))) -> Tuple{Vector{T}, Vector{T}}
+
+Computes the spectrum of the expanded BIM and their corresponding tensions for a given billiard problem within a specified wavenumber range.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the expanded boundary integral method.
+- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
+- `k1::T`: Starting wavenumber for the spectrum calculation.
+- `k2::T`: Ending wavenumber for the spectrum calculation.
+- `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
+
+# Returns
+- `Tuple{Vector{T}, Vector{T}}`: 
+  - First element is a vector of corrected eigenvalues (`λ`).
+  - Second element is a vector of corresponding tensions.
+"""
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3))) where {T<:Real,Bi<:AbsBilliard}
+    basis=AbstractHankelBasis()
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    ks=T[]
+    k=k1
+    while k<k2
+        push!(ks,k)
+        k+=dk(k)/2 
+    end
+    λs_all=T[] 
+    tensions_all=T[]
+    @showprogress for k in ks
+        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,1.5*dk(k))
+        if !isempty(λs)
+            append!(λs_all,λs)
+            append!(tensions_all,tensions) 
+        end
+    end
+    if isempty(λs_all) # Handle case of no eigenvalues found
+        λs_all=[0.0]
+        tensions_all=[0.0]
+    end
+    return λs_all,tensions_all
+end
+
+"""
     compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0),partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
 
 Compute the eigenvalue spectrum for a given billiard system, optimizing over intervals defined by a dynamical solver.

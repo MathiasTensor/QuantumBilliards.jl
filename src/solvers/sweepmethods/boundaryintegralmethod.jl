@@ -645,6 +645,7 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     return us_all,pts_all
 end
 
+#=
 """
     sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billiard::AbsBilliard, ks::Vector{T}) -> Tuple{Vector{T}, Vector{T}}
 
@@ -678,7 +679,7 @@ function sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billia
     end
     return res,discrepancy
 end
-
+=#
 
 
 
