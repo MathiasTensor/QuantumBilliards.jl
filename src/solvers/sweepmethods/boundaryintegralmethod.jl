@@ -645,6 +645,40 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     return us_all,pts_all
 end
 
+"""
+    sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billiard::AbsBilliard, ks::Vector{T}) -> Tuple{Vector{T}, Vector{T}}
+
+Performs a sweep over a range of wavenumbers (`ks`) and calculates two metrics for each wavenumber:
+1. The smallest singular value of the matrix `A` constructed at the given wavenumber.
+2. A Hermitian discrepancy measure for the matrix `A`, defined as: `norm(A - A', p=2) / norm(A, p=2)`, where `p=2` denotes the spectral norm.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver configuration.
+- `billiard::AbsBilliard`: The billiard configuration to be analyzed.
+- `ks::Vector{T}`: A vector of wavenumbers to sweep over.
+
+# Returns
+- `Tuple{Vector{T}, Vector{T}}`:
+  - A vector containing the smallest singular value of the constructed matrix `A` for each `k` in `ks`.
+  - A vector containing the Hermitian discrepancy measure of `A` for each `k` in `ks`.
+"""
+function sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billiard::AbsBilliard, ks::Vector{T}) where {T<:Real}
+    k=maximum(ks)
+    pts=evaluate_points(solver,billiard,k) # use max num of pts for all ks
+    res=similar(ks)
+    discrepany=similar(ks)
+    num_intervals=length(ks)
+    println("$(nameof(typeof(solver))) sweep...")
+    p=Progress(num_intervals,1)
+    Threads.@threads for i in eachindex(ks)
+        A=construct_matrices(solver,AbstractHankelBasis(),pts,ks[i])
+        res[i]=svdvals(A)[end]
+        discrepany[i]=norm(A-A',p=2)/norm(A,p=2)
+        next!(p)
+    end
+    return res,discrepancy
+end
+
 
 
 
