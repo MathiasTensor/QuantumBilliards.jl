@@ -196,12 +196,13 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
     right_arc_up=CircleSegment(rr,angle_right,T(pi)-angle_right-angle_right_pi,hr,kr,orientation= -1)
     top_arc_right=CircleSegment(rt,angle_top,T(3*pi/2)-angle_top,ht,kt,orientation= -1)
+    top_arc_left=CircleSegment(rt,angle_top,T(pi)-angle_top,ht,kt,orientation= -1)
     left_arc_up=CircleSegment(rl,angle_right,-angle_right-angle_right_pi,hl,kl,orientation= -1)
     left_arc_down=CircleSegment(rl,angle_right,T(2*pi)-angle_right-angle_right_pi,hl,kl,orientation= -1)
     bottom_arc_left=CircleSegment(rb,angle_top,T(pi/2),hb,kb,orientation= -1)
     bottom_arc_right=CircleSegment(rb,angle_top,T(0.0),hb,kb,orientation= -1)
     right_arc_up=CircleSegment(rr,angle_right,T(3*pi/2)-angle_right-angle_right_pi,hr,kr,orientation= -1)
-    boundary=Union{CircleSegment}[right_arc_up,top_arc_right,left_arc_up,left_arc_down,bottom_arc_left,bottom_arc_right,right_arc_up]
+    boundary=Union{CircleSegment}[right_arc_up,top_arc_right,top_arc_left,left_arc_up,left_arc_down,bottom_arc_left,bottom_arc_right,right_arc_up]
     corners=[]
     return boundary,corners
 end
