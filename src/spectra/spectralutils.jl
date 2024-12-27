@@ -413,7 +413,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     control=Bool[]
     println("EBIM...")
     @showprogress for k in ks
-        dd=1.0*dk(k)
+        dd=1.5*dk(k)
         λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dd;use_lapack_raw=use_lapack_raw)
         if !isempty(λs)
             overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,k-dd,k;tol=tol)
