@@ -391,13 +391,14 @@ Computes the spectrum of the expanded BIM and their corresponding tensions for a
 - `k1::T`: Starting wavenumber for the spectrum calculation.
 - `k2::T`: Ending wavenumber for the spectrum calculation.
 - `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
+- `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: 
   - First element is a vector of corrected eigenvalues (`λ`).
   - Second element is a vector of corresponding tensions.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3))) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4) where {T<:Real,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     ks=T[]
@@ -408,16 +409,19 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     end
     λs_all=T[] 
     tensions_all=T[]
+    control=Bool[]
     @showprogress for k in ks
-        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,1.5*dk(k))
+        dd=1.5*dk(k)
+        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dd)
         if !isempty(λs)
-            append!(λs_all,λs)
-            append!(tensions_all,tensions) 
+            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,k-dd,d;tol=tol)
+            #append!(λs_all,λs)
+            #append!(tensions_all,tensions) 
         end
     end
     if isempty(λs_all) # Handle case of no eigenvalues found
-        λs_all=[0.0]
-        tensions_all=[0.0]
+        λs_all=[NaN]
+        tensions_all=[NaN]
     end
     return λs_all,tensions_all
 end
