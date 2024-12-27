@@ -406,7 +406,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     k=k1
     while k<k2
         push!(ks,k)
-        k+=dk(k)/2 
+        k+=dk(k) 
     end
     λs_all=T[] 
     tensions_all=T[]
