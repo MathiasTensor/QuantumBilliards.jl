@@ -1037,14 +1037,18 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
 - `k::Real`: Central wavenumber for corrections.
 - `dk::Real`: Correction range for wavenumber.
+- `use_lapack_raw::Bool=false`: Use the ggev LAPACK function directly without Julia's eigen(A,B) wrapper for it. Might provide speed-up for certain situations (small matrices...)
 
 # Returns
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk) where {Ba<:AbstractHankelBasis}
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k)
-    #λ,VR,VL=generalized_eigen_all(A,dA)
-    λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
+    if use_lapack_raw
+        λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
+    else
+        λ,VR,VL=generalized_eigen_all(A,dA)
+    end
     T=eltype(real.(λ))
     valid=abs.(λ).<dk
     if !any(valid)
