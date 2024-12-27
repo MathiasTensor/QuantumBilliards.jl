@@ -194,8 +194,8 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
 end
 
 function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
-    ht,kt,rt=circle_top(half_height,theta_top)
-    hr,kr,rr=circle_right(half_width,theta_right)
+    ht,kt,rt=circle_top_right(half_height,theta_top)
+    hr,kr,rr=circle_right_up(half_width,theta_right)
     angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
     x_corr_r,y_corr_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
