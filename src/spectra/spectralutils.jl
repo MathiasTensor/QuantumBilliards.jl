@@ -410,6 +410,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     λs_all=T[] 
     tensions_all=T[]
     control=Bool[]
+    println("EBIM...")
     @showprogress for k in ks
         dd=1.5*dk(k)
         λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dd)
