@@ -414,7 +414,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
         dd=1.5*dk(k)
         λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dd)
         if !isempty(λs)
-            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,k-dd,d;tol=tol)
+            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,k-dd,k;tol=tol)
             #append!(λs_all,λs)
             #append!(tensions_all,tensions) 
         end
