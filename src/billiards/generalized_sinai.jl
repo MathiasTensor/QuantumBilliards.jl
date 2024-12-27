@@ -69,7 +69,7 @@ function circle_right(B::T, theta::T) where {T<:Real}
     # => k2 = 1 + (1 - h2)*cot(θ2)
     # => (B - h2)^2 + k2^2 = (1 - h2)^2 + (1 - k2)^2
     #
-    cotθ2 = cot(θ2)
+    cotθ2 = cot(theta)
 
     # 1) Expand the equality of r2^2 from the two points:
     #    (B - h2)^2 + k2^2 = (1 - h2)^2 + (1 - k2)^2
