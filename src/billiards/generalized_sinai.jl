@@ -210,7 +210,7 @@ struct GeneralizedSinai{T} <: AbsBilliard where {T<:Real}
     angles_fundamental::Vector
 end
 
-function GeneralizedSinai(half_width::T, half_height::T, theta_right::T, theta_top::T) :: GeneralizedSinai where {T<:Real}
+function GeneralizedSinai(half_height::T, half_width::T, theta_right::T, theta_top::T) :: GeneralizedSinai where {T<:Real}
     fundamental_boundary,corners=make_quarter_generalized_sinai(half_height,half_width,theta_right,theta_top)
     desymmetrized_full_boundary,_=make_desymmetrized_full_generalized_sinai(half_height,half_width,theta_right,theta_top)
     full_boundary,_=make_full_boundary_generalized_sinai(half_height,half_width,theta_right,theta_top)
@@ -221,8 +221,8 @@ function GeneralizedSinai(half_width::T, half_height::T, theta_right::T, theta_t
     return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_height,theta_right,theta_top,corners,[],[pi/2])
 end
 
-function make_generalized_sinai_and_basis(half_width::T, half_height::T, theta_right::T, theta_top::T; basis_type=:cafb, x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
-    billiard=GeneralizedSinai(half_width,half_height,theta_right,theta_top)
+function make_generalized_sinai_and_basis(half_height::T, half_width::T, theta_right::T, theta_top::T; basis_type=:cafb, x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+    billiard=GeneralizedSinai(half_height,half_width,theta_right,theta_top)
     symmetry=Vector{Any}([XYReflection(-1,-1)])
     if basis_type==:cafb
         basis=CornerAdaptedFourierBessel(10,Float64(pi/2),SVector(x0,y0),rot_angle,symmetry)
