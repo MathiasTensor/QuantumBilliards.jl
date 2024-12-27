@@ -157,7 +157,7 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
     #x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
     #angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0) # this is the angle between the hr,kr,rr point at pi and the (half_width,0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)-angle_right,hr,kr;orientation= -1) # we need to add it so that the geometry is correct. This is also corrected in the left circle segment in the full boundary analogously
+    right_arc=CircleSegment(rr,2*pi,T(pi)-angle_right,hr,kr;orientation= -1) # we need to add it so that the geometry is correct. This is also corrected in the left circle segment in the full boundary analogously
     top_arc=CircleSegment(rt,angle_top,T(3*pi/2),ht,kt,orientation= -1)
     line_vertical=VirtualLineSegment(top,origin)
     line_horizontal=VirtualLineSegment(origin,right)
