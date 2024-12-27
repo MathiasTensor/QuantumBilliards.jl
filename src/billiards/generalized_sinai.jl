@@ -156,9 +156,9 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
     x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
-    angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
-    top_arc=CircleSegment(rt,angle_top,T(3*pi/2),ht,kt)
+    angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0) # this is the angle between the hr,kr,rr point at pi and the (half_width,0)
+    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr;orientation= -1) # we need to add it so that the geometry is correct. This is also corrected in the left circle segment in the full boundary analogously
+    top_arc=CircleSegment(rt,angle_top,T(3*pi/2),ht,kt,orientation= -1)
     line_vertical=VirtualLineSegment(top,origin)
     line_horizontal=VirtualLineSegment(origin,right)
     boundary=Union{CircleSegment,VirtualLineSegment}[right_arc,top_arc,line_vertical,line_horizontal]
@@ -173,8 +173,8 @@ function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
     x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
     angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
-    top_arc=CircleSegment(rt,angle_top,T(3*pi/2),x0,y0)
+    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr,orientation= -1)
+    top_arc=CircleSegment(rt,angle_top,T(3*pi/2),x0,y0,orientation= -1)
     boundary=Union{CircleSegment}[right_arc,top_arc]
     corners=[]
     return boundary,corners
@@ -194,10 +194,10 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0) # can use this for angle_left
     x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
     angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
-    top_arc=CircleSegment(rt,2*angle_top,T(3*pi/2)-angle_top,ht,kt)
-    left_arc=CircleSegment(rl,2*angle_right,-angle_right-angle_right_pi,hl,kl)
-    bottom_arc=CircleSegment(rb,2*angle_top,T(pi/2)-angle_top,hb,kb)
+    right_arc=CircleSegment(rr,2*angle_right,T(pi)+angle_right_pi-angle_right,hr,kr,orientation= -1)
+    top_arc=CircleSegment(rt,2*angle_top,T(3*pi/2)-angle_top,ht,kt,orientation= -1)
+    left_arc=CircleSegment(rl,2*angle_right,-angle_right-angle_right_pi,hl,kl,orientation= -1)
+    bottom_arc=CircleSegment(rb,2*angle_top,T(pi/2)-angle_top,hb,kb,orientation= -1)
     boundary=Union{CircleSegment}[right_arc,top_arc,left_arc,bottom_arc]
     corners=[]
     return boundary,corners
