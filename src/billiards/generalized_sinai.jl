@@ -141,7 +141,7 @@ function GeneralizedSinai(half_width::T, half_height::T, theta_right::T, theta_t
     length_fundamental=sum([seg.length for seg in fundamental_boundary])
     area=4*0.6140 # fix later 
     area_fundamental=0.6140 # fix later
-    return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_heigt,theta_right,theta_top,corners,[],[pi/2])
+    return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_height,theta_right,theta_top,corners,[],[pi/2])
 end
 
 function make_generalized_sinai_and_basis(half_width::T, half_height::T, theta_right::T, theta_top::T; basis_type=:cafb, x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
