@@ -1050,7 +1050,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
     end
-    println("EBIM λ: ", λ[valid][findmin(abs,λ)[2]])
+    #println("EBIM λ: ", λ[valid][findmin(abs,λ)[2]])
     λ=real.(λ[valid])
     VR=VR[:,valid]
     VL=VL[:,valid]
