@@ -55,6 +55,7 @@ include("billiards/prosen.jl")
 include("billiards/mushroom.jl")
 include("billiards/rectangle.jl")
 include("billiards/equilateraltriangle.jl")
+include("billiards/generalized_sinai.jl")
 export adapt_basis
 #include("limacon.jl")
 #include("rectangle.jl")
@@ -71,6 +72,7 @@ export Mushroom, make_half_mushroom, make_full_mushroom, make_mushroom_and_basis
 export RectangleBilliard, make_quarter_rectangle, make_full_rectangle, make_rectangle_and_basis
 export Stadium, make_quarter_stadium, make_full_stadium, make_stadium_and_basis
 export EquilateralTriangleBilliard, make_fundamental_equilateral_triangle, make_full_equilateral_triangle, make_equilateral_triangle_and_basis
+export GeneralizedSinai, make_quarter_generalized_sinai, make_full_boundary_generalized_sinai, make_desymmetrized_full_generalized_sinai, make_generalized_sinai_and_basis
 
 include("solvers/decompositions.jl")
 include("solvers/matrixconstructors.jl")
