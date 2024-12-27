@@ -666,14 +666,14 @@ function sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billia
     k=maximum(ks)
     pts=evaluate_points(solver,billiard,k) # use max num of pts for all ks
     res=similar(ks)
-    discrepany=similar(ks)
+    discrepancy=similar(ks)
     num_intervals=length(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(num_intervals,1)
     Threads.@threads for i in eachindex(ks)
         A=construct_matrices(solver,AbstractHankelBasis(),pts,ks[i])
         res[i]=svdvals(A)[end]
-        discrepany[i]=norm(A-A')/norm(A)
+        discrepancy[i]=norm(A-A')/norm(A)
         next!(p)
     end
     return res,discrepancy
