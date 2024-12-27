@@ -143,6 +143,10 @@ function circle_left(B::T, theta::T) where {T<:Real}
     return -h,k,r
 end
 
+function circle_helper(ϕ::T, h::T, k::T, r::T) where {T<:Real}
+    return h+r*cos(ϕ),k+r*sin(ϕ)
+end
+
 function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
     origin=SVector(x0,y0)
     top=SVector(x0,half_height)
@@ -151,7 +155,9 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     hr,kr,rr=circle_right(half_width,theta_right)
     angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)-angle_right,hr,kr)
+    x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr)
+    angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
+    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
     top_arc=CircleSegment(rt,angle_top,T(3*pi/2),ht,kt)
     line_vertical=VirtualLineSegment(top,origin)
     line_horizontal=VirtualLineSegment(origin,right)
