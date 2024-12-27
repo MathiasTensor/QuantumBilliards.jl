@@ -155,7 +155,7 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     hr,kr,rr=circle_right(half_width,theta_right)
     angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
-    x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr)
+    x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
     angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
     right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
     top_arc=CircleSegment(rt,angle_top,T(3*pi/2),ht,kt)
@@ -171,7 +171,9 @@ function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T
     hr,kr,rr=circle_right(half_width,theta_right)
     angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)-angle_right,x0,y0)
+    x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
+    angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
+    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
     top_arc=CircleSegment(rt,angle_top,T(3*pi/2),x0,y0)
     boundary=Union{CircleSegment}[right_arc,top_arc]
     corners=[]
@@ -190,9 +192,11 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     hb,kb,rb=circle_bottom(half_height,theta_top)
     angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2) # can use this for angle_bottom
     angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0) # can use this for angle_left
-    right_arc=CircleSegment(rr,2*angle_right,T(pi)-angle_right,x0,y0)
+    x_pi_r,y_pi_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
+    angle_right_pi=angle_between_points(hr,kr,x_pi_r,y_pi_r,half_width,y0)
+    right_arc=CircleSegment(rr,angle_right,T(pi)+angle_right_pi-angle_right,hr,kr)
     top_arc=CircleSegment(rt,2*angle_top,T(3*pi/2)-angle_top,x0,y0)
-    left_arc=CircleSegment(rl,2*angle_right,-angle_right,x0,y0)
+    left_arc=CircleSegment(rl,2*angle_right,-angle_right-angle_right_pi,x0,y0)
     bottom_arc=CircleSegment(rb,2*angle_top,T(pi/2)-angle_top,x0,y0)
     boundary=Union{CircleSegment}[right_arc,top_arc,left_arc,bottom_arc]
     corners=[]
