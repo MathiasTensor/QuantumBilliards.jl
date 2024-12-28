@@ -627,7 +627,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     println("Matrix dimensions: ", size(A))
     println("Condition number: ", cond(A))
     println("Norm of A: ", norm(A))
-    F=svd(A)
+    F=svd(A;alg=QRIteration())
     mu=F.S[end]
     u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
     u_mu=real.(u_mu)
