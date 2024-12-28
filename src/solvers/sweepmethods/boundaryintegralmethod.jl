@@ -627,9 +627,13 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     println("Matrix dimensions: ", size(A))
     println("Condition number: ", cond(A))
     println("Norm of A: ", norm(A))
-    F=svd(A;alg=QRIteration())
-    mu=F.S[end]
-    u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
+    #F=svd(A;alg=QRIteration())
+    #mu=F.S[end]
+    #u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
+    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[:,idx]
     u_mu=real.(u_mu)
     return mu,u_mu
 end
