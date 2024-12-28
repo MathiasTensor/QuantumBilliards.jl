@@ -633,7 +633,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
-    u_mu=Vt[:,idx]
+    u_mu=Vt[idx,:]
     u_mu=real.(u_mu)
     return mu,u_mu
 end
