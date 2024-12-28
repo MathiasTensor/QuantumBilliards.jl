@@ -653,7 +653,7 @@ Solve for the eigenvectors of the boundary integral method (BIM) for a range of 
 function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=default_helmholtz_kernel) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
-    Threads.@threads for i in eachindex(ks)
+    for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
         _,u=solve_vect(solver,basis,pts,ks[i];kernel_fun=kernel_fun)
         us_all[i]=u
