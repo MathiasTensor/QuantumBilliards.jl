@@ -480,31 +480,31 @@ Computes the kernel value for a given pair of points, incorporating symmetry ref
 # Returns
 - `Complex{T}`: Computed kernel value.
 """
-function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
-    kernel_value=default_helmholtz_kernel(p1,p2,normal1,k,curvature1) # Base kernel computation
+function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
+    kernel_value=kernel_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
         if rule.x_bc==:D
-            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_x,normal1,k,curvature1)
+            kernel_value-=kernel_fun(p1,reflected_p2_x,normal1,k,curvature1)
         elseif rule.x_bc==:N
-            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_x,normal1,k,curvature1)
+            kernel_value+=kernel_fun(p1,reflected_p2_x,normal1,k,curvature1)
         end
     end
     if !isnothing(reflected_p2_y) # Handle y-reflection
         if rule.y_bc==:D
-            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_y,normal1,k,curvature1)
+            kernel_value-=kernel_fun(p1,reflected_p2_y,normal1,k,curvature1)
         elseif rule.y_bc==:N
-            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_y,normal1,k,curvature1)
+            kernel_value+=kernel_fun(p1,reflected_p2_y,normal1,k,curvature1)
         end
     end
     if !isnothing(reflected_p2_xy) # Handle xy-reflection
         if rule.x_bc==:D && rule.y_bc==:D
-            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:D && rule.y_bc==:N
-            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value-=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:N && rule.y_bc==:D
-            kernel_value-=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value-=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:N && rule.y_bc==:N
-            kernel_value+=default_helmholtz_kernel(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
     return kernel_value
@@ -523,7 +523,7 @@ Constructs the Fredholm matrix for the boundary integral method.
 # Returns
 - `Matrix{Complex{T}}`: Constructed Fredholm matrix.
 """
-function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
+function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
     curvatures=boundary_points.curvature
@@ -547,7 +547,7 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
                 p1,p2,normal1,curvature1,
                 isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
                 isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
-                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k)
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_fun=kernel_fun)
             fredholm_matrix[i, j]-=ds1*kernel_value
         end
     end
@@ -570,8 +570,8 @@ Constructs the Fredholm matrix for the given boundary integral method, basis, an
 # Returns
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix.
 """
-function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
-    return fredholm_matrix(pts,solver.rule,k)
+function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
+    return fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
 end
 
 """
@@ -588,8 +588,8 @@ Computes the smallest singular value of the Fredholm matrix.
 # Returns
 - `T`: The smallest singular value of the matrix.
 """
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM, k) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k)
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     mu=svdvals(A)
     return mu[end]
 end
@@ -608,8 +608,8 @@ Computes the smallest singular value and its corresponding singular vector.
 # Returns
 - `Tuple{T, Vector{T}}`: A tuple containing the smallest singular value and the corresponding singular vector.
 """
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k)
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     F=svd(A)
     mu=F.S[end]
     u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
@@ -633,53 +633,17 @@ Solve for the eigenvectors of the boundary integral method (BIM) for a range of 
 - `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
 - `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, containing the boundary points used for each wave number in `ks`.
 """
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T}) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=default_helmholtz_kernel) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
     Threads.@threads for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i];kernel_fun=kernel_fun)
         us_all[i]=u
         pts_all[i]=pts
     end
     return us_all,pts_all
 end
-
-#=
-"""
-    sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billiard::AbsBilliard, ks::Vector{T}) -> Tuple{Vector{T}, Vector{T}}
-
-Performs a sweep over a range of wavenumbers (`ks`) and calculates two metrics for each wavenumber:
-1. The smallest singular value of the matrix `A` constructed at the given wavenumber.
-2. A Hermitian discrepancy measure for the matrix `A`, defined as: `norm(A - A', p=2) / norm(A, p=2)`, where `p=2` denotes the spectral norm.
-
-# Arguments
-- `solver::BoundaryIntegralMethod`: The boundary integral method solver configuration.
-- `billiard::AbsBilliard`: The billiard configuration to be analyzed.
-- `ks::Vector{T}`: A vector of wavenumbers to sweep over.
-
-# Returns
-- `Tuple{Vector{T}, Vector{T}}`:
-  - A vector containing the smallest singular value of the constructed matrix `A` for each `k` in `ks`.
-  - A vector containing the Hermitian discrepancy measure of `A` for each `k` in `ks`.
-"""
-function sweep_with_hermitian_discrepancy(solver::BoundaryIntegralMethod, billiard::AbsBilliard, ks::Vector{T}) where {T<:Real}
-    k=maximum(ks)
-    pts=evaluate_points(solver,billiard,k) # use max num of pts for all ks
-    res=similar(ks)
-    discrepancy=similar(ks)
-    num_intervals=length(ks)
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(num_intervals,1)
-    Threads.@threads for i in eachindex(ks)
-        A=construct_matrices(solver,AbstractHankelBasis(),pts,ks[i])
-        res[i]=svdvals(A)[end]
-        discrepancy[i]=norm(abs.(A)-abs.(A'))/norm(abs.(A))
-        next!(p)
-    end
-    return res,discrepancy
-end
-=#
 
 
 
