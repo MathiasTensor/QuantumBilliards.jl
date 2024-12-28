@@ -266,7 +266,16 @@ function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T
     return BoundaryPoints{T}(xy,normal,s,ds)
 end
 
-### STANDARD ###
+
+
+
+
+
+
+
+
+
+### STANDARD BIM ###
 
 """
     BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
@@ -614,7 +623,6 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     mu=F.S[end]
     u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
     u_mu=real.(u_mu)
-    #u_mu.=ifelse.(abs.(u_mu).<eps(eltype(u_mu)),zero(eltype(u_mu)),u_mu)
     return mu,u_mu
 end
 
@@ -776,31 +784,31 @@ Computes the first derivative of the kernel, incorporating symmetry reflections.
 # Returns
 - `Complex{T}`: First derivative of the kernel, with symmetry reflections applied.
 """
-function compute_kernel_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
-    kernel_value=default_helmholtz_kernel_first_derivative(p1,p2,normal1,k,curvature1) # Base kernel computation
+function compute_kernel_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_der_fun=default_helmholtz_kernel_first_derivative) where {T<:Real}
+    kernel_value=kernel_der_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
         if rule.x_bc==:D
-            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+            kernel_value-=kernel_der_fun(p1,reflected_p2_x,normal1,k,curvature1)
         elseif rule.x_bc==:N
-            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+            kernel_value+=kernel_der_fun(p1,reflected_p2_x,normal1,k,curvature1)
         end
     end
     if !isnothing(reflected_p2_y) # Handle y-reflection
         if rule.y_bc==:D
-            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+            kernel_value-=kernel_der_fun(p1,reflected_p2_y,normal1,k,curvature1)
         elseif rule.y_bc==:N
-            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+            kernel_value+=kernel_der_fun(p1,reflected_p2_y,normal1,k,curvature1)
         end
     end
     if !isnothing(reflected_p2_xy) # Handle xy-reflection
         if rule.x_bc==:D && rule.y_bc==:D
-            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value+=kernel_der_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:D && rule.y_bc==:N
-            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value-=kernel_der_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:N && rule.y_bc==:D
-            kernel_value-=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value-=kernel_der_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:N && rule.y_bc==:N
-            kernel_value+=default_helmholtz_kernel_first_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value+=kernel_der_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
     return kernel_value
@@ -835,31 +843,31 @@ Computes the second derivative of the kernel, incorporating symmetry reflections
 # Returns
 - `Complex{T}`: Second derivative of the kernel, with symmetry reflections applied.
 """
-function compute_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T) where {T<:Real}
-    kernel_value=default_helmholtz_kernel_second_derivative(p1,p2,normal1,k,curvature1) # Base kernel computation
+function compute_kernel_second_derivative(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real}
+    kernel_value=kernel_der2_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
         if rule.x_bc==:D
-            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+            kernel_value-=kernel_der2_fun(p1,reflected_p2_x,normal1,k,curvature1)
         elseif rule.x_bc==:N
-            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_x,normal1,k,curvature1)
+            kernel_value+=kernel_der2_fun(p1,reflected_p2_x,normal1,k,curvature1)
         end
     end
     if !isnothing(reflected_p2_y) # Handle y-reflection
         if rule.y_bc==:D
-            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+            kernel_value-=kernel_der2_fun(p1,reflected_p2_y,normal1,k,curvature1)
         elseif rule.y_bc==:N
-            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_y,normal1,k,curvature1)
+            kernel_value+=kernel_der2_fun(p1,reflected_p2_y,normal1,k,curvature1)
         end
     end
     if !isnothing(reflected_p2_xy) # Handle xy-reflection
         if rule.x_bc==:D && rule.y_bc==:D
-            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value+=kernel_der2_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:D && rule.y_bc==:N
-            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value-=kernel_der2_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:N && rule.y_bc==:D
-            kernel_value-=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value-=kernel_der2_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         elseif rule.x_bc==:N && rule.y_bc==:N
-            kernel_value+=default_helmholtz_kernel_second_derivative(p1,reflected_p2_xy,normal1,k,curvature1)
+            kernel_value+=kernel_der2_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
     return kernel_value
@@ -882,7 +890,7 @@ Constructs the derivative of the Fredholm matrix with respect to the wavenumber.
 # Returns
 - `Matrix{Complex{T}}`: First derivative of the Fredholm matrix.
 """
-function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
+function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_der_fun=default_helmholtz_kernel_first_derivative) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
     curvatures=boundary_points.curvature
@@ -906,7 +914,7 @@ function fredholm_matrix_derivative(boundary_points::BoundaryPointsBIM{T},symmet
                 p1,p2,normal1,curvature1,
                 isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
                 isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
-                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k)
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_der_fun=kernel_der_fun)
             fredholm_matrix[i, j]-=ds1*kernel_value
         end
     end
@@ -930,7 +938,7 @@ Constructs the second derivative of the Fredholm matrix with respect to the wave
 # Returns
 - `Matrix{Complex{T}}`: Second derivative of the Fredholm matrix.
 """
-function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T) where {T<:Real}
+function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
     curvatures=boundary_points.curvature
@@ -954,7 +962,7 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
                 p1,p2,normal1,curvature1,
                 isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
                 isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
-                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k)
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_der2_fun=kernel_der2_fun)
             fredholm_matrix[i, j]-=ds1*kernel_value
         end
     end
@@ -983,10 +991,10 @@ Constructs the Fredholm matrix and its derivatives for the expanded boundary int
   - First derivative of the Fredholm matrix.
   - Second derivative of the Fredholm matrix.
 """
-function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k) where {Ba<:AbstractHankelBasis}
-    A=fredholm_matrix(pts,solver.rule,k)
-    dA=fredholm_matrix_derivative(pts,solver.rule,k)
-    ddA=fredholm_matrix_second_derivative(pts,solver.rule,k)
+function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+    A=fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
+    dA=fredholm_matrix_derivative(pts,solver.rule,k;kernel_der_fun=kernel_der_fun)
+    ddA=fredholm_matrix_second_derivative(pts,solver.rule,k;kernel_der2_fun=kernel_der2_fun)
     return A,dA,ddA
 end
 
@@ -1006,8 +1014,8 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 # Returns
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false) where {Ba<:AbstractHankelBasis}
-    A,dA,ddA=construct_matrices(solver,basis,pts,k)
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+    A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
     else

@@ -50,7 +50,7 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun=default_helmholtz_kernel)
     k = maximum(ks)
     dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis = resize_basis(basis,billiard,dim,k)
@@ -59,9 +59,17 @@ function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks
     num_intervals = length(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p = Progress(num_intervals, 1)
-    Threads.@threads for i in eachindex(ks)
-        res[i] = solve(solver,new_basis,pts,ks[i])
-        next!(p)
+    if solver isa BoundaryIntegralMethod
+        Threads.@threads for i in eachindex(ks)
+            res[i] = solve(solver,new_basis,pts,ks[i];kernel_fun=kernel_fun)
+            next!(p)
+        end
+    else
+        Threads.@threads for i in eachindex(ks)
+            res[i] = solve(solver,new_basis,pts,ks[i])
+            next!(p)
+        end
     end
+    
     return res
 end
