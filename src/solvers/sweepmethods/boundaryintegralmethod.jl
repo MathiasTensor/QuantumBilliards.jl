@@ -624,13 +624,7 @@ Computes the smallest singular value and its corresponding singular vector.
 """
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
-    println("Matrix dimensions: ", size(A))
-    println("Condition number: ", cond(A))
-    println("Norm of A: ", norm(A))
-    #F=svd(A;alg=QRIteration())
-    #mu=F.S[end]
-    #u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
-    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=Vt[idx,:]
