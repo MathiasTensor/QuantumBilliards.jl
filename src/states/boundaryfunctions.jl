@@ -2,7 +2,7 @@
 #include("../utils/billiardutils.jl")
 #include("../utils/gridutils.jl")
 #include("../solvers/matrixconstructors.jl")
-using FFTW, SpecialFunctions, JLD2
+using FFTW, SpecialFunctions, JLD2, ProgressMeter
 
 #this takes care of singular points
 function regularize!(u)
@@ -323,7 +323,7 @@ Processes multiple boundary functions and their associated boundary points by ap
 function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector{Vector{T}}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     pts_ret=Vector{BoundaryPoints{T}}(undef,length(us_all))
     us_ret=Vector{Vector{T}}(undef,length(us_all))
-    for i in eachindex(us_all) 
+    @showprogress for i in eachindex(us_all) 
         pts,u=boundary_function_BIM(solver,us_all[i],pts_all[i],billiard)
         pts_ret[i]=pts
         us_ret[i]=u
