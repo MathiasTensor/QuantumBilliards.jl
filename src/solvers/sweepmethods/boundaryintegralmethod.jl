@@ -470,7 +470,7 @@ end
         reflected_p2_x::Union{SVector{2,T}, Nothing}, 
         reflected_p2_y::Union{SVector{2,T}, Nothing}, 
         reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
-        rule::SymmetryRuleBIM{T}, k::T
+        rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Function=default_helmholtz_kernel
     ) -> Complex{T}
 
 Computes the kernel value for a given pair of points, incorporating symmetry reflections.
@@ -485,6 +485,7 @@ Computes the kernel value for a given pair of points, incorporating symmetry ref
 - `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes (if applicable).
 - `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
 - `k::T`: Wavenumber.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
 
 # Returns
 - `Complex{T}`: Computed kernel value.
@@ -520,7 +521,7 @@ function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},
 end
 
 """
-    fredholm_matrix(boundary_points::BoundaryPointsBIM, symmetry_rule::SymmetryRuleBIM, k::Real) -> Matrix{Complex{T}}
+    fredholm_matrix(boundary_points::BoundaryPointsBIM, symmetry_rule::SymmetryRuleBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
 
 Constructs the Fredholm matrix for the boundary integral method.
 
@@ -528,6 +529,7 @@ Constructs the Fredholm matrix for the boundary integral method.
 - `boundary_points::BoundaryPointsBIM`: Evaluated boundary points.
 - `symmetry_rule::SymmetryRuleBIM`: Symmetry rule for the boundary points.
 - `k::Real`: Wavenumber.
+- `kernel_fun::Function=default_helmholtz_kernel`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
 
 # Returns
 - `Matrix{Complex{T}}`: Constructed Fredholm matrix.
@@ -566,15 +568,16 @@ end
 #### BIM - MAIN
 
 """
-    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real) -> Matrix{Complex{T}}
+    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
 
 Constructs the Fredholm matrix for the given boundary integral method, basis, and boundary points.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: The boundary points structure with type `T`.
+- `pts::BoundaryPointsBIM`: The boundary points structure.
 - `k::Real`: The wave number.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
 
 # Returns
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix.
@@ -584,15 +587,16 @@ function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::Bounda
 end
 
 """
-    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real) -> T
+    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> T
 
 Computes the smallest singular value of the Fredholm matrix.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: The boundary points structure with type `T`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure.
 - `k::Real`: The wave number.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
 
 # Returns
 - `T`: The smallest singular value of the matrix.
@@ -604,15 +608,16 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
 end
 
 """
-    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real) -> Tuple{T, Vector{T}}
+    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Tuple{T, Vector{T}}
 
 Computes the smallest singular value and its corresponding singular vector.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: The boundary points structure with type `T`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure.
 - `k::Real`: The wave number.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
 
 # Returns
 - `Tuple{T, Vector{T}}`: A tuple containing the smallest singular value and the corresponding singular vector.
@@ -627,7 +632,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
 end
 
 """
-    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, basis::Ba, ks::Vector) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}} where {Ba<:AbstractHankelBasis, T<:Real}
+    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, basis::Ba, ks::Vector; kernel_fun::Function=default_helmholtz_kernel) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}} where {Ba<:AbstractHankelBasis, T<:Real}
 
 Solve for the eigenvectors of the boundary integral method (BIM) for a range of wave numbers `ks`. These wave numbers should be the actual eigenvalues of the billiard since no check is done in the function if the smallest singular value for that k in ks is really the locally smallest one.
 
@@ -636,6 +641,7 @@ Solve for the eigenvectors of the boundary integral method (BIM) for a range of 
 - `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
 - `basis::Ba<:AbstractHankelBasis`: The basis functions used for solving the eigenvalue problem.
 - `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
 
 # Returns
 - `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
@@ -765,7 +771,8 @@ end
         reflected_p2_y::Union{SVector{2,T}, Nothing}, 
         reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
         rule::SymmetryRuleBIM{T}, 
-        k::T
+        k::T;
+        kernel_der_fun::Function=default_helmholtz_kernel_first_derivative
     ) -> Complex{T}
 
 Computes the first derivative of the kernel, incorporating symmetry reflections.
@@ -780,6 +787,7 @@ Computes the first derivative of the kernel, incorporating symmetry reflections.
 - `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes, if applicable.
 - `rule::SymmetryRuleBIM{T}`: Symmetry rule for the kernel.
 - `k::T`: Wavenumber.
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`).
 
 # Returns
 - `Complex{T}`: First derivative of the kernel, with symmetry reflections applied.
@@ -824,7 +832,8 @@ end
         reflected_p2_y::Union{SVector{2,T}, Nothing}, 
         reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
         rule::SymmetryRuleBIM{T}, 
-        k::T
+        k::T;
+        kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative
     ) -> Complex{T}
 
 Computes the second derivative of the kernel, incorporating symmetry reflections.
@@ -839,6 +848,7 @@ Computes the second derivative of the kernel, incorporating symmetry reflections
 - `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes, if applicable.
 - `rule::SymmetryRuleBIM{T}`: Symmetry rule for the kernel.
 - `k::T`: Wavenumber.
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
 
 # Returns
 - `Complex{T}`: Second derivative of the kernel, with symmetry reflections applied.
@@ -877,7 +887,8 @@ end
     fredholm_matrix_derivative(
         boundary_points::BoundaryPointsBIM{T}, 
         symmetry_rule::SymmetryRuleBIM{T}, 
-        k::T
+        k::T;
+        kernel_der_fun::Function=default_helmholtz_kernel_first_derivative
     ) -> Matrix{Complex{T}}
 
 Constructs the derivative of the Fredholm matrix with respect to the wavenumber.
@@ -886,6 +897,7 @@ Constructs the derivative of the Fredholm matrix with respect to the wavenumber.
 - `boundary_points::BoundaryPointsBIM{T}`: Evaluated boundary points.
 - `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rules for the matrix construction.
 - `k::T`: Wavenumber.
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the 1st derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`)
 
 # Returns
 - `Matrix{Complex{T}}`: First derivative of the Fredholm matrix.
@@ -925,7 +937,8 @@ end
     fredholm_matrix_second_derivative(
         boundary_points::BoundaryPointsBIM{T}, 
         symmetry_rule::SymmetryRuleBIM{T}, 
-        k::T
+        k::T;
+        kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative
     ) -> Matrix{Complex{T}}
 
 Constructs the second derivative of the Fredholm matrix with respect to the wavenumber.
@@ -934,6 +947,7 @@ Constructs the second derivative of the Fredholm matrix with respect to the wave
 - `boundary_points::BoundaryPointsBIM{T}`: Evaluated boundary points.
 - `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rules for the matrix construction.
 - `k::T`: Wavenumber.
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
 
 # Returns
 - `Matrix{Complex{T}}`: Second derivative of the Fredholm matrix.
@@ -974,7 +988,10 @@ end
         solver::ExpandedBoundaryIntegralMethod, 
         basis::Ba, 
         pts::BoundaryPointsBIM{T}, 
-        k::Real
+        k::Real;
+        kernel_fun::Function=default_helmholtz_kernel,
+        kernel_der_fun::Function=default_helmholtz_kernel_first_derivative,
+        kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative
     ) -> Tuple{Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}}
 
 Constructs the Fredholm matrix and its derivatives for the expanded boundary integral method.
@@ -984,6 +1001,9 @@ Constructs the Fredholm matrix and its derivatives for the expanded boundary int
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
 - `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
 - `k::Real`: Wavenumber.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the 1st derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`).
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
 
 # Returns
 - `Tuple{Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}}`:
@@ -999,7 +1019,15 @@ function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts
 end
 
 """
-    solve(solver::ExpandedBoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real, dk::Real; eps::Real = 1e-15) -> Vector{T}
+    solve(
+        solver::ExpandedBoundaryIntegralMethod, 
+        basis::Ba, pts::BoundaryPointsBIM{T}, 
+        k::Real,
+        dk::Real; 
+        eps::Real = 1e-15,
+        kernel_fun::Function=default_helmholtz_kernel,
+        kernel_der_fun::Function=default_helmholtz_kernel_first_derivative,
+        kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative) -> Vector{T}
 
 Computes the corrected k0 for a given wavenumber range using the expanded boundary integral method. This is done in an interval [k-dk,k+dk]
 
@@ -1010,6 +1038,9 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `k::Real`: Central wavenumber for corrections.
 - `dk::Real`: Correction range for wavenumber.
 - `use_lapack_raw::Bool=false`: Use the ggev LAPACK function directly without Julia's eigen(A,B) wrapper for it. Might provide speed-up for certain situations (small matrices...)
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the 1st derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`).
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
 
 # Returns
 - `Vector{T}`: Corrected eigenvalues within the specified range.
@@ -1026,7 +1057,6 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
     end
-    #println("EBIM λ: ", λ[valid][findmin(abs,λ)[2]])
     λ=real.(λ[valid])
     VR=VR[:,valid]
     VL=VL[:,valid]
