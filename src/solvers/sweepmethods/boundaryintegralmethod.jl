@@ -668,7 +668,7 @@ end
 
 
 
-
+#=
 
 #### EXPANDED BIM ####
 
@@ -1083,7 +1083,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     return λ_corrected[idxs],tens[idxs]
 end
 
-
+=#
 
 
 

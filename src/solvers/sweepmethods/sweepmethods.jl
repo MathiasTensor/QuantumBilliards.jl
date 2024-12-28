@@ -5,6 +5,7 @@
 include("particularsolutionsmethod.jl")
 include("decompositionmethod.jl")
 include("boundaryintegralmethod.jl")
+include("expanded_boundary_integral_method.jl")
 using LinearAlgebra, Optim, ProgressMeter
 
 """
