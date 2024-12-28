@@ -624,6 +624,9 @@ Computes the smallest singular value and its corresponding singular vector.
 """
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    println("Matrix dimensions: ", size(A))
+    println("Condition number: ", cond(A))
+    println("Norm of A: ", norm(A))
     F=svd(A)
     mu=F.S[end]
     u_mu=F.Vt[end,:]  # Last row of Vt corresponds to smallest singular value
