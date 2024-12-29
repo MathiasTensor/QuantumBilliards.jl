@@ -399,25 +399,16 @@ Computes the spectrum of the expanded BIM and their corresponding tensions for a
   - First element is a vector of corrected eigenvalues (`λ`).
   - Second element is a vector of corresponding tensions.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,use_custom_dk_func=true,N_expect=1) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false) where {T<:Real,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     ks=T[]
     dks=T[]
     k=k1
-    if use_custom_dk_func
-        while k<k2
-            push!(ks,k)
-            k+=dk(k)
-            push!(dks,dk(k))
-        end
-    else
-        while k<k2
-            dk=N_expect/(billiard.area_fundamental*k/(2*pi)-billiard.length_fundamental/(4*pi))
-            push!(ks,k)
-            k+=dk
-            push!(dks,dk)
-        end
+    while k<k2
+        push!(ks,k)
+        k+=dk(k)
+        push!(dks,dk(k))
     end
     λs_all=T[] 
     tensions_all=T[]
