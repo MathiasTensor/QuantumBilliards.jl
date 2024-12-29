@@ -399,24 +399,35 @@ Computes the spectrum of the expanded BIM and their corresponding tensions for a
   - First element is a vector of corrected eigenvalues (`λ`).
   - Second element is a vector of corresponding tensions.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,use_custom_dk_func=true,N_expect=1) where {T<:Real,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     ks=T[]
+    dks=T[]
     k=k1
-    while k<k2
-        push!(ks,k)
-        k+=dk(k)/2
+    if use_custom_dk_func
+        while k<k2
+            push!(ks,k)
+            k+=dk(k)
+            push!(dks,dk(k))
+        end
+    else
+        while k<k2
+            dk=N_expect/(billiard.area_fundamental*k/(2*pi)-billiard.length_fundamental/(4*pi))
+            push!(ks,k)
+            k+=dk
+            push!(dks,dk)
+        end
     end
     λs_all=T[] 
     tensions_all=T[]
     control=Bool[]
     println("EBIM...")
-    @showprogress for k in ks
-        dd=1.5*dk(k)
-        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,k),k,dd;use_lapack_raw=use_lapack_raw)
+    @showprogress for i in eachindex(ks)
+        dd=dks[i]
+        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw)
         if !isempty(λs)
-            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,k-dd,k;tol=tol)
+            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,ks[i]-dd,ks[i];tol=tol)
             #append!(λs_all,λs)
             #append!(tensions_all,tensions) 
         end
