@@ -413,7 +413,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
         end
     else
         while k<k2
-            dk=N_expect/(billiard.area_fundamental*k^4/(2*pi)-billiard.length_fundamental/(4*pi))
+            dk=N_expect/(billiard.area_fundamental*k/(2*pi)-billiard.length_fundamental/(4*pi))
             push!(ks,k)
             k+=dk
             push!(dks,dk)
