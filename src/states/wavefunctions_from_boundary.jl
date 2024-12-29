@@ -94,6 +94,8 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
+- `xgrid_size::Int=2000`: (Optional), Size of the x grid for the husimi functions. Default is 2000.
+- `ygrid_size::Int=1000`: (Optional), Size of the y grid for the husimi functions. Default is 1000.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
@@ -103,7 +105,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true, xgrid_size=2000, ygrid_size=1000) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -130,7 +132,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     end
     # husimi
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list,ps,qs = husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,2000,1000)
+    Hs_list,ps,qs = husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
     ps_list=fill(ps,length(Hs_list))
     qs_list=fill(qs,length(Hs_list))
     #=
