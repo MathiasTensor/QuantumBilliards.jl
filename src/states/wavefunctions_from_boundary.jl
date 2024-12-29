@@ -130,15 +130,17 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     end
     # husimi
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list,ps,qs = husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,2000,1000)
+    ps_list=fill(ps,length(Hs_list))
+    qs_list=fill(qs,length(Hs_list))
+    #=
     try
-        Hs_list,ps,qs = husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,2000,1000)
-        ps_list=fill(ps,length(Hs_list))
-        qs_list=fill(qs,length(Hs_list))
+        
     catch e
         println("Husimi error: ", e)
         Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
     end
-    
+    =#
     return Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list
 end
 
