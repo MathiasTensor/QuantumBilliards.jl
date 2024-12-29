@@ -427,9 +427,9 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
         dd=dks[i]
         λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw)
         if !isempty(λs)
-            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,ks[i]-dd,ks[i];tol=tol)
-            #append!(λs_all,λs)
-            #append!(tensions_all,tensions) 
+            #overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,ks[i]-dd,ks[i];tol=tol)
+            append!(λs_all,λs)
+            append!(tensions_all,tensions) 
         end
     end
     if isempty(λs_all) # Handle case of no eigenvalues found
