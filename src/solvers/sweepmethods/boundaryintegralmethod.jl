@@ -632,11 +632,11 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
     ds=boundary_points.ds
     N=length(xy_points)
     reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
-        [apply_transformation(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+        [apply_reflection(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
     reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
-        [apply_transformation(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+        [apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
     reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
-        [apply_transformation(p,symmetry_rule) for p in xy_points] : nothing
+        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
     rotated_points=symmetry_rule.symmetry_type isa Integer ?
         [apply_rotation(p,symmetry_rule) for p in xy_points] : nothing # Vector{SVector} for all rotations
     fredholm_matrix=Matrix{Complex{T}}(I,N,N)
