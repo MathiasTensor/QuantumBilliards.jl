@@ -564,7 +564,7 @@ Computes the kernel value for a given pair of points, incorporating symmetry ref
 # Returns
 - `Complex{T}`: Computed kernel value.
 """
-function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rotated_p2s::Union{Tuple{Vector{SVector{2,T}}}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
+function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rotated_p2s::Union{Nothing,Tuple{Vector{SVector{2,T}},Vector{SVector{2,T}}}},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
     kernel_value=kernel_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
         if rule.x_bc==:D
