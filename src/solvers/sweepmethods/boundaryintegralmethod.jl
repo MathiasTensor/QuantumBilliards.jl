@@ -8,14 +8,14 @@ using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 Represents symmetry rules for the boundary integral method.
 
 # Fields
-- `symmetry_type::Symbol`: Type of symmetry (:x, :y, :xy, or :nothing).
+- `symmetry_type::Symbol`: Type of symmetry (:x, :y, :xy, ad Integer for or :nothing).
 - `x_bc::Symbol`: Boundary condition on the x-axis (:D for Dirichlet, :N for Neumann).
 - `y_bc::Symbol`: Boundary condition on the y-axis (:D for Dirichlet, :N for Neumann).
 - `shift_x::T`: Shift along the x-axis.
 - `shift_y::T`: Shift along the y-axis.
 """
 struct SymmetryRuleBIM{T<:Real}
-    symmetry_type::Symbol        
+    symmetry_type::Union{Symbol,Integer}        
     x_bc::Symbol                  
     y_bc::Symbol                
     shift_x::T
@@ -124,6 +124,8 @@ function SymmetryRuleBIM(billiard::Bi;symmetries::Union{Vector{Any},Nothing}=not
         else
             error("Unknown reflection axis: $(symmetries.axis)")
         end
+    elseif symmetries isa Rotation # rotation
+        return SymmetryRuleBIM{T}(symmetries.n,x_bc,y_bc,shift_x,shift_y)
     else
         error("Unsupported symmetry type: $(typeof(symmetries))")
     end
@@ -139,7 +141,7 @@ Converts a `SymmetryRuleBIM` object into the corresponding symmetry transformati
 
 # Returns
 - `nothing`: If there is no symmetry.
-- `Vector{Any}`: A vector of symmetry transformations (e.g., `XReflection`, `YReflection`, `XYReflection`).
+- `Vector{Any}`: A vector of symmetry transformations (e.g., `XReflection`, `YReflection`, `XYReflection`, `Rotation`).
 
 # Errors
 Raises an error for unsupported boundary conditions or unknown symmetry types.
@@ -175,6 +177,14 @@ function SymmetryRuleBIM_to_Symmetry(rule::SymmetryRuleBIM)
         else
             error("Unsupported boundary condition: $(rule.x_bc)")
         end
+    elseif rule.symmetry_type isa Integer
+        if rule.x_bc==:D
+            return Vector{Any}[Rotation(rule.symmetry_type,-1)]
+        elseif rule.x_bc==:N
+            return Vector{Any}[Rotation(rule.symmetry_type,1)]
+        else
+            error("Unsupported boundary condition: $(rule.x_bc)")
+        end 
     else
         error("Unknown symmetry type: $(rule.symmetry_type)")
     end
@@ -186,7 +196,7 @@ end
 Converts a symmetry object into a `SymmetryRuleBIM`.
 
 # Arguments
-- `symmetry::Union{Vector{Any}, Nothing}`: A vector containing a single symmetry (e.g., a `Reflection`) or `nothing` if no symmetry is provided.
+- `symmetry::Union{Vector{Any}, Nothing}`: A vector containing a single symmetry (e.g., a `Reflection` or `Rotation`) or `nothing` if no symmetry is provided.
 - `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
 
 # Returns
@@ -235,6 +245,14 @@ function Symmetry_to_SymmetryBIM(symmetry::Union{Vector{Any},Nothing},billiard::
         else
             error("Unsupported symmetry parity: $(symmetry[1].parity)")
         end
+    elseif symmetry[1] isa Rotation
+        if symmetry[1].parity==-1
+            return SymmetryRuleBIM(symmetry[1].n,:D,:D,shift_x,shift_y)
+        elseif symmetry[1].parity==1
+            return SymmetryRuleBIM(symmetry[1].n,:N,:D,shift_x,shift_y)
+        else
+            error("Unsupported symmetry parity: $(symmetry[1].parity)")
+        end
     else
         error("Unknown symmetry axis: $(symmetry[1].axis)")
     end
@@ -264,6 +282,87 @@ function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T
     ds=pts.ds
     s=cumsum(ds)
     return BoundaryPoints{T}(xy,normal,s,ds)
+end
+
+"""
+    apply_reflection(p::SVector{2,T}, rule::SymmetryRuleBIM{T}) -> SVector{2,T}
+
+Applies symmetry reflection rules to a point.
+
+# Arguments
+- `p::SVector{2,T}`: Original point.
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
+
+# Returns
+- `SVector{2,T}`: Reflected point.
+"""
+function apply_reflection(p::SVector{2,T},rule::SymmetryRuleBIM{T}) where {T}
+    shift_x, shift_y = rule.shift_x, rule.shift_y
+    if rule.symmetry_type==:x
+        return SVector(2*shift_x-p[1],p[2])
+    elseif rule.symmetry_type==:y
+        return SVector(p[1],2*shift_y-p[2])
+    elseif rule.symmetry_type==:xy
+        return SVector(2*shift_x-p[1],2*shift_y-p[2])
+    else
+        return p
+    end
+end
+
+"""
+    reverse_angle(pt::SVector{2, T}) -> SVector{2, T}
+
+Reverses the angle of a 2D point represented in Cartesian coordinates.
+
+# Arguments
+- `pt::SVector{2, T}`: Cartesian coordinates of the point (`x, y`). 
+
+# Returns
+- `SVector{2, T}`: Point with negative angle.
+"""
+function reverse_angle(pt::SVector{2,T}) where {T<:Real}
+    x,y=pt[1],pt[2]
+    φ=atan(y,x) # angle
+    φ_neg=-2*φ # final angle
+    cosφ,sinφ=cos(φ_neg),sin(φ_neg)
+    x_new=cosφ*x-sinφ*y
+    y_new=sinφ*x+cosφ*y
+    return SVector(x_new,y_new)
+end
+
+"""
+    apply_rotation(p::SVector{2,T}, rule::SymmetryRuleBIM{T}) -> Vector{SVector{2,T}}
+
+Applies symmetry rotation to a point and gives all the rotations of that point.
+
+# Arguments
+- `p::SVector{2,T}`: Original point.
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
+
+# Returns
+- `Tuple{Vector{SVector{2,T}}}`: Rotated point for all the angles of the rotation symmetry and it's rotated reverse angle counterparts or the `[p]` if `symmetry_type` is `nothing`.
+"""
+function apply_rotation(p::SVector{2,T},rule::SymmetryRuleBIM{T}) where {T}
+    shift_x, shift_y = rule.shift_x, rule.shift_y
+    if rule.symmetry_type isa Integer # angle ϕ=2*π/n
+        n=rule.symmetry_type;θ=2*π/n;cosθ,sinθ=cos(θ),sin(θ)
+        pts=Vector{SVector{2,T}}(undef,n-1)
+        pts_revang=Vector{SVector{2,T}}(undef,n-1)
+        px,py=p[1]-shift_x,p[2]-shift_y # translate to origin
+        p_revang=reverse_angle(SVector(px,py))
+        px_revang,py_revang=p_revang[1],p_revang[2]
+        for i in 1:(n-1) # rotate point for all the angles sequentially
+            rot_x=cos(i*θ)*px-sin(i*θ)*py
+            rot_y=sin(i*θ)*px+cos(i*θ)*py
+            rot_x_revang=cos(i*θ)*px_revang-sin(i*θ)*py_revang
+            rot_y_revang=sin(i*θ)*px_revang+cos(i*θ)*py_revang
+            pts[i]=SVector(rot_x+shift_x,rot_y+shift_y)  # translate back
+            pts_revang[i]=SVector(rot_x_revang+shift_x,rot_y_revang+shift_y)  # translate back
+        end
+        return (pts,pts_revang)
+    else
+        return [p]
+    end
 end
 
 
@@ -354,31 +453,6 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
         end
     end
     return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all)
-end
-
-"""
-    apply_reflection(p::SVector{2,T}, rule::SymmetryRuleBIM{T}) -> SVector{2,T}
-
-Applies symmetry reflection rules to a point.
-
-# Arguments
-- `p::SVector{2,T}`: Original point.
-- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
-
-# Returns
-- `SVector{2,T}`: Reflected point.
-"""
-function apply_reflection(p::SVector{2,T},rule::SymmetryRuleBIM{T}) where {T}
-    shift_x, shift_y = rule.shift_x, rule.shift_y
-    if rule.symmetry_type==:x
-        return SVector(2*shift_x-p[1],p[2])
-    elseif rule.symmetry_type==:y
-        return SVector(p[1],2*shift_y-p[2])
-    elseif rule.symmetry_type==:xy
-        return SVector(2*shift_x-p[1],2*shift_y-p[2])
-    else
-        return p
-    end
 end
 
 """
@@ -490,7 +564,7 @@ Computes the kernel value for a given pair of points, incorporating symmetry ref
 # Returns
 - `Complex{T}`: Computed kernel value.
 """
-function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
+function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rotated_p2s::Union{Tuple{Vector{SVector{2,T}}}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
     kernel_value=kernel_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
         if rule.x_bc==:D
@@ -517,6 +591,23 @@ function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},
             kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
+    if !isnothing(rotated_p2s) # Handle rotation
+        if rule.x_bc==:D
+            rotated_p2s,rotated_p2_revang=rotated_p2s
+            kernel_value-=kernel_fun(p1,reverse_angle(p2),normal1,k,curvature1) # this one is not part of the loop since it's a counterpart of the og kernel_value
+            for i in eachindex(rotated_p2s)
+                kernel_value+=kernel_fun(p1,rotated_p2s[i],normal1,k,curvature1)
+                kernel_value-=kernel_fun(p1,rotated_p2_revang[i],normal1,k,curvature1)
+            end
+        elseif rule.x_bc==:N
+            rotated_p2s,rotated_p2_revang=rotated_p2s
+            kernel_value+=kernel_fun(p1,reverse_angle(p2),normal1,k,curvature1) # this one is not part of the loop since it's a counterpart of the og kernel_value
+            for i in eachindex(rotated_p2s)
+                kernel_value+=kernel_fun(p1,rotated_p2s[i],normal1,k,curvature1)
+                kernel_value+=kernel_fun(p1,rotated_p2_revang[i],normal1,k,curvature1)
+            end
+        end
+    end
     return kernel_value
 end
 
@@ -540,13 +631,15 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
     curvatures=boundary_points.curvature
     ds=boundary_points.ds
     N=length(xy_points)
-    reflected_points_x = symmetry_rule.symmetry_type in [:x,:xy] ?
-        [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_y = symmetry_rule.symmetry_type in [:y,:xy] ?
-        [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_xy = symmetry_rule.symmetry_type==:xy ?
-        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    fredholm_matrix = Matrix{Complex{T}}(I,N,N)
+    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
+        [apply_transformation(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
+        [apply_transformation(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
+        [apply_transformation(p,symmetry_rule) for p in xy_points] : nothing
+    rotated_points=symmetry_rule.symmetry_type isa Integer ?
+        [apply_rotation(p,symmetry_rule) for p in xy_points] : nothing # Vector{SVector} for all rotations
+    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
         normal1=normals[i]
@@ -558,7 +651,9 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
                 p1,p2,normal1,curvature1,
                 isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
                 isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
-                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_fun=kernel_fun)
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],
+                isnothing(rotated_points) ? nothing : rotated_points[j],
+                symmetry_rule,k;kernel_fun=kernel_fun)
             fredholm_matrix[i, j]-=ds1*kernel_value
         end
     end
