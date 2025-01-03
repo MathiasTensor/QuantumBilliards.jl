@@ -481,7 +481,7 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     right_arc_down = CircleSegment(
         rrd,
         angle_rd,
-        π + angle_rd - angle_corr_rd,
+        π - angle_rd + angle_corr_rd,
         hrd, krd;
         orientation = -1
     )
