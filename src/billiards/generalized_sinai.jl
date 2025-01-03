@@ -384,7 +384,7 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     )
 
     # -- For bottom‐right:
-    x_corr_br, y_corr_br = circle_helper(Float64( π ), hbr, kbr, rbr)
+    x_corr_br, y_corr_br = circle_helper(Float64( π/2 ), hbr, kbr, rbr)
     angle_corr_br        = angle_between_points(
         hbr, kbr,
         x_corr_br, y_corr_br,
@@ -392,7 +392,7 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     )
 
     # -- For bottom‐left:
-    x_corr_bl, y_corr_bl = circle_helper(Float64( π ), hbl, kbl, rbl)
+    x_corr_bl, y_corr_bl = circle_helper(Float64( π/2 ), hbl, kbl, rbl)
     angle_corr_bl        = angle_between_points(
         hbl, kbl,
         x_corr_bl, y_corr_bl,
