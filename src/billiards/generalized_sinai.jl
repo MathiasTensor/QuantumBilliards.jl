@@ -181,10 +181,10 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     angle_lu=angle_lu_end-angle_lu_start
     lu=CircleSegment(rlu,angle_lu,angle_lu_start,hlu,klu,orientation=-1)
     # Left down
-    angle_ld_start=angle_from_point(hld,kld,-P1,-P2)
-    angle_ld_end=angle_from_point(hld,kld,-half_width,y0)
+    angle_ld_start=angle_from_point(hll,kll,-P1,-P2)
+    angle_ld_end=angle_from_point(hll,kll,-half_width,y0)
     angle_ld=angle_ld_end-angle_ld_start
-    ld=CircleSegment(rld,angle_ld,angle_ld_start,hld,kld,orientation=-1)
+    ld=CircleSegment(rll,angle_ld,angle_ld_start,hll,kll,orientation=-1)
     # Bottom left
     angle_bl_start=angle_from_point(hbl,kbl,x0,-half_height)
     angle_bl_end=angle_from_point(hbl,kbl,-P1,-P2)
