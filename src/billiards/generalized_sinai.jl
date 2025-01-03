@@ -110,35 +110,39 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     origin=SVector(x0,y0)
     top=SVector(x0,half_height)
     right=SVector(half_width,y0)
-    ht,kt,rt=circle_top_right(half_height,theta_top)
-    hr,kr,rr=circle_right_up(half_width,theta_right)
-    angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
-    angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
-    x_corr_r,y_corr_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
-    angle_right_corr=angle_between_points(hr,kr,x_corr_r,y_corr_r,half_width,y0) # this is the angle between the hr,kr,rr point at pi and the (half_width,0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)-angle_right-angle_right_corr,hr,kr;orientation= -1) # we need to subtract it so that the geometry is correct.
-    x_corr_t,y_corr_t=circle_helper(Float64(3*pi/2),ht,kt,rt)
-    angle_top_corr=angle_between_points(ht,kt,x_corr_t,y_corr_t,x0,half_height) 
-    top_arc=CircleSegment(rt,angle_top,T(3*pi/2)-angle_top_corr,ht,kt,orientation= -1)
+    hru,kru,rru=circle_right_up(half_width,theta_right)
+    htr,ktr,rtr=circle_top_right(half_height,theta_top)
+    # Right up
+    angle_ru_start=angle_from_point(hru,kru,P1,P2)
+    angle_ru_end=angle_from_point(hru,kru,half_width,y0)
+    angle_ru=angle_ru_end-angle_ru_start
+    ru=CircleSegment(rru,angle_ru,angle_ru_start,hru,kru,orientation=-1)
+    # Top right
+    angle_tr_start=angle_from_point(htr,ktr,x0,half_height)
+    angle_tr_end=angle_from_point(htr,ktr,P1,P2)
+    angle_tr=angle_tr_end-angle_tr_start
+    tr=CircleSegment(rtr,angle_tr,angle_tr_start,htr,ktr,orientation=-1)
     line_vertical=VirtualLineSegment(top,origin)
     line_horizontal=VirtualLineSegment(origin,right)
-    boundary=Union{CircleSegment,VirtualLineSegment}[right_arc,top_arc,line_vertical,line_horizontal]
+    boundary=Union{CircleSegment,VirtualLineSegment}[ru,tr,line_vertical,line_horizontal]
     corners=[origin]
     return boundary,corners
 end
 
 function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
-    ht,kt,rt=circle_top_right(half_height,theta_top)
-    hr,kr,rr=circle_right_up(half_width,theta_right)
-    angle_top=angle_between_points(ht,kt,x0,half_height,P1,P2)
-    angle_right=angle_between_points(hr,kr,P1,P2,half_width,y0)
-    x_corr_r,y_corr_r=circle_helper(Float64(pi),hr,kr,rr) # since at pi we are not at (half_width,0)
-    angle_right_corr=angle_between_points(hr,kr,x_corr_r,y_corr_r,half_width,y0) # this is the angle between the hr,kr,rr point at pi and the (half_width,0)
-    right_arc=CircleSegment(rr,angle_right,T(pi)-angle_right-angle_right_corr,hr,kr;orientation= -1) # we need to subtract it so that the geometry is correct.
-    x_corr_t,y_corr_t=circle_helper(Float64(3*pi/2),ht,kt,rt)
-    angle_top_corr=angle_between_points(ht,kt,x_corr_t,y_corr_t,x0,half_height) 
-    top_arc=CircleSegment(rt,angle_top,T(3*pi/2)-angle_top_corr,ht,kt,orientation= -1)
-    boundary=Union{CircleSegment}[right_arc,top_arc]
+    hru,kru,rru=circle_right_up(half_width,theta_right)
+    htr,ktr,rtr=circle_top_right(half_height,theta_top)
+    # Right up
+    angle_ru_start=angle_from_point(hru,kru,P1,P2)
+    angle_ru_end=angle_from_point(hru,kru,half_width,y0)
+    angle_ru=angle_ru_end-angle_ru_start
+    ru=CircleSegment(rru,angle_ru,angle_ru_start,hru,kru,orientation=-1)
+    # Top right
+    angle_tr_start=angle_from_point(htr,ktr,x0,half_height)
+    angle_tr_end=angle_from_point(htr,ktr,P1,P2)
+    angle_tr=angle_tr_end-angle_tr_start
+    tr=CircleSegment(rtr,angle_tr,angle_tr_start,htr,ktr,orientation=-1)
+    boundary=Union{CircleSegment}[ru,tr]
     corners=[]
     return boundary,corners
 end
