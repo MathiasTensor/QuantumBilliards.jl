@@ -44,19 +44,37 @@ function circle_top_right(A::T, theta::T) where {T<:Real}
     return h,k,r
 end
 
-# INTERNAL -> not necessarily the same as the top right since circle is not on y-axis
+"""
+    circle_top_left(A, theta) -> (h, k, r)
+
+INTERNAL: Return the center `(h, k)` and radius `r` for the circle in the top-left 
+quadrant, obtained by reflecting the circle from `circle_top_right(A,theta)` across 
+the y-axis (`h -> -h`).
+"""
 function circle_top_left(A::T, theta::T) where {T<:Real}
     h,k,r=circle_top_right(A,theta)
     return -h,k,r
 end
 
-# INTERNAL -> same as top right but -k
+"""
+    circle_bottom_right(A, theta) -> (h, k, r)
+
+INTERNAL: Return the center `(h, k)` and radius `r` for the circle in the 
+bottom-right quadrant, obtained by reflecting the circle from 
+`circle_top_right(A,theta)` across the x-axis (`k -> -k`).
+"""
 function circle_bottom_right(A::T, theta::T) where {T<:Real}
     h,k,r=circle_top_right(A,theta)
     return h,-k,r
 end
 
-# INTERNAL -> same as top left but -k
+"""
+    circle_bottom_left(A, theta) -> (h, k, r)
+
+INTERNAL: Return the center `(h, k)` and radius `r` for the circle in the 
+bottom-left quadrant, obtained by reflecting the circle from 
+`circle_top_right(A,theta)` across both axes (`h -> -h`, `k -> -k`).
+"""
 function circle_bottom_left(A::T, theta::T) where {T<:Real}
     h,k,r=circle_top_right(A,theta)
     return -h,-k,r
@@ -87,25 +105,63 @@ function circle_right_up(B::T, theta::T) where {T<:Real}
     return h2,k2,r2
 end
 
+"""
+    circle_right_down(B, theta) -> (h, k, r)
+
+INTERNAL: Return the center `(h, k)` and radius `r` for the right-down quadrant circle, 
+obtained by reflecting `circle_right_up(B,theta)` across the x-axis (`k -> -k`).
+"""
 function circle_right_down(B::T, theta::T) where {T<:Real}
     h,k,r=circle_right_up(B,theta)
     return h,-k,r
 end
 
+
+"""
+    circle_left_up(B, theta) -> (h, k, r)
+
+INTERNAL: Return the center `(h, k)` and radius `r` for the left-up quadrant circle, 
+obtained by reflecting `circle_right_up(B,theta)` across the y-axis (`h -> -h`).
+"""
 function circle_left_up(B::T, theta::T) where {T<:Real}
     h,k,r=circle_right_up(B,theta)
     return -h,k,r
 end
 
+"""
+    circle_left_down(B, theta) -> (h, k, r)
+
+INTERNAL: Return the center `(h, k)` and radius `r` for the left-down quadrant circle, 
+obtained by reflecting `circle_right_up(B,theta)` across both axes (`h -> -h`, `k -> -k`).
+"""
 function circle_left_down(B::T, theta::T) where {T<:Real}
     h,k,r=circle_right_up(B,theta)
     return -h,-k,r
 end
 
+"""
+    circle_helper(ϕ, h, k, r) -> (x, y)
+
+Return the Cartesian coordinates `(x, y)` on the circle centered at `(h, k)` 
+with radius `r`, corresponding to the parametric angle `ϕ`.
+"""
 function circle_helper(ϕ, h::T, k::T, r::T) where {T<:Real}
     return h+r*cos(ϕ),k+r*sin(ϕ)
 end
 
+
+"""
+    make_quarter_generalized_sinai(half_height, half_width, theta_right, theta_top; 
+                                   x0, y0, rot_angle, P1, P2) -> (boundary, corners)
+
+Construct the quarter (fundamental) boundary of the generalized Sinai billiard 
+using two circular arcs (top-right arc and right-up arc) plus two line segments. 
+
+- `half_height`, `half_width`: The half extents in y and x.
+- `theta_right`, `theta_top`: Angles defining the circle slopes.
+- `P1, P2`: Reference point(s) used for setting arc angles.
+- Returns: a tuple `(boundary::Vector{Union{CircleSegment,VirtualLineSegment}}, corners::Vector=[])`.
+"""
 function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
     origin=SVector(x0,y0)
     top=SVector(x0,half_height)
@@ -129,6 +185,13 @@ function make_quarter_generalized_sinai(half_height::T, half_width::T, theta_rig
     return boundary,corners
 end
 
+"""
+    make_desymmetrized_full_generalized_sinai(half_height, half_width, theta_right, theta_top; 
+                                              x0, y0, rot_angle, P1, P2) -> (boundary, corners)
+
+Construct the "desymmetrized full" boundary of the generalized Sinai billiard,
+using two arcs (right-up and top-right). Returns `(boundary::Vector{CircleSegment}, corners::Vector=[])`.
+"""
 function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
     hru,kru,rru=circle_right_up(half_width,theta_right)
     htr,ktr,rtr=circle_top_right(half_height,theta_top)
@@ -147,6 +210,16 @@ function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T
     return boundary,corners
 end
 
+"""
+    make_full_boundary_generalized_sinai(half_height, half_width, theta_right, theta_top; 
+                                         x0, y0, rot_angle, P1, P2) -> (boundary, corners)
+
+Construct the full 4-pointed star Sinai billiard boundary by creating 
+all 8 arcs (top-right, top-left, bottom-right, bottom-left, right-up, right-down, 
+left-up, left-down). Each arc is parameterized using `angle_from_point` for start 
+and end angles, referencing `(P1, P2)` and the corners `(±half_width, 0)` or `(0, ±half_height)`.
+Returns `(boundary::Vector{CircleSegment}, corners::Vector=[])`.
+"""
 function make_full_boundary_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
     # Points that define the inner part
     origin=SVector(x0,y0)
@@ -210,6 +283,19 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     return boundary,corners
 end
 
+"""
+    struct GeneralizedSinai{T} <: AbsBilliard
+
+- `fundamental_boundary`: the quarter boundary (arcs + lines)
+- `full_boundary`: the full 4-pointed star boundary (8 arcs)
+- `desymmetrized_full_boundary`: a quarter of the `full_boundary`
+- `length` / `length_fundamental`: total lengths of the full and quarter boundaries
+- `area` / `area_fundamental`: area of the full and quarter domains
+- `half_width`, `half_height`: geometry parameters
+- `theta_right`, `theta_top`: angles controlling circle slopes
+- `corners`: corner points for the fundamental domain
+- `angles`, `angles_fundamental`: Angles of the corners of the fundamental domain
+"""
 struct GeneralizedSinai{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{CircleSegment,VirtualLineSegment}}
     full_boundary::Vector{CircleSegment}
@@ -227,17 +313,48 @@ struct GeneralizedSinai{T} <: AbsBilliard where {T<:Real}
     angles_fundamental::Vector
 end
 
+"""
+    GeneralizedSinai(half_height, half_width, theta_right, theta_top) -> GeneralizedSinai{T}
+
+Construct a `GeneralizedSinai` billiard by:
+
+- Building its fundamental quarter boundary 
+  via `make_quarter_generalized_sinai`.
+- Building the desymmetrized full boundary 
+  via `make_desymmetrized_full_generalized_sinai`.
+- Building the full star boundary 
+  via `make_full_boundary_generalized_sinai`.
+- Computing total lengths and areas.
+
+Returns a `GeneralizedSinai` struct holding all these components.
+"""
 function GeneralizedSinai(half_height::T, half_width::T, theta_right::T, theta_top::T) :: GeneralizedSinai where {T<:Real}
     fundamental_boundary,corners=make_quarter_generalized_sinai(half_height,half_width,theta_right,theta_top)
     desymmetrized_full_boundary,_=make_desymmetrized_full_generalized_sinai(half_height,half_width,theta_right,theta_top)
     full_boundary,_=make_full_boundary_generalized_sinai(half_height,half_width,theta_right,theta_top)
     length=sum([seg.length for seg in full_boundary])
     length_fundamental=sum([seg.length for seg in fundamental_boundary])
-    area=4*0.6140 # fix later 
-    area_fundamental=0.6140 # fix later
-    return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_height,theta_right,theta_top,corners,[],[pi/2])
+    area=4*0.6140 
+    area_fundamental=0.6140 # Barnett's paper on Quantum Ergodicity in the generealized sinai billiard for exactly this geometry
+    return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_height,theta_right,theta_top,corners,SVector(0.0,0.0),[pi/2])
 end
 
+
+"""
+    make_generalized_sinai_and_basis(half_height, half_width, theta_right, theta_top; 
+                                     basis_type=:cafb, x0, y0, rot_angle) 
+                                     -> (billiard, basis)
+
+Convenience function that builds a `GeneralizedSinai` billiard with given parameters,
+and also constructs a basis set (by default `CornerAdaptedFourierBessel`).
+
+Arguments:
+- `half_height, half_width`: geometry parameters
+- `theta_right, theta_top`: angles controlling circle slopes
+- `basis_type`: choose between `:cafb` or `:rpw`
+- `x0, y0, rot_angle`: optional shifts/rotations for the basis
+- Returns: `(billiard, basis)`
+"""
 function make_generalized_sinai_and_basis(half_height::T=0.8, half_width::T=0.6, theta_right::T=pi/2-0.7, theta_top::T=0.4, basis_type=:cafb, x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
     billiard=GeneralizedSinai(half_height,half_width,theta_right,theta_top)
     symmetry=Vector{Any}([XYReflection(-1,-1)])
