@@ -59,7 +59,6 @@ Return the center (h2, k2) and radius r2 of the circle passing through (B,0) and
 with a tangent of slope tan(theta) at (1,1).
 """
 function circle_right_up(B::T, theta::T) where {T<:Real}
-    
     cotθ2=cot(theta)
     function k2_of_h2(h2)
         return 1+(1-h2)*cotθ2
@@ -75,84 +74,6 @@ function circle_right_up(B::T, theta::T) where {T<:Real}
     k2=k2_of_h2(h2)
     r2=sqrt((1-h2)^2+(1-k2)^2)
     return h2,k2,r2
-    
-    #=
-    # Using the same derivation as before:
-    #   (B - h2)^2 + (0 - k2)^2 = r2^2
-    #   (1 - h2)^2 + (1 - k2)^2 = r2^2
-    #   slope from (h2,k2) to (1,1) = -cot(θ2).
-    #
-    # => k2 = 1 + (1 - h2)*cot(θ2)
-    # => (B - h2)^2 + k2^2 = (1 - h2)^2 + (1 - k2)^2
-    #
-    cotθ2 = cot(theta)
-
-    # 1) Expand the equality of r2^2 from the two points:
-    #    (B - h2)^2 + k2^2 = (1 - h2)^2 + (1 - k2)^2
-    #
-    # 2) Insert k2 = 1 + (1 - h2)*cot(θ2) into that equality
-    #    and solve for h2. Then k2 is found easily.
-
-    # We'll do the symbolic manipulations inline or just do them in code:
-    # Let me show a minimal approach:
-
-    # We'll define k2 in terms of h2:
-    function k2_of_h2(h2)
-        return 1 + (1 - h2)*cotθ2
-    end
-
-    # Then define f(h2) = LHS - RHS from the equality (B,0) vs (1,1)
-    function f(h2)
-        k2_ = k2_of_h2(h2)
-        lhs = (B - h2)^2 + k2_^2
-        rhs = (1 - h2)^2 + (1 - k2_)^2
-        return lhs - rhs
-    end
-
-    # We want f(h2) = 0. In principle, you can solve analytically as well,
-    # but let's do a naive approach (like a small numeric solve) for brevity
-    # or we can do the direct algebra.  For completeness, let's do direct
-    # algebra here if possible:
-
-    # Expand them:
-    #   LHS = B^2 - 2Bh2 + h2^2 + k2^2
-    #   RHS = 1 - 2h2 + h2^2 + 1 - 2k2 + k2^2
-    #       = 2 - 2h2 - 2k2 + h2^2 + k2^2
-    #
-    # So LHS - RHS = (B^2 - 2Bh2 + h2^2 + k2^2)
-    #               - (2 - 2h2 - 2k2 + h2^2 + k2^2)
-    # = B^2 - 2Bh2  - 2 + 2h2 + 2k2
-    # = B^2 - 2  + 2k2 + 2h2 - 2Bh2
-    #
-    # Where k2 = 1 + (1 - h2)*cotθ2
-    # => 2k2 = 2 + 2(1 - h2)*cotθ2
-    # => 2k2 = 2 + 2cotθ2 - 2h2*cotθ2
-    #
-    # Then LHS - RHS = B^2 - 2 + [2 + 2cotθ2 - 2h2*cotθ2] + 2h2 - 2Bh2
-    # = (B^2 - 2 + 2) + 2cotθ2
-    #   + [- 2h2*cotθ2 + 2h2 - 2Bh2]
-    # = B^2 + 2cotθ2 + 2h2(1 - B) - 2h2*cotθ2
-    # = B^2 + 2cotθ2 + 2h2(1 - B) - 2h2*cotθ2
-    #
-    # Factor out 2h2 maybe:
-    # = B^2 + 2cotθ2 + 2h2[ (1 - B) - h2*cotθ2/ ??? ]  (We need to be careful.)
-    # Let's do it systematically:
-
-    # Actually, let's do it directly:
-    # set f(h2) = 0 => B^2 + 2cotθ2 + 2h2(1 - B) - 2h2*cotθ2 = 0
-    # => 2h2( (1 - B) - cotθ2 ) = - (B^2 + 2cotθ2)
-    # => h2 = - (B^2 + 2cotθ2) / (2( (1 - B) - cotθ2 ))
-    #
-    # That should be the direct formula:
-
-    denom = 2 * ((1 - B) - cotθ2)
-    h2 = - (B^2 + 2*cotθ2) / denom
-    k2 = k2_of_h2(h2)
-
-    # Then radius:
-    r2 = sqrt( (1 - h2)^2 + (1 - k2)^2 )
-    return h2, k2, r2
-    =#
 end
 
 function circle_right_down(B::T, theta::T) where {T<:Real}
