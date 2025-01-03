@@ -210,7 +210,7 @@ function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T
 end
 
 function make_full_boundary_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
-    #= OLD
+    #=
     # Points that define the inner part
     origin=SVector(x0,y0)
     top=SVector(x0,half_height)
@@ -269,72 +269,244 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     corners=[]
     return boundary,corners
     =#
-    # Centers & radii for the eight circles
-    htr, ktr, rtr = circle_top_right(half_height, theta_top)
-    htl, ktl, rtl = circle_top_left(half_height,  theta_top)
-    hru, kru, rru = circle_right_up(half_width,   theta_right)
-    hrd, krd, rrd = circle_right_down(half_width, theta_right)
-    hlu, klu, rlu = circle_left_up(half_width,    theta_right)
-    hld, kld, rld = circle_left_down(half_width,  theta_right)
-    hbl, kbl, rbl = circle_bottom_left(half_height,  theta_top)
+    # ----------------------------------------------------------------------
+    # 1) Define convenient corner points. Adjust if you want them shifted by (x0,y0).
+    #    We'll just do the shifting at the end if needed, or keep them as is:
+    # ----------------------------------------------------------------------
+    top    = SVector(x0,  +half_height)
+    bottom = SVector(x0,  -half_height)
+    right  = SVector(+half_width,  y0)
+    left   = SVector(-half_width,  y0)
+
+    # ----------------------------------------------------------------------
+    # 2) Get the circle centers and radii for each of the 8 arcs:
+    #    (top‐right, top‐left, bottom‐right, bottom‐left, right‐up,
+    #     right‐down, left‐up, left‐down)
+    # ----------------------------------------------------------------------
+    htr, ktr, rtr = circle_top_right(   half_height, theta_top)
+    htl, ktl, rtl = circle_top_left(    half_height, theta_top)
     hbr, kbr, rbr = circle_bottom_right(half_height, theta_top)
+    hbl, kbl, rbl = circle_bottom_left( half_height, theta_top)
 
-    # "Correction angles" -- basically the angle between the
-    # 'anchor' point on the circle (e.g. ϕ=π) and your nominal boundary point.
-    xru_c, yru_c = circle_helper( π,         hru, kru, rru )
-    aru_c        = angle_between_points(hru, kru, xru_c, yru_c,  half_width, y0)
+    hru, kru, rru = circle_right_up(   half_width, theta_right)
+    hrd, krd, rrd = circle_right_down( half_width, theta_right)
+    hlu, klu, rlu = circle_left_up(    half_width, theta_right)
+    hld, kld, rld = circle_left_down(  half_width, theta_right)
 
-    xrd_c, yrd_c = circle_helper( π,         hrd, krd, rrd )
-    ard_c        = angle_between_points(hrd, krd, xrd_c, yrd_c,  half_width, y0)
+    # ----------------------------------------------------------------------
+    # 3) Compute a “start angle” for each arc using angle_between_points.
+    #
+    #    For example, top‐right arc might connect:
+    #      corner #1 = (x0, half_height)    [top]
+    #      corner #2 = (P1, P2)            [some reference, or (1,1) scaled]
+    #
+    #    But it all depends on how you want to define the arc’s start→end.
+    #    Below we pick plausible corner pairs. You can swap them if you like.
+    # ----------------------------------------------------------------------
 
-    xtr_c, ytr_c = circle_helper( 3π/2,      htr, ktr, rtr )
-    atr_c        = angle_between_points(htr, ktr, xtr_c, ytr_c,  x0, half_height)
+    # Example for top‐right arc:
+    angle_tr = angle_between_points(
+        htr, ktr,
+        x0,           half_height,  # corner A = 'top'
+        P1,           P2            # corner B = e.g. your interior point
+    )
 
-    xtl_c, ytl_c = circle_helper( 3π/2,      htl, ktl, rtl )
-    atl_c        = angle_between_points(htl, ktl, ytl_c, ytl_c,  x0, half_height)
+    # Example for top‐left arc:
+    angle_tl = angle_between_points(
+        htl, ktl,
+        x0,           half_height,  # 'top'
+        P1,           P2            # same idea
+    )
 
-    xlu_c, ylu_c = circle_helper( 0,         hlu, klu, rlu )
-    alu_c        = angle_between_points(hlu, klu, xlu_c, ylu_c,  half_width, y0)
+    # Example for bottom‐right arc:
+    angle_br = angle_between_points(
+        hbr, kbr,
+        P1,   P2,      # e.g. interior
+        x0,  -half_height  # 'bottom'
+    )
 
-    xld_c, yld_c = circle_helper( 0,         hld, kld, rld )
-    ald_c        = angle_between_points(hld, kld, xld_c, yld_c,  half_width, y0)
+    # Example for bottom‐left arc:
+    angle_bl = angle_between_points(
+        hbl, kbl,
+        P1,   P2,
+        x0,  -half_height
+    )
 
-    xbl_c, ybl_c = circle_helper( π,         hbl, kbl, rbl )
-    abl_c        = angle_between_points(hbl, kbl, xbl_c, ybl_c,  x0, half_height)
+    # Example for right‐up arc:
+    angle_ru = angle_between_points(
+        hru, kru,
+        P1,      P2,    # interior?
+        half_width, y0  # 'right'
+    )
 
-    xbr_c, ybr_c = circle_helper( π,         hbr, kbr, rbr )
-    abr_c        = angle_between_points(hbr, kbr, xbr_c, ybr_c,  x0, half_height)
+    # Example for right‐down arc:
+    angle_rd = angle_between_points(
+        hrd, krd,
+        P1,      P2,
+        half_width, y0
+    )
 
-    # The “start angles” measuring from your P1,P2 references:
-    # (For brevity, we’ll just do two of them explicitly—others can be done similarly.)
-    angle_ru = angle_between_points(hru, kru, P1, P2, half_width, y0)
-    angle_tr = angle_between_points(htr, ktr, x0, half_height, P1, P2)
-    # etc.  If you want distinct angles for left, right, top, bottom arcs,
-    # define them likewise.  Below we assume symmetrical geometry
-    # so we just reuse angle_ru & angle_tr where appropriate.
+    # Example for left‐up arc:
+    angle_lu = angle_between_points(
+        hlu, klu,
+        -half_width, y0,  # 'left'
+        P1,          P2
+    )
 
-    # Now build each arc using consistent (h, k, r) + angles
-    right_arc_up   = CircleSegment(rru, angle_ru,   π - angle_ru - aru_c,
-                                   hru, kru; orientation=-1)
-    right_arc_down = CircleSegment(rrd, angle_ru,   π - angle_ru - ard_c,
-                                   hrd, krd; orientation=-1)
+    # Example for left‐down arc:
+    angle_ld = angle_between_points(
+        hld, kld,
+        -half_width, y0,
+        P1,          P2
+    )
 
-    top_arc_right  = CircleSegment(rtr, angle_tr,   (3π/2) - angle_tr - atr_c,
-                                   htr, ktr; orientation=-1)
-    top_arc_left   = CircleSegment(rtl, angle_tr,   (3π/2) - angle_tr - atl_c,
-                                   htl, ktl; orientation=-1)
+    # ----------------------------------------------------------------------
+    # 4) Compute “correction angles” using circle_helper at some anchor ϕ
+    #    that ensures we measure the short arc. We do the same approach
+    #    as in the quarter code:
+    # ----------------------------------------------------------------------
 
-    left_arc_up    = CircleSegment(rlu, angle_ru,   -angle_ru - alu_c,
-                                   hlu, klu; orientation=-1)
-    left_arc_down  = CircleSegment(rld, angle_ru,   -angle_ru - ald_c,
-                                   hld, kld; orientation=-1)
+    # -- For top‐right:
+    #    We pick ϕ = 3π/2 as anchor, see where that is, measure difference to (x0, half_height)
+    x_corr_tr, y_corr_tr = circle_helper(Float64(3π/2), htr, ktr, rtr)
+    angle_corr_tr        = angle_between_points(
+        htr, ktr,
+        x_corr_tr, y_corr_tr,
+        x0, half_height
+    )
 
-    bottom_arc_left  = CircleSegment(rbl, angle_tr, (π/2) - angle_tr - abl_c,
-                                     hbl, kbl; orientation=-1)
-    bottom_arc_right = CircleSegment(rbr, angle_tr, (π/2) - angle_tr - abr_c,
-                                     hbr, kbr; orientation=-1)
+    # -- For top‐left:
+    x_corr_tl, y_corr_tl = circle_helper(Float64(3π/2), htl, ktl, rtl)
+    angle_corr_tl        = angle_between_points(
+        htl, ktl,
+        x_corr_tl, y_corr_tl,
+        x0, half_height
+    )
 
-    # Collect all eight arcs
+    # -- For bottom‐right:
+    x_corr_br, y_corr_br = circle_helper(Float64( π ), hbr, kbr, rbr)
+    angle_corr_br        = angle_between_points(
+        hbr, kbr,
+        x_corr_br, y_corr_br,
+        x0, -half_height
+    )
+
+    # -- For bottom‐left:
+    x_corr_bl, y_corr_bl = circle_helper(Float64( π ), hbl, kbl, rbl)
+    angle_corr_bl        = angle_between_points(
+        hbl, kbl,
+        x_corr_bl, y_corr_bl,
+        x0, -half_height
+    )
+
+    # -- For right‐up:
+    x_corr_ru, y_corr_ru = circle_helper(Float64( π ), hru, kru, rru)
+    angle_corr_ru        = angle_between_points(
+        hru, kru,
+        x_corr_ru, y_corr_ru,
+        half_width, y0
+    )
+
+    # -- For right‐down:
+    x_corr_rd, y_corr_rd = circle_helper(Float64( π ), hrd, krd, rrd)
+    angle_corr_rd        = angle_between_points(
+        hrd, krd,
+        x_corr_rd, y_corr_rd,
+        half_width, y0
+    )
+
+    # -- For left‐up:
+    x_corr_lu, y_corr_lu = circle_helper(Float64(0.0), hlu, klu, rlu)
+    angle_corr_lu        = angle_between_points(
+        hlu, klu,
+        x_corr_lu, y_corr_lu,
+        -half_width, y0
+    )
+
+    # -- For left‐down:
+    x_corr_ld, y_corr_ld = circle_helper(Float64(0.0), hld, kld, rld)
+    angle_corr_ld        = angle_between_points(
+        hld, kld,
+        x_corr_ld, y_corr_ld,
+        -half_width, y0
+    )
+
+    # ----------------------------------------------------------------------
+    # 5) Build each arc with CircleSegment. Notice how we do:
+    #      sweep = [some base angle] - angle_(thisArc) - angle_corr_(thisArc)
+    #    plus orientation=-1 so the arc is traced properly.
+    # ----------------------------------------------------------------------
+
+    # Top arc, right side:
+    top_arc_right = CircleSegment(
+        rtr,
+        angle_tr,
+        (3π/2) - angle_tr - angle_corr_tr,  # you might adjust signs
+        htr, ktr;
+        orientation = -1
+    )
+
+    top_arc_left = CircleSegment(
+        rtl,
+        angle_tl,
+        (3π/2) - angle_tl - angle_corr_tl,
+        htl, ktl;
+        orientation = -1
+    )
+
+    bottom_arc_right = CircleSegment(
+        rbr,
+        angle_br,
+        (π/2) - angle_br - angle_corr_br,  # or maybe (-(π/2)), check sign
+        hbr, kbr;
+        orientation = -1
+    )
+
+    bottom_arc_left = CircleSegment(
+        rbl,
+        angle_bl,
+        (π/2) - angle_bl - angle_corr_bl,
+        hbl, kbl;
+        orientation = -1
+    )
+
+    right_arc_up = CircleSegment(
+        rru,
+        angle_ru,
+        π - angle_ru - angle_corr_ru,
+        hru, kru;
+        orientation = -1
+    )
+
+    right_arc_down = CircleSegment(
+        rrd,
+        angle_rd,
+        π - angle_rd - angle_corr_rd,
+        hrd, krd;
+        orientation = -1
+    )
+
+    left_arc_up = CircleSegment(
+        rlu,
+        angle_lu,
+        -angle_lu - angle_corr_lu,  # or something similar
+        hlu, klu;
+        orientation = -1
+    )
+
+    left_arc_down = CircleSegment(
+        rld,
+        angle_ld,
+        -angle_ld - angle_corr_ld,
+        hld, kld;
+        orientation = -1
+    )
+
+    # ----------------------------------------------------------------------
+    # 6) Gather them all into one array (the final star boundary).
+    #    The order you place them in can matter for certain plotting routines,
+    #    but typically any order is fine if you just want all arcs.
+    # ----------------------------------------------------------------------
     boundary = Union{CircleSegment}[
         top_arc_right,
         top_arc_left,
@@ -345,10 +517,9 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
         left_arc_up,
         left_arc_down,
     ]
-    
-    corners = SVector{2,T}[]  # or however you wish to define them
 
-    return boundary, corners
+    # You could define corner points if you wish, or store them in the return
+    corners = SVector{2,T}[]  # empty for now
 end
 
 struct GeneralizedSinai{T} <: AbsBilliard where {T<:Real}
