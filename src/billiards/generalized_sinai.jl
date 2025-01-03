@@ -168,7 +168,7 @@ function circle_left_down(B::T, theta::T) where {T<:Real}
     return -h,-k,r
 end
 
-function circle_helper(ϕ::T, h::T, k::T, r::T) where {T<:Real}
+function circle_helper(ϕ, h::T, k::T, r::T) where {T<:Real}
     return h+r*cos(ϕ),k+r*sin(ϕ)
 end
 
