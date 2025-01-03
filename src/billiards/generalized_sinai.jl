@@ -520,6 +520,7 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
 
     # You could define corner points if you wish, or store them in the return
     corners = SVector{2,T}[]  # empty for now
+    return boundary, corners
 end
 
 struct GeneralizedSinai{T} <: AbsBilliard where {T<:Real}
