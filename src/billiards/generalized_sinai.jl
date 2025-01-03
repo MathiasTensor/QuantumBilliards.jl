@@ -210,6 +210,7 @@ function make_desymmetrized_full_generalized_sinai(half_height::T, half_width::T
 end
 
 function make_full_boundary_generalized_sinai(half_height::T, half_width::T, theta_right::T, theta_top::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), P1=1.0, P2=1.0) where {T<:Real}
+    #= OLD
     # Points that define the inner part
     origin=SVector(x0,y0)
     top=SVector(x0,half_height)
@@ -267,6 +268,87 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     boundary=Union{CircleSegment}[right_arc_up,top_arc_right,top_arc_left,left_arc_up,left_arc_down,bottom_arc_left,bottom_arc_right,right_arc_up]
     corners=[]
     return boundary,corners
+    =#
+    # Centers & radii for the eight circles
+    htr, ktr, rtr = circle_top_right(half_height, theta_top)
+    htl, ktl, rtl = circle_top_left(half_height,  theta_top)
+    hru, kru, rru = circle_right_up(half_width,   theta_right)
+    hrd, krd, rrd = circle_right_down(half_width, theta_right)
+    hlu, klu, rlu = circle_left_up(half_width,    theta_right)
+    hld, kld, rld = circle_left_down(half_width,  theta_right)
+    hbl, kbl, rbl = circle_bottom_left(half_height,  theta_top)
+    hbr, kbr, rbr = circle_bottom_right(half_height, theta_top)
+
+    # "Correction angles" -- basically the angle between the
+    # 'anchor' point on the circle (e.g. ϕ=π) and your nominal boundary point.
+    xru_c, yru_c = circle_helper( π,         hru, kru, rru )
+    aru_c        = angle_between_points(hru, kru, xru_c, yru_c,  half_width, y0)
+
+    xrd_c, yrd_c = circle_helper( π,         hrd, krd, rrd )
+    ard_c        = angle_between_points(hrd, krd, xrd_c, yrd_c,  half_width, y0)
+
+    xtr_c, ytr_c = circle_helper( 3π/2,      htr, ktr, rtr )
+    atr_c        = angle_between_points(htr, ktr, xtr_c, ytr_c,  x0, half_height)
+
+    xtl_c, ytl_c = circle_helper( 3π/2,      htl, ktl, rtl )
+    atl_c        = angle_between_points(htl, ktl, ytl_c, ytl_c,  x0, half_height)
+
+    xlu_c, ylu_c = circle_helper( 0,         hlu, klu, rlu )
+    alu_c        = angle_between_points(hlu, klu, xlu_c, ylu_c,  half_width, y0)
+
+    xld_c, yld_c = circle_helper( 0,         hld, kld, rld )
+    ald_c        = angle_between_points(hld, kld, xld_c, yld_c,  half_width, y0)
+
+    xbl_c, ybl_c = circle_helper( π,         hbl, kbl, rbl )
+    abl_c        = angle_between_points(hbl, kbl, xbl_c, ybl_c,  x0, half_height)
+
+    xbr_c, ybr_c = circle_helper( π,         hbr, kbr, rbr )
+    abr_c        = angle_between_points(hbr, kbr, xbr_c, ybr_c,  x0, half_height)
+
+    # The “start angles” measuring from your P1,P2 references:
+    # (For brevity, we’ll just do two of them explicitly—others can be done similarly.)
+    angle_ru = angle_between_points(hru, kru, P1, P2, half_width, y0)
+    angle_tr = angle_between_points(htr, ktr, x0, half_height, P1, P2)
+    # etc.  If you want distinct angles for left, right, top, bottom arcs,
+    # define them likewise.  Below we assume symmetrical geometry
+    # so we just reuse angle_ru & angle_tr where appropriate.
+
+    # Now build each arc using consistent (h, k, r) + angles
+    right_arc_up   = CircleSegment(rru, angle_ru,   π - angle_ru - aru_c,
+                                   hru, kru; orientation=-1)
+    right_arc_down = CircleSegment(rrd, angle_ru,   π - angle_ru - ard_c,
+                                   hrd, krd; orientation=-1)
+
+    top_arc_right  = CircleSegment(rtr, angle_tr,   (3π/2) - angle_tr - atr_c,
+                                   htr, ktr; orientation=-1)
+    top_arc_left   = CircleSegment(rtl, angle_tr,   (3π/2) - angle_tr - atl_c,
+                                   htl, ktl; orientation=-1)
+
+    left_arc_up    = CircleSegment(rlu, angle_ru,   -angle_ru - alu_c,
+                                   hlu, klu; orientation=-1)
+    left_arc_down  = CircleSegment(rld, angle_ru,   -angle_ru - ald_c,
+                                   hld, kld; orientation=-1)
+
+    bottom_arc_left  = CircleSegment(rbl, angle_tr, (π/2) - angle_tr - abl_c,
+                                     hbl, kbl; orientation=-1)
+    bottom_arc_right = CircleSegment(rbr, angle_tr, (π/2) - angle_tr - abr_c,
+                                     hbr, kbr; orientation=-1)
+
+    # Collect all eight arcs
+    boundary = Union{CircleSegment}[
+        top_arc_right,
+        top_arc_left,
+        bottom_arc_right,
+        bottom_arc_left,
+        right_arc_up,
+        right_arc_down,
+        left_arc_up,
+        left_arc_down,
+    ]
+    
+    corners = SVector{2,T}[]  # or however you wish to define them
+
+    return boundary, corners
 end
 
 struct GeneralizedSinai{T} <: AbsBilliard where {T<:Real}
