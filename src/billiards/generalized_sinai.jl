@@ -14,6 +14,17 @@ function angle_between_points(h::T, k::T, x1::T, y1::T, x2::T, y2::T) where {T<:
     return acos(dot_v1_v2/(r1*r2))
 end
 
+"""
+    angle_from_point(h, k, x, y) -> α ∈ [0, 2π)
+
+Return the polar angle of the point `(x, y)` with respect to the center `(h, k)`,
+measured from the positive x-axis in the range `[0, 2π)`.
+"""
+function angle_from_point(h::T, k::T, x::T, y::T) where {T<:Real}
+    a=atan(y-k,x-h)  # gives angle in (-π, π]
+    return (a<0) ? (a+2π) : a
+end
+
 # 8 combinations of circles that form the full generalized 4-pointed sinai billiard
 
 """
@@ -148,46 +159,49 @@ function make_full_boundary_generalized_sinai(half_height::T, half_width::T, the
     hll,kll,rll=circle_left_down(half_width,theta_right)
     hbl,kbl,rbl=circle_bottom_left(half_height,theta_top)
     hbr,kbr,rbr=circle_bottom_right(half_height,theta_top)
-    ### Corrections ###
+    ### Find the start/end angles for the 8 segments and form the segments ###
     # Right up
-    x_corr_ru,y_corr_ru=circle_helper(Float64(pi),hru,kru,rru)
-    angle_corr_ru=angle_between_points(hru,kru,x_corr_ru,y_corr_ru,half_width,y0)
+    angle_ru_start=angle_from_point(hru,kru,P1,P2)
+    angle_ru_end=angle_from_point(hru,kru,half_width,y0)
+    angle_ru=angle_ru_end-angle_ru_start
+    ru=CircleSegment(rru,angle_ru,angle_ru_start,hru,kru,orientation=-1)
     # Top right
-    x_corr_tr,y_corr_tr=circle_helper(Float64(3*pi/2),htr,ktr,rtr)
-    angle_corr_tr=angle_between_points(htr,ktr,x_corr_tr,y_corr_tr,x0,half_height) 
+    angle_tr_start=angle_from_point(htr,ktr,x0,half_height)
+    angle_tr_end=angle_from_point(htr,ktr,P1,P2)
+    angle_tr=angle_tr_end-angle_tr_start
+    tr=CircleSegment(rtr,angle_tr,angle_tr_start,htr,ktr,orientation=-1)
     # Top left
-    x_corr_tl,y_corr_tl=circle_helper(Float64(3*pi/2),htl,ktl,rtl)
-    angle_corr_tl=angle_between_points(htl,ktl,x_corr_tl,y_corr_tl,x0,half_height)
+    angle_tl_start=angle_from_point(htl,ktl,-P1,P2)
+    angle_tl_end=angle_from_point(htl,ktl,x0,half_height)
+    angle_tl=angle_tl_end-angle_tl_start
+    tl=CircleSegment(rtl,angle_tl,angle_tl_start,htl,ktl,orientation=-1)
     # Left up
-    x_corr_lu,y_corr_lu=circle_helper(Float64(0.0),hlu,klu,rlu)
-    angle_corr_lu=angle_between_points(hlu,klu,x_corr_lu,y_corr_lu,half_width,y0)
+    angle_lu_start=angle_from_point(hlu,klu,-half_width,y0)
+    angle_lu_end=angle_from_point(hlu,klu,-P1,P2)
+    angle_lu=angle_lu_end-angle_lu_start
+    lu=CircleSegment(rlu,angle_lu,angle_lu_start,hlu,klu,orientation=-1)
     # Left down
-    x_corr_ld,y_corr_ld=circle_helper(Float64(0.0),hll,kll,rll)
-    angle_corr_ld=angle_between_points(hll,kll,x_corr_ld,y_corr_ld,half_width,y0)
+    angle_ld_start=angle_from_point(hld,kld,-P1,-P2)
+    angle_ld_end=angle_from_point(hld,kld,-half_width,y0)
+    angle_ld=angle_ld_end-angle_ld_start
+    ld=CircleSegment(rld,angle_ld,angle_ld_start,hld,kld,orientation=-1)
     # Bottom left
-    x_corr_bl,y_corr_bl=circle_helper(Float64(pi),hbl,kbl,rbl)
-    angle_corr_bl=angle_between_points(hbl,kbl,x_corr_bl,y_corr_bl,x0,half_height)
+    angle_bl_start=angle_from_point(hbl,kbl,x0,-half_height)
+    angle_bl_end=angle_from_point(hbl,kbl,-P1,-P2)
+    angle_bl=angle_bl_end-angle_bl_start
+    bl=CircleSegment(rbl,angle_bl,angle_bl_start,hbl,kbl,orientation=-1)
     # Bottom right
-    x_corr_br,y_corr_br=circle_helper(Float64(pi),hbr,kbr,rbr)
-    angle_corr_br=angle_between_points(hbr,kbr,x_corr_br,y_corr_br,x0,half_height)
+    angle_br_start=angle_from_point(hbr,kbr,P1,-P2)
+    angle_br_end=angle_from_point(hbr,kbr,x0,-half_height)
+    angle_br=angle_br_end-angle_br_start
+    br=CircleSegment(rbr,angle_br,angle_br_start,hbr,kbr,orientation=-1)
     # Right down
-    x_corr_rd,y_corr_rd=circle_helper(Float64(pi),hrd,krd,rrd)
-    angle_corr_rd=angle_between_points(hrd,krd,x_corr_rd,y_corr_rd,half_width,y0)
+    angle_rd_start=angle_from_point(hrd,krd,half_width,y0)
+    angle_rd_end=angle_from_point(hrd,krd,P1,-P2)
+    angle_rd=angle_rd_end-angle_rd_start
+    rd=CircleSegment(rrd,angle_rd,angle_rd_start,hrd,krd,orientation=-1)
 
-    ### Angle calculations ###
-    angle_ru=angle_between_points(hru,kru,P1,P2,half_width,y0)
-    angle_tr=angle_between_points(htr,ktr,x0,half_height,P1,P2)
-    
-    # Circle Segments
-    right_arc_up=CircleSegment(rtr,angle_ru,T(pi)-angle_ru-angle_corr_ru,htr,ktr,orientation= -1)
-    top_arc_right=CircleSegment(rtr,angle_tr,T(3*pi/2)-angle_tr-angle_corr_tr,htr,ktr,orientation= -1)
-    top_arc_left=CircleSegment(rtl,angle_tr,T(3*pi/2)-angle_tr-angle_corr_tl,htl,ktl,orientation= -1)
-    left_arc_up=CircleSegment(rlu,angle_ru,-angle_ru-angle_corr_lu,hlu,klu,orientation= -1)
-    left_arc_down=CircleSegment(rll,angle_ru,-angle_ru-angle_corr_ld,hll,kll,orientation= -1)
-    bottom_arc_left=CircleSegment(rbl,angle_tr,T(pi/2)-angle_tr-angle_corr_bl,hbl,kbl,orientation= -1)
-    bottom_arc_right=CircleSegment(rbr,angle_tr,T(pi/2)-angle_tr-angle_corr_br,hbr,kbr,orientation= -1)
-    right_arc_up=CircleSegment(rrd,angle_ru,T(pi)-angle_ru-angle_corr_rd,hrd,krd,orientation= -1)
-    boundary=Union{CircleSegment}[right_arc_up,top_arc_right,top_arc_left,left_arc_up,left_arc_down,bottom_arc_left,bottom_arc_right,right_arc_up]
+    boundary=Union{CircleSegment}[ru,tr,tl,lu,ld,bl,br,rd]
     corners=[]
     return boundary,corners
 end
