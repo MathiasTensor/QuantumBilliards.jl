@@ -336,7 +336,7 @@ function GeneralizedSinai(half_height::T, half_width::T, theta_right::T, theta_t
     length_fundamental=sum([seg.length for seg in fundamental_boundary])
     area=4*0.6140 
     area_fundamental=0.6140 # Barnett's paper on Quantum Ergodicity in the generealized sinai billiard for exactly this geometry
-    return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_height,theta_right,theta_top,corners,SVector(0.0,0.0),[pi/2])
+    return GeneralizedSinai(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,half_width,half_height,theta_right,theta_top,corners,[0.0,0.0],[pi/2])
 end
 
 
