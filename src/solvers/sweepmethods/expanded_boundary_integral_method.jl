@@ -418,7 +418,7 @@ end
 
 ### DEBUGGING TOOLS ###
 
-function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
@@ -446,15 +446,17 @@ function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bound
     return λ_corrected,tens
 end
 
-function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T,dk=(k)->(0.05*k^(-1/3));kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T,dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     ks_all=T[]
     tens_all=T[]
     while k<k2
         pts=evaluate_points(solver,billiard,k)
-        ks,tens=solve_DEBUG(solver,basis,pts,k,dk(k))
-        push!(ks_ll,ks)
-        push!(tens_all,log10.(tens))
+        ks,tens=solve_DEBUG(solver,basis,pts,k)
+        idx=findmin(tens)[2]
+        push!(ks_ll,ks[idx])
+        push!(tens_all,tens[idx])
+        k+=dk(k)
     end
     return ks_all,tens_all
 end
