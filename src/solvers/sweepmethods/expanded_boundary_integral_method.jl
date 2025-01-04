@@ -428,21 +428,11 @@ function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bound
     T=eltype(real.(λ))
     λ=real.(λ)
     corr_1=Vector{T}(undef,length(λ))
-    corr_2=Vector{T}(undef,length(λ))
     for i in eachindex(λ)
-        v_right=VR[:,i]
-        v_left=VL[:,i]
-        r_dA=similar(v_right)
-        r_ddA=similar(v_right)
-        mul!(r_ddA,ddA,v_right)
-        mul!(r_dA,dA,v_right)
-        numerator=real(dot(v_left,r_ddA)) # v_left' * (ddA * v_right)
-        denominator=real(dot(v_left,r_dA)) # v_left' * (dA * v_right)
         corr_1[i]=-λ[i]
-        corr_2[i]=-0.5*corr_1[i]^2*numerator/denominator
     end
-    λ_corrected=k.+corr_1.+corr_2
-    tens=abs.(corr_1.+corr_2)
+    λ_corrected=k.+corr_1
+    tens=abs.(corr_1)
     return λ_corrected,tens
 end
 
