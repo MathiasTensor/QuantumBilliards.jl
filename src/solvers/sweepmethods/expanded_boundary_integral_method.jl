@@ -446,7 +446,7 @@ function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bound
     return λ_corrected,tens
 end
 
-function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T,dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     ks_all=T[]
     tens_all=T[]
