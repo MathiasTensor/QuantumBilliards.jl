@@ -452,6 +452,8 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     T=eltype(k1)
     ks_all=T[]
     tens_all=T[]
+    ks_small=T[]
+    tens_small=T[]
     while k<k2
         pts=evaluate_points(bim_solver,billiard,k)
         ks,tens=solve_DEBUG(solver,basis,pts,k)
@@ -459,10 +461,14 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         if log10(tens[idx])<0.0
             push!(ks_all,ks[idx])
             push!(tens_all,tens[idx])
+            if k-dk(k)<ks[idx]<k+dk(k)
+                push!(ks_small,ks[idx])
+                push!(tens_small,tens[idx])
+            end
         end
         k+=dk(k)
     end
-    return ks_all,tens_all
+    return ks_all,tens_all,ks_small,tens_small
 end
 
 
