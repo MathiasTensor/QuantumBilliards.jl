@@ -448,11 +448,12 @@ end
 
 function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     T=eltype(k1)
     ks_all=T[]
     tens_all=T[]
     while k<k2
-        pts=evaluate_points(solver,billiard,k)
+        pts=evaluate_points(bim_solver,billiard,k)
         ks,tens=solve_DEBUG(solver,basis,pts,k)
         idx=findmin(tens)[2]
         push!(ks_ll,ks[idx])
