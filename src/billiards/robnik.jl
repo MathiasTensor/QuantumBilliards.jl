@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 """
     make_full_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
 
@@ -12,9 +5,9 @@ Constructs a full Robnik billiard.
 
 # Arguments
 - `ε::T`: The deformation parameter (ε ≥ 0).
-- `x0::T=zero(T)`: The x-coordinate of the center of the billiard.
-- `y0::T=zero(T)`: The y-coordinate of the center of the billiard.
-- `rot_angle::T=zero(T)`: The rotation angle of the billiard.
+- `x0::T=zero(T)`: The x-coordinate of t=0.
+- `y0::T=zero(T)`: The y-coordinate of t=0.
+- `rot_angle::T=zero(T)`: The rotation angle of the `CoordinateSystem`.
 
 # Returns
 - A tuple containing:
@@ -23,30 +16,25 @@ Constructs a full Robnik billiard.
   - `area_full::T`: The area of the full Robnik billiard.
 """
 function make_full_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
-    if ε < zero(T)
+    if ε<zero(T)
         error("ε must be non-negative.")
     end
-
-    origin = (x0, y0)
-    θ_multiplier = 2.0  # t from 0 to 1 maps to θ from 0 to 2π
-
+    origin=(x0,y0)
+    θ_multiplier=T(2.0)  # t from 0 to 1 maps to θ from 0 to 2π
     # Define the radial function for the full Robnik billiard
     r_func = t -> begin
-        θ = θ_multiplier * π * t  # θ ranges from 0 to 2π
-        r = one(T) + ε * cos(θ)
-        x = r * cos(θ)
-        y = r * sin(θ)
-        SVector(x, y)
+        θ=θ_multiplier*π*t # θ ranges from 0 to 2π
+        r=one(T)+ε*cos(θ)
+        x=r*cos(θ)
+        y=r*sin(θ)
+        SVector(x,y)
     end
-
     # Create the full Robnik billiard segment
-    full_robnik_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
-    area_full = compute_area(full_robnik_segment)
-
-    boundary = [full_robnik_segment]
-    corners = []  # Empty vector for corners
-
-    return boundary, corners, area_full
+    full_robnik_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
+    area_full=compute_area(full_robnik_segment)
+    boundary=PolarSegment{T}[full_robnik_segment]
+    corners=[]  # Empty vector for corners
+    return boundary,corners,area_full
 end
 
 """
@@ -56,9 +44,9 @@ Constructs a half Robnik billiard.
 
 # Arguments
 - `ε::T`: The deformation parameter (ε ≥ 0).
-- `x0::T=zero(T)`: The x-coordinate of the center of the billiard.
-- `y0::T=zero(T)`: The y-coordinate of the center of the billiard.
-- `rot_angle::T=zero(T)`: The rotation angle of the billiard.
+- `x0::T=zero(T)`: The x-coordinate of t=0.
+- `y0::T=zero(T)`: The y-coordinate of t=0.
+- `rot_angle::T=zero(T)`: The rotation angle of the `CoordinateSystem`.
 
 # Returns
 - A tuple containing:
@@ -66,68 +54,72 @@ Constructs a half Robnik billiard.
   - `corners::Vector{SVector{2,T}}`: The corner points of the half billiard.
 """
 function make_half_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
-    if ε < zero(T)
+    if ε<zero(T)
         error("ε must be non-negative.")
     end
-
-    origin = SVector(x0, y0)
-    θ_multiplier = 1.0  # t from 0 to 1 maps to θ from 0 to π
-
+    origin=SVector(x0,y0)
+    θ_multiplier=T(1.0)  # t from 0 to 1 maps to θ from 0 to π
     # Define the radial function for the half Robnik billiard
     r_func = t -> begin
-        θ = θ_multiplier * π * t  # θ ranges from 0 to π
-        r = one(T) + ε * cos(θ)
-        x = r * cos(θ)
-        y = r * sin(θ)
-        SVector(x, y)
+        θ=θ_multiplier*π*t  # θ ranges from 0 to π
+        r=one(T)+ε*cos(θ)
+        x=r*cos(θ)
+        y=r*sin(θ)
+        SVector(x,y)
     end
-
     # Create the half Robnik billiard segment
-    half_robnik_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
-
+    half_robnik_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     # Compute the start and end points of the half segment
-    pt0 = curve(half_robnik_segment, zero(T))  # Start point at θ = 0
-    pt1 = curve(half_robnik_segment, one(T))   # End point at θ = π
-
+    pt0=curve(half_robnik_segment,zero(T))  # Start point at θ = 0
+    pt1=curve(half_robnik_segment,one(T))   # End point at θ = π
     # Create a virtual line segment to close the half billiard from pt1 to pt0
-    line_segment = VirtualLineSegment(pt1, pt0; origin=origin, rot_angle=rot_angle)
-
+    line_segment=VirtualLineSegment(pt1,pt0;origin=origin,rot_angle=rot_angle)
     # Construct the boundary
-    boundary = Union{PolarSegment{T}, VirtualLineSegment{T}}[half_robnik_segment, line_segment]
-
-    # Corners are pt0 and pt1
-    corners = [pt0, pt1]
-
-    return boundary, corners
+    boundary=Union{PolarSegment{T},VirtualLineSegment{T}}[half_robnik_segment,line_segment]
+    corners=[pt0,pt1]
+    return boundary,corners
 end
 
-function make_desymmetrized_full_boundary(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
-    if ε < zero(T)
+"""
+    make_desymmetrized_full_boundary_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+
+Constructs a desymmetrized full Robnik billiard without virtual lines.
+
+# Arguments
+- `ε::T`: The deformation parameter (ε ≥ 0).
+- `x0::T=zero(T)`: The x-coordinate of t=0.
+- `y0::T=zero(T)`: The y-coordinate of t=0.
+- `rot_angle::T=zero(T)`: The rotation angle of the `CoordinateSystem`.
+
+# Returns
+- A tuple containing:
+  - `boundary::Vector{PolarSegment{T}}`: The boundary segments of the desymmetrized Robnik billiard.
+  - `corners::Vector{SVector{2,T}}`: The corner points of the desymmertized Robnik billiard.
+"""
+function make_desymmetrized_full_boundary_robnik(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+    if ε<zero(T)
         error("ε must be non-negative.")
     end
-    origin = SVector(x0, y0)
-    θ_multiplier = 1.0  # t from 0 to 1 maps to θ from 0 to π
+    origin=SVector(x0, y0)
+    θ_multiplier=T(1.0)  # t from 0 to 1 maps to θ from 0 to π
     # Define the radial function for the half Robnik billiard
     r_func = t -> begin
-        θ = θ_multiplier * π * t  # θ ranges from 0 to π
-        r = one(T) + ε * cos(θ)
-        x = r * cos(θ)
-        y = r * sin(θ)
-        SVector(x, y)
+        θ=θ_multiplier*π*t  # θ ranges from 0 to π
+        r=one(T)+ε*cos(θ)
+        x=r*cos(θ)
+        y=r*sin(θ)
+        SVector(x,y)
     end
     # Create the half Robnik billiard segment
-    half_robnik_segment = PolarSegment(r_func; origin=origin, rot_angle=rot_angle)
+    half_robnik_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     # Compute the start and end points of the half segment
-    pt0 = curve(half_robnik_segment, zero(T))  # Start point at θ = 0
-    pt1 = curve(half_robnik_segment, one(T))   # End point at θ = π
+    pt0=curve(half_robnik_segment,zero(T))  # Start point at θ = 0
+    pt1=curve(half_robnik_segment,one(T))   # End point at θ = π
     # Construct the boundary
-    boundary = PolarSegment{T}[half_robnik_segment]
-    # Corners are pt0 and pt1
-    corners = [pt0, pt1]
-    return boundary, corners
+    boundary=PolarSegment{T}[half_robnik_segment]
+    corners=[pt0,pt1]
+    return boundary,corners
 end
-
-
 
 """
     struct RobnikBilliard{T} <: QuantumBilliards.AbsBilliard where {T<:Real}
@@ -143,9 +135,9 @@ Defines a Robnik billiard with a full and half boundary.
 - `corners::Vector{SVector{2,T}}`: The corner points of the billiard.
 """
 struct RobnikBilliard{T} <: AbsBilliard where {T<:Real}
-    fundamental_boundary::Vector
-    full_boundary::Vector
-    desymmetrized_full_boundary::Vector
+    fundamental_boundary::Vector{Union{PolarSegment{T},VirtualLineSegment{T}}}
+    full_boundary::Vector{PolarSegment{T}}
+    desymmetrized_full_boundary::Vector{PolarSegment{T}}
     length::T
     length_fundamental::T
     epsilon::T
@@ -157,9 +149,6 @@ struct RobnikBilliard{T} <: AbsBilliard where {T<:Real}
     s_shift::T
 end
 
-
-
-
 """
     RobnikBilliard(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: RobnikBilliard where {T<:Real}
 
@@ -167,29 +156,26 @@ Constructs a Robnik billiard.
 
 # Arguments
 - `ε::T`: The deformation parameter (ε ≥ 0).
-- `x0::T=zero(T)`: The x-coordinate of the center of the billiard.
-- `y0::T=zero(T)`: The y-coordinate of the center of the billiard.
-- `rot_angle::T=zero(T)`: The rotation angle of the billiard.
+- `x0::T=zero(T)`: The x-coordinate of t=0.
+- `y0::T=zero(T)`: The y-coordinate of t=0.
+- `rot_angle::T=zero(T)`: The rotation angle of the `CoordinateSystem`.
 
 # Returns
 - An instance of the `RobnikBilliard` struct.
 """
 function RobnikBilliard(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: RobnikBilliard where {T<:Real}
     # Create the half and full boundaries
-    fundamental_boundary, corners = make_half_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
-    full_boundary, _ , area_full = make_full_robnik(ε; x0=x0, y0=y0, rot_angle=rot_angle)
-    desymmetrized_full_boundary, _ = make_desymmetrized_full_boundary(ε; x0=x0, y0=y0, rot_angle=rot_angle)
-    area_fundamental = area_full/2
-    length = sum([crv.length for crv in full_boundary])
-    length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
-    angles = []
-    angles_fundamental = []
-    s_shift = 0.0
-    return RobnikBilliard(fundamental_boundary, full_boundary, desymmetrized_full_boundary, length, length_fundamental, ε, corners, area_full, area_fundamental, angles, angles_fundamental, s_shift)
+    fundamental_boundary,corners=make_half_robnik(ε;x0=x0,y0=y0,rot_angle=rot_angle)
+    full_boundary,_,area_full=make_full_robnik(ε;x0=x0,y0=y0,rot_angle=rot_angle)
+    desymmetrized_full_boundary,_=make_desymmetrized_full_boundary_robnik(ε;x0=x0,y0=y0,rot_angle=rot_angle)
+    area_fundamental=area_full/2
+    length=sum([crv.length for crv in full_boundary])
+    length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
+    angles=[]
+    angles_fundamental=[]
+    s_shift=0.0
+    return RobnikBilliard(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,ε,corners,area_full,area_fundamental,angles,angles_fundamental,s_shift)
 end
-
-
-
 
 """
     make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) :: Tuple{RobnikBilliard{T}, QuantumBilliards.Ba} where {T<:Real, Ba<:AbsBasis}
@@ -198,9 +184,9 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
 
 # Arguments
 - `ε::T`: The deformation parameter (ε ≥ 0).
-- `x0::T=zero(T)`: The x-coordinate of the center of the billiard.
-- `y0::T=zero(T)`: The y-coordinate of the center of the billiard.
-- `rot_angle::T=zero(T)`: The rotation angle of the billiard.
+- `x0::T=zero(T)`: The x-coordinate of t=0.
+- `y0::T=zero(T)`: The y-coordinate of t=0.
+- `rot_angle::T=zero(T)`: The rotation angle of the `CoordinateSystem`.
 
 # Returns
 - A tuple containing:
@@ -208,12 +194,14 @@ Constructs a Robnik billiard and the corresponding symmetry-adapted basis.
   - `basis::QuantumBilliards.Ba`: The symmetry-adapted basis.
 """
 function make_robnik_and_basis(ε::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:cafb) where {T<:Real}
-    robnik_billiard = RobnikBilliard(ε; x0=x0, y0=y0, rot_angle=rot_angle)
-    symmetry = Vector{Any}([YReflection(-1)])
-    if basis_type == :cafb
-        basis = CornerAdaptedFourierBessel(10, Float64(pi), SVector(zero(T), zero(T)), 0.0, symmetry)
-    elseif basis_type == :rpw
-        basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi))
+    robnik_billiard=RobnikBilliard(ε;x0=x0,y0=y0,rot_angle=rot_angle)
+    symmetry=Vector{Any}([YReflection(-1)])
+    if basis_type==:cafb
+        basis=CornerAdaptedFourierBessel(10,Float64(pi),SVector(zero(T),zero(T)),0.0,symmetry)
+    elseif basis_type==:rpw
+        basis = RealPlaneWaves(10,symmetry;angle_arc=Float64(pi))
+    else
+        error("Invalid basis type. Use :cafb or :rpw.")
     end
-    return robnik_billiard, basis
+    return robnik_billiard,basis
 end
