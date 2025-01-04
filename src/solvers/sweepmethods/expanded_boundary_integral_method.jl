@@ -383,7 +383,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
         λ,VR,VL=generalized_eigen_all(A,dA)
     end
     T=eltype(real.(λ))
-    valid=(real.(λ).<0.5*dk) .& (abs.(imag.(λ).<0.5*dk)) # WRONG BUT WHY ???
+    valid=(abs.(real.(λ).<dk)) .& (abs.(imag.(λ).<dk)) # WRONG BUT WHY ???
     #valid=abs.(λ).<dk
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
