@@ -21,7 +21,7 @@ function make_desymmetrized_full_boundary_stadium(half_width;radius=one(half_wid
     origin = SVector(x0,y0)
     type = typeof(half_width)
     circle = CircleSegment(radius,pi/2,zero(type), half_width, zero(type); origin=origin, rot_angle = rot_angle)
-    corners = []
+    corners = [SVector(half_width, radius), SVector(zero(type), radius)]
     line1 = LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
     boundary = [circle, line1]
     return boundary, corners
