@@ -456,7 +456,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         pts=evaluate_points(bim_solver,billiard,k)
         ks,tens=solve_DEBUG(solver,basis,pts,k)
         idx=findmin(tens)[2]
-        push!(ks_ll,ks[idx])
+        push!(ks_all,ks[idx])
         push!(tens_all,tens[idx])
         k+=dk(k)
     end
