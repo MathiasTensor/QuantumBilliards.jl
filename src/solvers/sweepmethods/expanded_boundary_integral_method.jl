@@ -376,6 +376,7 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+    #= BASE CASE PER DEFINITION
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
@@ -412,6 +413,29 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
         return Vector{T}(), Vector{T}()
     end
     return λ_corrected[idxs],tens[idxs]
+    =#
+    A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
+    if use_lapack_raw
+        λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
+    else
+        λ,VR,VL=generalized_eigen_all(A,dA)
+    end
+    T=eltype(real.(λ))
+    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) 
+    #valid=abs.(λ).<dk # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
+    if !any(valid)
+        return Vector{T}(),Vector{T}() # early termination
+    end
+    λ=real.(λ[valid])
+    VR=VR[:,valid]
+    VL=VL[:,valid]
+    corr_1=Vector{T}(undef,length(λ))
+    for i in eachindex(λ)
+        corr_1[i]=-λ[i]
+    end
+    λ_corrected=k.+corr_1
+    tens=abs.(corr_1)
+    return λ_corrected,tens
 end
 
 
