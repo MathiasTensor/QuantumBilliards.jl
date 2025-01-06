@@ -475,7 +475,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         k+=dk(k)
         push!(ks,k)
     end
-    @showprogress for k in ks
+    @showprogress desc="EBIM smallest tens..." for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
         ks,tens=solve_DEBUG(solver,basis,pts,k)
         idx=findmin(tens)[2]
