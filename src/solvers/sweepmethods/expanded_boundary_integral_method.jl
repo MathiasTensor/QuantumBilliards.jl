@@ -1,4 +1,4 @@
-using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
+using LinearAlgebra, StaticArrays, TimerOutputs, Bessels, ProgressMeter
 
 #### EXPANDED BIM ####
 
@@ -480,7 +480,14 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     tens_all=T[]
     ks_small=T[]
     tens_small=T[]
+    ks=T[] # these are the evaluation points
+    push!(ks,k1)
+    k=k1
     while k<k2
+        k+=dk(k)
+        push!(ks,k)
+    end
+    @showprogress for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
         ks,tens=solve_DEBUG(solver,basis,pts,k)
         idx=findmin(tens)[2]
@@ -492,7 +499,6 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
                 push!(tens_small,tens[idx])
             end
         end
-        k+=dk(k)
     end
     return ks_all,tens_all,ks_small,tens_small
 end
