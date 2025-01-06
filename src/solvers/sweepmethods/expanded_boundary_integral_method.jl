@@ -441,7 +441,25 @@ end
 
 ### DEBUGGING TOOLS ###
 
-function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+"""
+     solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+
+Debugging function that solves for a given `k` the generalized eigenvalue problem `A * x = λ * (dA/dk) * x` for the `λs` which it then adds to the initial `k` at which the `eigen(A,dA/dk)` was performed and the associated tension (defined as the absolute value of `λ` as the quality of the correction).
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`. This is a placeholder, just use AbstractHankelBasis() for this input.
+- `pts::BoundaryPointsBIM`: Boundary points in BIM representation. Use the evaluate_points with the regular BIM solver.
+- `k`: The k for which we do the generalized eigenvalue problem.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the 1st derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`).
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
+
+# Returns
+- `Vector{T}`: Corrected ks without further restrictions.
+- `Vector{T}`: Associated tensions for the corrections to k.
+"""
+function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
     A,dA,_=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     F=eigen(A,dA)
     λ=F.values
@@ -460,6 +478,26 @@ function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bound
     return λ_corrected,tens
 end
 
+"""
+    visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod, basis::Ba, billiard::Bi, k1, k2; 
+                         dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
+
+Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the EBIM method.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `billiard::Bi`: The billiard geometry, a subtype of `AbsBilliard`.
+- `k1`: The initial value of `k` for the sweep.
+- `k2`: The final value of `k` for the sweep.
+- `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
+
+# Returns
+- `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
+- `Vector{T}`: Tensions corresponding to `ks_all` (`tens_all`).
+- `Vector{T}`: Corrected `k` values with tensions meeting stricter criteria within the local range (`ks_small`).
+- `Vector{T}`: Tensions corresponding to `ks_small` (`tens_small`).
+"""
 function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
