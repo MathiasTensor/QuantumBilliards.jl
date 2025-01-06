@@ -484,6 +484,12 @@ end
 
 Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
 
+# Usage
+@time ks_debug,tens_debug,ks_debug_small,tens_debug_small=QuantumBilliards.visualize_ebim_sweep(ebim_solver,hankel_basis,billiard,k1,k2;dk=dk)
+scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
+-> This gives a sequence of points that fall on a vertical line when at an actual eigenvalue.
+
+
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the EBIM method.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
