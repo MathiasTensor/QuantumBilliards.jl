@@ -19,13 +19,13 @@ Bounding box edges: `x0_1, x1_1, y0_1, y1_1, x0_2, x1_2, y0_2, y1_2`.
 function calculate_bb_bbox_localization_mushroom(w::T,h::T,r::T) where {T<:Real}
     # starting from the bottom left corner (the start of the foot anticlockwise)
     x0_1=w # right wall
-    y0_1=-0.5 # the p-
+    y0_1=-0.25 # the p-
     x1_1=w+h # end of right wall
-    y1_1=0.5  # the p+
+    y1_1=0.25  # the p+
     x0_2=w+h+(r-w/2)+π*r+(r-w/2) # left wall
-    y0_2=-0.5 # again the p-
+    y0_2=-0.25 # again the p-
     x1_2=w+h+(r-w/2)+π*r+(r-w/2)+h # end of left wall
-    y1_2=0.5 # again the p+
+    y1_2=0.25 # again the p+
     return x0_1,x1_1,y0_1,y1_1,x0_2,x1_2,y0_2,y1_2
 end
 
