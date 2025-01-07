@@ -139,7 +139,7 @@ Compute cumulative densities for scarred and antiscarred wavefunctions.
 # Returns
 Two normalized matrices: `cumulative_density_scar` and `cumulative_density_antiscar`.
 """
-function calculate_cumulative_density_scar_antiscar(Psi2ds::Vector, scar_idxs::Vector{Bool})
+function calculate_cumulative_density_scar_antiscar(Psi2ds::Vector, scar_idxs::Union{Vector{Bool},BitVector})
    Psi2ds_bbs=Psi2ds[scar_idxs] # Split Psi2ds into scar and antiscar categories
    Psi2ds_no_bbs=Psi2ds[.!scar_idxs] 
    cumulative_density_scar=zeros(size(Psi2ds_bbs[1]))
