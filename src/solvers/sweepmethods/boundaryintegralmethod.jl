@@ -668,9 +668,9 @@ end
 function fredholm_matrix(
     boundary_points::BoundaryPointsBIM, 
     symmetry_rule::SymmetryRuleBIM, 
-    k::Real; 
+    k::T; 
     kernel_fun=default_helmholtz_kernel
-) 
+) where {T<:Real}
     # Extract boundary properties
     xy_points = boundary_points.xy
     normals = boundary_points.normal
