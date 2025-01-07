@@ -1,4 +1,5 @@
 using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
+const TO=TimerOutput()
 
 #### REGULAR BIM ####
 
@@ -759,7 +760,27 @@ end
 
 
 
+#### BENCHMARKS ####
 
+@timeit TO "evaluate_points" function evaluate_points_timed(solver::BoundaryIntegralMethod,billiard::Bi,k) 
+    return evaluate_points(solver,billiard,k)
+end
+
+@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) 
+    return construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+end
+
+@timeit TO "SVD" function svdvals_timed(A)
+    return svdvals(A)
+end
+
+function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;kernel_fun=default_helmholtz_kernel)
+    pts=evaluate_points_timed(solver,billiard,k)
+    A=construct_matrices_timed(solver,AbstractHankelBasis(),pts,k;kernel_fun=kernel_fun)
+    σs=svdvals_timed(A)
+    show(TO)
+    reset_timer!(TO)
+end
 
  #### USEFUL ####
 

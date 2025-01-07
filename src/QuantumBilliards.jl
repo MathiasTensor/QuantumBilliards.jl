@@ -87,7 +87,7 @@ export evaluate_points, construct_matrices, construct_matrices_benchmark
 export solve, solve_vect
 export solve_wavenumber, solve_spectrum
 export k_sweep
-export BoundaryIntegralMethod, compute_kernel, fredholm_matrix
+export BoundaryIntegralMethod, compute_kernel, fredholm_matrix, solve_timed
 export ExpandedBoundaryIntegralMethod, compute_kernel_derivative, compute_kernel_second_derivative, fredholm_matrix_derivative, fredholm_matrix_second_derivative
 
 #spectra
