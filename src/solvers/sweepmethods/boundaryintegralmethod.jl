@@ -612,8 +612,6 @@ function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},
     return kernel_value
 end
 
-#=
-
 """
     fredholm_matrix(boundary_points::BoundaryPointsBIM, symmetry_rule::SymmetryRuleBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
 
@@ -660,100 +658,6 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
             fredholm_matrix[i, j]-=ds1*kernel_value
         end
     end
-    return fredholm_matrix
-end
-
-=#
-
-function fredholm_matrix(
-    boundary_points::BoundaryPointsBIM, 
-    symmetry_rule::SymmetryRuleBIM, 
-    k::T; 
-    kernel_fun=default_helmholtz_kernel
-) where {T<:Real}
-    # Extract boundary properties
-    xy_points = boundary_points.xy
-    normals = boundary_points.normal
-    curvatures = boundary_points.curvature
-    ds = boundary_points.ds
-    N = length(xy_points)
-
-    # Precompute reflected and rotated points
-    reflected_p2_x = symmetry_rule.symmetry_type in [:x, :xy] ? 
-        [apply_reflection(p, SymmetryRuleBIM(:x, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in xy_points] : nothing
-
-    reflected_p2_y = symmetry_rule.symmetry_type in [:y, :xy] ? 
-        [apply_reflection(p, SymmetryRuleBIM(:y, symmetry_rule.x_bc, symmetry_rule.y_bc, symmetry_rule.shift_x, symmetry_rule.shift_y)) for p in xy_points] : nothing
-
-    reflected_p2_xy = symmetry_rule.symmetry_type == :xy ? 
-        [apply_reflection(p, symmetry_rule) for p in xy_points] : nothing
-
-    rotated_points = symmetry_rule.symmetry_type isa Integer ? 
-        [apply_rotation(p, symmetry_rule) for p in xy_points] : nothing
-
-    # Initialize Fredholm matrix
-    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
-
-    # Compute Fredholm matrix entries
-    Threads.@threads for i in 1:N
-        for j in 1:N
-            # Base kernel value
-            kernel_value = kernel_fun(xy_points[i], xy_points[j], normals[i], k, curvatures[i])
-
-            # Handle x-reflection
-            if !isnothing(reflected_p2_x)
-                if symmetry_rule.x_bc == :D
-                    kernel_value -= kernel_fun(xy_points[i], reflected_p2_x[j], normals[i], k, curvatures[i])
-                elseif symmetry_rule.x_bc == :N
-                    kernel_value += kernel_fun(xy_points[i], reflected_p2_x[j], normals[i], k, curvatures[i])
-                end
-            end
-
-            # Handle y-reflection
-            if !isnothing(reflected_p2_y)
-                if symmetry_rule.y_bc == :D
-                    kernel_value -= kernel_fun(xy_points[i], reflected_p2_y[j], normals[i], k, curvatures[i])
-                elseif symmetry_rule.y_bc == :N
-                    kernel_value += kernel_fun(xy_points[i], reflected_p2_y[j], normals[i], k, curvatures[i])
-                end
-            end
-
-            # Handle xy-reflection
-            if !isnothing(reflected_p2_xy)
-                if symmetry_rule.x_bc == :D && symmetry_rule.y_bc == :D
-                    kernel_value += kernel_fun(xy_points[i], reflected_p2_xy[j], normals[i], k, curvatures[i])
-                elseif symmetry_rule.x_bc == :D && symmetry_rule.y_bc == :N
-                    kernel_value -= kernel_fun(xy_points[i], reflected_p2_xy[j], normals[i], k, curvatures[i])
-                elseif symmetry_rule.x_bc == :N && symmetry_rule.y_bc == :D
-                    kernel_value -= kernel_fun(xy_points[i], reflected_p2_xy[j], normals[i], k, curvatures[i])
-                elseif symmetry_rule.x_bc == :N && symmetry_rule.y_bc == :N
-                    kernel_value += kernel_fun(xy_points[i], reflected_p2_xy[j], normals[i], k, curvatures[i])
-                end
-            end
-
-            # Handle rotations
-            if !isnothing(rotated_points)
-                rotated_p2, rotated_p2_revang = rotated_points[j]
-                if symmetry_rule.x_bc == :D
-                    kernel_value -= kernel_fun(xy_points[i], reverse_angle(xy_points[j]), normals[i], k, curvatures[i])
-                    for rot_idx in eachindex(rotated_p2)
-                        kernel_value += kernel_fun(xy_points[i], rotated_p2[rot_idx], normals[i], k, curvatures[i])
-                        kernel_value -= kernel_fun(xy_points[i], rotated_p2_revang[rot_idx], normals[i], k, curvatures[i])
-                    end
-                elseif symmetry_rule.x_bc == :N
-                    kernel_value += kernel_fun(xy_points[i], reverse_angle(xy_points[j]), normals[i], k, curvatures[i])
-                    for rot_idx in eachindex(rotated_p2)
-                        kernel_value += kernel_fun(xy_points[i], rotated_p2[rot_idx], normals[i], k, curvatures[i])
-                        kernel_value += kernel_fun(xy_points[i], rotated_p2_revang[rot_idx], normals[i], k, curvatures[i])
-                    end
-                end
-            end
-
-            # Assign final kernel value to the matrix entry
-            fredholm_matrix[i, j] = -ds[i] * kernel_value
-        end
-    end
-
     return fredholm_matrix
 end
 
