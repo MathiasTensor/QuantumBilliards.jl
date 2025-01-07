@@ -75,7 +75,7 @@ Normalized overlap as a scalar.
 function calculate_overlap(mat::Matrix,H::Matrix)
     @assert size(mat)==size(H) "Size of mat and H must match"
     overlap=sum(mat.*H)
-    return overlap./sum(overlap)
+    return overlap
 end
 
 """
