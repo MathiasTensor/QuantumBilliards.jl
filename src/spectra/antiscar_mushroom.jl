@@ -46,7 +46,7 @@ A matrix of the same size as `x_grid` × `y_grid` with `+1` in the localization 
 """
 function create_husimi_localization_mat(x0_1::T,x1_1::T,y0_1::T,y1_1::T,x0_2::T,x1_2::T,y0_2::T,y1_2::T,x_grid::Vector{T},y_grid::Vector{T}) where {T<:Real}
     # create 2 boxes that have the value +1 and all the other ones have -1. Size of x_grid and y_grid should be the same as the H : size(H) = (length(x_grid),length(y_grid))
-    mat=fill(0.0,length(x_grid),length(y_grid))
+    mat=fill(-1.0,length(x_grid),length(y_grid))
     x_indices_box1=findall(x->x0_1<=x<=x1_1,x_grid) # Find indices for the first box
     y_indices_box1=findall(y->y0_1<=y<=y1_1,y_grid)
     x_indices_box2=findall(x->x0_2<=x<=x1_2,x_grid) # Find indices for the second box
