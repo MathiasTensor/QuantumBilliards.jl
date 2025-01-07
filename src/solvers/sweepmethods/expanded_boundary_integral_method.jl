@@ -313,7 +313,26 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
     return fredholm_matrix
 end
 
-# INTERNAL FUNCTION THAT CALCULATES ALL 3: A, dA, ddA
+"""
+    all_fredholm_associated_matrices(
+        boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real} -> Matrix{Complex{T}}
+
+Constructs the Fredholm matrix, the derivative and the second derivative with respect to the wavenumber.
+
+# Arguments
+- `boundary_points::BoundaryPointsBIM{T}`: Evaluated boundary points.
+- `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rules for the matrix construction.
+- `k::T`: Wavenumber.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the 1st derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`).
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
+
+# Returns
+- `Tuple{Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}}`:
+  - Fredholm matrix.
+  - First derivative of the Fredholm matrix.
+  - Second derivative of the Fredholm matrix.
+"""
 function all_fredholm_associated_matrices(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
@@ -357,7 +376,6 @@ function all_fredholm_associated_matrices(boundary_points::BoundaryPointsBIM{T},
         end
     end
     return fredholm_matrix,fredholm_matrix_der1,fredholm_matrix_der2
-    
 end
 
 """
