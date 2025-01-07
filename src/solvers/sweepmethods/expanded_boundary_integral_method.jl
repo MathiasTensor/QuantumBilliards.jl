@@ -313,6 +313,53 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
     return fredholm_matrix
 end
 
+# INTERNAL FUNCTION THAT CALCULATES ALL 3: A, dA, ddA
+function all_fredholm_associated_matrices(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real}
+    xy_points=boundary_points.xy
+    normals=boundary_points.normal
+    curvatures=boundary_points.curvature
+    ds=boundary_points.ds
+    N=length(xy_points)
+    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
+        [apply_reflection(p, SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
+        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
+    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
+    fredholm_matrix_der1=fill(Complex(0.0,0.0),N,N)
+    fredholm_matrix_der2=fill(Complex(0.0,0.0),N,N)
+    Threads.@threads for i in 1:N
+        p1=xy_points[i]
+        normal1=normals[i]
+        curvature1=curvatures[i]
+        ds1=ds[i]
+        for j in 1:N
+            p2=xy_points[j]
+            kernel_value=compute_kernel(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_fun=kernel_fun)
+            kernel_value_der=compute_kernel_derivative(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_der_fun=kernel_der_fun)
+            kernel_value_der2=compute_kernel_second_derivative(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],symmetry_rule,k;kernel_der2_fun=kernel_der2_fun)
+            fredholm_matrix[i, j]-=ds1*kernel_value
+            fredholm_matrix_der1[i, j]=-ds1*kernel_value_der
+            fredholm_matrix_der2[i, j]=-ds1*kernel_value_der2
+        end
+    end
+    return fredholm_matrix,fredholm_matrix_der1,fredholm_matrix_der2
+    
+end
+
 """
     construct_matrices(
         solver::ExpandedBoundaryIntegralMethod, 
@@ -342,10 +389,11 @@ Constructs the Fredholm matrix and its derivatives for the expanded boundary int
   - Second derivative of the Fredholm matrix.
 """
 function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
-    A=fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
-    dA=fredholm_matrix_derivative(pts,solver.rule,k;kernel_der_fun=kernel_der_fun)
-    ddA=fredholm_matrix_second_derivative(pts,solver.rule,k;kernel_der2_fun=kernel_der2_fun)
-    return A,dA,ddA
+    #A=fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
+    #dA=fredholm_matrix_derivative(pts,solver.rule,k;kernel_der_fun=kernel_der_fun)
+    #ddA=fredholm_matrix_second_derivative(pts,solver.rule,k;kernel_der2_fun=kernel_der2_fun)
+    #return A,dA,ddA
+    return all_fredholm_associated_matrices(pts,solver.rule,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
 end
 
 """

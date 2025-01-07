@@ -565,7 +565,7 @@ Computes the kernel value for a given pair of points, incorporating symmetry ref
 # Returns
 - `Complex{T}`: Computed kernel value.
 """
-function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rotated_p2s::Union{Nothing,Tuple{Vector{SVector{2,T}},Vector{SVector{2,T}}}},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
+function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
     kernel_value=kernel_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
     if !isnothing(reflected_p2_x) # Handle x-reflection
         if rule.x_bc==:D
@@ -592,6 +592,7 @@ function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},
             kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
+    #= NOT YET IMPLEMENTED
     if !isnothing(rotated_p2s) # Handle rotation
         if rule.x_bc==:D
             rotated_p2s,rotated_p2_revang=rotated_p2s
@@ -609,6 +610,7 @@ function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},
             end
         end
     end
+    =#
     return kernel_value
 end
 
@@ -638,8 +640,8 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
         [apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
     reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    rotated_points=symmetry_rule.symmetry_type isa Integer ?
-        [apply_rotation(p,symmetry_rule) for p in xy_points] : nothing # Vector{SVector} for all rotations
+    #rotated_points=symmetry_rule.symmetry_type isa Integer ?
+    #    [apply_rotation(p,symmetry_rule) for p in xy_points] : nothing # Vector{SVector} for all rotations
     fredholm_matrix=Matrix{Complex{T}}(I,N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
@@ -653,7 +655,6 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
                 isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
                 isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
                 isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],
-                isnothing(rotated_points) ? nothing : rotated_points[j],
                 symmetry_rule,k;kernel_fun=kernel_fun)
             fredholm_matrix[i, j]-=ds1*kernel_value
         end
