@@ -314,7 +314,7 @@ function fredholm_matrix_second_derivative(boundary_points::BoundaryPointsBIM{T}
 end
 
 # INTERNAL FUNCTION THAT CALCULATES ALL 3: A, dA, ddA
-function all_fredholm_associated_matrices(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real}
+function all_fredholm_associated_matrices(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {T<:Real}
     xy_points=boundary_points.xy
     normals=boundary_points.normal
     curvatures=boundary_points.curvature
