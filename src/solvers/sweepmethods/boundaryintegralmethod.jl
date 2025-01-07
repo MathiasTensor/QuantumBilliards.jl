@@ -762,11 +762,11 @@ end
 
 #### BENCHMARKS ####
 
-@timeit TO "evaluate_points" function evaluate_points_timed(solver::BoundaryIntegralMethod,billiard::Bi,k) 
+@timeit TO "evaluate_points" function evaluate_points_timed(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     return evaluate_points(solver,billiard,k)
 end
 
-@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) 
+@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbsBasis}
     return construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
 end
 
@@ -774,7 +774,7 @@ end
     return svdvals(A)
 end
 
-function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;kernel_fun=default_helmholtz_kernel)
+function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;kernel_fun=default_helmholtz_kernel) where {Bi<:AbsBilliard}
     pts=evaluate_points_timed(solver,billiard,k)
     A=construct_matrices_timed(solver,AbstractHankelBasis(),pts,k;kernel_fun=kernel_fun)
     σs=svdvals_timed(A)
