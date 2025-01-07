@@ -141,7 +141,7 @@ function calculate_cumulative_density_scar_antiscar(Psi2ds::Vector, scar_idxs::V
    cumulative_density_scar=zeros(size(Psi2ds_bbs[1]))
    cumulative_density_antiscar=zeros(size(Psi2ds_no_bbs[1]))
    function parallel_sum!(result::Matrix, matrices::Vector) # parallelization helper
-       @threads for i in 1:length(matrices)
+       Threads.@threads for i in 1:length(matrices)
            @inbounds result.+=matrices[i]
        end
    end
