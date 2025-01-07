@@ -111,14 +111,16 @@ Find indices of Husimi matrices that exceed the overlap threshold with bounding 
 - `threshold`: Minimum overlap value to consider (default: `0.8`).
 
 # Returns
-Vector of indices where overlaps exceed the threshold.
+Boolean mask where overlaps exceed the threshold.
 """
 function get_bb_localization_indexes(Hs::Vector,x_grid::Vector{T},y_grid::Vector{T},w::T,h::T,r::T;threshold=0.8) where {T<:Real}
     x0_1,x1_1,y0_1,y1_1,x0_2,x1_2,y0_2,y1_2=calculate_bbox_localization_mushroom(w,h,r)
     mat=create_husimi_localization_mat(x0_1,x1_1,y0_1,y1_1,x0_2,x1_2,y0_2,y1_2,x_grid,y_grid)
     overlaps=calculate_overlap(mat,Hs)
     idxs=findall(x->x>threshold,overlaps)
-    return idxs
+    tmp=falses(length(overlaps))
+    tmp[idxs].=true
+    return tmp
 end
 
 ### CUMULATIVE DENSITIES ###
