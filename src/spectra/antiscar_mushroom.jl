@@ -109,14 +109,16 @@ Find indices of Husimi matrices that exceed the overlap threshold with bounding 
 - `x_grid, y_grid`: Grids for the Husimi matrix.
 - `w, h, r`: Dimensions of the mushroom billiard.
 - `threshold`: Minimum overlap value to consider (default: `0.8`).
+- `print_overlaps`: Print the overlaps for each Husimi matrix (default: `true`).
 
 # Returns
 Boolean mask where overlaps exceed the threshold.
 """
-function get_bb_localization_indexes(Hs::Vector,x_grid::Vector{T},y_grid::Vector{T},w::T,h::T,r::T;threshold=0.8) where {T<:Real}
+function get_bb_localization_indexes(Hs::Vector,x_grid::Vector{T},y_grid::Vector{T},w::T,h::T,r::T;threshold=0.8,print_overlaps=true) where {T<:Real}
     x0_1,x1_1,y0_1,y1_1,x0_2,x1_2,y0_2,y1_2=calculate_bb_bbox_localization_mushroom(w,h,r)
     mat=create_husimi_localization_mat(x0_1,x1_1,y0_1,y1_1,x0_2,x1_2,y0_2,y1_2,x_grid,y_grid)
     overlaps=calculate_overlap(mat,Hs)
+    print_overlaps ? println(overlaps) : nothing
     idxs=findall(x->x>threshold,overlaps)
     tmp=falses(length(overlaps))
     tmp[idxs].=true
