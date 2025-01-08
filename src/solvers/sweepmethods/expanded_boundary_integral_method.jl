@@ -407,10 +407,6 @@ Constructs the Fredholm matrix and its derivatives for the expanded boundary int
   - Second derivative of the Fredholm matrix.
 """
 function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
-    #A=fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
-    #dA=fredholm_matrix_derivative(pts,solver.rule,k;kernel_der_fun=kernel_der_fun)
-    #ddA=fredholm_matrix_second_derivative(pts,solver.rule,k;kernel_der2_fun=kernel_der2_fun)
-    #return A,dA,ddA
     return all_fredholm_associated_matrices(pts,solver.rule,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
 end
 
@@ -510,6 +506,7 @@ end
 """
      solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
 
+FIRST ORDER CORRECTIONS
 Debugging function that solves for a given `k` the generalized eigenvalue problem `A * x = λ * (dA/dk) * x` for the `λs` which it then adds to the initial `k` at which the `eigen(A,dA/dk)` was performed and the associated tension (defined as the absolute value of `λ` as the quality of the correction).
 
 # Arguments
@@ -542,6 +539,57 @@ function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bound
     λ_corrected=k.+corr_1
     tens=abs.(corr_1)
     return λ_corrected,tens
+end
+
+"""
+     solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+
+FIRST ORDER CORRECTIONS
+Debugging function that solves for a given `k` the generalized eigenvalue problem `A * x = λ * (dA/dk) * x` for the `λs` which it then adds to the initial `k` at which the `eigen(A,dA/dk)` was performed and the associated tension (defined as the absolute value of `λ` as the quality of the correction).
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`. This is a placeholder, just use AbstractHankelBasis() for this input.
+- `pts::BoundaryPointsBIM`: Boundary points in BIM representation. Use the evaluate_points with the regular BIM solver.
+- `k`: The k for which we do the generalized eigenvalue problem.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+- `kernel_der_fun::Function=default_helmholtz_kernel_first_derivative`: Function to use for the 1st derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_first_derivative`).
+- `kernel_der2_fun::Function=default_helmholtz_kernel_second_derivative`: Function to use for the 2nd derivative of the kernel computation (default for free 2D particle: `default_helmholtz_kernel_second_derivative`).
+
+# Returns
+- `Vector{T}`: First order corrections to k.
+- `Vector{T}`: Associated tensions for the 1st order corrections to k.
+- `Vector{T}`: 1st+2nd order corrections to k.
+- `Vector{T}`: Associated tensions for the 1st+2nd order corrections to k.
+"""
+function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+    A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
+    λ,VR,VL=generalized_eigen_all(A,dA)
+    valid_indices=.!isnan.(λ).&.!isinf.(λ)
+    λ=λ[valid_indices]
+    sort_order=sortperm(abs.(λ)) 
+    λ=λ[sort_order]
+    T=eltype(real.(λ))
+    λ=real.(λ)
+    corr_1=Vector{T}(undef,length(λ))
+    corr_2=Vector{T}(undef,length(λ))
+    for i in eachindex(λ)
+        v_right=VR[:,i]
+        v_left=VL[:,i]
+        r_dA=similar(v_right)
+        r_ddA=similar(v_right)
+        mul!(r_ddA,ddA,v_right)
+        mul!(r_dA,dA,v_right)
+        numerator=real(dot(v_left,r_ddA)) # v_left' * (ddA * v_right)
+        denominator=real(dot(v_left,r_dA)) # v_left' * (dA * v_right)
+        corr_1[i]=-λ[i]
+        corr_2[i]=-0.5*corr_1[i]^2*(numerator/denominator)
+    end
+    λ_corrected_1=k.+corr_1
+    λ_corrected_2=λ_corrected.+corr_2
+    tens_1=abs.(corr_1)
+    tens_2=abs.(corr_1.+corr_2)
+    return λ_corrected_1,tens_1,λ_corrected_2,tens_2
 end
 
 """
