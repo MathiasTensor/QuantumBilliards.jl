@@ -576,8 +576,8 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
     for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        numerator=v_left*ddA*v_right
-        denominator=v_left*dA*v_right
+        numerator=transpose(v_left)*ddA*v_right
+        denominator=transpose(v_left)*dA*v_right
         corr_1[i]=-λ[i]
         corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
     end
