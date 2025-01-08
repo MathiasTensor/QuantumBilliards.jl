@@ -438,8 +438,6 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
-    #BASE CASE PER DEFINITION
-
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
@@ -447,8 +445,8 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
         λ,VR,VL=generalized_eigen_all(A,dA)
     end
     T=eltype(real.(λ))
-    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) 
-    #valid=abs.(λ).<dk # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
+    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
+    #valid=abs.(λ).<dk 
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
     end
@@ -468,31 +466,6 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ_corrected=k.+corr_1.+corr_2
     tens=abs.(corr_1.+corr_2)
     return λ_corrected,tens
-    
-    # FIRST ORDER CORRECTIONS
-    #=
-    A,dA,_=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
-    F=eigen(A,dA)
-    λ=F.values
-    valid_indices=.!isnan.(λ).&.!isinf.(λ)
-    λ=λ[valid_indices]
-    sort_order=sortperm(abs.(λ)) 
-    λ=λ[sort_order]
-    T=eltype(real.(λ))
-    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) 
-    #valid=abs.(λ).<dk # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
-    if !any(valid)
-        return Vector{T}(),Vector{T}() # early termination
-    end
-    λ=real.(λ[valid])
-    corr_1=Vector{T}(undef,length(λ))
-    for i in eachindex(λ)
-        corr_1[i]=-λ[i]
-    end
-    λ_corrected=k.+corr_1
-    tens=abs.(corr_1)
-    return λ_corrected,tens
-    =#
 end
 
 
@@ -584,6 +557,26 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
     return λ_corrected_1,tens_1,λ_corrected_2,tens_2
 end
 
+### HELPERS ###
+
+"""
+    ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
+
+Computes the inverse of the differences between consecutive elements in `kvals`. This inverts the small differences between the ks very close to the correct eigenvalues and serves as a visual aid or potential criteria for finding missing levels.
+
+# Arguments
+- `kvals::Vector{T}`: A vector of values for which differences are calculated.
+
+# Returns
+- `Vector{T}`: The `kvals` vector excluding its last element.
+- `Vector{T}`: The inverse of the differences between consecutive elements in `kvals`.
+"""
+function ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
+    kvals_diff=diff(kvals)
+    kvals=kvals[1:end-1]
+    return kvals,T(1.0)./kvals_diff
+end
+
 """
     visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod, basis::Ba, billiard::Bi, k1, k2; 
                          dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
@@ -591,9 +584,10 @@ end
 Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
 
 # Usage
+hankel_basis=AbstractHankelBasis()
 @time ks_debug,tens_debug,ks_debug_small,tens_debug_small=QuantumBilliards.visualize_ebim_sweep(ebim_solver,hankel_basis,billiard,k1,k2;dk=dk)
 scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
--> This gives a sequence of points that fall on a vertical line when at an actual eigenvalue.
+-> This gives a sequence of points that fall on a vertical line when close to an actual eigenvalue. 
 
 
 # Arguments
@@ -607,9 +601,7 @@ scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 
 # Returns
 - `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
-- `Vector{T}`: Tensions corresponding to `ks_all` (`tens_all`).
-- `Vector{T}`: Corrected `k` values with tensions meeting stricter criteria within the local range (`ks_small`).
-- `Vector{T}`: Tensions corresponding to `ks_small` (`tens_small`).
+- `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
 """
 function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),order=:first) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
@@ -617,8 +609,6 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     T=eltype(k1)
     ks_all=T[]
     tens_all=T[]
-    ks_small=T[]
-    tens_small=T[]
     ks=T[] # these are the evaluation points
     push!(ks,k1)
     k=k1
@@ -637,14 +627,15 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         if log10(tens[idx])<0.0
             push!(ks_all,ks[idx])
             push!(tens_all,tens[idx])
-            if k-dk(k)<ks[idx]<k+dk(k)
-                push!(ks_small,ks[idx])
-                push!(tens_small,tens[idx])
-            end
         end
     end
-    return ks_all,tens_all,ks_small,tens_small
+    _,logtens=ebim_inv_diff(ks_all)
+    idxs=findall(x->x>0.0,logtens)
+    logtens=logtens[idxs]
+    ks_all=ks_all[idxs]
+    return ks_all,logtens
 end
+
 
 
 
