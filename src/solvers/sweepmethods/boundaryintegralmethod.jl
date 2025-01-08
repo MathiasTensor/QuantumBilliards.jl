@@ -377,6 +377,7 @@ end
 
 ### STANDARD BIM ###
 
+#=
 """
     BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
 
@@ -694,8 +695,8 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
+=#
 
-#=
 
 """
     compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2,T}, p1_curvature::T) -> T
@@ -958,7 +959,7 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     return us_all,pts_all
 end
 
-=#
+
 
 
 
