@@ -549,7 +549,7 @@ function pairwise_xy_distance_matrix(
 end
 
 function hankel_matrix(distance_matrix::Matrix,k::T) where {T<:Real}
-    N=length(pts)
+    N=size(distance_matrix)[1]
     M=zeros(Complex{eltype(k)},N,N)
     Threads.@threads for i in 1:N
         M[i,i]=Complex(one(T),one(T)) # for later convenience when multiplication w/ cos_phi_matrix
