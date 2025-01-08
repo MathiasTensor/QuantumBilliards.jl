@@ -576,14 +576,10 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
     for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        r_dA=similar(v_right)
-        r_ddA=similar(v_right)
-        mul!(r_ddA,ddA,v_right)
-        mul!(r_dA,dA,v_right)
-        numerator=real(dot(v_left,r_ddA)) # v_left' * (ddA * v_right)
-        denominator=real(dot(v_left,r_dA)) # v_left' * (dA * v_right)
+        numerator=v_left*ddA*v_right
+        denominator=v_left*dA*v_right
         corr_1[i]=-λ[i]
-        corr_2[i]=-0.5*corr_1[i]^2*(numerator/denominator)
+        corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
     end
     λ_corrected_1=k.+corr_1
     λ_corrected_2=λ_corrected_1.+corr_2
