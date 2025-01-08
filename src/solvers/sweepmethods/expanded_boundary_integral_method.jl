@@ -586,7 +586,7 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
         corr_2[i]=-0.5*corr_1[i]^2*(numerator/denominator)
     end
     λ_corrected_1=k.+corr_1
-    λ_corrected_2=λ_corrected.+corr_2
+    λ_corrected_2=λ_corrected_1.+corr_2
     tens_1=abs.(corr_1)
     tens_2=abs.(corr_1.+corr_2)
     return λ_corrected_1,tens_1,λ_corrected_2,tens_2
