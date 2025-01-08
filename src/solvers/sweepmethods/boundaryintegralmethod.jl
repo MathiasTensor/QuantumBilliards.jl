@@ -578,6 +578,7 @@ function cos_phi_matrix(boundary_points::BoundaryPointsBIM{T},distance_matrix::M
             end
         end
     end
+    return M
 end
 
 function default_helmholtz_kernel_matrix(boundary_points::BoundaryPointsBIM{T},distance_matrix::Matrix,xy_distance_matrix::Matrix,k::T) where {T<:Real}
