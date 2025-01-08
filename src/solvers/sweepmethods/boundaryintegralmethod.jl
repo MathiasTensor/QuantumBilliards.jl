@@ -592,25 +592,6 @@ function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},
             kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
         end
     end
-    #= NOT YET IMPLEMENTED
-    if !isnothing(rotated_p2s) # Handle rotation
-        if rule.x_bc==:D
-            rotated_p2s,rotated_p2_revang=rotated_p2s
-            kernel_value-=kernel_fun(p1,reverse_angle(p2),normal1,k,curvature1) # this one is not part of the loop since it's a counterpart of the og kernel_value
-            for i in eachindex(rotated_p2s)
-                kernel_value+=kernel_fun(p1,rotated_p2s[i],normal1,k,curvature1)
-                kernel_value-=kernel_fun(p1,rotated_p2_revang[i],normal1,k,curvature1)
-            end
-        elseif rule.x_bc==:N
-            rotated_p2s,rotated_p2_revang=rotated_p2s
-            kernel_value+=kernel_fun(p1,reverse_angle(p2),normal1,k,curvature1) # this one is not part of the loop since it's a counterpart of the og kernel_value
-            for i in eachindex(rotated_p2s)
-                kernel_value+=kernel_fun(p1,rotated_p2s[i],normal1,k,curvature1)
-                kernel_value+=kernel_fun(p1,rotated_p2_revang[i],normal1,k,curvature1)
-            end
-        end
-    end
-    =#
     return kernel_value
 end
 
@@ -640,8 +621,6 @@ function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::Sy
         [apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
     reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    #rotated_points=symmetry_rule.symmetry_type isa Integer ?
-    #    [apply_rotation(p,symmetry_rule) for p in xy_points] : nothing # Vector{SVector} for all rotations
     fredholm_matrix=Matrix{Complex{T}}(I,N,N)
     Threads.@threads for i in 1:N
         p1=xy_points[i]
