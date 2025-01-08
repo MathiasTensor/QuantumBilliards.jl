@@ -560,14 +560,16 @@ end
 function compute_kernel_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel_matrix) where {T<:Real}
     dist_matrix=distance_matrix(boundary_points)
     xy_dist_matrix=xy_distance_matrix(boundary_points)
-    kernel_matrix=kernel_fun(boundary_points,dist_matrix,xy_dist_matrix) # Base kernel matrix
+    kernel_matrix=kernel_fun(boundary_points,dist_matrix,xy_dist_matrix,k) # Base kernel matrix
     # Handle symmetry reflections
     if !isnothing(symmetry_rule) && symmetry_rule.symmetry_type in [:x,:y,:xy]
         N=size(kernel_matrix,1)
         if symmetry_rule.symmetry_type in [:x,:xy]
             # Apply x-axis reflection
             reflected_points_x=apply_reflection_matrix(boundary_points,symmetry_rule)
-            reflected_kernel_x=kernel_fun(boundary_points,reflected_points_x,k)
+            dist_matrix=distance_matrix(reflected_points_x)
+            xy_dist_matrix=xy_distance_matrix(reflected_points_x)
+            reflected_kernel_x=kernel_fun(reflected_points_x,dist_matrix,xy_dist_matrix,k)
             if symmetry_rule.x_bc==:D
                 kernel_matrix.-=reflected_kernel_x
             elseif symmetry_rule.x_bc == :N
@@ -577,7 +579,9 @@ function compute_kernel_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_ru
         if symmetry_rule.symmetry_type in [:y,:xy]
             # Apply y-axis reflection
             reflected_points_y=apply_reflection_matrix(boundary_points,symmetry_rule)
-            reflected_kernel_y=kernel_fun(boundary_points,reflected_points_y,k)
+            dist_matrix=distance_matrix(reflected_points_y)
+            xy_dist_matrix=xy_distance_matrix(reflected_points_y)
+            reflected_kernel_y=kernel_fun(reflected_points_y,dist_matrix,xy_dist_matrix,k)
             if symmetry_rule.y_bc==:D
                 kernel_matrix.-=reflected_kernel_y
             elseif symmetry_rule.y_bc==:N
@@ -587,7 +591,9 @@ function compute_kernel_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_ru
         if symmetry_rule.symmetry_type==:xy
             # Apply xy-axis reflection
             reflected_points_xy=apply_reflection_matrix(boundary_points,symmetry_rule)
-            reflected_kernel_xy=kernel_fun(boundary_points,reflected_points_xy,k)
+            dist_matrix=distance_matrix(reflected_points_xy)
+            xy_dist_matrix=xy_distance_matrix(reflected_points_xy)
+            reflected_kernel_xy=kernel_fun(reflected_points_xy,dist_matrix,xy_dist_matrix,k)
             if symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:D
                 kernel_matrix.+=reflected_kernel_xy
             elseif symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:N
