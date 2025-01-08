@@ -504,6 +504,20 @@ function distance_matrix(boundary_points::BoundaryPointsBIM{T}) where {T<:Real}
     return M
 end
 
+function pairwise_distance_matrix(
+    source_points::BoundaryPointsBIM{T},
+    target_points::Vector{SVector{2, T}}
+) where {T<:Real}
+    N = length(source_points.xy)
+    M = zeros(T, N, N)
+    Threads.@threads for i in 1:N
+        for j in 1:N
+            M[i, j] = norm(source_points.xy[i] - target_points[j])
+        end
+    end
+    return M
+end
+
 function xy_distance_matrix(boundary_points::BoundaryPointsBIM{T}) where {T<:Real}
     pts=boundary_points.xy
     N=length(pts)
@@ -519,8 +533,22 @@ function xy_distance_matrix(boundary_points::BoundaryPointsBIM{T}) where {T<:Rea
     return M
 end
 
+function pairwise_xy_distance_matrix(
+    source_points::BoundaryPointsBIM{T},
+    target_points::Vector{SVector{2, T}}
+) where {T<:Real}
+    N = length(source_points.xy)
+    M = Matrix{SVector{2, T}}(undef, N, N)
+    Threads.@threads for i in 1:N
+        for j in 1:N
+            dx, dy = source_points.xy[i][1] - target_points[j][1], source_points.xy[i][2] - target_points[j][2]
+            M[i, j] = SVector(dx, dy)
+        end
+    end
+    return M
+end
+
 function hankel_matrix(distance_matrix::Matrix,k::T) where {T<:Real}
-    pts=boundary_points.xy
     N=length(pts)
     M=zeros(Complex{eltype(k)},N,N)
     Threads.@threads for i in 1:N
@@ -557,54 +585,71 @@ function default_helmholtz_kernel_matrix(boundary_points::BoundaryPointsBIM{T},d
     return M
 end
 
-function compute_kernel_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel_matrix) where {T<:Real}
-    dist_matrix=distance_matrix(boundary_points)
-    xy_dist_matrix=xy_distance_matrix(boundary_points)
-    kernel_matrix=kernel_fun(boundary_points,dist_matrix,xy_dist_matrix,k) # Base kernel matrix
+function compute_kernel_matrix(
+    boundary_points::BoundaryPointsBIM{T},
+    symmetry_rule::SymmetryRuleBIM{T},
+    k::T;
+    kernel_fun=default_helmholtz_kernel_matrix
+) where {T<:Real}
+    # Compute base distance and interaction matrices
+    dist_matrix = distance_matrix(boundary_points)
+    xy_dist_matrix = xy_distance_matrix(boundary_points)
+    kernel_matrix = kernel_fun(boundary_points, dist_matrix, xy_dist_matrix, k)
+
     # Handle symmetry reflections
-    if !isnothing(symmetry_rule) && symmetry_rule.symmetry_type in [:x,:y,:xy]
-        N=size(kernel_matrix,1)
-        if symmetry_rule.symmetry_type in [:x,:xy]
-            # Apply x-axis reflection
-            reflected_points_x=apply_reflection_matrix(boundary_points,symmetry_rule)
-            dist_matrix=distance_matrix(reflected_points_x)
-            xy_dist_matrix=xy_distance_matrix(reflected_points_x)
-            reflected_kernel_x=kernel_fun(reflected_points_x,dist_matrix,xy_dist_matrix,k)
-            if symmetry_rule.x_bc==:D
-                kernel_matrix.-=reflected_kernel_x
+    if !isnothing(symmetry_rule) && symmetry_rule.symmetry_type in [:x, :y, :xy]
+        N = size(kernel_matrix, 1)
+
+        if symmetry_rule.symmetry_type in [:x, :xy]
+            # Reflection across x-axis
+            reflected_points_x = apply_reflection_matrix(boundary_points, symmetry_rule)
+            dist_matrix_x = pairwise_distance_matrix(boundary_points, reflected_points_x)
+            xy_dist_matrix_x = pairwise_xy_distance_matrix(boundary_points, reflected_points_x)
+            reflected_kernel_x = kernel_fun(boundary_points, dist_matrix_x, xy_dist_matrix_x, k)
+
+            # Adjust kernel based on boundary condition
+            if symmetry_rule.x_bc == :D
+                kernel_matrix .-= reflected_kernel_x
             elseif symmetry_rule.x_bc == :N
-                kernel_matrix.+=reflected_kernel_x
+                kernel_matrix .+= reflected_kernel_x
             end
         end
-        if symmetry_rule.symmetry_type in [:y,:xy]
-            # Apply y-axis reflection
-            reflected_points_y=apply_reflection_matrix(boundary_points,symmetry_rule)
-            dist_matrix=distance_matrix(reflected_points_y)
-            xy_dist_matrix=xy_distance_matrix(reflected_points_y)
-            reflected_kernel_y=kernel_fun(reflected_points_y,dist_matrix,xy_dist_matrix,k)
-            if symmetry_rule.y_bc==:D
-                kernel_matrix.-=reflected_kernel_y
-            elseif symmetry_rule.y_bc==:N
-                kernel_matrix.+=reflected_kernel_y
+
+        if symmetry_rule.symmetry_type in [:y, :xy]
+            # Reflection across y-axis
+            reflected_points_y = apply_reflection_matrix(boundary_points, symmetry_rule)
+            dist_matrix_y = pairwise_distance_matrix(boundary_points, reflected_points_y)
+            xy_dist_matrix_y = pairwise_xy_distance_matrix(boundary_points, reflected_points_y)
+            reflected_kernel_y = kernel_fun(boundary_points, dist_matrix_y, xy_dist_matrix_y, k)
+
+            # Adjust kernel based on boundary condition
+            if symmetry_rule.y_bc == :D
+                kernel_matrix .-= reflected_kernel_y
+            elseif symmetry_rule.y_bc == :N
+                kernel_matrix .+= reflected_kernel_y
             end
         end
-        if symmetry_rule.symmetry_type==:xy
-            # Apply xy-axis reflection
-            reflected_points_xy=apply_reflection_matrix(boundary_points,symmetry_rule)
-            dist_matrix=distance_matrix(reflected_points_xy)
-            xy_dist_matrix=xy_distance_matrix(reflected_points_xy)
-            reflected_kernel_xy=kernel_fun(reflected_points_xy,dist_matrix,xy_dist_matrix,k)
-            if symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:D
-                kernel_matrix.+=reflected_kernel_xy
-            elseif symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:N
-                kernel_matrix.-=reflected_kernel_xy
-            elseif symmetry_rule.x_bc==:N && symmetry_rule.y_bc==:D
-                kernel_matrix.-=reflected_kernel_xy
-            elseif symmetry_rule.x_bc==:N && symmetry_rule.y_bc==:N
-                kernel_matrix.+=reflected_kernel_xy
+
+        if symmetry_rule.symmetry_type == :xy
+            # Reflection across both axes
+            reflected_points_xy = apply_reflection_matrix(boundary_points, symmetry_rule)
+            dist_matrix_xy = pairwise_distance_matrix(boundary_points, reflected_points_xy)
+            xy_dist_matrix_xy = pairwise_xy_distance_matrix(boundary_points, reflected_points_xy)
+            reflected_kernel_xy = kernel_fun(boundary_points, dist_matrix_xy, xy_dist_matrix_xy, k)
+
+            # Adjust kernel based on boundary conditions
+            if symmetry_rule.x_bc == :D && symmetry_rule.y_bc == :D
+                kernel_matrix .+= reflected_kernel_xy
+            elseif symmetry_rule.x_bc == :D && symmetry_rule.y_bc == :N
+                kernel_matrix .-= reflected_kernel_xy
+            elseif symmetry_rule.x_bc == :N && symmetry_rule.y_bc == :D
+                kernel_matrix .-= reflected_kernel_xy
+            elseif symmetry_rule.x_bc == :N && symmetry_rule.y_bc == :N
+                kernel_matrix .+= reflected_kernel_xy
             end
         end
     end
+
     return kernel_matrix
 end
 
