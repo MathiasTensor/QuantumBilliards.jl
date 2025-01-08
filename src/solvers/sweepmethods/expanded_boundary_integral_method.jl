@@ -589,7 +589,6 @@ hankel_basis=AbstractHankelBasis()
 scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 -> This gives a sequence of points that fall on a vertical line when close to an actual eigenvalue. 
 
-
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the EBIM method.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
@@ -597,18 +596,19 @@ scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 - `k1`: The initial value of `k` for the sweep.
 - `k2`: The final value of `k` for the sweep.
 - `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
-- `order::Symbol`: The order of the correction to be used (default: `:first`).
 
 # Returns
 - `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
 - `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
 """
-function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),order=:first) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     T=eltype(k1)
-    ks_all=T[]
-    tens_all=T[]
+    ks_all_1=T[]
+    ks_all_2=T[]
+    tens_all_1=T[]
+    tens_all_2=T[]
     ks=T[] # these are the evaluation points
     push!(ks,k1)
     k=k1
@@ -616,24 +616,29 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         k+=dk(k)
         push!(ks,k)
     end
-    @showprogress desc="EBIM smallest tens order: $(order)..." for k in ks
+    @showprogress desc="EBIM smallest tens..." for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
-        if order==:first
-            ks,tens=solve_DEBUG_w_1st_order_corrections(solver,basis,pts,k)
-        elseif order==:second
-            _,_,ks,tens=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k)
+        ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k)
+        idx1=findmin(tens1)[2]
+        idx2=findmin(tens2)[2]
+        if log10(tens1[idx1])<0.0
+            push!(ks_all_1,ks1[idx1])
+            push!(tens_all_1,tens1[idx1])
         end
-        idx=findmin(tens)[2]
-        if log10(tens[idx])<0.0
-            push!(ks_all,ks[idx])
-            push!(tens_all,tens[idx])
+        if log10(tens2[idx2])<0.0
+            push!(ks_all_1,ks2[idx2])
+            push!(tens_all_2,tens2[idx2])
         end
     end
-    _,logtens=ebim_inv_diff(ks_all)
-    idxs=findall(x->x>0.0,logtens)
-    logtens=logtens[idxs]
-    ks_all=ks_all[idxs]
-    return ks_all,logtens
+    _,logtens_1=ebim_inv_diff(ks_all_1)
+    _,logtens_2=ebim_inv_diff(ks_all_2)
+    idxs1=findall(x->x>0.0,logtens_1)
+    idxs2=findall(x->x>0.0,logtens_2)
+    logtens_1=logtens_1[idxs1]
+    logtens_2=logtens_2[idxs2]
+    ks_all_1=ks_all_1[idxs1]
+    ks_all_2=ks_all_2[idxs2]
+    return ks_all_1,logtens_1, ks_all_2,logtens_2
 end
 
 
