@@ -616,7 +616,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         k+=dk(k)
         push!(ks,k)
     end
-    @showprogress desc="EBIM smallest tens..." for k in ks
+    @showprogress desc="EBIM smallest tens order: $(order)..." for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
         if order==:first
             ks,tens=solve_DEBUG_w_1st_order_corrections(solver,basis,pts,k)
