@@ -500,7 +500,7 @@ end
 ### DEBUGGING TOOLS ###
 
 """
-     solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+     solve_DEBUG_w_1st_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
 
 FIRST ORDER CORRECTIONS
 Debugging function that solves for a given `k` the generalized eigenvalue problem `A * x = λ * (dA/dk) * x` for the `λs` which it then adds to the initial `k` at which the `eigen(A,dA/dk)` was performed and the associated tension (defined as the absolute value of `λ` as the quality of the correction).
@@ -518,7 +518,7 @@ Debugging function that solves for a given `k` the generalized eigenvalue proble
 - `Vector{T}`: Corrected ks without further restrictions.
 - `Vector{T}`: Associated tensions for the corrections to k.
 """
-function solve_DEBUG(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG_w_1st_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
     A,dA,_=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     F=eigen(A,dA)
     λ=F.values
@@ -629,7 +629,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     @showprogress desc="EBIM smallest tens..." for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
         if order==:first
-            ks,tens=solve_DEBUG(solver,basis,pts,k)
+            ks,tens=solve_DEBUG_w_1st_order_corrections(solver,basis,pts,k)
         elseif order==:second
             _,_,ks,tens=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k)
         end
