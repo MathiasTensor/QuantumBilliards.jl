@@ -486,6 +486,7 @@ function apply_reflection_matrix(boundary_points::BoundaryPointsBIM{T},rule::Sym
         return [SVector(2*shift_x-p[1],2*shift_y-p[2]) for p in pts]
     else
         return pts 
+    end
 end
 
 function distance_matrix(boundary_points::BoundaryPointsBIM{T}) where {T<:Real}
