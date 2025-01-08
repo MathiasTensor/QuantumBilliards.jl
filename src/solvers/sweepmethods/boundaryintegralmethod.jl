@@ -475,6 +475,175 @@ Computes the Hankel function of the first kind for the given distance and wavenu
     return Bessels.hankelh1(1,k*distance12::T)
 end
 
+function apply_reflection_matrix(boundary_points::BoundaryPointsBIM{T},rule::SymmetryRuleBIM{T}) where {T<:Real}
+    shift_x,shift_y = rule.shift_x,rule.shift_y
+    pts=boundary_points.xy
+    if rule.symmetry_type==:x
+        return [SVector(2*shift_x-p[1],p[2]) for p in pts]
+    elseif rule.symmetry_type==:y
+        return [SVector(p[1],2*shift_y-p[2]) for p in pts]
+    elseif rule.symmetry_type==:xy
+        return [SVector(2*shift_x-p[1],2*shift_y-p[2]) for p in pts]
+    else
+        return pts 
+end
+
+function distance_matrix(boundary_points::BoundaryPointsBIM{T}) where {T<:Real}
+    pts=boundary_points.xy
+    N=length(pts)
+    M=zeros(T,N,N)
+    Threads.@threads for i in 1:N
+        M[i,i]=T(0.0)
+        for j in 1:(i-1)
+            d=norm(pts[i]-pts[j])
+            M[i,j]=d
+            M[j,i]=d
+        end
+    end
+    return M
+end
+
+function xy_distance_matrix(boundary_points::BoundaryPointsBIM{T}) where {T<:Real}
+    pts=boundary_points.xy
+    N=length(pts)
+    M=Matrix{SVector{2,T}}(undef,N,N)
+    Threads.@threads for i in 1:N
+        M[i,i]=SVector{2,T}(zero(T),zero(T))
+        for j in 1:(i-1)
+            dx,dy=pts[i][1]-pts[j][1],pts[i][2]-pts[j][2]
+            M[i,j]=SVector{2,T}(dx,dy)
+            M[j,i]=SVector{2,T}(-dx,-dy)
+        end
+    end
+    return M
+end
+
+function hankel_matrix(distance_matrix::Matrix,k::T) where {T<:Real}
+    pts=boundary_points.xy
+    N=length(pts)
+    M=zeros(Complex{eltype(k)},N,N)
+    Threads.@threads for i in 1:N
+        M[i,i]=Complex(one(T),one(T)) # for later convenience when multiplication w/ cos_phi_matrix
+        for j in 1:(i-1)
+            d=k*distance_matrix[i,j]
+            M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)
+            M[j,i]=M[i,j]
+        end
+    end
+    return M
+end
+
+function cos_phi_matrix(boundary_points::BoundaryPointsBIM{T},distance_matrix::Matrix,xy_distance_matrix::Matrix) where {T<:Real}
+    xy_points=boundary_points.xy
+    normals=boundary_points.normal
+    curvatures=boundary_points.curvature
+    N=length(xy_points)
+    M=zeros(T,N,N)
+    Threads.@threads for i in 1:N
+        normal_i=normals[i]
+        for j in 1:N
+            if !(i==j)
+                M[i,j]=(normal_i[1]*xy_distance_matrix[i,j][1]+normal_i[2]*xy_distance_matrix[i,j][2])/distance_matrix[i,j]
+            else
+                M[i,i]=curvatures[i]/(2*π)
+            end
+        end
+    end
+end
+
+function default_helmholtz_kernel_matrix(boundary_points::BoundaryPointsBIM{T},distance_matrix::Matrix,xy_distance_matrix::Matrix,k::T) where {T<:Real}
+    M=cos_phi_matrix(boundary_points,distance_matrix,xy_distance_matrix).*hankel_matrix(distance_matrix,k)
+    return M
+end
+
+function compute_kernel_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel_matrix) where {T<:Real}
+    dist_matrix=distance_matrix(boundary_points)
+    xy_dist_matrix=xy_distance_matrix(boundary_points)
+    kernel_matrix=kernel_fun(boundary_points,dist_matrix,xy_dist_matrix) # Base kernel matrix
+    # Handle symmetry reflections
+    if !isnothing(symmetry_rule) && symmetry_rule.symmetry_type in [:x,:y,:xy]
+        N=size(kernel_matrix,1)
+        if symmetry_rule.symmetry_type in [:x,:xy]
+            # Apply x-axis reflection
+            reflected_points_x=apply_reflection_matrix(boundary_points,symmetry_rule)
+            reflected_kernel_x=kernel_fun(boundary_points,reflected_points_x,k)
+            if symmetry_rule.x_bc==:D
+                kernel_matrix.-=reflected_kernel_x
+            elseif symmetry_rule.x_bc == :N
+                kernel_matrix.+=reflected_kernel_x
+            end
+        end
+        if symmetry_rule.symmetry_type in [:y,:xy]
+            # Apply y-axis reflection
+            reflected_points_y=apply_reflection_matrix(boundary_points,symmetry_rule)
+            reflected_kernel_y=kernel_fun(boundary_points,reflected_points_y,k)
+            if symmetry_rule.y_bc==:D
+                kernel_matrix.-=reflected_kernel_y
+            elseif symmetry_rule.y_bc==:N
+                kernel_matrix.+=reflected_kernel_y
+            end
+        end
+        if symmetry_rule.symmetry_type==:xy
+            # Apply xy-axis reflection
+            reflected_points_xy=apply_reflection_matrix(boundary_points,symmetry_rule)
+            reflected_kernel_xy=kernel_fun(boundary_points,reflected_points_xy,k)
+            if symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:D
+                kernel_matrix.+=reflected_kernel_xy
+            elseif symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:N
+                kernel_matrix.-=reflected_kernel_xy
+            elseif symmetry_rule.x_bc==:N && symmetry_rule.y_bc==:D
+                kernel_matrix.-=reflected_kernel_xy
+            elseif symmetry_rule.x_bc==:N && symmetry_rule.y_bc==:N
+                kernel_matrix.+=reflected_kernel_xy
+            end
+        end
+    end
+    return kernel_matrix
+end
+
+function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel_matrix) where {T<:Real}
+    kernel_matrix=compute_kernel_matrix(boundary_points,symmetry_rule,k;kernel_fun=kernel_fun)
+    ds=boundary_points.ds
+    N=length(ds)
+    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
+    fredholm_matrix.-=kernel_matrix.* ds'
+    return fredholm_matrix
+end
+
+function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel_matrix) where {Ba<:AbstractHankelBasis}
+    return fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
+end
+
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel_matrix) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    mu=svdvals(A)
+    return mu[end]
+end
+
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel_matrix) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    u_mu=real.(u_mu)
+    return mu,u_mu
+end
+
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=default_helmholtz_kernel_matrix) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
+    for i in eachindex(ks)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i];kernel_fun=kernel_fun)
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
+end
+
+#=
+
 """
     compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2,T}, p1_curvature::T) -> T
 
@@ -736,7 +905,7 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     return us_all,pts_all
 end
 
-
+=#
 
 
 
