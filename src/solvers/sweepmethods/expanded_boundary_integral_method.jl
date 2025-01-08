@@ -626,7 +626,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
             push!(tens_all_1,tens1[idx1])
         end
         if log10(tens2[idx2])<0.0
-            push!(ks_all_1,ks2[idx2])
+            push!(ks_all_2,ks2[idx2])
             push!(tens_all_2,tens2[idx2])
         end
     end
