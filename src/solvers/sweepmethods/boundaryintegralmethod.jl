@@ -377,7 +377,7 @@ end
 
 ### STANDARD BIM ###
 
-#=
+
 """
     BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
 
@@ -475,6 +475,8 @@ Computes the Hankel function of the first kind for the given distance and wavenu
     end
     return Bessels.hankelh1(1,k*distance12::T)
 end
+
+#=
 
 function apply_reflection_matrix(boundary_points::BoundaryPointsBIM{T},rule::SymmetryRuleBIM{T}) where {T<:Real}
     shift_x,shift_y = rule.shift_x,rule.shift_y
