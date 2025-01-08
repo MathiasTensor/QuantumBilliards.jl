@@ -611,6 +611,7 @@ scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 - `k1`: The initial value of `k` for the sweep.
 - `k2`: The final value of `k` for the sweep.
 - `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
+- `order::Symbol`: The order of the correction to be used (default: `:first`).
 
 # Returns
 - `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
@@ -618,7 +619,7 @@ scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 - `Vector{T}`: Corrected `k` values with tensions meeting stricter criteria within the local range (`ks_small`).
 - `Vector{T}`: Tensions corresponding to `ks_small` (`tens_small`).
 """
-function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),order=:first) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     T=eltype(k1)
@@ -635,7 +636,11 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     end
     @showprogress desc="EBIM smallest tens..." for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
-        ks,tens=solve_DEBUG(solver,basis,pts,k)
+        if order==:first
+            ks,tens=solve_DEBUG(solver,basis,pts,k)
+        elseif order==:second
+            _,_,ks,tens=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k)
+        end
         idx=findmin(tens)[2]
         if log10(tens[idx])<0.0
             push!(ks_all,ks[idx])
