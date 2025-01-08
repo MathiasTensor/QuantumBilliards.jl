@@ -438,7 +438,8 @@ Computes the corrected k0 for a given wavenumber range using the expanded bounda
 - `Vector{T}`: Corrected eigenvalues within the specified range.
 """
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun=default_helmholtz_kernel,kernel_der_fun=default_helmholtz_kernel_first_derivative,kernel_der2_fun=default_helmholtz_kernel_second_derivative) where {Ba<:AbstractHankelBasis}
-    #= BASE CASE PER DEFINITION
+    #BASE CASE PER DEFINITION
+
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
@@ -459,23 +460,17 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        r_dA=similar(v_right)
-        r_ddA=similar(v_right)
-        mul!(r_ddA,ddA,v_right)
-        mul!(r_dA,dA,v_right)
-        numerator=real(dot(v_left,r_ddA)) # v_left' * (ddA * v_right)
-        denominator=real(dot(v_left,r_dA)) # v_left' * (dA * v_right)
+        numerator=transpose(v_left)*ddA*v_right
+        denominator=transpose(v_left)*dA*v_right
         corr_1[i]=-λ[i]
-        corr_2[i]=-0.5*corr_1[i]^2*numerator/denominator
+        corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
     end
     λ_corrected=k.+corr_1.+corr_2
     tens=abs.(corr_1.+corr_2)
-    idxs=((k-dk).<λ_corrected) .& (λ_corrected.<(k+dk)) # Filter corrected eigenvalues within [k - dk, k + dk]
-    if !any(idxs)
-        return Vector{T}(), Vector{T}()
-    end
-    return λ_corrected[idxs],tens[idxs]
-    =#
+    return λ_corrected,tens
+    
+    # FIRST ORDER CORRECTIONS
+    #=
     A,dA,_=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,kernel_der_fun=kernel_der_fun,kernel_der2_fun=kernel_der2_fun)
     F=eigen(A,dA)
     λ=F.values
@@ -497,6 +492,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ_corrected=k.+corr_1
     tens=abs.(corr_1)
     return λ_corrected,tens
+    =#
 end
 
 
