@@ -850,7 +850,7 @@ function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule
     N=length(ds)
     fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
     fredholm_der_matrix=fill(Complex(0.0,0.0),N,N)-kernel_der_matrix.*ds'
-    fredholm_der2_matrix=zeros(Complex(0.0,0.0),N,N)-kernel_der2_matrix.*ds'
+    fredholm_der2_matrix=fill(Complex(0.0,0.0),N,N)-kernel_der2_matrix.*ds'
     return fredholm_matrix,fredholm_der_matrix,fredholm_der2_matrix
 end
 
