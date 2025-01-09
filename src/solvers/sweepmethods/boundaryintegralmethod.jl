@@ -450,7 +450,7 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
 end
 
 ### LEGACY CORRECT CODE ###
-#=
+
 """
     compute_hankel(distance12::T, k::T) -> Complex{T}
 
@@ -730,9 +730,9 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
-=#
-# NEW MATRIX CODE, LESS PRECISE ?
 
+# NEW MATRIX CODE, LESS PRECISE ?
+#=
 function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     N=length(xy)
@@ -929,7 +929,7 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
-
+=#
 
 
 
