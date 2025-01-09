@@ -751,7 +751,7 @@ end
 function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     N=length(xy_s)
-    M=zeros(Complex{eltype(k)},N,N)
+    M=zeros(Complex{T},N,N)
     for i in 1:N
         M[i,i]=Complex(T(1.0)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:N
@@ -772,7 +772,7 @@ function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
     M=zeros(T,N,N)
     for i in 1:N
         normal_i=normals[i]
-        M[i,i]=T(1.0)
+        M[i,i]=curvatures[i]/(2*pi)
         for j in 1:N
             if !(j==i)
                 xy_i=xy[i]
@@ -793,7 +793,7 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     M=zeros(T,N,N)
     for i in 1:N
         normal_i=normals[i]
-        M[i,i]=T(1.0)
+        M[i,i]=curvatures[i]/(2*pi)
         for j in 1:N
             if !(j==i)
                 xy_i=xy_s[i]
@@ -807,11 +807,11 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
 end
 
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    return Diagonal(1/(2*pi)*bp.curvature)*(cos_phi_matrix(bp).*hankel_matrix(bp,k)) # element wise multiplication
+    return (cos_phi_matrix(bp).*hankel_matrix(bp,k)) # element wise multiplication
 end
 
 function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    return Diagonal(1/(2*pi)*bp_s.curvature)*(cos_phi_matrix(bp_s,xy_t).*hankel_matrix(bp_s,xy_t,k))
+    return (cos_phi_matrix(bp_s,xy_t).*hankel_matrix(bp_s,xy_t,k))
 end
 
 function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
