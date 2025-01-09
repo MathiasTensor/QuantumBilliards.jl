@@ -808,47 +808,41 @@ end
 
 
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    xy = bp.xy
-    curvatures = bp.curvature
-    N = length(xy)
-
-    # Precompute cos_phi and hankel matrices
-    cos_phi = cos_phi_matrix(bp)
-    hankel = hankel_matrix(bp, k)
-
-    # Adjust for small distances
-    for i in 1:N
+    xy=bp.xy
+    curvatures=bp.curvature
+    N=length(xy)
+    cos_phi=cos_phi_matrix(bp)
+    hankel=hankel_matrix(bp, k)
+    kernel=cos_phi.*hankel
+    # mask
+    @inbounds for i in 1:N
         for j in 1:N
-            d = hypot(xy[i][1] - xy[j][1], xy[i][2] - xy[j][2])
-            if d < eps(T)
-                hankel[i, j] = Complex(curvatures[i] / (2 * π), 0.0) # Use curvature logic for singularity
+            d=hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2])
+            if d<eps(T)
+                kernel[i,j]=Complex(curvatures[i]/(2*π),T(0.0))
             end
         end
     end
-
-    return cos_phi .* hankel
+    return kernel
 end
 
 function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    xy_s = bp_s.xy
-    curvatures = bp_s.curvature
-    N = length(xy_s)
-
-    # Precompute cos_phi and hankel matrices
-    cos_phi = cos_phi_matrix(bp_s, xy_t)
-    hankel = hankel_matrix(bp_s, xy_t, k)
-
-    # Adjust for small distances
-    for i in 1:N
+    xy=bp_s.xy
+    curvatures=bp_s.curvature
+    N=length(xy)
+    cos_phi=cos_phi_matrix(bp_s,xy_t)
+    hankel=hankel_matrix(bp_s,xy_t,k)
+    kernel=cos_phi.*hankel
+    # mask
+    @inbounds for i in 1:N
         for j in 1:N
-            d = hypot(xy_s[i][1] - xy_t[j][1], xy_s[i][2] - xy_t[j][2])
-            if d < eps(T)
-                hankel[i, j] = Complex(curvatures[i] / (2 * π), 0.0) # Use curvature logic for singularity
+            d=hypot(xy[i][1]-xy_t[j][1],xy[i][2]-xy_t[j][2])
+            if d<eps(T)
+                kernel[i,j]=Complex(curvatures[i]/(2*π),T(0.0))
             end
         end
     end
-
-    return cos_phi .* hankel
+    return kernel
 end
 
 #=
