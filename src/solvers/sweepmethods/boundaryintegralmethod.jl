@@ -740,7 +740,7 @@ function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     for i in 1:N
         M[i,i]=Complex(1.0) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:(i-1)
-            d=k*(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2])+eps(T))
+            d=k*(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]))
             M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)
             M[j,i]=M[i,j]
         end
@@ -756,7 +756,7 @@ function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::
         M[i,i]=Complex(1.0) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:N
             if !(j==i)
-                d=k*(hypot(xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2])+eps(T))
+                d=k*(hypot(xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]))
                 M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)   
             end
         end
@@ -778,7 +778,7 @@ function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
                 xy_i=xy[i]
                 xy_j=xy[j]
                 dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
-                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2])+eps(T))
+                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]))
             end
         end
     end
@@ -799,7 +799,7 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
                 xy_i=xy_s[i]
                 xy_j=xy_t[j]
                 dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
-                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(hypot(xy_i[1]-xy_j[1],xy_i[2]-xy_j[2])+eps(T))
+                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(hypot(xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]))
             end
         end
     end
