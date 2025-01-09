@@ -579,6 +579,7 @@ end
 #### NEW MATRIX APPROACH FOR FASTER CODE #### 
 
 function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
+    #=
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -601,9 +602,30 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
         end
     end
     return M
+    =#
+    xy=bp.xy
+    normals=bp.normal
+    N=length(xy)
+    M=Matrix{Complex{T}}(undef,N,N)
+    @inbounds for i in 1:N
+        for j in 1:N # symmetric hankel part
+            dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
+            distance=hypot(dx,dy)
+            if distance<eps(T)
+                M[i,j]=Complex(T(0.0),T(0.0))
+                continue
+            else
+                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
+                M[i,j]=cos_phi*hankel
+            end
+        end
+    end
+    return M
 end
 
 function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
+    #=
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -622,9 +644,30 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
         end
     end
     return M
+    =#
+    xy_s=bp_s.xy
+    normals=bp_s.normal
+    N=length(xy_s)
+    M=Matrix{Complex{T}}(undef,N,N)
+    @inbounds for i in 1:N
+        for j in 1:N
+            dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
+            distance=hypot(dx,dy)
+            if distance<eps(T)
+                M[i,j]=Complex(T(0.0),T(0.0))
+                continue
+            else
+                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
+                M[i,j]=cos_phi*hankel
+            end
+        end
+    end
+    return M
 end
 
 function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
+    #=
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -647,9 +690,30 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
         end
     end
     return M
+    =#
+    xy=bp.xy
+    normals=bp.normal
+    N=length(xy)
+    M=Matrix{Complex{T}}(undef,N,N)
+    @inbounds for i in 1:N
+        for j in 1:N # symmetric hankel part
+            dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
+            distance=hypot(dx,dy)
+            if distance<eps(T)
+                M[i,j]=Complex(T(0.0),T(0.0))
+                continue
+            else
+                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
+                M[i,j]=cos_phi*hankel
+            end
+        end
+    end
+    return M
 end
 
 function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
+    #=
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -660,6 +724,26 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
             distance=hypot(dx,dy)
             if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
+            else
+                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
+                M[i,j]=cos_phi*hankel
+            end
+        end
+    end
+    return M
+    =#
+    xy_s=bp_s.xy
+    normals=bp_s.normal
+    N=length(xy_s)
+    M=Matrix{Complex{T}}(undef,N,N)
+    @inbounds for i in 1:N
+        for j in 1:N
+            dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
+            distance=hypot(dx,dy)
+            if distance<eps(T)
+                M[i,j]=Complex(T(0.0),T(0.0))
+                continue
             else
                 cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
                 hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
