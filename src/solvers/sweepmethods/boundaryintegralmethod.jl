@@ -450,7 +450,7 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
 end
 
 ### LEGACY CORRECT CODE ###
-
+#=
 """
     compute_hankel(distance12::T, k::T) -> Complex{T}
 
@@ -730,15 +730,15 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
-
+=#
 # NEW MATRIX CODE, LESS PRECISE ?
-#=
+
 function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     N=length(xy)
     M=zeros(Complex{eltype(k)},N,N)
     for i in 1:N
-        M[i,i]=Complex(one(T)) # for later convenience when multiplication w/ cos_phi_matrix
+        M[i,i]=Complex(eps(T),eps(T)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:(i-1)
             d=k*(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2])+eps(T))
             M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)
@@ -753,7 +753,7 @@ function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::
     N=length(xy_s)
     M=zeros(Complex{eltype(k)},N,N)
     for i in 1:N
-        M[i,i]=Complex(one(T)) # for later convenience when multiplication w/ cos_phi_matrix
+        M[i,i]=Complex(eps(T),eps(T)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:N
             if !(j==i)
                 d=k*(hypot(xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2])+eps(T))
@@ -929,7 +929,7 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
-=#
+
 
 
 
