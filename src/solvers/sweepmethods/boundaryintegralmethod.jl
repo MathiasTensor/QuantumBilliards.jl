@@ -806,7 +806,7 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     return M
 end
 
-
+#=
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     curvatures=bp.curvature
@@ -844,8 +844,8 @@ function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector
     end
     return kernel
 end
+=#
 
-#=
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) where {T<:Real}
     xy = bp.xy
     normals = bp.normal
@@ -901,7 +901,7 @@ function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T}, xy_t::Vecto
     end
     return M
 end
-=#
+
 
 function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     if kernel_fun==:default
