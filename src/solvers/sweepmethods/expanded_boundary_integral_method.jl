@@ -936,6 +936,70 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
     return λ_corrected_1,tens_1,λ_corrected_2,tens_2
 end
 
+"""
+    visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod, basis::Ba, billiard::Bi, k1, k2; 
+                         dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
+
+Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
+
+# Usage
+hankel_basis=AbstractHankelBasis()
+@time ks_debug,tens_debug,ks_debug_small,tens_debug_small=QuantumBilliards.visualize_ebim_sweep(ebim_solver,hankel_basis,billiard,k1,k2;dk=dk)
+scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
+-> This gives a sequence of points that fall on a vertical line when close to an actual eigenvalue. 
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the EBIM method.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `billiard::Bi`: The billiard geometry, a subtype of `AbsBilliard`.
+- `k1`: The initial value of `k` for the sweep.
+- `k2`: The final value of `k` for the sweep.
+- `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
+
+# Returns
+- `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
+- `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
+"""
+function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    k=k1
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    T=eltype(k1)
+    ks_all_1=T[]
+    ks_all_2=T[]
+    tens_all_1=T[]
+    tens_all_2=T[]
+    ks=T[] # these are the evaluation points
+    push!(ks,k1)
+    k=k1
+    while k<k2
+        k+=dk(k)
+        push!(ks,k)
+    end
+    @showprogress desc="EBIM smallest tens..." for k in ks
+        pts=evaluate_points(bim_solver,billiard,k)
+        ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k)
+        idx1=findmin(tens1)[2]
+        idx2=findmin(tens2)[2]
+        if log10(tens1[idx1])<0.0
+            push!(ks_all_1,ks1[idx1])
+            push!(tens_all_1,tens1[idx1])
+        end
+        if log10(tens2[idx2])<0.0
+            push!(ks_all_2,ks2[idx2])
+            push!(tens_all_2,tens2[idx2])
+        end
+    end
+    _,logtens_1=ebim_inv_diff(ks_all_1)
+    _,logtens_2=ebim_inv_diff(ks_all_2)
+    idxs1=findall(x->x>0.0,logtens_1)
+    idxs2=findall(x->x>0.0,logtens_2)
+    logtens_1=logtens_1[idxs1]
+    logtens_2=logtens_2[idxs2]
+    ks_all_1=ks_all_1[idxs1]
+    ks_all_2=ks_all_2[idxs2]
+    return ks_all_1,logtens_1, ks_all_2,logtens_2
+end
+
 
 
 
