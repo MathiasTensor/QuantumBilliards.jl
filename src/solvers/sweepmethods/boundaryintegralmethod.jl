@@ -892,7 +892,7 @@ function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM
     for i in 1:N
         fredholm_matrix[i,:]*=ds[i]  # Scale the entire row by ds[i]
     end
-    fredholm_matrix.+=I
+    fredholm_matrix.+=Matrix{T}(I,N,N)
 end
 
 function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default) where {Ba<:AbstractHankelBasis}
