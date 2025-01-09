@@ -731,122 +731,10 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     return us_all,pts_all
 end
 =#
-# NEW MATRIX CODE, LESS PRECISE ?
 
-function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    xy=bp.xy
-    N=length(xy)
-    M=Matrix{Complex{T}}(undef,N,N)
-    for i in 1:N
-        M[i,i]=Complex(T(1.0)) # for later convenience when multiplication w/ cos_phi_matrix
-        for j in 1:(i-1)
-            d=k*(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]))
-            M[i,j]=d<eps(T) ? Complex(eps(T),eps(T)) : -im*k/2.0*Bessels.hankelh1(1,d)
-            M[j,i]=M[i, j] # Enforce symmetry
-        end
-    end
-    return M
-end
+# NEW MATRIX CODE, SLIGHTLY FASTER UTILIZING THE DEFAULT KERNEL'S FUNCTION HANKEL FUNCTION SYMMETRY
 
-function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    xy_s=bp_s.xy
-    N=length(xy_s)
-    M=Matrix{Complex{T}}(undef,N,N)
-    for i in 1:N
-        M[i,i]=Complex(T(1.0)) # for later convenience when multiplication w/ cos_phi_matrix
-        for j in 1:N
-            if !(j==i)
-                d=k*(hypot(xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]))
-                M[i,j]=d<eps(T) ? Complex(eps(T),eps(T)) : -im*k/2.0*Bessels.hankelh1(1,d)  
-            end
-        end
-    end
-    return M
-end
-
-function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
-    xy=bp.xy
-    normals=bp.normal
-    curvatures=bp.curvature
-    N=length(xy)
-    M=Matrix{T}(undef,N,N)
-    for i in 1:N
-        normal_i=normals[i]
-        M[i,i]=curvatures[i]/(2*pi)
-        for j in 1:N
-            if !(j==i)
-                xy_i=xy[i]
-                xy_j=xy[j]
-                dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
-                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]))
-            end
-        end
-    end
-    return M
-end
-
-function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) where {T<:Real}
-    xy_s=bp_s.xy
-    normals=bp_s.normal # wrt source points
-    curvatures=bp_s.curvature # wrt source points
-    N=length(xy_s)
-    M=Matrix{T}(undef,N,N)
-    for i in 1:N
-        normal_i=normals[i]
-        M[i,i]=curvatures[i]/(2*pi)
-        for j in 1:N
-            if !(j==i)
-                xy_i=xy_s[i]
-                xy_j=xy_t[j]
-                dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
-                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(hypot(xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]))
-            end
-        end
-    end
-    return M
-end
-
-#=
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    xy=bp.xy
-    curvatures=bp.curvature
-    N=length(xy)
-    cos_phi=cos_phi_matrix(bp)
-    hankel=hankel_matrix(bp, k)
-    kernel=cos_phi.*hankel
-    # mask
-    @inbounds for i in 1:N
-        for j in 1:N
-            d=hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2])
-            if d<eps(T)
-                kernel[i,j]=Complex(curvatures[i]/(2*π),T(0.0))
-            end
-        end
-    end
-    return kernel
-end
-
-function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    xy=bp_s.xy
-    curvatures=bp_s.curvature
-    N=length(xy)
-    cos_phi=cos_phi_matrix(bp_s,xy_t)
-    hankel=hankel_matrix(bp_s,xy_t,k)
-    kernel=cos_phi.*hankel
-    # mask
-    @inbounds for i in 1:N
-        for j in 1:N
-            d=hypot(xy[i][1]-xy_t[j][1],xy[i][2]-xy_t[j][2])
-            if d<eps(T)
-                kernel[i,j]=Complex(curvatures[i]/(2*π),T(0.0))
-            end
-        end
-    end
-    return kernel
-end
-=#
-
-function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
     curvatures=bp.curvature
@@ -872,7 +760,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) where {
     return M
 end
 
-function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}}, k::T) where {T<:Real}
+function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
     curvatures=bp_s.curvature
@@ -962,6 +850,7 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryR
 end
 
 function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
+    #=
     if !isnothing(symmetry_rule)
         kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun)
     else
@@ -976,6 +865,21 @@ function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM
             fredholm_matrix[i,j]-=ds1*kernel_matrix[i,j]
         end
     end
+    return fredholm_matrix
+    =#
+    # Compute the kernel matrix
+    kernel_matrix = isnothing(symmetry_rule) ?
+        compute_kernel_matrix(bp, k; kernel_fun=kernel_fun) :
+        compute_kernel_matrix(bp, symmetry_rule, k; kernel_fun=kernel_fun)
+    
+    # Fetch differential lengths
+    ds = bp.ds
+    N = length(ds)
+    
+    # Compute the Fredholm matrix
+    # Use broadcasting for element-wise multiplication
+    fredholm_matrix = Diagonal(ones(Complex{T}, N)) - kernel_matrix .* ds'
+    
     return fredholm_matrix
 end
 
@@ -1021,7 +925,7 @@ end
     return evaluate_points(solver,billiard,k)
 end
 
-@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbsBasis}
+@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=:default) where {Ba<:AbsBasis}
     return construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
 end
 
@@ -1029,7 +933,7 @@ end
     return svdvals(A)
 end
 
-function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;kernel_fun=default_helmholtz_kernel) where {Bi<:AbsBilliard}
+function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;kernel_fun=:default) where {Bi<:AbsBilliard}
     pts=evaluate_points_timed(solver,billiard,k)
     A=construct_matrices_timed(solver,AbstractHankelBasis(),pts,k;kernel_fun=kernel_fun)
     σs=svdvals_timed(A)
