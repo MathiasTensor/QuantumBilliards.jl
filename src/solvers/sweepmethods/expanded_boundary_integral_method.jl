@@ -611,7 +611,7 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
         for j in 1:N # symmetric hankel part
             dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
             distance=hypot(dx,dy)
-            if distance<sqrt(eps(T))
+            if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
                 continue
             else
@@ -653,7 +653,7 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
         for j in 1:N
             dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
             distance=hypot(dx,dy)
-            if distance<sqrt(eps(T))
+            if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
                 continue
             else
@@ -699,7 +699,7 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
         for j in 1:N # symmetric hankel part
             dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
             distance=hypot(dx,dy)
-            if distance<sqrt(eps(T))
+            if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
                 continue
             else
@@ -741,7 +741,7 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
         for j in 1:N
             dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
             distance=hypot(dx,dy)
-            if distance<sqrt(eps(T))
+            if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
                 continue
             else
