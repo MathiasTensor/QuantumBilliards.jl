@@ -843,7 +843,7 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryR
     reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
     if kernel_fun==:default
-        kernel_val=default_helmholtz_kernel_matrix(bp_s,k) # starting kernel where no reflections
+        kernel_val=default_helmholtz_kernel_matrix(bp,k) # starting kernel where no reflections
     else
         kernel_val=kernel_fun(bp,k) # starting kernel where no reflections
     end
