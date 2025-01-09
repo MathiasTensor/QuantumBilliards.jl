@@ -853,7 +853,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) where {
     N = length(xy)
     M = Matrix{Complex{T}}(undef, N, N)
 
-    for i in 1:N
+    @inbounds Threads.@threads for i in 1:N
         for j in 1:N
             dx, dy = xy[i][1] - xy[j][1], xy[i][2] - xy[j][2]
             distance = hypot(dx, dy)
@@ -881,7 +881,7 @@ function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T}, xy_t::Vecto
     N = length(xy_s)
     M = Matrix{Complex{T}}(undef, N, N)
 
-    for i in 1:N
+    @inbounds Threads.@threads for i in 1:N
         for j in 1:N
             dx, dy = xy_s[i][1] - xy_t[j][1], xy_s[i][2] - xy_t[j][2]
             distance = hypot(dx, dy)
