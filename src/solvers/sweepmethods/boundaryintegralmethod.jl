@@ -888,7 +888,7 @@ function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM
     end
     ds=bp.ds
     N=length(ds)
-    fredholm_matrix=Matrix{T}(I,N,N)
+    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
     Threads.@threads for i in 1:N
         ds1=ds[i]
         for j in 1:N
