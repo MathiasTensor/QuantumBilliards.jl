@@ -757,7 +757,6 @@ function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::
         for j in 1:N
             if !(j==i)
                 d=k*(hypot(xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]))
-                d=k*(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]))
                 M[i,j]=d<eps(T) ? Complex(eps(T),eps(T)) : -im*k/2.0*Bessels.hankelh1(1,d)  
             end
         end
