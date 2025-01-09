@@ -806,12 +806,69 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     return M
 end
 
+#=
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     return (cos_phi_matrix(bp).*hankel_matrix(bp,k)) # element wise multiplication
 end
 
 function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     return (cos_phi_matrix(bp_s,xy_t).*hankel_matrix(bp_s,xy_t,k))
+end
+=#
+function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) where {T<:Real}
+    xy = bp.xy
+    normals = bp.normal
+    curvatures = bp.curvature
+    N = length(xy)
+    M = Matrix{Complex{T}}(undef, N, N)
+
+    for i in 1:N
+        for j in 1:N
+            dx, dy = xy[i][1] - xy[j][1], xy[i][2] - xy[j][2]
+            distance = hypot(dx, dy)
+
+            if distance < eps(T)
+                # For small distances or diagonal terms, use curvature
+                M[i, j] = Complex(curvatures[i] / (2π))
+            else
+                # Compute cos(φ) term
+                cos_phi = (normals[i][1] * dx + normals[i][2] * dy) / distance
+                # Compute Hankel function
+                hankel = -im * k / 2.0 * Bessels.hankelh1(1, k * distance)
+                # Combine into Helmholtz kernel
+                M[i, j] = cos_phi * hankel
+            end
+        end
+    end
+    return M
+end
+
+function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}}, k::T) where {T<:Real}
+    xy_s = bp_s.xy
+    normals = bp_s.normal
+    curvatures = bp_s.curvature
+    N = length(xy_s)
+    M = Matrix{Complex{T}}(undef, N, N)
+
+    for i in 1:N
+        for j in 1:N
+            dx, dy = xy_s[i][1] - xy_t[j][1], xy_s[i][2] - xy_t[j][2]
+            distance = hypot(dx, dy)
+
+            if distance < eps(T)
+                # For small distances, use curvature
+                M[i, j] = Complex(curvatures[i] / (2π))
+            else
+                # Compute cos(φ) term
+                cos_phi = (normals[i][1] * dx + normals[i][2] * dy) / distance
+                # Compute Hankel function
+                hankel = -im * k / 2.0 * Bessels.hankelh1(1, k * distance)
+                # Combine into Helmholtz kernel
+                M[i, j] = cos_phi * hankel
+            end
+        end
+    end
+    return M
 end
 
 function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
