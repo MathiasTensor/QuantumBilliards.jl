@@ -732,8 +732,20 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
 end
 =#
 
-# NEW MATRIX CODE, SLIGHTLY FASTER UTILIZING THE DEFAULT KERNEL'S FUNCTION HANKEL FUNCTION SYMMETRY
+#### NEW MATRIX CODE, SLIGHTLY FASTER UTILIZING THE DEFAULT KERNEL'S FUNCTION HANKEL FUNCTION SYMMETRY ####
 
+"""
+    default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) -> Matrix{Complex{T}}
+
+Computes the Helmholtz kernel matrix for the given boundary points using the matrix-based approach.
+
+# Arguments
+- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between boundary points, incorporating curvature for singular cases.
+"""
 function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
@@ -760,6 +772,19 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T
     return M
 end
 
+"""
+    default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}}, k::T) -> Matrix{Complex{T}}
+
+Computes the Helmholtz kernel matrix for interactions between source boundary points and a target point set.
+
+# Arguments
+- `bp_s::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `xy_t::Vector{SVector{2, T}}`: Target points for evaluating the kernel matrix.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between source and target points, incorporating curvature for singular cases.
+"""
 function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
@@ -782,7 +807,19 @@ function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector
     return M
 end
 
+"""
+    compute_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
 
+Computes the kernel matrix for the given boundary points using the specified kernel function w/ NO symmetry.
+
+# Arguments
+- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `Matrix{Complex{T}}`: The computed kernel matrix.
+"""
 function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     if kernel_fun==:default
         return default_helmholtz_kernel_matrix(bp,k)
@@ -791,6 +828,20 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{S
     end
 end
 
+"""
+    compute_kernel_matrix(bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+
+Computes the kernel matrix for the given boundary points with symmetry reflections applied.
+
+# Arguments
+- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rule to apply, including reflection and boundary condition types.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `Matrix{Complex{T}}`: The computed kernel matrix with symmetry reflections applied.
+"""
 function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     xy_points=bp.xy
     reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
@@ -849,50 +900,87 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryR
     return kernel_val
 end
 
+"""
+    fredholm_matrix(bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+
+Constructs the Fredholm matrix for the boundary integral method using the computed kernel matrix.
+
+# Arguments
+- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, curvatures, and differential arc lengths.
+- `symmetry_rule::SymmetryRuleBIM{T}`: Symmetry rule to apply, including reflection and boundary condition types.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `Matrix{Complex{T}}`: The constructed Fredholm matrix, incorporating differential arc lengths and symmetry reflections.
+"""
 function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    #=
-    if !isnothing(symmetry_rule)
-        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun)
-    else
-        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun)
-    end
+    kernel_matrix=isnothing(symmetry_rule) ?
+        compute_kernel_matrix(bp,k;kernel_fun=kernel_fun) :
+        compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun)
     ds=bp.ds
     N=length(ds)
-    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
-    Threads.@threads for i in 1:N
-        ds1=ds[i]
-        for j in 1:N
-            fredholm_matrix[i,j]-=ds1*kernel_matrix[i,j]
-        end
-    end
-    return fredholm_matrix
-    =#
-    # Compute the kernel matrix
-    kernel_matrix = isnothing(symmetry_rule) ?
-        compute_kernel_matrix(bp, k; kernel_fun=kernel_fun) :
-        compute_kernel_matrix(bp, symmetry_rule, k; kernel_fun=kernel_fun)
-    
-    # Fetch differential lengths
-    ds = bp.ds
-    N = length(ds)
-    
-    # Compute the Fredholm matrix
-    # Use broadcasting for element-wise multiplication
-    fredholm_matrix = Diagonal(ones(Complex{T}, N)) - kernel_matrix .* ds'
-    
+    fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
     return fredholm_matrix
 end
 
+"""
+    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+
+Constructs the Fredholm matrix using the solver, basis, and boundary points for the boundary integral method.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `Matrix{Complex{T}}`: The constructed Fredholm matrix.
+"""
 function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default) where {Ba<:AbstractHankelBasis}
     return fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
 end
 
+"""
+    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> T
+
+Computes the smallest singular value of the Fredholm matrix for a given configuration.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `T`: The smallest singular value of the Fredholm matrix.
+"""
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     mu=svdvals(A)
     return mu[end]
 end
 
+"""
+    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Tuple{T, Vector{T}}
+
+Computes the smallest singular value and its corresponding singular vector for the Fredholm matrix.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `Tuple{T, Vector{T}}`: A tuple containing:
+  - `T`: The smallest singular value of the Fredholm matrix.
+  - `Vector{T}`: The corresponding singular vector.
+"""
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
@@ -903,7 +991,24 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     return mu,u_mu
 end
 
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=default_helmholtz_kernel_matrix) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+"""
+    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, billiard::Bi, basis::Ba, ks::Vector{T}; kernel_fun=default_helmholtz_kernel_matrix) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}}
+
+Computes the eigenvectors of the boundary integral method for a range of wave numbers.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
+- `basis::Ba<:AbstractHankelBasis`: The basis function used for solving the eigenvalue problem.
+- `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
+
+# Returns
+- `Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}}`:
+  - `Vector{Vector{T}}`: A vector containing the eigenvectors for each wave number in `ks`.
+  - `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, representing the boundary points used for each wave number in `ks`.
+"""
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=:default) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
     for i in eachindex(ks)
@@ -914,10 +1019,6 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
-
-
-
-
 
 #### BENCHMARKS ####
 
