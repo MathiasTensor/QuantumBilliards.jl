@@ -919,7 +919,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         idx2=findmin(tens2)[2]
         if log10(tens1[idx1])<0.0
             push!(ks_all_1,ks1[idx1])
-            push!(tens_all_1,tens1[idx1])
+            push!(tens_all_1,tens1[idx1])     
         end
         if log10(tens2[idx2])<0.0
             push!(ks_all_2,ks2[idx2])
