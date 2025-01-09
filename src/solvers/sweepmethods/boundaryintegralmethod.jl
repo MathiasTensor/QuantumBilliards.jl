@@ -449,8 +449,8 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
     return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all)
 end
 
-#= LEGACY CORRECT CODE
-
+### LEGACY CORRECT CODE ###
+#=
 """
     compute_hankel(distance12::T, k::T) -> Complex{T}
 
@@ -730,23 +730,14 @@ function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basi
     end
     return us_all,pts_all
 end
-
 =#
-
-
-
-
-
-
-
-
-
+# NEW MATRIX CODE, LESS PRECISE ?
 
 function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     N=length(xy)
     M=zeros(Complex{eltype(k)},N,N)
-    Threads.@threads for i in 1:N
+    for i in 1:N
         M[i,i]=Complex(one(T)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:(i-1)
             d=k*norm(xy[i]-xy[j])
@@ -761,7 +752,7 @@ function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::
     xy_s=bp_s.xy
     N=length(xy_s)
     M=zeros(Complex{eltype(k)},N,N)
-    Threads.@threads for i in 1:N
+    for i in 1:N
         for j in 1:N
             if !(i==j)
                 d=k*norm(xy_s[i]-xy_t[j])
@@ -780,7 +771,7 @@ function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
     curvatures=bp.curvature
     N=length(xy)
     M=zeros(T,N,N)
-    Threads.@threads for i in 1:N
+    for i in 1:N
         normal_i=normals[i]
         for j in 1:N
             if !(i==j)
@@ -802,9 +793,9 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     curvatures=bp_s.curvature # wrt source points
     N=length(xy_s)
     M=zeros(T,N,N)
-    @inbounds Threads.@threads for i in 1:N
+    for i in 1:N
         normal_i=normals[i]
-        @inbounds for j in 1:N
+        for j in 1:N
             if !(i==j)
                 xy_i=xy_s[i]
                 xy_j=xy_t[j]
