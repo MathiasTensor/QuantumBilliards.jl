@@ -736,7 +736,7 @@ end
 function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     N=length(xy)
-    M=zeros(Complex{eltype(k)},N,N)
+    M=Matrix{Complex{T}}(undef,N,N)
     for i in 1:N
         M[i,i]=Complex(T(1.0)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:(i-1)
@@ -751,7 +751,7 @@ end
 function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     N=length(xy_s)
-    M=zeros(Complex{T},N,N)
+    M=Matrix{Complex{T}}(undef,N,N)
     for i in 1:N
         M[i,i]=Complex(T(1.0)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:N
@@ -769,7 +769,7 @@ function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
     normals=bp.normal
     curvatures=bp.curvature
     N=length(xy)
-    M=zeros(T,N,N)
+    M=Matrix{T}(undef,N,N)
     for i in 1:N
         normal_i=normals[i]
         M[i,i]=curvatures[i]/(2*pi)
@@ -790,7 +790,7 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     normals=bp_s.normal # wrt source points
     curvatures=bp_s.curvature # wrt source points
     N=length(xy_s)
-    M=zeros(T,N,N)
+    M=Matrix{T}(undef,N,N)
     for i in 1:N
         normal_i=normals[i]
         M[i,i]=curvatures[i]/(2*pi)
