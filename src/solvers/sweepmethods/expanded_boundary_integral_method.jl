@@ -615,9 +615,9 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
                 M[i,j]=Complex(T(0.0),T(0.0))
                 continue
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
-                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
-                M[i,j]=cos_phi*hankel
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
+                M[i,j]=-im*k/2.0*(normals[i][1]*dx+normals[i][2]*dy)*Bessels.hankelh1(0,k*distance)
             end
         end
     end
@@ -657,9 +657,9 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
                 M[i,j]=Complex(T(0.0),T(0.0))
                 continue
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
-                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
-                M[i,j]=cos_phi*hankel
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
+                M[i,j]=-im*k/2.0*(normals[i][1]*dx+normals[i][2]*dy)*Bessels.hankelh1(0,k*distance)
             end
         end
     end
