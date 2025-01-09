@@ -778,7 +778,7 @@ function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
                 xy_i=xy[i]
                 xy_j=xy[j]
                 dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
-                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/norm((xy[i]-xy[j])+eps(T))
+                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(norm(xy[i]-xy[j])+eps(T))
             else
                 M[i,i]=curvatures[i]/(2*π)
             end
@@ -800,7 +800,7 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
                 xy_i=xy_s[i]
                 xy_j=xy_t[j]
                 dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
-                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/norm((xy_i-xy_j)+eps(T))
+                M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(norm(xy_i-xy_j)+eps(T))
             else
                 M[i,i]=curvatures[i]/(2*π)
             end
