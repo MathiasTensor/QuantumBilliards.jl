@@ -738,7 +738,7 @@ function hankel_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     N=length(xy)
     M=zeros(Complex{eltype(k)},N,N)
     for i in 1:N
-        M[i,i]=Complex(eps(T),eps(T)) # for later convenience when multiplication w/ cos_phi_matrix
+        M[i,i]=Complex(1.0) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:(i-1)
             d=k*(hypot(xy[i][1]-xy[j][1],xy[i][2]-xy[j][2])+eps(T))
             M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)
@@ -753,7 +753,7 @@ function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::
     N=length(xy_s)
     M=zeros(Complex{eltype(k)},N,N)
     for i in 1:N
-        M[i,i]=Complex(eps(T),eps(T)) # for later convenience when multiplication w/ cos_phi_matrix
+        M[i,i]=Complex(1.0) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:N
             if !(j==i)
                 d=k*(hypot(xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2])+eps(T))
@@ -854,9 +854,9 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryR
             else
                 reflected_kernel_y=kernel_fun(bp,reflected_points_y,k)
             end
-            if symmetry_rule.y_bc == :D # # Adjust kernel based on boundary condition
+            if symmetry_rule.y_bc==:D # # Adjust kernel based on boundary condition
                 kernel_val.-=reflected_kernel_y
-            elseif symmetry_rule.y_bc == :N
+            elseif symmetry_rule.y_bc==:N
                 kernel_val.+=reflected_kernel_y
             end
         end
