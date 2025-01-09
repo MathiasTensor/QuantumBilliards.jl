@@ -605,20 +605,19 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
     =#
     xy=bp.xy
     normals=bp.normal
+    curvatures=bp.curvature
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
         for j in 1:N # symmetric hankel part
             dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
             distance=hypot(dx,dy)
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
+            if distance < eps(T)
+                M[i, j] = Complex(0.0, 0.0) # Handle singular case separately if needed
                 continue
-            else
-                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
-                #hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
-                M[i,j]=-im*k/2.0*(normals[i][1]*dx+normals[i][2]*dy)*Bessels.hankelh1(0,k*distance)
             end
+            cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
+            M[i, j] = -im * k / 2.0 * distance * cos_phi * Bessels.hankelh1(0, k * distance)
         end
     end
     return M
@@ -647,20 +646,19 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
     =#
     xy_s=bp_s.xy
     normals=bp_s.normal
+    curvatures=bp_s.curvature
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
         for j in 1:N
             dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
             distance=hypot(dx,dy)
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
+            if distance < eps(T)
+                M[i, j] = Complex(0.0, 0.0) # Handle singular case separately if needed
                 continue
-            else
-                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
-                #hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
-                M[i,j]=-im*k/2.0*(normals[i][1]*dx+normals[i][2]*dy)*Bessels.hankelh1(0,k*distance)
             end
+            cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
+            M[i, j] = -im * k / 2.0 * distance * cos_phi * Bessels.hankelh1(0, k * distance)
         end
     end
     return M
@@ -698,15 +696,14 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
     @inbounds for i in 1:N
         for j in 1:N # symmetric hankel part
             dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
-            distance=hypot(dx,dy)
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
+            distance = hypot(dx, dy)
+            if distance < eps(T)
+                M[i, j] = Complex(0.0, 0.0) # Or handle via curvature
                 continue
-            else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
-                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
-                M[i,j]=cos_phi*hankel
             end
+            cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
+            hankel = im/(2*k) * ((-2 + (k*distance)^2) * Bessels.hankelh1(1, k*distance) + k*distance * Bessels.hankelh1(2, k*distance))
+            M[i, j] = cos_phi * hankel
         end
     end
     return M
@@ -735,20 +732,20 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
     =#
     xy_s=bp_s.xy
     normals=bp_s.normal
+    curvatures=bp_s.curvature
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
         for j in 1:N
             dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
-            distance=hypot(dx,dy)
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
+            distance = hypot(dx, dy)
+            if distance < eps(T)
+                M[i, j] = Complex(0.0, 0.0) # Or handle via curvature
                 continue
-            else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
-                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
-                M[i,j]=cos_phi*hankel
             end
+            cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
+            hankel = im/(2*k) * ((-2 + (k*distance)^2) * Bessels.hankelh1(1, k*distance) + k*distance * Bessels.hankelh1(2, k*distance))
+            M[i, j] = cos_phi * hankel
         end
     end
     return M
@@ -838,13 +835,13 @@ end
 
 function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     if isnothing(symmetry_rule)
-        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=:default)
-        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=:first)
-        kernel_der2_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=:second)
+        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun[1])
+        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[2])
+        kernel_der2_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[3])
     else
-        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=:default)
-        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=:first)
-        kernel_der2_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=:second)
+        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[1])
+        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[2])
+        kernel_der2_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[3])
     end
     ds=bp.ds
     N=length(ds)
