@@ -857,7 +857,7 @@ function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts
     return all_fredholm_associated_matrices(pts,solver.rule,k;kernel_fun=kernel_fun)
 end
 
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:1,:2)) where {Ba<:AbstractHankelBasis}
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:1,:2)) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
