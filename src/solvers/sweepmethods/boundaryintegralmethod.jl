@@ -889,7 +889,7 @@ function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM
     ds=bp.ds
     N=length(ds)
     fredholm_matrix=Matrix{Complex{T}}(I,N,N)
-    fredholm_matrix.-=Diagonal(ds)*kernel_matrix
+    fredholm_matrix=fredholm_matrix-Diagonal(ds)*kernel_matrix
     return fredholm_matrix
 end
 
