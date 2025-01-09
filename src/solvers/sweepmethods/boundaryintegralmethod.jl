@@ -753,12 +753,11 @@ function hankel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::
     N=length(xy_s)
     M=zeros(Complex{eltype(k)},N,N)
     for i in 1:N
+        M[i,i]=Complex(one(T)) # for later convenience when multiplication w/ cos_phi_matrix
         for j in 1:N
-            if !(i==j)
+            if !(j==i)
                 d=k*(norm(xy_s[i]-xy_t[j])+eps(T))
-                M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)
-            else
-                M[i,i]=Complex(one(T)) # for later convenience when multiplication w/ cos_phi_matrix
+                M[i,j]= -im*k/2.0*Bessels.hankelh1(1,d)   
             end
         end
     end
@@ -773,14 +772,13 @@ function cos_phi_matrix(bp::BoundaryPointsBIM{T}) where {T<:Real}
     M=zeros(T,N,N)
     for i in 1:N
         normal_i=normals[i]
+        M[i,i]=curvatures[i]/(2*π)
         for j in 1:N
-            if !(i==j)
+            if !(j==i)
                 xy_i=xy[i]
                 xy_j=xy[j]
                 dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
                 M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(norm(xy[i]-xy[j])+eps(T))
-            else
-                M[i,i]=curvatures[i]/(2*π)
             end
         end
     end
@@ -795,14 +793,13 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     M=zeros(T,N,N)
     for i in 1:N
         normal_i=normals[i]
+        M[i,i]=curvatures[i]/(2*π)
         for j in 1:N
-            if !(i==j)
+            if !(j==i)
                 xy_i=xy_s[i]
                 xy_j=xy_t[j]
                 dx,dy=xy_i[1]-xy_j[1],xy_i[2]-xy_j[2]
                 M[i,j]=(normal_i[1]*dx+normal_i[2]*dy)/(norm(xy_i-xy_j)+eps(T))
-            else
-                M[i,i]=curvatures[i]/(2*π)
             end
         end
     end
@@ -892,7 +889,7 @@ function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM
     ds=bp.ds
     N=length(ds)
     fredholm_matrix=Matrix{Complex{T}}(I,N,N)
-    fredholm_matrix.-=kernel_matrix.* ds'
+    fredholm_matrix.-=Diagonal(ds)*kernel_matrix
     return fredholm_matrix
 end
 
