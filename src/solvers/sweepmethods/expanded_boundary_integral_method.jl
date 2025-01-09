@@ -838,19 +838,19 @@ end
 
 function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     if isnothing(symmetry_rule)
-        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun[1])
-        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[2])
-        kernel_der2_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[3])
+        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=:default)
+        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=:first)
+        kernel_der2_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=:second)
     else
-        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[1])
-        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[2])
-        kernel_der2_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[3])
+        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=:default)
+        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=:first)
+        kernel_der2_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=:second)
     end
     ds=bp.ds
     N=length(ds)
     fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
-    fredholm_der_matrix=fill(Complex(0.0,0.0),N,N)-kernel_der_matrix.*ds'
-    fredholm_der2_matrix=fill(Complex(0.0,0.0),N,N)-kernel_der2_matrix.*ds'
+    fredholm_der_matrix=zeros(Complex(T),N,N)-kernel_der_matrix.*ds'
+    fredholm_der2_matrix=zeros(Complex(T),N,N)-kernel_der2_matrix.*ds'
     return fredholm_matrix,fredholm_der_matrix,fredholm_der2_matrix
 end
 
