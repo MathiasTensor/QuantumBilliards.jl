@@ -800,7 +800,7 @@ function cos_phi_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}}) w
     xy_s=bp_s.xy
     normals=bp_s.normal # wrt source points
     curvatures=bp_s.curvature # wrt source points
-    N=length(pts_s)
+    N=length(xy_s)
     M=zeros(T,N,N)
     @inbounds Threads.@threads for i in 1:N
         normal_i=normals[i]
