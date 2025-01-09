@@ -753,17 +753,17 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
     return M
 end
 
-function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:1) where {T<:Real}
-    if kernel_fun==:1
+function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first) where {T<:Real}
+    if kernel_fun==:first
         return default_helmholtz_kernel_derivative_matrix(bp,k)
-    elseif kernel_fun==:2
+    elseif kernel_fun==:second
         return default_helmholtz_kernel_second_derivative_matrix(bp,k)
     else
         return kernel_fun(bp,k)
     end
 end
 
-function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:1) where {T<:Real}
+function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first) where {T<:Real}
     xy_points=bp.xy
     reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
         [apply_reflection(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
@@ -772,9 +772,9 @@ function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::Symme
     reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
     function use_kernel(bp,k)
-        if kernel_fun==:1
+        if kernel_fun==:first
             kernel_val=default_helmholtz_kernel_derivative_matrix(bp,k) # starting der kernel where no reflections
-        elseif kernel_fun==:2
+        elseif kernel_fun==:second
             kernel_val=default_helmholtz_kernel_second_derivative_matrix(bp,k) # starting der2 kernel where no reflections
         else
             kernel_val=kernel_fun(bp,k) # starting kernel where no reflections
@@ -782,9 +782,9 @@ function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::Symme
         return kernel_val
     end
     function use_kernel(bp,refl_pts,k)
-        if kernel_fun==:1
+        if kernel_fun==:first
             kernel_val=default_helmholtz_kernel_derivative_matrix(bp,refl_pts,k) # starting der kernel where no reflections
-        elseif kernel_fun==:2
+        elseif kernel_fun==:second
             kernel_val=default_helmholtz_kernel_second_derivative_matrix(bp,refl_pts,k) # starting der2 kernel where no reflections
         else
             kernel_val=kernel_fun(bp,refl_pts,k) # starting kernel where no reflections
@@ -825,7 +825,7 @@ function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::Symme
     return kernel_val
 end
 
-function fredholm_matrix_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:1) where {T<:Real}
+function fredholm_matrix_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first) where {T<:Real}
     kernel_matrix=isnothing(symmetry_rule) ?
         compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun) :
         compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun)
@@ -835,7 +835,7 @@ function fredholm_matrix_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRul
     return fredholm_der_matrix
 end
 
-function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:1,:2)) where {T<:Real}
+function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     if isnothing(symmetry_rule)
         kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun[1])
         kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[2])
@@ -853,11 +853,11 @@ function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule
     return fredholm_matrix,fredholm_der_matrix,fredholm_der2_matrix
 end
 
-function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:1,:2)) where {Ba<:AbstractHankelBasis,T<:Real}
+function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {Ba<:AbstractHankelBasis,T<:Real}
     return all_fredholm_associated_matrices(pts,solver.rule,k;kernel_fun=kernel_fun)
 end
 
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:1,:2)) where {Ba<:AbstractHankelBasis}
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
@@ -891,7 +891,7 @@ end
 
 #### DEBUGGING TOOLS ####
 
-function solve_DEBUG_w_1st_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=(:default,:1,:2)) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG_w_1st_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=(:default,:first,:second)) where {Ba<:AbstractHankelBasis}
     A,dA,_=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     F=eigen(A,dA)
     λ=F.values
@@ -910,7 +910,7 @@ function solve_DEBUG_w_1st_order_corrections(solver::ExpandedBoundaryIntegralMet
     return λ_corrected,tens
 end
 
-function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=(:default,:1,:2)) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=(:default,:first,:second)) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
