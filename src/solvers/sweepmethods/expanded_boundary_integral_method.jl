@@ -87,7 +87,7 @@ where:
 **Note**: For `(i ≠ j)`, a mirrored computation is performed for entry `(j,i)` using the normal at `pⱼ`.
 Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the normal at the source row.
 """
-function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
+@inline function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -133,7 +133,7 @@ the second set of points is taken from `xy_t` rather than the boundary itself.
 **Note**: This routine does not rely on reflection logic. It simply computes the derivative
 for each `(source_i, target_j)` pair based on the distance and the dot product with `normalᵢ`.
 """
-function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
+@inline function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -179,7 +179,7 @@ The exact Hankel expression matches the partial derivative:
 **Note**: Similar to the first-derivative matrix, the factor `cos(φᵢ)` uses the normal at the source
 row `i`, so the matrix is not necessarily symmetric unless the geometry enforces it.
 """
-function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
+@inline function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -226,7 +226,7 @@ to target `j`.
 **Note**: This function does not include reflection or symmetry corrections. It purely evaluates
 the second derivative of the kernel formula at each `(source_i, target_j)`.
 """
-function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
+@inline function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
