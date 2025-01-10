@@ -602,7 +602,7 @@ end
 #### NEW MATRIX APPROACH FOR FASTER CODE #### 
 
 function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    #=
+    
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -625,7 +625,8 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
         end
     end
     return M
-    =#
+    
+    #=
     xy=bp.xy
     normals=bp.normal
     curvatures=bp.curvature
@@ -648,10 +649,11 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
         end
     end
     return M
+    =#
 end
 
 function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    #=
+    
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -670,7 +672,8 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
         end
     end
     return M
-    =#
+    
+    #=
     xy_s=bp_s.xy
     normals=bp_s.normal
     curvatures=bp_s.curvature
@@ -692,10 +695,11 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
         end
     end
     return M
+    =#
 end
 
 function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    #=
+    
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -718,7 +722,8 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
         end
     end
     return M
-    =#
+    
+    #=
     xy=bp.xy
     normals=bp.normal
     curvatures=bp.curvature
@@ -741,10 +746,11 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
         end
     end
     return M
+    =#
 end
 
 function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    #=
+    
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -763,7 +769,8 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
         end
     end
     return M
-    =#
+    
+    #=
     xy_s=bp_s.xy
     normals=bp_s.normal
     curvatures=bp_s.curvature
@@ -786,6 +793,7 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
         end
     end
     return M
+    =#
 end
 
 function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first) where {T<:Real}
