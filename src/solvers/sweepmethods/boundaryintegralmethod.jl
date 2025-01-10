@@ -449,289 +449,6 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
     return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all)
 end
 
-### LEGACY CORRECT CODE ###
-#=
-"""
-    compute_hankel(distance12::T, k::T) -> Complex{T}
-
-Computes the Hankel function of the first kind for the given distance and wavenumber.
-
-# Arguments
-- `distance12::T`: Distance between two points.
-- `k::T`: Wavenumber.
-
-# Returns
-- `Complex{T}`: Hankel function value. Handles singularity by returning a small complex value.
-"""
-@inline function compute_hankel(distance12::T,k::T) where {T<:Real}
-    if abs(distance12::T)<eps(T) # Avoid division by zero
-        return Complex(eps(T),eps(T))  
-    end
-    return Bessels.hankelh1(1,k*distance12::T)
-end
-
-"""
-    compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2,T}, p1_curvature::T) -> T
-
-Computes the cosine of the angle φ between the normal vector and the vector connecting two points.
-
-# Arguments
-- `dx12::T`: x-component of the vector between two points.
-- `dy12::T`: y-component of the vector between two points.
-- `normal1::SVector{2,T}`: Normal vector at the first point.
-- `p1_curvature::T`: Curvature at the first point.
-
-# Returns
-- `T`: Computed cos(φ) value. Handles singularity by using the curvature term.
-"""
-@inline function compute_cos_phi(dx12::T,dy12::T,normal1::SVector{2,T},p1_curvature::T) where {T<:Real}
-    distance12=hypot(dx12,dy12)
-    if distance12<eps(T)
-        return p1_curvature/(2.0*π)
-    else
-        return (normal1[1]*dx12+normal1[2]*dy12)/distance12
-    end
-end
-
-"""
-    greens_function(distance12::T, k::T) -> Complex{T}
-
-Computes the Green's function for the given distance and wavenumber.
-
-# Arguments
-- `distance12::T`: Distance between two points.
-- `k::T`: Wavenumber.
-
-# Returns
-- `Complex{T}`: Green's function value. Handles singularity by suppressing the term.
-"""
-@inline function greens_function(distance12::T, k::T) where {T<:Real}
-    if abs(distance12)<eps(T) # handle singularity, this is supressed by the cosphi term
-        return 0.0+0.0im  
-    end
-    return -im*k/4*Bessels.hankelh1(0,k*distance12)
-end
-
-"""
-    default_helmholtz_kernel(p1::SVector{2,T}, p2::SVector{2,T}, normal1::SVector{2,T}, k::T, p1_curvature::T) -> Complex{T}
-
-Computes the Helmholtz kernel for the given points and properties.
-
-# Arguments
-- `p1::SVector{2,T}`: First point.
-- `p2::SVector{2,T}`: Second point.
-- `normal1::SVector{2,T}`: Normal vector at the first point.
-- `k::T`: Wavenumber.
-- `p1_curvature::T`: Curvature at the first point.
-
-# Returns
-- `Complex{T}`: Computed Helmholtz kernel. Handles singularity using curvature.
-"""
-@inline function default_helmholtz_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
-    dx, dy = p1[1]-p2[1], p1[2]-p2[2]
-    distance12=hypot(dx,dy)
-    return abs(distance12)<eps(T) ? Complex(1/(2*pi)*p1_curvature) : -im*k/2.0*compute_cos_phi(dx,dy,normal1,p1_curvature)*compute_hankel(distance12,k)
-end
-
-"""
-    compute_kernel(
-        p1::SVector{2,T}, p2::SVector{2,T}, 
-        normal1::SVector{2,T}, curvature1::T, 
-        reflected_p2_x::Union{SVector{2,T}, Nothing}, 
-        reflected_p2_y::Union{SVector{2,T}, Nothing}, 
-        reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
-        rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Function=default_helmholtz_kernel
-    ) -> Complex{T}
-
-Computes the kernel value for a given pair of points, incorporating symmetry reflections.
-
-# Arguments
-- `p1::SVector{2,T}`: First point.
-- `p2::SVector{2,T}`: Second point.
-- `normal1::SVector{2,T}`: Normal vector at the first point.
-- `curvature1::T`: Curvature at the first point.
-- `reflected_p2_x::Union{SVector{2,T}, Nothing}`: Reflected second point across the x-axis (if applicable).
-- `reflected_p2_y::Union{SVector{2,T}, Nothing}`: Reflected second point across the y-axis (if applicable).
-- `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes (if applicable).
-- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
-- `k::T`: Wavenumber.
-- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
-
-# Returns
-- `Complex{T}`: Computed kernel value.
-"""
-function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
-    kernel_value=kernel_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
-    if !isnothing(reflected_p2_x) # Handle x-reflection
-        if rule.x_bc==:D
-            kernel_value-=kernel_fun(p1,reflected_p2_x,normal1,k,curvature1)
-        elseif rule.x_bc==:N
-            kernel_value+=kernel_fun(p1,reflected_p2_x,normal1,k,curvature1)
-        end
-    end
-    if !isnothing(reflected_p2_y) # Handle y-reflection
-        if rule.y_bc==:D
-            kernel_value-=kernel_fun(p1,reflected_p2_y,normal1,k,curvature1)
-        elseif rule.y_bc==:N
-            kernel_value+=kernel_fun(p1,reflected_p2_y,normal1,k,curvature1)
-        end
-    end
-    if !isnothing(reflected_p2_xy) # Handle xy-reflection
-        if rule.x_bc==:D && rule.y_bc==:D
-            kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
-        elseif rule.x_bc==:D && rule.y_bc==:N
-            kernel_value-=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
-        elseif rule.x_bc==:N && rule.y_bc==:D
-            kernel_value-=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
-        elseif rule.x_bc==:N && rule.y_bc==:N
-            kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
-        end
-    end
-    return kernel_value
-end
-
-"""
-    fredholm_matrix(boundary_points::BoundaryPointsBIM, symmetry_rule::SymmetryRuleBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
-
-Constructs the Fredholm matrix for the boundary integral method.
-
-# Arguments
-- `boundary_points::BoundaryPointsBIM`: Evaluated boundary points.
-- `symmetry_rule::SymmetryRuleBIM`: Symmetry rule for the boundary points.
-- `k::Real`: Wavenumber.
-- `kernel_fun::Function=default_helmholtz_kernel`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
-
-# Returns
-- `Matrix{Complex{T}}`: Constructed Fredholm matrix.
-"""
-function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel) where {T<:Real}
-    xy_points=boundary_points.xy
-    normals=boundary_points.normal
-    curvatures=boundary_points.curvature
-    ds=boundary_points.ds
-    N=length(xy_points)
-    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
-        [apply_reflection(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
-        [apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
-        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
-    Threads.@threads for i in 1:N
-        p1=xy_points[i]
-        normal1=normals[i]
-        curvature1=curvatures[i]
-        ds1=ds[i]
-        for j in 1:N
-            p2=xy_points[j]
-            kernel_value=compute_kernel(
-                p1,p2,normal1,curvature1,
-                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
-                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
-                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],
-                symmetry_rule,k;kernel_fun=kernel_fun)
-            fredholm_matrix[i, j]-=ds1*kernel_value
-        end
-    end
-    return fredholm_matrix
-end
-
-#### BIM - MAIN
-
-"""
-    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
-
-Constructs the Fredholm matrix for the given boundary integral method, basis, and boundary points.
-
-# Arguments
-- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
-- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM`: The boundary points structure.
-- `k::Real`: The wave number.
-- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
-
-# Returns
-- `Matrix{Complex{T}}`: The constructed Fredholm matrix.
-"""
-function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
-    return fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
-end
-
-"""
-    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> T
-
-Computes the smallest singular value of the Fredholm matrix.
-
-# Arguments
-- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
-- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: The boundary points structure.
-- `k::Real`: The wave number.
-- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
-
-# Returns
-- `T`: The smallest singular value of the matrix.
-"""
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
-    mu=svdvals(A)
-    return mu[end]
-end
-
-"""
-    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Tuple{T, Vector{T}}
-
-Computes the smallest singular value and its corresponding singular vector.
-
-# Arguments
-- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
-- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: The boundary points structure.
-- `k::Real`: The wave number.
-- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
-
-# Returns
-- `Tuple{T, Vector{T}}`: A tuple containing the smallest singular value and the corresponding singular vector.
-"""
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
-    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
-    return mu,u_mu
-end
-
-"""
-    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, basis::Ba, ks::Vector; kernel_fun::Function=default_helmholtz_kernel) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}} where {Ba<:AbstractHankelBasis, T<:Real}
-
-Solve for the eigenvectors of the boundary integral method (BIM) for a range of wave numbers `ks`. These wave numbers should be the actual eigenvalues of the billiard since no check is done in the function if the smallest singular value for that k in ks is really the locally smallest one.
-
-# Arguments
-- `solver::BoundaryIntegralMethod`: The boundary integral method solver used to compute the eigenvectors.
-- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
-- `basis::Ba<:AbstractHankelBasis`: The basis functions used for solving the eigenvalue problem.
-- `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
-- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
-
-# Returns
-- `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
-- `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, containing the boundary points used for each wave number in `ks`.
-"""
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=default_helmholtz_kernel) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
-    for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];kernel_fun=kernel_fun)
-        us_all[i]=u
-        pts_all[i]=pts
-    end
-    return us_all,pts_all
-end
-=#
-
 #### NEW MATRIX CODE, SLIGHTLY FASTER UTILIZING THE DEFAULT KERNEL'S FUNCTION HANKEL FUNCTION SYMMETRY ####
 
 """
@@ -1154,3 +871,300 @@ function get_eigenvalues(k_range::Vector{T}, tens::Vector{T}; threshold=200.0) w
     mid_x,gradient=bim_second_derivative(k_range,log10.(tens))
     return find_peaks(mid_x,gradient;threshold=threshold)
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### LEGACY CORRECT CODE ###
+
+#=
+"""
+    compute_hankel(distance12::T, k::T) -> Complex{T}
+
+Computes the Hankel function of the first kind for the given distance and wavenumber.
+
+# Arguments
+- `distance12::T`: Distance between two points.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: Hankel function value. Handles singularity by returning a small complex value.
+"""
+@inline function compute_hankel(distance12::T,k::T) where {T<:Real}
+    if abs(distance12::T)<eps(T) # Avoid division by zero
+        return Complex(eps(T),eps(T))  
+    end
+    return Bessels.hankelh1(1,k*distance12::T)
+end
+
+"""
+    compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2,T}, p1_curvature::T) -> T
+
+Computes the cosine of the angle φ between the normal vector and the vector connecting two points.
+
+# Arguments
+- `dx12::T`: x-component of the vector between two points.
+- `dy12::T`: y-component of the vector between two points.
+- `normal1::SVector{2,T}`: Normal vector at the first point.
+- `p1_curvature::T`: Curvature at the first point.
+
+# Returns
+- `T`: Computed cos(φ) value. Handles singularity by using the curvature term.
+"""
+@inline function compute_cos_phi(dx12::T,dy12::T,normal1::SVector{2,T},p1_curvature::T) where {T<:Real}
+    distance12=hypot(dx12,dy12)
+    if distance12<eps(T)
+        return p1_curvature/(2.0*π)
+    else
+        return (normal1[1]*dx12+normal1[2]*dy12)/distance12
+    end
+end
+
+"""
+    greens_function(distance12::T, k::T) -> Complex{T}
+
+Computes the Green's function for the given distance and wavenumber.
+
+# Arguments
+- `distance12::T`: Distance between two points.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Complex{T}`: Green's function value. Handles singularity by suppressing the term.
+"""
+@inline function greens_function(distance12::T, k::T) where {T<:Real}
+    if abs(distance12)<eps(T) # handle singularity, this is supressed by the cosphi term
+        return 0.0+0.0im  
+    end
+    return -im*k/4*Bessels.hankelh1(0,k*distance12)
+end
+
+"""
+    default_helmholtz_kernel(p1::SVector{2,T}, p2::SVector{2,T}, normal1::SVector{2,T}, k::T, p1_curvature::T) -> Complex{T}
+
+Computes the Helmholtz kernel for the given points and properties.
+
+# Arguments
+- `p1::SVector{2,T}`: First point.
+- `p2::SVector{2,T}`: Second point.
+- `normal1::SVector{2,T}`: Normal vector at the first point.
+- `k::T`: Wavenumber.
+- `p1_curvature::T`: Curvature at the first point.
+
+# Returns
+- `Complex{T}`: Computed Helmholtz kernel. Handles singularity using curvature.
+"""
+@inline function default_helmholtz_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T},k::T,p1_curvature::T) where {T<:Real}
+    dx, dy = p1[1]-p2[1], p1[2]-p2[2]
+    distance12=hypot(dx,dy)
+    return abs(distance12)<eps(T) ? Complex(1/(2*pi)*p1_curvature) : -im*k/2.0*compute_cos_phi(dx,dy,normal1,p1_curvature)*compute_hankel(distance12,k)
+end
+
+"""
+    compute_kernel(
+        p1::SVector{2,T}, p2::SVector{2,T}, 
+        normal1::SVector{2,T}, curvature1::T, 
+        reflected_p2_x::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_y::Union{SVector{2,T}, Nothing}, 
+        reflected_p2_xy::Union{SVector{2,T}, Nothing}, 
+        rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Function=default_helmholtz_kernel
+    ) -> Complex{T}
+
+Computes the kernel value for a given pair of points, incorporating symmetry reflections.
+
+# Arguments
+- `p1::SVector{2,T}`: First point.
+- `p2::SVector{2,T}`: Second point.
+- `normal1::SVector{2,T}`: Normal vector at the first point.
+- `curvature1::T`: Curvature at the first point.
+- `reflected_p2_x::Union{SVector{2,T}, Nothing}`: Reflected second point across the x-axis (if applicable).
+- `reflected_p2_y::Union{SVector{2,T}, Nothing}`: Reflected second point across the y-axis (if applicable).
+- `reflected_p2_xy::Union{SVector{2,T}, Nothing}`: Reflected second point across both axes (if applicable).
+- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
+- `k::T`: Wavenumber.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+
+# Returns
+- `Complex{T}`: Computed kernel value.
+"""
+function compute_kernel(p1::SVector{2,T},p2::SVector{2,T},normal1::SVector{2,T}, curvature1::T,reflected_p2_x::Union{SVector{2,T}, Nothing},reflected_p2_y::Union{SVector{2,T}, Nothing},reflected_p2_xy::Union{SVector{2,T}, Nothing},rule::SymmetryRuleBIM{T}, k::T; kernel_fun=default_helmholtz_kernel) where {T<:Real}
+    kernel_value=kernel_fun(p1,p2,normal1,k,curvature1) # Base kernel computation
+    if !isnothing(reflected_p2_x) # Handle x-reflection
+        if rule.x_bc==:D
+            kernel_value-=kernel_fun(p1,reflected_p2_x,normal1,k,curvature1)
+        elseif rule.x_bc==:N
+            kernel_value+=kernel_fun(p1,reflected_p2_x,normal1,k,curvature1)
+        end
+    end
+    if !isnothing(reflected_p2_y) # Handle y-reflection
+        if rule.y_bc==:D
+            kernel_value-=kernel_fun(p1,reflected_p2_y,normal1,k,curvature1)
+        elseif rule.y_bc==:N
+            kernel_value+=kernel_fun(p1,reflected_p2_y,normal1,k,curvature1)
+        end
+    end
+    if !isnothing(reflected_p2_xy) # Handle xy-reflection
+        if rule.x_bc==:D && rule.y_bc==:D
+            kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:D && rule.y_bc==:N
+            kernel_value-=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:D
+            kernel_value-=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
+        elseif rule.x_bc==:N && rule.y_bc==:N
+            kernel_value+=kernel_fun(p1,reflected_p2_xy,normal1,k,curvature1)
+        end
+    end
+    return kernel_value
+end
+
+"""
+    fredholm_matrix(boundary_points::BoundaryPointsBIM, symmetry_rule::SymmetryRuleBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
+
+Constructs the Fredholm matrix for the boundary integral method.
+
+# Arguments
+- `boundary_points::BoundaryPointsBIM`: Evaluated boundary points.
+- `symmetry_rule::SymmetryRuleBIM`: Symmetry rule for the boundary points.
+- `k::Real`: Wavenumber.
+- `kernel_fun::Function=default_helmholtz_kernel`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+
+# Returns
+- `Matrix{Complex{T}}`: Constructed Fredholm matrix.
+"""
+function fredholm_matrix(boundary_points::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun=default_helmholtz_kernel) where {T<:Real}
+    xy_points=boundary_points.xy
+    normals=boundary_points.normal
+    curvatures=boundary_points.curvature
+    ds=boundary_points.ds
+    N=length(xy_points)
+    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
+        [apply_reflection(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
+        [apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
+    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
+        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
+    fredholm_matrix=Matrix{Complex{T}}(I,N,N)
+    Threads.@threads for i in 1:N
+        p1=xy_points[i]
+        normal1=normals[i]
+        curvature1=curvatures[i]
+        ds1=ds[i]
+        for j in 1:N
+            p2=xy_points[j]
+            kernel_value=compute_kernel(
+                p1,p2,normal1,curvature1,
+                isnothing(reflected_points_x) ? nothing : reflected_points_x[j],
+                isnothing(reflected_points_y) ? nothing : reflected_points_y[j],
+                isnothing(reflected_points_xy) ? nothing : reflected_points_xy[j],
+                symmetry_rule,k;kernel_fun=kernel_fun)
+            fredholm_matrix[i, j]-=ds1*kernel_value
+        end
+    end
+    return fredholm_matrix
+end
+
+#### BIM - MAIN
+
+"""
+    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Matrix{Complex{T}}
+
+Constructs the Fredholm matrix for the given boundary integral method, basis, and boundary points.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM`: The boundary points structure.
+- `k::Real`: The wave number.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+
+# Returns
+- `Matrix{Complex{T}}`: The constructed Fredholm matrix.
+"""
+function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
+    return fredholm_matrix(pts,solver.rule,k;kernel_fun=kernel_fun)
+end
+
+"""
+    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> T
+
+Computes the smallest singular value of the Fredholm matrix.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure.
+- `k::Real`: The wave number.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+
+# Returns
+- `T`: The smallest singular value of the matrix.
+"""
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    mu=svdvals(A)
+    return mu[end]
+end
+
+"""
+    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::Real; kernel_fun::Function=default_helmholtz_kernel) -> Tuple{T, Vector{T}}
+
+Computes the smallest singular value and its corresponding singular vector.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `pts::BoundaryPointsBIM{T}`: The boundary points structure.
+- `k::Real`: The wave number.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+
+# Returns
+- `Tuple{T, Vector{T}}`: A tuple containing the smallest singular value and the corresponding singular vector.
+"""
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=default_helmholtz_kernel) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    u_mu=real.(u_mu)
+    return mu,u_mu
+end
+
+"""
+    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, basis::Ba, ks::Vector; kernel_fun::Function=default_helmholtz_kernel) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}} where {Ba<:AbstractHankelBasis, T<:Real}
+
+Solve for the eigenvectors of the boundary integral method (BIM) for a range of wave numbers `ks`. These wave numbers should be the actual eigenvalues of the billiard since no check is done in the function if the smallest singular value for that k in ks is really the locally smallest one.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`: The boundary integral method solver used to compute the eigenvectors.
+- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
+- `basis::Ba<:AbstractHankelBasis`: The basis functions used for solving the eigenvalue problem.
+- `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
+- `kernel_fun::Function`: Function to use for the kernel computation (default for free 2D particle: `default_helmholtz_kernel`).
+
+# Returns
+- `Vector{Vector{T}}`: A vector of eigenvectors, one for each wave number in `ks`.
+- `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, containing the boundary points used for each wave number in `ks`.
+"""
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=default_helmholtz_kernel) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
+    for i in eachindex(ks)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i];kernel_fun=kernel_fun)
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
+end
+=#
