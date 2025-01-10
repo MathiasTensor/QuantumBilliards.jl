@@ -808,23 +808,21 @@ function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::Symme
         [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
     function use_kernel(bp,k)
         if kernel_fun==:first
-            kernel_val=default_helmholtz_kernel_derivative_matrix(bp,k) # starting der kernel where no reflections
+            kernel=default_helmholtz_kernel_derivative_matrix(bp,k) # starting der kernel where no reflections
         elseif kernel_fun==:second
-            kernel_val=default_helmholtz_kernel_second_derivative_matrix(bp,k) # starting der2 kernel where no reflections
+            kernel=default_helmholtz_kernel_second_derivative_matrix(bp,k) # starting der2 kernel where no reflections
         else
-            kernel_val=kernel_fun(bp,k) # starting kernel where no reflections
+            kernel=kernel_fun(bp,k) # starting kernel where no reflections
         end
-        return kernel_val
     end
     function use_kernel(bp,refl_pts,k)
         if kernel_fun==:first
-            kernel_val=default_helmholtz_kernel_derivative_matrix(bp,refl_pts,k) # starting der kernel where no reflections
+            kernel=default_helmholtz_kernel_derivative_matrix(bp,refl_pts,k) # starting der kernel where no reflections
         elseif kernel_fun==:second
-            kernel_val=default_helmholtz_kernel_second_derivative_matrix(bp,refl_pts,k) # starting der2 kernel where no reflections
+            kernel=default_helmholtz_kernel_second_derivative_matrix(bp,refl_pts,k) # starting der2 kernel where no reflections
         else
-            kernel_val=kernel_fun(bp,refl_pts,k) # starting kernel where no reflections
+            kernel=kernel_fun(bp,refl_pts,k) # starting kernel where no reflections
         end
-        return kernel_val
     end
     kernel_val=use_kernel(bp,k) # base 
     if symmetry_rule.symmetry_type in [:x,:y,:xy]
