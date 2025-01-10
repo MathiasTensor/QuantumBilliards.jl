@@ -223,7 +223,8 @@ end
 
 Solve the Particular Solutions Method by constructing `(B, B_int)` and computing a measure
 (e.g. minimum singular value) that indicates how well the interior and boundary constraints
-are satisfied via the `GeneralizedSVD` object 
+are satisfied via the `GeneralizedSVD` object. For mode reading it is based on the paper:
+https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_112.pdf
 
 # Arguments
 - `solver::ParticularSolutionsMethod`: PSM solver config.
