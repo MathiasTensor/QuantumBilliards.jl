@@ -829,7 +829,7 @@ function fredholm_matrix_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRul
         compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun)
     ds=bp.ds
     N=length(ds)
-    fredholm_der_matrix=zeros(Complex{T},N,N)-kernel_matrix.*ds'
+    fredholm_der_matrix=-kernel_matrix.*ds'
     return fredholm_der_matrix
 end
 
@@ -846,8 +846,8 @@ function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule
     ds=bp.ds
     N=length(ds)
     fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
-    fredholm_der_matrix=zeros(Complex{T},N,N)-kernel_der_matrix.*ds'
-    fredholm_der2_matrix=zeros(Complex{T},N,N)-kernel_der2_matrix.*ds'
+    fredholm_der_matrix=-kernel_der_matrix.*ds'
+    fredholm_der2_matrix=-kernel_der2_matrix.*ds'
     return fredholm_matrix,fredholm_der_matrix,fredholm_der2_matrix
 end
 
