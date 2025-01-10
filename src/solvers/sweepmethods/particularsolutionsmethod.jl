@@ -1,5 +1,22 @@
 using LinearAlgebra, StaticArrays, TimerOutputs
 
+"""
+    struct ParticularSolutionsMethod{T} <: SweepSolver where {T<:Real}
+
+A data structure to hold configuration parameters for the "Particular Solutions Method."
+This method typically uses a scaled number of boundary and interior points based on
+the wavenumber `k`. It also defines sampling strategies and minimal dimension settings.
+
+# Fields
+- `dim_scaling_factor::T`: A real scale factor for matrix dimension or basis dimension.
+- `pts_scaling_factor::Vector{T}`: A list of scaling factors for boundary points across different curves.
+- `int_pts_scaling_factor::T`: Scaling factor for interior points.
+- `sampler::Vector`: A list of samplers (e.g. Gauss-Legendre) for boundary integration.
+- `eps::T`: A small numeric epsilon, set to `eps(T)`.
+- `min_dim::Int64`: The minimal dimension of a matrix or basis.
+- `min_pts::Int64`: The minimal number of boundary points.
+- `min_int_pts::Int64`: The minimal number of interior points.
+"""
 struct ParticularSolutionsMethod{T} <: SweepSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
@@ -11,6 +28,30 @@ struct ParticularSolutionsMethod{T} <: SweepSolver where {T<:Real}
     min_int_pts::Int64
 end
 
+"""
+    ParticularSolutionsMethod(
+        dim_scaling_factor::T,
+        pts_scaling_factor::Union{T, Vector{T}},
+        int_pts_scaling_factor::T;
+        min_dim::Int=100,
+        min_pts::Int=500,
+        min_int_pts::Int=500
+    ) -> ParticularSolutionsMethod{T}
+
+Construct a `ParticularSolutionsMethod{T}` object with default Gauss-Legendre samplers.
+
+# Arguments
+- `dim_scaling_factor::T`: A scaling factor that controls basis dimension.
+- `pts_scaling_factor::Union{T, Vector{T}}`: A scaling factor that controls final matrix dimension for boundary point discretization.
+- `int_pts_scaling_factor::T`: Scaling factor for interior points. Usually use the same as the boundary point scaling factor.
+- `min_dim::Int`: The minimal dimension used in computations (default 100).
+- `min_pts::Int`: The minimal number of boundary points (default 500).
+- `min_int_pts::Int`: The minimal number of interior points (default 500).
+
+# Returns
+- `ParticularSolutionsMethod{T}`: A new solver configuration with a Gauss-Legendre sampler
+  in the `sampler` field, and `eps(T)` as the numeric epsilon.
+"""
 function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, int_pts_scaling_factor::T; min_dim = 100, min_pts = 500, min_int_pts=500) where T<:Real 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
@@ -18,17 +59,68 @@ function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Un
     return ParticularSolutionsMethod(d, bs,int_pts_scaling_factor, sampler, eps(T), min_dim, min_pts, min_int_pts)
 end
 
+"""
+    ParticularSolutionsMethod(
+        dim_scaling_factor::T,
+        pts_scaling_factor::Union{T,Vector{T}},
+        int_pts_scaling_factor::T,
+        samplers::Vector{Sam};
+        min_dim::Int=100,
+        min_pts::Int=500,
+        min_int_pts=500
+    ) where {T<:Real, Sam<:AbsSampler}
+
+Construct a `ParticularSolutionsMethod{T}` object with user-provided samplers.
+
+# Arguments
+- `dim_scaling_factor::T`: A scaling factor that controls basis dimension.
+- `pts_scaling_factor::Union{T, Vector{T}}`: A scaling factor that controls final matrix dimension for boundary point discretization.
+- `int_pts_scaling_factor::T`: Scaling factor for interior points. Usually use the same as the boundary point scaling factor.
+- `samplers::Vector{Sam}`: A vector of samplers (e.g. `GaussLegendreNodes()`, `PolarSampler()`, etc.).
+- `min_dim::Int`: Minimal dimension (default 100).
+- `min_pts::Int`: Minimal boundary points (default 500).
+- `min_int_pts::Int`: Minimal interior points (default 500).
+
+# Returns
+- `ParticularSolutionsMethod{T}`: A solver configuration with the given `samplers` and other settings.
+"""
 function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, int_pts_scaling_factor::T, samplers::Vector{Sam}; min_dim = 100, min_pts = 500, min_int_pts=500) where {T<:Real, Sam<:AbsSampler} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     return ParticularSolutionsMethod(d, bs,int_pts_scaling_factor, samplers, eps(T), min_dim, min_pts, min_int_pts)
 end
 
+"""
+    struct PointsPSM{T} <: AbsPoints where {T<:Real}
+
+Holds boundary and interior points `(x, y)` for the Particular Solutions Method.
+
+# Fields
+- `xy_boundary::Vector{SVector{2,T}}`: A list of 2D boundary points.
+- `xy_interior::Vector{SVector{2,T}}`: A list of 2D interior points.
+"""
 struct PointsPSM{T} <: AbsPoints where {T<:Real}
     xy_boundary::Vector{SVector{2,T}}
     xy_interior::Vector{SVector{2,T}} #normal vectors in points
 end
 
+"""
+    evaluate_points(solver::ParticularSolutionsMethod, billiard::Bi, k)
+
+Generate boundary and interior points for the Particular Solutions Method. Uses the solver's scaling
+factors and minimal point constraints to decide how many points to sample on each boundary segment
+and how many interior points to sample.
+
+# Arguments
+- `solver::ParticularSolutionsMethod`: The PSM solver configuration.
+- `billiard::Bi<:AbsBilliard`: A geometry or domain object holding boundary curves.
+- `k::Real`: Wavenumber, used to scale the number of points (e.g. `k * L * scaling / (2π)`).
+
+# Returns
+- `PointsPSM{T}`: A struct containing:
+  - `xy_boundary`: All boundary points appended from each curve.
+  - `xy_interior`: Randomly sampled interior points.
+"""
 function evaluate_points(solver::ParticularSolutionsMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
     bs, samplers = adjust_scaling_and_samplers(solver, billiard)
     b_int = solver.int_pts_scaling_factor
@@ -58,6 +150,29 @@ function evaluate_points(solver::ParticularSolutionsMethod, billiard::Bi, k) whe
     return PointsPSM{type}(xy_all, xy_int_all)
 end
 
+"""
+    construct_matrices_benchmark(
+        solver::ParticularSolutionsMethod,
+        basis::Ba,
+        pts::PointsPSM,
+        k
+    ) -> (B, B_int)
+
+Construct the basis matrices for boundary points and interior points, with timing information.
+This is a benchmarking variant that uses a `TimerOutput` to measure the time spent creating each
+matrix. It prints the timings at the end.
+
+# Arguments
+- `solver::ParticularSolutionsMethod`: Solver config, specifying scaling factors.
+- `basis::Ba<:AbsBasis`: A basis to evaluate (e.g. FourierBessel basis).
+- `pts::PointsPSM`: The boundary/interior points to evaluate.
+- `k::Real`: Wavenumber for the basis.
+
+# Returns
+- `(B, B_int)`: A pair of matrices:
+  - `B::Matrix`: The basis matrix evaluated at boundary points.
+  - `B_int::Matrix`: The basis matrix evaluated at interior points.
+"""
 function construct_matrices_benchmark(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
     to = TimerOutput()
     pts_bd = pts.xy_boundary
@@ -71,6 +186,26 @@ function construct_matrices_benchmark(solver::ParticularSolutionsMethod, basis::
     return B, B_int  
 end
 
+"""
+    construct_matrices(solver::ParticularSolutionsMethod,
+                       basis::Ba,
+                       pts::PointsPSM,
+                       k) -> (B, B_int)
+
+Construct two matrices for the Particular Solutions Method: one for boundary points, one for interior points.
+These represent the basis functions evaluated at the domain's boundary and interior.
+
+# Arguments
+- `solver::ParticularSolutionsMethod`: The PSM solver config.
+- `basis::Ba<:AbsBasis`: A basis type implementing `basis_matrix(...)`.
+- `pts::PointsPSM`: Contains boundary (`xy_boundary`) and interior (`xy_interior`) points.
+- `k::Real`: Wavenumber.
+
+# Returns
+- `(B, B_int)`: 
+  - `B::Matrix`: Basis matrix at boundary points.
+  - `B_int::Matrix`: Basis matrix at interior points.
+"""
 function construct_matrices(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
     pts_bd = pts.xy_boundary
     pts_int = pts.xy_interior
@@ -79,17 +214,75 @@ function construct_matrices(solver::ParticularSolutionsMethod, basis::Ba, pts::P
     return B, B_int  
 end
 
+
+"""
+    solve(solver::ParticularSolutionsMethod,
+          basis::Ba,
+          pts::PointsPSM,
+          k::Real) -> Real
+
+Solve the Particular Solutions Method by constructing `(B, B_int)` and computing a measure
+(e.g. minimum singular value) that indicates how well the interior and boundary constraints
+are satisfied via the `GeneralizedSVD` object 
+
+# Arguments
+- `solver::ParticularSolutionsMethod`: PSM solver config.
+- `basis::Ba<:AbsBasis`: The basis (e.g. a trigonometric or radial basis).
+- `pts::PointsPSM`: Boundary and interior points for evaluation.
+- `k::Real`: Wavenumber or frequency-like parameter.
+
+# Returns
+- `::Real`: The minimum generalized singular value (or similar measure). Lower values can
+  indicate a better "fit" to the PDE boundary conditions.
+"""
 function solve(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
     B, B_int = construct_matrices(solver, basis, pts, k)
     solution = svdvals(B, B_int)
     return minimum(solution)
 end
 
+"""
+    solve(solver::ParticularSolutionsMethod, B, B_int) -> Real
+
+A lower-level solver method that accepts already-constructed matrices `B` and `B_int` rather
+than building them anew. Returns the minimum of `svdvals(B, B_int)`.
+
+# Arguments
+- `solver::ParticularSolutionsMethod`: PSM solver config (though this might be unused except for clarity).
+- `B::AbstractMatrix{<:Complex}`: Basis matrix for boundary points.
+- `B_int::AbstractMatrix{<:Complex}`: Basis matrix for interior points.
+
+# Returns
+- `::Real`: The minimum singular value from `svdvals(B, B_int)`.
+"""
 function solve(solver::ParticularSolutionsMethod, B, B_int)
     solution = svdvals(B, B_int)
     return minimum(solution)
 end
 
+"""
+    solve_vect(solver::ParticularSolutionsMethod,
+               basis::Ba,
+               pts::PointsPSM,
+               k::Real) -> (σ_min, x_min)
+
+Compute the generalized singular value decomposition (SVD) for the boundary and interior matrices `(B, B_int)`,
+and return both the smallest singular value and the associated vector `X` in the decomposition. 
+
+# Arguments
+- `solver::ParticularSolutionsMethod`: PSM solver configuration.
+- `basis::Ba<:AbsBasis`: The basis object with a `basis_matrix` method.
+- `pts::PointsPSM`: Points on boundary and interior.
+- `k::Real`: Wavenumber/frequency parameter.
+
+# Returns
+- `σ_min::Real`: The smallest generalized singular value in the range.
+- `x_min::AbstractVector{<:Complex}`: The vector corresponding to that smallest singular value,
+  typically from the decomposition `H[idx, :]`.
+
+**Note**: Internally does `F = svd(B, B_int)`, extracts singular values `(F.a./F.b)`, and picks
+the minimum. The associated vector `X[i_min,:]` is returned as `x_min`.
+"""
 function solve_vect(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
     B, B_int = construct_matrices(solver, basis, pts, k)
     F = svd(B, B_int)
