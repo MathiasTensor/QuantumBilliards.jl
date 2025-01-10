@@ -721,6 +721,7 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
     =#
     xy=bp.xy
     normals=bp.normal
+    curvatures=bp.curvature
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
