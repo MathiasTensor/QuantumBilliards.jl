@@ -632,6 +632,8 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
+        normal1=normals[i]
+        p1_curvature=curvatures[i]
         for j in 1:N # symmetric hankel part
             dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
             distance=hypot(dx,dy)
@@ -642,7 +644,7 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
             #cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
             #M[i, j] = -im * k / 2.0 * distance * cos_phi * Bessels.hankelh1(0, k * distance)
 
-            M[i, j]=-im*k/2*distance12*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance12)
+            M[i, j]=-im*k/2*distance*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance)
         end
     end
     return M
@@ -675,6 +677,8 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
+        normal1=normals[i]
+        p1_curvature=curvatures[i]
         for j in 1:N
             dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
             distance=hypot(dx,dy)
@@ -684,7 +688,7 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
             end
             #cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
             #M[i, j] = -im * k / 2.0 * distance * cos_phi * Bessels.hankelh1(0, k * distance)
-            M[i, j]=-im*k/2*distance12*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance12)
+            M[i, j]=-im*k/2*distance*compute_cos_phi(dx,dy,normal1,p1_curvature)*Bessels.hankelh1(0,k*distance)
         end
     end
     return M
@@ -720,6 +724,8 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
+        normal1=normals[i]
+        p1_curvature=curvatures[i]
         for j in 1:N # symmetric hankel part
             dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
             distance = hypot(dx, dy)
@@ -730,7 +736,7 @@ function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM
             #cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
             #hankel = im/(2*k) * ((-2 + (k*distance)^2) * Bessels.hankelh1(1, k*distance) + k*distance * Bessels.hankelh1(2, k*distance))
             #M[i, j] = cos_phi * hankel
-            M[i, j]=im/(2*k)*compute_cos_phi(dx,dy,normal1,p1_curvature)*((-2+(k*distance12)^2)*Bessels.hankelh1(1,k*distance12)+k*distance12*Bessels.hankelh1(2,k*distance12))
+            M[i, j]=im/(2*k)*compute_cos_phi(dx,dy,normal1,p1_curvature)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
         end
     end
     return M
@@ -763,6 +769,8 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
     @inbounds for i in 1:N
+        normal1=normals[i]
+        p1_curvature=curvatures[i]
         for j in 1:N
             dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
             distance = hypot(dx, dy)
@@ -773,7 +781,7 @@ function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsB
             #cos_phi = distance < eps(T) ? curvatures[i] / (2π) : (normals[i][1]*dx + normals[i][2]*dy) / distance
             #hankel = im/(2*k) * ((-2 + (k*distance)^2) * Bessels.hankelh1(1, k*distance) + k*distance * Bessels.hankelh1(2, k*distance))
             #M[i, j] = cos_phi * hankel
-            M[i, j]=im/(2*k)*compute_cos_phi(dx,dy,normal1,p1_curvature)*((-2+(k*distance12)^2)*Bessels.hankelh1(1,k*distance12)+k*distance12*Bessels.hankelh1(2,k*distance12))
+            M[i, j]=im/(2*k)*compute_cos_phi(dx,dy,normal1,p1_curvature)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
         end
     end
     return M
