@@ -47,11 +47,12 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `basis::AbsBasis`: The basis to be used. Can use also the AbstractHankelBasis() when solver is `BoundaryIntegralMethod`.
 - `billiard::AbsBilliard`: The billiard configuration.
 - `ks::Vector{Real}`: Vector of wavenumbers over which to perform the sweep.
+- `kernel_fun::Union{Symbol, Function}`: Kernel function to use in the boundary integral method. Defaults to `:default`.
 
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default)
     k = maximum(ks)
     dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis = resize_basis(basis,billiard,dim,k)
@@ -62,7 +63,7 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks)
     p = Progress(num_intervals, 1)
     if solver isa BoundaryIntegralMethod
         for i in eachindex(ks)
-            res[i] = solve(solver,new_basis,pts,ks[i])
+            res[i] = solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun)
             next!(p)
         end
     else
