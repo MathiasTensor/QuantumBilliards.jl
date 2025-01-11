@@ -510,70 +510,34 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
 # Returns
 - `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between source and target points, incorporating curvature for singular cases.
 """
-#=
 @inline function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
     curvatures=bp_s.curvature
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
+    x_s=getindex.(xy_s,1)
+    y_s=getindex.(xy_s,2)
+    x_t=getindex.(xy_t,1)
+    y_t=getindex.(xy_t,2)
+    dx=x_s.-x_t'
+    dy= y_s.-y_t'
+    distances=hypot.(dx,dy)
     @inbounds for i in 1:N
         for j in 1:N
-            dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
-            distance=hypot(dx,dy)
+            #dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
+            #distance=hypot(dx,dy)
+            distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(curvatures[i]/(2π))
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
                 hankel=-im*k/2.0*Bessels.hankelh1(1,k*distance)
                 M[i,j]=cos_phi*hankel
             end
         end
     end
-    return M
-end
-=#
-@inline function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}}, k::T) where {T<:Real}
-    # Extract source points, normals, and curvatures
-    xy_s = bp_s.xy
-    normals_s = bp_s.normal
-    curvatures_s = bp_s.curvature
-    
-    # Source (N_s) and Target (N_t) counts
-    N_s = length(xy_s)  # Number of source points
-    N_t = length(xy_t)  # Number of target points
-
-    # Extract source and target coordinates
-    x_s, y_s = getindex.(xy_s, 1), getindex.(xy_s, 2)
-    x_t, y_t = getindex.(xy_t, 1), getindex.(xy_t, 2)
-
-    # Pairwise differences for source and target points
-    dx = x_s .- x_t'  # Pairwise x-differences
-    dy = y_s .- y_t'  # Pairwise y-differences
-
-    # Pairwise distances
-    distances = hypot.(dx, dy)
-
-    # Helmholtz kernel matrix (N_s x N_t)
-    M = Matrix{Complex{T}}(undef, N_s, N_t)
-
-    # Vectorized computation of the kernel
-    @inbounds for i in 1:N_s
-        for j in 1:N_t
-            distance = distances[i, j]
-            if distance < eps(T)
-                # Singular case: use curvature for diagonal-like elements
-                M[i, j] = Complex(curvatures_s[i] / (2π))
-            else
-                # Compute kernel for non-singular cases
-                dx_ij, dy_ij = dx[i, j], dy[i, j]
-                cos_phi = (normals_s[i][1] * dx_ij + normals_s[i][2] * dy_ij) / distance
-                hankel = -im * k / 2.0 * Bessels.hankelh1(1, k * distance)
-                M[i, j] = cos_phi * hankel
-            end
-        end
-    end
-
     return M
 end
 
