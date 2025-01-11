@@ -139,7 +139,12 @@ A * u = λ * B * u
 - `VL::Matrix{Complex{T}}`: Complex matrix where each column is a left eigenvector.
 """
 function generalized_eigen_all_LAPACK_LEGACY(A,B) 
-    α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(B))
+    if LAPACK.version()<v"3.6.0"
+        α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(B))
+    else
+        α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(B))
+    end
+    #α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(B))
     λ=α./β
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
