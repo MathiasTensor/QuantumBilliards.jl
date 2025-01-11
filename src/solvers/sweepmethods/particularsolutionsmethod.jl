@@ -53,10 +53,10 @@ Construct a `ParticularSolutionsMethod{T}` object with default Gauss-Legendre sa
   in the `sampler` field, and `eps(T)` as the numeric epsilon.
 """
 function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, int_pts_scaling_factor::T; min_dim = 100, min_pts = 500, min_int_pts=500) where T<:Real 
-    d = dim_scaling_factor
-    bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler = [GaussLegendreNodes()]
-    return ParticularSolutionsMethod(d, bs,int_pts_scaling_factor, sampler, eps(T), min_dim, min_pts, min_int_pts)
+    d=dim_scaling_factor
+    bs=typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[GaussLegendreNodes()]
+    return ParticularSolutionsMethod(d,bs,int_pts_scaling_factor,sampler,eps(T),min_dim,min_pts,min_int_pts)
 end
 
 """
@@ -84,10 +84,10 @@ Construct a `ParticularSolutionsMethod{T}` object with user-provided samplers.
 # Returns
 - `ParticularSolutionsMethod{T}`: A solver configuration with the given `samplers` and other settings.
 """
-function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, int_pts_scaling_factor::T, samplers::Vector{Sam}; min_dim = 100, min_pts = 500, min_int_pts=500) where {T<:Real, Sam<:AbsSampler} 
-    d = dim_scaling_factor
-    bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    return ParticularSolutionsMethod(d, bs,int_pts_scaling_factor, samplers, eps(T), min_dim, min_pts, min_int_pts)
+function ParticularSolutionsMethod(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},int_pts_scaling_factor::T,samplers::Vector{Sam};min_dim = 100,min_pts = 500,min_int_pts=500) where {T<:Real,Sam<:AbsSampler} 
+    d=dim_scaling_factor
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    return ParticularSolutionsMethod(d,bs,int_pts_scaling_factor,samplers,eps(T),min_dim,min_pts,min_int_pts)
 end
 
 """
@@ -121,33 +121,32 @@ and how many interior points to sample.
   - `xy_boundary`: All boundary points appended from each curve.
   - `xy_interior`: Randomly sampled interior points.
 """
-function evaluate_points(solver::ParticularSolutionsMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
-    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
-    b_int = solver.int_pts_scaling_factor
-    curves = billiard.fundamental_boundary
-    type = eltype(solver.pts_scaling_factor)
-    xy_all = Vector{SVector{2,type}}()
-    xy_int_all = Vector{SVector{2,type}}()
-    
+function evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
+    bs,samplers=adjust_scaling_and_samplers(solver,billiard)
+    b_int=solver.int_pts_scaling_factor
+    curves=billiard.fundamental_boundary
+    type=eltype(solver.pts_scaling_factor)
+    xy_all=Vector{SVector{2,type}}()
+    xy_int_all=Vector{SVector{2,type}}()
     for i in eachindex(curves)
-        crv = curves[i]
-        if typeof(crv) <: AbsRealCurve
-            L = crv.length
-            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
-            sampler = samplers[i]
+        crv=curves[i]
+        if typeof(crv)<:AbsRealCurve
+            L=crv.length
+            N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi)))
+            sampler=samplers[i]
             if crv isa PolarSegment && sampler isa PolarSampler
-                t, dt = sample_points(sampler, crv, N)
+                t,dt=sample_points(sampler,crv,N)
             else
-                t, dt = sample_points(sampler, N)
+                t,dt=sample_points(sampler,N)
             end
-            xy = curve(crv,t)
-            append!(xy_all, xy)
+            xy=curve(crv,t)
+            append!(xy_all,xy)
         end
     end
-    L = billiard.length
-    M = max(solver.min_int_pts,round(Int, k*L*b_int/(2*pi)))
-    xy_int_all = random_interior_points(billiard,M)
-    return PointsPSM{type}(xy_all, xy_int_all)
+    L=billiard.length
+    M=max(solver.min_int_pts,round(Int,k*L*b_int/(2*pi)))
+    xy_int_all=random_interior_points(billiard,M)
+    return PointsPSM{type}(xy_all,xy_int_all)
 end
 
 """
@@ -173,17 +172,17 @@ matrix. It prints the timings at the end.
   - `B::Matrix`: The basis matrix evaluated at boundary points.
   - `B_int::Matrix`: The basis matrix evaluated at interior points.
 """
-function construct_matrices_benchmark(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
-    to = TimerOutput()
-    pts_bd = pts.xy_boundary
-    pts_int = pts.xy_interior
+function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+    to=TimerOutput()
+    pts_bd=pts.xy_boundary
+    pts_int=pts.xy_interior
     #basis and gradient matrices
     @timeit to "basis_matrices" begin
-        @timeit to "boundary" B = basis_matrix(basis,k,pts_bd)
-        @timeit to "interior" B_int = basis_matrix(basis,k,pts_int)
+        @timeit to "boundary" B=basis_matrix(basis,k,pts_bd)
+        @timeit to "interior" B_int=basis_matrix(basis,k,pts_int)
     end
     print_timer(to)
-    return B, B_int  
+    return B,B_int  
 end
 
 """
@@ -206,12 +205,12 @@ These represent the basis functions evaluated at the domain's boundary and inter
   - `B::Matrix`: Basis matrix at boundary points.
   - `B_int::Matrix`: Basis matrix at interior points.
 """
-function construct_matrices(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
-    pts_bd = pts.xy_boundary
-    pts_int = pts.xy_interior
-    B = basis_matrix(basis,k,pts_bd)
-    B_int = basis_matrix(basis,k,pts_int)
-    return B, B_int  
+function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+    pts_bd=pts.xy_boundary
+    pts_int=pts.xy_interior
+    B=basis_matrix(basis,k,pts_bd)
+    B_int=basis_matrix(basis,k,pts_int)
+    return B,B_int  
 end
 
 
@@ -224,7 +223,9 @@ end
 Solve the Particular Solutions Method by constructing `(B, B_int)` and computing a measure
 (e.g. minimum singular value) that indicates how well the interior and boundary constraints
 are satisfied via the `GeneralizedSVD` object. For mode reading it is based on the paper:
-https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_112.pdf
+https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_112.pdf.
+
+The idea is to represent the minimization of the boundary tension of the wavefunctions as a generalized eigenvalue problem `F * x = λ * G * x` as per the afformentioned paper.
 
 # Arguments
 - `solver::ParticularSolutionsMethod`: PSM solver config.
@@ -236,9 +237,9 @@ https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_112.pdf
 - `::Real`: The minimum generalized singular value (or similar measure). Lower values can
   indicate a better "fit" to the PDE boundary conditions.
 """
-function solve(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
-    B, B_int = construct_matrices(solver, basis, pts, k)
-    solution = svdvals(B, B_int)
+function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+    B,B_int=construct_matrices(solver,basis,pts,k)
+    solution=svdvals(B,B_int)
     return minimum(solution)
 end
 
@@ -256,8 +257,8 @@ than building them anew. Returns the minimum of `svdvals(B, B_int)`.
 # Returns
 - `::Real`: The minimum singular value from `svdvals(B, B_int)`.
 """
-function solve(solver::ParticularSolutionsMethod, B, B_int)
-    solution = svdvals(B, B_int)
+function solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:AbstractMatrix}
+    solution=svdvals(B,B_int)
     return minimum(solution)
 end
 
@@ -281,16 +282,24 @@ and return both the smallest singular value and the associated vector `X` in the
 - `x_min::AbstractVector{<:Complex}`: The vector corresponding to that smallest singular value,
   typically from the decomposition `H[idx, :]`.
 
-**Note**: Internally does `F = svd(B, B_int)`, extracts singular values `(F.a./F.b)`, and picks
-the minimum. The associated vector `X[i_min,:]` is returned as `x_min`.
+# Methodology
+1. **Matrix Construction**:
+    - Construct matrices `B` and `B_int` from the solver, basis, points, and wavenumber `k`.
+2. **GSVD Decomposition**:
+    - Perform the generalized singular value decomposition (GSVD) of `B` and `B_int`, resulting in matrices `F.R - left singular vectors of B`, `F.Q - right singular vectors of B_int` (from the factorization object `F=GeneralizedSVD`), and singular values stored in `F.a` and `F.b` (similarly how we have to construct the generalized eigenvalues in ggev3! via λ=α./β in decompositions.jl here). Then we form the product matrix `H=F.R*F.Q'` which reconstructs the generalized eigenvectors.
+3. **Compute Generalized Singular Values**:
+    - Indices `idx=1:F.k+F.l` specify all the relevant generalized singular values (since we could have artefacts of overdetermined systems or numerical padding).
+    - Generalized singular values are computed as the element-wise ratio `sv=F.a[idx]./F.b[idx]` as afformentioned above.
+5. **Select the Optimal Solution**:
+    - Take the smallest generalized singular value (`sv_min`) and its corresponding singular vector (`X_min`).
 """
-function solve_vect(solver::ParticularSolutionsMethod, basis::Ba, pts::PointsPSM, k) where {Ba<:AbsBasis}
-    B, B_int = construct_matrices(solver, basis, pts, k)
-    F = svd(B, B_int)
-    H = F.R*F.Q'
-    idx = 1:F.k + F.l #inidices containing the singular values we need
-    sv = F.a[idx] ./ F.b[idx] #generalized singular values
-    X = H[idx,:]
-    i_min = argmin(sv)
-    return  sv[i_min], X[i_min,:] 
+function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+    B,B_int=construct_matrices(solver,basis,pts,k)
+    F=svd(B,B_int)
+    H=F.R*F.Q'
+    idx=1:F.k+F.l #inidices containing the singular values we need
+    sv=F.a[idx]./F.b[idx] #generalized singular values
+    X=H[idx,:]
+    i_min=argmin(sv)
+    return sv[i_min],X[i_min,:] 
 end
