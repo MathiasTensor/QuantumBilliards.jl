@@ -144,7 +144,6 @@ function generalized_eigen_all_LAPACK_LEGACY(A,B)
     else
         α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(B))
     end
-    #α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(B))
     λ=α./β
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
