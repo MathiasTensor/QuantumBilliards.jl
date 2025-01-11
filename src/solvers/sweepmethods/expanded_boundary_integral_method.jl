@@ -37,29 +37,6 @@ function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},s
     return ExpandedBoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
 end
 
-"""
-    compute_cos_phi(dx12::T, dy12::T, normal1::SVector{2,T}, p1_curvature::T) -> T
-
-Computes the cosine of the angle φ between the normal vector and the vector connecting two points.
-
-# Arguments
-- `dx12::T`: x-component of the vector between two points.
-- `dy12::T`: y-component of the vector between two points.
-- `normal1::SVector{2,T}`: Normal vector at the first point.
-- `p1_curvature::T`: Curvature at the first point.
-
-# Returns
-- `T`: Computed cos(φ) value. Handles singularity by using the curvature term.
-"""
-@inline function compute_cos_phi(dx12::T,dy12::T,normal1::SVector{2,T},p1_curvature::T) where {T<:Real}
-    distance12=hypot(dx12,dy12)
-    if distance12<eps(T)
-        return p1_curvature/(2.0*π)
-    else
-        return (normal1[1]*dx12+normal1[2]*dy12)/distance12
-    end
-end
-
 #### NEW MATRIX APPROACH FOR FASTER CODE #### 
 
 """
@@ -92,19 +69,27 @@ Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the
     normals=bp.normal
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
+    xs=getindex.(xy,1)
+    ys=getindex.(xy,2)
+    dx=xs.-xs'
+    dy=ys.-ys'
+    distances=hypot.(dx,dy)
     @inbounds for i in 1:N
         for j in 1:i # symmetric hankel part
-            dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
-            distance=hypot(dx,dy)
+            #dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
+            #distance=hypot(dx,dy)
+            distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
                 hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
                 M[i,j]=cos_phi*hankel
             end
             if i!=j
-                cos_phi_symmetric=(normals[j][1]*(-dx)+normals[j][2]*(-dy))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+                #cos_phi_symmetric=(normals[j][1]*(-dx)+normals[j][2]*(-dy))/distance
+                cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
                 M[j,i]=cos_phi_symmetric*hankel
             end
         end
@@ -138,14 +123,23 @@ for each `(source_i, target_j)` pair based on the distance and the dot product w
     normals=bp_s.normal
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
+    x_s=getindex.(xy_s,1)
+    y_s=getindex.(xy_s,2)
+    x_t=getindex.(xy_t,1)
+    y_t=getindex.(xy_t,2)
+    dx=x_s.-x_t'
+    dy= y_s.-y_t'
+    distances=hypot.(dx,dy)
     @inbounds for i in 1:N
         for j in 1:N
-            dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
-            distance=hypot(dx,dy)
+            #dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
+            #distance=hypot(dx,dy)
+            distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
                 hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
                 M[i,j]=cos_phi*hankel
             end
@@ -184,19 +178,27 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
     normals=bp.normal
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
+    xs=getindex.(xy,1)
+    ys=getindex.(xy,2)
+    dx=xs.-xs'
+    dy=ys.-ys'
+    distances=hypot.(dx,dy)
     @inbounds for i in 1:N
         for j in 1:i # symmetric hankel part
-            dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
-            distance=hypot(dx,dy)
+            #dx,dy=xy[i][1]-xy[j][1],xy[i][2]-xy[j][2]
+            #distance=hypot(dx,dy)
+            distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
                 hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
                 M[i,j]=cos_phi*hankel
             end
             if i!=j
-                cos_phi_symmetric=(normals[j][1]*(-dx)+normals[j][2]*(-dy))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+                #cos_phi_symmetric=(normals[j][1]*(-dx)+normals[j][2]*(-dy))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+                cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance
                 M[j,i]=cos_phi_symmetric*hankel
             end
         end
@@ -231,14 +233,23 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     normals=bp_s.normal
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
+    x_s=getindex.(xy_s,1)
+    y_s=getindex.(xy_s,2)
+    x_t=getindex.(xy_t,1)
+    y_t=getindex.(xy_t,2)
+    dx=x_s.-x_t'
+    dy= y_s.-y_t'
+    distances=hypot.(dx,dy)
     @inbounds for i in 1:N
         for j in 1:N
-            dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
-            distance=hypot(dx,dy)
+            #dx,dy=xy_s[i][1]-xy_t[j][1],xy_s[i][2]-xy_t[j][2]
+            #distance=hypot(dx,dy)
+            distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(T(0.0),T(0.0))
             else
-                cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                #cos_phi=(normals[i][1]*dx+normals[i][2]*dy)/distance
+                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
                 hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
                 M[i,j]=cos_phi*hankel
             end
