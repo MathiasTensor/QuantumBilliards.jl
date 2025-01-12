@@ -455,8 +455,8 @@ function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::B
         end
         idx=findmin(tensions_out)[2]
         if log10(tensions_out[idx])<0.0
-            push!(ks_tmp,λs_out[idx1])
-            push!(tens_tmp,tensions_out[idx1])     
+            push!(ks_tmp,λs_out[idx])
+            push!(tens_tmp,tensions_out[idx])     
         end
     end
     _,inv_tens=ebim_inv_diff(ks_tmp)
