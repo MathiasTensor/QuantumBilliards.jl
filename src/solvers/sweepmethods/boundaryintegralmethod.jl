@@ -476,8 +476,6 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
     distances=hypot.(dx,dy)
     near_singular=distances.<eps(T)
     non_singular=.!near_singular
-    r,c=findall(near_singular) |> Tuple
-    M[near_singular].=Complex.(curvatures[r]./(2π))
     hankel=zeros(Complex{T},N,N)
     hankel[non_singular].=@. -im*k/2.0*Bessels.hankelh1(1,k*distances[non_singular])
     @inbounds for i in 1:N
@@ -506,6 +504,8 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
                     cos_phi_symmetric = (normals[j][1] * (-dx[i, j]) + normals[j][2] * (-dy[i, j])) / distance
                     M[j, i] = cos_phi_symmetric * hankel[i, j]
                 end
+            else
+                M[i,j]=Complex(curvatures[i]/(2π))
             end
         end
     end
@@ -540,8 +540,6 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
     distances=hypot.(dx,dy)
     near_singular=distances.<eps(T)
     non_singular=.!near_singular
-    r,c=findall(near_singular) |> Tuple
-    M[near_singular].=Complex.(curvatures[r]./(2π))
     hankel=zeros(Complex{T},N,N)
     hankel[non_singular].=@. -im*k/2.0*Bessels.hankelh1(1,k*distances[non_singular])
     @inbounds for i in 1:N
@@ -556,10 +554,12 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
                 M[i,j]=cos_phi*hankel
             end
             =#
-            if !near_singular[i, j]
+            if !near_singular[i,j]
                 # Compute cos_phi and assign M[i, j]
-                cos_phi = (normals[i][1] * dx[i, j] + normals[i][2] * dy[i, j]) / distance
-                M[i, j] = cos_phi * hankel[i, j]
+                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
+                M[i,j]=cos_phi*hankel[i,j]
+            else
+                M[i,j]=Complex(curvatures[i]/(2π))
             end
         end
     end
