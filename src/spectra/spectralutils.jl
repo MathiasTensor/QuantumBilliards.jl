@@ -472,6 +472,7 @@ function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::B
         if !existing_solutions # if none resolve
             println("Re-solving in interval $interval...")
             λs_in,tensions_in,_,_=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k);use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
+            println("λs_in length: ", length(λs_in))
             if !isempty(λs_in)  # merge, if any
                 overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,interval[1],interval[2];tol = tol)
             end
