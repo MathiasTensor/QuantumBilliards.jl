@@ -459,6 +459,7 @@ function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::B
             push!(tens_tmp,tensions_out[idx])     
         end
     end
+    println("length of k_tmp: ",length(ks_tmp))
     _,inv_tens=ebim_inv_diff(ks_tmp)
     idxs=findall(x->x>0.0,inv_tens) # only these are sensible
     inv_tens=inv_tens[idxs]
