@@ -464,7 +464,7 @@ function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::B
     idxs=findall(x->x>0.0,inv_tens) # only these are sensible
     inv_tens=inv_tens[idxs]
     ks_tmp=ks_tmp[idxs] 
-    k_peaks=find_peaks(ks_tmp,log10.(inv_tens);threshold=[2.0*log10(1.0/dk(k)) for k in ks_tmp]) # check in neighboorhod of these ks if we have a solution (could either be or not) and if not do the solve again
+    k_peaks=find_peaks(ks_tmp,log10.(inv_tens);threshold=[1.2*log10(1.0/dk(k)) for k in ks_tmp]) # check in neighboorhod of these ks if we have a solution (could either be or not) and if not do the solve again
     println("length of k peaks: ",length(k_peaks))
     @showprogress desc="EBIM resolving for peaks of 1/diff" for k in k_peaks
         interval=(k-dk(k),k+dk(k))
