@@ -837,7 +837,7 @@ Finds the x-coordinates of local maxima in the `y` vector that are greater than 
 """
 function find_peaks(x::Vector{T}, y::Vector{T}; threshold::Union{T,Vector{T}}=200.0) where {T<:Real}
     peaks=T[]
-    threshold_vec=isnumeric(threshold) ? fill(threshold,length(x)) : threshold
+    threshold_vec=length(threshold)==1 ? fill(threshold,length(x)) : threshold
     for i in 2:length(y)-1
         if y[i]>y[i-1] && y[i]>y[i+1] && y[i]>threshold_vec[i]
             push!(peaks,x[i])
