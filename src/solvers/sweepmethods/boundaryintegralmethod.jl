@@ -828,38 +828,18 @@ Finds the x-coordinates of local maxima in the `y` vector that are greater than 
 # Arguments
 - `x::Vector{T}`: The x-coordinates corresponding to the y-values.
 - `y::Vector{T}`: The y-values to search for peaks.
-- `threshold::Real`: Minimum value a peak must exceed to be considered. Default is 200.0.
+- `threshold::Union{T, Vector{T}}`: Minimum value a peak must exceed to be considered.
+  Can be a scalar (applied to all peaks) or a vector (element-wise comparison).
+  Default is 200.0.
 
 # Returns
 - `Vector{T}`: A vector of x-coordinates where peaks are located.
 """
-function find_peaks(x::Vector{T}, y::Vector{T}; threshold=200.0) where {T<:Real}
+function find_peaks(x::Vector{T}, y::Vector{T}; threshold::Union{T,Vector{T}}=200.0) where {T<:Real}
     peaks=T[]
+    threshold_vec=isnumeric(threshold) ? fill(threshold,length(x)) : threshold
     for i in 2:length(y)-1
-        if y[i]>y[i-1] && y[i]>y[i+1] && y[i]>threshold
-            push!(peaks,x[i])
-        end
-    end
-    return peaks
-end
-
-"""
-    find_peaks(x::Vector{T}, y::Vector{T}; threshold::Vector=fill(200.0,length(x))) where {T<:Real}
-
-Finds the x-coordinates of local maxima in the `y` vector that are greater than the specified `threshold`.
-
-# Arguments
-- `x::Vector{T}`: The x-coordinates corresponding to the y-values.
-- `y::Vector{T}`: The y-values to search for peaks.
-- `threshold::Real`: Minimum value a peak must exceed to be considered. Default is 200.0.
-
-# Returns
-- `Vector{T}`: A vector of x-coordinates where peaks are located.
-"""
-function find_peaks(x::Vector{T}, y::Vector{T}; threshold::Vector{T}=fill(T(200.0),length(x))) where {T<:Real}
-    peaks=T[]
-    for i in 2:length(y)-1
-        if y[i]>y[i-1] && y[i]>y[i+1] && y[i]>threshold[i]
+        if y[i]>y[i-1] && y[i]>y[i+1] && y[i]>threshold_vec[i]
             push!(peaks,x[i])
         end
     end
