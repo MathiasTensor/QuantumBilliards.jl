@@ -482,6 +482,7 @@ function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::B
         λs_all=[NaN]
         tensions_all=[NaN]
     end
+    return λs_all,tensions_all
 end
 
 """
