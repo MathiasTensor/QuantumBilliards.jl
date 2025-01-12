@@ -474,9 +474,15 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
+    near_singular=distances.<eps(T)
+    non_singular=.!near_singular
+    M[near_singular].=Complex(curvatures./(2π))
+    hankel=zeros(Complex{T},N,N)
+    hankel[non_singular].=@. -im*k/2.0*Bessels.hankelh1(1,k*distances[non_singular])
     @inbounds for i in 1:N
         for j in 1:i # symmetric hankel part
             distance=distances[i,j]
+            #=
             if distance<eps(T)
                 M[i,j]=Complex(curvatures[i]/(2π))
             else
@@ -487,6 +493,18 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
             if i!=j
                 cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
                 M[j,i]=cos_phi_symmetric*hankel
+            end
+            =#
+            if !near_singular[i, j]
+                # Compute cos_phi and assign M[i, j]
+                cos_phi = (normals[i][1] * dx[i, j] + normals[i][2] * dy[i, j]) / distance
+                M[i, j] = cos_phi * hankel[i, j]
+
+                if i != j
+                    # Compute cos_phi_symmetric and assign M[j, i]
+                    cos_phi_symmetric = (normals[j][1] * (-dx[i, j]) + normals[j][2] * (-dy[i, j])) / distance
+                    M[j, i] = cos_phi_symmetric * hankel[i, j]
+                end
             end
         end
     end
@@ -519,15 +537,27 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
+    near_singular=distances.<eps(T)
+    non_singular=.!near_singular
+    M[near_singular].=Complex(curvatures./(2π))
+    hankel=zeros(Complex{T},N,N)
+    hankel[non_singular].=@. -im*k/2.0*Bessels.hankelh1(1,k*distances[non_singular])
     @inbounds for i in 1:N
         for j in 1:N
             distance=distances[i,j]
+            #=
             if distance<eps(T)
                 M[i,j]=Complex(curvatures[i]/(2π))
             else
                 cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
                 hankel=-im*k/2.0*Bessels.hankelh1(1,k*distance)
                 M[i,j]=cos_phi*hankel
+            end
+            =#
+            if !near_singular[i, j]
+                # Compute cos_phi and assign M[i, j]
+                cos_phi = (normals[i][1] * dx[i, j] + normals[i][2] * dy[i, j]) / distance
+                M[i, j] = cos_phi * hankel[i, j]
             end
         end
     end
