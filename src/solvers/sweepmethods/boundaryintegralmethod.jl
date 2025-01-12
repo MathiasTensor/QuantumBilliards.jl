@@ -476,7 +476,8 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
     distances=hypot.(dx,dy)
     near_singular=distances.<eps(T)
     non_singular=.!near_singular
-    M[near_singular].=Complex.(curvatures./(2π))
+    r,c=findall(near_singular) |> Tuple
+    M[near_singular].=Complex.(curvatures[r]./(2π))
     hankel=zeros(Complex{T},N,N)
     hankel[non_singular].=@. -im*k/2.0*Bessels.hankelh1(1,k*distances[non_singular])
     @inbounds for i in 1:N
@@ -539,7 +540,8 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
     distances=hypot.(dx,dy)
     near_singular=distances.<eps(T)
     non_singular=.!near_singular
-    M[near_singular].=Complex.(curvatures./(2π))
+    r,c=findall(near_singular) |> Tuple
+    M[near_singular].=Complex.(curvatures[r]./(2π))
     hankel=zeros(Complex{T},N,N)
     hankel[non_singular].=@. -im*k/2.0*Bessels.hankelh1(1,k*distances[non_singular])
     @inbounds for i in 1:N
