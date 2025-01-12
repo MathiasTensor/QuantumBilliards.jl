@@ -392,9 +392,50 @@ function fredholm_matrix_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRul
 end
 
 """
+    kernel_and_first_der(
+        bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T;
+        kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function} = (:default, :first)
+    ) -> (Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}})
+
+Construct the full Fredholm matrix and its first derivative w.r.t. the wavenumber,
+using a matrix approach. Specifically:
+  1. `kernel_fun[1]` -> the base Helmholtz kernel,
+  2. `kernel_fun[2]` -> the first derivative wrt `k`,
+
+Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
+the identity on the diagonal for the base matrix.
+
+# Arguments
+- `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
+- `symmetry_rule::SymmetryRuleBIM{T}`: Reflection/boundary condition rules.
+- `k::T`: Wavenumber.
+- `kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function} = (:default, :first)`: The base kernel,
+  plus derivative kernel.
+
+# Returns
+- `fredholm_matrix::Matrix{Complex{T}}`: The base matrix `I - kernel .* ds'`.
+- `fredholm_der_matrix::Matrix{Complex{T}}`: The first derivative matrix `- kernel_der .* ds'`.
+- `fredholm_der2_matrix::Matrix{Complex{T}}`: The second derivative matrix `- kernel_der2 .* ds'`.
+"""
+function kernel_and_first_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function}}=(:default,:first)) where {T<:Real}
+    if isnothing(symmetry_rule)
+        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun[1])
+        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[2])
+    else
+        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[1])
+        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[2])
+    end
+    ds=bp.ds
+    N=length(ds)
+    fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
+    fredholm_der_matrix=-kernel_der_matrix.*ds'
+    return fredholm_matrix,fredholm_der_matrix
+end
+
+"""
     all_fredholm_associated_matrices(
         bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T;
-        kernel_fun::Union{Tuple,Function} = (:default, :first, :second)
+        kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function} = (:default, :first, :second)
     ) -> (Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}})
 
 Construct the full Fredholm matrix and its first and second derivatives w.r.t. the wavenumber,
@@ -410,9 +451,8 @@ the identity on the diagonal for the base matrix.
 - `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
 - `symmetry_rule::SymmetryRuleBIM{T}`: Reflection/boundary condition rules.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Tuple,Function} = (:default, :first, :second)`: The base kernel,
-  plus derivative kernels. If a tuple of symbols, each is looked up in the default
-  matrix computations. If functions, they should each produce an `N×N` matrix.
+- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: The base kernel,
+  plus derivative kernels.
 
 # Returns
 - `fredholm_matrix::Matrix{Complex{T}}`: The base matrix `I - kernel .* ds'`.
@@ -479,6 +519,7 @@ end
         kernel_fun::Union{Tuple,Function} = (:default, :first, :second)
     ) -> (Vector{T}, Vector{T})
 
+TRADITIONAL FUNTION
 Compute approximate "corrected" eigenvalues near the wavenumber `k`, using the expanded boundary integral
 method. The routine builds `(A, dA, ddA)` via `construct_matrices`, then solves the generalized eigenvalue
 problem `A*x = λ * dA * x`. It filters those eigenvalues whose real part lies in `(-dk, dk)`, then applies
@@ -531,6 +572,25 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     return λ_corrected,tens
 end
 
+function solve_1st_order(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function}}=(:default,:first)) where {Ba<:AbstractHankelBasis}
+    A,dA=kernel_and_first_der(pts,solver.rule,k;kernel_fun=kernel_fun)
+    if use_lapack_raw
+        λ,_,_=generalized_eigen_all_LAPACK_LEGACY(A,dA)
+    else
+        λ,_,_=generalized_eigen_all(A,dA)
+    end
+    T=eltype(real.(λ))
+    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk)
+    λ_in=real.(λ[valid])
+    λ_all=real.(λ)
+    corr_1=-λ_in
+    corr_1_all=-λ_all
+    λ_corrected=k.+corr_1
+    λ_corrected_all=k.+corr_1_all
+    tens=abs.(corr_1)
+    tens_all=abs.(corr_1_all)
+    return λ_corrected,tens,λ_corrected_all,tens_all
+end
 
 #### DEBUGGING TOOLS ####
 
