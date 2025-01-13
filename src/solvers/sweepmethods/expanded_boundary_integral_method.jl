@@ -698,7 +698,7 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
 end
 
 """
-    source_check(bp::BoundaryPointsBIM{T}; num_print_idxs::Union{Integer,Symbol}=:all, d::T=0) where {T<:Real}
+    source_check(bp::BoundaryPointsBIM{T}; num_print_idxs::Union{Integer,Symbol}=:all, d=0) where {T<:Real}
 
 Checks for singular source indices where the distance between source points is less than `eps(T)`.
 
@@ -723,13 +723,13 @@ function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs::Union{Integer,Sy
     else 
         println("Source first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
     end
-    off_diag=any(i!=j for (i,j) in singular_idxs) # check of diagonal Cartesian Indexes
+    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check of diagonal Cartesian Indexes
     println("Source any off-diagonal elements near singular? ",off_diag)
 end
 
 """
     source_target_check(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}};
-                        num_print_idxs::Union{Integer,Symbol}=:all, reflection::Symbol=:x, d::T=0) where {T<:Real}
+                        num_print_idxs::Union{Integer,Symbol}=:all, reflection::Symbol=:x, d=0) where {T<:Real}
 
 Checks for singular source-target indices where the distance between source and target points is less than `eps(T)`.
 
@@ -759,13 +759,13 @@ function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,
     else 
         println("Source-Target first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
     end
-    off_diag=any(i!=j for (i,j) in singular_idxs) # check of diagonal Cartesian Indexes
+    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check of diagonal Cartesian Indexes
     println("Source-Target any off-diagonal elements near singular? ",off_diag)
 end
 
 """
     distance_singular_check!(solver::ExpandedBoundaryIntegralMethod, billiard::Bi, k;
-                             num_print_idxs::Union{Integer,Symbol}=:all, d::T=0) where {Bi<:AbsBilliard}
+                             num_print_idxs::Union{Integer,Symbol}=:all, d=0) where {Bi<:AbsBilliard}
 
 Performs singular distance checks for source points, source-target pairs under various reflections,
 and reports singular Cartesian indices both on and off diagonal
