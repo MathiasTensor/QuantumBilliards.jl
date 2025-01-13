@@ -705,8 +705,9 @@ Checks for singular source indices where the distance between source points is l
 # Arguments
 - `bp_s::BoundaryPointsBIM{T}`: Source boundary points for xy source coordinates.
 - `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
+- `d::T=eps(T)`: The 0 numerical distance.
 """
-function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs=Union{Integer,Symbol}=:all) where {T<:Real}
+function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs=Union{Integer,Symbol}=:all,d::T=eps(T)) where {T<:Real}
     xy=bp.xy
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
@@ -715,11 +716,11 @@ function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs=Union{Integer,Sym
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
-    singular_idxs=findall(distances.<eps(T))
+    singular_idxs=findall(distances.<d)
     if num_print_idxs==:all
-        println("Source cartesian indices where distance < eps(T): ", singular_idxs)
+        println("Source cartesian indices where distance < $d: ", singular_idxs)
     else 
-        println("Source first $(num_print_idxs) Cartesian indices where distance < eps(T): ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
+        println("Source first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
     end
     off_diag=any(i!=j for (i,j) in singular_idxs) # check of diagonal Cartesian Indexes
     println("Source any off-diagonal elements near singular? ",off_diag)
@@ -736,8 +737,9 @@ Checks for singular source-target indices where the distance between source and 
 - `xy_t::Vector{SVector{2,T}}`: Target points vector.
 - `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
 - `reflection::Symbol`: Type of reflection. Default is `:x`.
+- `d::T=eps(T)`: The 0 numerical distance.
 """
-function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}};num_print_idxs=Union{Integer,Symbol}=:all,reflection::Symbol=:x) where {T<:Real}
+function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}};num_print_idxs=Union{Integer,Symbol}=:all,reflection::Symbol=:x,d::T=eps(T)) where {T<:Real}
     println("Reflection type: ",reflection)
     xy_s=bp_s.xy
     N=length(xy_s)
@@ -749,10 +751,11 @@ function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
+    singular_idxs=findall(distances.<d)
     if num_print_idxs==:all
-        println("Source-Target Cartesian indices where distance < eps(T): ", singular_idxs)
+        println("Source-Target Cartesian indices where distance < $d: ", singular_idxs)
     else 
-        println("Source-Target first $(num_print_idxs) Cartesian indices where distance < eps(T): ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
+        println("Source-Target first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
     end
     off_diag=any(i!=j for (i,j) in singular_idxs) # check of diagonal Cartesian Indexes
     println("Source-Target any off-diagonal elements near singular? ",off_diag)
@@ -770,8 +773,9 @@ and reports singular Cartesian indices both on and off diagonal
 - `billiard::Bi`: The billiard object.
 - `k`: Wavenumber.
 - `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
+- `d::T=eps(T)`: The 0 numerical distance.
 """
-function distance_singular_check!(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k::T;num_print_idxs=Union{Integer,Symbol}=:all) where {Bi<:AbsBilliard,T<:Real}
+function distance_singular_check!(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k::T;num_print_idxs=Union{Integer,Symbol}=:all,d::T=eps(T)) where {Bi<:AbsBilliard,T<:Real}
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     bp=evaluate_points(bim_solver,billiard,k)
     xy_points=bp.xy
@@ -780,9 +784,9 @@ function distance_singular_check!(solver::ExpandedBoundaryIntegralMethod,billiar
     reflected_points_y=[apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points]
     reflected_points_xy=[apply_reflection(p,symmetry_rule) for p in xy_points]
     source_check!(bp,num_print_idxs=num_print_idxs)
-    source_target_check!(bp,reflected_points_x,num_print_idxs=num_print_idxs,reflection=:x)
-    source_target_check!(bp,reflected_points_y,num_print_idxs=num_print_idxs,reflection=:y)
-    source_target_check!(bp,reflected_points_xy,num_print_idxs=num_print_idxs,reflection=:xy)
+    source_target_check!(bp,reflected_points_x,num_print_idxs=num_print_idxs,reflection=:x,d=d)
+    source_target_check!(bp,reflected_points_y,num_print_idxs=num_print_idxs,reflection=:y,d=d)
+    source_target_check!(bp,reflected_points_xy,num_print_idxs=num_print_idxs,reflection=:xy,d=d)
 end
 
 ### HELPERS ###
