@@ -124,7 +124,7 @@ for each `(source_i, target_j)` pair based on the distance and the dot product w
     @inbounds for i in 1:N
         for j in 1:N
             distance=distances[i,j]
-            if distance<eps(T)
+            if distance<eps(T) # pt on reflection axis!
                 M[i,j]=Complex(T(0.0),T(0.0))
             else
                 cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
@@ -222,7 +222,7 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     @inbounds for i in 1:N
         for j in 1:N
             distance=distances[i,j]
-            if distance<eps(T)
+            if distance<eps(T) # pt on reflection axis!
                 M[i,j]=Complex(T(0.0),T(0.0))
             else
                 cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
@@ -715,7 +715,7 @@ function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs::Union{Integer,Sy
     else 
         println("Source first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
     end
-    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check of diagonal Cartesian Indexes
+    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check off-diagonal Cartesian Indexes
     println("Source any off-diagonal elements near singular? ",off_diag)
 end
 
@@ -751,7 +751,7 @@ function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,
     else 
         println("Source-Target first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
     end
-    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check of diagonal Cartesian Indexes
+    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check off-diagonal Cartesian Indexes
     println("Source-Target any off-diagonal elements near singular? ",off_diag)
 end
 
