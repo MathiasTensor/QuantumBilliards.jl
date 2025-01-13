@@ -698,7 +698,7 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
 end
 
 """
-    source_check(bp::BoundaryPointsBIM{T}; num_print_idxs::Union{Integer,Symbol}=:all) where {T<:Real}
+    source_check(bp::BoundaryPointsBIM{T}; num_print_idxs::Union{Integer,Symbol}=:all, d::T=0) where {T<:Real}
 
 Checks for singular source indices where the distance between source points is less than `eps(T)`.
 
@@ -707,7 +707,8 @@ Checks for singular source indices where the distance between source points is l
 - `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
 - `d::T=eps(T)`: The 0 numerical distance.
 """
-function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs::Union{Integer,Symbol}=:all,d::T=0) where {T<:Real}
+function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs::Union{Integer,Symbol}=:all,d=0) where {T<:Real}
+    d==0 && (d=eps(T))
     xy=bp.xy
     N=length(xy)
     M=Matrix{Complex{T}}(undef,N,N)
@@ -728,7 +729,7 @@ end
 
 """
     source_target_check(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}};
-                        num_print_idxs::Union{Integer,Symbol}=:all, reflection::Symbol=:x) where {T<:Real}
+                        num_print_idxs::Union{Integer,Symbol}=:all, reflection::Symbol=:x, d::T=0) where {T<:Real}
 
 Checks for singular source-target indices where the distance between source and target points is less than `eps(T)`.
 
@@ -739,7 +740,8 @@ Checks for singular source-target indices where the distance between source and 
 - `reflection::Symbol`: Type of reflection. Default is `:x`.
 - `d::T=eps(T)`: The 0 numerical distance.
 """
-function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}};num_print_idxs::Union{Integer,Symbol}=:all,reflection::Symbol=:x,d::T=0) where {T<:Real}
+function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}};num_print_idxs::Union{Integer,Symbol}=:all,reflection::Symbol=:x,d=0) where {T<:Real}
+    d==0 && (d=eps(T))
     println("Reflection type: ",reflection)
     xy_s=bp_s.xy
     N=length(xy_s)
@@ -763,7 +765,7 @@ end
 
 """
     distance_singular_check!(solver::ExpandedBoundaryIntegralMethod, billiard::Bi, k;
-                             num_print_idxs::Union{Integer,Symbol}=:all) where {Bi<:AbsBilliard}
+                             num_print_idxs::Union{Integer,Symbol}=:all, d::T=0) where {Bi<:AbsBilliard}
 
 Performs singular distance checks for source points, source-target pairs under various reflections,
 and reports singular Cartesian indices both on and off diagonal
@@ -775,8 +777,8 @@ and reports singular Cartesian indices both on and off diagonal
 - `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
 - `d::T=eps(T)`: The 0 numerical distance.
 """
-function distance_singular_check!(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k::T;num_print_idxs::Union{Integer,Symbol}=:all,d::T=0) where {Bi<:AbsBilliard,T<:Real}
-    d==0 && (d=eps(T))
+function distance_singular_check!(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k;num_print_idxs::Union{Integer,Symbol}=:all,d=0) where {Bi<:AbsBilliard}
+    d==0 && (d=eps(eltype(k)))
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     bp=evaluate_points(bim_solver,billiard,k)
     xy_points=bp.xy
