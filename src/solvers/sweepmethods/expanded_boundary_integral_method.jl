@@ -65,34 +65,6 @@ where:
 Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the normal at the source row.
 """
 @inline function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    #=
-    xy=bp.xy
-    normals=bp.normal
-    N=length(xy)
-    M=Matrix{Complex{T}}(undef,N,N)
-    xs=getindex.(xy,1)
-    ys=getindex.(xy,2)
-    dx=xs.-xs'
-    dy=ys.-ys'
-    distances=hypot.(dx,dy)
-    @inbounds for i in 1:N
-        for j in 1:i # symmetric hankel part
-            distance=distances[i,j]
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
-            else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
-                M[i,j]=cos_phi*hankel
-            end
-            if i!=j
-                cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
-                M[j,i]=cos_phi_symmetric*hankel
-            end
-        end
-    end
-    return M
-    =#
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -138,7 +110,6 @@ the second set of points is taken from `xy_t` rather than the boundary itself.
 for each `(source_i, target_j)` pair based on the distance and the dot product with `normalᵢ`.
 """
 @inline function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    #=
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -153,37 +124,11 @@ for each `(source_i, target_j)` pair based on the distance and the dot product w
     @inbounds for i in 1:N
         for j in 1:N
             distance=distances[i,j]
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
-            else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
-                M[i,j]=cos_phi*hankel
-            end
-        end
-    end
-    return M
-    =#
-    xy_s=bp_s.xy
-    normals=bp_s.normal
-    N=length(xy_s)
-    M=Matrix{Complex{T}}(undef,N,N)
-    x_s=getindex.(xy_s,1)
-    y_s=getindex.(xy_s,2)
-    x_t=getindex.(xy_t,1)
-    y_t=getindex.(xy_t,2)
-    dx=x_s.-x_t'
-    dy= y_s.-y_t'
-    distances=hypot.(dx,dy)
-    @inbounds for i in 1:N
-        for j in vcat(1:i-1,i+1:N)
-            distance=distances[i,j]
             cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
             hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
             M[i,j]=cos_phi*hankel
         end
     end
-    M[diagind(M)].=Complex(T(0.0),T(0.0))
     return M
 end
 
@@ -213,34 +158,6 @@ The exact Hankel expression matches the partial derivative:
 row `i`, so the matrix is not necessarily symmetric unless the geometry enforces it.
 """
 @inline function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPointsBIM{T},k::T) where {T<:Real}
-    #=
-    xy=bp.xy
-    normals=bp.normal
-    N=length(xy)
-    M=Matrix{Complex{T}}(undef,N,N)
-    xs=getindex.(xy,1)
-    ys=getindex.(xy,2)
-    dx=xs.-xs'
-    dy=ys.-ys'
-    distances=hypot.(dx,dy)
-    @inbounds for i in 1:N
-        for j in 1:i # symmetric hankel part
-            distance=distances[i,j]
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
-            else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
-                M[i,j]=cos_phi*hankel
-            end
-            if i!=j
-                cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
-                M[j,i]=cos_phi_symmetric*hankel
-            end
-        end
-    end
-    return M
-    =#
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -287,7 +204,6 @@ to target `j`.
 the second derivative of the kernel formula at each `(source_i, target_j)`.
 """
 @inline function default_helmholtz_kernel_second_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T) where {T<:Real}
-    #=
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)
@@ -302,37 +218,11 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     @inbounds for i in 1:N
         for j in 1:N
             distance=distances[i,j]
-            if distance<eps(T)
-                M[i,j]=Complex(T(0.0),T(0.0))
-            else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
-                M[i,j]=cos_phi*hankel
-            end
-        end
-    end
-    return M
-    =#
-    xy_s=bp_s.xy
-    normals=bp_s.normal
-    N=length(xy_s)
-    M=Matrix{Complex{T}}(undef,N,N)
-    x_s=getindex.(xy_s,1)
-    y_s=getindex.(xy_s,2)
-    x_t=getindex.(xy_t,1)
-    y_t=getindex.(xy_t,2)
-    dx=x_s.-x_t'
-    dy= y_s.-y_t'
-    distances=hypot.(dx,dy)
-    @inbounds for i in 1:N
-        for j in vcat(1:i-1,i+1:N)
-            distance=distances[i,j]
             cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
             hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
             M[i,j]=cos_phi*hankel
         end
     end
-    M[diagind(M)].=Complex(T(0.0),T(0.0))
     return M
 end
 
