@@ -80,6 +80,50 @@ function read_numerical_ks_and_overlaps(filename::String)
 end
 
 """
+    save_numerical_ks_and_localizations(ks::Vector{T}, entropies::Vector{T}, filename::String) where {T<:Real}
+
+Saves numerical eigenvalues and their corresponding localization entropies to a CSV file.
+
+# Arguments
+- `ks::Vector{T}`: A vector of numerical eigenvalues `k`.
+- `Ms::Vector{T}`: A vector of localization entropy values corresponding to each eigenvalue.
+- `filename::String`: The name of the CSV file to save the data.
+
+# Notes
+- The function creates a `DataFrame` with two columns: 
+  - `k`: The eigenvalues.
+  - `A`: The entropies.
+- Writes the `DataFrame` to the specified `filename` in CSV format.
+"""
+function save_numerical_ks_and_localizations(ks::Vector{T}, entropies::Vector{T}, filename::String) where {T<:Real}
+    df=DataFrame(k=ks, A=entropies)
+    CSV.write(filename, df)
+end
+
+"""
+    read_numerical_ks_and_localizations(filename::String) -> (ks, Ms)
+
+Reads numerical eigenvalues and their corresponding tensions from a CSV file.
+
+# Arguments
+- `filename::String`: The name of the CSV file to read the data from.
+
+# Returns
+- `ks`: A vector of numerical eigenvalues read from the `k` column of the file.
+- `tensions`: A vector of entropies read from the `A` column of the file.
+
+# Notes
+- CSV file has columns named `k` (for eigenvalues) and `A` (for entropies).
+- The function returns the data as two separate vectors, `ks` and `As`.
+"""
+function read_numerical_ks_and_localizations(filename::String)
+    df=CSV.read(filename, DataFrame)
+    ks=df.k
+    As=df.A
+    return ks, As
+end
+
+"""
     read_numerical_ks_and_tensions(filename::String) -> (ks, tensions)
 
 Read numerical eigenvalues and tensions from a CSV file.
