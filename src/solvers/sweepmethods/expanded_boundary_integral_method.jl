@@ -687,7 +687,7 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
     return λ_corrected_1,tens_1,λ_corrected_2,tens_2
 end
 
-# HELPERS FOR DETERMINING THE BEHAVIOUR OF DISTANCE -> 0 LIMIT FOR VARIOUS TYPES (SINCE THE eps(T) CAN CHANGE)
+# HELPERS FOR DETERMINING THE BEHAVIOUR OF DISTANCE -> 0 LIMIT FOR VARIOUS TYPES (SINCE THE eps(T) CAN CHANGE) AND ALSO UNDER REFLECTIONS IF THE POINTS ARE ON THE SYMMETRY AXES THEN PROBLEMS MIGHT OCCUR
 
 """
     source_check(bp::BoundaryPointsBIM{T}; num_print_idxs::Union{Integer,Symbol}=:all, d=0) where {T<:Real}
