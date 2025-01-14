@@ -139,7 +139,7 @@ end
 """
     husimiOnGridOptimized(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
 
-Evaluates the Poincaré-Husimi function on a grid using vectorized operations.
+Evaluates the Poincaré-Husimi function on a grid using vectorized operations in a thread-safe manner since only a single thread work on a column of the Husimi matrix.
 
 Arguments:
 - `k::T`: Wavenumber of the eigenstate.
