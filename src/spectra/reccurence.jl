@@ -34,7 +34,7 @@ function S(bmap::Vector,L::T;max_collisions::Int=10^8,num_bins::Int=1000) where 
         local_recurrence_times[i]=Dict{Tuple{Int,Int},Vector{Int}}()
         local_last_visit[i]=Dict{Tuple{Int,Int},Int}()
     end
-    progress=Progress(max_collisions,desc="Processing collisions")
+    progress=Progress(max_collisions,desc="Processing collisions in S")
     counter=Threads.Atomic{Int}(0)
     Threads.@threads for collision in eachindex(bmap)
         s,p_coord=bmap[collision]
