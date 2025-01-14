@@ -155,6 +155,7 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+    
     qs=range(0.0,stop=L,length=nx)
     ps=range(-1.0,stop=1.0,length=ny)
     N=length(s)
@@ -165,6 +166,7 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     width=4/sqrt(k)
     H=zeros(T,ny,nx)
     Threads.@threads for i_q = 1:nx
+        #=
         q=qs[i_q]
         si=similar(s) # race conditions problem sometimes
         w=similar(s)
@@ -187,6 +189,47 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
             h_real = @inbounds sum(cr[1:len_window].*ui_window)
             h_imag = -@inbounds sum(ci[1:len_window].*ui_window)  # Negative due to conjugation
             @inbounds H[i_p,i_q]=(h_real^2+h_imag^2)/(2*π*k)
+        end
+        =#
+        q = qs[i_q]
+        
+        # Thread-local storage to avoid race conditions
+        len_s = length(s)
+        si_window = Vector{T}(undef, len_s)
+        w = Vector{T}(undef, len_s)
+        cr = Vector{T}(undef, len_s)
+        ci = Vector{T}(undef, len_s)
+
+        idx_start = searchsortedfirst(s, q - width) # Find indices within the window
+        idx_end = searchsortedlast(s, q + width)
+        len_window = idx_end - idx_start + 1
+
+        # Use explicit slices instead of views
+        s_window = @inbounds s[idx_start:idx_end]
+        ui_window = @inbounds u[idx_start:idx_end]
+        dsi_window = @inbounds ds[idx_start:idx_end]
+
+        # Compute `si_window` and weights
+        @inbounds for i = 1:len_window
+            si_window[i] = s_window[i] - q
+            w[i] = norm_factor * exp(-0.5 * k * si_window[i]^2) * dsi_window[i]
+        end
+
+        # Compute Husimi function
+        for i_p = 1:ny
+            p = ps[i_p]
+            kp = k * p
+
+            # Compute real and imaginary parts
+            @inbounds for i = 1:len_window
+                cr[i] = w[i] * cos(kp * si_window[i])
+                ci[i] = w[i] * sin(kp * si_window[i])
+            end
+
+            # Sum contributions
+            h_real = @inbounds sum(cr[1:len_window] .* ui_window)
+            h_imag = -@inbounds sum(ci[1:len_window] .* ui_window) # Negative due to conjugation
+            @inbounds H[i_p, i_q] = (h_real^2 + h_imag^2) / (2 * π * k)
         end
     end
     return H'./sum(H),qs,ps
