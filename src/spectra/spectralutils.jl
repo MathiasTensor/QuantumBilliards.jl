@@ -788,7 +788,6 @@ Visualizes the spectrum computation with how the overlap and subsequent merging 
 - `Tuple{Vector{T},Vector{T},Vector{Bool}} = ks, tens, control`: A tuple of final eigenvalues, their tensions and the control vectors which signifies that they were compared aand kept in the algorithm logic.
 """
 function compute_spectrum_test(solver::Sol,basis::Ba,pts::Pts,k1::T,k2::T,dk::T;tol=1e-4) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Pts<:AbsPoints,T<:Real}
-    using Makie
     k0=k1
     #initial computation
     k_res,ten_res=solve(solver,basis,pts,k0,dk+tol)
