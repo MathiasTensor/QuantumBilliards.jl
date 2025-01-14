@@ -42,7 +42,7 @@ function S(bmap::Vector,L::T;max_collisions::Int=10^8,num_bins::Int=1000) where 
         s_idx=findfirst(x -> x>=s,s_edges)
         p_idx=findfirst(x -> x>=p_coord,p_edges)
 
-        # Check if `findfirst` returned `nothing` and adjust accordingly. This is a hack since s or p_coord can go slightly out of bounds (now always)
+        # Check if `findfirst` returned `nothing` and adjust accordingly. This is a hack since s or p_coord can go slightly out of bounds (not always)
         s_idx=isnothing(s_idx) ? num_bins : max(1,s_idx-1)  # Use last bin if out of bounds, or decrement by 1 as logic above (uncommented)
         p_idx=isnothing(p_idx) ? num_bins : max(1,p_idx-1)  # Same logic for p
 
