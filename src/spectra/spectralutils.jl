@@ -2,6 +2,10 @@
 include("../states/eigenstates.jl")
 using ProgressMeter
 
+
+################################################################
+############## OVERLAP AND MERGE ALGORITHM  ####################
+################################################################
 """
     is_equal(x::T, dx::T, y::T, dy::T) -> Bool where {T<:Real}
 
@@ -251,7 +255,10 @@ function overlap_and_merge_state!(k_left::Vector, ten_left::Vector, X_left, k_ri
     append!(control_left,[false for _ in idx_last:length(k_right)])
 end
 
-# DEPRECEATED
+################################################################
+####################### LEGACY  ################################
+################################################################
+
 function compute_spectrum_LEGACY(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol=1e-4) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     k0=k1
     num_intervals=ceil(Int,(k2-k1)/dk)
@@ -270,7 +277,31 @@ function compute_spectrum_LEGACY(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,
     return k_res,ten_res,control
 end
 
-#### MAIN ONE -> just eigenvalues
+################################################################
+################## VERGINI - SARACENO  #########################
+################################################################
+
+"""
+    function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+
+Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard. Returns the computed eigenvalues and tensions.
+
+# Arguments
+- `solver<:AcceleratedSolver`: The solver used to compute the spectrum.
+- `basis<:AbsBasis`: The basis set used for computations. Needs to be comtaptible with the geometry of the problem.
+- `billiard::Bi`: The billiard domain for the problem.
+- `k1::T`, `k2::T`: The starting and ending wavenumbers of the spectrum range.
+- `tol`: Additional padding for merging algorithm (default: `1e-4`).
+- `N_expect`: Expected number of eigenvalues per interval (default: `1`).
+- `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
+- `fundamental`: Whether to use fundamental domain properties (default: `true`).
+
+# Returns
+- A tuple `(k_res, ten_res, control)`:
+    - `k_res::Vector{T}`: Vector of computed wavenumbers.
+    - `ten_res::Vector{T}`: Vector of corresponding tensions.
+    - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
+"""
 function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
     println("Starting spectrum computation...")
@@ -312,6 +343,27 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-
     return k_res,ten_res,control
 end
 
+"""
+    compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+
+Computes the spectrum for a range of states `[N1, N2]` using the given solver, basis, and billiard. Translates the state numbers to wavenumbers using Weyl's law and then computes the spectrum via the k version of this function.
+
+# Arguments
+- `solver<:AcceleratedSolver`: The solver used to compute the spectrum.
+- `basis<:AbsBasis`: The basis set used for computations. Needs to be comtaptible with the geometry of the problem.
+- `billiard::Bi`: The billiard domain for the problem.
+- `N1::Int`, `N2::Int`: The starting and ending state numbers that will be translated to their corresponding eigenvalues via Weyl's law.
+- `tol`: Additional padding for merging algorithm (default: `1e-4`).
+- `N_expect`: Expected number of eigenvalues per interval (default: `1`).
+- `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
+- `fundamental`: Whether to use fundamental domain properties (default: `true`).
+
+# Returns
+- A tuple `(k_res, ten_res, control)`:
+    - `k_res::Vector{T}`: Vector of computed wavenumbers.
+    - `ten_res::Vector{T}`: Vector of corresponding tensions.
+    - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
+"""
 function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     # get the k1 and k2 from the N1 and N2
     k1=k_at_state(N1,billiard;fundamental=fundamental)
@@ -322,11 +374,10 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol
     return k_res,ten_res,control
 end
 
-#### MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved
 """
     compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental=true)
 
-Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors.
+Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors. MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved
 
 # Arguments
 - `solver`: The solver used to compute the spectrum.
@@ -339,9 +390,9 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
 
 # Returns
-- A tuple `(state_res, control)`:
-    - `state_res`: `StateData` containing the merged wavenumbers, tensions, and eigenvectors.
-    - `control`: Vector indicating whether each wavenumber was merged (`true`) with tension comparisons or not (`false`).
+    - `k_res::Vector{T}`: Vector of computed wavenumbers.
+    - `ten_res::Vector{T}`: Vector of corresponding tensions.
+    - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
 function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect::Int=1,dk_threshold::T=T(0.05),fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
@@ -379,109 +430,30 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
 end
 
 """
-    compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05 * k^(-1/3))) -> Tuple{Vector{T}, Vector{T}}
+    compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental=true)
 
-Computes the spectrum of the expanded BIM and their corresponding tensions for a given billiard problem within a specified wavenumber range.
+Computes the spectrum over a range of wavenumbers defined by the bracketing interval of their state number `[N1, N2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors. MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved. This one is just a wrapper function for the k version of this function.
 
 # Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the expanded boundary integral method.
-- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
-- `k1::T`: Starting wavenumber for the spectrum calculation.
-- `k2::T`: Ending wavenumber for the spectrum calculation.
-- `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
-- `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
-- `use_lapack_raw::Bool=false`: Use the ggev LAPACK function directly without Julia's eigen(A,B) wrapper for it. Might provide speed-up for certain situations (small matrices...)
-- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}`: Custom kernel functions for the boundary integral method. The default implementation is given by (:default,:first,:second) for the default hemlhholtz kernel and it's first and second derivative.
+- `solver`: The solver used to compute the spectrum.
+- `basis`: The basis set used in computations.
+- `billiard`: The billiard domain for the problem.
+- `N1::Int`, `N2::Int`: The starting and ending state numbers that will be translated to their corresponding eigenvalues via Weyl's law.
+- `tol`: Tolerance for computations (default: `1e-4`).
+- `N_expect`: Expected number of eigenvalues per interval (default: `3`).
+- `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
+- `fundamental`: Whether to use fundamental domain properties (default: `true`).
 
 # Returns
-- `Tuple{Vector{T}, Vector{T}}`: 
-  - First element is a vector of corrected eigenvalues (`λ`).
-  - Second element is a vector of corresponding tensions.
+    - `k_res::Vector{T}`: Vector of computed wavenumbers.
+    - `ten_res::Vector{T}`: Vector of corresponding tensions.
+    - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
-    basis=AbstractHankelBasis()
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    ks=T[]
-    dks=T[]
-    k=k1
-    while k<k2
-        push!(ks,k)
-        k+=dk(k)
-        push!(dks,dk(k))
-    end
-    λs_all=T[] 
-    tensions_all=T[]
-    control=Bool[]
-    println("EBIM...")
-    @showprogress for i in eachindex(ks)
-        dd=dks[i]
-        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun)
-        if !isempty(λs)
-            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,ks[i]-dd,ks[i];tol=tol)
-            #append!(λs_all,λs)
-            #append!(tensions_all,tensions) 
-        end
-    end
-    if isempty(λs_all) # Handle case of no eigenvalues found
-        λs_all=[NaN]
-        tensions_all=[NaN]
-    end
-    return λs_all,tensions_all
-end
-
-# IN PREPARATION
-function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
-    basis=AbstractHankelBasis()
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    ks=T[]
-    ks_tmp=T[] # temps for storing ebim inv checks
-    tens_tmp=T[] # temps for storing ebim inv checks
-    dks=T[]
-    k=k1
-    while k<k2
-        push!(ks,k)
-        k+=dk(k)
-        push!(dks,dk(k))
-    end
-    λs_all=T[] 
-    tensions_all=T[]
-    control=Bool[]
-    @showprogress desc="EBIM with 1/diff(ks) check..." for i in eachindex(ks)
-        dd=dks[i]
-        λs_in,tensions_in,λs_out,tensions_out=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
-        if !isempty(λs_in) # overlap and merge 1st order corrections
-            overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,ks[i]-dd,ks[i];tol=tol)
-        end
-        idx=findmin(tensions_out)[2]
-        if log10(tensions_out[idx])<0.0
-            push!(ks_tmp,λs_out[idx])
-            push!(tens_tmp,tensions_out[idx])     
-        end
-    end
-    println("length of k_tmp: ",length(ks_tmp))
-    _,inv_tens=ebim_inv_diff(ks_tmp)
-    idxs=findall(x->x>0.0,inv_tens) # only these are sensible
-    inv_tens=inv_tens[idxs]
-    ks_tmp=ks_tmp[idxs] 
-    k_peaks=find_peaks(ks_tmp,log10.(inv_tens);threshold=[1.2*log10(1.0/dk(k)) for k in ks_tmp]) # check in neighboorhod of these ks if we have a solution (could either be or not) and if not do the solve again
-    println("length of k peaks: ",length(k_peaks))
-    @showprogress desc="EBIM resolving for peaks of 1/diff" for k in k_peaks
-        interval=(k-dk(k)/2,k+dk(k)/2)
-        existing_solutions=any(λ->interval[1]<=λ<=interval[2],λs_all)
-        if !existing_solutions # if none resolve
-            println("Re-solving in interval $interval...")
-            λs_in,tensions_in,_,_=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k);use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
-            println("λs_in length: ", length(λs_in))
-            if !isempty(λs_in)  # merge, if any
-                overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,interval[1],interval[2];tol = tol)
-            end
-        end
-    end
-    if isempty(λs_all) # Handle case of no eigenvalues found
-        λs_all=[NaN]
-        tensions_all=[NaN]
-    end
-    return λs_all,tensions_all
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol::T=T(1e-4),N_expect::Int=1,dk_threshold=0.05,fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+    k1=k_at_state(N1,billiard;fundamental=fundamental)
+    k2=k_at_state(N2,billiard;fundamental=fundamental)
+    println("k1 = $(k1), k2 = $(k2)")
+    compute_spectrum_with_state(solver,basis,billiard,k1,k2,tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental)
 end
 
 # IN PREPARATION
@@ -512,7 +484,7 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
   - A vector of eigenvalue tensions (`tensions`).
   - A vector of control flags (`controls`).
 """
-function compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0),partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+function compute_spectrum_optimized(k1::T,k2::T,basis::Ba,billiard::Bi;N_expect::Integer=1,dk_threshold=T(0.05),tol::T=T(1e-4),d0::T=T(1.0),b0::T=T(2.0),partitions::Integer=10,samplers::Vector{Sam}=[GaussLegendreNodes()],fundamental::Bool=true,display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false,d0=d0,b0=b0)
     for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
@@ -684,7 +656,120 @@ function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiar
     return state_res, control
 end
 
-# 
+################################################################
+############### EXPANDED BOUNDARY INTEGEAL METHOD###############
+################################################################
+
+"""
+    compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05 * k^(-1/3))) -> Tuple{Vector{T}, Vector{T}}
+
+Computes the spectrum of the expanded BIM and their corresponding tensions for a given billiard problem within a specified wavenumber range.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the expanded boundary integral method.
+- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
+- `k1::T`: Starting wavenumber for the spectrum calculation.
+- `k2::T`: Ending wavenumber for the spectrum calculation.
+- `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
+- `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
+- `use_lapack_raw::Bool=false`: Use the ggev LAPACK function directly without Julia's eigen(A,B) wrapper for it. Might provide speed-up for certain situations (small matrices...)
+- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}`: Custom kernel functions for the boundary integral method. The default implementation is given by (:default,:first,:second) for the default hemlhholtz kernel and it's first and second derivative.
+
+# Returns
+- `Tuple{Vector{T}, Vector{T}}`: 
+  - First element is a vector of corrected eigenvalues (`λ`).
+  - Second element is a vector of corresponding tensions.
+"""
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
+    basis=AbstractHankelBasis()
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    ks=T[]
+    dks=T[]
+    k=k1
+    while k<k2
+        push!(ks,k)
+        k+=dk(k)
+        push!(dks,dk(k))
+    end
+    λs_all=T[] 
+    tensions_all=T[]
+    control=Bool[]
+    println("EBIM...")
+    @showprogress for i in eachindex(ks)
+        dd=dks[i]
+        λs,tensions=solve(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun)
+        if !isempty(λs)
+            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,ks[i]-dd,ks[i];tol=tol)
+            #append!(λs_all,λs)
+            #append!(tensions_all,tensions) 
+        end
+    end
+    if isempty(λs_all) # Handle case of no eigenvalues found
+        λs_all=[NaN]
+        tensions_all=[NaN]
+    end
+    return λs_all,tensions_all
+end
+
+# IN PREPARATION FOR EBIM
+function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
+    basis=AbstractHankelBasis()
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    ks=T[]
+    ks_tmp=T[] # temps for storing ebim inv checks
+    tens_tmp=T[] # temps for storing ebim inv checks
+    dks=T[]
+    k=k1
+    while k<k2
+        push!(ks,k)
+        k+=dk(k)
+        push!(dks,dk(k))
+    end
+    λs_all=T[] 
+    tensions_all=T[]
+    control=Bool[]
+    @showprogress desc="EBIM with 1/diff(ks) check..." for i in eachindex(ks)
+        dd=dks[i]
+        λs_in,tensions_in,λs_out,tensions_out=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
+        if !isempty(λs_in) # overlap and merge 1st order corrections
+            overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,ks[i]-dd,ks[i];tol=tol)
+        end
+        idx=findmin(tensions_out)[2]
+        if log10(tensions_out[idx])<0.0
+            push!(ks_tmp,λs_out[idx])
+            push!(tens_tmp,tensions_out[idx])     
+        end
+    end
+    println("length of k_tmp: ",length(ks_tmp))
+    _,inv_tens=ebim_inv_diff(ks_tmp)
+    idxs=findall(x->x>0.0,inv_tens) # only these are sensible
+    inv_tens=inv_tens[idxs]
+    ks_tmp=ks_tmp[idxs] 
+    k_peaks=find_peaks(ks_tmp,log10.(inv_tens);threshold=[1.2*log10(1.0/dk(k)) for k in ks_tmp]) # check in neighboorhod of these ks if we have a solution (could either be or not) and if not do the solve again
+    println("length of k peaks: ",length(k_peaks))
+    @showprogress desc="EBIM resolving for peaks of 1/diff" for k in k_peaks
+        interval=(k-dk(k)/2,k+dk(k)/2)
+        existing_solutions=any(λ->interval[1]<=λ<=interval[2],λs_all)
+        if !existing_solutions # if none resolve
+            println("Re-solving in interval $interval...")
+            λs_in,tensions_in,_,_=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k);use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
+            println("λs_in length: ", length(λs_in))
+            if !isempty(λs_in)  # merge, if any
+                overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,interval[1],interval[2];tol = tol)
+            end
+        end
+    end
+    if isempty(λs_all) # Handle case of no eigenvalues found
+        λs_all=[NaN]
+        tensions_all=[NaN]
+    end
+    return λs_all,tensions_all
+end
+
+################################################################
+######################## TEST FUNCTIONS ########################
+################################################################
+
 """
     compute_spectrum_test(solver::Sol,basis::Ba,pts::Pts,k1::T,k2::T,dk::T;tol=1e-4) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Pts<:AbsPoints,T<:Real}
 
