@@ -16,8 +16,8 @@ ensuring that the shifted values are periodic and wrap around a closed boundary.
 # Returns
 - `shifted_s_vals::Vector{T}`: A vector containing the shifted arc-length values. Each `s_val` is shifted by `s_shift` and wrapped around the boundary using modulo arithmetic with `boundary_length`.
 """
-function shift_s_vals_poincare_birkhoff(s_vals::Vector{T}, s_shift::T, boundary_length::T) where {T<:Real}
-    shifted_s_vals = Vector{T}(undef, length(s_vals))
+function shift_s_vals_poincare_birkhoff(s_vals::Vector{T},s_shift::T,boundary_length::T) where {T<:Real}
+    shifted_s_vals=Vector{T}(undef,length(s_vals))
     for i in 1:length(s_vals)
         shifted_s_vals[i] = (s_vals[i] + s_shift) % boundary_length
     end
@@ -433,104 +433,104 @@ Separates the regular from the chaotic states based on the classical criterion w
 - `regular_idx::Vector`: The indices of the regular states for which M_thresh produced the correct volume fraction of the classical phase space. This can then be used on the initial `ks` to get the regular ones.
 """
 function separate_regular_and_chaotic_states(ks::Vector,H_list::Vector,qs_list::Vector,ps_list::Vector,classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector,ρ_regular_classic::Float64;decrease_step_size=0.05,relative_closeness_perc=5)
-    @assert (length(H_list) == length(qs_list)) && (length(qs_list) == length(ps_list)) "The lists are not the same length"
-    n = length(ks)
-    M_vals = zeros(Float64, n)
+    @assert (length(H_list)==length(qs_list)) && (length(qs_list)==length(ps_list)) "Separation of states: The lists are not the same length"
+    n=length(ks)
+    M_vals=zeros(Float64,n)
 
     # Precompute M_vals once
-    progress = Progress(n; desc="Computing M_vals")
+    progress=Progress(n;desc="Computing M_vals")
     Threads.@threads for i in 1:n
-        H = H_list[i]
-        qs = qs_list[i]
-        ps = ps_list[i]
-        println("qs: ", length(qs))
-        println("ps: ", length(ps))
-        println("H: ", size(H))
-        proj_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs, ps)
-        M_vals[i] = compute_M(proj_grid, H)
+        H=H_list[i]
+        qs=qs_list[i]
+        ps=ps_list[i]
+        println("qs: ",length(qs))
+        println("ps: ",length(ps))
+        println("H: ",size(H))
+        proj_grid=classical_phase_space_matrix(classical_chaotic_s_vals,classical_chaotic_p_vals,qs,ps)
+        M_vals[i]=compute_M(proj_grid,H)
         next!(progress)
     end
 
     function calc_ρ(M_thresh)
-        regular_mask = M_vals .< M_thresh
-        ρ_numeric_reg = count(regular_mask) / n
-        regular_idx = findall(regular_mask)
-        return ρ_numeric_reg, regular_idx
+        regular_mask=M_vals.<M_thresh
+        ρ_numeric_reg=count(regular_mask)/n
+        regular_idx=findall(regular_mask)
+        return ρ_numeric_reg,regular_idx
     end
 
     # Initial setup
-    M_thresh = 0.99
-    Ms = Float64[]
-    ρs = Float64[]
-    ρ_numeric_reg, regular_idx = calc_ρ(M_thresh)
+    M_thresh=0.99
+    Ms=Float64[]
+    ρs=Float64[]
+    ρ_numeric_reg,regular_idx=calc_ρ(M_thresh)
 
-    println("Current ρ_numeric_reg: $(round(ρ_numeric_reg, digits=6))") # for checking purposes
-    println("Theoretical ρ_reg: $(round(ρ_regular_classic, digits=6))")
-    relative_closeness = abs(ρ_numeric_reg - ρ_regular_classic) / ρ_regular_classic * 100
-    println("Relative closeness: $(round(relative_closeness, digits=4))%")
+    println("Current ρ_numeric_reg: $(round(ρ_numeric_reg,digits=6))") # for checking purposes
+    println("Theoretical ρ_reg: $(round(ρ_regular_classic,digits=6))")
+    relative_closeness=abs(ρ_numeric_reg-ρ_regular_classic)/ρ_regular_classic*100
+    println("Relative closeness: $(round(relative_closeness,digits=4))%")
     
-    prev_num_ρ = ρ_numeric_reg # for preventing inf cycles in outer loop
-    push!(Ms, M_thresh)
-    push!(ρs, ρ_numeric_reg)
-    M_thresh -= decrease_step_size # to not calculate twice in outer loop
+    prev_num_ρ=ρ_numeric_reg # for preventing inf cycles in outer loop
+    push!(Ms,M_thresh)
+    push!(ρs,ρ_numeric_reg)
+    M_thresh-=decrease_step_size # to not calculate twice in outer loop
 
-    max_iterations = 1000  # To prevent infinite loops
-    max_inner_iterations = 5
-    iteration = 0
-    inner_iterations = 0
-    inner_iteration = false
+    max_iterations=1000  # To prevent infinite loops
+    max_inner_iterations=5 # max number of iterations when we are doing small step iterations when close to ρ_regular_classic
+    iteration=0
+    inner_iterations=0
+    inner_iteration=false
 
     while true
-        iteration += 1
-        if iteration > max_iterations
+        iteration+=1
+        if iteration>max_iterations
             @warn "Maximum iterations reached."
             break
         end
 
-        ρ_numeric_reg, reg_idx_loop = calc_ρ(M_thresh)
-        push!(Ms, M_thresh)
-        push!(ρs, ρ_numeric_reg)
-        regular_idx = reg_idx_loop # this is returned for separation purposes
+        ρ_numeric_reg,reg_idx_loop=calc_ρ(M_thresh)
+        push!(Ms,M_thresh)
+        push!(ρs,ρ_numeric_reg)
+        regular_idx=reg_idx_loop # this is returned for separation purposes
 
-        println("Current ρ_numeric_reg: $(round(ρ_numeric_reg, digits=6))")
-        println("Theoretical ρ_reg: $(round(ρ_regular_classic, digits=6))")
-        relative_closeness = abs(ρ_numeric_reg - ρ_regular_classic) / ρ_regular_classic * 100
-        println("Relative closeness: $(round(relative_closeness, digits=4))%")
-        if relative_closeness < 5
+        println("Current ρ_numeric_reg: $(round(ρ_numeric_reg,digits=6))")
+        println("Theoretical ρ_reg: $(round(ρ_regular_classic,digits=6))")
+        relative_closeness=abs(ρ_numeric_reg-ρ_regular_classic)/ρ_regular_classic*100
+        println("Relative closeness: $(round(relative_closeness,digits=4))%")
+        if relative_closeness<5
             break
         end
 
         # Adjust decrease_step_size if ρ_numeric_reg has gone below ρ_regular_classic
-        if ρ_numeric_reg < ρ_regular_classic
-            if relative_closeness < 5
+        if ρ_numeric_reg<ρ_regular_classic
+            if relative_closeness<5 # if 5% close to ρ_regular_classic execute inner iteration loop
                 break
             end
-            if inner_iterations > max_inner_iterations
+            if inner_iterations>max_inner_iterations
                 println("Max inner iterations achieved, breaking")
                 break
             end
-            decrease_step_size *= 0.9
-            inner_iteration = true
+            decrease_step_size*=0.9
+            inner_iteration=true
             println("Adjusted decrease_step_size: $(round(decrease_step_size, digits=6))")
-            inner_iterations += 1
+            inner_iterations+=1
         end
-        if (abs(prev_num_ρ - ρ_numeric_reg)/ρ_numeric_reg * 100) < 1 && (relative_closeness < relative_closeness_perc)
+        if (abs(prev_num_ρ-ρ_numeric_reg)/ρ_numeric_reg*100)<1 && (relative_closeness<relative_closeness_perc)
             println("No more precise, breaking!")
             break
         end
-        prev_num_ρ = ρ_numeric_reg
+        prev_num_ρ=ρ_numeric_reg
         # Update M_thresh based on outer/inner loop
         if !inner_iteration
-            M_thresh -= decrease_step_size
+            M_thresh-=decrease_step_size # depedning on the inenr/outer loop
         else
-            M_thresh += decrease_step_size
-            inner_iteration = false
+            M_thresh+=decrease_step_size # depedning on the inenr/outer loop
+            inner_iteration=false
         end
-        if M_thresh <= 0.0
+        if M_thresh<=0.0
             throw(ArgumentError("M_thresh must be positive"))
         end
     end
-    return Ms, ρs, regular_idx
+    return Ms,ρs,regular_idx
 end
 
 """
@@ -565,7 +565,7 @@ Loads the separation params for a set of eigenstates (Poincare-Husimi functions)
 """
 function load_separation_parameters(filename::String)
     @load filename Ms ρs regular_idx
-    return Ms, ρs, regular_idx
+    return Ms,ρs,regular_idx
 end
 
 """
@@ -581,12 +581,12 @@ Separate `ks` values into regular and chaotic based on the indices of regular st
 - `ks_regular::Vector`: The subset of `ks` corresponding to the regular states.
 - `ks_chaotic::Vector`: The subset of `ks` corresponding to the chaotic states.
 """
-function separate_ks_by_classical_indices(ks::Vector, regular_idx::Vector{Int})
-    ks_regular = ks[regular_idx]
-    all_indices = Set(1:length(ks))  # Set of all indices
-    chaotic_idx = sort(collect(setdiff(all_indices, regular_idx)))  # Find chaotic indices
-    ks_chaotic = ks[collect(chaotic_idx)]  # Extract ks_chaotic
-    return ks_regular, ks_chaotic
+function separate_ks_by_classical_indices(ks::Vector,regular_idx::Vector{Int})
+    ks_regular=ks[regular_idx]
+    all_indices=Set(1:length(ks))  # Set of all indices
+    chaotic_idx=sort(collect(setdiff(all_indices,regular_idx)))  # Find chaotic indices
+    ks_chaotic=ks[collect(chaotic_idx)]  # Extract ks_chaotic
+    return ks_regular,ks_chaotic
 end
 
 """
@@ -602,12 +602,12 @@ Separates the Husimi function matrices `Hs_list` into regular and chaotic based 
 - `Hs_regular::Vector{Matrix}`: A vector containing the Husimi function matrices corresponding to the regular states.
 - `Hs_chaotic::Vector{Matrix}`: A vector containing the Husimi function matrices corresponding to the chaotic states.
 """
-function separate_Hs_by_classical_indices(Hs_list::Vector, regular_idx::Vector{Int})
-    Hs_regular = Hs_list[regular_idx]
-    all_indices = Set(1:length(Hs_list))
-    chaotic_idx = sort(collect(setdiff(all_indices, regular_idx)))  # Find chaotic indices
-    Hs_chaotic = Hs_list[collect(chaotic_idx)]  # Extract Hs_chaotic
-    return Hs_regular, Hs_chaotic
+function separate_Hs_by_classical_indices(Hs_list::Vector,regular_idx::Vector{Int})
+    Hs_regular=Hs_list[regular_idx]
+    all_indices=Set(1:length(Hs_list))
+    chaotic_idx=sort(collect(setdiff(all_indices,regular_idx)))  # Find chaotic indices
+    Hs_chaotic=Hs_list[collect(chaotic_idx)]  # Extract Hs_chaotic
+    return Hs_regular,Hs_chaotic
 end
 
 """
@@ -630,17 +630,17 @@ Separates the Husimi function matrices `Hs_list`, `qs_list`, and `ps_list` into 
 - `ps_chaotic::Vector{Vector}`: A vector containing the `p` components corresponding to the chaotic states.
 """
 function separate_by_classical_indices(Hs_list::Vector, qs_list::Vector, ps_list::Vector, regular_idx::Vector{Int})
-    @assert length(qs_list) == length(ps_list) "ps and qs lists should be same length"
-    @assert length(qs_list) == length(Hs_list) "qs and Hs lists should be same length"
-    Hs_regular = Hs_list[regular_idx]
-    qs_regular = qs_list[regular_idx]
-    ps_regular = ps_list[regular_idx]
-    all_indices = Set(1:length(Hs_list))
-    chaotic_idx = sort(collect(setdiff(all_indices, regular_idx)))
-    Hs_chaotic = Hs_list[chaotic_idx]
-    qs_chaotic = qs_list[chaotic_idx]
-    ps_chaotic = ps_list[chaotic_idx]
-    return Hs_regular, Hs_chaotic, qs_regular, qs_chaotic, ps_regular, ps_chaotic
+    @assert length(qs_list)==length(ps_list) "Separation Error: ps and qs lists should be same length"
+    @assert length(qs_list)==length(Hs_list) "Separation Error: qs and Hs lists should be same length"
+    Hs_regular=Hs_list[regular_idx]
+    qs_regular=qs_list[regular_idx]
+    ps_regular=ps_list[regular_idx]
+    all_indices=Set(1:length(Hs_list))
+    chaotic_idx=sort(collect(setdiff(all_indices,regular_idx)))
+    Hs_chaotic=Hs_list[chaotic_idx]
+    qs_chaotic=qs_list[chaotic_idx]
+    ps_chaotic=ps_list[chaotic_idx]
+    return Hs_regular,Hs_chaotic,qs_regular,qs_chaotic,ps_regular,ps_chaotic
 end
 
 """
@@ -659,14 +659,14 @@ end
  - `Hs_regular::Vector{Matrix}`: The subset of `Hs_list` corresponding to regular states.
  - `Hs_chaotic::Vector{Matrix}`: The subset of `Hs_list` corresponding to chaotic states.
 """
-function separate_ks_and_Hs_by_classical_indices(ks::Vector, Hs_list::Vector, regular_idx::Vector{Int})
-    ks_regular = ks[regular_idx]
-    Hs_regular = Hs_list[regular_idx]
-    all_indices = Set(1:length(ks))  # Set of all indices
-    chaotic_idx = sort(collect(setdiff(all_indices, regular_idx)))  # Find chaotic indices
-    ks_chaotic = ks[collect(chaotic_idx)]
-    Hs_chaotic = Hs_list[collect(chaotic_idx)]
-    return ks_regular, ks_chaotic, Hs_regular, Hs_chaotic
+function separate_ks_and_Hs_by_classical_indices(ks::Vector,Hs_list::Vector,regular_idx::Vector{Int})
+    ks_regular=ks[regular_idx]
+    Hs_regular=Hs_list[regular_idx]
+    all_indices=Set(1:length(ks))  # Set of all indices
+    chaotic_idx=sort(collect(setdiff(all_indices,regular_idx)))  # Find chaotic indices
+    ks_chaotic=ks[collect(chaotic_idx)]
+    Hs_chaotic=Hs_list[collect(chaotic_idx)]
+    return ks_regular,ks_chaotic,Hs_regular,Hs_chaotic
 end
 
 # HISTOGRAMS
@@ -685,13 +685,13 @@ Plots a histogram (pdf) of the distribution of overlap indexes `Ms`
 # Returns
 - `Nothing`
 """
-function plot_hist_M_distribution!(ax::Axis, Ms::Vector; nbins::Int=50, color::Symbol=:lightblue)
-    hist = Distributions.fit(StatsBase.Histogram, Ms; nbins=nbins)
-    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
-    bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
-    barplot!(ax, bin_centers, bin_counts, label="M distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
-    xlims!(ax, (-1.0, 1.0))
-    axislegend(ax, position=:ct)
+function plot_hist_M_distribution!(ax::Axis,Ms::Vector;nbins::Int=50,color::Symbol=:lightblue)
+    hist=Distributions.fit(StatsBase.Histogram,Ms;nbins=nbins)
+    bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2
+    bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1]
+    barplot!(ax,bin_centers,bin_counts,label="M distribution",color=color,gap=0,strokecolor=:black,strokewidth=1)
+    xlims!(ax,(-1.0,1.0))
+    axislegend(ax,position=:ct)
 end
 
 """
@@ -707,9 +707,9 @@ Computes the fraxtion of mixed states as the number of Ms between l_bound and u_
  # Returns
 - `<:Real`: The fraction of mixed states.
 """
-function fraction_of_mixed_states(Ms::Vector; l_bound=-0.8, u_bound=0.8)
-    idxs = findall(x -> (x > l_bound)&&(x < u_bound), Ms)
-    return length(idxs) / length(Ms)
+function fraction_of_mixed_states(Ms::Vector;l_bound=-0.8,u_bound=0.8)
+    idxs=findall(x -> (x>l_bound)&&(x<u_bound),Ms)
+    return length(idxs)/length(Ms)
 end
 
 """
@@ -727,9 +727,9 @@ Gives us overlap indexes of mixed states between l_bound and u_bound and their c
 - `Vector{<:Real}`: Vector of overlap indexes of mixed states.
 - `Vector{<:Real}`: Vector of wavenumbers corresponding to the mixed states.
 """
-function get_mixed_states(Ms::Vector, ks::Vector; l_bound=-0.8, u_bound=0.8)
-    idxs = findall(x -> (x > l_bound)&&(x < u_bound), Ms)
-    return Ms[idxs], ks[idxs]
+function get_mixed_states(Ms::Vector,ks::Vector;l_bound=-0.8,u_bound=0.8)
+    idxs=findall(x -> (x>l_bound)&&(x<u_bound),Ms)
+    return Ms[idxs],ks[idxs]
 end
 
 """
@@ -744,12 +744,12 @@ Computes the coefficient of the fraction of mixed eigenstates (ζ) for the relat
  # Returns
  - `<:Real`: The coefficient of the fraction of mixed eigenstates (ζ).
 """
-function coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms::Vector{T}, ks_M::Vector{T}) where {T<:Real}
+function coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms::Vector{T},ks_M::Vector{T}) where {T<:Real}
     # Make the log-log data of the χ_Ms and ks
-    log_χ_Ms = log.(χ_Ms)
-    log_ks_M = log.(ks_M)
+    log_χ_Ms=log.(χ_Ms)
+    log_ks_M=log.(ks_M)
     # Built in lapack linear fitting
-    ζ = -(log_ks_M / log_χ_Ms)
+    ζ= -(log_ks_M/log_χ_Ms)
     return ζ
 end
 
@@ -766,13 +766,13 @@ PLots the fraction of mixed states vs. the wavenumber k. We expect a power-law d
 # Returns
 - `Nothing`
 """
-function plot_fraction_of_mixed_eigenstates_vs_k(ax::Axis, χ_Ms::Vector{T}, ks_M::Vector{T}) where {T<:Real}
-    log_ks_M = log.(ks_M)
-    log_χ_Ms = log.(χ_Ms)
+function plot_fraction_of_mixed_eigenstates_vs_k(ax::Axis,χ_Ms::Vector{T},ks_M::Vector{T}) where {T<:Real}
+    log_ks_M=log.(ks_M)
+    log_χ_Ms=log.(χ_Ms)
     # First plot the scatter log-log plot then fit
-    ζ = coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms, ks_M)
-    scatter!(ax, log_ks_M, log_χ_Ms, label="Numerical data", color=:blue, marker=:circle, msize=4)
-    lines!(ax, log_ks_M, -ζ*log_ks, label="ζ=$(round(ζ; digits=3))", color=:red, linewidth=2) # do not forget the minus here. The fraction of mixed eigenstates should decay with increasing k
+    ζ=coefficient_of_fraction_of_mixed_eigenstates_vs_k(χ_Ms,ks_M)
+    scatter!(ax,log_ks_M,log_χ_Ms,label="Numerical data",color=:blue,marker=:circle,msize=4)
+    lines!(ax,log_ks_M,-ζ*log_ks,label="ζ=$(round(ζ; digits=3))",color=:red,linewidth=2) # do not forget the minus here. The fraction of mixed eigenstates should decay with increasing k
 end
 
 ### HIGH LEVEL WRAPPERS FOR DETERMINING THE FRACTION OF MIXED EIGENSTATES OVER AN ENERGY RANGE
@@ -798,55 +798,55 @@ Comment: save_path is a directory path aka '/users/you...', while the save_ident
 - `fundamental::Bool=true`: (Optional) If true, we use the desymmetrized billiard.
 - `save_M_distributions::Bool=true`: (Optional) If true, we save the plots of M distributions for each k in the save_path directory using the save_identifier.
 - `save_tension_plot_check::Bool=true`: (Optional) If true, we save a tension plot for each k in the save_path directory to help us check if the eigenvalues were ok (low tensions)
+- `d=5.0`: Default basis scaling factor. Change for different geometries.
+- `b=7.0`: Default point scaling factor. Change for different geometries.
 
 # Returns
 - `ks_points::Vector{<:Real}`: The ks at which the fractions of mixed eigenstates were computed.
 - `χs::Vector{<:Real}`: The fractions of mixed eigenstates for each k.
 """
-function compute_fractions_of_mixed_eigenstates(ks_points::Vector, billiard::Bi, basis::Ba, save_path::String, save_identifier::String, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector; N_levels::Integer=2000, dk_threshold=0.05, lower_bound_M_th=-0.8, upper_bound_M_th=0.8, N_expect::Integer=1, fundamental::Bool=true, save_M_distributions::Bool=true, save_tension_plot_check::Bool=true) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    d = 3.0
-    b = 12.0
-    acc_solver = ScalingMethodA(d,b)
-    χs = Vector{Float64}(undef, length(ks_points))
+function compute_fractions_of_mixed_eigenstates(ks_points::Vector,billiard::Bi,basis::Ba,save_path::String,save_identifier::String,classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector;N_levels::Integer=2000,dk_threshold=0.05,lower_bound_M_th=-0.8,upper_bound_M_th=0.8,N_expect::Integer=1,fundamental::Bool=true,save_M_distributions::Bool=true,save_tension_plot_check::Bool=true,d=5.0,b=7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    acc_solver=ScalingMethodA(d,b)
+    χs=Vector{Float64}(undef,length(ks_points))
     for (i,k) in enumerate(ks_points)
         println("Started k=$(k)")
-        k_end = k
-        N_end = ceil(Integer, weyl_law(k_end, billiard, fundamental=fundamental))
-        N_start = N_end - N_levels
-        k_start = k_at_state(N_start, billiard, fundamental=fundamental)
+        k_end=k
+        N_end=ceil(Integer,weyl_law(k_end,billiard,fundamental=fundamental))
+        N_start=N_end-N_levels
+        k_start=k_at_state(N_start,billiard,fundamental=fundamental)
         println("From $(k_start) to $(k_end), N_levels=$(N_levels)")
-        (N_start < 1) ? (@error "Smallest k=$(k_start) is too small to get N=$(N_levels)") : nothing    
-        filename = joinpath(save_path, "$(save_identifier)_boundary_vals_$(k)_N_$(N_levels).jld2")
+        (N_start<1) ? (@error "Smallest k=$(k_start) is too small to get N=$(N_levels)") : nothing    
+        filename=joinpath(save_path,"$(save_identifier)_boundary_vals_$(k)_N_$(N_levels).jld2")
         if !isfile(filename) # do the taxing calculation to get state data
             println("No found saved data, doing spectrum calculation...")
-            state_res, _ = compute_spectrum_with_state(acc_solver, basis, billiard, k_start, k_end, N_expect=N_expect, dk_threshold=dk_threshold)
+            state_res,_=compute_spectrum_with_state(acc_solver,basis,billiard,k_start,k_end,N_expect=N_expect,dk_threshold=dk_threshold)
             if save_tension_plot_check
-                eigenvalues, tensions = state_res.ks, state_res.tens
-                f = Figure(size=(1000, 600), resolution=(1000, 600))
-                ax = Axis(f[1,1], title="VS Eigenvalues check around k=$(k)")
-                scatter!(ax, eigenvalues, tensions)
-                save_png_tens = joinpath(save_path, "$(save_identifier)_tens_$(k).png")
-                save(save_png_tens, f)
+                eigenvalues,tensions=state_res.ks,state_res.tens
+                f=Figure(size=(1000,600),resolution=(1000,600))
+                ax=Axis(f[1,1],title="VS Eigenvalues check around k=$(k)")
+                scatter!(ax,eigenvalues,tensions)
+                save_png_tens=joinpath(save_path,"$(save_identifier)_tens_$(k).png")
+                save(save_png_tens,f)
             end
-            @time ks, us, s_vals, _ = boundary_function(state_res, billiard, basis; b=5.0) # Play with b
-            @time save_boundary_function!(ks, us, s_vals, filename=filename)
+            @time ks,us,s_vals,_=boundary_function(state_res,billiard,basis;b=5.0) # Play with b
+            @time save_boundary_function!(ks,us,s_vals,filename=filename)
         end
-        @time ks, us, s_vals = read_boundary_function(filename)
-        @time Hs_list, ps_list, qs_list = husimi_functions_from_boundary_functions(ks, us, s_vals, billiard; c = 10.0, w = 7.0)
+        @time ks,us,s_vals=read_boundary_function(filename)
+        @time Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,us,s_vals,billiard;c=10.0,w=7.0)
         println("Started overlaps computation...")
-        @time Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
+        @time Ms=compute_overlaps(Hs_list,qs_list,ps_list,classical_chaotic_s_vals,classical_chaotic_p_vals)
         if save_M_distributions
             # for each point save the M distributions
-            f = Figure(size=(1000,1000), resolution=(1000,1000))
-            ax = Axis(f[1,1])
-            @time plot_hist_M_distribution!(ax, Ms)
-            save(joinpath(save_path, save_identifier*"_M_dist_k_$(k).png"),f)
+            f=Figure(size=(1000,1000),resolution=(1000,1000))
+            ax=Axis(f[1,1])
+            plot_hist_M_distribution!(ax,Ms)
+            save(joinpath(save_path,save_identifier*"_M_dist_k_$(k).png"),f)
         end
-        χ = fraction_of_mixed_states(Ms, l_bound=lower_bound_M_th, u_bound=upper_bound_M_th)
+        χ=fraction_of_mixed_states(Ms,l_bound=lower_bound_M_th,u_bound=upper_bound_M_th)
         χs[i]=χ
         println("Finished k=$(k)")
     end
-    return ks_points, χs
+    return ks_points,χs
 end
 
 """
@@ -862,23 +862,23 @@ Plots the fractions of mixed eigenstates for a k window in a log-log plot togeth
 # Returns
 - `ζ_optimal::Real`: The optimal value of ζ (the exponent in the power-law decay of eigenstates, linear fit to log-log data) that best fits the data.
 """
-function plot_fraction_mixed_states(ax::Axis, ks_points::Vector, χs::Vector)
-    scatter!(ax, log10.(ks_points), log10.(χs), marker_size=5)
-    log_ks_min, log_ks_max = minimum(ks_points), maximum(ks_points)
-    function linear_model(ks_inter_log, params)
-        ζ = params
-        result = Vector{Float64}(undef, length(ks_inter_log))
+function plot_fraction_mixed_states(ax::Axis,ks_points::Vector,χs::Vector)
+    scatter!(ax,log10.(ks_points),log10.(χs),marker_size=5)
+    log_ks_min,log_ks_max=minimum(ks_points),maximum(ks_points)
+    function linear_model(ks_inter_log,params)
+        ζ=params
+        result=Vector{Float64}(undef,length(ks_inter_log))
         for i in eachindex(ks_inter_log) 
-            result[i] = ζ*ks_inter_log[i]
+            result[i]=ζ*ks_inter_log[i]
         end
         return result
     end
-    ζ_init = 0.4
-    fit_result = curve_fit((ks_log, params) -> linear_model(ks_log, params), log10.(ks_points), log10.(χs), ζ_init)
-    ζ_optimal = fit_result.param
-    sintetic_xs = collect(range(log_ks_min, log_ks_max, 10)) # 10 logs of points enough for log-log linear plot
-    sintetic_ys = ζ_optimal .* sintetic_xs
-    lines!(ax, sintetic_xs, sintetic_ys, color=:red, label="ζ=$(round(ζ_optimal; digits=4))")
-    axislegend(ax, position=:rt)
+    ζ_init=0.4 # based on literature starting exponent
+    fit_result=curve_fit((ks_log,params) -> linear_model(ks_log,params),log10.(ks_points),log10.(χs),ζ_init)
+    ζ_optimal=fit_result.param
+    sintetic_xs=collect(range(log_ks_min,log_ks_max,10)) # 10 logs of points enough for log-log linear plot
+    sintetic_ys=ζ_optimal.*sintetic_xs
+    lines!(ax,sintetic_xs,sintetic_ys,color=:red,label="ζ=$(round(ζ_optimal; digits=4))")
+    axislegend(ax,position=:rt)
     return ζ_optimal
 end
