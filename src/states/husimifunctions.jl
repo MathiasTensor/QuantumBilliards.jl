@@ -154,39 +154,39 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
-    qs = range(0.0,stop=L,length=nx)
-    ps = range(-1.0,stop=1.0,length=ny)
-    N = length(s)
-    ds = diff(s) # integration weights ds
-    ds = vcat(ds,L+s[1]-s[end]) # ds has length N
-    sqrt_k_pi = sqrt(k/π)
-    norm_factor = sqrt(sqrt_k_pi)
-    width = 4/sqrt(k)
-    H = zeros(T,ny,nx)
+function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+    qs=range(0.0,stop=L,length=nx)
+    ps=range(-1.0,stop=1.0,length=ny)
+    N=length(s)
+    ds=diff(s) # integration weights ds
+    ds=vcat(ds,L+s[1]-s[end]) # ds has length N
+    sqrt_k_pi=sqrt(k/π)
+    norm_factor=sqrt(sqrt_k_pi)
+    width=4/sqrt(k)
+    H=zeros(T,ny,nx)
     Threads.@threads for i_q = 1:nx
-        q = qs[i_q]
-        si = similar(s)
-        w = similar(s)
-        cr = similar(s)
-        ci = similar(s)
-        idx_start = searchsortedfirst(s,q-width) # Find indices within the window 
-        idx_end = searchsortedlast(s,q+width)
-        len_window = idx_end-idx_start+1
-        @views s_window = s[idx_start:idx_end] # Extract windowed data
-        @views ui_window = u[idx_start:idx_end]
-        @views dsi_window = ds[idx_start:idx_end]
-        si_window = si[1:len_window]
-        @inbounds @. si_window = s_window-q
-        @inbounds @. w[1:len_window] = norm_factor*exp.(-0.5*k*si_window.^2).*dsi_window
+        q=qs[i_q]
+        si=similar(s) # race conditions problem sometimes
+        w=similar(s)
+        cr=similar(s)
+        ci=similar(s)
+        idx_start=searchsortedfirst(s,q-width) # Find indices within the window 
+        idx_end=searchsortedlast(s,q+width)
+        len_window=idx_end-idx_start+1
+        @views s_window=s[idx_start:idx_end] # Extract windowed data
+        @views ui_window=u[idx_start:idx_end]
+        @views dsi_window=ds[idx_start:idx_end]
+        si_window=si[1:len_window]
+        @inbounds @. si_window=s_window-q
+        @inbounds @. w[1:len_window]=norm_factor*exp.(-0.5*k*si_window.^2).*dsi_window
         for i_p = 1:ny
-            p = ps[i_p]
-            kp = k*p
-            @inbounds @. cr[1:len_window] = w[1:len_window].*cos.(kp.*si_window)
-            @inbounds @. ci[1:len_window] = w[1:len_window].*sin.(kp.*si_window)
+            p=ps[i_p]
+            kp=k*p
+            @inbounds @. cr[1:len_window]=w[1:len_window].*cos.(kp.*si_window)
+            @inbounds @. ci[1:len_window]=w[1:len_window].*sin.(kp.*si_window)
             h_real = @inbounds sum(cr[1:len_window].*ui_window)
             h_imag = -@inbounds sum(ci[1:len_window].*ui_window)  # Negative due to conjugation
-            @inbounds H[i_p,i_q] = (h_real^2+h_imag^2)/(2*π*k)
+            @inbounds H[i_p,i_q]=(h_real^2+h_imag^2)/(2*π*k)
         end
     end
     return H'./sum(H),qs,ps
