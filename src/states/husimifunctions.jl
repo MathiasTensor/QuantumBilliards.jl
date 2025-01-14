@@ -164,7 +164,8 @@ function husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::I
     norm_factor = sqrt(sqrt_k_pi)
     width = 4/sqrt(k)
     H = zeros(T,ny,nx)
-    Threads.@threads for i_q = 1:nx
+    #Threads.@threads for i_q = 1:nx
+    for i_q = 1:nx
         q = qs[i_q]
         si = similar(s)
         w = similar(s)
