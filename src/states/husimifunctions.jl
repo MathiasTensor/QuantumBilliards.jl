@@ -334,7 +334,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
     H,qs,ps = husimiOnGrid(ks[1], vec_of_s_vals[1], vec_us[1], L, nx, ny)
     Hs_list[1] = H
     p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
-    for i in eachindex(ks)[2:end]
+    Threads.@threads for i in eachindex(ks)[2:end]
         H,_,_ = husimiOnGrid(ks[i], vec_of_s_vals[i], vec_us[i], L, nx, ny)
         Hs_list[i] = H
         next!(p)
