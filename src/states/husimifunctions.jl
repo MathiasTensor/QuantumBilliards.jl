@@ -155,7 +155,6 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
-    
     qs=range(0.0,stop=L,length=nx)
     ps=range(-1.0,stop=1.0,length=ny)
     N=length(s)
@@ -166,58 +165,28 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     width=4/sqrt(k)
     H=zeros(T,ny,nx)
     Threads.@threads for i_q = 1:nx
-        #=
         q=qs[i_q]
-        si=similar(s) # race conditions problem sometimes
-        w=similar(s)
-        cr=similar(s)
-        ci=similar(s)
-        idx_start=searchsortedfirst(s,q-width) # Find indices within the window 
+        idx_start=searchsortedfirst(s,q-width)
         idx_end=searchsortedlast(s,q+width)
         len_window=idx_end-idx_start+1
-        @views s_window=s[idx_start:idx_end] # Extract windowed data
+        si_window=Vector{T}(undef, len_window)
+        w=Vector{T}(undef,len_window)
+        cr=Vector{T}(undef,len_window)
+        ci=Vector{T}(undef,len_window)
+        @views s_window=s[idx_start:idx_end]
         @views ui_window=u[idx_start:idx_end]
         @views dsi_window=ds[idx_start:idx_end]
-        si_window=si[1:len_window]
-        @inbounds @. si_window=s_window-q
-        @inbounds @. w[1:len_window]=norm_factor*exp.(-0.5*k*si_window.^2).*dsi_window
-        for i_p = 1:ny
-            p=ps[i_p]
-            kp=k*p
-            @inbounds @. cr[1:len_window]=w[1:len_window].*cos.(kp.*si_window)
-            @inbounds @. ci[1:len_window]=w[1:len_window].*sin.(kp.*si_window)
-            h_real = @inbounds sum(cr[1:len_window].*ui_window)
-            h_imag = -@inbounds sum(ci[1:len_window].*ui_window)  # Negative due to conjugation
-            @inbounds H[i_p,i_q]=(h_real^2+h_imag^2)/(2*π*k)
-        end
-        =#
-        q = qs[i_q]
-        idx_start = searchsortedfirst(s, q - width)
-        idx_end = searchsortedlast(s, q + width)
-        len_window = idx_end - idx_start + 1
-
-        # Thread-local arrays to avoid race conditions
-        si_window = Vector{T}(undef, len_window)
-        w = Vector{T}(undef, len_window)
-        cr = Vector{T}(undef, len_window)
-        ci = Vector{T}(undef, len_window)
-
-        @views s_window = s[idx_start:idx_end]
-        @views ui_window = u[idx_start:idx_end]
-        @views dsi_window = ds[idx_start:idx_end]
-
         @inbounds begin
-            @. si_window = s_window - q
-            @. w = norm_factor * exp(-0.5 * k * si_window^2) * dsi_window
-
+            @. si_window=s_window-q
+            @. w=norm_factor*exp(-0.5*k*si_window^2)*dsi_window
             for i_p in 1:ny
-                p = ps[i_p]
-                kp = k * p
-                @. cr = w * cos(kp * si_window)
-                @. ci = w * sin(kp * si_window)
-                h_real = sum(cr .* ui_window)
-                h_imag = -sum(ci .* ui_window)  # Negative due to conjugation
-                H[i_p, i_q] = (h_real^2 + h_imag^2) / (2π * k)
+                p=ps[i_p]
+                kp=k*p
+                @. cr=w*cos(kp*si_window)
+                @. ci=w*sin(kp*si_window)
+                h_real=sum(cr.*ui_window)
+                h_imag= -sum(ci.*ui_window)  # Negative due to conjugation
+                H[i_p,i_q]=(h_real^2+h_imag^2)/(2π*k)
             end
         end
     end
