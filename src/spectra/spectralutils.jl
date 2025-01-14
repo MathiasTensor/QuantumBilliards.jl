@@ -449,7 +449,7 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol::T=T(1e-4),N_expect::Int=1,dk_threshold=0.05,fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect::Int=1,dk_threshold=0.05,fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
