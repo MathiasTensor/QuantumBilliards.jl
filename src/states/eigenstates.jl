@@ -1,6 +1,3 @@
-#include("../abstracttypes.jl")
-#include("../utils/billiardutils.jl")
-#include("../utils/typeutils.jl")
 
 struct Eigenstate{K,T,Ba,Bi} <: StationaryState
     k::K
@@ -13,6 +10,21 @@ struct Eigenstate{K,T,Ba,Bi} <: StationaryState
     billiard::Bi
 end
 
+"""
+    Eigenstate(k::T, vec::Vector{T}, ten::T, basis::Ba, billiard::Bi) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+
+Constructs an `Eigenstate` object representing a stationary state of the wavefunction.
+
+# Arguments
+- `k::T`: The wavenumber of the eigenstate.
+- `vec::Vector{T}`: The coefficients of the linear expansion of the wavefunction in the given basis.
+- `ten::T`: The tension associated with the eigenstate.
+- `basis::Ba`: The basis in which the eigenstate is represented.
+- `billiard::Bi`: The billiard domain for the eigenstate.
+
+# Returns
+An `Eigenstate` object with normalized coefficients.
+"""
 function Eigenstate(k, vec, ten, basis, billiard)  
     eps = set_precision(vec[1])
     if eltype(vec) <: Real
@@ -23,6 +35,22 @@ function Eigenstate(k, vec, ten, basis, billiard)
     return Eigenstate(k, k, filtered_vec,ten, length(vec), eps, basis, billiard)
 end
 
+"""
+    Eigenstate(k::T, k_basis::T, vec::Vector{T}, ten::T, basis::Ba, billiard::Bi) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+
+Constructs an `Eigenstate` object, allowing for separate wavenumbers for the eigenstate (`k`) and its basis (`k_basis`).
+
+# Arguments
+- `k::T`: The wavenumber of the eigenstate.
+- `k_basis::T`: The wavenumber associated with the basis.
+- `vec::Vector{T}`: The coefficients of the linear expansion of the wavefunction in the given basis.
+- `ten::T`: The tension associated with the eigenstate.
+- `basis::Ba`: The basis in which the eigenstate is represented.
+- `billiard::Bi`: The billiard domain for the eigenstate.
+
+# Returns
+An `Eigenstate` object with normalized coefficients.
+"""
 function Eigenstate(k, k_basis, vec, ten, basis, billiard)  
     eps = set_precision(vec[1])
     if eltype(vec) <: Real
@@ -33,6 +61,20 @@ function Eigenstate(k, k_basis, vec, ten, basis, billiard)
     return Eigenstate(k, k_basis, filtered_vec, ten, length(vec), eps, basis, billiard)
 end
 
+"""
+    compute_eigenstate(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, k::T) where {T<:Real}
+
+Computes a single eigenstate for a given wavenumber `k`.
+
+# Arguments
+- `solver::SweepSolver`: The solver object to compute the eigenstate.
+- `basis::AbsBasis`: The basis in which the eigenstate is represented.
+- `billiard::AbsBilliard`: The billiard domain for the eigenstate.
+- `k::T`: The wavenumber of the eigenstate.
+
+# Returns
+An `Eigenstate` object representing the computed eigenstate.
+"""
 function compute_eigenstate(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard,k)
     L = billiard.length
     dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
@@ -42,6 +84,21 @@ function compute_eigenstate(solver::SweepSolver, basis::AbsBasis, billiard::AbsB
     return Eigenstate(k, vec, ten, basis_new, billiard)
 end
 
+"""
+    compute_eigenstate(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k::T; dk::T=0.1) where {T<:Real}
+
+Computes a single eigenstate for a given wavenumber `k` using an accelerated solver.
+
+# Arguments
+- `solver::AcceleratedSolver`: The solver object to compute the eigenstate.
+- `basis::AbsBasis`: The basis in which the eigenstate is represented.
+- `billiard::AbsBilliard`: The billiard domain for the eigenstate.
+- `k::T`: The wavenumber of the eigenstate.
+- `dk::T`: The step size for the solver (default: `0.1`).
+
+# Returns
+An `Eigenstate` object representing the computed eigenstate.
+"""
 function compute_eigenstate(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k; dk = 0.1)
     L = billiard.length
     dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
@@ -66,6 +123,22 @@ struct EigenstateBundle{K,T,Ba,Bi} <: AbsState
     billiard::Bi
 end
 
+"""
+    EigenstateBundle(ks::Vector{K}, k_basis::K, X::Matrix{T}, tens::Vector{T}, basis::Ba, billiard::Bi) where {K, T, Ba<:AbsBasis, Bi<:AbsBilliard}
+
+Constructs an `EigenstateBundle` object representing multiple eigenstates arising from the same generalized eigenvalue problem.
+
+# Arguments
+- `ks::Vector{K}`: The wavenumbers for the eigenstates.
+- `k_basis::K`: The wavenumber associated with the basis.
+- `X::Matrix{T}`: The coefficients of the linear expansion for the wavefunctions.
+- `tens::Vector{T}`: The tensions associated with the eigenstates.
+- `basis::Ba`: The basis in which the eigenstates are represented.
+- `billiard::Bi`: The billiard domain for the eigenstates.
+
+# Returns
+An `EigenstateBundle` object containing the computed eigenstates.
+"""
 function EigenstateBundle(ks, k_basis, X, tens, basis, billiard)  
     eps = set_precision(X[1,1])
     type = eltype(X)
@@ -77,6 +150,22 @@ function EigenstateBundle(ks, k_basis, X, tens, basis, billiard)
     return EigenstateBundle(ks, k_basis, filtered_array, tens, length(X[:,1]), eps, basis, billiard)
 end
 
+"""
+    compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k::T; dk::T=0.1, tol::T=1e-5) where {T<:Real}
+
+Computes a bundle of eigenstates within a small interval `[k-dk, k+dk]`.
+
+# Arguments
+- `solver::AcceleratedSolver`: The solver object to compute the eigenstates.
+- `basis::AbsBasis`: The basis in which the eigenstates are represented.
+- `billiard::AbsBilliard`: The billiard domain for the eigenstates.
+- `k::T`: The center wavenumber for the computation.
+- `dk::T`: The width of the interval for the computation (default: `0.1`).
+- `tol::T`: The tolerance for filtering out eigenstates with high tensions (default: `1e-5`).
+
+# Returns
+An `EigenstateBundle` object containing the computed eigenstates within the specified interval.
+"""
 function compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k; dk = 0.1, tol=1e-5)
     L = billiard.length
     dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
@@ -89,13 +178,6 @@ function compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, b
     X = X[:,idx]
     return EigenstateBundle(ks, k, X, tens, basis_new, billiard)
 end
-
-
-
-
-
-###### NEW ######
-
 
 # no need for basis and billiard data due to complex nested hierarchy
 """
