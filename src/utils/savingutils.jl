@@ -49,7 +49,7 @@ The output CSV file will contain four columns: `k` (eigenvalues), `tension` (ten
 - `filename::String`: The output filename for saving the data.
 """
 function save_numerical_ks_and_tensions_with_tags!(ks::Vector{T},tens::Vector{T},k_start::T,k_end::T,filename::String) where {T<:Real}
-    tagged_df=DataFrame(k=ks,tension=tens,k1=fill(k_start,length(ks)),k_end=fill(k_end,length(ks)))
+    tagged_df=DataFrame(k=ks,tension=tens,k1=fill(k_start,length(ks)),k2=fill(k_end,length(ks)))
     CSV.write(filename,tagged_df)
 end
 
