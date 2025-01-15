@@ -90,7 +90,7 @@ Merges and filters eigenvalues and tensions from multiple tagged CSV files into 
 # Returns
 - `nothing`: The function does not return a value; instead, it saves the merged and filtered data to a NON-TAGGED (regular) csv file.
 """
-function merge_and_filter_tagged_files!(csv_files::Vector{String},output_file::String;target_k_start::T,target_k_end::T) where {T<:Real}
+function merge_and_filter_tagged_files!(csv_files::Vector{String},output_file::String,target_k_start::T,target_k_end::T) where {T<:Real}
     all_ks=T[] # unknown size
     all_tensions=T[]
     for csv_file in csv_files
@@ -131,7 +131,7 @@ function merge_and_filter_tagged_files!(csv_files::Vector{String},output_file::S
 end
 
 """
-    merge_and_filter_tagged_files(directory::String, output_file::String; target_k_start::T, target_k_end::T) where {T<:Real}
+    merge_and_filter_tagged_files_directory!(directory::String, output_file::String; target_k_start::T, target_k_end::T) where {T<:Real}
 
 Merges and filters eigenvalues and tensions from all tagged CSV files in a directory into a single output file.
 
@@ -144,7 +144,7 @@ Merges and filters eigenvalues and tensions from all tagged CSV files in a direc
 # Returns
 - Nothing
 """
-function merge_and_filter_tagged_files!(directory::String,output_file::String;target_k_start::T,target_k_end::T) where {T<:Real}
+function merge_and_filter_tagged_files_directory!(directory::String,output_file::String,target_k_start::T,target_k_end::T) where {T<:Real}
     # Collect all `.csv` files in the directory
     csv_files=glob("*.csv",directory)
     if isempty(csv_files)
