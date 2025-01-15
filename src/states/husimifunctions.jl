@@ -4,11 +4,40 @@ using CircularArrays
 using JLD2
 using LinearAlgebra
 
+"""
+    antisym_vec(x::AbstractVector)
+
+Creates an antisymmetric vector by reversing the input vector `x`, negating the reversed values, and appending them to `x`. Used in the original husimi_function construction.
+
+# Arguments
+- `x::Vector`: Starting half of the final vector.
+
+# Returns
+- `Vector`: An antisymmetric vector constructed from `x`.
+"""
 function antisym_vec(x)
     v = reverse(-x[2:end])
     return append!(v,x)
 end
 
+"""
+    husimi_function(k, u, s, L; c = 10.0, w = 7.0)
+
+Calculates the Husimi function on a grid defined by the boundary `s`. The logic is that from the arclengths `s` we construct the qs with the help of the width of the Gaussian at that k (width = 1/√k) and the parameter c (which determines how many q evaluations we will have per this width at k -> defines the step 1/(√k*c) so we will have tham many more q evaluations in peak). Analogously we do for the ps, where the step size (matrix size in ps direction) is range(0.0,1.0,step=1/(√k*c)) (we do only for half since symmetric with p=0 implies we can use antisym_vec(ps) to recreate the whole -1.0 to 1.0 range while also symmetrizing the Husimi function that is constructed from p=0.0 to 1.0 with the logic perscribed above). The w (how many sigmas we will take) is used in construction of the ds summation weights.
+
+# Arguments
+- `k<:Real`: Wavenumber of the eigenstate.
+- `u::Vector{<:Real}`: Array of boundary function values.
+- `s::Vector{<:Real}`: Array of boundary points.
+- `L<:Real`: Total length of the billiard boundary.
+- `c<:Real`: Density of points in the coherent state peak (default: `10.0`).
+- `w<:Real`: Width in units of `σ` (default: `7.0`).
+
+# Returns
+- `H::Matrix`: Husimi function matrix.
+- `qs::Vector`: Array of position coordinates on the grid.
+- `ps::Vector`: Array of momentum coordinates on the grid.
+"""
 function husimi_function(k,u,s,L; c = 10.0, w = 7.0)
     #c density of points in coherent state peak, w width in units of sigma
     #L is the boundary length for periodization
@@ -50,25 +79,25 @@ function husimi_function(k,u,s,L; c = 10.0, w = 7.0)
     return H, qs, ps    
 end
 
-function husimi_function(state::S;  b = 5.0, c = 10.0, w = 7.0) where {S<:AbsState}
-    L = state.billiard.length
-    k = state.k
-    u, s, norm = boundary_function(state; b=b)
-    return husimi_function(k,u,s,L; c = c, w = w)
+function husimi_function(state::S;b=5.0,c=10.0,w=7.0) where {S<:AbsState}
+    L=state.billiard.length
+    k=state.k
+    u,s,norm=boundary_function(state;b=b)
+    return husimi_function(k,u,s,L;c=c,w=w)
 end
 
-function husimi_function(state_bundle::S;  b = 5.0, c = 10.0, w = 7.0) where {S<:EigenstateBundle}
-    L = state_bundle.billiard.length
-    ks = state_bundle.ks
-    us, s, norm = boundary_function(state_bundle; b=b)
-    H, qs, ps = husimi_function(ks[1],us[1],s,L; c = c, w = w)
-    type = eltype(H)
-    Hs::Vector{Matrix{type}} = [H]
+function husimi_function(state_bundle::S;b=5.0,c=10.0,w=7.0) where {S<:EigenstateBundle}
+    L=state_bundle.billiard.length
+    ks=state_bundle.ks
+    us,s,norm=boundary_function(state_bundle; b=b)
+    H,qs,ps=husimi_function(ks[1],us[1],s,L;c=c,w=w)
+    type=eltype(H)
+    Hs::Vector{Matrix{type}}=[H]
     for i in 2:length(ks)
-        H, qs, ps = husimi_function(ks[i],us[i],s,L; c = c, w = w)
+        H,qs,ps=husimi_function(ks[i],us[i],s,L;c=c,w=w)
         push!(Hs,H)
     end
-    return Hs, qs, ps
+    return Hs,qs,ps
 end
 
 ### NEW ###
@@ -91,18 +120,18 @@ Returns:
 """
 function husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
     # original algorithm by Benjamin Batistić in python (https://github.com/clozej/quantum_billiards/blob/crt_public/src/CoreModules/HusimiFunctionsOld.py)
-    ss = s.-q
-    width = 4/sqrt(k)
-    indx = findall(x->abs(x)<width,ss)
-    si = ss[indx]
-    ui = u[indx]
-    ds = diff(s)  # length N-1
-    ds = vcat(ds,L+s[1]-s[end]) # add Nth
-    dsi = ds[indx]
-    w = sqrt(sqrt(k/π)).*exp.(-0.5*k*si.*si).*dsi
-    cr = w.*cos.(k*p*si)  # Coherent state real part
-    ci = w.*sin.(k*p*si)  # Coherent state imaginary part
-    h = dot(cr-im*ci,ui)  # Husimi integral (minus because of conjugation)
+    ss=s.-q
+    width=4/sqrt(k)
+    indx=findall(x->abs(x)<width,ss)
+    si=ss[indx]
+    ui=u[indx]
+    ds=diff(s)  # length N-1
+    ds=vcat(ds,L+s[1]-s[end]) # add Nth
+    dsi=ds[indx]
+    w=sqrt(sqrt(k/π)).*exp.(-0.5*k*si.*si).*dsi
+    cr=w.*cos.(k*p*si)  # Coherent state real part
+    ci=w.*sin.(k*p*si)  # Coherent state imaginary part
+    h=dot(cr-im*ci,ui)  # Husimi integral (minus because of conjugation)
     return abs2(h)/(2*π*k) # not the actual normalization
 end
 
@@ -125,12 +154,12 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
-    qs = range(0.0,stop=L,length=nx)
-    ps = range(-1.0,stop=1.0,length=ny)
-    H = zeros(T,nx,ny)
+    qs=range(0.0,stop=L,length=nx)
+    ps=range(-1.0,stop=1.0,length=ny)
+    H=zeros(T,nx,ny)
     Threads.@threads for idx_p in eachindex(ps)
         for idx_q in eachindex(qs)
-            H[idx_q, idx_p] = husimiAtPoint_LEGACY(k,s,u,L,qs[idx_q],ps[idx_p])
+            H[idx_q,idx_p]=husimiAtPoint_LEGACY(k,s,u,L,qs[idx_q],ps[idx_p])
         end
     end
     return H./sum(H),qs,ps
