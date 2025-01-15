@@ -146,7 +146,7 @@ Merges and filters eigenvalues and tensions from all tagged CSV files in a direc
 """
 function merge_and_filter_tagged_files_directory!(directory::String,output_file::String,target_k_start::T,target_k_end::T) where {T<:Real}
     # Collect all `.csv` files in the directory
-    csv_files=glob("*.csv",directory)
+    csv_files=filter(file -> endswith(file,".csv"),readdir(directory,join=true))
     if isempty(csv_files)
         println("No CSV files found in directory: $directory")
         return
