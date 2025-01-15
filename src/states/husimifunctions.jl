@@ -4,6 +4,8 @@ using CircularArrays
 using JLD2
 using LinearAlgebra
 
+# ORIGINAL
+
 """
     antisym_vec(x::AbstractVector)
 
@@ -16,7 +18,7 @@ Creates an antisymmetric vector by reversing the input vector `x`, negating the 
 - `Vector`: An antisymmetric vector constructed from `x`.
 """
 function antisym_vec(x)
-    v = reverse(-x[2:end])
+    v=reverse(-x[2:end])
     return append!(v,x)
 end
 
@@ -42,43 +44,53 @@ function husimi_function(k,u,s,L; c = 10.0, w = 7.0)
     #c density of points in coherent state peak, w width in units of sigma
     #L is the boundary length for periodization
     #compute coherrent state weights
-    N = length(s)
-    sig = one(k)/sqrt(k) #width of the gaussian
-    x = s[s.<=w*sig]
-    idx = length(x) #do not change order here
-    x = antisym_vec(x)
-    a = one(k)/(2*pi*sqrt(pi*k)) #normalization factor in this version Hsimi is not noramlized to 1
-    ds = (x[end]-x[1])/length(x) #integration weigth
-    uc = CircularVector(u) #allows circular indexing
-    gauss = @. exp(-k/2*x^2)*ds
-    gauss_l = @. exp(-k/2*(x+L)^2)*ds
-    gauss_r = @. exp(-k/2*(x-L)^2)*ds
-    #construct evaluation points in p coordinate
-    ps = collect(range(0.0,1.0,step = sig/c))
-    #construct evaluation points in q coordinate
-    q_stride = length(s[s.<=sig/c])
-    q_idx = collect(1:q_stride:N)
-    push!(q_idx,N) #add last point
-    qs = s[q_idx]
-    #println(length(qs))
-    H = zeros(typeof(k),length(qs),length(ps))
-    for i in eachindex(ps)   
-        cs = @. exp(im*ps[i]*k*x)*gauss + exp(im*ps[i]*k*(x+L))*gauss_l + exp(im*ps[i]*k*(x-L))*gauss_r#imag part of coherent state
+    N=length(s)
+    sig=one(k)/sqrt(k) # width of the Gaussian
+    x=s[s.<=w*sig]
+    idx=length(x) # do not change order here
+    x=antisym_vec(x)
+    a=one(k)/(2*pi*sqrt(pi*k)) # normalization factor (Husimi not normalized to 1)
+    ds=(x[end]-x[1])/length(x) # integration weight
+    uc=CircularVector(u) # allows circular indexing
+    gauss=@. exp(-k/2*x^2)*ds
+    gauss_l=@. exp(-k/2*(x+L)^2)*ds
+    gauss_r=@. exp(-k/2*(x-L)^2)*ds
+    ps=collect(range(0.0,1.0,step=sig/c)) # evaluation points in p coordinate
+    q_stride=length(s[s.<=sig/c])
+    q_idx=collect(1:q_stride:N)
+    push!(q_idx,N) # add last point
+    qs=s[q_idx] # evaluation points in q coordinate
+    H=zeros(typeof(k),length(qs),length(ps))
+    for i in eachindex(ps)
+        cs=@. exp(im*ps[i]*k*x)*gauss + exp(im*ps[i]*k*(x+L))*gauss_l + exp(im*ps[i]*k*(x-L))*gauss_r
         for j in eachindex(q_idx)
-            u_w = uc[q_idx[j]-idx+1:q_idx[j]+idx-1] #window with relevant values of u
-            h = sum(cs.*u_w)
-            #hi = sum(ci.*u_w)
-            H[j,i] = a*abs2(h)
+            u_w=uc[q_idx[j]-idx+1:q_idx[j]+idx-1] # window with relevant values of u
+            h=sum(cs.*u_w)
+            H[j,i]=a*abs2(h)
         end
     end
-
-    ps = antisym_vec(ps)
-    H_ref = reverse(H[:, 2:end]; dims=2)
-    H = hcat(H_ref,H)
-     
-    return H, qs, ps    
+    ps=antisym_vec(ps)
+    H_ref=reverse(H[:,2:end];dims=2)
+    H=hcat(H_ref,H)
+    return H,qs,ps
 end
 
+"""
+    husimi_function(state::S; b = 5.0, c = 10.0, w = 7.0) where {S<:AbsState}
+
+Calculates the Husimi function for a billiard eigenstate. Wrapper for lower level husimi_function.
+
+# Arguments
+- `state<:AbsState`: An eigenstate of the billiard system (contains the basis, billiard and k importantly)
+- `b`: Parameter for the boundary function computation (default: `5.0`).
+- `c`: Density of points in the coherent state peak (default: `10.0`).
+- `w`: Width in units of `σ` (default: `7.0`).
+
+# Returns
+- `H::Matrix`: Husimi function matrix.
+- `qs::Vector`: Array of position coordinates on the grid.
+- `ps::Vector`: Array of momentum coordinates on the grid.
+"""
 function husimi_function(state::S;b=5.0,c=10.0,w=7.0) where {S<:AbsState}
     L=state.billiard.length
     k=state.k
@@ -86,6 +98,22 @@ function husimi_function(state::S;b=5.0,c=10.0,w=7.0) where {S<:AbsState}
     return husimi_function(k,u,s,L;c=c,w=w)
 end
 
+"""
+    husimi_function(state_bundle::S; b = 5.0, c = 10.0, w = 7.0) where {S<:EigenstateBundle}
+
+Calculates the Husimi function for a batch of billiard eigenstates that came from a single Scaling Method evaluation, therefore the expansion coefficients in the basis have same length. Wrapper for lower level husimi_function.
+
+# Arguments
+- `state<:EigenstateBundle`: An eigenstate of the billiard system (contains the basis, billiard and k importantly)
+- `b`: Parameter for the boundary function computation (default: `5.0`).
+- `c`: Density of points in the coherent state peak (default: `10.0`).
+- `w`: Width in units of `σ` (default: `7.0`).
+
+# Returns
+- `H::Matrix`: Husimi function matrix.
+- `qs::Vector`: Array of position coordinates on the grid.
+- `ps::Vector`: Array of momentum coordinates on the grid.
+"""
 function husimi_function(state_bundle::S;b=5.0,c=10.0,w=7.0) where {S<:EigenstateBundle}
     L=state_bundle.billiard.length
     ks=state_bundle.ks
@@ -93,7 +121,7 @@ function husimi_function(state_bundle::S;b=5.0,c=10.0,w=7.0) where {S<:Eigenstat
     H,qs,ps=husimi_function(ks[1],us[1],s,L;c=c,w=w)
     type=eltype(H)
     Hs::Vector{Matrix{type}}=[H]
-    for i in 2:length(ks)
+    for i in eachindex(ks)[2:end]
         H,qs,ps=husimi_function(ks[i],us[i],s,L;c=c,w=w)
         push!(Hs,H)
     end
@@ -239,20 +267,20 @@ High level wrapper for the construction of the husimi functions from StateData w
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
 function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    L = billiard.length
-    Hs_return = Vector{Matrix}(undef, length(ks))
-    ps_return = Vector{Vector}(undef, length(ks))
-    qs_return = Vector{Vector}(undef, length(ks))
-    ks, us, s_vals, _ = boundary_function(state_data, billiard, basis; b=b)
-    p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
+    L=billiard.length
+    Hs_return=Vector{Matrix}(undef,length(ks))
+    ps_return=Vector{Vector}(undef,length(ks))
+    qs_return=Vector{Vector}(undef,length(ks))
+    ks,us,s_vals,_ = boundary_function(state_data,billiard,basis;b=b)
+    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks) 
-        H, qs, ps = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
-        Hs_return[i] = H
-        ps_return[i] = ps
-        qs_return[i] = qs
+        H,qs,ps=husimi_function(ks[i],us[i],s_vals[i],L;c=c,w=w)
+        Hs_return[i]=H
+        ps_return[i]=ps
+        qs_return[i]=qs
         next!(p)
     end
-    return Hs_return, ps_return, qs_return
+    return Hs_return,ps_return,qs_return
 end
 
 """
@@ -271,19 +299,19 @@ An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals`
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
 function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; c = 10.0, w = 7.0) where {Bi<:AbsBilliard}
-    L = billiard.length
-    Hs_return = Vector{Matrix}(undef, length(ks))
-    ps_return = Vector{Vector}(undef, length(ks))
-    qs_return = Vector{Vector}(undef, length(ks))
-    p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
+    L=billiard.length
+    Hs_return=Vector{Matrix}(undef,length(ks))
+    ps_return=Vector{Vector}(undef,length(ks))
+    qs_return=Vector{Vector}(undef,length(ks))
+    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks) 
-        H, qs, ps = husimi_function(ks[i], us[i], s_vals[i], L; c=c, w=w)
-        Hs_return[i] = H
-        ps_return[i] = ps
-        qs_return[i] = qs
+        H,qs,ps=husimi_function(ks[i],us[i],s_vals[i],L;c=c,w=w)
+        Hs_return[i]=H
+        ps_return[i]=ps
+        qs_return[i]=qs
         next!(p)
     end
-    return Hs_return, ps_return, qs_return
+    return Hs_return,ps_return,qs_return
 end
 
 """
@@ -302,9 +330,9 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) and their gri
 - `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
 function husimi_functions_from_us_and_boundary_points(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi) where {Bi<:AbsBilliard,T<:Real}
-    vec_of_s_vals = [bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list, ps_list, qs_list = husimi_functions_from_boundary_functions(ks, vec_us, vec_of_s_vals, billiard)
-    return Hs_list, ps_list, qs_list
+    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
+    return Hs_list,ps_list,qs_list
 end
 
 """
@@ -326,15 +354,15 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
 function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
-    L = billiard.length
-    vec_of_s_vals = [bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list = Vector{Matrix{T}}(undef, length(ks))
-    H,qs,ps = husimiOnGrid(ks[1], vec_of_s_vals[1], vec_us[1], L, nx, ny)
-    Hs_list[1] = H
-    p = Progress(length(ks); desc="Constructing husimi matrices, N=$(length(ks))")
+    L=billiard.length
+    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+    Hs_list=Vector{Matrix{T}}(undef,length(ks))
+    H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny)
+    Hs_list[1]=H
+    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)[2:end]
-        H,_,_ = husimiOnGrid(ks[i], vec_of_s_vals[i], vec_us[i], L, nx, ny)
-        Hs_list[i] = H
+        H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny)
+        Hs_list[i]=H
         next!(p)
     end
     return Hs_list,collect(ps),collect(qs)
@@ -373,5 +401,5 @@ Loads the husimi functions (the matrices and the qs and ps vector that accompany
 """
 function load_husimi_functions(filename::String)
     @load filename Hs ps qs
-    return Hs, ps, qs
+    return Hs,ps,qs
 end
