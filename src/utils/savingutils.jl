@@ -96,7 +96,7 @@ function merge_and_filter_tagged_files!(csv_files::Vector{String},output_file::S
     for csv_file in csv_files
         try
             df=CSV.read(csv_file,DataFrame)
-            if !(haskey(df,:k1) && haskey(df,:k2))
+            if !(:k1 in names(df) && :k2 in names(df))
                 println("$csv_file is not a tagged file, skipping")
                 continue
             end
