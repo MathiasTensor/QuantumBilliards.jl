@@ -438,29 +438,69 @@ function read_boundary_function(filename::String="boundary_values.jld2")
     return ks, us, s_vals
 end
 
+"""
+    momentum_function(u, s)
+
+Computes the momentum distribution function for the boundary function `u` defined with arclengths `s`. This function uses the Fast Fourier Transform (FFT) to compute the Discrete Fourier Transform 1D. This returns the plot of the DFT (y-axis) and the corresponding frequencies (ks) for each pt in y-axis.
+
+# Arguments
+- `u`: A vector representing the boundary function (Wavefunction normal derivative) on the boundary.
+- `s`: A vector representing the arclengths (positions) on the boundary where the normal derivative was calculated.
+
+# Returns
+- `abs2.(fu)/length(fu)::Vector`: A vector corresponding the the DFT.
+- `ks::Vector`: The associated frequencies.
+"""
 function momentum_function(u,s)
-    fu = rfft(u)
-    sr = 1.0/diff(s)[1]
-    ks = rfftfreq(length(s),sr).*(2*pi)
-    return abs2.(fu)/length(fu), ks
+    fu=rfft(u)
+    sr=1.0/diff(s)[1]
+    ks=rfftfreq(length(s),sr).*(2*pi)
+    return abs2.(fu)/length(fu),ks
 end
 
-function momentum_function(state::S; b=5.0) where {S<:AbsState}
-    u, s, norm = boundary_function(state; b)
+"""
+    momentum_function(state::S; b=5.0) where {S<:AbsState}
+
+Computes the momentum distribution function for a given quantum state object. The wavefunction's normal derivative and its corresponding arclength positions are extracted from the state. This function internally calls `boundary_function` to extract the boundary function `u` and arclength positions `s` for the given quantum state.
+
+
+# Arguments
+- `state::S`: A quantum state object of type `<:AbsState`.
+- `b::Real`: Number of basis functions used to compute the wavefunction on the boundary (default: `5.0`).
+
+# Returns
+- `Vector`: The DFT amplitudes (`abs2.(fu)/length(fu)`), corresponding to the momentum distribution.
+- `Vector`: The frequencies (`ks`) associated with the DFT components.
+"""
+function momentum_function(state::S;b=5.0) where {S<:AbsState}
+    u,s,norm=boundary_function(state;b)
     return momentum_function(u,s)
 end
 
 #this can be optimized by usinf FFTW plans
-function momentum_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
-    us, s, norms = boundary_function(state_bundle; b)
-    mf, ks = momentum_function(us[1],s)
-    type = eltype(mf)
-    mfs::Vector{Vector{type}} = [mf]
-    for i in 2:length(us)
-        mf, ks = momentum_function(us[i],s)
+"""
+    momentum_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
+
+Computes the momentum distribution functions for all eigenstates in a given bundle of quantum states. Each eigenstate in the bundle has its momentum distribution computed, and the results are returned as a vector of momentum distributions.
+
+# Arguments
+- `state_bundle::S`: A bundle of quantum eigenstates of type `<:EigenstateBundle` which is a collection of states `<:AbsState`
+- `b::Real`: Number of basis functions used to compute the wavefunctions on the boundary (default: `5.0`).
+
+# Returns
+- `Vector{Vector}`: A vector of DFT amplitude vectors, one for each eigenstate in the bundle.
+- `Vector`: A vector of frequencies (`ks`) associated with the DFT components (shared across all eigenstates since marker on x-axis (not function of unique u just the length of s)).
+"""
+function momentum_function(state_bundle::S;b=5.0) where {S<:EigenstateBundle}
+    us,s,norms=boundary_function(state_bundle;b)
+    mf,ks=momentum_function(us[1],s)
+    type=eltype(mf)
+    mfs::Vector{Vector{type}}=[mf]
+    for i in eachindex(us)[2:end]
+        mf,ks=momentum_function(us[i],s)
         push!(mfs,mf)
     end
-    return mfs, ks
+    return mfs,ks
 end
 
 # Helper for momentum function calculations. We need this one since we will require much point information like xy, s,...
@@ -524,29 +564,27 @@ Returns a function that computes the momentum representation of a given quantum 
 
 """
 function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
-    u_values, pts, k = setup_momentum_density(state; b)
-    T = eltype(u_values)
-    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
-    num_points = length(pts_coords)
-    
+    u_values,pts,k=setup_momentum_density(state;b)
+    T=eltype(u_values)
+    pts_coords=pts.xy  #  pts.xy is Vector{SVector{2, T}}
+    num_points=length(pts_coords)
     function mom(p::SVector) # p = (px, py)
-        local_sum = zero(Complex{T})
-        k_squared = k^2
-        p_squared = norm(p)^2
-        
-        if abs(p_squared - k_squared) > sqrt(eps(T))
+        local_sum=zero(Complex{T})
+        k_squared=k^2
+        p_squared=norm(p)^2
+        if abs(p_squared-k_squared)>sqrt(eps(T))
             # Far from energy shell
             for i in 1:num_points
-                local_sum += u_values[i] * exp(im*(pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]))
+                local_sum+=u_values[i]*exp(im*(pts_coords[i][1]*p[1]+pts_coords[i][2]*p[2]))
             end
-            return 1/(p_squared - k_squared) * (1/(2*pi)) * local_sum
+            return 1/(p_squared-k_squared)*(1/(2*pi))*local_sum
         else
             # Near energy shell, use approximation by Backer
             for i in 1:num_points
-                phase_term = pts_coords[i][1]*p[1] + pts_coords[i][2]*p[2]
-                local_sum += u_values[i] * exp(im*phase_term) * phase_term
+                phase_term=pts_coords[i][1]*p[1]+pts_coords[i][2]*p[2]
+                local_sum+=u_values[i]*exp(im*phase_term)*phase_term
             end
-            return -im/(4*pi*k_squared) * local_sum
+            return -im/(4*pi*k_squared)*local_sum
         end
     end
     return mom
@@ -568,33 +606,33 @@ Computes the radially integrated momentum density function `I(φ)` from a given 
 This function calculates the radially integrated momentum density based on the eigenvector components and boundary points extracted from the `state`. It returns a function `I_phi(φ)` that computes the density at any given angle `φ`.
 """
 function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
-    u_values, pts, k = setup_momentum_density(state; b)
-    T = eltype(u_values)
-    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
-    num_points = length(pts_coords)
+    u_values,pts,k=setup_momentum_density(state;b)
+    T=eltype(u_values)
+    pts_coords=pts.xy  # pts.xy is Vector{SVector{2, T}}
+    num_points=length(pts_coords)
     function I_phi(phi)
-        I_phi_array = zeros(T, Threads.nthreads())
-        p = k
+        I_phi_array=zeros(T,Threads.nthreads())
+        p=k
         Threads.@threads for i in 1:num_points
-            thread_id = Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
-            I_phi_i = zero(T)
+            thread_id=Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
+            I_phi_i=zero(T)
             for j in 1:num_points
-                delta_x = pts_coords[i][1] - pts_coords[j][1]
-                delta_y = pts_coords[i][2] - pts_coords[j][2]
-                alpha = abs(cos(phi) * delta_x + sin(phi) * delta_y)
-                x = alpha * p
-                if abs(x) < sqrt(eps(T))
-                    x = sqrt(eps(T))
+                delta_x=pts_coords[i][1]-pts_coords[j][1]
+                delta_y=pts_coords[i][2]-pts_coords[j][2]
+                alpha=abs(cos(phi)*delta_x+sin(phi)*delta_y)
+                x=alpha*p
+                if abs(x)<sqrt(eps(T))
+                    x=sqrt(eps(T))
                 end
-                Si_x = sinint(x)
-                Ci_x = cosint(x)
-                f_x = sin(x) * Ci_x - cos(x) * Si_x
-                I_phi_i += f_x * u_values[i] * u_values[j]
+                Si_x=sinint(x)
+                Ci_x=cosint(x)
+                f_x=sin(x)*Ci_x-cos(x)*Si_x
+                I_phi_i+=f_x*u_values[i]*u_values[j]
             end
-            I_phi_array[thread_id] += I_phi_i
+            I_phi_array[thread_id]+=I_phi_i
         end
-        I_phi_total = sum(I_phi_array)
-        return abs((one(T) / (T(8) * T(pi)^2)) * I_phi_total)
+        I_phi_total=sum(I_phi_array)
+        return abs((one(T)/(T(8)*T(pi)^2))*I_phi_total)
     end
     return I_phi
 end
@@ -609,51 +647,51 @@ Computes the angularly integrated momentum density function `R(r)` from a given 
 - `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
 
 # Returns
-- A function `R_r(r::T)` that computes the angularly integrated momentum density at a given radius `r`.
+- `<:Function` : A function `R_r(r)` that computes the angularly integrated momentum density at a given radius `r`.
 
 # Description
 This function calculates the angularly integrated momentum density based on the eigenvector components and boundary points extracted from the `state`. It returns a function `R_r(r)` that computes the density at any given radius `r`.
 """
 function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
-    u_values, pts, k = setup_momentum_density(state; b)
-    T = eltype(u_values)
-    pts_coords = pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
-    k_squared = k^2
-    epsilon = sqrt(eps(T))
-    num_points = length(pts_coords)
+    u_values,pts,k=setup_momentum_density(state;b)
+    T=eltype(u_values)
+    pts_coords=pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
+    k_squared=k^2
+    epsilon=sqrt(eps(T))
+    num_points=length(pts_coords)
     function R_r(r)
-        if abs(r - sqrt(k_squared)) < epsilon
+        if abs(r-sqrt(k_squared))<epsilon
             # This just uses Backer's first approximation to the R(r) at the wavefunctions's k value
-            R_r_array = zeros(T, Threads.nthreads())
+            R_r_array=zeros(T,Threads.nthreads())
             Threads.@threads for i in 1:num_points
-                thread_id = Threads.threadid()
-                R_r_i = zero(T)
+                thread_id=Threads.threadid()
+                R_r_i=zero(T)
                 for j in 1:num_points
-                    delta_x = pts_coords[i][1] - pts_coords[j][1]
-                    delta_y = pts_coords[i][2] - pts_coords[j][2]
-                    distance = hypot(delta_x, delta_y)
-                    J0_value = Bessels.besselj(0, distance * r)
-                    J2_value = Bessels.besselj(2, distance * r)
-                    R_r_i += u_values[i] * u_values[j] * distance^2 * 0.5 * (J2_value - J0_value)
+                    delta_x=pts_coords[i][1]-pts_coords[j][1]
+                    delta_y=pts_coords[i][2]-pts_coords[j][2]
+                    distance=hypot(delta_x,delta_y)
+                    J0_value=Bessels.besselj(0,distance*r)
+                    J2_value=Bessels.besselj(2,distance*r)
+                    R_r_i+=u_values[i]*u_values[j]*distance^2*0.5*(J2_value-J0_value)
                 end
-                R_r_array[thread_id] += R_r_i
+                R_r_array[thread_id]+=R_r_i
             end
-        return 1/(16*pi*k) * sum(R_r_array)
+        return 1/(16*pi*k)*sum(R_r_array)
         end
-        R_r_array = zeros(T, Threads.nthreads())
+        R_r_array=zeros(T,Threads.nthreads())
         Threads.@threads for i in 1:num_points
-            thread_id = Threads.threadid()
-            R_r_i = zero(T)
+            thread_id=Threads.threadid()
+            R_r_i=zero(T)
             for j in 1:num_points
-                delta_x = pts_coords[i][1] - pts_coords[j][1]
-                delta_y = pts_coords[i][2] - pts_coords[j][2]
-                distance = hypot(delta_x, delta_y)
-                J0_value = Bessels.besselj(0, distance * r)
-                R_r_i += u_values[i] * u_values[j] * J0_value
+                delta_x=pts_coords[i][1]-pts_coords[j][1]
+                delta_y=pts_coords[i][2]-pts_coords[j][2]
+                distance=hypot(delta_x,delta_y)
+                J0_value=Bessels.besselj(0,distance*r)
+                R_r_i+=u_values[i]*u_values[j]*J0_value
             end
-            R_r_array[thread_id] += R_r_i
+            R_r_array[thread_id]+=R_r_i
         end
-        return (r / (r^2 - k_squared)^2) * sum(R_r_array)
+        return (r/(r^2-k_squared)^2)*sum(R_r_array)
     end
     return R_r
 end
