@@ -13,10 +13,10 @@ Calculates the localization entropy of a quantum eigenstate's Husimi matrix. It 
 - `A<:Real`: The localization entropy A of the quantum eigenstate
 """
 function localization_entropy(H::Matrix{T}, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
-    H = H ./ sum(H)  # normalize H
-    non_zero_idxs = findall(H .> 0.0)  # Find indices of non-zero elements
-    Im = sum(H[non_zero_idxs] .* log.(H[non_zero_idxs]))  # Compute the entropy for non-zero elements
-    A = 1.0 / (T(prod(size(H)))*chaotic_classical_phase_space_vol_fraction) * exp(-Im)
+    H=H./sum(H)  # normalize H
+    non_zero_idxs=findall(H.>0.0)  # Find indices of non-zero elements
+    Im=sum(H[non_zero_idxs].*log.(H[non_zero_idxs]))  # Compute the entropy for non-zero elements
+    A=1.0/(T(prod(size(H)))*chaotic_classical_phase_space_vol_fraction)*exp(-Im)
     return A
 end
 
@@ -32,8 +32,8 @@ Calculates the normalized inverse participation ratio R.
 - `R<:Real`: The normalized inverse participation ratio R of the quantum eigenstate
 """
 function normalized_inverse_participation_ratio_R(H::Matrix{T}) where {T<:Real}
-    H = H ./ sum(H)
-    R = 1/(prod(size(H))*sum(H.^2)) # the prod(size(H)) is the grid count directly from the size of the matrix
+    H=H./sum(H)
+    R=1/(prod(size(H))*sum(H.^2)) # the prod(size(H)) is the grid count directly from the size of the matrix
     return R
 end
 
@@ -53,10 +53,10 @@ Cₙₘ = 1/{QₙQₘ}∑HⁿᵢⱼHᵐᵢⱼ
 # Returns
 - `T`: The value of the nm-correlation matrix element.
 """ 
-function correlation_matrix(H1::Matrix{T}, H2::Matrix{T}) where {T<:Real}
-    numerator = sum(H1.*H2)
-    denominator = sqrt(sum(H1.^2)*sum(H2.^2))
-    if denominator == 0.0
+function correlation_matrix(H1::Matrix{T},H2::Matrix{T}) where {T<:Real}
+    numerator=sum(H1.*H2)
+    denominator=sqrt(sum(H1.^2)*sum(H2.^2))
+    if denominator==0.0
         throw(ErrorException("Denominator cannot be zero"))
     end
     return numerator/denominator
@@ -75,24 +75,24 @@ Computes the correlation matrix and it's average for a sequence of consecutive H
 - `avg_corr::T`: The average correlation value for the given Husimi matrices.
 """
 function correlation_matrix_and_average(H_list::Vector{Matrix{T}}) where {T<:Real}
-    n = length(H_list)
-    corr_mat = Matrix{T}(undef,n,n)
-    norms = [sqrt(sum(H.^2)) for H in H_list] 
-    total_corr = Threads.Atomic{Float64}(0.0) 
-    count = Threads.Atomic{Int}(0) 
+    n=length(H_list)
+    corr_mat=Matrix{T}(undef,n,n)
+    norms=[sqrt(sum(H.^2)) for H in H_list] 
+    total_corr=Threads.Atomic{Float64}(0.0) 
+    count=Threads.Atomic{Int}(0) 
     Threads.@threads for i in 1:n
         @inbounds for j in i:n  # Only loop over upper triangular matrix
-            numerator = sum(H_list[i].*H_list[j])
-            denominator = norms[i]*norms[j]
-            corr = numerator/denominator
-            corr_mat[i,j] = corr
-            corr_mat[j,i] = corr  # Symmetric
-            Threads.atomic_add!(total_corr, corr)
+            numerator=sum(H_list[i].*H_list[j])
+            denominator=norms[i]*norms[j]
+            corr=numerator/denominator
+            corr_mat[i,j]=corr
+            corr_mat[j,i]=corr  # Symmetric
+            Threads.atomic_add!(total_corr,corr)
             Threads.atomic_add!(count, 1)
         end
     end
-    avg_corr = total_corr[]/count[] 
-    return corr_mat, avg_corr
+    avg_corr=total_corr[]/count[] 
+    return corr_mat,avg_corr
 end
 
 """
@@ -109,12 +109,12 @@ Calculates the pdf data for plotting the localization entropy A using a histogra
 - `bin_centers::Vector{T}`: The centers of the histogram bins
 - `bin_counts::Vector{T}`: The counts of the histogram bins (normalized)
 """
-function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}}, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
-    localization_entropies = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs]
-    hist = Distributions.fit(StatsBase.Histogram, localization_entropies; nbins=nbins)
-    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
-    bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
-    return bin_centers, bin_counts
+function P_localization_entropy_pdf_data(Hs::Vector{Matrix{T}},chaotic_classical_phase_space_vol_fraction::T;nbins=50) where {T<:Real}
+    localization_entropies=[localization_entropy(H,chaotic_classical_phase_space_vol_fraction) for H in Hs]
+    hist=Distributions.fit(StatsBase.Histogram,localization_entropies;nbins=nbins)
+    bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2
+    bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1]
+    return bin_centers,bin_counts
 end
 
 """
@@ -133,20 +133,20 @@ Plots the probability density function (PDF) of the localization entropy A using
 # Returns
 - `Nothing`
 """
-function plot_P_localization_entropy_pdf!(ax::Axis, Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50, color::Symbol=:lightblue, fit_beta::Bool=false) where {T<:Real}
-    bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
-    barplot!(ax, bin_centers, bin_counts, label="A distribution", color=color, gap=0, strokecolor=:black, strokewidth=1)
+function plot_P_localization_entropy_pdf!(ax::Axis,Hs::Vector,chaotic_classical_phase_space_vol_fraction::T;nbins=50,color::Symbol=:lightblue,fit_beta::Bool=false) where {T<:Real}
+    bin_centers,bin_counts=P_localization_entropy_pdf_data(Hs,chaotic_classical_phase_space_vol_fraction;nbins=nbins)
+    barplot!(ax,bin_centers,bin_counts,label="A distribution",color=color,gap=0,strokecolor=:black,strokewidth=1)
     if fit_beta
-        fit_data = fit_P_localization_entropy_to_beta(Hs, chaotic_classical_phase_space_vol_fraction, nbins=nbins)
-        A0, a, b, beta_model = fit_data
-        params = a, b
-        xs = collect(range(0.0, A0, 200)) # x scale for the beta distributin will be from 0.0 to A0
-        ys = beta_model(xs, params)
-        param_label = "Beta dist.fit: [A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))]"
+        fit_data=fit_P_localization_entropy_to_beta(Hs,chaotic_classical_phase_space_vol_fraction,nbins=nbins)
+        A0,a,b,beta_model=fit_data
+        params=a,b
+        xs=collect(range(0.0,A0,200)) # x scale for the beta distributin will be from 0.0 to A0
+        ys=beta_model(xs,params)
+        param_label="Beta dist.fit: [A0=$(round(A0, digits=2)), a=$(round(a, digits=2)), b=$(round(b, digits=2))]"
         lines!(ax,xs,ys,label=param_label,color=:red)
     end
-    axislegend(ax, position=:rt)
-    xlims!(ax, (0.0, 1.0))
+    axislegend(ax,position=:rt)
+    xlims!(ax,(0.0,1.0))
 end
 
 """
@@ -163,43 +163,43 @@ Fits the beta distribution P(A) = C*A^a*(A0-A)^b to the numerical data.
 - `fit_result::LsqFitResult`: The result of the curve fitting using LsqFit. To get the `A0`, `a`, `b` take `fit_result.param`. It is returned in that order.
 - `beta_model::Function`: The best fitting beta distribution function.
 """
-function fit_P_localization_entropy_to_beta(Hs::Vector, chaotic_classical_phase_space_vol_fraction::T; nbins=50) where {T<:Real}
-    bin_centers, bin_counts = P_localization_entropy_pdf_data(Hs, chaotic_classical_phase_space_vol_fraction; nbins=nbins)
-    bin_centers = collect(bin_centers)
-    println("bin_centers, ", bin_centers) # debug
-    println("bin_counts, ", bin_counts) # debug
-    A0 = maximum(bin_centers)+0.05  # Fix A0
-    function beta_model(A, params)
-        a, b = params  # Only a and b are optimized
-        B(x, y) = gamma(x) * gamma(y) / gamma(x + y)
-        C = 1 / (A0^(a + b + 1) * B(a + 1, b + 1)) 
-        result = Vector{Float64}(undef, length(A))
+function fit_P_localization_entropy_to_beta(Hs::Vector,chaotic_classical_phase_space_vol_fraction::T;nbins=50) where {T<:Real}
+    bin_centers,bin_counts=P_localization_entropy_pdf_data(Hs,chaotic_classical_phase_space_vol_fraction;nbins=nbins)
+    bin_centers=collect(bin_centers)
+    println("bin_centers, ",bin_centers) # debug
+    println("bin_counts, ",bin_counts) # debug
+    A0=maximum(bin_centers)+0.05  # Fix A0
+    function beta_model(A,params)
+        a,b=params  # Only a and b are optimized
+        B(x,y)=gamma(x)*gamma(y)/gamma(x+y)
+        C=1/(A0^(a+b+1)*B(a+1,b+1)) 
+        result=Vector{Float64}(undef,length(A))
         for i in eachindex(A)
-            term1 = (A[i] + 0im)^a
-            term2 = (A0 - A[i] + 0im)^b
-            term = C*term1 * term2 #/ C
-            result[i] = isreal(term) ? real(term) : 0.0  # Ensure real output
+            term1=(A[i]+0im)^a
+            term2=(A0-A[i]+0im)^b
+            term=C*term1*term2 #/ C
+            result[i]= isreal(term) ? real(term) : 0.0  # Ensure real output
         end
         return result
     end
-    initial_guess = [30.0, 6.0]  # Initial guesses for a and b
-    fit_result = curve_fit((A, params) -> beta_model(A, params), bin_centers, bin_counts, initial_guess)
-    optimal_a, optimal_b = fit_result.param
-    return A0, optimal_a, optimal_b, beta_model
+    initial_guess=[30.0,6.0]  # Initial guesses for a and b
+    fit_result=curve_fit((A,params) -> beta_model(A,params),bin_centers,bin_counts,initial_guess)
+    optimal_a,optimal_b=fit_result.param
+    return A0,optimal_a,optimal_b,beta_model
 end
 
 # INTERNAL convert integer to Roman numeral (up to 16, otherwise arabic to string)
 function int_to_roman(n::Int)
     romans = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi"]
-    return n <= length(romans) ? romans[n] : string(n)
+    return n<=length(romans) ? romans[n] : string(n)
 end
 
 # INTERNAL construct a gray chaotic background for the husimi plots
-function husimi_with_chaotic_background(H::Matrix, projection_grid::Matrix)
+function husimi_with_chaotic_background(H::Matrix,projection_grid::Matrix)
      # Create a binary mask for chaotic regions
      chaotic_mask = projection_grid .== 1
-     H_bg = H
-     return H_bg, chaotic_mask
+     H_bg=H
+     return H_bg,chaotic_mask
 end
 
 """
