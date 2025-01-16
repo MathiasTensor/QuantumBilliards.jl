@@ -398,8 +398,8 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
         next!(p)
     end
     Hs_list=Hs_list[valid_indices]
-    ps=collect(ps)[valid_indices]
-    qs=collect(qs)[valid_indices]
+    ps=collect(ps)
+    qs=collect(qs)
     return Hs_list,ps,qs
 end
 
