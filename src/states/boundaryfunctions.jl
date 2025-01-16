@@ -218,27 +218,37 @@ High level wrapper for the `Eigenstate` version of the `boundary_function`. This
 - `s_vals`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
 - `norms`: A vector of the norms of the boundary functions (the u functions). Each element corresponds to a wave number `ks[i]`.
 """
-function boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    ks = state_data.ks
-    tens = state_data.tens
-    X = state_data.X
-    us = Vector{Vector{eltype(ks)}}(undef, length(ks))
-    s_vals = Vector{Vector{eltype(ks)}}(undef, length(ks))
-    norms = Vector{eltype(ks)}(undef, length(ks))
-    progress = Progress(length(ks); desc="Constructing the u(s)...")
+function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    ks=state_data.ks
+    tens=state_data.tens
+    X=state_data.X
+    us=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    s_vals=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    norms=Vector{eltype(ks)}(undef,length(ks))
+    valid_indices=fill(true,length(ks))
+    progress=Progress(length(ks);desc="Constructing the u(s)...")
     for i in eachindex(ks) 
-        vec = X[i] # vector of vectors
-        dim = length(vec)
-        dim = rescale_rpw_dimension(basis, dim)
-        new_basis = resize_basis(basis, billiard, dim, ks[i])
-        state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
-        u, s, norm = boundary_function(state; b=b)
-        us[i] = u
-        s_vals[i] = s
-        norms[i] = norm
+        try # the @. macro can faill in gradient_matrices when multithreading
+            vec=X[i] # vector of vectors
+            dim=length(vec)
+            dim=rescale_rpw_dimension(basis,dim)
+            new_basis=resize_basis(basis,billiard,dim,ks[i])
+            state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
+            u,s,norm=boundary_function(state;b=b)
+            us[i]=u
+            s_vals[i]=s
+            norms[i]=norm
+        catch e
+            println("Error while constructing the u(s) for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
         next!(progress)
     end
-    return ks, us, s_vals, norms
+    ks=ks[valid_indices]
+    us=us[valid_indices]
+    s_vals=s_vals[valid_indices]
+    norms=norms[valid_indices]
+    return ks,us,s_vals,norms
 end
 
 """
@@ -256,25 +266,34 @@ Computes the boundary functions us and the `BoundaryPoints` from which we can co
 `us::Vector{Vector}`: The vector of boundary functions (Vector) for each k that is a solution.
 `pts_all::Vector{BoundaryPoints}`: A struct that contains the positions for which the u(s) (boundary function was evaluated) {pts.xy}, the arclengths that corresponds to these points {pts.s}, the normal vectors for the points we use {pts.normal} and the differences between the arclengths {pts.ds}. This is for every k in ks.
 """
-function boundary_function_with_points(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    ks = state_data.ks
-    tens = state_data.tens
-    X = state_data.X
-    us_all = Vector{Vector{eltype(ks)}}(undef, length(ks))
-    pts_all = Vector{BoundaryPoints{eltype(ks)}}(undef, length(ks))
-    progress = Progress(length(ks); desc="Constructing the u(s)...")
+function boundary_function_with_points(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    ks=state_data.ks
+    tens=state_data.tens
+    X=state_data.X
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
+    valid_indices=fill(true,length(ks))
+    progress=Progress(length(ks);desc="Constructing the u(s)...")
     Threads.@threads for i in eachindex(ks) 
-        vec = X[i] # vector of vectors
-        dim = length(vec)
-        dim = rescale_rpw_dimension(basis, dim)
-        new_basis = resize_basis(basis, billiard, dim, ks[i])
-        state = Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
-        u, pts, _ = setup_momentum_density(state; b=b) # pts is BoundaryPoints and has information on ds and x
-        us_all[i] = u
-        pts_all[i] = pts
+        try # the @. macro can faill in gradient_matrices when multithreading
+            vec=X[i] # vector of vectors
+            dim=length(vec)
+            dim=rescale_rpw_dimension(basis,dim)
+            new_basis=resize_basis(basis, billiard, dim, ks[i])
+            state = Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
+            u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
+            us_all[i]=u
+            pts_all[i]=pts
+        catch e
+            println("Error while constructing the u(s) for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
         next!(progress)
     end
-    return ks, us_all, pts_all
+    ks=ks[valid_indices]
+    us_all=us_all[valid_indices]
+    pts_all=pts_all[valid_indices]
+    return ks,us_all,pts_all
 end
 
 ### BIM ###
@@ -328,7 +347,7 @@ function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector
         pts_ret[i]=pts
         us_ret[i]=u
     end
-    return pts_ret, us_ret
+    return pts_ret,us_ret
 end
 
 """
