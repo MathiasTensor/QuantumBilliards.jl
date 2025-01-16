@@ -120,11 +120,19 @@ function husimi_function(state_bundle::S;b=5.0,c=10.0,w=7.0) where {S<:Eigenstat
     us,s,norm=boundary_function(state_bundle; b=b)
     H,qs,ps=husimi_function(ks[1],us[1],s,L;c=c,w=w)
     type=eltype(H)
-    Hs::Vector{Matrix{type}}=[H]
-    for i in eachindex(ks)[2:end]
-        H,qs,ps=husimi_function(ks[i],us[i],s,L;c=c,w=w)
-        push!(Hs,H)
+    valid_indices=fill(true,length(ks))
+    Hs=Vector{Matrix{type}}(undef,length(ks))
+    Hs[1]=H
+    for i in eachindex(ks)[2:end] # no need for multithreading here
+        try
+            H,qs,ps=husimi_function(ks[i],us[i],s,L;c=c,w=w)
+            Hs[i]=H
+        catch e
+            println("Error while constructing Husimi for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
     end
+    Hs=Hs[valid_indices]
     return Hs,qs,ps
 end
 
@@ -268,18 +276,27 @@ High level wrapper for the construction of the husimi functions from StateData w
 """
 function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     L=billiard.length
+    valid_indices=fill(true,length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
     ps_return=Vector{Vector}(undef,length(ks))
     qs_return=Vector{Vector}(undef,length(ks))
     ks,us,s_vals,_ = boundary_function(state_data,billiard,basis;b=b)
     p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks) 
-        H,qs,ps=husimi_function(ks[i],us[i],s_vals[i],L;c=c,w=w)
-        Hs_return[i]=H
-        ps_return[i]=ps
-        qs_return[i]=qs
+        try
+            H,qs,ps=husimi_function(ks[i],us[i],s_vals[i],L;c=c,w=w)
+            Hs_return[i]=H
+            ps_return[i]=ps
+            qs_return[i]=qs
+        catch e
+            println("Error while constructing Husimi for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
         next!(p)
     end
+    Hs_return=Hs_return[valid_indices]
+    ps_return=ps_return[valid_indices]
+    qs_return=qs_return[valid_indices]
     return Hs_return,ps_return,qs_return
 end
 
@@ -300,17 +317,26 @@ An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals`
 """
 function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; c = 10.0, w = 7.0) where {Bi<:AbsBilliard}
     L=billiard.length
+    valid_indices=fill(true,length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
     ps_return=Vector{Vector}(undef,length(ks))
     qs_return=Vector{Vector}(undef,length(ks))
     p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks) 
-        H,qs,ps=husimi_function(ks[i],us[i],s_vals[i],L;c=c,w=w)
-        Hs_return[i]=H
-        ps_return[i]=ps
-        qs_return[i]=qs
+        try
+            H,qs,ps=husimi_function(ks[i],us[i],s_vals[i],L;c=c,w=w)
+            Hs_return[i]=H
+            ps_return[i]=ps
+            qs_return[i]=qs
+        catch e
+            println("Error while constructing Husimi for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
         next!(p)
     end
+    Hs_return=Hs_return[valid_indices]
+    ps_return=ps_return[valid_indices]
+    qs_return=qs_return[valid_indices]
     return Hs_return,ps_return,qs_return
 end
 
@@ -355,17 +381,26 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 """
 function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
     L=billiard.length
+    valid_indices=fill(true,length(ks))
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
     Hs_list=Vector{Matrix{T}}(undef,length(ks))
     H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny)
     Hs_list[1]=H
     p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)[2:end]
-        H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny)
-        Hs_list[i]=H
+        try
+            H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny)
+            Hs_list[i]=H
+        catch e
+            println("Error while constructing Husimi for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
         next!(p)
     end
-    return Hs_list,collect(ps),collect(qs)
+    Hs_list=Hs_list[valid_indices]
+    ps=collect(ps)[valid_indices]
+    qs=collect(qs)[valid_indices]
+    return Hs_list,ps,qs
 end
 
 """
