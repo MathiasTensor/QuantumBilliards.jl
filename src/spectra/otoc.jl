@@ -27,11 +27,11 @@ f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp
 # Returns
 - `Complex{T}`: The value at those params.
 """
-function gaussian_wavepacket_2d_atPoint(x::T, y::T, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
-    norm_factor = 1/sqrt(sqrt(2π*sigma_x*sigma_y)) # Normalization factor for 2D Gaussian
-    exp_factor = exp(-((x-x0)^2 / (2*sigma_x^2)+(y-y0)^2/(2*sigma_y^2)))
-    phase_factor = exp(im*(kx0*(x-x0)+ky0*(y-y0)))
-    gaussian = norm_factor * exp_factor * phase_factor
+function gaussian_wavepacket_2d_atPoint(x::T,y::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
+    norm_factor=1/sqrt(sqrt(2π*sigma_x*sigma_y)) # Normalization factor for 2D Gaussian
+    exp_factor=exp(-((x-x0)^2/(2*sigma_x^2)+(y-y0)^2/(2*sigma_y^2)))
+    phase_factor=exp(im*(kx0*(x-x0)+ky0*(y-y0)))
+    gaussian=norm_factor*exp_factor*phase_factor
     return gaussian
 end
 
@@ -54,6 +54,20 @@ f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp
 - `Matrix{Complex{T}}`: The value at those params on a 2D grid.
 """
 function gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    #=
+    dx=x.-x0
+    dy=y.-y0
+    gx_amp= @. exp(-dx^2/(2*sigma_x^2))
+    gy_amp= @. exp(-dy^2/(2*sigma_y^2))
+    gx_phase= @. exp(im*kx0*dx)
+    gy_phase= @. exp(im*ky0*dy)
+    gx=gx_amp.*gx_phase
+    gy=gy_amp.*gy_phase
+    norm_factor=1/sqrt(sqrt(2π*sigma_x*sigma_y))
+    result=norm_factor.*(gx*transpose(gy)) # Outer product: result[i,j] = norm_factor * gx[i] * gy[j]
+    return result
+    =#
+    
     norm_factor = 1/sqrt(sqrt(2π*sigma_x*sigma_y))
     inv_sigma_x2 = 1/(2*sigma_x^2)
     inv_sigma_y2 = 1/(2*sigma_y^2)
@@ -68,6 +82,7 @@ function gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, x0::T, y0::T, sigma_
         end
     end
     return result
+    
 end
 
 """
