@@ -68,7 +68,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    for i in eachindex(ks)
+    Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
@@ -96,6 +96,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
 - `xgrid_size::Int=2000`: (Optional), Size of the x grid for the husimi functions. Default is 2000.
 - `ygrid_size::Int=1000`: (Optional), Size of the y grid for the husimi functions. Default is 1000.
+- `use_fixed_grid::Bool=true`: (Optional), Whether to use a fixed grid for the husimi functions (choice of calling function). Default is true.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
@@ -105,7 +106,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true, xgrid_size=2000, ygrid_size=1000) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true, use_fixed_grid=true, xgrid_size=2000, ygrid_size=1000) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -131,18 +132,14 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
         next!(progress)
     end
     # husimi
-    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list,ps,qs = husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
-    ps_list=fill(ps,length(Hs_list))
-    qs_list=fill(qs,length(Hs_list))
-    #=
-    try
-        
-    catch e
-        println("Husimi error: ", e)
+    if use_fixed_grid
+        vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+        Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
+        ps_list=fill(ps,length(Hs_list))
+        qs_list=fill(qs,length(Hs_list))
+    else
         Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
     end
-    =#
     return Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list
 end
 
@@ -190,6 +187,23 @@ function batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
         figures[i]=plot_func(batched_args...;kwargs...) # Call the original plotting function for the batch
     end
     return figures
+end
+
+"""
+    partition_vector(ks::Vector{<:Real}, N::Integer)
+
+Partitions the ks::Vector into N chunks. This is a helper function that helps us map the partitioned figures from the plotting functions (which give us Vector{Figure}) with the corresponding k values they contain. It partitians ks=[k1,k2,...,k_m] as vectors of length N [[k1...k_n],[k_n+1,...,k_2n],.... It is compatible with N=1 (just returns each k as a separate 1-element vector) and length(ks) < N, in which case it return the input vector unchanged.
+
+# Arguments
+- `ks::Vector{<:Real}`: The vector of eigenvalues to be partitioned.
+- `N::Integer`: The number of chunks to partition the ks vector into.
+
+# Returns
+- `partitions::Vector{Vector{<:Real}}`: A vector of vectors, each containing N elements from the input ks vector.
+"""
+function partition_vector(ks::Vector, N::Integer)
+    partitions=[ks[i:min(i+N-1,length(ks))] for i in 1:N:length(ks)]
+    return partitions
 end
 
 """
@@ -504,12 +518,6 @@ the data into sets of size `N`.
 """
 function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; N=100, kwargs...) where {Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,s_vals_all;N=N,kwargs...)
-end
-
-# for getting the ks of the partitioning of the batched ks
-function partition_vector(ks::Vector, N::Integer)
-    partitions=[ks[i:min(i+N-1,length(ks))] for i in 1:N:length(ks)]
-    return partitions
 end
 
 
