@@ -20,12 +20,15 @@ Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the 
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Boundary points for each wavenumber.
 - `billiard::Bi`: Billiard geometry.
 - `b::Float64`: Parameter controlling grid density (default = 5.0).
+- `return_full_wavefunctions::Bool=true`: Return also wavefunctions matrices on the grid. Useful for plotting the Gaussian for debugging.
 
 # Returns
 - `Vector{Vector{T}}`: Vector of wavefunctions as flat arrays evaluated at points inside the billiard boundary.
 - `Vector{SVector{2,T}}`: Points inside the billiard boundary.
+- `dx::T`: the x grid spacing, used for approximating intergrals into sums.
+- `dy::T`: the y grid spacing, used for approximating integrals into sums.
 """
-function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,return_full_wavefunctions=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -38,21 +41,39 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     sz=length(pts)
     # Determine points inside the billiard only once if `inside_only` is true
     pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+    pts_masked_indices=findall(pts_mask)
     pts_inside=pts[pts_mask]
     # Prepare storage for wavefunctions
     Psi_vectors=Vector{Vector{type}}(undef,length(ks))
-    progress=Progress(length(ks),desc="Constructing wavefunctions...")
+    Psi_matrices_full=Vector{Matrix{type}}(undef,length(ks))
+    progress=Progress(length(ks),desc="Constructing wavefunctions full=$return_full_wavefunctions ...")
     # Compute wavefunctions
-    Threads.@threads for i in eachindex(ks)
-        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-        Psi_flat=zeros(type,length(pts_inside))
-        @inbounds for (j,pt) in enumerate(pts_inside)  # Iterate over internal points
-            Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
+    if return_full_wavefunctions
+        Threads.@threads for i in eachindex(ks)
+            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+            Psi_flat=zeros(type,length(pts_inside))
+            Psi_flat_full=zeros(type,sz)
+            @inbounds for idx in pts_masked_indices # no bounds checking
+                Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
+                x,y=pts[idx]
+                Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+            end
+            Psi_vectors[i]=Psi_flat
+            next!(progress)
         end
-        Psi_vectors[i] = Psi_flat
-        next!(progress)
+        return [Psi./sum(Psi) for Psi in Psi_vectors],pts_inside,dx,dy
+    else
+        Threads.@threads for i in eachindex(ks)
+            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+            Psi_flat=zeros(type,length(pts_inside))
+            @inbounds for (j,pt) in enumerate(pts_inside)  # Iterate over internal points
+                Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
+            end
+            Psi_vectors[i]=Psi_flat
+            next!(progress)
+        end
+        return [Psi./sum(Psi) for Psi in Psi_vectors],pts_inside,dx,dy 
     end
-    return [Psi./sum(Psi) for Psi in Psi_vectors],pts_inside
 end
 
 """
@@ -113,6 +134,25 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0
     phase= @. exp(im*(kx0*dx+ky0*dy))
     norm_factor = 1/sqrt(2π*sigma_x*sigma_y)
     return norm_factor.*(amp.*phase)
+end
+
+function gaussian_wavepacket_eigenbasis_expansion_coefficient(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
+    psi_vecs,pts_inside,dx,dy=wavefunction_normalized_multi_flat(ks,vec_us,vec_bdPoints,billiard;b=b)
+    dxdy=dx*dy # grid rectangle area
+    gauss_inside=gaussian_wavepacket_2d(pts_inside,x0,y0,sigma_x,sigma_y,kx0,ky0)
+    coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
+    Threads.@threads for i in eachindex(psi_vecs)
+        try
+            coeffs[i]=sum(psi_vecs[i].*gauss_inside)*dxdy
+        catch e
+            println("Error: Gaussian expansion coefficient failed for basis idx: ",i)
+        end
+    end
+    return coeffs
+end
+
+function plot_gaussian_from_eigenfunction_expansion()
+    
 end
 
 """

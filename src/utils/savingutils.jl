@@ -12,7 +12,7 @@ Saves a `Matrix` into a `.csv` file via `DataFrames`.
 # Returns
 - `Nothing`
 """
-function save_matrix!(mat::Matrix{T}, filename::String)
+function save_matrix!(mat::Matrix{T}, filename::String) where {T<:Real}
     df=DataFrame(mat,:auto)
     CSV.write(filename,df)
 end
