@@ -74,9 +74,9 @@ Computes the correlation matrix and it's average for a sequence of consecutive H
 - `corr_mat::Matrix{T}`: The correlation matrix for visualization.
 - `avg_corr::T`: The average correlation value for the given Husimi matrices.
 """
-function correlation_matrix_and_average(H_list::Vector{Matrix{T}}) where {T<:Real}
+function correlation_matrix_and_average(H_list::Vector)
     n=length(H_list)
-    corr_mat=Matrix{T}(undef,n,n)
+    corr_mat=Matrix{Float64}(undef,n,n)
     norms=[sqrt(sum(H.^2)) for H in H_list] 
     total_corr=Threads.Atomic{Float64}(0.0) 
     count=Threads.Atomic{Int}(0) 
