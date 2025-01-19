@@ -8,31 +8,51 @@ include("../states/wavefunctions.jl")
 # TODO Gaussian wavepacket does not work correctly!
 # TODO Put the puts_masked_indices outside the gaussian_2d_wavepacket projection to overcalculating them
 
-### MATRIX ELEMENTS - PROJECTIONS OF 2D GAUSSIAN TO BASIS SET
 """
-    gaussian_wavepacket_2d_atPoint(x::T, y::T, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) :: Complex{T} where {T<:Real}
+    wavefunction_normalized_multi_flat(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi;
+                            b::Float64=5.0, inside_only::Bool=true, fundamental=true)
 
-Generates a 2D Gaussian wavepacket in coordinate space at a single point if we don't need the whole coordinate space.
-
-```math
-f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp(-iky(y-y0))
-```
+Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the billiard boundary and returns them as a vector of flat wavefunctions (normalized).
 
 # Arguments
-- `x::T, y::T`: The spatial coordinates (x,y).
-- `x0::T, y0::T`: The center of the wavepacket in space.
-- `sigma_x::T, sigma_y::T`: standard deviations of the wavepacket in the x and y directions.
-- `kx0::T, ky0::T`: The central wavevectors in the x and y directions.
+- `ks::Vector{T}`: Wavenumbers for which wavefunctions are computed.
+- `vec_us::Vector{Vector{T}}`: Boundary normal derivative values for each wavenumber.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Boundary points for each wavenumber.
+- `billiard::Bi`: Billiard geometry.
+- `b::Float64`: Parameter controlling grid density (default = 5.0).
 
 # Returns
-- `Complex{T}`: The value at those params.
+- `Vector{Vector{T}}`: Vector of wavefunctions as flat arrays evaluated at points inside the billiard boundary.
+- `Vector{SVector{2,T}}`: Points inside the billiard boundary.
 """
-function gaussian_wavepacket_2d_atPoint(x::T,y::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
-    norm_factor=1/sqrt(sqrt(2π*sigma_x*sigma_y)) # Normalization factor for 2D Gaussian
-    exp_factor=exp(-((x-x0)^2/(2*sigma_x^2)+(y-y0)^2/(2*sigma_y^2)))
-    phase_factor=exp(im*(kx0*(x-x0)+ky0*(y-y0)))
-    gaussian=norm_factor*exp_factor*phase_factor
-    return gaussian
+function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
+    k_max=maximum(ks)
+    type=eltype(k_max)
+    L=billiard.length
+    # Determine grid limits and resolution
+    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*π))))
+    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
+    nx,ny=max(round(Int,k_max*dx*b/(2*π)),512),max(round(Int,k_max*dy*b/(2*π)),512)
+    x_grid,y_grid=collect(type,range(xlim...,nx)),collect(type,range(ylim...,ny))
+    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+    sz=length(pts)
+    # Determine points inside the billiard only once if `inside_only` is true
+    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+    pts_inside=pts[pts_mask]
+    # Prepare storage for wavefunctions
+    Psi_vectors=Vector{Vector{type}}(undef,length(ks))
+    progress=Progress(length(ks),desc="Constructing wavefunctions...")
+    # Compute wavefunctions
+    Threads.@threads for i in eachindex(ks)
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        Psi_flat=zeros(type,length(pts_inside))
+        @inbounds for (j,pt) in enumerate(pts_inside)  # Iterate over internal points
+            Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
+        end
+        Psi_vectors[i] = Psi_flat
+        next!(progress)
+    end
+    return [Psi./sum(Psi) for Psi in Psi_vectors],pts_inside
 end
 
 """
@@ -53,8 +73,7 @@ f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp
 # Returns
 - `Matrix{Complex{T}}`: The value at those params on a 2D grid.
 """
-function gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
-    #=
+function gaussian_wavepacket_2d(x::Vector{T},y::Vector{T},x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
     dx=x.-x0
     dy=y.-y0
     gx_amp= @. exp(-dx^2/(2*sigma_x^2))
@@ -66,42 +85,34 @@ function gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, x0::T, y0::T, sigma_
     norm_factor=1/sqrt(sqrt(2π*sigma_x*sigma_y))
     result=norm_factor.*(gx*transpose(gy)) # Outer product: result[i,j] = norm_factor * gx[i] * gy[j]
     return result
-    =#
-    
-    norm_factor = 1/sqrt(sqrt(2π*sigma_x*sigma_y))
-    inv_sigma_x2 = 1/(2*sigma_x^2)
-    inv_sigma_y2 = 1/(2*sigma_y^2)
-    result = Matrix{Complex{T}}(undef, length(x), length(y))
-    Threads.@threads for i in eachindex(x)
-        for j in eachindex(y)
-            dx = x[i]-x0
-            dy = y[j]-y0
-            exp_factor = exp(-(dx^2 * inv_sigma_x2 + dy^2 * inv_sigma_y2))
-            phase_factor = exp(im * (kx0 * dx + ky0 * dy))
-            result[i, j] = norm_factor * exp_factor * phase_factor
-        end
-    end
-    return result
-    
 end
 
 """
-    create_masked_points(x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::Vector{Bool}) where {T<:Real}
+    gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T)
 
-Created a Vector{SVector{2,<:Real}} of points and applies a mask to them (obtained from the billiard geometry) being inside the billiard.
+Computes the Gaussian wavepacket for a set of points inside the billiard.
 
 # Arguments
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `pts_mask::Vector{Bool}`: Vector of Boolean indicating whether a point is masked.
+- `pts_in_billiard::Vector{SVector{2,T}}`: Points inside the billiard.
+- `x0::T`: Center of the Gaussian in the x-direction.
+- `y0::T`: Center of the Gaussian in the y-direction.
+- `sigma_x::T`: Standard deviation of the Gaussian in the x-direction.
+- `sigma_y::T`: Standard deviation of the Gaussian in the y-direction.
+- `kx0::T`: Momentum in the x-direction.
+- `ky0::T`: Momentum in the y-direction.
 
 # Returns
-- `Vector{SVector{2,<:Real}}`: Vector of points (SVector{2,<:Real}}) that are inside the billiard.
+- `Vector{Complex{T}}`: Gaussian wavepacket evaluated at the points.
 """
-function create_masked_points(x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::Vector{Bool}) where {T<:Real}
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-    pts_masked_indices=findall(pts_mask)
-    return pts[pts_masked_indices]
+function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    xs=getindex.(pts_in_billiard,1)  # x-coordinates
+    ys=getindex.(pts_in_billiard,2)  # y-coordinates
+    dx=xs.-x0
+    dy=ys.-y0
+    amp= @. exp(-dx^2/(2*sigma_x^2)-dy^2/(2*sigma_y^2))
+    phase= @. exp(im*(kx0*dx+ky0*dy))
+    norm_factor = 1/sqrt(2π*sigma_x*sigma_y)
+    return norm_factor.*(amp.*phase)
 end
 
 """
@@ -152,9 +163,7 @@ High-level function that computes all the projection coefficients αₘ for a gi
 and a set of eigenstates.
 
 # Arguments
-- `ks::Vector{T}`: Vector of eigenvalues for the eigenstates.
-- `vec_us::Vector{Vector{T}}`: Vector of boundary function values for each eigenstate.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of `BoundaryPoints` structs for each eigenstate.
+- `Psi2ds::Vector{Matrix{T}}`: The computed wavefunction matrices on the x_grid and y_grid
 - `x_grid::Vector{T}, y_grid::Vector{T}`: Grids defining the spatial domain of the billiard.
 - `x0::T, y0::T`: The center of the Gaussian wavepacket in space.
 - `sigma_x::T, sigma_y::T`: Standard deviations of the Gaussian wavepacket in x and y directions.
@@ -165,6 +174,16 @@ and a set of eigenstates.
 - `Vector{T}`: A vector of projection coefficients αₘ for each eigenstate.
 """
 function compute_all_projection_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},x_grid::Vector{T},y_grid::Vector{T},x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T,billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
+    dx=x_grid[2]-x_grid[1]
+    dy=y_grid[2]-y_grid[1]
+    dxdy=dx*dy # Integration volume
+    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+    sz=length(pts)
+    # Determine points inside the billiard only once if inside_only is true
+    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
+    pts_masked_indices=findall(pts_mask)
+    
+    
     # Generate the point mask for points inside the billiard
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
     sz=length(pts)

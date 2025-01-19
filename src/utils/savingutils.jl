@@ -1,6 +1,39 @@
 using DataFrames, CSV,  PrettyTables
 
 """
+    save_matrix!(mat::Matrix{T}, filename::String)
+
+Saves a `Matrix` into a `.csv` file via `DataFrames`.
+
+# Arguments
+- `mat::Matrix{T}`: The matrix to be saved.
+- `filename::String`: The name of the CSV file to save the data.
+
+# Returns
+- `Nothing`
+"""
+function save_matrix!(mat::Matrix{T}, filename::String)
+    df=DataFrame(mat,:auto)
+    CSV.write(filename,df)
+end
+
+"""
+    read_matrix(filename::String)
+
+Reads a `.csv` file into a `Matrix` using `DataFrames`.
+
+# Arguments
+- `filename::String`: The name of the CSV file to read from.
+
+# Returns
+- `Matrix{<:Real}`: A `Matrix` containing the data from the CSV file.
+"""
+function read_matrix(filename::String)
+    df=CSV.read(filename,DataFrame)
+    return Matrix(df)
+end
+
+"""
     save_numerical_ks_and_tensions!(ks::Vector{T}, tens::Vector{T}, filename::String) where {T<:Real}
 
 Saves numerical values of `ks` (eigenvalues) and `tensions` to a CSV file.
