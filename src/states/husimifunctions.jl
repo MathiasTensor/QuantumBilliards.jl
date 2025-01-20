@@ -260,44 +260,6 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     end
     H_full=vcat(reverse(H_partial,dims=1),H_partial[2:end,:])
     return H_full'./sum(H_full),qs,ps_full
-    #=
-    qs=range(0.0,stop=L,length=nx)
-    ps=range(-1.0,stop=1.0,length=ny)
-    N=length(s)
-    ds=diff(s) # integration weights ds
-    ds=vcat(ds,L+s[1]-s[end]) # ds has length N
-    sqrt_k_pi=sqrt(k/π)
-    norm_factor=sqrt(sqrt_k_pi)
-    width=4/sqrt(k)
-    H=zeros(T,ny,nx)
-    Threads.@threads for i_q = 1:nx
-        q=qs[i_q]
-        idx_start=searchsortedfirst(s,q-width)
-        idx_end=searchsortedlast(s,q+width)
-        len_window=idx_end-idx_start+1
-        si_window=Vector{T}(undef, len_window)
-        w=Vector{T}(undef,len_window)
-        cr=Vector{T}(undef,len_window)
-        ci=Vector{T}(undef,len_window)
-        @views s_window=s[idx_start:idx_end]
-        @views ui_window=u[idx_start:idx_end]
-        @views dsi_window=ds[idx_start:idx_end]
-        @inbounds begin
-            @. si_window=s_window-q
-            @. w=norm_factor*exp(-0.5*k*si_window^2)*dsi_window
-            for i_p in 1:ny
-                p=ps[i_p]
-                kp=k*p
-                @. cr=w*cos(kp*si_window)
-                @. ci=w*sin(kp*si_window)
-                h_real=sum(cr.*ui_window)
-                h_imag= -sum(ci.*ui_window)  # Negative due to conjugation
-                H[i_p,i_q]=(h_real^2+h_imag^2)/(2π*k)
-            end
-        end
-    end
-    return H'./sum(H),qs,ps
-    =#
 end
 
 """
