@@ -317,7 +317,7 @@ and generates multiple figures.
 - `y_grid::Vector{<:Real}`: Vector of y-coordinates for the grid.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `N::Integer=100`: The number of items per batch. If `length(ks) > N`, multiple figures are produced.
-- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch.
@@ -340,7 +340,7 @@ grid. Automatically splits the data into batches of size `N` if `ks` is large.
 - `y_grid::Vector{Vector{<:Real}}`: A vector of y-coordinate vectors, one per wavefunction.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `N::Integer=100`: The number of items per batch.
-- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch of wavefunctions.
@@ -491,7 +491,7 @@ splits large datasets into batches of size `N`.
 - `qs_list::Vector{Vector{<:Real}}`: Position-like coordinate grids for the Husimi functions.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `N::Integer=100`: Number of items per batch.
-- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects with wavefunction and Husimi plots, one per batch.
@@ -519,7 +519,7 @@ the data into sets of size `N`.
 - `us_all::Vector{Vector{T}}`: Boundary functions.
 - `s_vals_all::Vector{Vector{T}}`: Arclength evaluation points for the boundary functions.
 - `N::Integer=100`: Number of items per batch.
-- `kwargs...`: Additional keyword arguments passed to the underlying plotting function.
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, each containing wavefunction, Husimi plots, and boundary functions, one per batch.
