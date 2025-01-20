@@ -222,11 +222,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `height_ax::Integer=500`: The size of each axis in the grid layout.
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
+- `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -238,7 +239,8 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_
     row=1
     col=1
     for j in eachindex(ks)
-        local ax=Axis(f[row,col],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
+        local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
@@ -268,11 +270,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `height_ax::Integer=500`: The size of each axis in the grid layout.
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
+- `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -284,7 +287,8 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vec
     row=1
     col=1
     for j in eachindex(ks)
-        local ax=Axis(f[row,col],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
+        local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
@@ -364,11 +368,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `height_ax::Integer=500`: The size of each axis in the grid layout.
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
+- `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -380,7 +385,8 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     row=1
     col=1
     for j in eachindex(ks)
-        local ax=Axis(f[row,col][1,1],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
+        local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
         hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
@@ -417,11 +423,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `height_ax::Integer=500`: The size of each axis in the grid layout.
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
+- `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -445,7 +452,8 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     row=1
     col=1
     for j in eachindex(ks)
-        local ax_wave=Axis(f[row, col][1, 1],title="$(ks[j])",aspect=DataAspect(),width=width_ax,height=height_ax)
+        title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
+        local ax_wave=Axis(f[row, col][1, 1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
