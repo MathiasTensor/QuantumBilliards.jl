@@ -369,7 +369,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
-- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory. These are used to construct the chaotic mask overlay so we can better observe the overlaps.
+- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory (in that order). These are used to construct the chaotic mask overlay so we can better observe the overlaps.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
@@ -432,7 +432,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
-- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory. These are used to construct the chaotic mask overlay so we can better observe the overlaps.
+- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory (in that order). These are used to construct the chaotic mask overlay so we can better observe the overlaps.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
