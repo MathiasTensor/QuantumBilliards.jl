@@ -24,6 +24,8 @@ Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the 
 
 # Returns
 - `Vector{Vector{T}}`: Vector of wavefunctions as flat arrays evaluated at points inside the billiard boundary.
+- `Vector{Matrix{T}}`: Vector of wavefunctions matrices on the grid, only if `return_full_wavefunctions` is true.
+- `x_grid::Vector{T}`: The grid on which the wavefunction is contructed
 - `Vector{SVector{2,T}}`: Points inside the billiard boundary.
 - `dx::T`: the x grid spacing, used for approximating intergrals into sums.
 - `dy::T`: the y grid spacing, used for approximating integrals into sums.
@@ -57,11 +59,13 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
                 Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
                 x,y=pts[idx]
                 Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+                Psi_flat_full[idx]=ϕ(x,y,k,bdPoints,us)
             end
             Psi_vectors[i]=Psi_flat
+            Psi_matrices_full[i]=reshape(Psi_flat_full,ny,nx)
             next!(progress)
         end
-        return [Psi./sum(Psi) for Psi in Psi_vectors],pts_inside,dx,dy
+        return [Psi./sum(Psi) for Psi in Psi_vectors],[Psi./sum(Psi) for Psi in Psi_matrices_full],x_grid,y_grid,pts_inside,dx,dy
     else
         Threads.@threads for i in eachindex(ks)
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
@@ -72,7 +76,7 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
             Psi_vectors[i]=Psi_flat
             next!(progress)
         end
-        return [Psi./sum(Psi) for Psi in Psi_vectors],pts_inside,dx,dy 
+        return [Psi./sum(Psi) for Psi in Psi_vectors],x_grid,y_grid,pts_inside,dx,dy 
     end
 end
 
@@ -136,8 +140,30 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0
     return norm_factor.*(amp.*phase)
 end
 
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
-    psi_vecs,pts_inside,dx,dy=wavefunction_normalized_multi_flat(ks,vec_us,vec_bdPoints,billiard;b=b)
+"""
+    gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector{Vector{T}}, pts_inside::Vector{BoundaryPoints{T}}, dx::T, dy::T, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+
+Computes the expansion coefficients of a Gaussian wavepacket in the eigenbasis.
+
+Calculates the overlap between a Gaussian wavepacket and the given eigenfunctions
+by summing over the product of the Gaussian values and wavefunction values at interior points.
+
+# Arguments:
+- `psi_vecs::Vector{Vector{T}}`: Vector of flattened wavefunctions, each evaluated at the interior points.
+- `pts_inside::Vector{BoundaryPoints{T}}`: Interior points of the billiard boundary grid.
+- `dx::T`: Grid spacing in the x-direction.
+- `dy::T`: Grid spacing in the y-direction.
+- `x0::T`: Center of the Gaussian in the x-direction.
+- `y0::T`: Center of the Gaussian in the y-direction.
+- `sigma_x::T`: Standard deviation of the Gaussian in the x-direction.
+- `sigma_y::T`: Standard deviation of the Gaussian in the y-direction.
+- `kx0::T`: Momentum in the x-direction.
+- `ky0::T`: Momentum in the y-direction.
+
+# Returns:
+- `coeffs::Vector{Complex{T}}`: Vector of expansion coefficients, one for each wavefunction.
+"""
+function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_inside::Vector{BoundaryPoints{T}},dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
     dxdy=dx*dy # grid rectangle area
     gauss_inside=gaussian_wavepacket_2d(pts_inside,x0,y0,sigma_x,sigma_y,kx0,ky0)
     coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
@@ -151,8 +177,27 @@ function gaussian_wavepacket_eigenbasis_expansion_coefficient(ks::Vector{T},vec_
     return coeffs
 end
 
-function plot_gaussian_from_eigenfunction_expansion()
-    
+"""
+    plot_gaussian_from_eigenfunction_expansion(ax::Axis, coeffs::Vector{Complex{T}}, Psi2ds::Vector{Matrix{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
+
+Plots the reconstructed Gaussian wavepacket from its expansion coefficients in the eigenbasis.
+
+This function uses the expansion coefficients to reconstruct the Gaussian wavepacket as a sum 
+of the scaled eigenfunctions and plots it into an `Axis`.
+
+# Arguments:
+- `ax::Axis`: Axis object from `CairoMakie` where the heatmap will be plotted.
+- `coeffs::Vector{Complex{T}}`: Vector of expansion coefficients for each eigenfunction.
+- `Psi2ds::Vector{Matrix{T}}`: Vector of wavefunction matrices, one for each eigenfunction.
+- `x_grid::Vector{T}`: x-coordinates of the grid on which the wavefunctions are defined.
+- `y_grid::Vector{T}`: y-coordinates of the grid on which the wavefunctions are defined.
+
+# Returns:
+- None.
+"""
+function plot_gaussian_from_eigenfunction_expansion!(ax::Axis,coeffs::Vector{Complex{T}},Psi2ds::Vector,x_grid::Vector{T},y_grid::Vector{T}) where {T<:Real}
+    reconstructed_gaussian=sum(coeffs[i].*Psi2ds[i] for i in eachindex(coeffs))
+    heatmap!(ax,x_grid,y_grid,reconstructed_gaussian,colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
 end
 
 """
