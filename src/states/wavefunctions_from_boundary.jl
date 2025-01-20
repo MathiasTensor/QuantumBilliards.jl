@@ -369,11 +369,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
+- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory. These are used to construct the chaotic mask overlay so we can better observe the overlaps.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -390,7 +391,14 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
         hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
-        hm_h=heatmap!(ax_h,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
+        if !isempty(use_projection_grid[1]) && !isempty(use_projection_grid[2])
+            projection_grid=classical_phase_space_matrix(use_projection_grid[1],use_projection_grid[2],qs_list[j],ps_list[j])
+            H_bg,chaotic_mask=husimi_with_chaotic_background(Hs_list[j],projection_grid)
+            heatmap!(ax_h,qs_list[j],ps_list[j],H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
+            heatmap!(ax_h,qs_list[j],ps_list[j],chaotic_mask;colormap=cgrad([:white, :black]),alpha=0.05,colorrange=(0,1))
+        else
+            heatmap!(ax_h,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
+        end
         xlims!(ax,xlim)
         ylims!(ax,ylim)
         col+=1
@@ -424,11 +432,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
+- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory. These are used to construct the chaotic mask overlay so we can better observe the overlaps.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -458,8 +467,15 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
-        local ax_husimi=Axis(f[row, col][1, 2],width=width_ax,height=height_ax)
-        hm_husimi=heatmap!(ax_husimi,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
+        local ax_h=Axis(f[row, col][1, 2],width=width_ax,height=height_ax)
+        if !isempty(use_projection_grid[1]) && !isempty(use_projection_grid[2])
+            projection_grid=classical_phase_space_matrix(use_projection_grid[1],use_projection_grid[2],qs_list[j],ps_list[j])
+            H_bg,chaotic_mask=husimi_with_chaotic_background(Hs_list[j],projection_grid)
+            heatmap!(ax_h,qs_list[j],ps_list[j],H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
+            heatmap!(ax_h,qs_list[j],ps_list[j],chaotic_mask;colormap=cgrad([:white, :black]),alpha=0.05,colorrange=(0,1))
+        else
+            heatmap!(ax_h,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
+        end
         local ax_boundary = Axis(f[row, col][2, 1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
         lines!(ax_boundary,s_vals_all[j],us_all[j],label="u(s)",linewidth=2)
         for (length, is_real) in res
@@ -491,7 +507,7 @@ splits large datasets into batches of size `N`.
 - `qs_list::Vector{Vector{<:Real}}`: Position-like coordinate grids for the Husimi functions.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `N::Integer=100`: Number of items per batch.
-- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, also chaotic PS overlays, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects with wavefunction and Husimi plots, one per batch.
@@ -519,7 +535,7 @@ the data into sets of size `N`.
 - `us_all::Vector{Vector{T}}`: Boundary functions.
 - `s_vals_all::Vector{Vector{T}}`: Arclength evaluation points for the boundary functions.
 - `N::Integer=100`: Number of items per batch.
-- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
+- `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, also chaotic PS overlays, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, each containing wavefunction, Husimi plots, and boundary functions, one per batch.
