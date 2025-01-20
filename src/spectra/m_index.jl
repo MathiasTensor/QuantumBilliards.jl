@@ -739,7 +739,7 @@ Returns a boolean mask for mixed states in `Ms` based on the bounds `l_bound` an
 - `u_bound::Real`: Upper bound for the mixed state condition (default = 0.8).
 
 # Returns:
-- `Vector{Bool}`: A boolean mask indicating mixed states (`true` for mixed states, `false` otherwise).
+- `Vector{Bool}`: A boolean mask indicating mixed states (`true` for mixed states, `false` otherwise) of the same length as `Ms`. This allows one to get the relrevant quantities like `ks_mixed`, `Hs_mixed` ... by indexing the full vectors that contain all states e.g. `ks_mixed=ks[mixed_idxs]`.
 """
 function get_mixed_states_boolean_mask(Ms::Vector;l_bound=-0.8,u_bound=0.8)
     return (Ms.>l_bound) .& (Ms.<u_bound)
