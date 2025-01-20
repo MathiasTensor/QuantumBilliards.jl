@@ -26,6 +26,7 @@ end
     husimi_function(k, u, s, L; c = 10.0, w = 7.0)
 
 Calculates the Husimi function on a grid defined by the boundary `s`. The logic is that from the arclengths `s` we construct the qs with the help of the width of the Gaussian at that k (width = 1/√k) and the parameter c (which determines how many q evaluations we will have per this width at k -> defines the step 1/(√k*c) so we will have tham many more q evaluations in peak). Analogously we do for the ps, where the step size (matrix size in ps direction) is range(0.0,1.0,step=1/(√k*c)) (we do only for half since symmetric with p=0 implies we can use antisym_vec(ps) to recreate the whole -1.0 to 1.0 range while also symmetrizing the Husimi function that is constructed from p=0.0 to 1.0 with the logic perscribed above). The w (how many sigmas we will take) is used in construction of the ds summation weights.
+Comment: Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we construct only the p=0 to p=1 matrix and then via symmetry automatically obtain the p=-1 to p=0 also.
 
 # Arguments
 - `k<:Real`: Wavenumber of the eigenstate.
@@ -202,9 +203,10 @@ function husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny:
 end
 
 """
-    husimiOnGridOptimized(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
+    husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
 
 Evaluates the Poincaré-Husimi function on a grid using vectorized operations in a thread-safe manner since only a single thread work on a column of the Husimi matrix.
+Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we construct only the p=0 to p=1 matrix and then via symmetry automatically obtain the p=-1 to p=0 also.
 
 Arguments:
 - `k::T`: Wavenumber of the eigenstate.
@@ -220,6 +222,45 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+    qs=range(0.0,stop=L,length=nx)
+    ps_positive=range(0.0,stop=1.0,length=ceil(Int,ny/2))
+    ps_full=vcat(-reverse(ps_positive[2:end]),ps_positive)
+    N=length(s)
+    ds=diff(s)
+    ds=vcat(ds,L+s[1]-s[end])
+    sqrt_k_pi=sqrt(k/π)
+    norm_factor=sqrt(sqrt_k_pi)
+    width=4/sqrt(k)
+    H_partial=zeros(T,length(ps_positive),nx)
+    Threads.@threads for i_q=1:nx
+        q=qs[i_q]
+        idx_start=searchsortedfirst(s,q-width)
+        idx_end=searchsortedlast(s,q+width)
+        len_window=idx_end-idx_start+1
+        si_window=Vector{T}(undef,len_window)
+        w=Vector{T}(undef,len_window)
+        cr=Vector{T}(undef,len_window)
+        ci=Vector{T}(undef,len_window)
+        @views s_window=s[idx_start:idx_end]
+        @views ui_window=u[idx_start:idx_end]
+        @views dsi_window=ds[idx_start:idx_end]
+        @inbounds begin
+            @. si_window=s_window-q
+            @. w=norm_factor*exp(-0.5*k*si_window^2)*dsi_window
+            for i_p in eachindex(ps_positive)
+                p=ps_positive[i_p]
+                kp=k*p
+                @. cr=w*cos(kp*si_window)
+                @. ci=w*sin(kp*si_window)
+                h_real=sum(cr.*ui_window)
+                h_imag=-sum(ci.*ui_window)
+                H_partial[i_p,i_q]=(h_real^2+h_imag^2)/(2π*k)
+            end
+        end
+    end
+    H_full=vcat(reverse(H_partial,dims=1),H_partial[2:end,:])
+    return H_full'./sum(H_full),qs,ps_full
+    #=
     qs=range(0.0,stop=L,length=nx)
     ps=range(-1.0,stop=1.0,length=ny)
     N=length(s)
@@ -256,6 +297,7 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
         end
     end
     return H'./sum(H),qs,ps
+    =#
 end
 
 """
