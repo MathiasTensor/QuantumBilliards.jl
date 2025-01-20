@@ -729,6 +729,23 @@ function get_mixed_states(Ms::Vector,ks::Vector;l_bound=-0.8,u_bound=0.8)
 end
 
 """
+    get_mixed_states_boolean_mask(Ms::Vector; l_bound=-0.8, u_bound=0.8)
+
+Returns a boolean mask for mixed states in `Ms` based on the bounds `l_bound` and `u_bound`.
+
+# Arguments:
+- `Ms::Vector`: Vector of values (e.g., localization measures).
+- `l_bound::Real`: Lower bound for the mixed state condition (default = -0.8).
+- `u_bound::Real`: Upper bound for the mixed state condition (default = 0.8).
+
+# Returns:
+- `Vector{Bool}`: A boolean mask indicating mixed states (`true` for mixed states, `false` otherwise).
+"""
+function get_mixed_states_boolean_mask(Ms::Vector;l_bound=-0.8,u_bound=0.8)
+    return (Ms.>l_bound) .& (Ms.<u_bound)
+end
+
+"""
     coefficient_of_fraction_of_eigenstates_vs_k(χ_Ms::Vector{T}, ks_M::Vector{T}) where {T<:Real}
 
 Computes the coefficient of the fraction of mixed eigenstates (ζ) for the relation M_mixed=k^-α via the built in linear fitting.
