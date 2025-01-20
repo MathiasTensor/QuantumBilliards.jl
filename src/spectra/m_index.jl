@@ -389,7 +389,7 @@ Computes the overlaps of the classical phase space matrix of {+1,-1} depending o
 function compute_overlaps(H_list::Vector,qs_list::Vector,ps_list::Vector,classical_chaotic_s_vals::Vector,classical_chaotic_p_vals::Vector)
     @assert (length(H_list)==length(qs_list)) && (length(qs_list)==length(ps_list)) "The lists are not the same length"
     Ms=Vector{Union{Float64,Nothing}}(undef,length(H_list))
-    Threads.@threads for i in eachindex(qs_list) 
+    @showprogress Threads.@threads for i in eachindex(qs_list) 
         try
             H=H_list[i]
             qs=qs_list[i]
