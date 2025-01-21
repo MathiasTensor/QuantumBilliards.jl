@@ -1,6 +1,17 @@
 using FFTW, SpecialFunctions, JLD2, ProgressMeter
 
 #this takes care of singular points
+"""
+    regularize!(u::Vector{T}) where {T<:Real}
+
+Regularizes the boudnary function to get rid of potential artifacts in them. This is needed otherwise the construction of the objects from the boundary function (wavefunctions, husimi, wigner...) might fail. It approximates the NaNs by using the average of the neighboring values.
+
+# Arguments
+- `u::Vector{T}`: the boundary function vector to be regularized.
+
+# Returns
+- `Nothing`: inplace modification.
+"""
 function regularize!(u)
     idx=findall(isnan,u)
     for i in idx
