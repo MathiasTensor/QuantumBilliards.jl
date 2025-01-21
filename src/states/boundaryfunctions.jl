@@ -282,7 +282,7 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
             dim=length(vec)
             dim=rescale_rpw_dimension(basis,dim)
             new_basis=resize_basis(basis, billiard, dim, ks[i])
-            state = Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
+            state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
             u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
             pts_all[i]=pts
