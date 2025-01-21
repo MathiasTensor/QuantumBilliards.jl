@@ -126,7 +126,11 @@ Low-level function that constructs the boundary function and it's associated arc
 - `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
-    vec=state.vec,k=state.k,k_basis=state.k_basis,new_basis=state.basis,billiard=state.billiard
+    vec=state.vec
+    k=state.k
+    k_basis=state.k_basis
+    new_basis=state.basis
+    billiard=state.billiard
     type=eltype(vec)
     boundary=billiard.desymmetrized_full_boundary
     crv_lengths=[crv.length for crv in boundary]
@@ -167,7 +171,11 @@ Low-level function that constructs the boundary function and it's associated arc
 - `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
 function boundary_function(state_bundle::S;b=5.0) where {S<:EigenstateBundle}
-    X=state_bundle.X,k_basis=state_bundle.k_basis,ks=state_bundle.ks,new_basis=state_bundle.basis,billiard=state_bundle.billiard 
+    X=state_bundle.X
+    k_basis=state_bundle.k_basis
+    ks=state_bundle.ks
+    new_basis=state_bundle.basis
+    billiard=state_bundle.billiard 
     type=eltype(X)
     boundary=billiard.desymmetrized_full_boundary
     crv_lengths=[crv.length for crv in boundary]
@@ -269,7 +277,7 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
     valid_indices=fill(true,length(ks))
     progress=Progress(length(ks);desc="Constructing the u(s)...")
     Threads.@threads for i in eachindex(ks) 
-        #try # the @. macro can faill in gradient_matrices when multithreading
+        try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
             dim=length(vec)
             dim=rescale_rpw_dimension(basis,dim)
@@ -278,10 +286,10 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
             u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
             pts_all[i]=pts
-        #catch e
+        catch e
             println("Error while constructing the u(s) for k = $(ks[i])")
             valid_indices[i]=false
-        #end
+        end
         next!(progress)
     end
     ks=ks[valid_indices]
@@ -521,7 +529,11 @@ The function internally calls `boundary_coords` to obtain the boundary coordinat
 - Ensure that the `state` object contains the necessary attributes (`vec`, `k`, `k_basis`, `basis`, `billiard`).
 """
 function setup_momentum_density(state::S;b::Float64=5.0) where {S<:AbsState}
-    vec=state.vec,k=state.k,k_basis=state.k_basis,new_basis=state.basis,billiard=state.billiard
+    vec=state.vec
+    k=state.k
+    k_basis=state.k_basis
+    new_basis=state.basis
+    billiard=state.billiard
     type=eltype(vec)
     boundary=billiard.desymmetrized_full_boundary
     crv_lengths=[crv.length for crv in boundary]
