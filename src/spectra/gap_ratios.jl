@@ -205,6 +205,11 @@ In the mushroom billiard the widths w correspond to one μ_c, so they should be 
 - `μ_cs::Vector{T}`: A vector of values for the chaotic phase space volume that correspond to that particular set of energy levels.
 - `x_axis_points::Vector{K}`: A vector of values that correspond to the x-axis points. It should be compatible with the ordering for the μ_cs.
 
+# Comment
+Based on the paper: Yan H.; Spacing ratios in mixed-type systems we need a small rescaling of the ⟨r⟩ due to the fact that we do not use the N-dimensional GOE matrix. So the ANALYTICAL results will be rescaled in this way: 
+a=(⟨r⟩N_GOE−⟨r⟩P)/⟨r⟩3_GOE −⟨r⟩P)≈0.96524.
+⟨r⟩ rescaling -> ⟨r⟩P + a(⟨r⟩−⟨r⟩P where P is the Poissonian value.
+
 # Returns
 - `Nothing`
 """
@@ -224,6 +229,8 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},�
     r_chaot=average_gap_ratio(:chaotic)
     hlines!(ax,[r_integ,r_chaot],color=:red,linestyle=:dash)
     avg_r_theor=[average_gap_ratio(:mixed,μ_c=μ) for μ in μ_cs] # theoretical lines
+    a=0.96524 # the analytical scaling parameter
+    avg_r_theor=[r_integ+a*(r-r_integ) for r in avg_r_theor]
     lines!(ax,x_axis_points,avg_r_theor,color=:blue,label="Theoretical line for m=2")
     scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
 end
