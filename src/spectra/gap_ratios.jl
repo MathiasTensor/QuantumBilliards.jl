@@ -105,10 +105,10 @@ Returns the probability distribution of the gap ratio `r` for a chaotic system (
 # Returns
 - `T`: The probability distribution function `P(r)` for the gap ratio in a chaotic system.
 """
-function P_chaotic(r::T, β::Int) where {T<:Real}
-    integrand(l) = ((l+l^2)^β)/((1+l+l^2)^(1+3*β/2))
-    Z_β = quadgk(l -> integrand(l), 0.0, 1.0)[1] # only the value
-    return 1/Z_β * integrand(r)
+function P_chaotic(r::T,β::Int) where {T<:Real}
+    integrand(l)=((l+l^2)^β)/((1+l+l^2)^(1+3*β/2))
+    Z_β=quadgk(l -> integrand(l),0.0,1.0)[1] # only the value
+    return 1/Z_β*integrand(r)
 end
 
 """
