@@ -224,6 +224,6 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},�
     r_chaot=average_gap_ratio(:chaotic)
     hlines!(ax,[r_integ,r_chaot],color=:red)
     avg_r_theor=[average_gap_ratio(:mixed,μ_c=μ) for μ in μ_cs] # theoretical lines
-    lines!(ax,x_axis_points,avg_r_theor,color=:blue)
-    scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black)  # plot the numerical values
+    lines!(ax,x_axis_points,avg_r_theor,color=:blue,label="Theoretical line for m=2")
+    scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
 end
