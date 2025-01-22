@@ -138,13 +138,13 @@ This gives for the integrable case and the chaotic case the correct ⟨r⟩ (up 
 - `T`: The average gap ratio ⟨r⟩ for the specified system type.
 
 """
-function average_gap_ratio(type::Symbol; β=1, μ_c::Union{Nothing,T}=nothing) where {T<:Real}
-    if type == :integrable
-        return quadgk(r -> r*P_integrable(r), 0.0, 1.0)[1]
-    elseif type == :chaotic
-        return quadgk(r -> r*P_chaotic(r, β), 0.0, 1.0)[1]
-    elseif type == :mixed
-        return quadgk(r -> r*P_r_normalized(r, μ_c), 0.0, 1.0)[1]
+function average_gap_ratio(type::Symbol;β=1,μ_c::Union{Nothing,T}=nothing) where {T<:Real}
+    if type==:integrable
+        return quadgk(r -> r*P_integrable(r),0.0,1.0)[1]
+    elseif type==:chaotic
+        return quadgk(r -> r*P_chaotic(r,β),0.0,1.0)[1]
+    elseif type==:mixed
+        return quadgk(r -> r*P_r_normalized(r,μ_c),0.0,1.0)[1]
     end
 end
 
@@ -164,30 +164,66 @@ Plots the empirical gap ratio distribution for a given set of energy levels and 
     - The empirical gap ratio distribution (as a scatter plot).
     - Theoretical gap ratio distributions (as line plots).
 """
-function plot_gap_ratios(ax::Axis, energies::Vector{T}; nbins::Int=50, μ_c::Union{Nothing,T}=nothing) where {T<:Real}
-    energy_differences = diff(energies)
-    gap_ratios = Vector{T}(undef, length(energy_differences) - 1)
+function plot_gap_ratios(ax::Axis,energies::Vector{T};nbins::Int=50,μ_c::Union{Nothing,T}=nothing) where {T<:Real}
+    energy_differences=diff(energies)
+    gap_ratios=Vector{T}(undef,length(energy_differences)-1)
     for i in eachindex(gap_ratios)
-        s_n = energy_differences[i]
-        s_n1 = energy_differences[i + 1]
-        gap_ratios[i] = min(s_n, s_n1)/max(s_n, s_n1)
+        s_n=energy_differences[i]
+        s_n1=energy_differences[i+1]
+        gap_ratios[i]=min(s_n,s_n1)/max(s_n,s_n1)
     end
-    hist = Distributions.fit(StatsBase.Histogram, gap_ratios; nbins=nbins)
-    bin_centers = (hist.edges[1][1:end-1] .+ hist.edges[1][2:end]) / 2
-    bin_counts = hist.weights ./ sum(hist.weights) / diff(hist.edges[1])[1]
-    #scatter!(ax, bin_centers, bin_counts, label="Empirical", color=:black, marker=:cross, markersize=10)
-    barplot!(ax, bin_centers, bin_counts, label="Numerical", color=:lightblue, transparency=0.1, alpha=0.1, width=diff(hist.edges[1])[1], gap=0.0, strokecolor=:black, strokewidth=1)
-    r_values = range(0, stop=maximum(bin_centers), length=1000)
-    integrable = [P_integrable(r) for r in r_values]
-    chaotic = [P_chaotic(r,1) for r in r_values] # GOE 
-    lines!(ax, r_values, integrable, label="Integrable", color=:blue, linestyle=:dash, linewidth=3)
-    lines!(ax, r_values, chaotic, label="Chaotic", color=:green, linestyle=:dot, linewidth=3)
-    
+    hist=Distributions.fit(StatsBase.Histogram,gap_ratios;nbins=nbins)
+    bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2
+    bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1]
+    #scatter!(ax,bin_centers,bin_counts,label="Empirical",color=:black,marker=:cross,markersize=10)
+    barplot!(ax,bin_centers,bin_counts,label="Numerical",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
+    r_values=range(0,stop=maximum(bin_centers),length=1000)
+    integrable=[P_integrable(r) for r in r_values]
+    chaotic=[P_chaotic(r,1) for r in r_values] # GOE 
+    lines!(ax,r_values,integrable,label="Integrable",color=:blue,linestyle=:dash,linewidth=3)
+    lines!(ax,r_values,chaotic,label="Chaotic",color=:green,linestyle=:dot,linewidth=3)
     if !isnothing(μ_c)
-        mixed = [P_r_normalized(r,μ_c) for r in r_values]
-        lines!(ax, r_values, mixed, label="Theory, ρ_reg=$(round(μ_c; sigdigits=5))", color=:black, linestyle=:solid, linewidth=3)
+        mixed=[P_r_normalized(r,μ_c) for r in r_values]
+        lines!(ax,r_values,mixed,label="Theory, ρ_reg=$(round(μ_c; sigdigits=5))",color=:black,linestyle=:solid,linewidth=3)
     end
-    xlims!(ax, extrema(r_values))
-    axislegend(ax, position=:rt)
+    xlims!(ax,extrema(r_values))
+    axislegend(ax,position=:rt)
     return ax
+end
+
+"""
+    plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},μ_cs::Vector{T},x_axis_points::Vector{K}) where {T<:Real,K<:Real}
+
+Plots the average ⟨r⟩ as a function of μ_c (the chaotic phase space volume). The x_axis_points serves as just an indicator for the values of the xaxis. It should be compatible with the ordering for the μ_cs.
+
+# Example
+In the mushroom billiard the widths w correspond to one μ_c, so they should be ordered as the μ_cs are ordered. The functions does not check or modify the ordering to this is left to the user.
+
+# Arguements
+- `ax::Axis`: The CairoMakie axis object to plot into.
+- `vec_energies::Vector{Vector{T}}`: A vector of vectors, where each inner vector corresponds to a different set of energy levels for which the gap ratios are calculated.
+- `μ_cs::Vector{T}`: A vector of values for the chaotic phase space volume that correspond to that particular set of energy levels.
+- `x_axis_points::Vector{K}`: A vector of values that correspond to the x-axis points. It should be compatible with the ordering for the μ_cs.
+
+# Returns
+- `Nothing`
+"""
+function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},μ_cs::Vector{T},x_axis_points::Vector{K}) where {T<:Real,K<:Real}
+    avg_rs=Vector{T}(undef,length(vec_energies))
+    Threads.@threads for i in eachindex(vec_energies) 
+        energy_differences=diff(vec_energies[i])
+        gap_ratios=Vector{T}(undef,length(energy_differences)-1)
+        for i in eachindex(gap_ratios)
+            s_n=energy_differences[i]
+            s_n1=energy_differences[i+1]
+            gap_ratios[i]=min(s_n,s_n1)/max(s_n,s_n1)
+        end
+        avg_rs[i]=sum(gap_ratios)/length(gap_ratios)
+    end
+    r_integ=average_gap_ratio(:integrable)  # limits
+    r_chaot=average_gap_ratio(:chaotic)
+    hlines!(ax,[r_integ,r_chaot],color=:red)
+    avg_r_theor=[average_gap_ratio(:mixed,μ_c=μ) for μ in μ_cs] # theoretical lines
+    lines!(ax,x_axis_points,avg_r_theor,color=:blue)
+    scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black)  # plot the numerical values
 end
