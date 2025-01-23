@@ -66,7 +66,7 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
             Psi_matrices_full[i]=reshape(Psi_flat_full./normalization,ny,nx)
             next!(progress)
         end
-        return [Psi./sum(Psi) for Psi in Psi_vectors],[Psi./sum(Psi) for Psi in Psi_matrices_full],x_grid,y_grid,pts_inside,dx,dy
+        return Psi_vectors,Psi_matrices_full,x_grid,y_grid,pts_inside,dx,dy
     else
         Threads.@threads for i in eachindex(ks)
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
@@ -78,7 +78,7 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
             Psi_vectors[i]=Psi_flat./normalization
             next!(progress)
         end
-        return [Psi./sum(Psi) for Psi in Psi_vectors],x_grid,y_grid,pts_inside,dx,dy 
+        return Psi_vectors,x_grid,y_grid,pts_inside,dx,dy 
     end
 end
 
