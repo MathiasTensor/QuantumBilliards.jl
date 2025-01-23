@@ -9,7 +9,7 @@ include("../states/wavefunctions.jl")
 # TODO Put the puts_masked_indices outside the gaussian_2d_wavepacket projection to overcalculating them
 
 """
-    wavefunction_normalized_multi_flat(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi;
+    wavefunction_normalized(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi;
                             b::Float64=5.0, inside_only::Bool=true, fundamental=true)
 
 Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the billiard boundary and returns them as a vector of wavefunction matrices (normalized).
@@ -23,48 +23,36 @@ Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the 
 
 # Returns
 - `Vector{Matrix{T}}`: Vector of wavefunctions matrices on the grid.
-- `x_grid::Vector{T}`: The grid on which the wavefunction is contructed
-- `Vector{SVector{2,T}}`: Points inside the billiard boundary.
+- `x_grid::Vector{T}`: The grid on which the wavefunction is contructed.
+- `y_grid::Vector{T}`: The grid on which the wavefunction is contructed.
+- `pts_inside::Vector{SVector{2,T}}`: Points inside the billiard boundary.
 - `dx::T`: the x grid spacing, used for approximating intergrals into sums.
 - `dy::T`: the y grid spacing, used for approximating integrals into sums.
 """
-function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
-    # Determine grid limits and resolution
-    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*π))))
+    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
-    nx,ny=max(round(Int,k_max*dx*b/(2*π)),512),max(round(Int,k_max*dy*b/(2*π)),512)
-    x_grid,y_grid=collect(type,range(xlim...,nx)),collect(type,range(ylim...,ny))
+    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
+    x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
     sz=length(pts)
-    # Determine points inside the billiard only once if `inside_only` is true
-    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+    # Determine points inside the billiard only once if inside_only is true
+    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
     pts_masked_indices=findall(pts_mask)
-    pts_inside=pts[pts_masked_indices]
-    pts_inside_x=getindex.(pts_inside,1)
-    pts_inside_y=getindex.(pts_inside,2)
-    # Prepare storage for wavefunctions
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
-
-    function _ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
-        target_point=SVector(x,y)
-        distances=norm.(Ref(target_point).-bdPoints.xy)
-        weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
-        return sum(weighted_bessel_values)/4
-    end
-
-    # Compute wavefunctions
-    @showprogress desc="Constructing wavefunctions ..." Threads.@threads for i in eachindex(ks)
+    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
+    Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
-        @inbounds for j in eachindex(pts_inside) # no bounds checking
-            Psi_flat[j]=_ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
+        @inbounds for idx in pts_masked_indices # no bounds checking
+            x,y=pts[idx]
+            Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
         end
-        #normalization=sum(Psi_flat)
-        #Psi_flat./=normalization
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
+        next!(progress)
     end
     return Psi2ds,x_grid,y_grid,pts_inside,dx,dy
 end
