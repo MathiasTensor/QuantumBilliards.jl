@@ -47,7 +47,7 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     # Prepare storage for wavefunctions
     Psi_vectors=Vector{Vector{type}}(undef,length(ks))
     Psi_matrices_full=Vector{Matrix{type}}(undef,length(ks))
-    progress=Progress(length(ks),desc="Constructing wavefunctions full=$return_full_wavefunctions ...")
+    progress=Progress(length(ks),desc="Constructing wavefunctions ...")
     # Precompute coordinates of masked points
     pts_inside_x=getindex.(pts_inside,1)
     pts_inside_y=getindex.(pts_inside,2)
