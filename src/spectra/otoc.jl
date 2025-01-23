@@ -53,6 +53,7 @@ function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdP
         @inbounds for idx in pts_masked_indices # no bounds checking
             Psi_flat[idx]=ϕ(xs[idx],ys[idx],k,bdPoints,us)
         end
+        Psi_flat./=sum(Psi_flat)
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
