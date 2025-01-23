@@ -49,21 +49,25 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     Psi_vectors=Vector{Vector{type}}(undef,length(ks))
     Psi_matrices_full=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunctions full=$return_full_wavefunctions ...")
+    # Precompute coordinates of masked points
+    pts_inside_x=getindex.(pts_inside,1)
+    pts_inside_y=getindex.(pts_inside,2)
     # Compute wavefunctions
     if return_full_wavefunctions
         Threads.@threads for i in eachindex(ks)
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,length(pts_inside))
             Psi_flat_full=zeros(type,sz)
-            @inbounds for (j,idx) in enumerate(pts_masked_indices) 
-                pt=pts[idx]  # Get the original point using its index
-                val=ϕ(pt[1],pt[2],k,bdPoints,us)
+            @inbounds for j in 1:length(pts_inside)
+                val=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints, us)
                 Psi_flat[j]=val
-                Psi_flat_full[idx]=val
+                Psi_flat_full[pts_masked_indices[j]]=val
             end
             normalization=sum(Psi_flat)
-            Psi_vectors[i]=Psi_flat./normalization
-            Psi_matrices_full[i]=reshape(Psi_flat_full./normalization,ny,nx)
+            Psi_flat./=normalization
+            Psi_vectors[i]=Psi_flat
+            Psi_flat_full./=normalization
+            Psi_matrices_full[i]=reshape(Psi_flat_full,ny,nx)
             next!(progress)
         end
         return Psi_vectors,Psi_matrices_full,x_grid,y_grid,pts_inside,dx,dy
@@ -71,11 +75,12 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
         Threads.@threads for i in eachindex(ks)
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,length(pts_inside))
-            @inbounds for (j,pt) in enumerate(pts_inside)  # Iterate over internal points
-                Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
+            @inbounds for j in 1:length(pts_inside)  # Iterate over internal points
+                Psi_flat[j]=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
             end
             normalization=sum(Psi_flat)
-            Psi_vectors[i]=Psi_flat./normalization
+            Psi_flat./=normalization
+            Psi_vectors[i]=Psi_flat
             next!(progress)
         end
         return Psi_vectors,x_grid,y_grid,pts_inside,dx,dy 
