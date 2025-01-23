@@ -20,7 +20,6 @@ Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the 
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: Boundary points for each wavenumber.
 - `billiard::Bi`: Billiard geometry.
 - `b::Float64`: Parameter controlling grid density (default = 5.0).
-- `return_full_wavefunctions::Bool=true`: Return also wavefunctions matrices on the grid. Useful for plotting the Gaussian for debugging.
 
 # Returns
 - `Vector{Vector{T}}`: Vector of wavefunctions as flat arrays evaluated at points inside the billiard boundary.
@@ -30,7 +29,7 @@ Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the 
 - `dx::T`: the x grid spacing, used for approximating intergrals into sums.
 - `dy::T`: the y grid spacing, used for approximating integrals into sums.
 """
-function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,return_full_wavefunctions=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -53,38 +52,23 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     pts_inside_x=getindex.(pts_inside,1)
     pts_inside_y=getindex.(pts_inside,2)
     # Compute wavefunctions
-    if return_full_wavefunctions
-        Threads.@threads for i in eachindex(ks)
-            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            Psi_flat=zeros(type,length(pts_inside))
-            Psi_flat_full=zeros(type,sz)
-            @inbounds for j in 1:length(pts_inside)
-                val=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints, us)
-                Psi_flat[j]=val
-                Psi_flat_full[pts_masked_indices[j]]=val
-            end
-            normalization=sum(Psi_flat)
-            Psi_flat./=normalization
-            Psi_vectors[i]=Psi_flat
-            Psi_flat_full./=normalization
-            Psi_matrices_full[i]=reshape(Psi_flat_full,ny,nx)
-            next!(progress)
+    Threads.@threads for i in eachindex(ks)
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        Psi_flat=zeros(type,length(pts_inside))
+        Psi_flat_full=zeros(type,sz)
+        @inbounds for j in 1:length(pts_inside)
+            val=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints, us)
+            Psi_flat[j]=val
+            Psi_flat_full[pts_masked_indices[j]]=val
         end
-        return Psi_vectors,Psi_matrices_full,x_grid,y_grid,pts_inside,dx,dy
-    else
-        Threads.@threads for i in eachindex(ks)
-            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            Psi_flat=zeros(type,length(pts_inside))
-            @inbounds for j in 1:length(pts_inside)  # Iterate over internal points
-                Psi_flat[j]=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
-            end
-            normalization=sum(Psi_flat)
-            Psi_flat./=normalization
-            Psi_vectors[i]=Psi_flat
-            next!(progress)
-        end
-        return Psi_vectors,x_grid,y_grid,pts_inside,dx,dy 
+        normalization=sum(Psi_flat)
+        Psi_flat./=normalization
+        Psi_vectors[i]=Psi_flat
+        Psi_flat_full./=normalization
+        Psi_matrices_full[i]=reshape(Psi_flat_full,ny,nx)
+        next!(progress)
     end
+    return Psi_vectors,Psi_matrices_full,x_grid,y_grid,pts_inside,dx,dy
 end
 
 """
