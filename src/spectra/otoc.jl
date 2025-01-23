@@ -51,14 +51,14 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     progress=Progress(length(ks),desc="Constructing wavefunctions full=$return_full_wavefunctions ...")
     # Compute wavefunctions
     if return_full_wavefunctions
-        for i in eachindex(ks)
+        Threads.@threads for i in eachindex(ks)
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,length(pts_inside))
             Psi_flat_full=zeros(type,sz)
-            @inbounds for idx in pts_masked_indices # no bounds checking
-                x,y=pts[idx]
-                val=ϕ(x,y,k,bdPoints,us)
-                Psi_flat[idx]=val
+            @inbounds for (j,idx) in enumerate(mask_indices) 
+                pt=pts[idx]  # Get the original point using its index
+                val=ϕ(pt[1],pt[2],k,bdPoints,us)
+                Psi_flat[j]=val
                 Psi_flat_full[idx]=val
             end
             Psi_vectors[i]=Psi_flat
