@@ -167,7 +167,6 @@ by summing over the product of the Gaussian values and wavefunction values at in
 """
 function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_inside::Vector,dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
     dxdy=dx*dy # grid rectangle area
-    pts_inside=pts_inside[]
     gauss_inside=gaussian_wavepacket_2d(pts_inside,x0,y0,sigma_x,sigma_y,kx0,ky0)
     coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
     Threads.@threads for i in eachindex(psi_vecs)
