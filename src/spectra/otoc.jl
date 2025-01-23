@@ -198,8 +198,8 @@ of the scaled eigenfunctions and plots it into an `Axis`.
 - None.
 """
 function plot_gaussian_from_eigenfunction_expansion!(ax::Axis,coeffs::Vector{Complex{T}},Psi2ds::Vector,x_grid::Vector{T},y_grid::Vector{T}) where {T<:Real}
-    reconstructed_gaussian=sum(coeffs[i].*Psi2ds[i] for i in eachindex(coeffs))
-    heatmap!(ax,x_grid,y_grid,abs.(reconstructed_gaussian),colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
+    reconstructed_gaussian=abs.(sum(coeffs[i].*Psi2ds[i] for i in eachindex(coeffs)))
+    heatmap!(ax,x_grid,y_grid,reconstructed_gaussian,colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
 end
 
 #=
