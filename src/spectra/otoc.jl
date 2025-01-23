@@ -55,7 +55,7 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,length(pts_inside))
             Psi_flat_full=zeros(type,sz)
-            @inbounds for (j,idx) in enumerate(mask_indices) 
+            @inbounds for (j,idx) in enumerate(pts_masked_indices) 
                 pt=pts[idx]  # Get the original point using its index
                 val=ϕ(pt[1],pt[2],k,bdPoints,us)
                 Psi_flat[j]=val
