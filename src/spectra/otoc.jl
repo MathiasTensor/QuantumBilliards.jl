@@ -54,8 +54,8 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
         @inbounds for j in eachindex(pts_inside) # no bounds checking
             Psi_flat[j]=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
         end
-        normalization=sum(Psi_flat)
-        Psi_flat./=normalization
+        #normalization=sum(Psi_flat)
+        #Psi_flat./=normalization
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
     end
     return Psi2ds,x_grid,y_grid,pts_inside,dx,dy
