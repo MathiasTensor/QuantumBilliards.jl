@@ -42,25 +42,21 @@ function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdP
     # Determine points inside the billiard only once if inside_only is true
     pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
     pts_masked_indices=findall(pts_mask)
+    pts_inside=pts[pts_masked_indices]
+    xs=getindex.(pts_inside,1)
+    ys=getindex.(pts_inside,2)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
-    @inline function _ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
-        target_point=SVector(x,y)
-        distances=norm.(Ref(target_point).-bdPoints.xy)
-        weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
-        return sum(weighted_bessel_values)/4
-    end
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
         @inbounds for idx in pts_masked_indices # no bounds checking
-            x,y=pts[idx]
-            Psi_flat[idx]=_ϕ(x,y,k,bdPoints,us)
+            Psi_flat[idx]=ϕ(xs[idx],ys[idx],k,bdPoints,us)
         end
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
-    return Psi2ds,x_grid,y_grid,pts[pts_masked_indices],dx,dy
+    return Psi2ds,x_grid,y_grid,pts_inside,dx,dy
 end
 
 """
