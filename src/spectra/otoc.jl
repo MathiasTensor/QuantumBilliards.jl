@@ -47,12 +47,20 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     pts_inside_y=getindex.(pts_inside,2)
     # Prepare storage for wavefunctions
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+
+    function _ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
+        target_point=SVector(x,y)
+        distances=norm.(Ref(target_point).-bdPoints.xy)
+        weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
+        return sum(weighted_bessel_values)/4
+    end
+
     # Compute wavefunctions
     @showprogress desc="Constructing wavefunctions ..." Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
         @inbounds for j in eachindex(pts_inside) # no bounds checking
-            Psi_flat[j]=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
+            Psi_flat[j]=_ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
         end
         #normalization=sum(Psi_flat)
         #Psi_flat./=normalization
