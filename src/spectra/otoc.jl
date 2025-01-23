@@ -141,7 +141,7 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0
 end
 
 """
-    gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector{Vector{T}}, pts_inside::Vector{BoundaryPoints{T}}, dx::T, dy::T, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector{Vector{T}}, pts_inside::Vector{SVector{2,T}}, dx::T, dy::T, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
 
 Computes the expansion coefficients of a Gaussian wavepacket in the eigenbasis.
 
@@ -150,7 +150,7 @@ by summing over the product of the Gaussian values and wavefunction values at in
 
 # Arguments:
 - `psi_vecs::Vector{Vector{T}}`: Vector of flattened wavefunctions, each evaluated at the interior points.
-- `pts_inside::Vector{BoundaryPoints{T}}`: Interior points of the billiard boundary grid.
+- `pts_inside::Vector{SVector{2,T}}`: Interior points of the billiard boundary grid.
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
 - `x0::T`: Center of the Gaussian in the x-direction.
@@ -163,8 +163,9 @@ by summing over the product of the Gaussian values and wavefunction values at in
 # Returns:
 - `coeffs::Vector{Complex{T}}`: Vector of expansion coefficients, one for each wavefunction.
 """
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_inside::Vector{BoundaryPoints{T}},dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
+function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_inside::Vector,dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
     dxdy=dx*dy # grid rectangle area
+    pts_inside=pts_inside[]
     gauss_inside=gaussian_wavepacket_2d(pts_inside,x0,y0,sigma_x,sigma_y,kx0,ky0)
     coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
     Threads.@threads for i in eachindex(psi_vecs)
@@ -199,6 +200,8 @@ function plot_gaussian_from_eigenfunction_expansion!(ax::Axis,coeffs::Vector{Com
     reconstructed_gaussian=sum(coeffs[i].*Psi2ds[i] for i in eachindex(coeffs))
     heatmap!(ax,x_grid,y_grid,abs.(reconstructed_gaussian),colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
 end
+
+#=
 
 """
     gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, pts_mask::Vector) where {T<:Real}
@@ -240,6 +243,8 @@ function gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T
      end
      return total_sum[]*0.25 # 1/4 * ∮ u_n(s) * ∫∫dxdyY0(k|(x,y) - (x_s, y_s)|)*Φ(x,y), used Atomic for threading since mutating same total_sum
 end
+
+=#
 
 """
     compute_all_projection_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
