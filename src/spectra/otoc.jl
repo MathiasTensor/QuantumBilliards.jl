@@ -40,7 +40,7 @@ function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdP
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
     sz=length(pts)
     # Determine points inside the billiard only once if inside_only is true
-    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental)
+    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
