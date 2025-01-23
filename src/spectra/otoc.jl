@@ -61,8 +61,9 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
                 Psi_flat[j]=val
                 Psi_flat_full[idx]=val
             end
-            Psi_vectors[i]=Psi_flat
-            Psi_matrices_full[i]=reshape(Psi_flat_full,ny,nx)
+            normalization=sum(Psi_flat)
+            Psi_vectors[i]=Psi_flat./normalization
+            Psi_matrices_full[i]=reshape(Psi_flat_full./normalization,ny,nx)
             next!(progress)
         end
         return [Psi./sum(Psi) for Psi in Psi_vectors],[Psi./sum(Psi) for Psi in Psi_matrices_full],x_grid,y_grid,pts_inside,dx,dy
@@ -73,7 +74,8 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
             @inbounds for (j,pt) in enumerate(pts_inside)  # Iterate over internal points
                 Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
             end
-            Psi_vectors[i]=Psi_flat
+            normalization=sum(Psi_flat)
+            Psi_vectors[i]=Psi_flat./normalization
             next!(progress)
         end
         return [Psi./sum(Psi) for Psi in Psi_vectors],x_grid,y_grid,pts_inside,dx,dy 
