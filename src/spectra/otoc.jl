@@ -42,6 +42,9 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     # Determine points inside the billiard only once if `inside_only` is true
     pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
     pts_masked_indices=findall(pts_mask)
+    pts_inside=pts[pts_masked_indices]
+    pts_inside_x=getindex.(pts_inside,1)
+    pts_inside_y=getindex.(pts_inside,2)
     # Prepare storage for wavefunctions
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunctions ...")
@@ -49,16 +52,15 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
     Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
-        @inbounds for idx in pts_masked_indices # no bounds checking
-            x,y=pts[idx]
-            Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+        @inbounds for j in eachindex(pts_inside) # no bounds checking
+            Psi_flat[j]=ϕ(pts_inside_x[j],pts_inside_y[j],k,bdPoints,us)
         end
         normalization=sum(Psi_flat)
         Psi_flat./=normalization
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
-    return Psi2ds,x_grid,y_grid,pts[pts_masked_indices],dx,dy
+    return Psi2ds,x_grid,y_grid,pts_inside,dx,dy
 end
 
 """
