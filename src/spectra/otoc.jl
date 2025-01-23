@@ -12,7 +12,7 @@ include("../states/wavefunctions.jl")
     wavefunction_normalized(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi;
                             b::Float64=5.0, inside_only::Bool=true, fundamental=true)
 
-Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the billiard boundary and returns them as a vector of wavefunction matrices (normalized).
+Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the billiard boundary and returns them as a vector of wavefunction matrices (normalized). This is done over a fixed grid since we need it for efficient overlap calculations.
 
 # Arguments
 - `ks::Vector{T}`: Wavenumbers for which wavefunctions are computed.
@@ -25,7 +25,7 @@ Calculates the wavefunctions for a set of wavenumbers `ks` at points inside the 
 - `Vector{Matrix{T}}`: Vector of wavefunctions matrices on the grid.
 - `x_grid::Vector{T}`: The grid on which the wavefunction is contructed.
 - `y_grid::Vector{T}`: The grid on which the wavefunction is contructed.
-- `pts_inside::Vector{SVector{2,T}}`: Points inside the billiard boundary.
+- `pts_mask::Vector{Bool}`: Boolean vector for which if a SVector point is inside a boundary is true, otherwise false. This is compatible in size with the flattened wavefunction matrix and represents a way to get only the points of the wavefunction matrix that are inside the boundary.
 - `dx::T`: the x grid spacing, used for approximating intergrals into sums.
 - `dy::T`: the y grid spacing, used for approximating integrals into sums.
 """
@@ -53,11 +53,11 @@ function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdP
         @inbounds for idx in pts_masked_indices # no bounds checking
             Psi_flat[idx]=ϕ(xs[idx],ys[idx],k,bdPoints,us)
         end
-        Psi_flat./=sum(Psi_flat)
+        Psi_flat./=sum(Psi_flat) # inplace normalization
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
-    return Psi2ds,x_grid,y_grid,pts_inside,dx,dy
+    return Psi2ds,x_grid,y_grid,pts_mask,dx,dy
 end
 
 """
@@ -130,7 +130,7 @@ by summing over the product of the Gaussian values and wavefunction values at in
 
 # Arguments:
 - `psi_vecs::Vector{Vector{T}}`: Vector of flattened wavefunctions, each evaluated at the interior points.
-- `pts_inside::Vector{SVector{2,T}}`: Interior points of the billiard boundary grid.
+- `pts_mask::Vector{Bool}`: Vector that represents interior points (true, exterior false) of the billiard boundary. It's length is compatible 
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
 - `x0::T`: Center of the Gaussian in the x-direction.
@@ -143,12 +143,15 @@ by summing over the product of the Gaussian values and wavefunction values at in
 # Returns:
 - `coeffs::Vector{Complex{T}}`: Vector of expansion coefficients, one for each wavefunction.
 """
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_inside::Vector,dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
+function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_mask::Vector{Bool},dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
     dxdy=dx*dy # grid rectangle area
-    gauss_inside=gaussian_wavepacket_2d(pts_inside,x0,y0,sigma_x,sigma_y,kx0,ky0)
+    gauss_inside=gaussian_wavepacket_2d(x_grid,y_grid,x0,y0,sigma_x,sigma_y,kx0,ky0) # to have same 2d and reshaped 1d size so efficient overlap
+    gauss_inside=reshape(gauss_inside,:) # make it 1d
+    pts_mask=reshape(pts_mask,:) # make it 1d
     coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
     Threads.@threads for i in eachindex(psi_vecs)
-        coeffs[i]=sum(psi_vecs[i].*gauss_inside)*dxdy
+        psi=reshape(psi_vecs[i],:) # make it 1d 
+        coeffs[i]=sum(psi.*gauss_inside)*dxdy
     end
     return coeffs
 end
