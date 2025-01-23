@@ -129,7 +129,9 @@ Calculates the overlap between a Gaussian wavepacket and the given eigenfunction
 by summing over the product of the Gaussian values and wavefunction values at interior points.
 
 # Arguments:
-- `psi_vecs::Vector{Vector{T}}`: Vector of flattened wavefunctions, each evaluated at the interior points.
+- `psi_vecs::Vector{Matrix{T}}`: Vector of wavefunction matrices evaluated on the grid.
+- `x_grid::Vector{T}`: Vector of x-coordinates on the grid.
+- `y_grid::Vector{T}`: Vector of y-coordinates on the grid.
 - `pts_mask::Vector{Bool}`: Vector that represents interior points (true, exterior false) of the billiard boundary. It's length is compatible 
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
@@ -143,7 +145,7 @@ by summing over the product of the Gaussian values and wavefunction values at in
 # Returns:
 - `coeffs::Vector{Complex{T}}`: Vector of expansion coefficients, one for each wavefunction.
 """
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,pts_mask::Vector{Bool},dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
+function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,x_grid::Vector,y_grid::Vector,pts_mask::Vector{Bool},dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
     dxdy=dx*dy # grid rectangle area
     gauss_inside=gaussian_wavepacket_2d(x_grid,y_grid,x0,y0,sigma_x,sigma_y,kx0,ky0) # to have same 2d and reshaped 1d size so efficient overlap
     gauss_inside=reshape(gauss_inside,:) # make it 1d
