@@ -56,10 +56,10 @@ function wavefunction_normalized_multi_flat(ks::Vector{T},vec_us::Vector{Vector{
             Psi_flat=zeros(type,length(pts_inside))
             Psi_flat_full=zeros(type,sz)
             @inbounds for idx in pts_masked_indices # no bounds checking
-                Psi_flat[j]=ϕ(pt[1],pt[2],k,bdPoints,us)
                 x,y=pts[idx]
-                Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
-                Psi_flat_full[idx]=ϕ(x,y,k,bdPoints,us)
+                val=ϕ(x,y,k,bdPoints,us)
+                Psi_flat[idx]=val
+                Psi_flat_full[idx]=val
             end
             Psi_vectors[i]=Psi_flat
             Psi_matrices_full[i]=reshape(Psi_flat_full,ny,nx)
