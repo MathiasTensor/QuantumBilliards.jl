@@ -153,11 +153,11 @@ function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,x
     coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
     Threads.@threads for i in eachindex(psi_vecs)
         psi=reshape(psi_vecs[i],:) # make it 1d 
-        coeffs[i]=sum(psi.*gauss_inside)*dxdy
+        coeffs[i]=sum(psi.*gauss_inside)
     end
     return coeffs
 end
-
+# TODO add the dxdy back
 """
     plot_gaussian_from_eigenfunction_expansion(ax::Axis, coeffs::Vector{Complex{T}}, Psi2ds::Vector{Matrix{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
 
