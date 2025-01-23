@@ -54,7 +54,7 @@ function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdP
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
-    return Psi2ds,x_grid,y_grid,pts_inside,dx,dy
+    return Psi2ds,x_grid,y_grid,pts[pts_masked_indices],dx,dy
 end
 
 """
