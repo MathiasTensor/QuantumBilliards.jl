@@ -170,11 +170,7 @@ function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,p
     gauss_inside=gaussian_wavepacket_2d(pts_inside,x0,y0,sigma_x,sigma_y,kx0,ky0)
     coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
     Threads.@threads for i in eachindex(psi_vecs)
-        try
-            coeffs[i]=sum(psi_vecs[i].*gauss_inside)*dxdy
-        catch e
-            println("Error: Gaussian expansion coefficient failed for basis idx: ",i)
-        end
+        coeffs[i]=sum(psi_vecs[i].*gauss_inside)*dxdy
     end
     return coeffs
 end
