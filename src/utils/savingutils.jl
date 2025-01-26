@@ -409,7 +409,7 @@ end
     remove_random_fraction_and_save!(filename::String; fraction::Float64=0.001)
 
 Randomly deletes a fraction of eigenvalues and their corresponding tensions, then saves the modified data
-to a new file with the name appended by `_REMOVED_$fraction`.
+to a new file with the name appended by `_REMOVED_(fraction)`.
 
 # Arguments
 - `filename::String`: The name of the original CSV file to read data from.
