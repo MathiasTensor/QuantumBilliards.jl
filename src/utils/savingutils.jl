@@ -1,4 +1,4 @@
-using DataFrames, CSV,  PrettyTables
+using DataFrames, CSV,  PrettyTables, Random
 
 """
     save_matrix!(mat::Matrix{T}, filename::String)
@@ -338,6 +338,8 @@ function filter_and_save_ks_and_tensions!(input_filename::String,output_filename
     CSV.write(output_filename,filtered_df)
 end
 
+#### OTHER SAVING UTILS ####
+
 """
     compute_and_save_closest_pairs!(ksA::Vector{T}, ksB::Vector{T}, A::T, filename::String; unique=true, tolerance::Float64=1e-6) where {T<:Real}
 
@@ -401,4 +403,36 @@ function compute_and_save_closest_pairs!(ksA::Vector{T},ksB::Vector{T},A::T,file
     open(filename*".tex","w") do f
         pretty_table(f,data_matrix,header=header,backend=Val(:latex))
     end
+end
+
+"""
+    remove_random_fraction_and_save!(filename::String; fraction::Float64=0.001)
+
+Randomly deletes a fraction of eigenvalues and their corresponding tensions, then saves the modified data
+to a new file with the name appended by `_REMOVED_$fraction`.
+
+# Arguments
+- `filename::String`: The name of the original CSV file to read data from.
+- `fraction::Float64`: The fraction of rows to randomly delete (default is 0.001).
+
+# Notes
+- The function reads the eigenvalues (`k`) and tensions from the file, deletes the specified fraction of rows,
+  and saves the remaining data into a new file with a modified name.
+"""
+function remove_random_fraction_and_save!(filename::String;fraction::Float64=0.001)
+    ks,tensions=read_numerical_ks_and_tensions(filename)
+    ks,tensions=Vector(ks),Vector(tensions) 
+    if fraction<0.0 || fraction>1.0
+        throw(ArgumentError("Fraction must be between 0 and 1 (exclusive)."))
+    end
+    total_rows=length(ks)
+    num_to_remove=round(Int,fraction*total_rows)
+    Random.seed!()
+    indices_to_remove=sample(1:total_rows,num_to_remove;replace=false)
+    remaining_indices=setdiff(1:total_rows,indices_to_remove)
+    ks_remaining=ks[remaining_indices]
+    tensions_remaining=tensions[remaining_indices]
+    new_filename=replace(filename,r"\.csv$" => "_REMOVED_$(fraction).csv")
+    save_numerical_ks_and_tensions!(ks_remaining,tensions_remaining,new_filename)
+    println("Modified data saved to $new_filename with $num_to_remove rows removed.")
 end
