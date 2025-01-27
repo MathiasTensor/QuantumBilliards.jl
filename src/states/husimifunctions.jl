@@ -442,3 +442,42 @@ function load_husimi_functions(filename::String)
     @load filename Hs ps qs
     return Hs,ps,qs
 end
+
+"""
+    save_ks_and_husimi_functions!(filename::String,ks::Vector{T},Hs::Vector{Matrix{T}},ps::Vector{Vector{T}},qs::Vector{Vector{T}}) where {T<:Real}
+
+Saves the ks with their corresponding Husimi functions.
+# Arguments
+- `filename::String`: The name of the file to save the data to (must be .jld2)
+- `ks::Vector{T}`: A vector of eigenvalues.
+- `Hs::Vector{Matrix{T}}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{Vector{T}}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs::Vector{Vector{T}}`: A vector of vectors representing the evaluation points in q coordinate.
+
+# Returns
+- `Nothing`
+"""
+function save_ks_and_husimi_functions!(filename::String,ks::Vector{T},Hs::Vector{Matrix{T}},ps::Vector{Vector{T}},qs::Vector{Vector{T}}) where {T<:Real}
+    @time @save filename ks Hs ps qs
+end
+
+"""
+    read_ks_and_husimi_functions(filename::String)
+
+Loads the ks with their corresponding Husimi functions with their grids.
+
+# Arguments
+- `filename::String`: The name of the file to load the data from (must be .jld2)
+
+# Returns
+- `ks::Vector{<:Real}`: A vector of eigenvalues.
+- `Hs::Vector{Matrix{<:Real}}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{Vector{<:Real}}`: A vector of vectors representing the evaluation points in p coordinate.
+- `qs::Vector{Vector{<:Real}}`: A vector of vectors representing the evaluation points in q coordinate.
+"""
+function read_ks_and_husimi_functions(filename::String)
+    @time @load filename ks Hs ps qs
+    return ks,Hs,ps,qs
+end
+
+
