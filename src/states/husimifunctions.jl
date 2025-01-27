@@ -457,7 +457,7 @@ Saves the ks with their corresponding Husimi functions.
 # Returns
 - `Nothing`
 """
-function save_ks_and_husimi_functions!(filename::String,ks::Vector{T},Hs::Vector{Matrix{T}},ps::Vector{Vector{T}},qs::Vector{Vector{T}}) where {T<:Real}
+function save_ks_and_husimi_functions!(filename::String,ks::Vector{T},Hs::Vector,ps::Vector,qs::Vector) where {T<:Real}
     @time @save filename ks Hs ps qs
 end
 
