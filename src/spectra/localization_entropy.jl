@@ -1,4 +1,4 @@
-using LsqFit, QuadGK, SpecialFunctions
+using LsqFit, QuadGK, SpecialFunctions, ProgressMeter
 
 """
     localization_entropy(H::Matrix{T}, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
@@ -80,7 +80,7 @@ function correlation_matrix_and_average(H_list::Vector)
     norms=[sqrt(sum(H.^2)) for H in H_list] 
     total_corr=Threads.Atomic{Float64}(0.0) 
     count=Threads.Atomic{Int}(0) 
-    Threads.@threads for i in 1:n
+    @showprogress desc="Computing correlation matrices N=$n" Threads.@threads for i in 1:n
         @inbounds for j in i:n  # Only loop over upper triangular matrix
             numerator=sum(H_list[i].*H_list[j])
             denominator=norms[i]*norms[j]
