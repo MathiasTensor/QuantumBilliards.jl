@@ -408,6 +408,47 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
 end
 
 """
+    husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_of_s_vals::Vector{Vector{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+
+Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the arclength values along with the the boundary functions that corresponds to them.
+
+# Arguments
+- `ks::Vector{T}`: A vector of eigenvalues.
+- `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
+- `vec_of_s_vals::Vector{Vector{T}}`: A vector of arclength values that correspond to the boundary function values.
+- `billiard::Bi`: The billiard geometry for the total length.
+- `nx::Interger`: The size of linearly spaced q grid.
+- `ny::Interger`: The size of linearly spaced p grid.
+
+# Returns
+- `Hs_list::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
+- `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
+- `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
+"""
+function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_of_s_vals::Vector{Vector{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+    L=billiard.length
+    valid_indices=fill(true,length(ks))
+    Hs_list=Vector{Matrix{T}}(undef,length(ks))
+    H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny)
+    Hs_list[1]=H
+    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
+    Threads.@threads for i in eachindex(ks)[2:end]
+        try
+            H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny)
+            Hs_list[i]=H
+        catch e
+            println("Error while constructing Husimi for k = $(ks[i]): $e")
+            valid_indices[i]=false
+        end
+        next!(p)
+    end
+    Hs_list=Hs_list[valid_indices]
+    ps=collect(ps)
+    qs=collect(qs)
+    return Hs_list,ps,qs
+end
+
+"""
     save_husimi_functions(Hs::Vector{Matrix}, ps::Vector{Vector}, qs::Vector{Vector}; filename::String="husimi.jld2")
 
 Saves the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) to the filename using JLD2.
