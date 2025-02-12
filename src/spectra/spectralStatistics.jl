@@ -5,66 +5,148 @@ INTERNAL FOR PLOTTING. Uses the def of σ² = (mean of squares) - (mean)^2 to de
 """
 function number_variance(E::Vector{T}, L::T) where {T<:Real}
     # By Tomaž Prosen
-    Ave1 = zero(T)
-    Ave2 = zero(T)
-    j = 2
-    k = 2
-    x = E[1]
-    N = length(E)
-    largest_energy = E[end - min(Int(ceil(L) + 10), N-1)]  # Ensure largest_energy is within bounds
-
-    while x < largest_energy
-        while k < N && E[k] < x + L  # Ensure k does not exceed bounds with k<N = num of energies
-            k += 1
+    Ave1=zero(T)
+    Ave2=zero(T)
+    j=2
+    k=2
+    x=E[1]
+    N=length(E)
+    largest_energy=E[end-min(Int(ceil(L)+10),N-1)]  # Ensure largest_energy is within bounds
+    while x<largest_energy
+        while k<N && E[k]<x+L  # Ensure k does not exceed bounds with k<N = num of energies
+            k+=1
         end
-
         # Adjusting the interval so that it slides/moves across the energy spectrum, a moving window statistic
-        
-        d1 = E[j] - x # The difference between the start of interval x and the first energy in the interval E[j]. This difference indicates how much the interval [x, E[j]] deviates from the exact interval [x, x + L]. d1 > 0
-        d2 = E[k] - (x + L) # Difference between the end of the interval x + L and the first energy level beyond the interval [E[k]]. This difference shows how far the last energy level included in the interval is from the exact boundary x + L. d2 > 0
-        cn = k - j # The number of energy levels in the interval (num of indexes for energies in the interval)
-        
+        d1=E[j]-x # The difference between the start of interval x and the first energy in the interval E[j]. This difference indicates how much the interval [x, E[j]] deviates from the exact interval [x, x + L]. d1 > 0
+        d2=E[k]-(x+L) # Difference between the end of the interval x + L and the first energy level beyond the interval [E[k]]. This difference shows how far the last energy level included in the interval is from the exact boundary x + L. d2 > 0
+        cn=k-j # The number of energy levels in the interval (num of indexes for energies in the interval)
         # Interval Adjustment (d1 < d2):
-        if d1 < d2
+        if d1<d2
             # If the difference d1 (between x and E[j]) is smaller than d2 (between E[k] and x + L), the interval is adjusted by moving x to the next energy level E[j].
-            x = E[j]
+            x=E[j]
             # Since the difference between x and E[j] is smaller set the shift of the interval for x
-            s = d1
+            s=d1
             # Since d1 was smaller the updated x was for the start o the interval associated with the j index, so +1 it
-            j += 1
+            j+=1
         else
             # d2 was smaller so the new x is updated at the back of the interval
-            x = E[k] - L
+            x=E[k]-L
             # Analogues to the up case, just the smaller shift stored was d2
-            s = d2
+            s=d2
             # k is associated with the end interval
-            k += 1
+            k+=1
         end
 
         # Accumulations:
         # Ave1 = (1 / Total Length) * Σ(s_i * n(x_i, L)) where the number of energies in the interval n(x_i, L) is given by cn=k-j
         # Ave2 = (1 / Total Length) * Σ(s_i * n(x_i, L)) where the number of energies in the interval n(x_i, L) is given by cn=k-j
-        Ave1 += s * cn
-        Ave2 += s * cn^2
-
+        Ave1+=s*cn
+        Ave2+=s*cn^2
         # Ensure j does not exceed bounds
-        if j >= N || k >= N # This condition checks if either j or k have reached or exceeded the total number of energy levels (N), j >= N || k >= N: If either index exceeds the bounds of the array, the loop is terminated to prevent out-of-bounds errors.
+        if j>=N || k>=N # This condition checks if either j or k have reached or exceeded the total number of energy levels (N), j >= N || k >= N: If either index exceeds the bounds of the array, the loop is terminated to prevent out-of-bounds errors.
             break
         end
     end
-
     # See the formula at accumulations for reasons.
-    total_length = largest_energy - E[1]
-    Ave1 /= total_length
-    Ave2 /= total_length
-
+    total_length=largest_energy-E[1]
+    Ave1/=total_length
+    Ave2/=total_length
     # Calculate the variance σ² using the accumulated values Ave1 and Ave2. 
     # Variance = mean of squares - (mean)^2
-    AveSig = Ave2 - Ave1^2
+    AveSig=Ave2-Ave1^2
     return AveSig
 end
 
+"""
+    probability_brody(s::T, β::T) -> T where {T<:Real}
 
+Computes the probability density function of the Brody distribution**, 
+which interpolates between Poisson and Wigner-Dyson level spacing statistics throught the β parameter.
+
+# Arguments
+- `s::T`: The spacing value.
+- `β::T`: The Brody parameter.
+
+# Returns
+- `::T` The value of the Brody distribution at spacing `s` for the given `β`.
+"""
+function probability_brody(s::T,β::T)::T where {T<:Real}
+    b=(gamma((β+2)/(β+1)))^(β+1)
+    return (β+1)*b*s^β*exp(-b*s^(β+1))
+end
+
+"""
+    probability_brody(s::Vector{T},β::T)::Vector{T} where {T<:Real}
+
+Computes the probability density function of the Brody distribution**, 
+which interpolates between Poisson and Wigner-Dyson level spacing statistics throught the β parameter.
+
+# Arguments
+- `s::Vector{T}`: The vector of spacing values.
+- `β::T`: The Brody parameter.
+
+# Returns
+- `::Vector{T}` The vector of values of the Brody distribution at spacing `s` for the given `β`.
+"""
+function probability_brody(s::Vector{T},β::T)::Vector{T} where {T<:Real}
+    return probability_brody.(s,β)
+end
+
+"""
+    fit_brody_to_data(bin_centers::Vector{T}, bin_counts::Vector{T}) where {T<:Real} -> T
+
+Fits the Brody distribution to the given histogram data using non-linear least squares fitting.
+
+# Arguments
+- `bin_centers::Vector{T}`: A vector of the bin centers (midpoints of histogram bins).
+- `bin_counts::Vector{T}`: A vector of the corresponding bin counts (frequency values) for each bin.
+
+# Returns
+- `β::T`: The estimated Brody parameter (0 ≤ β ≤ 1), which characterizes the level spacing distribution.
+  - β = 0 corresponds to a Poissonian distribution (integrable systems).
+  - β = 1 corresponds to a Wigner-Dyson distribution (chaotic systems).
+  - Intermediate values indicate mixed behavior.
+"""
+function fit_brody_to_data(bin_centers::Vector,bin_counts::Vector)
+    function brody_model(s_vals::Vector,params)
+        β=params
+        return probability_brody(s_vals,β)
+    end
+    init_params=[1.0] # β init 1.0
+    fit_result=curve_fit((s_vals,params) -> brb_model(s_vals,params),bin_centers,bin_counts,init_params)
+    return fit_result.param
+end
+
+"""
+    plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100;ρ_chaotic_classic=0.0)
+
+Plots the chaotic level NNLS and optionally plots the best-fitting Brody distribution overlay.
+
+# Arguments
+- `unfolded_energies::Vector`: The unfolded energies vector (raw data after unfolding).
+- `nbins::Int=100`: The number of bins for the histogram. Default is 100.
+- `ρ_chaotic_classic::Float64=1.0`: The classical criterion parameter (ρ_c) for defining chaotic systems. Default is 1.0. If different from default value it also plots the best fitting Brody.
+
+# Returns
+- `Nothing`
+"""
+function plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100;ρ_chaotic_classic=1.0)
+    spacings=calculate_spacings(unfolded_energies)
+    hist=Distributions.fit(StatsBase.Histogram,spacings;nbins=nbins) # Create a normalized histogram
+    bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2 # the arithmetic average of the histogram edges
+    bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1] # take the normalized histogram weights and create the counts with the diffs of the histogram edges
+    goe_pdf=x->(π/T(2))*x*exp(-π*x^2/T(4))
+    f=Figure(resolution=(800,600))
+    ax=Axis(f[1,1],title="NNLS dostribution of chaotic levels upon separation by classical criterion")
+    barplot!(ax,bin_centers,bin_counts,label="Chaotic levels",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
+    if ρ_chaotic_classic!=1.0
+        β=fit_brody_to_data(bin_centers,bin_counts)
+        s_values=range(0,stop=maximum(bin_centers),length=1000)
+        ys=probability_brody(s_values,β)
+        lines!(ax,s_values,ys,label="Brody, β=$β",color=:red)
+    end
+    axislegend(ax,position=:rt)
+end
 
 """
     probability_berry_robnik(s::T, rho::T) -> T where {T <: Real}
