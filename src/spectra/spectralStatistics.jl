@@ -135,7 +135,7 @@ function plot_nnls_only_chaotic(unfolded_energies::Vector;nbins::Int=100,ρ_chao
     hist=Distributions.fit(StatsBase.Histogram,spacings;nbins=nbins) # Create a normalized histogram
     bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2 # the arithmetic average of the histogram edges
     bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1] # take the normalized histogram weights and create the counts with the diffs of the histogram edges
-    goe_pdf=x->(π/T(2))*x*exp(-π*x^2/T(4))
+    goe_pdf=x->(π/2)*x*exp(-π*x^2/4)
     f=Figure(resolution=(800,600))
     ax=Axis(f[1,1],title="NNLS dostribution of chaotic levels upon separation by classical criterion")
     barplot!(ax,bin_centers,bin_counts,label="Chaotic levels",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
