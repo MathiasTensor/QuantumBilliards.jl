@@ -128,9 +128,9 @@ Plots the chaotic level NNLS and optionally plots the best-fitting Brody distrib
 - `ρ_chaotic_classic::Float64=1.0`: The classical criterion parameter (ρ_c) for defining chaotic systems. Default is 1.0. If different from default value it also plots the best fitting Brody.
 
 # Returns
-- `Nothing`
+- `Figure`
 """
-function plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100,ρ_chaotic_classic=1.0)
+function plot_nnls_only_chaotic(unfolded_energies::Vector;nbins::Int=100,ρ_chaotic_classic=1.0)
     spacings=calculate_spacings(unfolded_energies)
     hist=Distributions.fit(StatsBase.Histogram,spacings;nbins=nbins) # Create a normalized histogram
     bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2 # the arithmetic average of the histogram edges
@@ -148,6 +148,7 @@ function plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100,ρ_cha
         lines!(ax,s_values,ys,label="Brody, β=$β",color=:red)
     end
     axislegend(ax,position=:rt)
+    return f
 end
 
 """
