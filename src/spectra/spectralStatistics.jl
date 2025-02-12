@@ -139,9 +139,11 @@ function plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100,ρ_cha
     f=Figure(resolution=(800,600))
     ax=Axis(f[1,1],title="NNLS dostribution of chaotic levels upon separation by classical criterion")
     barplot!(ax,bin_centers,bin_counts,label="Chaotic levels",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
+    s_values=range(0,stop=maximum(bin_centers),length=1000)
+    ys=goe_pdf.(s_values)
+    lines!(ax,s_values,ys,label="GOE PDF",color=:green)
     if ρ_chaotic_classic!=1.0
         β=fit_brody_to_data(bin_centers,bin_counts)
-        s_values=range(0,stop=maximum(bin_centers),length=1000)
         ys=probability_brody(s_values,β)
         lines!(ax,s_values,ys,label="Brody, β=$β",color=:red)
     end
