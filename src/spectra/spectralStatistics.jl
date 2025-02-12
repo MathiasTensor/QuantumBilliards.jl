@@ -130,7 +130,7 @@ Plots the chaotic level NNLS and optionally plots the best-fitting Brody distrib
 # Returns
 - `Nothing`
 """
-function plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100;ρ_chaotic_classic=1.0)
+function plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100,ρ_chaotic_classic=1.0)
     spacings=calculate_spacings(unfolded_energies)
     hist=Distributions.fit(StatsBase.Histogram,spacings;nbins=nbins) # Create a normalized histogram
     bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2 # the arithmetic average of the histogram edges
