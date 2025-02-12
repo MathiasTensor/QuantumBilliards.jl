@@ -162,7 +162,7 @@ Benchmarks the construction of all the matrices needeed for the Scaling Method f
 
 1.) `F=G'*W*G` where `G` is the basis matrix and `W` the weight matrix (that contains the dot products of the radial distance of the point with it's normal derivative directionald derivative)
 
-2.) `Fk=dF/dk=(dG/dk)*W*G + it's transpose`. Both are real Symmetric matrices so under the hood a call to `sygvd` is made...
+2.) `Fk=dF/dk=(dG/dk)*W*G + it's transpose`. Both are real Symmetric matrices so under the hood a call to `sygvd` should be made but not neccesery in the end due to numerical nullspace deletion and therefore invertability of the B matrix in Au=λBu -> transpose/inv(B)Au=λu...
 
 With these we now have the neccesery matrices foe the Scaling Method `Fk*u+λF*u=0 <-> eigen(Fk,F) ?-> reduction of numerical nullspace -> ... ` (more in decompositions.jl)
 
@@ -211,7 +211,7 @@ Constructs all the matrices needeed for the Scaling Method for a given reference
 
 1.) `F=G'*W*G` where `G` is the basis matrix and `W` the weight matrix (that contains the dot products of the radial distance of the point with it's normal derivative directionald derivative)
 
-2.) `Fk=dF/dk=(dG/dk)*W*G + it's transpose`. Both are real Symmetric matrices so under the hood a call to `sygvd` is made...
+2.) `Fk=dF/dk=(dG/dk)*W*G + it's transpose`. Both are real Symmetric matrices so under the hood a call to `sygvd` should be made but not neccesery in the end due to numerical nullspace deletion and therefore invertability of the B matrix in Au=λBu -> transpose/inv(B)Au=λu...
 
 With these we now have the neccesery matrices for the Scaling Method `Fk*u+λF*u=0 <-> eigen(Fk,F) ?-> reduction of numerical nullspace -> ... ` (more in decompositions.jl)
 
@@ -409,7 +409,7 @@ function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,
     ten=ten[idx]
     Z=Z[:,idx]
     X=C*Z #transform into original basis 
-    X=(sqrt.(ten))' .* X
+    X=(sqrt.(ten))' .* X # Use the automatic normalization via tension values as described in Barnett's thesis
     p=sortperm(ks)
     return  ks[p],ten[p],X[:,p]
 end
