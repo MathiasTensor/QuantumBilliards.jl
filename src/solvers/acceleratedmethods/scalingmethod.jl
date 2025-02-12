@@ -320,13 +320,13 @@ end
 Construct the Scaling method results (the name means that) from the given generalized eigenvalues mu obtained from solving the generalized_eigen in decompositions.jl. Following Barnett's derivation: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html. They need to be processed wrt. the reference wavenumber k that constructed the matrices that were for the generalized_eigen.
 
 # Arguments
-- `mu<:Union{Vector{<:Real},<:Real}`: The generalized eigenvalues obtained from solving the generalized_eigen function.
+- `mu<:Vector{<:Real}`: The generalized eigenvalues obtained from solving the generalized_eigen function.
 - `k<:Real`: The reference wavenumber that defined the generalized eigenproblem.
 """
 function sm_results(mu,k)
-    ks = k .- 2 ./mu .+ 2/k ./(mu.^2) 
-    ten = 2.0 .*(2.0 ./ mu).^2
-    return ks, ten
+    @. ks=k-2/mu+2/k/mu^2
+    @. ten=2.0*(2.0/mu)^2
+    return ks,ten
 end
 
 """
