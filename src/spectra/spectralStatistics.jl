@@ -107,14 +107,14 @@ Fits the Brody distribution to the given histogram data using non-linear least s
   - β = 1 corresponds to a Wigner-Dyson distribution (chaotic systems).
   - Intermediate values indicate mixed behavior.
 """
-function fit_brody_to_data(bin_centers::Vector,bin_counts::Vector)
+function fit_brody_to_data(bin_centers::Vector,bin_counts::Vector)::T
     function brody_model(s_vals::Vector,params)
         β=params
         return probability_brody(s_vals,β[1]) # 1 element vector
     end
     init_params=[1.0] # β init 1.0
     fit_result=curve_fit((s_vals,params) -> brody_model(s_vals,params),bin_centers,bin_counts,init_params)
-    return fit_result.param
+    return fit_result.param[1]
 end
 
 """
