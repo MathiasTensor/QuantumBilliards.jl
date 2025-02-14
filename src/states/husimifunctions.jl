@@ -1,10 +1,6 @@
-#include("../abstracttypes.jl")
-
 using CircularArrays
 using JLD2
 using LinearAlgebra
-
-# ORIGINAL
 
 """
     antisym_vec(x::AbstractVector)
@@ -27,6 +23,7 @@ end
 
 Calculates the Husimi function on a grid defined by the boundary `s`. The logic is that from the arclengths `s` we construct the qs with the help of the width of the Gaussian at that k (width = 1/√k) and the parameter c (which determines how many q evaluations we will have per this width at k -> defines the step 1/(√k*c) so we will have tham many more q evaluations in peak). Analogously we do for the ps, where the step size (matrix size in ps direction) is range(0.0,1.0,step=1/(√k*c)) (we do only for half since symmetric with p=0 implies we can use antisym_vec(ps) to recreate the whole -1.0 to 1.0 range while also symmetrizing the Husimi function that is constructed from p=0.0 to 1.0 with the logic perscribed above). The w (how many sigmas we will take) is used in construction of the ds summation weights.
 Comment: Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we construct only the p=0 to p=1 matrix and then via symmetry automatically obtain the p=-1 to p=0 also.
+Comment: Original algorithm by Črt Lozej
 
 # Arguments
 - `k<:Real`: Wavenumber of the eigenstate.
