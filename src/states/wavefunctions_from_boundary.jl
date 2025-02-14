@@ -34,6 +34,12 @@ function ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
     return sum(weighted_bessel_values)/4
 end
 
+function ϕ(xs::Vector{T},ys::Vector{T},k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
+    target_points=SVector.(xs,ys)
+    distances=norm.(target_points'.-bdPoints.xy)
+    return sum(Bessels.bessely0.(k.*distances).*us.*bdPoints.ds)./4
+end
+
 """
     wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
@@ -68,6 +74,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
+    #=
     Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
@@ -75,6 +82,14 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
             x,y=pts[idx]
             Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
         end
+        Psi2ds[i]=reshape(Psi_flat,ny,nx)
+        next!(progress)
+    end
+    =#
+    @inbounds Threads.@threads for i in eachindex(ks)
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        Psi_flat=zeros(type,sz)
+        Psi_flat[pts_masked_indices].=ϕ(xs[pts_masked_indices],ys[pts_masked_indices],k,bdPoints,us)
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
