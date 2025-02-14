@@ -27,17 +27,16 @@ end
 # Returns
 - `ϕ::T`: The value of the wavefunction at the given point (x,y).
 """
-function ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
+@inline function ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
     target_point=SVector(x,y)
     distances=norm.(Ref(target_point).-bdPoints.xy)
     weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
     return sum(weighted_bessel_values)/4
 end
 
-function ϕ(xs::Vector{T},ys::Vector{T},k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
-    target_points=SVector.(xs,ys)
-    distances=norm.(target_points'.-bdPoints.xy)
-    return sum(Bessels.bessely0.(k.*distances).*us.*bdPoints.ds)./4
+@inline function ϕ(pts::Vector{SVector{2,T}},k::T,bdPoints::BoundaryPoints{T},us::Vector{T}) where {T<:Real}
+    distances=[norm.(p.-bdPoints.xy) for p in pts]
+    return sum.(Bessels.bessely0.(k.*distances).*us.*bdPoints.ds)./4
 end
 
 """
@@ -89,7 +88,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     @inbounds Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
-        Psi_flat[pts_masked_indices].=ϕ(xs[pts_masked_indices],ys[pts_masked_indices],k,bdPoints,us)
+        Psi_flat[pts_masked_indices].=ϕ(pts[pts_masked_indices],k,bdPoints,us)
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
