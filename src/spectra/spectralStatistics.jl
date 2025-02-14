@@ -113,7 +113,7 @@ function fit_brody_to_data(bin_centers::Vector,bin_counts::Vector)
         return probability_brody(s_vals,β)
     end
     init_params=[1.0] # β init 1.0
-    fit_result=curve_fit((s_vals,params) -> brb_model(s_vals,params),bin_centers,bin_counts,init_params)
+    fit_result=curve_fit((s_vals,params) -> brody_model(s_vals,params),bin_centers,bin_counts,init_params)
     return fit_result.param
 end
 
