@@ -143,7 +143,7 @@ function plot_nnls_only_chaotic(unfolded_energies::Vector;nbins::Int=100,ρ_chao
     ys=goe_pdf.(s_values)
     lines!(ax,s_values,ys,label="GOE PDF",color=:green)
     if ρ_chaotic_classic!=1.0
-        β=fit_brody_to_data(bin_centers,bin_counts)
+        β=fit_brody_to_data(collect(bin_centers),bin_counts)
         ys=probability_brody(s_values,β)
         lines!(ax,s_values,ys,label="Brody, β=$β",color=:red)
     end
