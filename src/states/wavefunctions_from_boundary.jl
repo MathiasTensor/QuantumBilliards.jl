@@ -89,12 +89,25 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    Threads.@threads for i in eachindex(ks)
+    @inbounds for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
-        @inbounds for idx in pts_masked_indices # no bounds checking
-            x,y=pts[idx]
-            Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+        #@inbounds Threads.@threads for idx in pts_masked_indices # no bounds checking
+        #    x,y=pts[idx]
+        #    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+        #end
+        # Use a thread-safe approach
+        Psi_local=[zeros(type,sz) for _ in 1:Threads.nthreads()]
+        Threads.@threads for tid in 1:Threads.nthreads()
+            local_Psi=Psi_local[tid]
+            @simd for idx in tid:Threads.nthreads():length(pts_masked_indices)
+                p_idx=pts_masked_indices[idx]
+                x,y=pts[p_idx]
+                local_Psi[p_idx]=ϕ(x,y,k,bdPoints,us)
+            end
+        end
+        for tid in 1:Threads.nthreads()
+            Psi_flat.+=Psi_local[tid]
         end
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
