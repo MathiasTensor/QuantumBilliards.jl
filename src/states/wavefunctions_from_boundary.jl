@@ -92,11 +92,6 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     @inbounds for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
-        #@inbounds Threads.@threads for idx in pts_masked_indices # no bounds checking
-        #    x,y=pts[idx]
-        #    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
-        #end
-        # Use a thread-safe approach
         Threads.@threads for j in eachindex(pts_masked_indices)
             idx=pts_masked_indices[j]
             @inbounds begin
@@ -150,12 +145,15 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    Threads.@threads for i in eachindex(ks)
+    @inbounds for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
-        @inbounds for idx in pts_masked_indices # no bounds checking
-            x,y=pts[idx]
-            Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+        Threads.@threads for j in eachindex(pts_masked_indices)
+            idx=pts_masked_indices[j]
+            @inbounds begin
+                x,y=pts[idx]
+                Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+            end
         end
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
