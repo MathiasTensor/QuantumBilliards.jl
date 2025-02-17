@@ -1,6 +1,3 @@
-#include("../abstracttypes.jl")
-#include("../utils/typeutils.jl")
-
 using Random, Distributions
 
 """
@@ -16,7 +13,7 @@ A struct representing the case where we wish to visualize the Gaussian distribut
 - `eps::T`: The precision of the wavevector from k.
 - `basis<:AbsBasis`: The underlying basis we will construct
 """
-struct GaussianRandomState{K,T,Bi,Ba} <: AbsState where {K<:Number, T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+struct GaussianRandomState{K,T,Bi,Ba} <: AbsState where {K<:Number,T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     k::K
     billiard::Bi
     k_basis::K
@@ -40,9 +37,9 @@ Constructs the Gaussian random state with the linear expansion coefficients of a
 # Returns
 - A `GaussianRandomState` instance with Gaussian coefficients.
 """
-function GaussianRandomState(k::T, billiard::Bi, dim::Integer, basis::Ba) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
-    d = Distributions.Normal()
-    vec = rand(d, N)
-    eps = set_precision(k)
+function GaussianRandomState(k::T,billiard::Bi,dim::Integer,basis::Ba) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
+    d=Distributions.Normal()
+    vec=rand(d,N)
+    eps=set_precision(k)
     return GaussianRandomState(k,billiard,k,vec,dim,eps,basis)
 end
