@@ -97,17 +97,12 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
         #    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
         #end
         # Use a thread-safe approach
-        Psi_local=[zeros(type,sz) for _ in 1:Threads.nthreads()]
-        Threads.@threads for tid in 1:Threads.nthreads()
-            local_Psi=Psi_local[tid]
-            @simd for idx in tid:Threads.nthreads():length(pts_masked_indices)
-                p_idx=pts_masked_indices[idx]
-                x,y=pts[p_idx]
-                local_Psi[p_idx]=ϕ(x,y,k,bdPoints,us)
+        Threads.@threads for j in eachindex(pts_masked_indices)
+            idx=pts_masked_indices[j]
+            @inbounds begin
+                x,y=pts[idx]
+                Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
             end
-        end
-        for tid in 1:Threads.nthreads()
-            Psi_flat.+=Psi_local[tid]
         end
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
