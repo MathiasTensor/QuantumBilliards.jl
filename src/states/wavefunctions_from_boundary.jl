@@ -35,8 +35,10 @@ end
 end
 
 @inline function ϕ(pts::Vector{SVector{2,T}},k::T,bdPoints::BoundaryPoints{T},us::Vector{T}) where {T<:Real}
-    distances=[norm.(p.-bdPoints.xy) for p in pts]
-    return sum.(Bessels.bessely0.(k.*distances).*us.*bdPoints.ds)./4
+    xs_pts,ys_pts=getindex.(pts,1),getindex.(pts,2)
+    xs_bd,ys_bd=getindex.(bdPoints.xy,1),getindex.(bdPoints.xy,2)
+    distances=hypot.(xs_pts.-xs_bd',ys_pts.-ys_bd')
+    return sum(Bessels.bessely0.(k.*distances).* us'.* bdPoints.ds',dims=2)./4
 end
 
 """
