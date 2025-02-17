@@ -34,6 +34,20 @@ end
     return sum(weighted_bessel_values)/4
 end
 
+"""
+    ϕ(pts::Vector{SVector{2,T}},k::T,bdPoints::BoundaryPoints{T},us::Vector{T}) where {T<:Real}
+
+Maximally vectorized version of the single point ϕ(x::T,y::T,...) function. Use only if there are at most a few dozen of wavefunctions to construct as the memory usage is extremely big.
+
+# Arguments
+- `pts::Vector{SVector{2,T}}`: Vector of points (x,y) to compute the wavefunctions.
+- `k::T`: The eigenvalue for which the wavefunction is to be computed.
+- `bdPoints::BoundaryPoints{T}`: Boundary discretization information.
+- `us::Vector{T}`: Vector of boundary functions.
+
+# Returns
+- `ϕs::Vector{T}`: Vector of the values of the wavefunctions at the given points (x,y).
+"""
 @inline function ϕ(pts::Vector{SVector{2,T}},k::T,bdPoints::BoundaryPoints{T},us::Vector{T}) where {T<:Real}
     xs_pts,ys_pts=getindex.(pts,1),getindex.(pts,2)
     xs_bd,ys_bd=getindex.(bdPoints.xy,1),getindex.(bdPoints.xy,2)
@@ -75,7 +89,6 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    #=
     Threads.@threads for i in eachindex(ks)
         k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
         Psi_flat=zeros(type,sz)
@@ -83,14 +96,6 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
             x,y=pts[idx]
             Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
         end
-        Psi2ds[i]=reshape(Psi_flat,ny,nx)
-        next!(progress)
-    end
-    =#
-    @inbounds Threads.@threads for i in eachindex(ks)
-        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-        Psi_flat=zeros(type,sz)
-        Psi_flat[pts_masked_indices].=ϕ(pts[pts_masked_indices],k,bdPoints,us)
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
@@ -147,7 +152,6 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
         Psi2ds[i]=reshape(Psi_flat,ny,nx)
         next!(progress)
     end
-    # husimi
     if use_fixed_grid
         vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
         Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
