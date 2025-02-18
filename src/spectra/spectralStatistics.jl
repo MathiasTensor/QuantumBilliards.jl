@@ -123,15 +123,17 @@ end
 Plots the chaotic level NNLS and optionally plots the best-fitting Brody distribution overlay.
 
 # Arguments
-- `unfolded_energies::Vector`: The unfolded energies vector (raw data after unfolding).
+- `chaotic_levels::Vector`: Raw chaotic energy levels (wihtout unfolding since the mean level spacing is 1 only for all the levels).
 - `nbins::Int=100`: The number of bins for the histogram. Default is 100.
 - `ρ_chaotic_classic::Float64=1.0`: The classical criterion parameter (ρ_c) for defining chaotic systems. Default is 1.0. If different from default value it also plots the best fitting Brody.
 
 # Returns
 - `Figure`
 """
-function plot_nnls_only_chaotic(unfolded_energies::Vector;nbins::Int=100,ρ_chaotic_classic=1.0)
-    spacings=calculate_spacings(unfolded_energies)
+function plot_nnls_only_chaotic(chaotic_levels::Vector;nbins::Int=100,ρ_chaotic_classic=1.0)
+    spacings=calculate_spacings(chaotic_levels)
+    mls=sum(spacings)/length(spacings) # manually calculate the mean level spacing and normalize the spacings
+    spacings.=spacings./mls
     hist=Distributions.fit(StatsBase.Histogram,spacings;nbins=nbins) # Create a normalized histogram
     bin_centers=(hist.edges[1][1:end-1].+hist.edges[1][2:end])/2 # the arithmetic average of the histogram edges
     bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1] # take the normalized histogram weights and create the counts with the diffs of the histogram edges
@@ -145,7 +147,7 @@ function plot_nnls_only_chaotic(unfolded_energies::Vector;nbins::Int=100,ρ_chao
     if ρ_chaotic_classic!=1.0
         β=fit_brody_to_data(collect(bin_centers),bin_counts)
         ys=probability_brody(s_values,β)
-        lines!(ax,s_values,ys,label="Brody, β=$β",color=:red)
+        lines!(ax,s_values,ys,label="Brody, ρ_ch=$(ρ_chaotic_classic), β=$β",color=:red)
     end
     axislegend(ax,position=:rt)
     return f
