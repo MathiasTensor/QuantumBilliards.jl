@@ -156,8 +156,10 @@ include("spectra/localization_entropy.jl")
 export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d, heatmap_R_vs_A_2d, combined_heatmaps_with_husimi, plot_correlation_matrix_averages, group_Hs_by_A_bins, compute_average_correlation_per_bin, correlation_matrix, correlation_matrix_and_average
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
+include("spectra/evolution.jl")
+export Wavepacket, gaussian_wavepacket_2d, gaussian_coefficients
 include("spectra/otoc.jl")
-export plot_wavefunctions, wavefunction_multi, X_mn_standard, X_standard, B_standard, microcanocinal_Cn_standard, plot_microcanonical_Cn!, microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!, wavefunction_normalized
+export plot_wavefunctions, wavefunction_multi, X_mn_standard, X_standard, B_standard, microcanocinal_Cn_standard, plot_microcanonical_Cn!, microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
 include("spectra/classical_transport_time.jl")
 export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_chaotic_init_conditions_to_cartesian, simulate_trajectories, plot_p2_stats!, generate_intervals_from_limits
 include("spectra/antiscar_mushroom.jl")
