@@ -160,9 +160,8 @@ Given an initial set of expansion coefficients `coeffs_init`, corresponding wave
 and time values `ts`, this function computes the time-evolved coefficients based on the 
 Schrödinger equation solution:
 
-```math
-c_n(t) = c_n(0) e^{-i E_n t}
-```
+`c_n(t) = c_n(0) e^{-i E_n t}`
+
 # Arguments
 `coeffs_init::Vector{Complex{T}}`: The initial expansion coefficients of the wavepacket in the eigenbasis.
 `ks::Vector{T}`: The wavenumbers associated with each eigenfunction.
