@@ -228,11 +228,12 @@ of the scaled eigenfunctions and plots it into an `Axis`.
 - `y_grid::Vector{T}`: y-coordinates of the grid on which the wavefunctions are defined.
 
 # Returns:
-- None.
+- `MakieCore.Heatmap`: The heatmap object.
 """
-function plot_gaussian_from_eigenfunction_expansion!(ax::Axis,coeffs::Vector{Complex{T}},Psi2ds::Vector,x_grid::Vector{T},y_grid::Vector{T}) where {T<:Real}
+function plot_gaussian_from_eigenfunction_expansion(ax::Axis,coeffs::Vector{Complex{T}},Psi2ds::Vector,x_grid::Vector{T},y_grid::Vector{T}) where {T<:Real}
     reconstructed_gaussian=abs.(sum(coeffs[i]*Psi2ds[i] for i in eachindex(coeffs)))
-    heatmap!(ax,x_grid,y_grid,reconstructed_gaussian,colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
+    hmap=heatmap!(ax,x_grid,y_grid,reconstructed_gaussian,colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
+    return hmap
 end
 
 
