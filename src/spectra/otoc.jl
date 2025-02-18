@@ -8,7 +8,7 @@ include("../states/wavefunctions.jl")
 # TODO Gaussian wavepacket does not work correctly!
 
 """
-    Wavepacket{T} where {T<:Real}
+    Wavepacket{T<:Real}
 
 Contains the initialization parameters that construct the Gaussian wavepacket.
 
@@ -20,7 +20,7 @@ Contains the initialization parameters that construct the Gaussian wavepacket.
 - `kx0::T`: wavevector in the x direction.
 - `ky0::T`: wavevector in the y direction.
 """
-struct Wavepacket{T} where {T<:Real}
+struct Wavepacket{T<:Real}
     x0::T
     y0::T
     sigma_x::T
