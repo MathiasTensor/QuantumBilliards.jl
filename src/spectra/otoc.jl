@@ -208,9 +208,10 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
             end
             norm_factor=sum(thread_norms) # normalization by keeping track of all the psi values in the interior grid
             overlap=sum(thread_overlaps) # from the thread safe local accumulation we 
-            Psi_flat./=norm_factor 
+            #Psi_flat./=norm_factor 
             Psi2ds[i]=reshape(Psi_flat,ny,nx) # also return the normalized wavefunction matrices
-            overlaps[i]=overlap/norm_factor
+            #overlaps[i]=overlap/norm_factor
+            overlaps[i]=overlap
             next!(progress)
         end
     end
