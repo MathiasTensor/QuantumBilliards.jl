@@ -226,9 +226,12 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
     ax=Axis(fig[1,1],title="Wavepacket Evolution",xlabel="x",ylabel="y")
     Psi=abs.(sum(coeffs_matrix[1,j]*Psi2ds[j] for j in psi_idxs))
     hm=heatmap!(ax,x_grid,y_grid,Psi,colormap=:balance)
+    frames=Vector{Matrix{T}}(undef,length(ts)) # precompute fore all times matrices
+    @showprogress desc="Precomputing matrices for animation..." Threads.@threads for i in eachindex(ts)[2:end]
+        frames[i]=abs.(sum(coeffs_matrix[i,j]*Psi2ds[j] for j in psi_idxs))
+    end
     function update_frame(i)
-        Psi_evolved=abs.(sum(coeffs_matrix[i,j]*Psi2ds[j] for j in psi_idxs))
-        hm[3]=Psi_evolved
+        hm[3]=frames[i]
         ax.title="t=$(round(ts[i],digits=3))"
     end
     record(fig,filename,2:length(ts);framerate=framerate) do i
