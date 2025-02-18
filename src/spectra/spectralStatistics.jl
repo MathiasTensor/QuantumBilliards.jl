@@ -118,9 +118,9 @@ function fit_brody_to_data(bin_centers::Vector,bin_counts::Vector)
 end
 
 """
-    plot_nnls_only_chaotic!(unfolded_energies::Vector;nbins::Int=100;ρ_chaotic_classic=0.0)
+    plot_nnls_only_chaotic(unfolded_energies::Vector;nbins::Int=100;ρ_chaotic_classic=0.0)
 
-Plots the chaotic level NNLS and optionally plots the best-fitting Brody distribution overlay.
+Plots the chaotic level NNLS and optionally plots the best-fitting Brody distribution overlay. For this we need to supply the raw chaotic levels since we cannot use Weyl's law on just the subset.
 
 # Arguments
 - `chaotic_levels::Vector`: Raw chaotic energy levels (wihtout unfolding since the mean level spacing is 1 only for all the levels).
