@@ -189,10 +189,8 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,sz)
-            thread_norms=Vector{type}(undef,Threads.nthreads())
             thread_overlaps=Vector{Complex{type}}(undef,Threads.nthreads())
             for t in 1:Threads.nthreads() # thread safe local accumulators
-                thread_norms[t]=zero(type)
                 thread_overlaps[t]=zero(type)
             end
             Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
@@ -202,15 +200,11 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
                     x,y=pts[idx]
                     psi_val=ϕ(x,y,k,bdPoints,us)
                     Psi_flat[idx]=psi_val
-                    thread_norms[tid]+=psi_val
                     thread_overlaps[tid]+=psi_val*gaussian_mat[idx]
                 end
             end
-            norm_factor=sum(thread_norms) # normalization by keeping track of all the psi values in the interior grid
             overlap=sum(thread_overlaps) # from the thread safe local accumulation we 
-            #Psi_flat./=norm_factor 
             Psi2ds[i]=reshape(Psi_flat,ny,nx) # also return the normalized wavefunction matrices
-            #overlaps[i]=overlap/norm_factor
             overlaps[i]=overlap
             next!(progress)
         end
