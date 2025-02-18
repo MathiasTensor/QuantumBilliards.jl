@@ -6,7 +6,28 @@ include("../states/wavefunctions.jl")
 # EFFICIENT CONSTRUCTION AND PLOTTING
 # TODO Fix sampling for small u(s)
 # TODO Gaussian wavepacket does not work correctly!
-# TODO Put the puts_masked_indices outside the gaussian_2d_wavepacket projection to overcalculating them
+
+"""
+    Wavepacket{T} where {T<:Real}
+
+Contains the initialization parameters that construct the Gaussian wavepacket.
+
+# Arguments
+- `x0::T`: Initial x position of the Gaussian wavepacket.
+- `y0::T`: Initial y position of the Gaussian wavepacket.
+- `sigma_x::T`: Standard deviation of the Gaussian wavepacket in the x direction.
+- `sigma_y::T`: Standard deviation of the Gaussian wavepacket in the y direction.
+- `kx0::T`: wavevector in the x direction.
+- `ky0::T`: wavevector in the y direction.
+"""
+struct Wavepacket{T} where {T<:Real}
+    x0::T
+    y0::T
+    sigma_x::T
+    sigma_y::T
+    kx0::T
+    ky0::T
+end
 
 """
     wavefunction_normalized(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi;
@@ -67,7 +88,7 @@ function wavefunction_normalized(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdP
 end
 
 """
-    gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, packet::Wavepacket{T}) where {T<:Real}
 
 Generates a 2D Gaussian wavepacket in coordinate space on a grid of `(x,y)` values and then returns in on a grid as a `Matrix`
 
@@ -77,14 +98,13 @@ f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp
 
 # Arguments
 - `x::Vector{T}, y::Vector{T}`: The spatial coordinates x and y as vectors (separately) that form a grid.
-- `x0::T, y0::T`: The center of the wavepacket in space.
-- `sigma_x::T, sigma_y::T`: standard deviations of the wavepacket in the x and y directions.
-- `kx0::T, ky0::T`: The central wavevectors in the x and y directions.
+- `packet::Wavepacket`: Gaussian wavepacket struct containing the params.
 
 # Returns
 - `Matrix{Complex{T}}`: The value at those params on a 2D grid.
 """
-function gaussian_wavepacket_2d(x::Vector{T},y::Vector{T},x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
+function gaussian_wavepacket_2d(x::Vector{T},y::Vector{T},packet::Wavepacket{T}) where {T<:Real}
+    x0=packet.x0;y0=packet.y0;sigma_x=packet.sigma_x;sigma_y=packet.sigma_y;kx0=packet.kx0;ky0=packet.ky0
     dx=x.-x0
     dy=y.-y0
     gx_amp= @. exp(-dx^2/(2*sigma_x^2))
@@ -99,23 +119,19 @@ function gaussian_wavepacket_2d(x::Vector{T},y::Vector{T},x0::T,y0::T,sigma_x::T
 end
 
 """
-    gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T)
+    gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wavepacket{T}) where {T<:Real}
 
 Computes the Gaussian wavepacket for a set of points inside the billiard.
 
 # Arguments
 - `pts_in_billiard::Vector{SVector{2,T}}`: Points inside the billiard.
-- `x0::T`: Center of the Gaussian in the x-direction.
-- `y0::T`: Center of the Gaussian in the y-direction.
-- `sigma_x::T`: Standard deviation of the Gaussian in the x-direction.
-- `sigma_y::T`: Standard deviation of the Gaussian in the y-direction.
-- `kx0::T`: Momentum in the x-direction.
-- `ky0::T`: Momentum in the y-direction.
+- `packet::Wavepacket`: Gaussian wavepacket struct containing the params.
 
 # Returns
 - `Vector{Complex{T}}`: Gaussian wavepacket evaluated at the points.
 """
-function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wavepacket{T}) where {T<:Real}
+    x0=packet.x0;y0=packet.y0;sigma_x=packet.sigma_x;sigma_y=packet.sigma_y;kx0=packet.kx0;ky0=packet.ky0
     xs=getindex.(pts_in_billiard,1)  # x-coordinates
     ys=getindex.(pts_in_billiard,2)  # y-coordinates
     dx=xs.-x0
@@ -127,43 +143,80 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}}, x0::T, y0
 end
 
 """
-    gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector{Vector{T}}, pts_inside::Vector{SVector{2,T}}, dx::T, dy::T, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    gaussian_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, 
+                          billiard::Bi, packet::Wavepacket{T}; b::Float64=5.0) 
+                          -> (Vector{Matrix{T}}, Vector{T}, Vector{T}, Vector{T}, BitVector, T, T)
 
-Computes the expansion coefficients of a Gaussian wavepacket in the eigenbasis.
+Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacket in a given billiard system. This gives us the coefficients and the basis eigenfunction for evolution and visualization.
 
-Calculates the overlap between a Gaussian wavepacket and the given eigenfunctions
-by summing over the product of the Gaussian values and wavefunction values at interior points.
+# Arguments
+- `ks::Vector{T}`: Vector of wavenumbers associated with the eigenfunctions.
+- `vec_us::Vector{Vector{T}}`: Vector containing the eigenfunction coefficients.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Boundary data for the eigenfunctions.
+- `billiard::Bi`: The billiard system, which defines the boundary conditions.
+- `packet::Wavepacket{T}`: The initial Gaussian wavepacket to be projected onto the eigenfunctions.
+- `b::Float64=5.0`: Scaling parameter for the spatial resolution grid.
 
-# Arguments:
-- `psi_vecs::Vector{Matrix{T}}`: Vector of wavefunction matrices evaluated on the grid.
-- `x_grid::Vector{T}`: Vector of x-coordinates on the grid.
-- `y_grid::Vector{T}`: Vector of y-coordinates on the grid.
-- `pts_mask::Vector{Bool}`: Vector that represents interior points (true, exterior false) of the billiard boundary. It's length is compatible 
+# Returns
+- `Psi2ds::Vector{Matrix{T}}`: List of wavefunction matrices corresponding to the given wavenumbers.
+- `overlaps::Vector{Complex{T}}`: Overlap coefficients of each eigenfunction with the initial Gaussian wavepacket.
+- `x_grid::Vector{T}`: X-coordinates of the spatial grid.
+- `y_grid::Vector{T}`: Y-coordinates of the spatial grid.
+- `pts_mask::BitVector`: Mask indicating which grid points are inside the billiard.
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
-- `x0::T`: Center of the Gaussian in the x-direction.
-- `y0::T`: Center of the Gaussian in the y-direction.
-- `sigma_x::T`: Standard deviation of the Gaussian in the x-direction.
-- `sigma_y::T`: Standard deviation of the Gaussian in the y-direction.
-- `kx0::T`: Momentum in the x-direction.
-- `ky0::T`: Momentum in the y-direction.
-
-# Returns:
-- `coeffs::Vector{Complex{T}}`: Vector of expansion coefficients, one for each wavefunction.
 """
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(psi_vecs::Vector,x_grid::Vector,y_grid::Vector,pts_mask::Vector{Bool},dx::T,dy::T,x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T) where {T<:Real}
-    dxdy=dx*dy # grid rectangle area
-    gauss_inside=gaussian_wavepacket_2d(x_grid,y_grid,x0,y0,sigma_x,sigma_y,kx0,ky0) # to have same 2d and reshaped 1d size so efficient overlap
-    gauss_inside=reshape(gauss_inside,:) # make it 1d
-    pts_mask=reshape(pts_mask,:) # make it 1d
-    coeffs=Vector{Complex{T}}(undef,length(psi_vecs))
-    Threads.@threads for i in eachindex(psi_vecs)
-        psi=reshape(psi_vecs[i],:) # make it 1d 
-        coeffs[i]=sum(psi.*gauss_inside)
+function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
+    k_max=maximum(ks)
+    type=eltype(k_max)
+    L=billiard.length
+    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
+    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
+    x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
+    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+    sz=length(pts)
+    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+    pts_masked_indices=findall(pts_mask)
+    pts_inside=pts[pts_masked_indices]
+    xs=getindex.(pts_inside,1)
+    ys=getindex.(pts_inside,2)
+    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+    overlaps=Vector{Complex{type}}(undef,length(ks))
+    progress=Progress(length(ks),desc="Constructing wavefunction matrices and computing overlaps...")
+    gaussian_mat::Matrix{Complex{type}}=gaussian_wavepacket_2d(x_grid,y_grid,packet) # create a 2d mat
+    for i in eachindex(ks)
+        @inbounds begin
+            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+            Psi_flat=zeros(type,sz)
+            thread_norms=Vector{type}(undef,Threads.nthreads())
+            thread_overlaps=Vector{Complex{type}}(undef,Threads.nthreads())
+            for t in 1:Threads.nthreads() # thread safe local accumulators
+                thread_norms[t]=zero(type)
+                thread_overlaps[t]=zero(type)
+            end
+            Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
+                idx=pts_masked_indices[j]
+                tid=Threads.threadid()  # thread ID for safe accumulation
+                @inbounds begin
+                    x,y=pts[idx]
+                    psi_val=ϕ(x,y,k,bdPoints,us)
+                    Psi_flat[idx]=psi_val
+                    thread_norms[tid]+=psi_val
+                    thread_overlaps[tid]+=psi_val*gaussian_mat[idx]
+                end
+            end
+            norm_factor=sum(thread_norms) # normalization by keeping track of all the psi values in the interior grid
+            overlap=sum(thread_overlaps) # from the thread safe local accumulation we 
+            Psi_flat./=norm_factor 
+            Psi2ds[i]=reshape(Psi_flat,ny,nx) # also return the normalized wavefunction matrices
+            overlaps[i]=overlap/norm_factor
+            next!(progress)
+        end
     end
-    return coeffs
+    return Psi2ds,overlaps,x_grid,y_grid,pts_mask,dx,dy
 end
-# TODO add the dxdy back
+
 """
     plot_gaussian_from_eigenfunction_expansion(ax::Axis, coeffs::Vector{Complex{T}}, Psi2ds::Vector{Matrix{T}}, x_grid::Vector{T}, y_grid::Vector{T}) where {T<:Real}
 
@@ -186,111 +239,6 @@ function plot_gaussian_from_eigenfunction_expansion!(ax::Axis,coeffs::Vector{Com
     reconstructed_gaussian=abs.(sum(coeffs[i]*Psi2ds[i] for i in eachindex(coeffs)))
     heatmap!(ax,x_grid,y_grid,reconstructed_gaussian,colormap=:balance,colorrange=(-maximum(reconstructed_gaussian),maximum(reconstructed_gaussian)))
 end
-
-#=
-
-"""
-    gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, pts_mask::Vector) where {T<:Real}
-
-For a single state |φₘ⟩ constructs the projection coefficient for the gaussian 2d wavepacket:
-αₘ = ⟨Φ|φₘ⟩ = 1/4*∮dsuₘ(s)*[∫∫Yₒ(kₘ|(x,y)-(x(s),y(s)|))*Φ(x,y)dxdy]
-Since the wavefunction Φ(x,y)==0 outside the boundary we apply a mask to the wavefunction.
-
-# Arguments
-- `k::T`: Eigenvalue k.
-- `us::Vector{T}`: Vector of boundary function values for the n-th state.
-- `bdPoints::BoundaryPoints{T}`: The BoundaryPoints struct that contains the (x,y) points on the boundary and the ds arclength differences.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `x0::T, y0::T`: The center of the wavepacket in space.
-- `sigma_x::T, sigma_y::T`: standard deviations of the wavepacket in the x and y directions.
-- `kx0::T, ky0::T`: The wavevectors in the x and y directions for the wavepacket.
-- `pts_mask::Vector{Bool}`: Vector indicating which points in the grid are inside the billiard. This is supplied from the top calling function. It uses the `inside_only=true` case always. In the top function this is the result of `points_in_billiard_polygon` function.
-
-# Returns
-- `T`: The projection coefficient αₘ for the given state.
-"""
-function gaussian_wavepacket_eigenbasis_expansion_coefficient(k::T, us::Vector{T}, bdPoints::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, pts_masked::Vector, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
-    dx=x_grid[2]-x_grid[1]
-    dy=y_grid[2]-y_grid[1]
-    dxdy=dx*dy # Integration volume
-    distances_masked=Vector{T}(undef,length(pts_masked))
-    function proj(xy_s::SVector{2,T}) # this is the s term in the coefficient of expansion of the gaussian wave packet in the eigenbasis (given as a matrix) ∫∫dxdyY0(k|(x,y) - (x_s, y_s)|)*Φ(x,y) where Φ(x,y) is the Gaussian wave packet
-        x_s,y_s=xy_s
-        distances_masked.= @. norm(pts_masked-SVector(x_s,y_s))
-        Y0_values=Bessels.bessely0.(k.*distances_masked) # only for masked points
-        return sum(Y0_values.*packet_masked)*dxdy # element wise sum ∑_ij A[i,j]*B[i,j]dx*dy for the double integral approximation. The consturction of the grid is linear which implies that the dx and dy are constant
-    end
-     total_sum=Threads.Atomic{T}(0.0) # sum of u(s) * F(x(s), y(s)) over the boundary
-     Threads.@threads for i in eachindex(us)
-         xy_s=bdPoints.xy[i]  # Boundary point (x(s), y(s))
-         contribution=us[i]*proj(xy_s)*bdPoints.ds[i]  # Include boundary element size ds
-         Threads.atomic_add!(total_sum,contribution)
-     end
-     return total_sum[]*0.25 # 1/4 * ∮ u_n(s) * ∫∫dxdyY0(k|(x,y) - (x_s, y_s)|)*Φ(x,y), used Atomic for threading since mutating same total_sum
-end
-
-=#
-
-"""
-    compute_all_projection_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T, billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
-
-High-level function that computes all the projection coefficients αₘ for a given Gaussian wavepacket
-and a set of eigenstates.
-
-# Arguments
-- `Psi2ds::Vector{Matrix{T}}`: The computed wavefunction matrices on the x_grid and y_grid
-- `x_grid::Vector{T}, y_grid::Vector{T}`: Grids defining the spatial domain of the billiard.
-- `x0::T, y0::T`: The center of the Gaussian wavepacket in space.
-- `sigma_x::T, sigma_y::T`: Standard deviations of the Gaussian wavepacket in x and y directions.
-- `kx0::T, ky0::T`: Wavevectors of the Gaussian wavepacket in x and y directions.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `Vector{T}`: A vector of projection coefficients αₘ for each eigenstate.
-"""
-function compute_all_projection_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},x_grid::Vector{T},y_grid::Vector{T},x0::T,y0::T,sigma_x::T,sigma_y::T,kx0::T,ky0::T,billiard::Bi) where {Bi<:AbsBilliard, T<:Real}
-    dx=x_grid[2]-x_grid[1]
-    dy=y_grid[2]-y_grid[1]
-    dxdy=dx*dy # Integration volume
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-    sz=length(pts)
-    # Determine points inside the billiard only once if inside_only is true
-    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
-    pts_masked_indices=findall(pts_mask)
-    
-    
-    # Generate the point mask for points inside the billiard
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-    sz=length(pts)
-    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=true)
-    pts_masked=create_masked_points(x_grid,y_grid,pts_mask)
-    projection_coefficients=Vector{T}(undef,length(ks))
-    # Compute each projection coefficient in parallel
-    progress=Progress(length(ks),desc="Computing α_m for each k...")
-    Threads.@threads for i in eachindex(ks)
-        k=ks[i]
-        us=vec_us[i]
-        bdPoints=vec_bdPoints[i]
-        projection_coefficients[i]=gaussian_wavepacket_eigenbasis_expansion_coefficient(k, us, bdPoints, x_grid, y_grid, pts_masked, x0, y0, sigma_x, sigma_y, kx0, ky0)
-        next!(progress)
-    end
-    return projection_coefficients
-end
-
-
-
-### PLotting Gaussian wavepacket
-
-function plot_gaussian_wavepacket(x_grid::Vector, y_grid::Vector, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
-    mat=abs.(gaussian_wavepacket_2d(x_grid, y_grid, x0,y0,sigma_x,sigma_y,kx0,ky0))
-    f=Figure()
-    ax=Axis(f[1,1])
-    heatmap!(ax, x_grid, y_grid, mat)
-    return f
-end
-
-
 
 
 
