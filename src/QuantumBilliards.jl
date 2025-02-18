@@ -157,7 +157,7 @@ export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_lo
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
 include("spectra/evolution.jl")
-export Wavepacket, gaussian_wavepacket_2d, gaussian_coefficients
+export Wavepacket, gaussian_wavepacket_2d, gaussian_coefficients, plot_gaussian_from_eigenfunction_expansion
 include("spectra/otoc.jl")
 export plot_wavefunctions, wavefunction_multi, X_mn_standard, X_standard, B_standard, microcanocinal_Cn_standard, plot_microcanonical_Cn!, microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
 include("spectra/classical_transport_time.jl")
