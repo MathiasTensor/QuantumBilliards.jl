@@ -93,6 +93,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `billiard::Bi`: The billiard system, which defines the boundary conditions.
 - `packet::Wavepacket{T}`: The initial Gaussian wavepacket to be projected onto the eigenfunctions.
 - `b::Float64=5.0`: Scaling parameter for the spatial resolution grid.
+- `fundamental_domain::Bool=true`: If we consider only the desymmetrized billiard domain.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: List of wavefunction matrices corresponding to the given wavenumbers.
@@ -103,7 +104,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
 """
-function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0) where {Bi<:AbsBilliard,T<:Real}
+function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -113,11 +114,8 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
     sz=length(pts)
-    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+    pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental_domain)
     pts_masked_indices=findall(pts_mask)
-    pts_inside=pts[pts_masked_indices]
-    xs=getindex.(pts_inside,1)
-    ys=getindex.(pts_inside,2)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     overlaps=Vector{Complex{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices and computing overlaps...")
