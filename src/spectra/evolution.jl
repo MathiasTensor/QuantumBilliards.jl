@@ -245,7 +245,7 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
     println("Animation saved as $filename")
 end
 =#
-function animate_wavepacket_with_momentum!(filename::String,coeffs_matrix::Matrix{Complex{T}},Psi2ds::Vector{Matrix{T}},x_grid::Vector{T},y_grid::Vector{T},ts::Vector{T};framerate::Int=30) where {T<:Real}
+function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Complex{T}},Psi2ds::Vector{Matrix{T}},x_grid::Vector{T},y_grid::Vector{T},ts::Vector{T};framerate::Int=30) where {T<:Real}
     psi_idxs=eachindex(Psi2ds)
     fig=Figure(size=(1600,800))
     ax_real=Axis(fig[1,1],title="Wavepacket Evolution",xlabel="x",ylabel="y")
@@ -255,12 +255,19 @@ function animate_wavepacket_with_momentum!(filename::String,coeffs_matrix::Matri
     kx_grid=fftshift(fftfreq(length(x_grid)))*(2π/(x_grid[end]-x_grid[1]))
     ky_grid=fftshift(fftfreq(length(y_grid)))*(2π/(y_grid[end]-y_grid[1]))
     compute_momentum_distribution(Ψ_x)=abs2.(fftshift(fft(Ψ_x)))
-    momentum_distribution=compute_momentum_distribution(Psi)
-    hm_momentum=heatmap!(ax_momentum,kx_grid,ky_grid,momentum_distribution,colormap=:hot)
-    function update_frame(i)
+    frames_real=Vector{Matrix{T}}(undef,length(ts))
+    frames_momentum=Vector{Matrix{T}}(undef,length(ts))
+    frames_real[1]=abs.(Psi)
+    frames_momentum[1]=compute_momentum_distribution(Psi)
+    @showprogress desc="Precomputing frames..." Threads.@threads for i in 2:length(ts)
         Psi=sum(coeffs_matrix[i,j]*Psi2ds[j] for j in psi_idxs)
-        hm_real[3]=abs.(Psi)
-        hm_momentum[3]=compute_momentum_distribution(Psi)
+        frames_real[i]=abs.(Psi)
+        frames_momentum[i]=compute_momentum_distribution(Psi)
+    end
+    hm_momentum=heatmap!(ax_momentum,kx_grid,ky_grid,frames_momentum[1],colormap=:hot)
+    function update_frame(i)
+        hm_real[3]=frames_real[i]
+        hm_momentum[3]=frames_momentum[i]
         ax_real.title="t=$(round(ts[i],digits=3))"
     end
     record(fig,filename,2:length(ts);framerate=framerate) do i
