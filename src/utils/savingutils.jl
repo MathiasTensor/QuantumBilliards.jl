@@ -18,6 +18,22 @@ function save_matrix!(mat::Matrix{T}, filename::String) where {T<:Real}
 end
 
 """
+    save_matrix!(mat_vec::Vector{Matrix{T}}, filename::String)
+
+Saves a `Vector{Matrix}` into a `.jld2`.
+
+# Arguments
+- `mat_vec::Vector{Matrix{T}}`: The matrices to be saved.
+- `filename::String`: The name of the `.jld2` file to save the data.
+
+# Returns
+- `Nothing`
+"""
+function save_matrix!(mat_vec::Vector{Matrix{T}}, filename::String) where {T<:Real}
+    @save filename mat_vec
+end
+
+"""
     read_matrix(filename::String)
 
 Reads a `.csv` file into a `Matrix` using `DataFrames`.
@@ -31,6 +47,22 @@ Reads a `.csv` file into a `Matrix` using `DataFrames`.
 function read_matrix(filename::String)
     df=CSV.read(filename,DataFrame)
     return Matrix(df)
+end
+
+"""
+    read_matrix_jld2(filename::String)
+
+Reads a `.jld2` file into a `Vector{Matrix}`.
+
+# Arguments
+- `filename::String`: The name of the `.jld2` file to read from (must necceserily have this extension).
+
+# Returns
+- `Vector{Matrix{<:Real}}`: A `Matrix` containing the data from the `.jld2` file.
+"""
+function read_matrix_jld2(filename::String)
+    @load filename mat_vec
+    return mat_vec
 end
 
 """
