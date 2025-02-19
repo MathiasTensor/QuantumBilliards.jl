@@ -209,6 +209,53 @@ function plot_gaussian_from_eigenfunction_expansion(ax::Axis,coeffs::Vector{Comp
 end
 
 """
+    save_evolution_basis_params(filename::String, Psi2ds::Vector{Matrix{T}}, overlaps::Vector{T},
+                                x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::BitVector,
+                                dx::T, dy::T) where {T<:Real}
+
+Saves the evolution basis parameters required for reconstructing a wavepacket evolution.
+
+# Arguments
+- `filename::String`: The file name (e.g., `"wavepacket_data.jld2"`) where the data will be stored.
+- `Psi2ds::Vector{Matrix{T}}`: Vector of eigenfunction matrices for different `ks`.
+- `overlaps::Vector{T}`: Overlap coefficients between the wavepacket and eigenfunctions.
+- `x_grid::Vector{T}`: The x-coordinates of the spatial grid.
+- `y_grid::Vector{T}`: The y-coordinates of the spatial grid.
+- `pts_mask::BitVector`: Boolean mask indicating which grid points are inside the billiard.
+- `dx::T`: The grid spacing in the x-direction.
+- `dy::T`: The grid spacing in the y-direction.
+
+# Returns
+- `Nothing`
+"""
+function save_evolution_basis_params!(filename::String,Psi2ds::Vector{Matrix{T}},overlaps::Vector{T},x_grid::Vector{T},y_grid::Vector{T},pts_mask::BitVector,dx::T,dy::T) where {T<:Real}
+    @save filename Psi2ds overlaps x_grid y_grid pts_mask dx dy
+end
+
+"""
+    read_evolution_basis_params(filename::String)
+
+Reads and loads the evolution basis parameters from a saved JLD2 file.
+
+# Arguments
+- `filename::String`: The file name from which to load the data.
+
+# Returns
+A tuple containing:
+- `Psi2ds::Vector{Matrix{T}}`: Eigenfunction matrices.
+- `overlaps::Vector{T}`: Overlap coefficients.
+- `x_grid::Vector{T}`: The x-coordinates of the spatial grid.
+- `y_grid::Vector{T}`: The y-coordinates of the spatial grid.
+- `pts_mask::BitVector`: Boolean mask indicating grid points inside the billiard.
+- `dx::T`: Grid spacing in the x-direction.
+- `dy::T`: Grid spacing in the y-direction.
+"""
+function read_evolution_basis_params(filename::String)
+    @load filename Psi2ds overlaps x_grid y_grid pts_mask dx dy
+    return Psi2ds,overlaps,x_grid,y_grid,pts_mask,dx,dy
+end
+
+"""
     animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Complex{T}},Psi2ds::Vector{Matrix{T}},x_grid::Vector{T},y_grid::Vector{T},ts::Vector{T};framerate::Int=30) where {T<:Real}
 
 Generates and saves an animation of the wavepacket evolution using precomputed coefficients.
