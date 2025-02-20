@@ -175,7 +175,7 @@ Schrödinger equation solution:
 function evolution_gaussian_coefficients(coeffs_init::Vector{Complex{T}},ks::Vector{T},ts::Vector{K}) where {T<:Real,K<:Real}
     N=length(coeffs_init)
     @assert N==length(ks) "The number of coefficients must match the number of eigenvalues, and they need to be correctly ordered: ks[i] -> Psi2d[i] -> coefficient[i]"
-    Es=[(k^2)/2 for k in ks]
+    Es=[k^2 for k in ks]
     mat=Matrix{Complex{T}}(undef, length(ts), N)
     @showprogress desc="Calculating the evolution of coefficients..." for i in eachindex(ts)
         t=ts[i]
