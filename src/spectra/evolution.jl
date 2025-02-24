@@ -539,6 +539,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     dx,dy=cn.dx,cn.dy
     Nx,Ny=cn.Nx,cn.Ny
     dim=Nx*Ny
+    mask=cn.pts_mask
     I_mat=sparse(I,dim,dim)
     A=I_mat+im*cn.dt/(2*cn.ℏ)*H
     B=I_mat-im*cn.dt/(2*cn.ℏ)*H
