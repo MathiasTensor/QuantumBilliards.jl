@@ -448,7 +448,7 @@ end
 function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=10000,Ny::Integer=10000,dt=0.005) where {Bi<:AbsBilliard}
     if fundamental
         boundary=billiard.fundamental_boundary
-        L=billiard.lenght
+        L=billiard.length
         typ=eltype(L)
         xlim::Tuple{typ,typ},ylim::Tuple{typ,typ}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi)))) # set b=5.0
         Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1] # domain lengths in x and y
@@ -461,7 +461,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,Nt)
     else
         boundary=billiard.full_boundary
-        L=billiard.lenght
+        L=billiard.length
         typ=eltype(L)
         xlim,ylim=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi))))  # set b=5.0
         Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1]
