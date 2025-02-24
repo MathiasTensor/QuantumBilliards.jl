@@ -62,7 +62,7 @@ SpecialFunctions = "2.4.0"
 LoggingExtras = "1.0.3"
 JLD2 = "0.5.4"
 LsqFit = "0.15.0"
-SparseArrays = "1.12.0"
+SparseArrays = "1.11.0"
 
 
 [extras]
