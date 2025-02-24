@@ -575,15 +575,15 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Vector
     println("Animation saved as $(filename)")
 end
 
-function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15) where {T<:Real}
+function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15,save_after_iterations::Integer=5) where {T<:Real}
     snapshots,shannon_entropy_values=info
     frames=length(snapshots)
     x_grid,y_grid=cn.x_grid,cn.y_grid
     fig=Figure(resolution=(2000,1000))
     ax=Axis(fig[1,1],title="|ψ(x,y)|²",width=1000,height=900)
     heatmap!(ax,x_grid,y_grid,snapshots[1],colormap=:balance,nan_color=:white)
-    ax2=Axis(fig[1,2],title="Shannon Entropy Evolution",xlabel="Time Step * $(N_snapshots_between)",ylabel="Shannon Entropy",width=800,height=600)
-    xlims!(ax2,0.0,ceil(Int,Nt/N_snapshots_between))  # Fixed x-axis range
+    ax2=Axis(fig[1,2],title="Shannon Entropy Evolution",xlabel="Time Step * $(save_after_iterations)",ylabel="Shannon Entropy",width=800,height=600)
+    xlims!(ax2,0.0,ceil(Int,cn.Nt/save_after_iterations))  # Fixed x-axis range
     record(fig,filename,1:frames,framerate=framerate) do i
         heatmap!(ax,snapshots[i],colormap=:balance,nan_color=:white)
         scatter!(ax2,collect(1:i),shannon_entropy_values[1:i],color=:blue,linewidth=3)
