@@ -445,15 +445,16 @@ struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard}
     Nt::Integer # Number of time steps
 end
 
-function Crank_Nicholson(billiard::Bi,Nt::T;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=10000,Ny::Integer=10000,dt::T=0.005) where {T<:Real,Bi<:AbsBilliard}
+function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=10000,Ny::Integer=10000,dt=0.005) where {Bi<:AbsBilliard}
     if fundamental
         boundary=billiard.fundamental_boundary
         L=billiard.lenght
-        xlim::Tuple{T,T},ylim::Tuple{T,T}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi)))) # set b=5.0
+        typ=eltype(L)
+        xlim::Tuple{typ,typ},ylim::Tuple{typ,typ}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi)))) # set b=5.0
         Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1] # domain lengths in x and y
         dx,dy=Lx/(Nx-1),Ly/(Ny-1)
         nx,ny=Nx,Ny
-        x_grid,y_grid=collect(T,range(xlim..., nx)),collect(T,range(ylim..., ny))
+        x_grid,y_grid=collect(typ,range(xlim..., nx)),collect(typ,range(ylim..., ny))
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=true)
@@ -461,11 +462,12 @@ function Crank_Nicholson(billiard::Bi,Nt::T;fundamental::Bool=true,k_max=100.0,�
     else
         boundary=billiard.full_boundary
         L=billiard.lenght
+        typ=eltype(L)
         xlim,ylim=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi))))  # set b=5.0
         Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1]
         dx,dy=Lx/(Nx-1),Ly/(Ny-1)
         nx,ny=Nx,Ny
-        x_grid,y_grid=collect(T,range(xlim..., nx)),collect(T,range(ylim..., ny))
+        x_grid,y_grid=collect(typ,range(xlim..., nx)),collect(typ,range(ylim..., ny))
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
