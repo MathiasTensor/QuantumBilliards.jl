@@ -545,8 +545,8 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     snapshots=Vector{Matrix{T}}()
     shannon_entropy_values=T[]
     @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
-        global b=B*ψ
-        global ψ=Afactor\b
+        b=B*ψ
+        ψ=Afactor\b
         ψ/=norm(ψ) # probably unnecessary
         if t % save_after_iterations==0 # save only some
             entropy_t=compute_shannon_entropy(ψ,dx,dy)
