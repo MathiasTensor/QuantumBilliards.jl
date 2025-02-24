@@ -522,7 +522,7 @@ function Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseM
     return H+V
 end
 
-function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T)
+function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
     P=abs2.(ψ)
     P./=sum(P)*dx*dy
     entropy=-sum(P[P.>0].*log.(P[P.>0]))*dx*dy # (ignoring zero values to avoid log(0))
