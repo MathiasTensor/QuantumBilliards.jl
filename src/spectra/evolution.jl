@@ -461,7 +461,7 @@ function Crank_Nicholson(billiard::Bi,Nt::T;fundamental::Bool=true,k_max=100.0,â
     else
         boundary=billiard.full_boundary
         L=billiard.lenght
-        xlim::Tuple{T,T},ylim::Tuple{T,T}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi))))  # set b=5.0
+        xlim,ylim=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi))))  # set b=5.0
         Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1]
         dx,dy=Lx/(Nx-1),Ly/(Ny-1)
         nx,ny=Nx,Ny
