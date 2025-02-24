@@ -447,7 +447,7 @@ struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard}
     Nt::Integer # Number of time steps
 end
 
-function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=10000,Ny::Integer=10000,dt=0.005) where {Bi<:AbsBilliard}
+function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=1000,Ny::Integer=1000,dt=0.005) where {Bi<:AbsBilliard}
     if fundamental
         boundary=billiard.fundamental_boundary
         L=billiard.length
