@@ -1,6 +1,8 @@
-using Bessels, LinearAlgebra, ProgressMeter, FFTW
+using Bessels, LinearAlgebra, ProgressMeter, FFTW, SparseArrays
 include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
+
+############### WAVEPACKET EVOLUTION VIA BASIS SET ###############
 
 """
     Wavepacket{T<:Real}
@@ -321,4 +323,262 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
         update_frame(i)
     end
     println("Animation saved as $filename")
+end
+
+############### WAVEPACKET EVOLUTION VIA CRANK-NICHOLSON ###############
+
+"""
+# More details: https://web.physics.utah.edu/~detar/phycs6730/handouts/crank_nicholson/crank_nicholson/
+
+We discretize the time evolution using the Crank-Nicholson method, which is an 
+implicit midpoint method that is unconditionally stable and unitary.
+
+Using a finite difference approach, we approximate the time derivative as:
+
+    iℏ (Ψⁿ⁺¹ - Ψⁿ) / Δt ≈ (1/2) H (Ψⁿ⁺¹ + Ψⁿ)
+
+Rearranging the equation gives:
+
+    ( I + iΔt H / 2ℏ ) Ψⁿ⁺¹ = ( I - iΔt H / 2ℏ ) Ψⁿ
+
+which can be rewritten as:
+
+    A Ψⁿ⁺¹ = B Ψⁿ
+
+where:
+- A = I + i(Δt / 2ℏ) H  → Left-hand side matrix.
+- B = I - i(Δt / 2ℏ) H  → Right-hand side matrix.
+- Ψⁿ⁺¹ is the wavefunction at the next time step.
+- Ψⁿ is the wavefunction at the current time step.
+
+At each time step, we solve the linear system:
+
+    Ψⁿ⁺¹ = A⁻¹ B Ψⁿ
+
+Since A does not change over time, we can factorize it once using LU decomposition for efficient iterative solving. 
+Using LU decomposition ensures better numerical stability and prevents inaccuracies due to floating-point precision errors.
+
+------------------------------------------------------------------------------------
+3. DISCRETIZATION OF THE LAPLACIAN OPERATOR (FINITE DIFFERENCE METHOD)
+------------------------------------------------------------------------------------
+
+The Laplacian operator ∇²Ψ in 2D is discretized using finite differences:
+
+    ∇²Ψ(x, y) ≈ (Ψᵢ₊₁ⱼ + Ψᵢ₋₁ⱼ - 2Ψᵢⱼ) / Δx²  +  (Ψᵢⱼ₊₁ + Ψᵢⱼ₋₁ - 2Ψᵢⱼ) / Δy²
+
+This is implemented as a sparse matrix using Kronecker products:
+
+    ∇² ≈ kron(I, Dxx) + kron(Dyy, I)
+
+where:
+- Dxx is the finite difference matrix** for the second derivative in x.
+- Dyy is the finite difference matrix** for the second derivative in y.
+- I is the identity matrix.
+
+The Hamiltonian matrix is then:
+
+    H = - (ℏ² / 2m) * (∇²) + V_op
+
+where V_op is the potential energy matrix.
+
+------------------------------------------------------------------------------------
+4. IMPLEMENTATION DETAILS
+------------------------------------------------------------------------------------
+
+### 4.1 GRID SETUP
+- The computational grid is defined on a uniform 2D mesh** with Nx × Ny points.
+- The spatial step sizes are:
+  
+      dx = Lx / (Nx - 1),  dy = Ly / (Ny - 1)
+
+### 4.2 INITIAL CONDITION: GAUSSIAN WAVE PACKET
+- The initial wavefunction is chosen as a Gaussian wave packet with momentum (kx₀, ky₀):
+
+      Ψ₀(x, y) = exp( -((x - x₀)² + (y - y₀)²) / 2σ² ) * exp(i(kx₀ x + ky₀ y))
+
+- The wavefunction is **normalized** at every time step:
+
+      Ψ /= sqrt(sum(abs2.(Ψ) * dx * dy))
+
+### 4.3 TIME EVOLUTION
+- The wavefunction **evolves in time** by solving:
+
+      Ψⁿ⁺¹ = A⁻¹ B Ψⁿ
+
+- `A` is factorized once using:
+
+      A_factor = lu(A)
+
+- At each timestep, we solve:
+
+      Ψ_new = A_factor "\" (B * Ψ_old)
+
+- The probability density |Ψ(x, y)|² is stored in snapshots for visualization.
+
+------------------------------------------------------------------------------------
+5. ADVANTAGES OF THE CRANK-NICHOLSON METHOD
+------------------------------------------------------------------------------------
+
+- Unconditionally stable → Does not impose a restriction on time step Δt.  
+- Norm-preserving → Ensures that ∫|Ψ|²dxdy remains constant.  
+- Time-reversible → Accurately models quantum wave packet evolution.  
+- Implicit and second-order accurate → More accurate than explicit schemes.  
+- Sparse → Solved using LU decomposition**.
+
+------------------------------------------------------------------------------------
+"""
+
+struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard} 
+    billiard::Bi
+    pts_mask::Vector{Bool}
+    ℏ::T # Reduced Planck's constant
+    m::T # Particle mass
+    xlim::Tuple{T,T}
+    ylim::Tuple{T,T}
+    Nx::Integer # Grid points in x and y
+    Ny::Integer  
+    Lx::T # Domain lengths in x and y
+    Ly::T  
+    dx::T # Grid difference in x and y
+    dy::T
+    dt::T # Time step
+    Nt::Integer # Number of time steps
+end
+
+function Crank_Nicholson(billiard::Bi,Nt::T;fundamental::Bool=true,k_max=100.0,ℏ::T=T(1.0),m::T(1.0),Nx::Integer=10000,Ny::Integer=10000,dt::T=T(0.005)) where {T<:Real,Bi<:AbsBilliard}
+    if fundamental
+        boundary=billiard.fundamental_boundary
+        L=billiard.lenght
+        xlim::Tuple{T,T},ylim::Tuple{T,T}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi)))) # set b=5.0
+        Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1] # domain lengths in x and y
+        dx,dy=Lx/(Nx-1),Ly/(Ny-1)
+        nx,ny=Nx,Ny
+        x_grid,y_grid=collect(T,range(xlim..., nx)),collect(T,range(ylim..., ny))
+        pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+        sz=length(pts)
+        pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=true)
+        return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,Nt)
+    else
+        boundary=billiard.full_boundary
+        L=billiard.lenght
+        xlim::Tuple{T,T},ylim::Tuple{T,T}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi))))  # set b=5.0
+        Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1]
+        dx,dy=Lx/(Nx-1),Ly/(Ny-1)
+        nx,ny=Nx,Ny
+        x_grid,y_grid=collect(T,range(xlim..., nx)),collect(T,range(ylim..., ny))
+        pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+        sz=length(pts)
+        pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+        return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,Nt)
+    end
+end
+
+"""
+The Laplacian operator ∇²Ψ in one dimension is given by:
+    ∇²Ψ(x) = ∂²Ψ / ∂x²
+Using **central finite differences**, this is approximated as:
+    ∂²Ψ / ∂x² ≈ (Ψ_{i+1} - 2Ψ_{i} + Ψ_{i-1}) / Δx²
+This can be written as a matrix equation:
+    D_{xx} Ψ = (1/Δx²) * M Ψ
+where `M` is the **finite difference matrix**, given by:
+
+    ⎡ -2   1   0   0  ⋯   0 ⎤
+    ⎢  1  -2   1   0  ⋯   0 ⎥
+    ⎢  0   1  -2   1  ⋯   0 ⎥
+M=  ⎢  0   0   1  -2  ⋯   0 ⎥   (Nx × Nx)
+    ⎢  ⋮   ⋮   ⋮   ⋮   ⋱   1 ⎥
+    ⎣  0   0   0   0   1  -2⎦
+"""
+function build_1D_Laplacian(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
+    return spdiagm(0=>fill(-2.0,N), 1=>fill(1.0,N-1), -1 => fill(1.0,N-1))/d^2
+end
+
+function boundary_condition_infinite_potential(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
+    V=V0.*(1 .-cn.pts_mask)
+    V_default=spdiagm(0=>vec(V)) 
+    return V_default
+end
+
+function Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
+    dx,dy=cn.dx,cn.dy
+    Nx,Ny=cn.Nx,cn.Ny
+    xlim,ylim=cn.xlim,cn.ylim
+    Dxx::SparseMatrixCSC=build_1D_Laplacian(Nx,dx)
+    Dyy::SparseMatrixCSC=build_1D_Laplacian(Ny,dy)
+    I_x::SparseMatrixCSC=sparse(I,Nx,Nx)
+    I_y::SparseMatrixCSC=sparse(I,Ny,Ny)
+    Laplacian_2D::SparseMatrixCSC=kron(I_y,Dxx)+kron(Dyy,I_x)
+    x=LinRange(xlim[1],xlim[2],Nx)
+    y=LinRange(ylim[1],ylim[2],Ny)
+    X=repeat(reshape(x,Nx,1),1,Ny)
+    Y=repeat(reshape(y,1,Ny),Nx,1)
+    V_op::SparseMatrixCSC=boundary_condition_infinite_potential(cn,V0=V0)
+    return -ℏ^2/(2*m)*Laplacian_2D+V_op
+end
+
+function Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseMatrixCSC where {T<:Real}
+    H=Hamiltonian(cn,V0=V0)
+    @assert size(H)==size(V) "The unperturbed Hamiltonian matrix and the external potential must be of the same size."
+    return H+V
+end
+
+function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T)
+    P=abs2.(ψ)
+    P./=sum(P)*dx*dy
+    entropy=-sum(P[P.>0].*log.(P[P.>0]))*dx*dy # (ignoring zero values to avoid log(0))
+    return entropy
+end
+
+function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
+    ψ0=ψ0/norm(ψ0)
+    ψ=vec(ψ0)
+    dx,dy=cn.dx,cn.dy
+    dim=cn.Nx*cn.Ny
+    I_mat=sparse(I,dim,dim)
+    A=I_mat+im*cn.dt/(2*cn.ℏ)*H
+    B=I_mat-im*cn.dt/(2*cn.ℏ)*H
+    Afactor=lu(A) # only need this for A^-1 * B
+    snapshots=Vector{Matrix{T}}()
+    shannon_entropy_values=T[]
+    @showprogress for t in 1:cn.Nt
+        global b=B*ψ
+        global ψ=Afactor\b
+        ψ/=norm(ψ) # probably unnecessary
+        if t % save_after_iterations==0 # save only some
+            entropy_t=compute_shannon_entropy(ψ,dx,dy)
+            push!(shannon_entropy_values,entropy_t)
+            push!(snapshots,reshape(abs2.(ψ),Nx,Ny))
+        end
+    end
+    Threads.@threads for i in 1:length(snapshots) # for later nicer heatmap plots
+        snapshots[i][mask.==zero(T)].=NaN
+    end
+    return snapshots,shannon_entropy_values
+end
+
+function animate_wavepacket_clark_nicholson(info::Vector{Matrix},filename::String;framerate::Integer=15) where {T<:Real}
+    snapshots=info
+    frames=length(snapshots)
+    fig=Figure(resolution=(2000,1000))
+    ax=Axis(fig[1,1],title="|ψ(x,y)|²")
+    heatmap!(ax,x,y,snapshots[1],colormap=:balance,nan_color=:white)
+    record(fig,filename,1:frames,framerate=framerate) do i
+        heatmap!(ax,snapshots[i],colormap=:balance,nan_color=:white)
+    end
+    println("Animation saved as $(filename)")
+end
+
+function animate_wavepacket_clark_nicholson(info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15) where {T<:Real}
+    snapshots,shannon_entropy_values=info
+    frames=length(snapshots)
+    fig=Figure(resolution=(2000,1000))
+    ax=Axis(fig[1,1],title="|ψ(x,y)|²",width=1000,height=900)
+    heatmap!(ax,x,y,snapshots[1],colormap=:balance,nan_color=:white)
+    ax2=Axis(fig[1,2],title="Shannon Entropy Evolution",xlabel="Time Step * $(N_snapshots_between)",ylabel="Shannon Entropy",width=800,height=600)
+    xlims!(ax2,0.0,ceil(Int,Nt/N_snapshots_between))  # Fixed x-axis range
+    record(fig,filename,1:frames,framerate=framerate) do i
+        heatmap!(ax,snapshots[i],colormap=:balance,nan_color=:white)
+        scatter!(ax2,collect(1:i),shannon_entropy_values[1:i],color=:blue,linewidth=3)
+    end
+    println("Animation saved as $(filename)")
 end
