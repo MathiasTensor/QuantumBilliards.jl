@@ -515,7 +515,7 @@ function Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:
     X=repeat(reshape(x,Nx,1),1,Ny)
     Y=repeat(reshape(y,1,Ny),Nx,1)
     V_op::SparseMatrixCSC=boundary_condition_infinite_potential(cn,V0=V0)
-    return -ℏ^2/(2*m)*Laplacian_2D+V_op
+    return -(cn.ℏ)^2/(2*cn.m)*Laplacian_2D+V_op
 end
 
 function Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseMatrixCSC where {T<:Real}
