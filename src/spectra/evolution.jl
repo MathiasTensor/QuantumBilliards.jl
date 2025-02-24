@@ -442,6 +442,8 @@ struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard}
     dx::T # Grid difference in x and y
     dy::T
     dt::T # Time step
+    x_grid::Vector{T}
+    y_grid::Vector{T}
     Nt::Integer # Number of time steps
 end
 
@@ -458,7 +460,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=true)
-        return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,Nt)
+        return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     else
         boundary=billiard.full_boundary
         L=billiard.length
@@ -471,7 +473,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
-        return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,Nt)
+        return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     end
 end
 
@@ -542,7 +544,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     Afactor=lu(A) # only need this for A^-1 * B
     snapshots=Vector{Matrix{T}}()
     shannon_entropy_values=T[]
-    @showprogress for t in 1:cn.Nt
+    @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
         global b=B*ψ
         global ψ=Afactor\b
         ψ/=norm(ψ) # probably unnecessary
@@ -558,7 +560,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     return snapshots,shannon_entropy_values
 end
 
-function animate_wavepacket_clark_nicholson(info::Vector{Matrix},filename::String;framerate::Integer=15) where {T<:Real}
+function animate_wavepacket_clark_nicholson!(info::Vector{Matrix},filename::String;framerate::Integer=15) where {T<:Real}
     snapshots=info
     frames=length(snapshots)
     fig=Figure(resolution=(2000,1000))
@@ -570,7 +572,7 @@ function animate_wavepacket_clark_nicholson(info::Vector{Matrix},filename::Strin
     println("Animation saved as $(filename)")
 end
 
-function animate_wavepacket_clark_nicholson(info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15) where {T<:Real}
+function animate_wavepacket_clark_nicholson!(info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15) where {T<:Real}
     snapshots,shannon_entropy_values=info
     frames=length(snapshots)
     fig=Figure(resolution=(2000,1000))
