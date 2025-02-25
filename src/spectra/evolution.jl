@@ -590,7 +590,7 @@ function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:R
     println("Sum of P before normalization: ",sum(P)*dx*dy)  # Debugging step
     P./=sum(P)*dx*dy
     println("Sum of P after normalization: ",sum(P)*dx*dy)   # Should be exactly 1
-    entropy=-sum(P[P.>0].*log.(P[P.>0]))*dx*dy # (ignoring zero values to avoid log(0))
+    entropy=-sum(P[P.>0].*log.(P[P.>0])) # (ignoring zero values to avoid log(0))
     println("Shannon entropy: ", entropy)  # Debugging step
     return entropy
 end
