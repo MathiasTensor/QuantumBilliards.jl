@@ -328,7 +328,7 @@ end
 ############### WAVEPACKET EVOLUTION VIA CRANK-NICHOLSON ###############
 
 """
-# More details: https://web.physics.utah.edu/~detar/phycs6730/handouts/crank_nicholson/crank_nicholson/
+### More details: https://web.physics.utah.edu/~detar/phycs6730/handouts/crank_nicholson/crank_nicholson/
 
 We discretize the time evolution using the Crank-Nicholson method, which is an 
 implicit midpoint method that is unconditionally stable and unitary.
@@ -542,8 +542,8 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     nsnap=floor(Int,cn.Nt/save_after_iterations);
     snapshots=Vector{Matrix{T}}(undef,nsnap);shannon_entropy_values=Vector{T}(undef,nsnap);snap_idx=1;
     @showprogress "Evolving the wavepacket..." for t in 1:cn.Nt
-        mul!(b,B,ψ)
-        ψ=Afactor\b; #ψ./=norm(ψ)
+        mul!(b,B,ψ) # b=B*ψ
+        ψ=Afactor\b; #ψ./=norm(ψ) -> no need to check since unitary evolution
         if t%save_after_iterations==0
             entropy_t=compute_shannon_entropy(ψ,dx,dy);
             shannon_entropy_values[snap_idx]=entropy_t;
