@@ -601,11 +601,12 @@ Evolves the wavefunction ψ0 under the time-dependent Schrodinger equation using
 - `H::SparseMatrixCSC`: The Hamiltonian matrix representing the Schrodinger equation.
 - `ψ0::Matrix{Complex{T}}`: The initial state vector for the wavefunction.
 - `save_after_iterations::Integer=5`: The number of iterations after which to save the snapshot.
+- `threshold=1e-6`: The threshold for checking the norms of the wavefunctions inside the billiard. The relative norms are computed wrt the starting norm of the packet and then in the end checked.
 
 # Returns
 - `Tuple{Vector{Matrix},Vector{T}}`: A tuple containing the snapshots of the wavefunction at regular intervals and the corresponding Shannon entropies at each snapshot.
 """
-function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
+function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5,threshold=1e-6)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
     ψ0.=ψ0./norm(ψ0);ψ=vec(ψ0);dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;dim=Nx*Ny;mask=cn.pts_mask;
     I_mat=sparse(I,dim,dim)
     A=I_mat+im*cn.dt/(2*cn.ℏ)*H
@@ -614,20 +615,28 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     b=similar(ψ)
     nsnap=floor(Int,cn.Nt/save_after_iterations);
     snapshots=Vector{Matrix{T}}(undef,nsnap);shannon_entropy_values=Vector{T}(undef,nsnap);snap_idx=1;
+    inside_norms=Vector{T}(undef,nsnap)
     @showprogress "Evolving the wavepacket..." for t in 1:cn.Nt
         mul!(b,B,ψ) # b=B*ψ
         ψ=Afactor\b; #ψ./=norm(ψ) -> no need to check since unitary evolution
         if t%save_after_iterations==0
-            entropy_t=compute_shannon_entropy(ψ,dx,dy);
-            shannon_entropy_values[snap_idx]=entropy_t;
-            snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny);
+            entropy_t=compute_shannon_entropy(ψ,dx,dy)
+            shannon_entropy_values[snap_idx]=entropy_t
+            snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny)
+            inside_norms[snap_idx]=sqrt(sum(snapshots[snap_idx][mask])*dx*dy)
             snap_idx+=1;
         end
     end
     Threads.@threads for i in 1:length(snapshots)
-        @inbounds snapshots[i][mask.==zero(T)].=NaN;
+        @inbounds snapshots[i][mask.==zero(T)].=NaN
     end
-    return snapshots,shannon_entropy_values;
+    base_norm=inside_norms[1];
+    Threads.@threads for n in 1:length(inside_norms)
+        if abs(inside_norms[n]-base_norm)/base_norm >threshold
+            @warn "Norm conservation check failed at snapshot $n: relative difference = $(abs(inside_norms[n]-base_norm)/base_norm)"
+        end
+    end
+    return snapshots,shannon_entropy_values
 end
 
 """
