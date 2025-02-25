@@ -698,3 +698,75 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{
     end
     println("Animation saved as $(filename)")
 end
+
+##### UNCERTANTIES ######
+
+function uncertanty_x(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
+    x=cn.x_grid # x evaluations that correspond the the matrix value
+    dx,dy=cn.dx,cn.dy
+    P=abs2.(ψ)
+    bra_x_ket=sum(x'.*sum(P,dims=2))*dx*dy # sum over the second dimension (dims=2) to collapse y and obtain P(x) ,then multiply by x to compute ⟨x⟩ 
+    bra_x_sq_ket=sum((x'.^2).*sum(P,dims=2))*dx*dy # similar logic, but here we collapse y -> P(x), then multiply by x^2 to compute ⟨x^2⟩
+    return sqrt(bra_x_sq_ket-bra_x_ket^2)
+end
+
+function uncertanty_y(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
+    y=cn.y_grid # y evaluations that correspond the the matrix value
+    dx,dy=cn.dx,cn.dy
+    P=abs2.(ψ) # |ψ(x,y)|^2
+    bra_y_ket=sum(y.*sum(P,dims=1))*dx*dy # sum over the second dimension (dims=1) to collapse x and obtain P(y) ,then multiply by y to compute ⟨y⟩ 
+    bra_y_sq_ket=sum((y.^2).*sum(P,dims=1))*dx*dy # similar logic, but here we collapse x -> P(y), then multiply by y^2 to compute ⟨y^2⟩
+    return sqrt(bra_y_sq_ket-bra_y_ket^2)
+end
+
+function uncertainty_x(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    x,dx,dy=cn.x_grid,cn.dx,cn.dy
+    return [sqrt(sum(x'.^2 .* sum(P,dims=2))*dx*dy - (sum(x' .* sum(P,dims=2))*dx*dy)^2) for P in abs2.(ψ_list)]
+end
+
+function uncertainty_y(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    y,dx,dy=cn.y_grid,cn.dx,cn.dy
+    return [sqrt(sum(y.^2 .* sum(P,dims=1))*dx*dy - (sum(y .* sum(P,dims=1))*dx*dy)^2) for P in abs2.(ψ_list)]
+end
+
+function uncertanty_px(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
+    Nx,Ny=cn.Nx,cn.Ny
+    dx,dy=cn.dx,cn.dy
+    ℏ=cn.ℏ
+    ψ_k=fftshift(fft(ψ))*dx*dy/sqrt(2*pi)  # Momentum-space wavefunction
+    P_k=abs2.(ψ_k)
+    P_k_norm=P_k./sum(P_k)  # Normalize the probability distribution
+    # Define momentum grid (FFT frequencies scaled by 2π/ℏ)
+    kx=fftshift(fftfreq(Nx,dx))*2*pi*ℏ  # Momentum values in x
+    bra_px_ket=sum(kx'.* sum(P_k_norm,dims=2))  # ⟨p_x⟩
+    bra_px_sq_ket=sum((kx'.^2).*sum(P_k_norm,dims=2))  # ⟨p_x²⟩
+    return sqrt(bra_px_sq_ket-bra_px_ket^2)  # Δp_x
+end
+
+function uncertanty_py(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
+    Nx,Ny=cn.Nx,cn.Ny
+    dx,dy=cn.dx,cn.dy
+    ℏ=cn.ℏ
+    ψ_k=fftshift(fft(ψ))*dx*dy/sqrt(2*pi)  # Momentum-space wavefunction
+    P_k=abs2.(ψ_k)
+    P_k_norm=P_k./sum(P_k)  # Normalize the probability distribution
+    # Define momentum grid (FFT frequencies scaled by 2π/ℏ)
+    ky=fftshift(fftfreq(Ny,dy))*2*pi*ℏ  # Momentum values in y
+    bra_py_ket=sum(ky.*sum(P_k_norm,dims=1))  # ⟨p_y⟩
+    bra_py_sq_ket=sum((ky.^2).*sum(P_k_norm,dims=1))  # ⟨p_y²⟩
+    return sqrt(bra_py_sq_ket-bra_py_ket^2)  # Δp_y
+end
+
+function uncertainty_px(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    Nx,dx,ℏ=cn.Nx,cn.dx,cn.ℏ
+    kx=fftshift(fftfreq(Nx,dx))*2*pi*ℏ  # Momentum values in x
+    return [sqrt(sum(kx'.^2 .* sum(P_k_norm,dims=2)) - (sum(kx' .* sum(P_k_norm,dims=2)))^2)
+            for P_k_norm in [abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))./sum(abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))) for ψ in ψ_list]]
+end
+
+function uncertainty_py(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    Ny,dy,ℏ=cn.Ny,cn.dy,cn.ℏ
+    ky=fftshift(fftfreq(Ny,dy))*2*pi*ℏ  # Momentum values in y
+    return [sqrt(sum(ky.^2 .* sum(P_k_norm,dims=1)) - (sum(ky .* sum(P_k_norm,dims=1)))^2)
+            for P_k_norm in [abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))./sum(abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))) for ψ in ψ_list]]
+end
