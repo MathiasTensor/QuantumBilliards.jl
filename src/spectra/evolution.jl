@@ -477,6 +477,8 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
 end
 
 """
+    build_1D_Laplacian(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
+
 The Laplacian operator ∇²Ψ in one dimension is given by:
     ∇²Ψ(x) = ∂²Ψ / ∂x²
 Using **central finite differences**, this is approximated as:
@@ -491,17 +493,48 @@ where `M` is the **finite difference matrix**, given by:
 M=  ⎢  0   0   1  -2  ⋯   0 ⎥   (Nx × Nx)
     ⎢  ⋮   ⋮   ⋮   ⋮   ⋱   1 ⎥
     ⎣  0   0   0   0   1  -2⎦
+
+# Arguments
+- `N`: The number of grid points in one dimension.
+- `d`: The spatial step size in one dimension.
+
+# Returns
+- `SparseMatrixCSC`: A sparse matrix representing the 1D Laplacian operator.
 """
 function build_1D_Laplacian(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
     return spdiagm(0=>fill(-2.0,N), 1=>fill(1.0,N-1), -1 => fill(1.0,N-1))/d^2
 end
 
+"""
+    boundary_condition_infinite_potential(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
+
+Construct the Boundary as a Sparse Matrix since it will only have diagonal elements by construction (from the Schrodinger equation, check reference for more details).
+
+# Arguements
+- `cn`: A `Crank_Nicholson` object.
+- `V0=1e12`: The effective "infinite" potential energy value for the billiard boundary condition. Must be a very large value to prevent leakage to the outside.
+
+# Returns
+- `SparseMatrixCSC`: A sparse matrix representing the infinite potential boundary condition.
+"""
 function boundary_condition_infinite_potential(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
     V=V0.*(1 .-cn.pts_mask)
     V_default=spdiagm(0=>vec(V)) 
     return V_default
 end
 
+"""
+    Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
+
+Constructs the Sparse matrix Hamiltonian from the potential energy (default just the boudnary infinite potential) and the 2D Laplacian contructed from the sum of Kroenecker products of the 1D Laplacians.
+
+# Arguments
+- `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
+- `V0=1e12`: The effective "infinite" potential energy value for the billiard boundary condition. Must be a very large value to prevent leakage to the outside.
+
+# Returns
+- `SparseMatrixCSC`: A sparse matrix representing the Hamiltonian.
+"""
 function Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
     dx,dy=cn.dx,cn.dy
     Nx,Ny=cn.Nx,cn.Ny
@@ -519,12 +552,38 @@ function Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:
     return -(cn.ℏ)^2/(2*cn.m)*Laplacian_2D+V_op
 end
 
+"""
+    Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseMatrixCSC where {T<:Real}
+
+Construct the Sparse matrix Hamiltonian from the non-trivial potential energy and the 2D Laplacian contructed from the sum of Kroenecker products of the 1D Laplacians.
+
+# Arguments
+- `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
+- `V::SparseMatrixCSC`: A sparse matrix representing the non-trivial potential energy.
+- `V0=1e12`: The effective "infinite" potential energy value for the billiard boundary condition. Must be a very large value to prevent leakage to the outside.
+
+# Returns
+- `SparseMatrixCSC`: A sparse matrix representing the Hamiltonian.
+"""
 function Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseMatrixCSC where {T<:Real}
     H=Hamiltonian(cn,V0=V0)
     @assert size(H)==size(V) "The unperturbed Hamiltonian matrix and the external potential must be of the same size."
     return H+V
 end
 
+"""
+    compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
+
+Computes the Shannon entropy of the wavefunction ψ given the grid spacing dx and dy. The wavefunction is given as a flattened Sparse matrix into a Vector.
+
+# Arguments
+- `ψ::Vector{Complex{T}}`: The flattened wavefunction vector.
+- `dx::T`: The grid spacing in the x-direction.
+- `dy::T`: The grid spacing in the y-direction.
+
+# Returns
+- `Vector{T}`: The Shannon entropy of the wavefunction.
+"""
 function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
     P=abs2.(ψ)
     P./=sum(P)*dx*dy
@@ -532,6 +591,20 @@ function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:R
     return entropy
 end
 
+"""
+evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
+
+Evolves the wavefunction ψ0 under the time-dependent Schrodinger equation using the Crank-Nicholson method, with the provided Hamiltonian matrix H and initial state ψ0.
+
+# Arguments
+- `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
+- `H::SparseMatrixCSC`: The Hamiltonian matrix representing the Schrodinger equation.
+- `ψ0::Matrix{Complex{T}}`: The initial state vector for the wavefunction.
+- `save_after_iterations::Integer=5`: The number of iterations after which to save the snapshot.
+
+# Returns
+- `Tuple{Vector{Matrix},Vector{T}}`: A tuple containing the snapshots of the wavefunction at regular intervals and the corresponding Shannon entropies at each snapshot.
+"""
 function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
     ψ0.=ψ0./norm(ψ0);ψ=vec(ψ0);dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;dim=Nx*Ny;mask=cn.pts_mask;
     I_mat=sparse(I,dim,dim)
@@ -557,6 +630,20 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     return snapshots,shannon_entropy_values;
 end
 
+"""
+    animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Vector{Matrix},filename::String;framerate::Integer=15) where {T<:Real}
+
+Animates the wavefunction evolution using the provided snapshots and saves the animation as a .mp4 file (best to use .mp4).
+
+# Arguments
+- `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
+- `info::Vector{Matrix}`: A vector containing the snapshots of the wavefunction at regular intervals.
+- `filename::String`: The name of the output .mp4 file.
+- `framerate::Integer=15`: The frame rate for the .mp4 animation.
+
+# Returns
+- `nothing`: The animation is saved as a .mp4 file.
+"""
 function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Vector{Matrix},filename::String;framerate::Integer=15) where {T<:Real}
     snapshots=info
     frames=length(snapshots)
@@ -565,12 +652,26 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Vector
     x_grid,y_grid=cn.x_grid,cn.y_grid
     hmap=heatmap!(ax,x_grid,y_grid,snapshots[1],colormap=:balance,nan_color=:white)
     record(fig,filename,1:frames,framerate=framerate) do i
-        #heatmap!(ax,x_grid,y_grid,snapshots[i],colormap=:balance,nan_color=:white)
         hmap[3]=snapshots[i]
     end
     println("Animation saved as $(filename)")
 end
 
+"""
+    animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15,save_after_iterations::Integer=5) where {T<:Real}
+
+Animates the wavefunction evolution using the provided snapshots and Shannon entropy values and saves the animation as a .mp4 file (best to use .mp4).
+
+# Arguments
+- `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
+- `info::Tuple{Vector{Matrix},Vector{T}}`: A tuple containing the snapshots of the wavefunction at regular intervals and the corresponding Shannon entropies at each snapshot.
+- `filename::String`: The name of the output .mp4 file.
+- `framerate::Integer=15`: The frame rate for the .mp4 animation.
+- `save_after_iterations::Integer=5`: The number of iterations after which to save the snapshot.
+
+# Returns
+- `nothing`: The animation is saved as a .mp4 file.
+"""
 function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{Vector{Matrix},Vector{T}},filename::String;framerate::Integer=15,save_after_iterations::Integer=5) where {T<:Real}
     snapshots,shannon_entropy_values=info
     frames=length(snapshots)
@@ -580,9 +681,8 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{
     hmap=heatmap!(ax,x_grid,y_grid,snapshots[1],colormap=:balance,nan_color=:white)
     ax2=Axis(fig[1,2],title="Shannon Entropy Evolution",xlabel="Time Step * $(save_after_iterations)",ylabel="Shannon Entropy",width=800,height=600)
     xlims!(ax2,0.0,ceil(Int,cn.Nt/save_after_iterations))  # Fixed x-axis range
-    ylims!(ax2,0.0,maximum(shannon_entropy_values)*1.2)
+    ylims!(ax2,minimum(shannon_entropy_values),maximum(shannon_entropy_values)*1.2)
     record(fig,filename,1:frames,framerate=framerate) do i
-        #heatmap!(ax,x_grid,y_grid,snapshots[i],colormap=:balance,nan_color=:white)
         hmap[3]=snapshots[i]
         scatter!(ax2,collect(1:i),shannon_entropy_values[1:i],color=:blue,linewidth=3)
     end
