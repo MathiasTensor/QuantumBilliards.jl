@@ -637,6 +637,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     end
     base_norm=inside_norms[1];
     Threads.@threads for n in 1:length(inside_norms)
+        println(inside_norms[n])
         if abs(inside_norms[n]-base_norm)/base_norm >threshold
             @warn "Norm conservation check failed at snapshot $n: relative difference = $(abs(inside_norms[n]-base_norm)/base_norm)"
         end
