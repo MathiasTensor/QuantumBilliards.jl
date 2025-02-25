@@ -587,15 +587,15 @@ Computes the Shannon entropy of the wavefunction ψ given the grid spacing dx an
 function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
     P=abs2.(ψ)
     P=P[.!isnan.(P)] # to remove the NaN's from influencing
-    println("Any negative? ",any(P.<0.0))
+    #println("Any negative? ",any(P.<0.0))
     println("Sum P: ",sum(P))
-    P.=max.(P,2*eps(T)) # to remove anyting close to 0
+    #P.=max.(P,1e-12) # to remove anyting close to 0
     #println("Sum of P before normalization: ",sum(P)*dx*dy)  # Debugging step
     #P./=sum(P)*dx*dy # normalize
     #println("Sum of P after normalization: ",sum(P)*dx*dy)   # Should be exactly 1
     println("Min P: ",minimum(P))
     println("Max P: ",maximum(P))
-    entropy=-sum(P.*log.(P)) # (ignoring zero values to avoid log(0))
+    entropy=-sum(P[P.>1e-10].*log.(P[P.>1e-10])) # (ignoring zero values to avoid log(0))
     println("Shannon entropy: ", entropy)  # Debugging step
     return entropy
 end
