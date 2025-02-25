@@ -765,15 +765,31 @@ end
 function uncertainty_px(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
     Nx,dx,ℏ=cn.Nx,cn.dx,cn.ℏ
     dx,dy=cn.dx,cn.dy
-    kx=fftshift(fftfreq(Nx,dx))*2*pi*ℏ  # Momentum values in x
-    return [sqrt(sum(kx'.^2 .* sum(P_k_norm,dims=2)) - (sum(kx' .* sum(P_k_norm,dims=2)))^2)
-            for P_k_norm in [abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))./sum(abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))) for ψ in ψ_list]]
+    kx=fftshift(fftfreq(Nx,dx))*2π*ℏ
+    uncertainties_px=Vector{T}(undef,length(ψ_list))
+    Threads.@threads for i in eachindex(ψ_list)
+        ψ_k=fftshift(fft(ψ_list[i]))*dx*cn.dy/sqrt(2π)
+        P_k=abs2.(ψ_k)
+        P_k_norm=P_k./sum(P_k)
+        bra_px_ket=sum(kx'.*sum(P_k_norm,dims=2))
+        bra_px_sq_ket=sum((kx'.^2).*sum(P_k_norm,dims=2))
+        uncertainties_px[i]=sqrt(bra_px_sq_ket-bra_px_ket^2)
+    end
+    return uncertainties_px
 end
 
 function uncertainty_py(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
     Ny,dy,ℏ=cn.Ny,cn.dy,cn.ℏ
     dx,dy=cn.dx,cn.dy
-    ky=fftshift(fftfreq(Ny,dy))*2*pi*ℏ  # Momentum values in y
-    return [sqrt(sum(ky.^2 .* sum(P_k_norm,dims=1)) - (sum(ky .* sum(P_k_norm,dims=1)))^2)
-            for P_k_norm in [abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))./sum(abs2.(fftshift(fft(ψ))*dx*dy/sqrt(2*pi))) for ψ in ψ_list]]
+    ky=fftshift(fftfreq(Ny,dy))*2π*ℏ
+    uncertainties_py=Vector{T}(undef,length(ψ_list))
+    Threads.@threads for i in eachindex(ψ_list)
+        ψ_k=fftshift(fft(ψ_list[i]))*cn.dx*dy/sqrt(2π)
+        P_k=abs2.(ψ_k)
+        P_k_norm=P_k./sum(P_k)
+        bra_py_ket=sum(ky.*sum(P_k_norm,dims=1))
+        bra_py_sq_ket=sum((ky.^2).*sum(P_k_norm,dims=1))
+        uncertainties_py[i]=sqrt(bra_py_sq_ket-bra_py_ket^2)
+    end
+    return uncertainties_py
 end
