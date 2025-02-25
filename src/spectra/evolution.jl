@@ -578,26 +578,26 @@ Computes the Shannon entropy of the wavefunction ψ given the grid spacing dx an
 
 # Arguments
 - `ψ::Vector{Complex{T}}`: The flattened wavefunction vector.
-- `dx::T`: The grid spacing in the x-direction.
-- `dy::T`: The grid spacing in the y-direction.
+- `Nx::T`: The matrix dimension in the x-direction.
+- `Ny::T`: The matrix dimension in the y-direction.
 
 # Returns
 - `Vector{T}`: The Shannon entropy of the wavefunction.
 """
-function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
+function compute_shannon_entropy(ψ::Vector{Complex{T}},Nx::T,Ny::T) where {T<:Real}
     P=abs2.(ψ)
     P=P[.!isnan.(P)] # to remove the NaN's from influencing
     #println("Any negative? ",any(P.<0.0))
     println("Sum P: ",sum(P))
-    #P.=max.(P,1e-12) # to remove anyting close to 0
+    P.=max.(P,1e-12) # to remove anyting close to 0
     #println("Sum of P before normalization: ",sum(P)*dx*dy)  # Debugging step
     #P./=sum(P)*dx*dy # normalize
     #println("Sum of P after normalization: ",sum(P)*dx*dy)   # Should be exactly 1
     println("Min P: ",minimum(P))
     println("Max P: ",maximum(P))
-    entropy=-sum(P[P.>1e-6].*log.(P[P.>1e-6])) # (ignoring "zero" values to avoid log(0))
+    entropy=-sum(P.*log.(P)) # (ignoring "zero" values to avoid log(0))
     println("Shannon entropy: ", entropy)  # Debugging step
-    return entropy
+    return entropy/log(Nx*Ny)
 end
 
 """
@@ -629,7 +629,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
         mul!(b,B,ψ) # b=B*ψ
         ψ=Afactor\b; #ψ./=norm(ψ) -> no need to check since unitary evolution
         if t%save_after_iterations==0
-            entropy_t=compute_shannon_entropy(ψ,dx,dy)
+            entropy_t=compute_shannon_entropy(ψ,Nx,Ny)
             shannon_entropy_values[snap_idx]=entropy_t
             snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny)
             inside_norms[snap_idx]=sqrt(sum(snapshots[snap_idx][mask])*dx*dy)
