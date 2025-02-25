@@ -723,13 +723,15 @@ function uncertanty_y(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:R
 end
 
 function uncertainty_x(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    ψ_list=abs2.(ψ_list)
     x,dx,dy=cn.x_grid,cn.dx,cn.dy
-    return [sqrt(sum(x'.^2 .* sum(P,dims=2))*dx*dy - (sum(x' .* sum(P,dims=2))*dx*dy)^2) for P in abs2.(ψ_list)]
+    return [sqrt(sum(x'.^2 .* sum(P,dims=2))*dx*dy - (sum(x' .* sum(P,dims=2))*dx*dy)^2) for P in ψ_list]
 end
 
 function uncertainty_y(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    ψ_list=abs2.(ψ_list)
     y,dx,dy=cn.y_grid,cn.dx,cn.dy
-    return [sqrt(sum(y.^2 .* sum(P,dims=1))*dx*dy - (sum(y .* sum(P,dims=1))*dx*dy)^2) for P in abs2.(ψ_list)]
+    return [sqrt(sum(y.^2 .* sum(P,dims=1))*dx*dy - (sum(y .* sum(P,dims=1))*dx*dy)^2) for P in ψ_list]
 end
 
 function uncertanty_px(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
