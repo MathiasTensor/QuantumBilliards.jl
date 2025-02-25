@@ -578,13 +578,13 @@ Computes the Shannon entropy of the wavefunction ψ given the grid spacing dx an
 
 # Arguments
 - `ψ::Vector{Complex{T}}`: The flattened wavefunction vector.
-- `Nx::T`: The matrix dimension in the x-direction.
-- `Ny::T`: The matrix dimension in the y-direction.
+- `Nx::Integer`: The matrix dimension in the x-direction.
+- `Ny::Integer`: The matrix dimension in the y-direction.
 
 # Returns
 - `Vector{T}`: The Shannon entropy of the wavefunction.
 """
-function compute_shannon_entropy(ψ::Vector{Complex{T}},Nx::T,Ny::T) where {T<:Real}
+function compute_shannon_entropy(ψ::Vector{Complex{T}},Nx::Integer,Ny::Integer) where {T<:Real}
     P=abs2.(ψ)
     P=P[.!isnan.(P)] # to remove the NaN's from influencing
     #println("Any negative? ",any(P.<0.0))
