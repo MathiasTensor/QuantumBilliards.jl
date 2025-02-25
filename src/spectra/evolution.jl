@@ -588,7 +588,7 @@ function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:R
     P=abs2.(ψ)
     P=P[.!isnan.(P)] # to remove the NaN's from influencing
     println("Sum of P before normalization: ",sum(P)*dx*dy)  # Debugging step
-    P./=sum(P)*dx*dy
+    #P./=sum(P)*dx*dy
     println("Sum of P after normalization: ",sum(P)*dx*dy)   # Should be exactly 1
     P.=max.(P,sqrt(eps(T)))
     entropy=-sum(P.*log.(P)) # (ignoring zero values to avoid log(0))
@@ -636,9 +636,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
         @inbounds snapshots[i][mask.==zero(T)].=NaN
     end
     base_norm=inside_norms[1];
-    println("Base norm: ",base_norm)
     Threads.@threads for n in 1:length(inside_norms)
-        println(abs(inside_norms[n]-base_norm))
         if abs(inside_norms[n]-base_norm)/base_norm >threshold
             @warn "Norm conservation check failed at snapshot $n: relative difference = $(abs(inside_norms[n]-base_norm)/base_norm)"
         end
