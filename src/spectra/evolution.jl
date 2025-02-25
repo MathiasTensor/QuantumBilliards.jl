@@ -616,6 +616,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     b=similar(ψ)
     nsnap=floor(Int,cn.Nt/save_after_iterations);
     snapshots=Vector{Matrix{T}}(undef,nsnap);shannon_entropy_values=Vector{T}(undef,nsnap);snap_idx=1;
+    matrices_raw=Vector{Matrix{Complex{T}}}(undef,nsnap)
     inside_norms=Vector{T}(undef,nsnap)
     @showprogress "Evolving the wavepacket..." for t in 1:cn.Nt
         mul!(b,B,ψ) # b=B*ψ
@@ -623,7 +624,8 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
         if t%save_after_iterations==0
             entropy_t=compute_shannon_entropy(ψ,Nx,Ny)
             shannon_entropy_values[snap_idx]=entropy_t
-            snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny)
+            snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny) # precalculated for rendering
+            matrices_raw[snap_idx]=reshape(ψ,Nx,Ny) # needed for futher calculations
             inside_norms[snap_idx]=sqrt(sum(snapshots[snap_idx][mask])*dx*dy)
             snap_idx+=1;
         end
