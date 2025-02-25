@@ -588,7 +588,7 @@ function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:R
     P=abs2.(ψ)
     P=P[.!isnan.(P)] # to remove the NaN's from influencing
     println("Sum of P before normalization: ",sum(P)*dx*dy)  # Debugging step
-    #P./=sum(P)*dx*dy
+    P./=sum(P)*dx*dy
     println("Sum of P after normalization: ",sum(P)*dx*dy)   # Should be exactly 1
     P.=max.(P,sqrt(eps(T)))
     entropy=-sum(P.*log.(P)) # (ignoring zero values to avoid log(0))
