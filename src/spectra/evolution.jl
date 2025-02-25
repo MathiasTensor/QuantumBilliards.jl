@@ -411,7 +411,7 @@ where V_op is the potential energy matrix.
 
 - At each timestep, we solve:
 
-      Ψ_new = A_factor "\" (B * Ψ_old)
+      Ψ_new = solve(A_factor div. (B * Ψ_old))
 
 - The probability density |Ψ(x, y)|² is stored in snapshots for visualization.
 
@@ -427,7 +427,6 @@ where V_op is the potential energy matrix.
 
 ------------------------------------------------------------------------------------
 """
-
 struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard} 
     billiard::Bi
     pts_mask::Vector{Bool}
@@ -534,32 +533,28 @@ function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:R
 end
 
 function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
-    ψ0=ψ0/norm(ψ0)
-    ψ=vec(ψ0)
-    dx,dy=cn.dx,cn.dy
-    Nx,Ny=cn.Nx,cn.Ny
-    dim=Nx*Ny
-    mask=cn.pts_mask
+    ψ0.=ψ0./norm(ψ0);ψ=vec(ψ0);dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;dim=Nx*Ny;mask=cn.pts_mask;
     I_mat=sparse(I,dim,dim)
     A=I_mat+im*cn.dt/(2*cn.ℏ)*H
-    B=I_mat-im*cn.dt/(2*cn.ℏ)*H
-    Afactor=lu(A) # only need this for A^-1 * B
-    snapshots=Vector{Matrix{T}}()
-    shannon_entropy_values=T[]
-    @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
-        b=B*ψ
-        ψ=Afactor\b
-        ψ/=norm(ψ) # probably unnecessary
-        if t % save_after_iterations==0 # save only some
-            entropy_t=compute_shannon_entropy(ψ,dx,dy)
-            push!(shannon_entropy_values,entropy_t)
-            push!(snapshots,reshape(abs2.(ψ),Nx,Ny))
+    B=I_mat-im*cn.dt/(2*cn.ℏ)*H;
+    Afactor=lu(A)
+    b=similar(ψ)
+    nsnap=floor(Int,cn.Nt/save_after_iterations);
+    snapshots=Vector{Matrix{T}}(undef,nsnap);shannon_entropy_values=Vector{T}(undef,nsnap);snap_idx=1;
+    @showprogress "Evolving the wavepacket..." for t in 1:cn.Nt
+        mul!(b,B,ψ)
+        ψ=Afactor\b; #ψ./=norm(ψ)
+        if t%save_after_iterations==0
+            entropy_t=compute_shannon_entropy(ψ,dx,dy);
+            shannon_entropy_values[snap_idx]=entropy_t;
+            snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny);
+            snap_idx+=1;
         end
     end
-    Threads.@threads for i in 1:length(snapshots) # for later nicer heatmap plots
-        snapshots[i][mask.==zero(T)].=NaN
+    Threads.@threads for i in 1:length(snapshots)
+        @inbounds snapshots[i][mask.==zero(T)].=NaN;
     end
-    return snapshots,shannon_entropy_values
+    return snapshots,shannon_entropy_values;
 end
 
 function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Vector{Matrix},filename::String;framerate::Integer=15) where {T<:Real}
