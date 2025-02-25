@@ -429,7 +429,7 @@ where V_op is the potential energy matrix.
 """
 struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard} 
     billiard::Bi
-    pts_mask::Vector{Bool}
+    pts_mask::Vector{Bool} # this is the matrix that the wavefunction that is being flattened to a vector for convenience
     ℏ::T # Reduced Planck's constant
     m::T # Particle mass
     xlim::Tuple{T,T}
@@ -586,6 +586,7 @@ Computes the Shannon entropy of the wavefunction ψ given the grid spacing dx an
 """
 function compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
     P=abs2.(ψ)
+    P[isnan.(P)].=zero(T) # to remove the NaN's from influencing
     P./=sum(P)*dx*dy
     entropy=-sum(P[P.>0].*log.(P[P.>0]))*dx*dy # (ignoring zero values to avoid log(0))
     return entropy
