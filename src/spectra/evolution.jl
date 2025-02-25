@@ -605,9 +605,9 @@ Evolves the wavefunction ψ0 under the time-dependent Schrodinger equation using
 - `threshold=1e-6`: The threshold for checking the norms of the wavefunctions inside the billiard. The relative norms are computed wrt the starting norm of the packet and then in the end checked.
 
 # Returns
-- `Tuple{Vector{Matrix},Vector{T}}`: A tuple containing the snapshots of the wavefunction at regular intervals and the corresponding Shannon entropies at each snapshot.
+- `Tuple{Vector{Matrix},Vector{Matrix{Complex{T}}},Vector{T}}`: A tuple containing the snapshots of the wavefunction at regular intervals, their raw non abs2 versions and the corresponding Shannon entropies at each snapshot.
 """
-function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5,threshold=1e-6)::Tuple{Vector{Matrix},Vector{T}} where {T<:Real}
+function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5,threshold=1e-6)::Tuple{Vector{Matrix},Vector{Matrix{Complex{T}}},Vector{T}} where {T<:Real}
     ψ0.=ψ0./norm(ψ0);ψ=vec(ψ0);dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;dim=Nx*Ny;mask=cn.pts_mask;
     I_mat=sparse(I,dim,dim)
     A=I_mat+im*cn.dt/(2*cn.ℏ)*H
@@ -639,7 +639,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
             @warn "Norm conservation check failed at snapshot $n: relative difference = $(abs(inside_norms[n]-base_norm)/base_norm)"
         end
     end
-    return snapshots,shannon_entropy_values
+    return snapshots,matrices_raw,shannon_entropy_values
 end
 
 """
