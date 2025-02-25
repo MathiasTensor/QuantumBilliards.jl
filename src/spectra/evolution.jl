@@ -624,9 +624,10 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
         if t%save_after_iterations==0
             entropy_t=compute_shannon_entropy(ψ,Nx,Ny)
             shannon_entropy_values[snap_idx]=entropy_t
-            snapshots[snap_idx]=reshape(abs2.(ψ),Nx,Ny) # precalculated for rendering
-            matrices_raw[snap_idx]=reshape(ψ,Nx,Ny) # needed for futher calculations
-            inside_norms[snap_idx]=sqrt(sum(snapshots[snap_idx][mask])*dx*dy)
+            ψ=reshape(ψ,Nx,Ny)
+            snapshots[snap_idx]=abs2.(ψ) # precalculated for rendering
+            matrices_raw[snap_idx]=ψ # needed for futher calculations
+            inside_norms[snap_idx]=sqrt(sum(snapshots[snap_idx][mask])*dx*dy) # internal checks that we are not losing the norm for long evolutions
             snap_idx+=1;
         end
     end
