@@ -89,8 +89,8 @@ function compute_fem_eigenmodes(fem::FiniteElementMethod{T};nev::Int=100,maxiter
     wavefunctions=[zeros(T,fem.Nx,fem.Ny) for _ in 1:nev]
     Threads.@threads for i in 1:fem.Nx
         for j in 1:fem.Ny
-            α=fem.interior_idx[i,j]
-            if α!=0
+            α=fem.interior_idx[i+(j-1)*fem.Nx] 
+            if α>0  # Ensure only interior points are accessed
                 for n in 1:nev
                     wavefunctions[n][i,j]=evecs[α,n]
                 end
