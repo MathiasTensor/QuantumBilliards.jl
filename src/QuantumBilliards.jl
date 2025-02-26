@@ -164,4 +164,5 @@ include("spectra/classical_transport_time.jl")
 export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_chaotic_init_conditions_to_cartesian, simulate_trajectories, plot_p2_stats!, generate_intervals_from_limits
 include("spectra/antiscar_mushroom.jl")
 export calculate_bb_bbox_localization_mushroom, create_husimi_localization_mat, calculate_overlap, get_bb_localization_indexes
+include("solvers/diagonalizations/fem.jl")
 end
