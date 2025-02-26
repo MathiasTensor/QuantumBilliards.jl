@@ -82,10 +82,10 @@ function FEM_Hamiltonian(fem::FiniteElementMethod{T},V::Matrix{T}) where {T<:Rea
     return sparse(rows,cols,vals,fem.Q,fem.Q)
 end
 
-function compute_fem_eigenmodes(fem::FiniteElementMethod{T};nev::Int=100,maxiter=100000) where {T<:Real}
+function compute_fem_eigenmodes(fem::FiniteElementMethod{T};nev::Int=100,maxiter=100000,tol=1e-8) where {T<:Real}
     H=FEM_Hamiltonian(fem)
     nev=min(nev,fem.Q-1)  # Prevent requesting more eigenvalues than available
-    evals,evecs=eigs(Symmetric(H),nev=nev,which=:SR,tol=1e-8,maxiter=maxiter)
+    evals,evecs=eigs(Symmetric(H),nev=nev,which=:SR,tol=tol,maxiter=maxiter)
     wavefunctions=[zeros(T,fem.Nx,fem.Ny) for _ in 1:nev]
     Threads.@threads for i in 1:fem.Nx
         for j in 1:fem.Ny
