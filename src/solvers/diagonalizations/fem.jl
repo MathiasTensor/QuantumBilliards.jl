@@ -85,7 +85,7 @@ end
 function compute_fem_eigenmodes(fem::FiniteElementMethod{T};nev::Int=100,maxiter=100000) where {T<:Real}
     H=FEM_Hamiltonian(fem)
     nev=min(nev,fem.Q-1)  # Prevent requesting more eigenvalues than available
-    evals,evecs=eigs(H,nev=nev,which=:SR,tol=1e-8,maxiter=maxiter)
+    evals,evecs=eigs(Symmetric(H),nev=nev,which=:SR,tol=1e-8,maxiter=maxiter)
     wavefunctions=[zeros(T,fem.Nx,fem.Ny) for _ in 1:nev]
     Threads.@threads for i in 1:fem.Nx
         for j in 1:fem.Ny
