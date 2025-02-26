@@ -69,11 +69,11 @@ function FEM_Hamiltonian(fem::FiniteElementMethod{T},V::Matrix{T}) where {T<:Rea
     rows,cols,vals=Int[],Int[],Float64[]
 
     for i in 2:(Nx-1),j in 2:(Ny-1)
-        α=fem.interior_idx[i,j];if α==0;continue;end
+        α=fem.interior_idx[i + (j-1) * Nx];if α==0;continue;end
         for (ni,nj,factor) in [(i+1,j,-A_const/dx²),(i-1,j,-A_const/dx²),
                                (i,j+1,-A_const/dy²),(i,j-1,-A_const/dy²)]
-            if fem.interior_idx[ni,nj]!=0
-                β=fem.interior_idx[ni,nj]
+            β=fem.interior_idx[ni + (nj-1) * Nx]
+            if β!=0
                 push!(rows,α);push!(cols,β);push!(vals,factor)
             end
         end
