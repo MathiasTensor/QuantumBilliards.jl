@@ -26,6 +26,8 @@ ks=ks[idxs]
 wavefunctions=wavefunctions[idxs]
 println(ks)
 
+wavefunctions=[abs2.(wf) for wf in wavefunctions]
+
 f=QuantumBilliards.plot_wavefunctions_BATCH(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=false)
 save("$(nameof(typeof(billiard))).png",f)
 
