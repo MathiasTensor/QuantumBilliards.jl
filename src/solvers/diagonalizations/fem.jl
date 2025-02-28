@@ -105,6 +105,8 @@ Initializes a FEM solver for a quantum billiard.
 - `m::T=1.0`: Particle mass.
 - `fundamental::Bool=false`: Use fundamental domain (if applicable).
 - `k_max::T=100.0`: Wavevector-based scaling parameter.
+- `offset_x_symmetric::T=0.0`: Symmetric +/- offset in x direction.
+- `offset_y_symmetric::T=0.0`: Symmetric +/- offset in y direction.
 
 # Returns:
 - `FiniteElementMethod` instance with computed grid and index mapping.
