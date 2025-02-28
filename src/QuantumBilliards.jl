@@ -165,4 +165,5 @@ export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_
 include("spectra/antiscar_mushroom.jl")
 export calculate_bb_bbox_localization_mushroom, create_husimi_localization_mat, calculate_overlap, get_bb_localization_indexes
 include("solvers/diagonalizations/fem.jl")
+include("solvers/diagonalizations/ϕ_fem.jl")
 end

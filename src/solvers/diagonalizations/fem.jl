@@ -30,10 +30,9 @@ wavefunctions=[abs2.(wf) for wf in wavefunctions]
 
 f=QuantumBilliards.plot_wavefunctions_BATCH(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=false)
 # display or save Figure()
-
-
-
 """
+
+# CODE
 
 """
     struct FiniteElementMethod{T<:Real,Bi<:AbsBilliard}
@@ -110,11 +109,13 @@ Initializes a FEM solver for a quantum billiard.
 # Returns:
 - `FiniteElementMethod` instance with computed grid and index mapping.
 """
-function FiniteElementMethod(billiard::Bi,Nx::Int,Ny::Int;ℏ::T=1.0,m::T=1.0,fundamental=false,k_max=100.0) where {T<:Real,Bi<:AbsBilliard}
+function FiniteElementMethod(billiard::Bi,Nx::Int,Ny::Int;ℏ::T=1.0,m::T=1.0,fundamental=false,k_max=100.0,offset_x_symmetric=0.0,offset_y_symmetric=0.0) where {T<:Real,Bi<:AbsBilliard}
     boundary=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
     L=billiard.length
     typ=eltype(L)
     xlim::Tuple{typ,typ},ylim::Tuple{typ,typ}=boundary_limits(boundary;grd=max(1000,round(Int,k_max*L*5.0/(2*pi)))) # b=5.0, not needed here
+    xlim=(xlim[1]-offset_x_symmetric,xlim[2]+offset_x_symmetric)
+    ylim=(ylim[1]-offset_y_symmetric,ylim[2]+offset_y_symmetric)
     Lx,Ly=xlim[2]-xlim[1],ylim[2]-ylim[1] # domain lengths in x and y
     dx,dy=Lx/(Nx-1),Ly/(Ny-1)
     nx,ny=Nx,Ny
@@ -142,7 +143,7 @@ The Hamiltonian is symmetric either way since the potential only comes as digona
 function FEM_Hamiltonian(fem::FiniteElementMethod{T}) where {T<:Real}
     ℏ,m=fem.ℏ,fem.m;A_const=ℏ^2/(2m)
     dx²,dy²=fem.dx^2,fem.dy^2;Nx,Ny=fem.Nx,fem.Ny
-    rows,cols,vals=Int[],Int[],Float64[]
+    rows,cols,vals=Int[],Int[],T[]
 
     for i in 2:(Nx-1),j in 2:(Ny-1)
         α=fem.interior_idx[i + (j-1) * Nx];if α==0;continue;end
@@ -162,7 +163,7 @@ end
 function FEM_Hamiltonian(fem::FiniteElementMethod{T},V::Matrix{T}) where {T<:Real}
     ℏ,m=fem.ℏ,fem.m;A_const=ℏ^2/(2m)
     dx²,dy²=fem.dx^2,fem.dy^2;Nx,Ny=fem.Nx,fem.Ny
-    rows,cols,vals=Int[],Int[],Float64[]
+    rows,cols,vals=Int[],Int[],T[]
 
     for i in 2:(Nx-1),j in 2:(Ny-1)
         α=fem.interior_idx[i + (j-1) * Nx];if α==0;continue;end
@@ -173,7 +174,7 @@ function FEM_Hamiltonian(fem::FiniteElementMethod{T},V::Matrix{T}) where {T<:Rea
                 push!(rows,α);push!(cols,β);push!(vals,factor)
             end
         end
-        push!(rows,α);push!(cols,α);push!(vals,A_const*(2/dx²+2/dy²) + V[i,j])
+        push!(rows,α);push!(cols,α);push!(vals,A_const*(2/dx²+2/dy²)+V[i,j])
     end
     return sparse(rows,cols,vals,fem.Q,fem.Q)
 end
