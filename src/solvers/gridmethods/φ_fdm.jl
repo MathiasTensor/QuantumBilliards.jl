@@ -355,18 +355,5 @@ function compute_ϕ_fem_eigenmodes(fem::FiniteElementMethod{T},phi::Function,gam
     evals,evecs=eigs(Symmetric(H),nev=nev,which=:SM,tol=tol,maxiter=maxiter)
     ext_idx=compute_extended_index(fem.x_grid,fem.y_grid,fem.mask)[1]
     wavefunctions=[reconstruct_wavefunction(evecs[:,i],ext_idx,fem.Nx,fem.Ny) for i in axes(evecs,2)]
-    #=
-    wavefunctions=[zeros(T,fem.Nx,fem.Ny) for _ in 1:nev]
-    Threads.@threads for i in 1:fem.Nx
-        for j in 1:fem.Ny
-            α=fem.interior_idx[i+(j-1)*fem.Nx] 
-            if α>0  # Ensure only interior points are accessed
-                for n in 1:nev
-                    wavefunctions[n][i,j]=evecs[α,n]
-                end
-            end
-        end
-    end
-    =#
     return evals,wavefunctions
 end
