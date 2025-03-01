@@ -352,7 +352,7 @@ Computes the lowest `nev` eigenvalues and wavefunctions of the FEM Hamiltonian.
 function compute_ϕ_fem_eigenmodes(fem::FiniteElementMethod{T},phi::Function,gamma::T,sigma::T;nev::Int=100,maxiter=100000,tol=1e-8) where {T<:Real}
     H=phiFD_Hamiltonian(fem,phi,gamma,sigma)
     nev=min(nev,fem.Q-1)  # Prevent requesting more eigenvalues than available
-    evals,evecs=eigs(H,nev=nev,which=:SM,tol=tol,maxiter=maxiter)
+    evals,evecs=eigs(Symmetric(H),nev=nev,which=:SM,tol=tol,maxiter=maxiter)
     wavefunctions=[zeros(T,fem.Nx,fem.Ny) for _ in 1:nev]
     Threads.@threads for i in 1:fem.Nx
         for j in 1:fem.Ny
