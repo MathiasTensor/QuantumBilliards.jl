@@ -353,6 +353,9 @@ function compute_ϕ_fem_eigenmodes(fem::FiniteElementMethod{T},phi::Function,gam
     H=phiFD_Hamiltonian(fem,phi,gamma,sigma)
     nev=min(nev,fem.Q-1)  # Prevent requesting more eigenvalues than available
     evals,evecs=eigs(Symmetric(H),nev=nev,which=:SM,tol=tol,maxiter=maxiter)
+    ext_idx=compute_extended_index(fem.x_grid,fem.y_grid,fem.mask)[1]
+    wavefunctions=[reconstruct_wavefunction(evecs[:,i],ext_idx,fem.Nx,fem.Ny) for i in axes(evecs,2)]
+    #=
     wavefunctions=[zeros(T,fem.Nx,fem.Ny) for _ in 1:nev]
     Threads.@threads for i in 1:fem.Nx
         for j in 1:fem.Ny
@@ -364,5 +367,6 @@ function compute_ϕ_fem_eigenmodes(fem::FiniteElementMethod{T},phi::Function,gam
             end
         end
     end
+    =#
     return evals,wavefunctions
 end
