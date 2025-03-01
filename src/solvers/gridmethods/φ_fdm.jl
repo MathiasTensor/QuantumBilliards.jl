@@ -1,6 +1,107 @@
 using LinearAlgebra, SparseArrays, Arpack
 include("fdm.jl")
 
+"""
+EXAMPLE CODE: 
+
+using QuantumBilliards, CairoMakie, LinearAlgebra, Printf
+
+# One needs to create a phi(x,y) function that acts as a boolean mask (0 or 1 depending whether it is inside the boundary or outside) for the same geometry as the one defined as the <:AbsBilliard struct as. It needs to be externally given as the method itself needs to calculate for wanted cell (i,j) the values there
+
+# RECTANGLE
+
+function rectangle_phi(x, y, width, height)
+    dx=abs(x)-width/2
+    dy=abs(y)-height/2
+    return max(dx,dy) < 0 ? max(dx,dy) : sqrt(max(dx,0)^2+max(dy,0)^2)
+end
+# Define the rectangle bounds
+width=2.0
+height=1.0
+# Create the signed distance function for this rectangle
+phi(x,y)=rectangle_phi(x,y,width,height)
+billiard,_=make_rectangle_and_basis(width,height)
+
+
+# ELLIPSE
+#=
+function ellipse_phi(x,y,a,b)
+    return (x/a)^2+(y/b)^2-1.0
+end
+# Define the ellipse parameters
+w_e,h_e=2.0,1.0  # Semi-major and semi-minor axes
+# Create the signed distance function for this ellipse
+phi(x,y)=ellipse_phi(x,y,w_e,h_e)
+billiard,_=make_ellipse_and_basis(w_e,h_e)
+=#
+
+# PROSEN
+#=
+function prosen_psi(x,y,a)
+    φ=atan(y,x)+pi
+    r=1.0+a*cos(4*φ)
+    return x^2+y^2<r^2
+end
+phi(x,y)=prosen_psi(x,y,0.4)
+billiard,_=make_prosen_and_basis(0.4)
+=#
+
+# Create the FDM struct
+fem=QuantumBilliards.FiniteElementMethod(billiard,300,300;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1)
+# needed for wavefunction plotting
+x_grid,y_grid=fem.x_grid,fem.y_grid
+# to see the actual dimension of the Sparse Hamiltonian
+println("Interior grid pts: ",fem.Q)
+
+# Define penalization and stabilization parameters:
+γ=5.0 # higher means more strictly enforced BCs but more ill conditioned matrix. One needs to play with this.
+σ=1.01 # higher means more strictly enforced BCs but more ill conditioned matrix. One needs to play with this.
+# compute the ϕ-FD Hamiltonian:
+H_phiFD=phiFD_Hamiltonian(fem,phi,γ,σ)
+
+nev=1000 # number of eigenvalues -> ideally should be 2%-5% of Nx*Ny due to precision problems arising due to discretization for high lying nodes. This should guarantee a relative accuracy of <0.1%
+ks,wavefunctions=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
+ks=sqrt.(abs.(ks)) # need to transform the E to the k based on m and ℏ
+wavefunctions=[abs2.(wf) for wf in wavefunctions] # if wanting to plot the |Ψ(x,y)|^2
+fs=QuantumBilliards.plot_wavefunctions(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=false)
+for i in eachindex(fs)
+    save("φ_FDM_i.png",fs[i])
+end
+
+"""
+
+"""
+Comparison of eigenvalues obtained with φ-FDM and analytical eigenvalue for the rectangle w=2, h=1 for a 10000x10000 Hamiltonian matrix. It is obvious that this gives worse eigenvalues compared to regular FDM but the matrix is more well conditioned compared to standard FDM therefore magnitude faster solving time.
+% Rel. error was below 0.1% for only the first ≈ 130 eigenvalues. So a rule of thumb is take at most 5% of eigenvalues
+n  | Numerical  | Analytical | Abs Error | Rel Error | % Relative Error
+---------------------------------------------------------------------------
+1   |  2.48448  |  2.48365  | 8.35038e-04 | 3.36214e-04 |    0.034
+2   |  3.14354  |  3.14159  | 1.94473e-03 | 6.19028e-04 |    0.062
+3   |  4.00789  |  4.00476  | 3.13428e-03 | 7.82638e-04 |    0.078
+4   |  4.58044  |  4.57962  | 8.23776e-04 | 1.79879e-04 |    0.018
+5   |  4.96887  |  4.96729  | 1.57193e-03 | 3.16457e-04 |    0.032
+6   |  4.97152  |  4.96729  | 4.22308e-03 | 8.50176e-04 |    0.085
+7   |  5.55617  |  5.55360  | 2.56603e-03 | 4.62048e-04 |    0.046
+8   |  5.98656  |  5.98141  | 5.14787e-03 | 8.60644e-04 |    0.086
+9   |  6.28679  |  6.28319  | 3.60890e-03 | 5.74374e-04 |    0.057
+10  |  6.75703  |  6.75625  | 7.79119e-04 | 1.15318e-04 |    0.012
+11  |  7.02614  |  7.02481  | 1.32373e-03 | 1.88436e-04 |    0.019
+12  |  7.03068  |  7.02481  | 5.86942e-03 | 8.35527e-04 |    0.084
+13  |  7.11665  |  7.11208  | 4.56804e-03 | 6.42293e-04 |    0.064
+14  |  7.45305  |  7.45094  | 2.11255e-03 | 2.83528e-04 |    0.028
+15  |  8.01254  |  8.00952  | 3.01688e-03 | 3.76661e-04 |    0.038
+16  |  8.01488  |  8.00952  | 5.35940e-03 | 6.69129e-04 |    0.067
+17  |  8.09252  |  8.08617  | 6.35216e-03 | 7.85558e-04 |    0.079
+18  |  8.67892  |  8.67501  | 3.91637e-03 | 4.51454e-04 |    0.045
+19  |  8.95542  |  8.95492  | 5.06843e-04 | 5.65994e-05 |    0.006
+20  |  8.96084  |  8.95492  | 5.92484e-03 | 6.61630e-04 |    0.066
+21  |  9.16017  |  9.15924  | 9.35956e-04 | 1.02187e-04 |    0.010
+22  |  9.16580  |  9.15924  | 6.56041e-03 | 7.16262e-04 |    0.072
+23  |  9.42949  |  9.42478  | 4.71198e-03 | 4.99956e-04 |    0.050
+24  |  9.49158  |  9.49000  | 1.58192e-03 | 1.66693e-04 |    0.017
+25  |  9.93695  |  9.93459  | 2.35875e-03 | 2.37428e-04 |    0.024
+"""
+
 
 """
     compute_extended_index(x_grid::Vector{T}, y_grid::Vector{T}, mask::Vector{Bool}) where T<:Real
@@ -286,7 +387,7 @@ function phiFD_Hamiltonian(fem::FiniteElementMethod,phi::Function,gamma::T,sigma
                 α=ext_idx[idx(i,j-1)]
                 β=ext_idx[lin]
                 γ_=ext_idx[idx(i,j+1)]
-                if α!=0 && β!=0 && γ_!=0
+                if α!=0 && β!=0 && γ_!=0 # smooth transition ocer the boundary for vertical transition between pt and boundary. For more check above
                     push!(rows,α);push!(cols,α);push!(vals,coeff)
                     push!(rows,β);push!(cols,β);push!(vals,4*coeff)
                     push!(rows,γ_);push!(cols,γ_);push!(vals,coeff)
