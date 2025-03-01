@@ -167,4 +167,5 @@ export calculate_bb_bbox_localization_mushroom, create_husimi_localization_mat, 
 include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes
 include("solvers/gridmethods/ϕ_fdm.jl")
+export compute_extended_index, phiFD_Hamiltonian, compute_ϕ_fem_eigenmodes
 end
