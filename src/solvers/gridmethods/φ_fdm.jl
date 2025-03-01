@@ -157,7 +157,7 @@ active (extended) nodes. This matrix represents the Hamiltonian with the followi
    Finally, all contributions are collected into arrays and assembled into a sparse matrix A, which is 
    returned as the discretized Hamiltonian on the extended grid.
 """
-function phiFD_Hamiltonian(fem::FiniteElementMethod{T},phi::Function,gamma::T,sigma::T) where {T<:Real}
+function phiFD_Hamiltonian(fem::FiniteElementMethod,phi::Function,gamma::T,sigma::T) where {T<:Real}
     Nx,Ny=fem.Nx,fem.Ny
     dx,dy=fem.dx,fem.dy
     x_grid,y_grid=fem.x_grid,fem.y_grid
