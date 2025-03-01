@@ -12,13 +12,13 @@ billiard,_=make_mushroom_and_basis(1.0,1.0,1.0)
 billiard,_=make_generalized_sinai_and_basis()
 billiard,_=make_ellipse_and_basis(2.0,1.0)
 
-fem=QuantumBilliards.FiniteElementMethod(billiard,300,300,5.0)
+fem=FiniteElementMethod(billiard,300,300,5.0)
 x_grid,y_grid=fem.x_grid,fem.y_grid
 
-@time H=QuantumBilliards.FEM_Hamiltonian(fem)
+@time H=FEM_Hamiltonian(fem)
 println("Constructed Hamiltonian")
 
-Es,wavefunctions=QuantumBilliards.compute_fem_eigenmodes(fem,nev=99)
+Es,wavefunctions=compute_fem_eigenmodes(fem,nev=99)
 ks=sqrt.(abs.(Es))
 println("Constructed Wavefunctions")
 idxs=findall(x->x>1e-4,ks)
