@@ -1,15 +1,10 @@
-
-
-
-
-
 """
-    make_fundamental_equilateral_triangle(h; x0=0.0, y0=0.0, rot_angle=0.0)
+    make_fundamental_equilateral_triangle(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
 
 Constructs the fundamental domain of an equilateral triangle billiard with specified h length (from 0,0 -> h,0). The fundamental domain is defined by the points `(h, 0)`, rotated by 120 degrees, and `(0, 0)`.
 
 # Arguments
-- `h::T`: The height of the triangle from the center.
+- `h::T`: The side of the triangle from the center.
 - `x0::T=0.0`: The x-coordinate of the center of the triangle.
 - `y0::T=0.0`: The y-coordinate of the center of the triangle.
 - `rot_angle::T=0.0`: The rotation angle of the billiard table.
@@ -19,51 +14,58 @@ Constructs the fundamental domain of an equilateral triangle billiard with speci
   - `boundary::Vector{Union{LineSegment{T}, VirtualLineSegment{T}}}`: The boundary segments of the fundamental domain.
   - `corners::Vector{SVector{2,T}}`: The corner points of the fundamental domain.
 """
-function make_fundamental_equilateral_triangle(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) where {T<:Real}
-    origin = SVector(x0, y0)
-
+function make_fundamental_equilateral_triangle(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
+    origin=SVector(x0,y0)
     # Define the corners of the fundamental triangle
-    p1 = SVector(h, 0.0)
-    angle = 2π / 3  # 120 degrees in radians
-    p2 = SVector(
-        h * cos(angle),
-        h * sin(angle)
-    )
-    p3 = SVector(0.0, 0.0)
-
+    p1=SVector(h,T(0.0))
+    angle=2π/3  # 120 degrees in radians
+    p2=SVector(h*cos(angle),h*sin(angle))
+    p3=SVector(T(0.0),T(0.0))
     # Line segments for the fundamental triangle
-    side1 = LineSegment(p1, p2; origin=origin, rot_angle=rot_angle)         # Reflective side
-    side2 = VirtualLineSegment(p2, p3; origin=origin, rot_angle=rot_angle)  # Virtual side
-    side3 = VirtualLineSegment(p3, p1; origin=origin, rot_angle=rot_angle)  # Virtual side
-
+    side1=LineSegment(p1,p2;origin=origin,rot_angle=rot_angle)         # Reflective side
+    side2=VirtualLineSegment(p2,p3;origin=origin,rot_angle=rot_angle)  # Virtual side
+    side3=VirtualLineSegment(p3,p1;origin=origin,rot_angle=rot_angle)  # Virtual side
     # Counterclockwise order starting from p1
-    boundary = Union{LineSegment{T}, VirtualLineSegment{T}}[
-        side1, side2, side3
-    ]
-
-    corners = [p1, p2, p3]
-    return boundary, corners
-end
-
-function make_desymmetrized_full_equilateral_triangle(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) where {T<:Real}
-    origin = SVector(x0, y0)
-    # Define the corners of the fundamental triangle
-    p1 = SVector(h, 0.0)
-    angle = 2π / 3  # 120 degrees in radians
-    p2 = SVector(h*cos(angle),h*sin(angle))
-    side1 = LineSegment(p1, p2; origin=origin, rot_angle=rot_angle)
-    boundary = Union{LineSegment{T}}[side1]
-    corners = []
+    boundary=Union{LineSegment{T},VirtualLineSegment{T}}[side1,side2,side3]
+    corners=[p1,p2,p3]
     return boundary,corners
 end
 
 """
-    make_full_equilateral_triangle(h; x0=0.0, y0=0.0, rot_angle=0.0)
+    make_desymmetrized_full_equilateral_triangle(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
+
+Construct a fundamental boundary from only LineSegment as we need to construct the boundary function on this part for later rotations of this function.
+
+# Arguments
+- `h::T`: The side of the triangle from the center.
+- `x0::T=0.0`: The x-coordinate of the center of the triangle.
+- `y0::T=0.0`: The y-coordinate of the center of the triangle.
+- `rot_angle::T=0.0`: The rotation angle of the billiard table.
+
+# Returns
+- A tuple containing:
+  - `boundary::Vector{LineSegment{T}}`: The boundary segment (hypothenuse) of the desymmetrized full equilateral triangle.
+  - `corners::Vector{SVector{2,T}}`: The corner points of the fundamental domain (it has none so []).
+"""
+function make_desymmetrized_full_equilateral_triangle(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
+    origin=SVector(x0,y0)
+    # Define the corners of the fundamental triangle
+    p1=SVector(h,T(0.0))
+    angle=2π/3  # 120 degrees in radians
+    p2=SVector(h*cos(angle),h*sin(angle))
+    side1=LineSegment(p1,p2;origin=origin,rot_angle=rot_angle)
+    boundary=Union{LineSegment{T}}[side1]
+    corners=Vector{SVector{2,T}}()
+    return boundary,corners
+end
+
+"""
+    make_full_equilateral_triangle(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
 
 Constructs the full equilateral triangle billiard with specified h. The triangle is centered at `(x0, y0)` with one vertex at `(h, 0)`.
 
 # Arguments
-- `h::T`: The height of the triangle from the center.
+- `h::T`: The side of the triangle from the center.
 - `x0::T=0.0`: The x-coordinate of the center of the triangle.
 - `y0::T=0.0`: The y-coordinate of the center of the triangle.
 - `rot_angle::T=0.0`: The rotation angle of the billiard table.
@@ -73,26 +75,17 @@ Constructs the full equilateral triangle billiard with specified h. The triangle
   - `boundary::Vector{LineSegment{T}}`: The boundary segments of the full triangle.
   - `corners::Vector{SVector{2,T}}`: The corner points of the full triangle.
 """
-function make_full_equilateral_triangle(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) where {T<:Real}
-    origin = SVector(x0, y0)
-
+function make_full_equilateral_triangle(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
+    origin=SVector(x0,y0)
     # Define the corners of the full triangle
-    angles = [0, 2π / 3, 4π / 3]  # 0°, 120°, 240°
-    corners = [SVector(
-        x0 + h * cos(ang + rot_angle),
-        y0 + h * sin(ang + rot_angle)
-    ) for ang in angles]
-
+    angles=[0,2π/3,4π/3]  # 0°, 120°, 240°
+    corners=[SVector(x0+h*cos(ang+rot_angle),y0+h*sin(ang+rot_angle)) for ang in angles]
     # Line segments for the full triangle in counterclockwise order starting from (h, 0)
-    side1 = LineSegment(corners[1], corners[2]; origin=origin, rot_angle=rot_angle)
-    side2 = LineSegment(corners[2], corners[3]; origin=origin, rot_angle=rot_angle)
-    side3 = LineSegment(corners[3], corners[1]; origin=origin, rot_angle=rot_angle)
-
-    boundary = LineSegment{T}[
-        side1, side2, side3
-    ]
-
-    return boundary, corners
+    side1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
+    side2=LineSegment(corners[2],corners[3];origin=origin,rot_angle=rot_angle)
+    side3=LineSegment(corners[3],corners[1];origin=origin,rot_angle=rot_angle)
+    boundary=LineSegment{T}[side1,side2,side3]
+    return boundary,corners
 end
 
 """
@@ -103,6 +96,7 @@ Defines an equilateral triangle billiard with specified h. It includes both the 
 # Fields
 - `fundamental_boundary::Vector{Union{LineSegment{T}, VirtualLineSegment{T}}}`: The boundary segments of the fundamental triangle.
 - `full_boundary::Vector{LineSegment{T}}`: The boundary segments of the full triangle.
+- `desymmetrized_full_boundary::Vector{LineSegment{T}}`: The boundary segments of the desymmetrized full triangle.
 - `length::T`: The total length of the boundary.
 - `length_fundamental::T`: The total length of the fundamental boundary.
 - `area::T`: The total area of the triangle.
@@ -113,9 +107,9 @@ Defines an equilateral triangle billiard with specified h. It includes both the 
 - `angles_fundamental::Vector{T}`: The internal angles of the fundamental domain.
 """
 struct EquilateralTriangleBilliard{T} <: AbsBilliard where {T<:Real}
-    fundamental_boundary::Vector{Union{LineSegment{T}, VirtualLineSegment{T}}}
+    fundamental_boundary::Vector{Union{LineSegment{T},VirtualLineSegment{T}}}
     full_boundary::Vector{LineSegment{T}}
-    desymmetrized_full_boundary::Vector{Union{LineSegment{T}}}
+    desymmetrized_full_boundary::Vector{LineSegment{T}}
     length::T
     length_fundamental::T
     area::T
@@ -127,12 +121,12 @@ struct EquilateralTriangleBilliard{T} <: AbsBilliard where {T<:Real}
 end
 
 """
-    TriangleBilliard(h; x0=0.0, y0=0.0, rot_angle=0.0)
+    EquilateralTriangleBilliard(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
 
 Constructs an equilateral triangle billiard with specified h.
 
 # Arguments
-- `h::T`: The height of the triangle from the center.
+- `h::T`: The side of the triangle from the center.
 - `x0::T=0.0`: The x-coordinate of the center of the triangle.
 - `y0::T=0.0`: The y-coordinate of the center of the triangle.
 - `rot_angle::T=0.0`: The rotation angle of the billiard table.
@@ -140,21 +134,17 @@ Constructs an equilateral triangle billiard with specified h.
 # Returns
 - An instance of the `EquilateralTriangleBilliard` struct.
 """
-function EquilateralTriangleBilliard(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) where {T<:Real}
-    fundamental_boundary, corners = make_fundamental_equilateral_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
-    full_boundary, _ = make_full_equilateral_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
-    desymmetrized_full_boundary,_=make_desymmetrized_full_equilateral_triangle(h; x0=x0, y0=y0, rot_angle=rot_angle)
-    side_length = sum([line.length for line in fundamental_boundary if line isa LineSegment]) # from the real one extract the length of the side
-    # Calculate area and lengths
-    area = (sqrt(3) / 4) * side_length^2
-    area_fundamental = area / 3  # Fundamental domain is 1/3 of the full triangle
-    length = 3 * side_length
-    length_fundamental = symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
-
-    # Internal angles
-    angles = [π / 3, π / 3, π / 3]  # 60 degrees each
-    angles_fundamental = [2*π / 3, π / 6, π / 6] 
-
+function EquilateralTriangleBilliard(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T)) where {T<:Real}
+    fundamental_boundary,corners=make_fundamental_equilateral_triangle(h;x0=x0,y0=y0,rot_angle=rot_angle)
+    full_boundary,_=make_full_equilateral_triangle(h;x0=x0,y0=y0,rot_angle=rot_angle)
+    desymmetrized_full_boundary,_=make_desymmetrized_full_equilateral_triangle(h;x0=x0,y0=y0,rot_angle=rot_angle)
+    side_length=sum([line.length for line in fundamental_boundary if line isa LineSegment]) # from the real one extract the length of the side
+    area=(sqrt(3)/4)*side_length^2  # Calculate area and lengths
+    area_fundamental=area/3  # Fundamental domain is 1/3 of the full triangle
+    length=3*side_length
+    length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
+    angles=[π/3,π/3,π/3]  # 60 degrees each, internal angles
+    angles_fundamental=[2*π/3,π/6,π/6] 
     return EquilateralTriangleBilliard(
         fundamental_boundary,
         full_boundary,
@@ -166,8 +156,7 @@ function EquilateralTriangleBilliard(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.
         side_length,
         corners,
         angles,
-        angles_fundamental
-    )
+        angles_fundamental)
 end
 
 """
@@ -185,9 +174,9 @@ Constructs an equilateral triangle billiard and a symmetry-adapted CornerAdapted
 # Returns
 - A tuple with the triangle billiard and the basis of real plane waves.
 """
-function make_equilateral_triangle_and_basis(h::T; x0::T=0.0, y0::T=0.0, rot_angle::T=0.0) :: Tuple{EquilateralTriangleBilliard, CornerAdaptedFourierBessel} where {T<:Real}
-    triangle = EquilateralTriangleBilliard(h; x0=x0, y0=y0, rot_angle=rot_angle)
-    symmetry = Vector{Any}([Rotation(3, -1)])  # C3 rotational symmetry
-    basis = CornerAdaptedFourierBessel(10, 2*pi/3, SVector(zero(T), zero(T)), 0.0, symmetry) # just the origin, rotation angle and symmetry for correct rotations
-    return triangle, basis
+function make_equilateral_triangle_and_basis(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T))::Tuple{EquilateralTriangleBilliard,CornerAdaptedFourierBessel} where {T<:Real}
+    triangle=EquilateralTriangleBilliard(h;x0=x0,y0=y0,rot_angle=rot_angle)
+    symmetry=Vector{Any}([Rotation(3,-1)])  # C3 rotational symmetry
+    basis=CornerAdaptedFourierBessel(10,2*pi/3,SVector(zero(T),zero(T)),zero(T),symmetry) # just the origin, rotation angle and symmetry for correct rotations
+    return triangle,basis
 end
