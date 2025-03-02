@@ -351,7 +351,7 @@ function compute_fem_eigenmodes(fem::FiniteElementMethod{T};nev::Int=100,maxiter
 end
 
 """
-    compute_boundary_tension(ψ::Matrix{T}, boundary_mask::Matrix{Bool}) -> T
+    compute_boundary_tension(ψ::Matrix{T}, boundary_mask::Matrix{Bool}) -> T where {T<:Real}
 
 Computes the boundary tension of a wavefunction `ψ` by summing its squared magnitude only at the boundary points. 
 It's purpose is to gauge the "badness" of the resulting wavefunction. Ideally should be 0.0.
@@ -363,7 +363,7 @@ It's purpose is to gauge the "badness" of the resulting wavefunction. Ideally sh
 # Returns
 - `T`: boundary tension, computed as `∑ |ψ(i, j)|²` over the boundary.
 """
-function compute_boundary_tension(ψ::Matrix{T},boundary_mask::Matrix{Bool})
+function compute_boundary_tension(ψ::Matrix{T},boundary_mask::Matrix{Bool}) where {T<:Real}
     ψ.=ψ./norm(ψ)
     return sum(abs2.(ψ)[boundary_mask])  # Sum |ψ|² only at boundary points
 end
