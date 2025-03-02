@@ -148,7 +148,7 @@ function compute_extended_index(x_grid::Vector,y_grid::Vector,mask::Vector{Bool}
             # Check if current node is inside or has a neighbor that is inside:
             inside=mask[lin]
             if !inside
-                for (di,dj) in [(1,0),(-1,0),(0,1),(0,-1)] # 4 possible directions to go in 2D
+                for (di,dj) in [(1,0),(-1,0),(0,1),(0,-1)] # 4 possible directions to go in 2D aka 5 point stencil
                     i2,j2=i+di,j+dj
                     if i2≥1 && i2≤Nx && j2≥1 && j2≤Ny
                         if mask[idx(i2,j2)]

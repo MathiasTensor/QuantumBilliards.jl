@@ -198,6 +198,38 @@ function compute_interior_index(mask::Vector{Bool})
 end
 
 """
+    compute_boundary(interior_idx::Vector{Ti},Nx::Ti,Ny::Ti) -> Matrix{Bool} where {Ti<:Integer}
+
+Computes the boundary of a domain given the `interior_idx` matrix, which is derived from `compute_interior_index(mask)`. 
+
+A boundary cell is any interior cell (value > 0) that has at least one neighbor that is an exterior cell (value = 0).
+
+# Arguments
+- `interior_idx::Vector{Ti}`: A **flattened** 1D vector of size `Nx * Ny`, where each interior node is assigned a unique index (> 0) and exterior nodes are marked as `0`.
+- `Nx::Ti`: Number of grid points in the x-direction.
+- `Ny::Ti`: Number of grid points in the y-direction.
+
+# Returns
+- `boundary::Matrix{Bool}`: A `Nx × Ny` Boolean matrix where `true` marks boundary points and `false` marks non-boundary points.
+"""
+function compute_boundary(interior_idx::Vector{Ti},Nx::Ti,Ny::Ti) where {Ti<:Integer}
+    boundary=falses(Nx, Ny) 
+    interior=reshape(interior_idx,Nx,Ny)
+    for j in 1:Ny, i in 1:Nx
+        if interior[i,j] > 0  # Only check if it's an interior point
+            # Check if any neighbor is outside (interior_idx = 0)
+            if (i>1 && interior[i-1,j]==0) ||  # Left
+               (i<Nx && interior[i+1,j]==0) ||  # Right
+               (j>1 && interior[i,j-1]==0) ||  # Below
+               (j<Ny && interior[i,j+1]==0)     # Above
+                boundary[i,j]=true
+            end
+        end
+    end
+    return boundary::Matrix{Bool}
+end
+
+"""
     FiniteElementMethod(billiard::Bi, Nx::Int, Ny::Int, b::T; ℏ::T=1.0, m::T=1.0, fundamental=false, k_max=100.0) where {T<:Real, Bi<:AbsBilliard}
 
 Initializes a FEM solver for a quantum billiard.
@@ -316,4 +348,22 @@ function compute_fem_eigenmodes(fem::FiniteElementMethod{T};nev::Int=100,maxiter
         end
     end
     return evals,wavefunctions
+end
+
+"""
+    compute_boundary_tension(ψ::Matrix{T}, boundary_mask::Matrix{Bool}) -> T
+
+Computes the boundary tension of a wavefunction `ψ` by summing its squared magnitude only at the boundary points. 
+It's purpose is to gauge the "badness" of the resulting wavefunction. Ideally should be 0.0.
+
+# Arguments
+- `ψ::Matrix{T}`: A Nx × Ny matrix representing the wavefunction over the computational domain -> from `compute_fem_eigenmodes`
+- `boundary_mask::Matrix{Bool}`: `Matrix` of the same size as `ψ`, where `true` marks boundary points and `false` marks interior/exterior points.
+
+# Returns
+- `T`: boundary tension, computed as `∑ |ψ(i, j)|²` over the boundary.
+"""
+function compute_boundary_tension(ψ::Matrix{T},boundary_mask::Matrix{Bool})
+    ψ.=ψ./norm(ψ)
+    return sum(abs2.(ψ)[boundary_mask])  # Sum |ψ|² only at boundary points
 end

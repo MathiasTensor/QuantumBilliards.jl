@@ -165,7 +165,7 @@ export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_
 include("spectra/antiscar_mushroom.jl")
 export calculate_bb_bbox_localization_mushroom, create_husimi_localization_mat, calculate_overlap, get_bb_localization_indexes
 include("solvers/gridmethods/fdm.jl")
-export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes
+export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes, compute_boundary, compute_boundary_tension
 include("solvers/gridmethods/ϕ_fdm.jl")
 export compute_extended_index, phiFD_Hamiltonian, compute_ϕ_fem_eigenmodes
 end
