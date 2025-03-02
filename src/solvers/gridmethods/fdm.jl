@@ -1,38 +1,6 @@
 using LinearAlgebra, SparseArrays, Arpack
 
 """
-EXAMPLE CODE: 
-
-using QuantumBilliards, CairoMakie
-
-billiard,_=make_rectangle_and_basis(2.0,1.0)
-billiard,_=make_circle_and_basis(1.0)
-billiard,_=make_prosen_and_basis(0.4)
-billiard,_=make_mushroom_and_basis(1.0,1.0,1.0)
-billiard,_=make_generalized_sinai_and_basis()
-billiard,_=make_ellipse_and_basis(2.0,1.0)
-
-fem=FiniteElementMethod(billiard,300,300,5.0)
-x_grid,y_grid=fem.x_grid,fem.y_grid
-
-@time H=FEM_Hamiltonian(fem)
-println("Constructed Hamiltonian")
-
-Es,wavefunctions=compute_fem_eigenmodes(fem,nev=99)
-ks=sqrt.(abs.(Es))
-println("Constructed Wavefunctions")
-idxs=findall(x->x>1e-4,ks)
-ks=ks[idxs]
-wavefunctions=wavefunctions[idxs]
-println(ks)
-
-wavefunctions=[abs2.(wf) for wf in wavefunctions]
-
-f=QuantumBilliards.plot_wavefunctions_BATCH(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=false)
-# display or save Figure()
-"""
-
-"""
 Comparisosn of eigenvalues obtained from standard FDM using the 5 point stencil
 n  | Numerical  | Analytical | Abs Error | Rel Error | % Relative Error
 --------------------------------------------------
