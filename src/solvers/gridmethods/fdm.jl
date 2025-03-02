@@ -213,7 +213,8 @@ A boundary cell is any interior cell (value > 0) that has at least one neighbor 
 - `boundary::Matrix{Bool}`: A `Nx × Ny` Boolean matrix where `true` marks boundary points and `false` marks non-boundary points.
 """
 function compute_boundary(interior_idx::Vector{Ti},Nx::Ti,Ny::Ti) where {Ti<:Integer}
-    boundary=falses(Nx, Ny) 
+    boundary=Matrix{Bool}(undef,Nx,Ny)
+    boundary.=false
     interior=reshape(interior_idx,Nx,Ny)
     for j in 1:Ny, i in 1:Nx
         if interior[i,j] > 0  # Only check if it's an interior point
