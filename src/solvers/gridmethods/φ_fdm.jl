@@ -37,12 +37,12 @@ billiard,_=make_ellipse_and_basis(w_e,h_e)
 
 # PROSEN
 #=
-function prosen_psi(x,y,a)
+function prosen_phi(x,y,a)
     φ=atan(y,x)+pi
     r=1.0+a*cos(4*φ)
     return x^2+y^2<r^2
 end
-phi(x,y)=prosen_psi(x,y,0.4)
+phi(x,y)=prosen_phi(x,y,0.4)
 billiard,_=make_prosen_and_basis(0.4)
 =#
 
