@@ -785,11 +785,140 @@ function uncertanty_y(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}
     return results
 end
 
+"""
+    create_momentum_grid(N, d, ℏ)
+
+Generates a momentum grid for a given number of points `N` and spatial step `d`.
+The momentum values are calculated using FFT frequencies and converted to
+momentum space via: p = 2πℏ * frequency.
+"""
+function create_momentum_grid(N::Int, d::Real, ℏ::Real)
+    # fftfreq gives frequencies in cycles per unit length
+    freqs = fftshift(fftfreq(N, 1/d))
+    return freqs * 2π * ℏ
+end
+
+"""
+    uncertainty_px(cn, ψ)
+
+Calculates the uncertainty in momentum in the x-direction for a given 2D wavefunction ψ.
+
+Arguments:
+- `cn`: A structure with parameters `Nx`, `Ny`, `dx`, `dy`, and ℏ.
+- `ψ`: A 2D matrix representing the spatial wavefunction.
+
+Returns:
+- The standard deviation (uncertainty) in momentum in the x direction.
+"""
+function uncertanty_px(cn::Crank_Nicholson{T}, ψ::Matrix{Complex{T}}) where {T<:Real}
+    # Extract grid parameters
+    Nx, Ny = cn.Nx, cn.Ny
+    dx, dy = cn.dx, cn.dy
+    ℏ = cn.ℏ
+
+    # Optionally, choose unitary normalization for the FFT.
+    norm_factor = sqrt(Nx * Ny)
+
+    # Compute the FFT of the wavefunction (momentum-space wavefunction)
+    # Multiply by (dx * dy) for correct integration measure and normalize.
+    ψ_k = fftshift(fft(ψ)) * (dx * dy) / norm_factor
+
+    # Compute the probability density in momentum space
+    P_k = abs2.(ψ_k)
+    # Normalize the momentum probability distribution
+    P_k_norm = P_k ./ sum(P_k)
+
+    # Create momentum grids in the x and y directions
+    kx = create_momentum_grid(Nx, dx, ℏ)  # p_x values
+    ky = create_momentum_grid(Ny, dy, ℏ)    # p_y values
+
+    # Determine the momentum-space spacing in the y-direction
+    Δky = ky[2] - ky[1]
+
+    # Marginal probability distribution for p_x (integrate over p_y)
+    P_px = sum(P_k_norm, dims=2) * Δky
+
+    # Compute expectation values for p_x
+    p_x    = sum(kx .* P_px)
+    p_x² = sum((kx .^ 2) .* P_px)
+
+    # Calculate the uncertainty in p_x
+    Δp_x = sqrt(p_x² - p_x^2)
+
+    return Δp_x
+end
+
+"""
+    uncertainty_py(cn, ψ)
+
+Calculates the uncertainty in momentum in the y-direction for a given 2D wavefunction ψ.
+
+Arguments:
+- `cn`: A structure containing parameters `Nx`, `Ny`, `dx`, `dy`, and ℏ.
+- `ψ`: A 2D matrix representing the spatial wavefunction.
+
+Returns:
+- The standard deviation (uncertainty) in momentum in the y direction.
+"""
+function uncertanty_py(cn::Crank_Nicholson{T}, ψ::Matrix{Complex{T}}) where {T<:Real}
+    # Extract grid parameters
+    Nx, Ny = cn.Nx, cn.Ny
+    dx, dy = cn.dx, cn.dy
+    ℏ = cn.ℏ
+
+    # Define unitary normalization factor
+    norm_factor = sqrt(Nx * Ny)
+    
+    # Compute the momentum-space wavefunction using FFT and proper normalization
+    ψ_k = fftshift(fft(ψ)) * (dx * dy) / norm_factor
+    
+    # Compute the probability density in momentum space
+    P_k = abs2.(ψ_k)
+    # Normalize the momentum probability distribution
+    P_k_norm = P_k ./ sum(P_k)
+    
+    # Create momentum grids in the x and y directions
+    kx = create_momentum_grid(Nx, dx, ℏ)  # p_x values
+    ky = create_momentum_grid(Ny, dy, ℏ)    # p_y values
+    
+    # Determine the momentum-space spacing in the x-direction
+    Δkx = kx[2] - kx[1]
+    
+    # Marginal probability distribution for p_y by summing over p_x
+    P_py = sum(P_k_norm, dims=1) * Δkx  # integration over kx
+    
+    # Compute expectation values for p_y
+    # Note: P_py is a 1×Ny array; convert it to a vector for convenience.
+    P_py_vec = vec(P_py)
+    p_y    = sum(ky .* P_py_vec)
+    p_y² = sum((ky .^ 2) .* P_py_vec)
+    
+    # Calculate and return the uncertainty in p_y
+    return sqrt(p_y² - p_y^2)
+end
+
+function uncertanty_px(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    results=Vector{T}(undef,length(ψ_list))
+    Threads.@threads for i in eachindex(ψ_list)
+        results[i]=uncertanty_px(cn,ψ_list[i])
+    end
+    return results
+end
+
+function uncertanty_py(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    results=Vector{T}(undef,length(ψ_list))
+    Threads.@threads for i in eachindex(ψ_list)
+        results[i]=uncertanty_py(cn,ψ_list[i])
+    end
+    return results
+end
+
+#=
 function uncertanty_px(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
     Nx,Ny=cn.Nx,cn.Ny
     dx,dy=cn.dx,cn.dy
     ℏ=cn.ℏ
-    ψ_k=fftshift(fft(ψ))*dx*dy/sqrt(2*pi)  # Momentum-space wavefunction
+    ψ_k=fftshift(fft(ψ))*dx*dy  # Momentum-space wavefunction
     P_k=abs2.(ψ_k)
     P_k_norm=P_k./sum(P_k)  # Normalize the probability distribution
     # Define momentum grid (FFT frequencies scaled by 2π/ℏ)
@@ -803,7 +932,7 @@ function uncertanty_py(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:
     Nx,Ny=cn.Nx,cn.Ny
     dx,dy=cn.dx,cn.dy
     ℏ=cn.ℏ
-    ψ_k=fftshift(fft(ψ))*dx*dy/sqrt(2*pi)  # Momentum-space wavefunction
+    ψ_k=fftshift(fft(ψ))*dx*dy  # Momentum-space wavefunction
     P_k=abs2.(ψ_k)
     P_k_norm=P_k./sum(P_k)  # Normalize the probability distribution
     # Define momentum grid (FFT frequencies scaled by 2π/ℏ)
@@ -844,3 +973,5 @@ function uncertanty_py(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}
     end
     return uncertainties_py
 end
+
+=#
