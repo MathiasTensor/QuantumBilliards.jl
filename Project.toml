@@ -64,7 +64,7 @@ SpecialFunctions = "2.4.0"
 LoggingExtras = "1.0.3"
 JLD2 = "0.5.4"
 LsqFit = "0.15.0"
-SparseArrays = "1.11.0"
+SparseArrays = "1.10, 1.11"
 Arpack = "0.5.4"
 IterativeSolvers = "0.9.4"
 
