@@ -625,7 +625,7 @@ Evolves the wavefunction ψ0 under the time-dependent Schrodinger equation using
 """
 function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5,threshold=1e-6)::Tuple{Vector{Matrix},Vector{Matrix{Complex{T}}},Vector{T}} where {T<:Real}
     ψ=flatten_fem_wavepacket(cn,ψ0)
-    dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;mask=cn.pts_mask;Q=cn.fem.Q;
+    dx,dy=cn.dx,cn.dy;mask=cn.pts_mask;Q=cn.fem.Q;
     I_mat=sparse(I,Q,Q)
     A=I_mat+im*cn.dt/(2*cn.ℏ)*H
     B=I_mat-im*cn.dt/(2*cn.ℏ)*H;

@@ -34,6 +34,7 @@ JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
+IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
 
 
 [compat]
@@ -65,6 +66,7 @@ JLD2 = "0.5.4"
 LsqFit = "0.15.0"
 SparseArrays = "1.11.0"
 Arpack = "0.5.4"
+IterativeSolvers = "0.9.4"
 
 
 [extras]
