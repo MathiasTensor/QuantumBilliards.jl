@@ -707,8 +707,10 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Vector
     ax=Axis(fig[1,1],title="|ψ(x,y)|²")
     x_grid,y_grid=cn.x_grid,cn.y_grid
     hmap=heatmap!(ax,x_grid,y_grid,snapshots[1],colormap=:balance,nan_color=:white)
+    progress=Progress(frames;desc="Rendering animation...")
     record(fig,filename,1:frames,framerate=framerate) do i
         hmap[3]=snapshots[i]
+        next!(progress)
     end
     println("Animation saved as $(filename)")
 end
@@ -738,9 +740,11 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{
     ax2=Axis(fig[1,2],title="Shannon Entropy Evolution",xlabel="Time Step * $(save_after_iterations)",ylabel="Shannon Entropy",width=800,height=600)
     xlims!(ax2,0.0,ceil(Int,cn.Nt/save_after_iterations))  # Fixed x-axis range
     ylims!(ax2,minimum(shannon_entropy_values),maximum(shannon_entropy_values)*1.2)
+    progress=Progress(frames;desc="Rendering animation...")
     record(fig,filename,1:frames,framerate=framerate) do i
         hmap[3]=snapshots[i]
         scatter!(ax2,collect(1:i),shannon_entropy_values[1:i],color=:blue,linewidth=3)
+        next!(progress)
     end
     println("Animation saved as $(filename)")
 end
