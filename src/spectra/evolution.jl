@@ -839,8 +839,8 @@ function uncertainty_p(cn::Crank_Nicholson{T}, ψ::Matrix{Complex{T}}) where {T<
     bra_px_sq_ket=sum((kx.^2).*P_px)
     bra_py_sq_ket=sum((ky.^2).*P_py)
     # Compute standard deviations of momentum in x and y directions
-    Δp_x=sqrt(bra_px_sq_ket-bra_px_ket^2)
-    Δp_y=sqrt(bra_py_sq_ket-bra_py_ket^2)
+    Δp_x=sqrt(abs(bra_px_sq_ket-bra_px_ket^2))
+    Δp_y=sqrt(abs(bra_py_sq_ket-bra_py_ket^2))
     return Δp_x,Δp_y
 end
 

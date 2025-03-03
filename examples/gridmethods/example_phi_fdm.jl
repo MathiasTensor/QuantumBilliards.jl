@@ -43,6 +43,8 @@ billiard,_=make_prosen_and_basis(0.4)
 fundamental=false
 =#
 
+# EQUILATERAL TRIANGLE
+#=
 function equilateral_triangle_phi(x,y,h,x0=0.0,y0=0.0,rot_angle=0.0)
     p1=SVector(h,0.0) # Right vertex
     angle=2π/3                   
@@ -68,7 +70,30 @@ end
 phi(x,y)=equilateral_triangle_phi(x,y,1.0)
 billiard,_=make_equilateral_triangle_and_basis(1.0)
 fundamental=true
+=#
 
+# STADIUM 
+
+function stadium_phi(x,y,half_width,height)
+    radius=height # Radius of the semicircles
+    # Case 1: Inside the rectangle part
+    if abs(x)<=half_width && abs(y)<=radius
+        return true
+    end
+    # Case 2: Inside the semicircles (left or right)
+    if abs(x)>half_width
+        circle_x=half_width*(x<0 ? -1 : 1)  # Closest semicircle center
+        distance_to_circle=sqrt((x-circle_x)^2+y^2)
+        return distance_to_circle<=radius  # Inside semicircle
+    end
+    # Outside the stadium
+    return false
+end
+half_width=1.0 # the full width
+radius=1.0
+phi(x,y)=stadium_phi(x,y,half_width,radius)
+billiard,_=make_stadium_and_basis(half_width,radius=radius)
+fundamental=false
 
 
 # Create the FDM struct
