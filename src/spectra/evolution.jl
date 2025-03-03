@@ -813,7 +813,7 @@ function uncertanty_py(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:
     return sqrt(bra_py_sq_ket-bra_py_ket^2)  # Δp_y
 end
 
-function uncertainty_px(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+function uncertanty_px(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
     Nx,dx,ℏ=cn.Nx,cn.dx,cn.ℏ
     dx,dy=cn.dx,cn.dy
     kx=fftshift(fftfreq(Nx,dx))*2π*ℏ
@@ -829,7 +829,7 @@ function uncertainty_px(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}
     return uncertainties_px
 end
 
-function uncertainty_py(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+function uncertanty_py(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
     Ny,dy,ℏ=cn.Ny,cn.dy,cn.ℏ
     dx,dy=cn.dx,cn.dy
     ky=fftshift(fftfreq(Ny,dy))*2π*ℏ
