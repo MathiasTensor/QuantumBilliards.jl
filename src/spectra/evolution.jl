@@ -1,4 +1,4 @@
-using Bessels, LinearAlgebra, ProgressMeter, FFTW, SparseArrays, IterativeSolvers
+using Bessels, LinearAlgebra, ProgressMeter, FFTW, SparseArrays
 include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
 include("../solvers/gridmethods/fdm.jl")
@@ -428,6 +428,7 @@ where we remove the indexes that defined the outside boundary. This eliminates t
 
 ------------------------------------------------------------------------------------
 """
+
 struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard} 
     billiard::Bi
     fem::FiniteElementMethod{T}
@@ -448,6 +449,25 @@ struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard}
     Nt::Integer # Number of time steps
 end
 
+"""
+    Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=1000,Ny::Integer=1000,dt=0.005) where {Bi<:AbsBilliard}
+
+Create a new `Crank_Nicholson` object with the given parameters. This is a constructor function that under the hood call `FiniteElementMethod` to help construct the `Hamiltonian` matrix and the interior mask for the billiard.
+
+# Arguments
+- `billiard`: The billiard to simulate.
+- `Nt`: The number of time steps.
+- `fundamental::Bool=true`: Whether to use the fundamental boundary conditions.
+- `k_max`: The maximum wavenumber for the Gaussian wave packet -> used for precise determination of the x_lim and y_lim.
+- `ℏ`: Reduced Planck's constant.
+- `m`: Particle mass.
+- `Nx::Integer=1000`: Grid points in x.
+- `Ny::Integer=1000`: Grid points in y.
+- `dt::T=0.005`: Time step.
+
+# Returns
+- A new `Crank_Nicholson` object.
+"""
 function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=100.0,ℏ=1.0,m=1.0,Nx::Integer=1000,Ny::Integer=1000,dt=0.005) where {Bi<:AbsBilliard}
     if fundamental
         boundary=billiard.fundamental_boundary
@@ -637,7 +657,6 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
         mul!(b,B,ψ)  # Compute B * ψ efficiently
         ψ=Afactor\b  # Solve linear system (main expensive step)
-        #ψ=gmres(A,b)
         if t % save_after_iterations==0
             raw_snapshots[snap_idx]=copy(ψ)  # Store raw wavefunction vector
             snap_idx+=1
