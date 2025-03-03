@@ -606,7 +606,7 @@ function reconstruct_fem_wavepacket(ψ_interior::Vector{Complex{T}}, cn::Crank_N
             ψ_full[i]=ψ_interior[interior_idx[i]]  # Map back to full grid
         end
     end
-    return ψ_full./norm(ψ_full)
+    return ψ_full # ./nomr(ψ_full) is not neccesery since the ψ_interior is already normalized on the interior and we are already only recreating interior points so the sum is ≈1.0
 end
 
 """
@@ -656,7 +656,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     snap_idx=1
     @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
         mul!(b,B,ψ)  # Compute B * ψ efficiently
-        ψ=Afactor\b  # Solve linear system (main expensive step)
+        ψ=Afactor\b  # Solve linear system (main expensive step). For large matrices the default solve is much faster than calling gmres
         if t % save_after_iterations==0
             raw_snapshots[snap_idx]=copy(ψ)  # Store raw wavefunction vector
             snap_idx+=1
@@ -769,16 +769,16 @@ function uncertanty_y(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:R
     return sqrt(bra_y_sq_ket-bra_y_ket^2)
 end
 
-function uncertainty_x(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
-    ψ_list=[abs2.(ψ) for ψ in ψ_list]
-    x,dx,dy=cn.x_grid,cn.dx,cn.dy
-    return [sqrt(sum(x'.^2 .* sum(P,dims=2))*dx*dy - (sum(x' .* sum(P,dims=2))*dx*dy)^2) for P in ψ_list]
+function uncertainty_x(cn::Crank_Nicholson{T}, ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    x, dx, dy = cn.x_grid, cn.dx, cn.dy
+    return [sqrt(sum(x'.^2 .* sum(abs2.(ψ), dims=2)) * dx * dy - 
+                 (sum(x' .* sum(abs2.(ψ), dims=2)) * dx * dy)^2) for ψ in ψ_list]
 end
 
-function uncertainty_y(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
-    ψ_list=[abs2.(ψ) for ψ in ψ_list]
-    y,dx,dy=cn.y_grid,cn.dx,cn.dy
-    return [sqrt(sum(y.^2 .* sum(P,dims=1))*dx*dy - (sum(y .* sum(P,dims=1))*dx*dy)^2) for P in ψ_list]
+function uncertainty_y(cn::Crank_Nicholson{T}, ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+    y, dx, dy = cn.y_grid, cn.dx, cn.dy
+    return [sqrt(sum(y.^2 .* sum(abs2.(ψ), dims=1)) * dx * dy - 
+                 (sum(y .* sum(abs2.(ψ), dims=1)) * dx * dy)^2) for ψ in ψ_list]
 end
 
 function uncertanty_px(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
