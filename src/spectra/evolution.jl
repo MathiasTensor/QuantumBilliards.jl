@@ -769,18 +769,18 @@ function uncertanty_y(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:R
     return sqrt(bra_y_sq_ket-bra_y_ket^2)
 end
 
-function uncertainty_x(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+function uncertanty_x(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
     results=Vector{T}(undef,length(ψ_list))
     Threads.@threads for i in eachindex(ψ_list)
-        results[i]=uncertainty_x(cn,ψ_list[i])
+        results[i]=uncertanty_x(cn,ψ_list[i])
     end
     return results
 end
 
-function uncertainty_y(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
+function uncertanty_y(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
     results=Vector{T}(undef,length(ψ_list))
     Threads.@threads for i in eachindex(ψ_list)
-        results[i]=uncertainty_y(cn,ψ_list[i])
+        results[i]=uncertanty_y(cn,ψ_list[i])
     end
     return results
 end
