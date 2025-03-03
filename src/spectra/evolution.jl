@@ -378,9 +378,9 @@ where:
 
 The Hamiltonian matrix is then:
 
-    H = - (ℏ² / 2m) * (∇²) + V_op
+    H = - (ℏ² / 2m) * (∇²) 
 
-where V_op is the potential energy matrix.
+where we remove the indexes that defined the outside boundary. This eliminates the necessity for the use of V0 in the calculation.
 
 ------------------------------------------------------------------------------------
 4. IMPLEMENTATION DETAILS
@@ -480,6 +480,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
     end
 end
 
+### UNUSED ###
 """
     build_1D_Laplacian(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
 
@@ -505,7 +506,7 @@ M=  ⎢  0   0   1  -2  ⋯   0 ⎥   (Nx × Nx)
 # Returns
 - `SparseMatrixCSC`: A sparse matrix representing the 1D Laplacian operator.
 """
-function build_1D_Laplacian(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
+function build_1D_Laplacian_LEGACY(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
     return spdiagm(0=>fill(-2.0,N), 1=>fill(1.0,N-1), -1 => fill(1.0,N-1))/d^2
 end
 
@@ -521,79 +522,65 @@ Construct the Boundary as a Sparse Matrix since it will only have diagonal eleme
 # Returns
 - `SparseMatrixCSC`: A sparse matrix representing the infinite potential boundary condition.
 """
-function boundary_condition_infinite_potential(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
+function boundary_condition_infinite_potential_LEGACY(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
     V=V0.*(1 .-cn.pts_mask)
     V_default=spdiagm(0=>vec(V)) 
     return V_default
 end
 
+### END UNUSED ###
+
 """
     Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
 
-Constructs the Sparse matrix Hamiltonian from the potential energy (default just the boudnary infinite potential) and the 2D Laplacian contructed from the sum of Kroenecker products of the 1D Laplacians.
+Constructs the Sparse matrix Hamiltonian from the 2D Laplacian contructed from the sum of Kroenecker products of the 1D Laplacians and with removed indexes for the outside of the boundary. Basically calls FEM_Hamiltonian and returns it with 0 potential.
 
 # Arguments
 - `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
-- `V0=1e12`: The effective "infinite" potential energy value for the billiard boundary condition. Must be a very large value to prevent leakage to the outside.
 
 # Returns
-- `SparseMatrixCSC`: A sparse matrix representing the Hamiltonian.
+- `SparseMatrixCSC`: A sparse matrix representing the Hamiltonian only in the interior grid.
 """
-function Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
-    dx,dy=cn.dx,cn.dy
-    Nx,Ny=cn.Nx,cn.Ny
-    xlim,ylim=cn.xlim,cn.ylim
-    Dxx::SparseMatrixCSC=build_1D_Laplacian(Nx,dx)
-    Dyy::SparseMatrixCSC=build_1D_Laplacian(Ny,dy)
-    I_x::SparseMatrixCSC=sparse(I,Nx,Nx)
-    I_y::SparseMatrixCSC=sparse(I,Ny,Ny)
-    Laplacian_2D::SparseMatrixCSC=kron(I_y,Dxx)+kron(Dyy,I_x)
-    x=LinRange(xlim[1],xlim[2],Nx)
-    y=LinRange(ylim[1],ylim[2],Ny)
-    X=repeat(reshape(x,Nx,1),1,Ny)
-    Y=repeat(reshape(y,1,Ny),Nx,1)
-    V_op::SparseMatrixCSC=boundary_condition_infinite_potential(cn,V0=V0)
-    return -(cn.ℏ)^2/(2*cn.m)*Laplacian_2D+V_op
+function Hamiltonian(cn::Crank_Nicholson{T})::SparseMatrixCSC where {T<:Real}
+    return FEM_Hamiltonian(cn.fem)
 end
 
 """
-    Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseMatrixCSC where {T<:Real}
+    flatten_fem_wavepacket(fem::FiniteElementMethod, ψ_full::Matrix{Complex{T}}) -> Vector{Complex{T}}
 
-Construct the Sparse matrix Hamiltonian from the non-trivial potential energy and the 2D Laplacian contructed from the sum of Kroenecker products of the 1D Laplacians.
+Extracts and flattens the wavepacket from the full grid to only interior points for Crank-Nicholson only for the interior points. This reduces computation cost and removed the requirement for the V0 to be implemented in Crank-Nicholson that would case ill-conditioned H evolution. This also ensured that the flattened wavepacket will have the correct dimension to allow multiplication with the Hamitlonian matrix with only interior points.
 
-# Arguments
-- `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
-- `V::SparseMatrixCSC`: A sparse matrix representing the non-trivial potential energy.
-- `V0=1e12`: The effective "infinite" potential energy value for the billiard boundary condition. Must be a very large value to prevent leakage to the outside.
+# Arguments:
+- `cn::Crank_Nicholson`: The `Crank_Nicholson` instance which contains the relevant `FiniteElementMethod` struct which holds `interior_idx`.
+- `ψ0_full::Matrix{Complex{T}}`: The full Nx × Ny grid wavepacket to be reduced to only interior points.
 
-# Returns
-- `SparseMatrixCSC`: A sparse matrix representing the Hamiltonian.
+# Returns:
+- `ψ0::Vector{Complex{T}}`: Flattened wave packet for FEM (only on interior points).
 """
-function Hamiltonian(cn::Crank_Nicholson{T},V::SparseMatrixCSC;V0=1e12)::SparseMatrixCSC where {T<:Real}
-    H=Hamiltonian(cn,V0=V0)
-    @assert size(H)==size(V) "The unperturbed Hamiltonian matrix and the external potential must be of the same size."
-    return H+V
+function flatten_fem_wavepacket(cn::Crank_Nicholson{T},ψ0_full::Matrix{Complex{T}}) where {T<:Real}
+    interior_idx=cn.fem.interior_idx # Interior index mapping (Nx × Ny) → (Q)
+    ψ0=ψ0_full[interior_idx.>0]  # Keeps only interior indices (inner ones have interior_idx[i]>0 for interior i)
+    ψ0/=norm(ψ0)  # Normalize the wavepacket
+    return ψ0
 end
 
 """
     compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
 
-Computes the Shannon entropy of the wavefunction ψ given the grid spacing dx and dy. The wavefunction is given as a flattened Sparse matrix into a Vector.
+Computes the Shannon entropy of the wavefunction ψ. The wavefunction is given as a flattened Sparse matrix (Vector{Complex}).
 
 # Arguments
 - `ψ::Vector{Complex{T}}`: The flattened wavefunction vector.
-- `Nx::Integer`: The matrix dimension in the x-direction.
-- `Ny::Integer`: The matrix dimension in the y-direction.
 
 # Returns
 - `Vector{T}`: The Shannon entropy of the wavefunction.
 """
-function compute_shannon_entropy(ψ::Vector{Complex{T}},Nx::Integer,Ny::Integer) where {T<:Real}
+function compute_shannon_entropy(ψ::Vector{Complex{T}}) where {T<:Real}
     P=abs2.(ψ)
     P=P[.!isnan.(P)] # to remove the NaN's from influencing
     P.=max.(P,1e-12) # to remove anyting close to 0
     entropy=-sum(P.*log.(P)) # (ignoring "zero" values to avoid log(0))
-    return entropy/log(Nx*Ny) # normalize wrt grid since log(entropy) / log(Nx*Ny) should give grid independant result
+    return entropy/log(length(ψ)) # normalize wrt grid since log(entropy) / log(log(length(ψ))) should give grid independant result
 end
 
 """
@@ -603,8 +590,8 @@ Evolves the wavefunction ψ0 under the time-dependent Schrodinger equation using
 
 # Arguments
 - `cn::Crank_Nicholson`: A `Crank_Nicholson` object.
-- `H::SparseMatrixCSC`: The Hamiltonian matrix representing the Schrodinger equation.
-- `ψ0::Matrix{Complex{T}}`: The initial state vector for the wavefunction.
+- `H::SparseMatrixCSC`: The Hamiltonian matrix representing the Schrodinger equation constructed from either `Hamiltonian` or `FEM_Hamiltonian`. Both give the same object, a sparse Hamitlonian defined on only the interior indexes.
+- `ψ0::Matrix{Complex{T}}`: The initial state vector for the wavefunction in the full Nx × Ny form. This will internally be reduced to an interior vector.
 - `save_after_iterations::Integer=5`: The number of iterations after which to save the snapshot.
 - `threshold=1e-6`: The threshold for checking the norms of the wavefunctions inside the billiard. The relative norms are computed wrt the starting norm of the packet and then in the end checked.
 
@@ -612,30 +599,37 @@ Evolves the wavefunction ψ0 under the time-dependent Schrodinger equation using
 - `Tuple{Vector{Matrix},Vector{Matrix{Complex{T}}},Vector{T}}`: A tuple containing the snapshots of the wavefunction at regular intervals, their raw non abs2 versions and the corresponding Shannon entropies at each snapshot.
 """
 function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::Matrix{Complex{T}};save_after_iterations::Integer=5,threshold=1e-6)::Tuple{Vector{Matrix},Vector{Matrix{Complex{T}}},Vector{T}} where {T<:Real}
-    ψ0.=ψ0./norm(ψ0);ψ=vec(ψ0);dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;dim=Nx*Ny;mask=cn.pts_mask;
-    I_mat=sparse(I,dim,dim)
+    ψ=flatten_fem_wavepacket(cn,ψ0)
+    dx,dy=cn.dx,cn.dy;Nx,Ny=cn.Nx,cn.Ny;mask=cn.pts_mask;Q=cn.fem.Q;
+    I_mat=sparse(I,Q,Q)
     A=I_mat+im*cn.dt/(2*cn.ℏ)*H
     B=I_mat-im*cn.dt/(2*cn.ℏ)*H;
     Afactor=lu(A)
     b=similar(ψ)
     nsnap=floor(Int,cn.Nt/save_after_iterations);
-    snapshots=Vector{Matrix{T}}(undef,nsnap);shannon_entropy_values=Vector{T}(undef,nsnap);snap_idx=1;
-    matrices_raw=Vector{Matrix{Complex{T}}}(undef,nsnap)
-    inside_norms=Vector{T}(undef,nsnap)
+    raw_snapshots=Vector{Vector{Complex{T}}}(undef,nsnap)
+    snap_idx=1
     @showprogress "Evolving the wavepacket..." for t in 1:cn.Nt
-        mul!(b,B,ψ) # b=B*ψ
-        ψ=Afactor\b; #ψ./=norm(ψ) -> no need to check since unitary evolution
-        if t%save_after_iterations==0
-            entropy_t=compute_shannon_entropy(ψ,Nx,Ny)
-            shannon_entropy_values[snap_idx]=entropy_t
-            ψ2=reshape(ψ,Nx,Ny)
-            snapshots[snap_idx]=abs2.(ψ2) # precalculated for rendering
-            matrices_raw[snap_idx]=ψ2 # needed for futher calculations
-            inside_norms[snap_idx]=sqrt(sum(snapshots[snap_idx][mask])*dx*dy) # internal checks that we are not losing the norm for long evolutions
-            snap_idx+=1;
+        mul!(b,B,ψ)  # Compute B * ψ efficiently
+        ψ=Afactor\b  # Solve linear system (main expensive step)
+        if t % save_after_iterations==0
+            raw_snapshots[snap_idx]=copy(ψ)  # Store raw wavefunction vector
+            snap_idx+=1
         end
     end
-    Threads.@threads for i in 1:length(snapshots)
+    # --- Postprocessing (Separate from expensive loop) ---
+    snapshots=Vector{Matrix{T}}(undef,nsnap)
+    matrices_raw=Vector{Matrix{Complex{T}}}(undef,nsnap)
+    shannon_entropy_values=Vector{T}(undef,nsnap)
+    inside_norms=Vector{T}(undef,nsnap)
+    Threads.@threads for i in 1:nsnap
+        ψ_full=reconstruct_fem_wavepacket(raw_snapshots[i],cn)  # Reconstruct full wavefunction
+        snapshots[i]=abs2.(ψ_full)  # Compute probability density
+        matrices_raw[i]=ψ_full  # Store complex wavefunction
+        shannon_entropy_values[i]=compute_shannon_entropy(raw_snapshots[i]) # Compute Shannon on the vector raw version
+        inside_norms[i]=sqrt(sum(snapshots[i][mask])*dx*dy)  # Compute norm inside billiard to check consistency
+    end
+    Threads.@threads for i in 1:nsnap
         @inbounds snapshots[i][mask.==zero(T)].=NaN
     end
     base_norm=inside_norms[1];
