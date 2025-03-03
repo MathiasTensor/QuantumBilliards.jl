@@ -1,4 +1,4 @@
-using Bessels, LinearAlgebra, ProgressMeter, FFTW, SparseArrays
+using Bessels, LinearAlgebra, ProgressMeter, FFTW, SparseArrays, IterativeSolvers
 include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
 include("../solvers/gridmethods/fdm.jl")
@@ -636,7 +636,8 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     snap_idx=1
     @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
         mul!(b,B,ψ)  # Compute B * ψ efficiently
-        ψ=Afactor\b  # Solve linear system (main expensive step)
+        #ψ=Afactor\b  # Solve linear system (main expensive step)
+        ψ=gmres(A,b)
         if t % save_after_iterations==0
             raw_snapshots[snap_idx]=copy(ψ)  # Store raw wavefunction vector
             snap_idx+=1
