@@ -429,6 +429,7 @@ where V_op is the potential energy matrix.
 """
 struct Crank_Nicholson{T<:Real,Bi<:AbsBilliard} 
     billiard::Bi
+    fem::FiniteElementMethod{T}
     pts_mask::Vector{Bool} # this is the matrix that the wavefunction that is being flattened to a vector for convenience
     ℏ::T # Reduced Planck's constant
     m::T # Particle mass
@@ -459,6 +460,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=true)
+        fem=FiniteElementMethod(billiard,Nx,Ny,ℏ=ℏ,m=m,fundamental=fundamental)
         return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     else
         boundary=billiard.full_boundary
@@ -472,6 +474,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
+        fem=FiniteElementMethod(billiard,Nx,Ny,ℏ=ℏ,m=m,fundamental=fundamental)
         return Crank_Nicholson(billiard,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     end
 end
