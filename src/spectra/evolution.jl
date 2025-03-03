@@ -546,7 +546,7 @@ function Hamiltonian(cn::Crank_Nicholson{T})::SparseMatrixCSC where {T<:Real}
 end
 
 """
-    flatten_fem_wavepacket(fem::FiniteElementMethod, ψ_full::Matrix{Complex{T}}) -> Vector{Complex{T}}
+    flatten_fem_wavepacket(fem::FiniteElementMethod, ψ_full::Matrix{Complex{T}}) -> Vector{Complex{T}} where {T<:Real}
 
 Extracts and flattens the wavepacket from the full grid to only interior points for Crank-Nicholson only for the interior points. This reduces computation cost and removed the requirement for the V0 to be implemented in Crank-Nicholson that would case ill-conditioned H evolution. This also ensured that the flattened wavepacket will have the correct dimension to allow multiplication with the Hamitlonian matrix with only interior points.
 
@@ -562,6 +562,31 @@ function flatten_fem_wavepacket(cn::Crank_Nicholson{T},ψ0_full::Matrix{Complex{
     ψ0=ψ0_full[interior_idx.>0]  # Keeps only interior indices (inner ones have interior_idx[i]>0 for interior i)
     ψ0/=norm(ψ0)  # Normalize the wavepacket
     return ψ0
+end
+
+"""
+    reconstruct_fem_wavepacket(ψ_interior::Vector{Complex{T}}, cn::Crank_Nicholson{T}) -> Matrix{Complex{T}} where {T<:Real}
+
+Reconstructs the full Nx × Ny grid wavefunction from the interior-indexed wavefunction evolved by FEM Hamiltonian. This is useful if one wants to use the full domain matrices for Postprocessing.
+
+# Arguments
+- `ψ_interior::Vector{Complex{T}}`: The flattened wavefunction vector that was evolved in FEM.
+- `cn::Crank_Nicholson{T}`: The `Crank_Nicholson` instance, which contains `FiniteElementMethod`.
+
+# Returns
+- `ψ_full::Matrix{Complex{T}}`: The reconstructed wavefunction on the full grid (Nx × Ny), with zeros at exterior points.
+"""
+function reconstruct_fem_wavepacket(ψ_interior::Vector{Complex{T}}, cn::Crank_Nicholson{T}) where {T<:Real}
+    Nx,Ny=cn.Nx,cn.Ny
+    interior_idx=cn.fem.interior_idx  # The interior index mapping
+    ψ_full=zeros(Complex{T},Nx,Ny)  # Initialize full grid with zeros (better for numerical operations)
+    # Populate interior points using `interior_idx`
+    for i in 1:length(interior_idx)
+        if interior_idx[i]>0  # Only interior points have indices > 0
+            ψ_full[i]=ψ_interior[interior_idx[i]]  # Map back to full grid
+        end
+    end
+    return ψ_full
 end
 
 """
@@ -629,7 +654,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
         shannon_entropy_values[i]=compute_shannon_entropy(raw_snapshots[i]) # Compute Shannon on the vector raw version
         inside_norms[i]=sqrt(sum(snapshots[i][mask])*dx*dy)  # Compute norm inside billiard to check consistency
     end
-    Threads.@threads for i in 1:nsnap
+    Threads.@threads for i in 1:nsnap # this is useful for plotting the animation since we can get rid of the exterior by setting it to white color.
         @inbounds snapshots[i][mask.==zero(T)].=NaN
     end
     base_norm=inside_norms[1];
