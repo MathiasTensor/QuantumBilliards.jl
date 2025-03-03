@@ -594,7 +594,7 @@ Reconstructs the full Nx × Ny grid wavefunction from the interior-indexed wavef
 - `cn::Crank_Nicholson{T}`: The `Crank_Nicholson` instance, which contains `FiniteElementMethod`.
 
 # Returns
-- `ψ_full::Matrix{Complex{T}}`: The reconstructed wavefunction on the full grid (Nx × Ny), with zeros at exterior points.
+- `ψ_full::Matrix{Complex{T}}`: The reconstructed wavefunction on the full grid (Nx × Ny), with zeros at exterior points and normalized.
 """
 function reconstruct_fem_wavepacket(ψ_interior::Vector{Complex{T}}, cn::Crank_Nicholson{T}) where {T<:Real}
     Nx,Ny=cn.Nx,cn.Ny
@@ -606,7 +606,7 @@ function reconstruct_fem_wavepacket(ψ_interior::Vector{Complex{T}}, cn::Crank_N
             ψ_full[i]=ψ_interior[interior_idx[i]]  # Map back to full grid
         end
     end
-    return ψ_full
+    return ψ_full./norm(ψ_full)
 end
 
 """
