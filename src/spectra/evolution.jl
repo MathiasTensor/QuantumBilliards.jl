@@ -461,7 +461,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=true)
-        fem=FiniteElementMethod(billiard,Nx,Ny,ℏ=ℏ,m=m,fundamental=fundamental)
+        fem=FiniteElementMethod(billiard,Nx,Ny,ℏ=ℏ,m=m,fundamental=fundamental,offset_x_symmetric=0.0,offset_y_symmetric=0.0)
         return Crank_Nicholson(billiard,fem,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     else
         boundary=billiard.full_boundary
@@ -475,7 +475,7 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
         sz=length(pts)
         pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=false)
-        fem=FiniteElementMethod(billiard,Nx,Ny,ℏ=ℏ,m=m,fundamental=fundamental)
+        fem=FiniteElementMethod(billiard,Nx,Ny,ℏ=ℏ,m=m,fundamental=fundamental,offset_x_symmetric=0.0,offset_y_symmetric=0.0)
         return Crank_Nicholson(billiard,fem,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     end
 end
