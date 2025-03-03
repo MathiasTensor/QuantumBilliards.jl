@@ -634,7 +634,7 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     nsnap=floor(Int,cn.Nt/save_after_iterations);
     raw_snapshots=Vector{Vector{Complex{T}}}(undef,nsnap)
     snap_idx=1
-    @showprogress "Evolving the wavepacket..." for t in 1:cn.Nt
+    @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
         mul!(b,B,ψ)  # Compute B * ψ efficiently
         ψ=Afactor\b  # Solve linear system (main expensive step)
         if t % save_after_iterations==0
@@ -654,11 +654,11 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
         shannon_entropy_values[i]=compute_shannon_entropy(raw_snapshots[i]) # Compute Shannon on the vector raw version
         inside_norms[i]=sqrt(sum(snapshots[i][mask])*dx*dy)  # Compute norm inside billiard to check consistency
     end
-    Threads.@threads for i in 1:nsnap # this is useful for plotting the animation since we can get rid of the exterior by setting it to white color.
+    @showprogress desc="Removing exterior for plotting..." Threads.@threads for i in 1:nsnap # this is useful for plotting the animation since we can get rid of the exterior by setting it to white color.
         @inbounds snapshots[i][mask.==zero(T)].=NaN
     end
     base_norm=inside_norms[1];
-    Threads.@threads for n in 1:length(inside_norms)
+    @showprogress desc="Checking norm conservation..." Threads.@threads for n in 1:length(inside_norms)
         if abs(inside_norms[n]-base_norm)/base_norm >threshold
             @warn "Norm conservation check failed at snapshot $n: relative difference = $(abs(inside_norms[n]-base_norm)/base_norm)"
         end
