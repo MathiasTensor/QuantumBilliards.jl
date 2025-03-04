@@ -751,22 +751,66 @@ end
 
 ##### UNCERTANTIES ######
 
+"""
+    uncertainty_x(cn::Crank_Nicholson{T}, ψ::Matrix{Complex{T}}) where {T<:Real}
+
+Computes the uncertainty (standard deviation) in position along the x-direction
+for a given 2D wavefunction `ψ`.
+
+### Arguments:
+- `cn::Crank_Nicholson{T}`: A structure containing `Nx`, `Ny`, `dx`, `dy`, and `ℏ`.
+- `ψ::Matrix{Complex{T}}`: A 2D matrix representing the spatial wavefunction.
+
+### Returns:
+- `T`: The standard deviation (uncertainty) in position along the x-direction.
+
+### Dimension Handling:
+- The wavefunction matrix `ψ[i, j] → ψ(yᵢ, xⱼ)` follows standard matrix indexing:
+  - **Rows correspond to y-coordinates**.
+  - **Columns correspond to x-coordinates**.
+- To compute `P(x)`, we must **integrate out y**.
+  - This requires summing over `dims=2` (columns).
+  - The result is a **1D probability distribution `P(x)`**.
+"""
 function uncertainty_x(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
-    x=cn.x_grid # x evaluations that correspond the the matrix value
+    x=cn.x_grid  # x values corresponding to matrix columns
     dx,dy=cn.dx,cn.dy
-    P=abs2.(ψ)
-    bra_x_ket=sum(x'.*sum(P,dims=2))*dx*dy # sum over the second dimension (dims=2) to collapse y and obtain P(x) ,then multiply by x to compute ⟨x⟩ 
-    bra_x_sq_ket=sum((x'.^2).*sum(P,dims=2))*dx*dy # similar logic, but here we collapse y -> P(x), then multiply by x^2 to compute ⟨x^2⟩
-    return sqrt(bra_x_sq_ket-bra_x_ket^2)
+    P=abs2.(ψ)  # Probability density |ψ(x, y)|²
+    # Compute ⟨x⟩ and ⟨x²⟩
+    bra_x_ket=sum(x'.* sum(P,dims=1))*dx*dy 
+    bra_x_sq_ket=sum((x'.^2).*sum(P,dims=1))*dx*dy 
+    return sqrt(abs(bra_x_sq_ket-bra_x_ket^2))
 end
 
+"""
+    uncertainty_y(cn::Crank_Nicholson{T}, ψ::Matrix{Complex{T}}) where {T<:Real}
+
+Computes the uncertainty (standard deviation) in position along the y-direction
+for a given 2D wavefunction `ψ`.
+
+### Arguments:
+- `cn::Crank_Nicholson{T}`: A structure containing `Nx`, `Ny`, `dx`, `dy`, and `ℏ`.
+- `ψ::Matrix{Complex{T}}`: A 2D matrix representing the spatial wavefunction.
+
+### Returns:
+- `T`: The standard deviation (uncertainty) in position along the y-direction.
+
+### Dimension Handling:
+- The wavefunction matrix `ψ[i, j] → ψ(yᵢ, xⱼ)` follows standard matrix indexing:
+  - **Rows correspond to y-coordinates**.
+  - **Columns correspond to x-coordinates**.
+- To compute `P(y)`, we must **integrate out x**.
+  - This requires summing over `dims=1` (rows).
+  - The result is a **1D probability distribution `P(y)`**.
+"""
 function uncertainty_y(cn::Crank_Nicholson{T},ψ::Matrix{Complex{T}}) where {T<:Real}
-    y=cn.y_grid # y evaluations that correspond the the matrix value
+    y=cn.y_grid  # y values corresponding to matrix rows
     dx,dy=cn.dx,cn.dy
-    P=abs2.(ψ) # |ψ(x,y)|^2
-    bra_y_ket=sum(y.*sum(P,dims=1))*dx*dy # sum over the second dimension (dims=1) to collapse x and obtain P(y) ,then multiply by y to compute ⟨y⟩ 
-    bra_y_sq_ket=sum((y.^2).*sum(P,dims=1))*dx*dy # similar logic, but here we collapse x -> P(y), then multiply by y^2 to compute ⟨y^2⟩
-    return sqrt(bra_y_sq_ket-bra_y_ket^2)
+    P=abs2.(ψ)  # Probability density |ψ(x, y)|²
+    # Compute ⟨y⟩ and ⟨y²⟩
+    bra_y_ket=sum(y.*sum(P,dims=2))*dx*dy  # Sum over x to get P(y), then multiply by y. 
+    bra_y_sq_ket=sum((y.^2).*sum(P,dims=2))*dx*dy  # Sum over x to get P(y), then multiply by y²
+    return sqrt(abs(bra_y_sq_ket-bra_y_ket^2))
 end
 
 function uncertainty_x(cn::Crank_Nicholson{T},ψ_list::Vector{Matrix{Complex{T}}}) where {T<:Real}
@@ -794,14 +838,14 @@ momentum space via: p = 2πℏ * frequency.
 
 Arguments:
 - `N::Ti`: The number of points in the momentum grid.
-- `d::T`: The spatial step size (i.e dx & dy).
+- `d::T`: The spatial step size (i.e dx & dy). This is internally used as 1/d since this represents the sampling rate which is defined as the reciprocal of sample spacing.
 - `ℏ::T`: The reduced Planck constant.
 
 Returns:
 - `Vector{T}`: A vector containing the momentum values in momentum space.
 """
 function create_momentum_grid(N::Ti,d::T,ℏ::T) where {T<:Real,Ti<:Integer}
-    freqs=fftshift(fftfreq(N,1/d)) # fftfreq gives frequencies in cycles per unit length
+    freqs=fftshift(fftfreq(N,fs=1/d)) # fftfreq gives frequencies in cycles per unit length
     return freqs*2π*ℏ
 end
 
@@ -822,22 +866,22 @@ function uncertainty_p(cn::Crank_Nicholson{T}, ψ::Matrix{Complex{T}}) where {T<
     dx,dy=cn.dx,cn.dy
     ℏ=cn.ℏ
     # Compute FFT to get momentum-space wavefunction
-    ψ_k=fftshift(fft(ψ))*(dx*dy)  # Normalize FFT by spatial step size
+    ψ_kx_ky=fftshift(fft(ψ))*(dx*dy)  # 2d DFT to get momentum-space wavefunction, but needs to be multiplied by integration steps since by def it does not take it into account
     # Compute probability distribution in momentum space
-    P_k=abs2.(ψ_k)
+    P_k=abs2.(ψ_kx_ky) # element-wise square of abs value
     P_k_norm=P_k./sum(P_k)  # Normalize probability distribution
     # Define momentum grid using FFT frequencies
-    kx=create_momentum_grid(Nx,dx,ℏ)
-    ky=create_momentum_grid(Ny,dy,ℏ)
+    kx_grid=create_momentum_grid(Nx,dx,ℏ) # the kx_grid analogous to x_grid
+    ky_grid=create_momentum_grid(Ny,dy,ℏ) # the ky_grid analogous to y_grid
     # Marginal probability distributions for p_x and p_y
-    P_px=sum(P_k_norm,dims=2)*(ky[2]-ky[1])  # Integrate over ky
-    P_py=sum(P_k_norm,dims=1)*(kx[2]-kx[1])  # Integrate over kx
+    P_px=sum(P_k_norm,dims=1)*(ky_grid[2]-ky_grid[1])  # Integrate over ky so we integrate out py (The original matrix is ψ[i, j] → ψ(yᵢ, xⱼ) since i indexes y (rows),j indexes x (columns)). This after fft becomes Φ[i, j] → Φ[pxᵢ, pyⱼ]
+    P_py=sum(P_k_norm,dims=2)*(kx_grid[2]-kx_grid[1])  # Integrate over kx so we integrate out px
     # Expectation values
-    bra_px_ket=sum(kx.*P_px)
-    bra_py_ket=sum(ky.*P_py)
+    bra_px_ket=sum(kx_grid.*P_px) # P_px is now a vector
+    bra_py_ket=sum(ky_grid.*P_py)  # P_py is now a vector
     # Expectation values of p_x^2 and p_y^2
-    bra_px_sq_ket=sum((kx.^2).*P_px)
-    bra_py_sq_ket=sum((ky.^2).*P_py)
+    bra_px_sq_ket=sum((kx_grid.^2).*P_px)
+    bra_py_sq_ket=sum((ky_grid.^2).*P_py)
     # Compute standard deviations of momentum in x and y directions
     Δp_x=sqrt(abs(bra_px_sq_ket-bra_px_ket^2))
     Δp_y=sqrt(abs(bra_py_sq_ket-bra_py_ket^2))
