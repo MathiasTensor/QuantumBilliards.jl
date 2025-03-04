@@ -73,7 +73,7 @@ fundamental=true
 =#
 
 # STADIUM 
-
+#=
 function stadium_phi(x,y,half_width,height)
     radius=height # Radius of the semicircles
     # Case 1: Inside the rectangle part
@@ -93,6 +93,27 @@ half_width=1.0 # the full width
 radius=1.0
 phi(x,y)=stadium_phi(x,y,half_width,radius)
 billiard,_=make_stadium_and_basis(half_width,radius=radius)
+fundamental=false
+=#
+
+# MUSHROOM
+
+function mushroom_phi(x,y,half_width,height,radius)
+    if 0<x<2*half_width
+        if 0>y>-height
+            return true # in the stem
+        end
+    end
+    if (x-half_width)^2+y^2<radius && y>0
+        return true # in the cap 
+    end
+    return false
+end
+half_width=0.15
+height=1.0
+radius=1.0
+phi(x,y)=mushroom_phi(x,y,half_width,height,radius)
+billiard,_=make_mushroom_and_basis(2*half_width,height,radius)
 fundamental=false
 
 
