@@ -13,9 +13,9 @@ Convenience function that generates intervals from provided limits.
 # Returns
 - `Vector{Vector{T}}`: A vector of vectors, where each inner vector contains two elements representing the lower and upper bounds of an interval in that order.
 """
-function generate_intervals_from_limits(limits::Vector{T}; numerical_cutoff=1e-2) where {T<:Real}
+function generate_intervals_from_limits(limits::Vector{T};numerical_cutoff=1e-2) where {T<:Real}
     sort!(limits)
-    return [[limits[i]+numerical_cutoff, limits[i+1]-numerical_cutoff] for i in 1:(length(limits)-1)]
+    return [[limits[i]+numerical_cutoff,limits[i+1]-numerical_cutoff] for i in 1:(length(limits)-1)]
 end
 
 """
@@ -30,10 +30,10 @@ Uniformly distributes the initial conditions in the supplied interval.
 # Returns
 - `Vector{T}`: A vector of initial conditions uniformly distributed within the supplied interval.
 """
-function generate_p_0_chaotic_init_conditions(interval::Vector{T}; N_total::Integer=10_000) where {T<:Real}
-    interval_length = abs(interval[2] - interval[1])
-    s_vals = if N_total > 1
-        range(interval[1], interval[2], length=N_total)
+function generate_p_0_chaotic_init_conditions(interval::Vector{T};N_total::Integer=10_000) where {T<:Real}
+    interval_length=abs(interval[2]-interval[1])
+    s_vals= if N_total>1
+        range(interval[1],interval[2],length=N_total)
     else
         [interval[1]]
     end
@@ -53,24 +53,24 @@ Uniformly distributes the initial conditions for all intervals provided. All the
 - `Vector{T}`: A vector of initial conditions uniformly distributed within all the intervals provided.
 """
 function generate_p_0_chaotic_init_conditions(intervals::Vector{Vector{T}}; N_total::Integer=10_000) where {T<:Real}
-    interval_lengths = [abs(interval[2] - interval[1]) for interval in intervals]
-    total_length = sum(interval_lengths)
-    fractions = [len / total_length for len in interval_lengths]
-    N_interval_points = [Int(floor(N_total * fraction)) for fraction in fractions] # initial allocation of points per interval
-    remaining_points = N_total - sum(N_interval_points)
-    if remaining_points != 0 # Distribute any remaining points to ensure the total matches N_total
-        sorted_indices = sortperm(fractions, rev=true)  # Sort intervals by largest fraction
+    interval_lengths=[abs(interval[2]-interval[1]) for interval in intervals]
+    total_length=sum(interval_lengths)
+    fractions=[len/total_length for len in interval_lengths]
+    N_interval_points=[Int(floor(N_total*fraction)) for fraction in fractions] # initial allocation of points per interval
+    remaining_points=N_total-sum(N_interval_points)
+    if remaining_points!=0 # Distribute any remaining points to ensure the total matches N_total
+        sorted_indices=sortperm(fractions,rev=true)  # Sort intervals by largest fraction
         for i in 1:abs(remaining_points)
-            idx = sorted_indices[(i - 1) % length(sorted_indices) + 1]
-            N_interval_points[idx] += sign(remaining_points)
+            idx=sorted_indices[(i-1) % length(sorted_indices)+1]
+            N_interval_points[idx]+=sign(remaining_points)
         end
     end
-    init_conditions = Vector{T}()
+    init_conditions=Vector{T}()
     for i in eachindex(intervals)
-        interval = intervals[i]
-        N_points = N_interval_points[i]
-        s_vals = N_points > 1 ? range(interval[1], interval[2], length=N_points) : [interval[1]]
-        append!(init_conditions, s_vals)
+        interval=intervals[i]
+        N_points=N_interval_points[i]
+        s_vals=N_points>1 ? range(interval[1],interval[2],length=N_points) : [interval[1]]
+        append!(init_conditions,s_vals)
     end
     return init_conditions
 end
@@ -96,13 +96,13 @@ end
 # Returns
 - `Vector{Tuple{SVector{2, T}, SVector{2, T}}}`: A vector of Cartesian coordinates and Cartesian momenta corresponding to the provided Poincare-Birkhoff initial conditions.
 """
-function convert_p_0_chaotic_init_conditions_to_cartesian(init_conditions::Vector{T}, from_bcoords_to_cartesian::Function, extra_args...) where {T<:Real}
-    cartesian_conditions = Vector{Tuple{SVector{2, Float64}, SVector{2, Float64}}}(undef, length(init_conditions))
+function convert_p_0_chaotic_init_conditions_to_cartesian(init_conditions::Vector{T},from_bcoords_to_cartesian::Function,extra_args...) where {T<:Real}
+    cartesian_conditions=Vector{Tuple{SVector{2,Float64},SVector{2,Float64}}}(undef,length(init_conditions))
     Threads.@threads for i in eachindex(init_conditions)
-        s = init_conditions[i]
-        p = 0.0  # Fixed p = 0 for all initial conditions (perpendicular velocity)
-        pos, vel = from_bcoords_to_cartesian(s, p, extra_args...)
-        cartesian_conditions[i] = (pos, vel)
+        s=init_conditions[i]
+        p=0.0  # Fixed p = 0 for all initial conditions (perpendicular velocity)
+        pos,vel=from_bcoords_to_cartesian(s,p,extra_args...)
+        cartesian_conditions[i]=(pos,vel)
     end
     return cartesian_conditions
 end
@@ -137,27 +137,27 @@ end
 """
 function simulate_trajectories(cartesian_conditions::Vector{Tuple{SVector{2, T}, SVector{2, T}}}, boundarymap_function::Function, extra_args...; 
     N_collisions::Int=1_000_000) where {T<:Real}
-    total_particles = length(cartesian_conditions)
-    s_vals_all = Vector{Vector{T}}(undef, total_particles)
-    p_vals_all = Vector{Vector{T}}(undef, total_particles)
-    progress = Progress(total_particles, desc="Simulating trajectories")
+    total_particles=length(cartesian_conditions)
+    s_vals_all=Vector{Vector{T}}(undef,total_particles)
+    p_vals_all=Vector{Vector{T}}(undef,total_particles)
+    progress=Progress(total_particles,desc="Simulating trajectories")
     Threads.@threads for particle_idx in eachindex(cartesian_conditions)
-        pos, vel = cartesian_conditions[particle_idx]
-        success = false
+        pos,vel=cartesian_conditions[particle_idx]
+        success=false
         while !success
             try
-                bmap = boundarymap_function(pos, vel, N_collisions, extra_args...)
-                s_vals_all[particle_idx] = [bmap[i][1] for i in eachindex(bmap)]
-                p_vals_all[particle_idx] = [bmap[i][2] for i in eachindex(bmap)]
-                success = true
+                bmap=boundarymap_function(pos,vel,N_collisions,extra_args...)
+                s_vals_all[particle_idx]=[bmap[i][1] for i in eachindex(bmap)]
+                p_vals_all[particle_idx]=[bmap[i][2] for i in eachindex(bmap)]
+                success=true
             catch e
                 println("Warning: Error encountered for particle $particle_idx, retrying...")
-                println("ERROR: ", e)
+                println("ERROR: ",e)
             end
         end
         next!(progress)
     end
-    return s_vals_all, p_vals_all
+    return s_vals_all,p_vals_all
 end
 
 """
@@ -173,13 +173,13 @@ Calculates the average p^2 value for all particles for each collision.
 - `p_squared_averages::Vector{T}`: A vector of numbers representing the average p^2 values for each collision.
 """
 function calculate_p2_averages(p_vals_all::Vector{Vector{T}}) where {T<:Real}
-    N_collisions = length(p_vals_all[1])
-    p_squared_averages = Vector{T}(undef, N_collisions)
+    N_collisions=length(p_vals_all[1])
+    p_squared_averages=Vector{T}(undef,N_collisions)
     for collision_idx in 1:N_collisions
-        p_values = [p_vals_all[particle_idx][collision_idx] for particle_idx in eachindex(p_vals_all)]
-        p_squared_averages[collision_idx] = sum(p^2 for p in p_values)/length(p_values)
+        p_values=[p_vals_all[particle_idx][collision_idx] for particle_idx in eachindex(p_vals_all)]
+        p_squared_averages[collision_idx]=sum(p^2 for p in p_values)/length(p_values)
     end
-    return collect(1:N_collisions), p_squared_averages
+    return collect(1:N_collisions),p_squared_averages
 end
 
 """
@@ -197,25 +197,25 @@ Plots the ⟨p^2⟩ vs. N_T with no secondary moving average by default.
 # Returns
 - `Nothing`
 """
-function plot_p2_stats!(ax::Axis, p2_averages::Vector{T}; window_size::Int=1, log_scale=false, inset_iterations_limit::Int = 200, inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
-    N_collisions = length(p2_averages)
-    actual_window_size = N_collisions < window_size ? 1 : window_size
-    n = length(p2_averages)
-    p2_averages_smoothed = p2_averages
-    iterations_smoothed = collect(1:N_collisions)
-    N_collisions = length(iterations_smoothed)
+function plot_p2_stats!(ax::Axis,p2_averages::Vector{T};window_size::Int=1,log_scale=false,inset_iterations_limit::Int=200,inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
+    N_collisions=length(p2_averages)
+    actual_window_size=N_collisions<window_size ? 1 : window_size
+    n=length(p2_averages)
+    p2_averages_smoothed=p2_averages
+    iterations_smoothed=collect(1:N_collisions)
+    N_collisions=length(iterations_smoothed)
     if log_scale
-        scatter!(ax, log10.(iterations_smoothed), p2_averages_smoothed, markersize=4, color=:blue)
+        scatter!(ax,log10.(iterations_smoothed),p2_averages_smoothed,markersize=4,color=:blue)
     else
-        scatter!(ax, iterations_smoothed, p2_averages_smoothed, markersize=4, color=:blue)
+        scatter!(ax,iterations_smoothed,p2_averages_smoothed,markersize=4,color=:blue)
     end
-    ax.xtickformat = "{:.0f}"
+    ax.xtickformat="{:.0f}"
     # Inset axis
     if !isnothing(inset_ax) && !log_scale
-        inset_iterations = iterations_smoothed[iterations_smoothed .<= inset_iterations_limit]
-        inset_p2_averages = p2_averages_smoothed[1:length(inset_iterations)]
-        scatter!(inset_ax, inset_iterations, inset_p2_averages, markersize=4, color=:blue)
-        ylims!(inset_ax, 0.5*maximum(inset_p2_averages), 1.1*maximum(inset_p2_averages))
-        xlims!(inset_ax, 0.0, inset_iterations[end])
+        inset_iterations=iterations_smoothed[iterations_smoothed.<=inset_iterations_limit]
+        inset_p2_averages=p2_averages_smoothed[1:length(inset_iterations)]
+        scatter!(inset_ax,inset_iterations,inset_p2_averages,markersize=4,color=:blue)
+        ylims!(inset_ax,0.5*maximum(inset_p2_averages),1.1*maximum(inset_p2_averages))
+        xlims!(inset_ax,0.0,inset_iterations[end])
     end
 end
