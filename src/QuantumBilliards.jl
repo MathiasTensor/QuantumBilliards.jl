@@ -97,7 +97,7 @@ export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matri
 include("spectra/spectralutils.jl")
 include("spectra/unfolding.jl")
 export weyl_law
-export compute_spectrum, compute_spectrum_adaptive, compute_spectrum_optimized, compute_spectrum_with_state_optimized
+export compute_spectrum, compute_spectrum_optimized, compute_spectrum_with_state_optimized
 export curvature_correction, corner_correction, curvature_and_corner_corrections, dos_weyl, k_at_state
 include("spectra/spectralStatistics.jl")
 export number_variance, plot_subtract_level_counts_from_weyl, probability_berry_robnik, cumulative_berry_robnik, compare_level_count_to_weyl, plot_nnls, plot_cumulative_spacing_distribution, plot_subtract_level_counts_from_weyl, plot_point_distribution!, plot_length_spectrum!, length_spectrum, probability_berry_robnik_brody, cumulative_berry_robnik_brody, plot_U_diff
