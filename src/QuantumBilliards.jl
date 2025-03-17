@@ -130,7 +130,6 @@ export ϕ, wavefunction_multi, wavefunction_multi_with_husimi, plot_wavefunction
 include("plotting/plottingmakie.jl")
 export plot_curve!, plot_boundary!, plot_boundary_orientation!, plot_symmetry_adapted_boundary
 export plot_domain_fun!, plot_domain!
-export plot_lattice!
 export plot_wavefunction!, plot_wavefunction_gradient!, plot_probability!
 export plot_boundary_function!, plot_momentum_function!, plot_husimi_function!
 export plot_heatmap!, plot_heatmap_balaced!
