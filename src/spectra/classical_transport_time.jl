@@ -193,11 +193,13 @@ Plots the ⟨p^2⟩ vs. N_T with no secondary moving average by default.
 - `p2_averages::Vector{T}`: The ⟨p^2⟩ values to plot.
 - `log_scale::Bool=false`: Whether to plot in log scale the x-axis (num of collisions).
 - `inset_iterations_limit::Int=100`: The number of iterations to plot in the inset axis.
+- `inset_ax::Union{Axis,Nothing}=nothing`: If there will be an inset into the main Axis. Ther should set the position carefully.
+- `linetype::Symbol=:scatter`: Type of plot, if not :scatter defaults to line plot.
 
 # Returns
 - `Nothing`
 """
-function plot_p2_stats!(ax::Axis,p2_averages::Vector{T};window_size::Int=1,log_scale=false,inset_iterations_limit::Int=200,inset_ax::Union{Axis,Nothing}=nothing) where {T<:Real}
+function plot_p2_stats!(ax::Axis,p2_averages::Vector{T};window_size::Int=1,log_scale=false,inset_iterations_limit::Int=200,inset_ax::Union{Axis,Nothing}=nothing,linetype::Symbol=:scatter) where {T<:Real}
     N_collisions=length(p2_averages)
     actual_window_size=N_collisions<window_size ? 1 : window_size
     n=length(p2_averages)
@@ -205,16 +207,28 @@ function plot_p2_stats!(ax::Axis,p2_averages::Vector{T};window_size::Int=1,log_s
     iterations_smoothed=collect(1:N_collisions)
     N_collisions=length(iterations_smoothed)
     if log_scale
-        scatter!(ax,log10.(iterations_smoothed),p2_averages_smoothed,markersize=4,color=:blue)
+        if linetype==:scatter
+            scatter!(ax,log10.(iterations_smoothed),p2_averages_smoothed,markersize=4,color=:blue)
+        else
+            lines!(ax,log10.(iterations_smoothed),p2_averages_smoothed,linewidth=0.5,color=:blue)
+        end
     else
-        scatter!(ax,iterations_smoothed,p2_averages_smoothed,markersize=4,color=:blue)
+        if linetype==:scatter
+            scatter!(ax,iterations_smoothed,p2_averages_smoothed,markersize=4,color=:blue)
+        else
+            lines!(ax,iterations_smoothed,p2_averages_smoothed,linewidth=0.5,color=:blue)
+        end
     end
     ax.xtickformat="{:.0f}"
     # Inset axis
     if !isnothing(inset_ax) && !log_scale
         inset_iterations=iterations_smoothed[iterations_smoothed.<=inset_iterations_limit]
         inset_p2_averages=p2_averages_smoothed[1:length(inset_iterations)]
-        scatter!(inset_ax,inset_iterations,inset_p2_averages,markersize=4,color=:blue)
+        if linetype==:scatter
+            scatter!(inset_ax,inset_iterations,inset_p2_averages,markersize=4,color=:blue)
+        else
+            lines!(inset_ax,inset_iterations,inset_p2_averages,markersize=4,color=:blue)
+        end
         ylims!(inset_ax,0.5*maximum(inset_p2_averages),1.1*maximum(inset_p2_averages))
         xlims!(inset_ax,0.0,inset_iterations[end])
     end
