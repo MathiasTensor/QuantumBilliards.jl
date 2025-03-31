@@ -738,11 +738,11 @@ Returns `true` if `S < threshold`, suggesting localization around a conserved qu
 
 # Arguments
 - `Pms::Vector{T}`: Normalized power distribution.
-- `threshold::Real`: Entropy cutoff (default = 0.3).
+- `threshold::Real`: Entropy cutoff (default = 1.2).
 
 # Returns
 - `Bool`: Whether the state is regular.
 """
-function is_regular(Pms::Vector{T},threshold::Float64=0.3) where {T<:Real}
+function is_regular(Pms::Vector{T},threshold::Float64=1.2) where {T<:Real}
     Shannon_entropy_cms(Pms)<threshold ? true : false
 end
