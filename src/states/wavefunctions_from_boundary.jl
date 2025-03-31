@@ -684,6 +684,61 @@ function compute_cm_circular_segment(u::Vector{T},s_vals::Vector{T},ms::Vector{T
 end
 
 """
+    fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard) where {T<:Real}
+
+Computes the fraction of the boundary function on the `CirleSegment` curve part of the billiard. This can help in correcting the `c_m` coefficient that can give false positives when we have a delta function in `c_m vs. m` but also have a non-zero part of the boundary function outside this segment.
+
+# Arguments
+- `u::Vector{T}`: The boundary function.
+- `s_vals::Vector{T}`: The arclengths of the entire billiard.
+- `billiard<:AbsBilliard`: The billiard geometry that contains information on all the curve segments.
+
+# Returns
+- `T` The fraction of the boundary function on the circle segment vs. the total segment both weighted via the L^2 norm.
+"""
+function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard) where {T<:Real}
+    @assert length(u)==length(s_vals) "u and s_vals must be the same length"
+    N=length(u)
+    # Identify the CircleSegment
+    total_length=zero(T)
+    s_start=zero(T)
+    s_end=zero(T)
+    found=false
+    for seg in billiard.full_boundary
+        L=seg.length
+        if seg isa CircleSegment
+            s_start=total_length
+            s_end=total_length+L
+            found=true
+            break
+        end
+        total_length+=L
+    end
+    @assert found "No CircleSegment found in the billiard boundary."
+    weights=similar(u)
+    @inbounds begin # Precompute trapezoidal weights
+        weights[1]=(s_vals[2]-s_vals[1])/2
+        for i in 2:N-1
+            weights[i]=(s_vals[i+1]-s_vals[i-1])/2
+        end
+        weights[end]=(s_vals[end]-s_vals[end-1])/2
+    end
+    total_per_thread=zeros(T,nthreads())
+    seg_per_thread=zeros(T,nthreads())
+    Threads.@threads for i in 1:N
+        tid=threadid()
+        val_2=abs2(u[i])*weights[i]
+        total_per_thread[tid]+=val_2
+        if s_vals[i]≥s_start && s_vals[i]≤s_end # tally both the CircleSegment and the other type segments
+            seg_per_thread[tid]+=val_2
+        end
+    end
+    total_norm_2=sum(total_per_thread)
+    segment_norm_2=sum(seg_per_thread)
+    return segment_norm_2/total_norm_2
+end
+
+"""
     compute_P_m(cm::Complex{T})::T where {T<:Real}
 
 Returns the power `|cₘ|²` from a single angular momentum coefficient.
