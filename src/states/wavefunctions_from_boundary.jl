@@ -575,3 +575,174 @@ function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vect
 end
 
 
+##############################################################################
+#### TOOLS FOR CHECKING THE POWER SPECTRUM FOR CircleSegment part of u(s) ####
+##############################################################################
+
+"""
+    compute_cm_circular_segment(u, s_vals, m, billiard)
+
+Compute the angular momentum coefficient `cₘ` of the boundary function `u(s)` restricted to the CircleSegment of the billiard using trapezoidal integration.
+
+# Arguments
+- `u::Vector{T}`: Normal derivative of the wavefunction.
+- `s_vals::Vector{T}`: Arclength positions of boundary points.
+- `m::Integer`: Angular momentum index.
+- `billiard::AbsBilliard`: The billiard geometry.
+
+# Returns
+- `Complex{T}`: Complex coefficient `cₘ`.
+"""
+function compute_cm_circular_segment(u::Vector{T},s_vals::Vector{T},m::Ti,billiard::Bi)::Complex{T} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
+    s_start,s_end=0.0,0.0
+    total_length=0.0
+    R=0.0
+    found=false
+    for seg in billiard.full_boundary
+        seg_length=seg.length
+        if seg isa CircleSegment
+            s_start=total_length
+            s_end=total_length+seg_length
+            R=seg.radius
+            found=true
+            break
+        end
+        total_length+=seg_length
+    end
+    if !found
+        error("No CircleSegment found in billiard boundary.")
+    end
+    filtered_idx=findall(s->s>=s_start && s<=s_end,s_vals) # filter u and s_vals on the CircleSegment
+    us=u[filtered_idx]
+    ss=s_vals[filtered_idx]
+    N=length(us) #
+    if N<2 # sanity check
+        @warn "Not enough points on the CircleSegment to compute integral."
+        return 0.0+0.0im
+    end
+    weights=zeros(T,N) # trapezoidal weights
+    weights[1]=(ss[2]-ss[1])/2
+    for i in 2:N-1
+        weights[i]=(ss[i+1]-ss[i-1])/2
+    end
+    weights[end]=(ss[end]-ss[end-1])/2
+    return sum(us[i]*exp(im*m*π*ss[i]/R)*weights[i] for i in 1:N)
+end
+
+"""
+    compute_cm_circular_segment(u, s_vals, ms, billiard)
+
+Compute multiple angular momentum coefficients `cₘ` for each `m` in `ms` from the boundary function `u(s)` on the CircleSegment.
+
+# Arguments
+- `u::Vector{T}`: Normal derivative of the wavefunction.
+- `s_vals::Vector{T}`: Arclength positions of boundary points.
+- `ms::Vector{Integer}`: Angular momentum indexes.
+- `billiard::AbsBilliard`: The billiard geometry.
+
+# Returns
+- `Vector{Complex{T}}`: Vector of angular momentum coefficients.
+"""
+function compute_cm_circular_segment(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Vector{Complex{T}} where {T<:Real,Ti<:Integer}
+    s_start,s_end=0.0,0.0
+    total_length=0.0
+    R=0.0
+    found=false
+    for seg in billiard.full_boundary
+        seg_length=seg.length
+        if seg isa CircleSegment
+            s_start=total_length
+            s_end=total_length+seg_length
+            R=seg.radius
+            found=true
+            break
+        end
+        total_length+=seg_length
+    end
+    if !found
+        error("No CircleSegment found in billiard boundary.")
+    end
+    filtered_idx=findall(s->s>=s_start && s<=s_end,s_vals) # filter u and s_vals on the CircleSegment
+    us=u[filtered_idx]
+    ss=s_vals[filtered_idx]
+    N=length(us) #
+    if N<2 # sanity check
+        @warn "Not enough points on the CircleSegment to compute integral."
+        return 0.0+0.0im
+    end
+    weights=zeros(T,N) # trapezoidal weights
+    weights[1]=(ss[2]-ss[1])/2
+    for i in 2:N-1
+        weights[i]=(ss[i+1]-ss[i-1])/2
+    end
+    weights[end]=(ss[end]-ss[end-1])/2
+    cms=Vector{Complex{T}}(undef,length(ms))
+    Threads.@threads for k in eachindex(ms)
+        cms[k]=sum(us[i]*exp(im*ms[k]*π*ss[i]/R)*weights[i] for i in 1:N)
+    end
+    return cms
+end
+
+"""
+    compute_P_m(cm::Complex{T})::T where {T<:Real}
+
+Returns the power `|cₘ|²` from a single angular momentum coefficient.
+
+# Arguments
+- `cm::Complex{T}`: The angular momentum coefficient.
+
+# Returns
+- `T`: The associated `|cₘ|²` value.
+"""
+function compute_P_m(cm::Complex{T})::T where {T<:Real}
+    return abs2(cm)
+end
+
+"""
+    compute_P_m(cms::Vector{Complex{T}})::Vector{T} where {T<:Real}
+
+Returns the power spectrum `|cₘ|²` for a vector of coefficients.
+
+# Arguments
+- `cms::Vector{Complex{T}}`: The angular momentum coefficients.
+
+# Returns
+- `Vector{T}`: The associated vector of NORMALIZED `|cₘ|²` values.
+"""
+function compute_P_m(cms::Vector{Complex{T}})::Vector{T} where {T<:Real}
+    S=sum(abs2.(cms))
+    return [abs2(cm)/S for cm in cms]
+end
+
+"""
+    Shannon_entropy_cms(Pms)
+
+Computes the Shannon entropy from a normalized angular momentum power distribution.
+
+# Arguements
+- `Pms::Vector{T}`: Normalized Power spectrum for a boundary function.
+
+# Returns
+- `T`: Shannon entropy value `S = -∑ pᵢ log(pᵢ)`
+"""
+function Shannon_entropy_cms(Pms::Vector{T})
+    return -sum(p_i>0.0 ? p_i*log(p_i) : 0.0 for p_i in Pms)
+end
+
+"""
+    is_regular(Pms::Vector{T},threshold=0.3)
+
+Determine if a state is "regular-like" based on low Shannon entropy in angular momentum space.
+
+Returns `true` if `S < threshold`, suggesting localization around a conserved quantity.
+
+# Arguments
+- `Pms::Vector{T}`: Normalized power distribution.
+- `threshold::Real`: Entropy cutoff (default = 0.3).
+
+# Returns
+- `Bool`: Whether the state is regular.
+"""
+function is_regular(Pms::Vector{T},threshold::Float64=0.3)
+    Shannon_entropy_cms(Pms)<threshold ? true : false
+end
