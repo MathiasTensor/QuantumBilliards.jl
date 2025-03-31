@@ -720,7 +720,7 @@ end
 Computes the Shannon entropy from a normalized angular momentum power distribution.
 
 # Arguements
-- `Pms::Vector{T}`: Normalized Power spectrum for a boundary function.
+- `Pms::Vector{T}`: Normalized Power spectrum for a boundary function. Sometimes it is useful to take the log of this value since delta-like functions have negative Shannon entropy value
 
 # Returns
 - `T`: Shannon entropy value `S = -∑ pᵢ log(pᵢ)`
