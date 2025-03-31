@@ -725,7 +725,7 @@ Computes the Shannon entropy from a normalized angular momentum power distributi
 # Returns
 - `T`: Shannon entropy value `S = -∑ pᵢ log(pᵢ)`
 """
-function Shannon_entropy_cms(Pms::Vector{T})
+function Shannon_entropy_cms(Pms::Vector{T}) where {T<:Real}
     return -sum(p_i>0.0 ? p_i*log(p_i) : 0.0 for p_i in Pms)
 end
 
@@ -743,6 +743,6 @@ Returns `true` if `S < threshold`, suggesting localization around a conserved qu
 # Returns
 - `Bool`: Whether the state is regular.
 """
-function is_regular(Pms::Vector{T},threshold::Float64=0.3)
+function is_regular(Pms::Vector{T},threshold::Float64=0.3) where {T<:Real}
     Shannon_entropy_cms(Pms)<threshold ? true : false
 end
