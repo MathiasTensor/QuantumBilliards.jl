@@ -694,7 +694,7 @@ Returns the power `|cₘ|²` from a single angular momentum coefficient.
 # Returns
 - `T`: The associated `|cₘ|²` value.
 """
-function compute_P_m(cm::Complex{T})::T where {T<:Real}
+function compute_P_m(cm::Complex{T}) where {T<:Real}
     return abs2(cm)
 end
 
@@ -709,7 +709,7 @@ Returns the power spectrum `|cₘ|²` for a vector of coefficients.
 # Returns
 - `Vector{T}`: The associated vector of NORMALIZED `|cₘ|²` values.
 """
-function compute_P_m(cms::Vector{Complex{T}})::Vector{T} where {T<:Real}
+function compute_P_m(cms::Vector{Complex{T}}) where {T<:Real}
     S=sum(abs2.(cms))
     return [abs2(cm)/S for cm in cms]
 end
