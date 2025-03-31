@@ -47,7 +47,7 @@ Maps the nodes from the interval [-1,1] to [0,1] and then scales the weights acc
 """
 function sample_points(sampler::GaussLegendreNodes, N::Int)
     x,w=gausslegendre(N)
-    t=0.5.*x.+0.5
+    t=0.5.*x.+0.5 # rescaled to [0,1]
     dt=w.*0.5 
     return t,dt
 end
