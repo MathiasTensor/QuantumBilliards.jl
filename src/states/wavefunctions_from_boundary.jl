@@ -643,7 +643,7 @@ Compute multiple angular momentum coefficients `cₘ` for each `m` in `ms` from 
 # Returns
 - `Vector{Complex{T}}`: Vector of angular momentum coefficients.
 """
-function compute_cm_circular_segment(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Vector{Complex{T}} where {T<:Real,Ti<:Integer}
+function compute_cm_circular_segment(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Vector{Complex{T}} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
     s_start,s_end=0.0,0.0
     total_length=0.0
     R=0.0
