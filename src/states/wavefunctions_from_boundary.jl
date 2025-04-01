@@ -806,7 +806,7 @@ function Shannon_entropy_cms(Pms::Vector{T}) where {T<:Real}
 end
 
 """
-    is_regular(Pms::Vector{T},threshold=0.3)
+    is_regular(Pms::Vector{T},frac::T;threshold::Float64=1.0) where {T<:Real}
 
 Determine if a state is "regular-like" based on low Shannon entropy in angular momentum space.
 
