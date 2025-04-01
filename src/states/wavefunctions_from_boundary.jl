@@ -738,6 +738,13 @@ function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::A
     return segment_norm_2/total_norm_2
 end
 
+#TODO Add this function to the is_regular check as it then will correctly find the MUPOs.
+function compute_cm_circular_segment_and_fraction(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Tuple{Vector{Complex{T}},T} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
+    cms=compute_cm_circular_segment(u,s_vals,ms,billiard)
+    frac=fraction_on_circular_segment(u,s_vals,billiard)
+    return cms,frac
+end
+
 """
     compute_P_m(cm::Complex{T})::T where {T<:Real}
 
@@ -793,11 +800,12 @@ Returns `true` if `S < threshold`, suggesting localization around a conserved qu
 
 # Arguments
 - `Pms::Vector{T}`: Normalized power distribution.
-- `threshold::Real`: Entropy cutoff (default = 1.2).
+- `frac::T`: THe threshold for the L^2 norm of the boundary function on non-circular segments.
+- `threshold::T`: Entropy cutoff (default = 1.0 by obseving the behaviour of the boundary function on the Circular Segment). This also is useful since when we take the log of ot it is negative if below 1.0 and separration is clear.
 
 # Returns
 - `Bool`: Whether the state is regular.
 """
-function is_regular(Pms::Vector{T},threshold::Float64=1.2) where {T<:Real}
-    Shannon_entropy_cms(Pms)<threshold ? true : false
+function is_regular(Pms::Vector{T},frac::T;threshold::Float64=1.0) where {T<:Real}
+    Shannon_entropy_cms(Pms)<threshold && frac>0.9 ? true : false
 end
