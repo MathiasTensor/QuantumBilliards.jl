@@ -696,7 +696,7 @@ Computes the fraction of the boundary function on the `CirleSegment` curve part 
 # Returns
 - `T` The fraction of the boundary function on the circle segment vs. the total segment both weighted via the L^2 norm.
 """
-function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard) where {T<:Real}
+function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard)::T where {T<:Real}
     @assert length(u)==length(s_vals) "u and s_vals must be the same length"
     N=length(u)
     # Identify the CircleSegment
@@ -738,7 +738,21 @@ function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::A
     return segment_norm_2/total_norm_2
 end
 
-#TODO Add this function to the is_regular check as it then will correctly find the MUPOs.
+"""
+    compute_cm_circular_segment_and_fraction(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Tuple{Vector{Complex{T}},T} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
+
+Computes the cm coefficients of the angular momentum basis expansion and also the fraction of the boundary function on the CircularSegment using the Trapezoidal rule on the L^2 norm.
+
+# Arguments
+- `u::Vector{T}`: The boundary function.
+- `s_vals::Vector{T}`: The arclengths of the entire billiard.
+- `ms::Vector{Integer}`: Angular momentum indexes.
+- `billiard<:AbsBilliard`: The billiard geometry that contains information on all the curve segments.
+
+# Returns
+- `cms::Vector{Complex{T}}`: The cm coefficient for each m in ms.
+- `frac::T`: The fraction of the boundary function as per function description.
+"""
 function compute_cm_circular_segment_and_fraction(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Tuple{Vector{Complex{T}},T} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
     cms=compute_cm_circular_segment(u,s_vals,ms,billiard)
     frac=fraction_on_circular_segment(u,s_vals,billiard)
@@ -756,7 +770,7 @@ Returns the power `|cₘ|²` from a single angular momentum coefficient.
 # Returns
 - `T`: The associated `|cₘ|²` value.
 """
-function compute_P_m(cm::Complex{T}) where {T<:Real}
+function compute_P_m(cm::Complex{T})::T where {T<:Real}
     return abs2(cm)
 end
 
