@@ -723,8 +723,8 @@ function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::A
         end
         weights[end]=(s_vals[end]-s_vals[end-1])/2
     end
-    total_per_thread=zeros(T,nthreads())
-    seg_per_thread=zeros(T,nthreads())
+    total_per_thread=zeros(T,Threads.nthreads())
+    seg_per_thread=zeros(T,Threads.nthreads())
     Threads.@threads for i in 1:N
         tid=threadid()
         val_2=abs2(u[i])*weights[i]
