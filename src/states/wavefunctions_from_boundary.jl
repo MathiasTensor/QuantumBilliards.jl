@@ -826,7 +826,7 @@ function Shannon_entropy_cms(Pms::Vector{T}) where {T<:Real}
 end
 
 """
-    is_regular(Pms::Vector{T},frac::T;threshold::Float64=1.0) where {T<:Real}
+    is_regular(Pms::Vector{T},frac::T;threshold::Float64=1.0,frac_threshold=0.1) where {T<:Real}
 
 Determine if a state is "regular-like" based on low Shannon entropy in angular momentum space.
 
@@ -836,7 +836,7 @@ Returns `true` if `S < threshold`, suggesting localization around a conserved qu
 - `Pms::Vector{T}`: Normalized power distribution.
 - `frac::T`: THe threshold for the L^2 norm of the boundary function on non-circular segments that were chosen with `which_segments` in the bottom level functions.
 - `threshold=1.0`: Entropy cutoff (default = 1.0 by obseving the behaviour of the boundary function on the `CircleSegment`). This also is useful since when we take the log of ot it is negative if below 1.0 and separration is clear.
-- `frac_threshold=0.1`: The default threshold for the L2 norm of the boudnary function on the boundary chosen with `which_segments` in the bottom level functions.
+- `frac_threshold=0.1`: The default threshold for the L2 norm of the boudnary function on the boundary chosen with `which_segments` in the bottom level functions. Benchmarking shows that the frac value is usually well below 10^-2, in most cases below < 10^-7. This value is analogous addition measure of the overlap between the wavefunction with the circle eigefunction (it's angular momentum component exp(i*pi*ϕ)).
 
 # Returns
 - `Bool`: Whether the state is regular.
