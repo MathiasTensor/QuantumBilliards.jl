@@ -684,39 +684,53 @@ function compute_cm_circular_segment(u::Vector{T},s_vals::Vector{T},ms::Vector{T
 end
 
 """
-    fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard) where {T<:Real}
+    fraction_on_segments(u, s_vals, billiard; which_segments = :all)
 
-Computes the fraction of the boundary function on the `CirleSegment` curve part of the billiard. This can help in correcting the `c_m` coefficient that can give false positives when we have a delta function in `c_m vs. m` but also have a non-zero part of the boundary function outside this segment.
+Compute the L² norm fraction of the boundary function `u(s)` over selected segments of the billiard.
+
+This is useful for distinguishing whether the boundary function is concentrated on specific segments
+(e.g., the CircleSegment) or spread across others.
 
 # Arguments
 - `u::Vector{T}`: The boundary function.
-- `s_vals::Vector{T}`: The arclengths of the entire billiard.
-- `billiard<:AbsBilliard`: The billiard geometry that contains information on all the curve segments.
+- `s_vals::Vector{T}`: Arclength coordinates along the boundary.
+- `billiard::AbsBilliard`: The billiard geometry.
+- `which_segments::Union{Symbol, Vector{Int}} = :all`: Which segments to include:
+    - `:circle` → only the CircleSegment,
+    - `:all` → the entire boundary,
+    - `Vector{Int}` → specify by segment indices in `billiard.full_boundary`.
 
 # Returns
-- `T` The fraction of the boundary function on the circle segment vs. the total segment both weighted via the L^2 norm.
+- `T`: Fraction of the total L² norm on the selected segments.
 """
-function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard)::T where {T<:Real}
+function fraction_on_segments(u::Vector{T},s_vals::Vector{T},billiard::AbsBilliard;which_segments::Union{Symbol,Vector{Ti}}=:all)::T where {T<:Real,Ti<:Integer}
     @assert length(u)==length(s_vals) "u and s_vals must be the same length"
     N=length(u)
-    # Identify the CircleSegment
+    # Precompute segment arclength intervals
+    segment_bounds=Vector{Tuple{T,T}}()
+    circle_idx=nothing
     total_length=zero(T)
-    s_start=zero(T)
-    s_end=zero(T)
-    found=false
-    for seg in billiard.full_boundary
+    for (i,seg) in enumerate(billiard.full_boundary)
         L=seg.length
+        push!(segment_bounds,(total_length,total_length+L))
         if seg isa CircleSegment
-            s_start=total_length
-            s_end=total_length+L
-            found=true
-            break
+            circle_idx=i
         end
         total_length+=L
     end
-    @assert found "No CircleSegment found in the billiard boundary."
-    weights=similar(u)
-    @inbounds begin # Precompute trapezoidal weights
+    selected_bounds= if which_segments==:all
+        segment_bounds
+    elseif which_segments==:circle
+        @assert circle_idx!==nothing "No CircleSegment found."
+        [segment_bounds[circle_idx]]
+    elseif isa(which_segments,Vector{Int})
+        [segment_bounds[i] for i in which_segments]
+    else
+        error("Invalid `which_segments` value. Use :all, :circle, or a Vector of segment indices.")
+    end
+    # Trapezoidal weights
+    weights = similar(u)
+    @inbounds begin
         weights[1]=(s_vals[2]-s_vals[1])/2
         for i in 2:N-1
             weights[i]=(s_vals[i+1]-s_vals[i-1])/2
@@ -724,18 +738,21 @@ function fraction_on_circular_segment(u::Vector{T},s_vals::Vector{T},billiard::A
         weights[end]=(s_vals[end]-s_vals[end-1])/2
     end
     total_per_thread=zeros(T,Threads.nthreads())
-    seg_per_thread=zeros(T,Threads.nthreads())
+    selected_per_thread=zeros(T,Threads.nthreads())
     Threads.@threads for i in 1:N
-        tid=threadid()
-        val_2=abs2(u[i])*weights[i]
-        total_per_thread[tid]+=val_2
-        if s_vals[i]≥s_start && s_vals[i]≤s_end # tally both the CircleSegment and the other type segments
-            seg_per_thread[tid]+=val_2
+        tid=Threads.threadid()
+        val=abs2(u[i])*weights[i]
+        total_per_thread[tid]+=val
+        for (s_start,s_end) in selected_bounds
+            if s_vals[i]≥s_start && s_vals[i]≤s_end
+                selected_per_thread[tid]+=val
+                break
+            end
         end
     end
-    total_norm_2=sum(total_per_thread)
-    segment_norm_2=sum(seg_per_thread)
-    return segment_norm_2/total_norm_2
+    total_norm=sum(total_per_thread)
+    selected_norm=sum(selected_per_thread)
+    return selected_norm/total_norm
 end
 
 """
@@ -748,14 +765,17 @@ Computes the cm coefficients of the angular momentum basis expansion and also th
 - `s_vals::Vector{T}`: The arclengths of the entire billiard.
 - `ms::Vector{Integer}`: Angular momentum indexes.
 - `billiard<:AbsBilliard`: The billiard geometry that contains information on all the curve segments.
+- `which_segments::Union{Symbol, Vector{Int}} = :all`: Which segments to take in the the calculation of the fraction of the boundary norm. The default value is a placeholder and the Vector{Int} should be used for the other relevant sections where we want to check the boundary function L2 norm.
+
+For example in the mushroom billiard we would choose `which_segments = [1, 2, 6]` since the other segments are either the `CircleSegment` or `LineSegment`s that have overlap with the circle eigenfunction (the connectors of the stem with the cap are such cases with `idxs = [3, 5]`)
 
 # Returns
 - `cms::Vector{Complex{T}}`: The cm coefficient for each m in ms.
 - `frac::T`: The fraction of the boundary function as per function description.
 """
-function compute_cm_circular_segment_and_fraction(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi)::Tuple{Vector{Complex{T}},T} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
+function compute_cm_circular_segment_and_fraction(u::Vector{T},s_vals::Vector{T},ms::Vector{Ti},billiard::Bi;which_segments::Union{Symbol,Vector{Ti}}=:all)::Tuple{Vector{Complex{T}},T} where {T<:Real,Ti<:Integer,Bi<:AbsBilliard}
     cms=compute_cm_circular_segment(u,s_vals,ms,billiard)
-    frac=fraction_on_circular_segment(u,s_vals,billiard)
+    frac=fraction_on_segments(u,s_vals,billiard;which_segments=which_segments)
     return cms,frac
 end
 
@@ -814,12 +834,13 @@ Returns `true` if `S < threshold`, suggesting localization around a conserved qu
 
 # Arguments
 - `Pms::Vector{T}`: Normalized power distribution.
-- `frac::T`: THe threshold for the L^2 norm of the boundary function on non-circular segments.
-- `threshold::T`: Entropy cutoff (default = 1.0 by obseving the behaviour of the boundary function on the Circular Segment). This also is useful since when we take the log of ot it is negative if below 1.0 and separration is clear.
+- `frac::T`: THe threshold for the L^2 norm of the boundary function on non-circular segments that were chosen with `which_segments` in the bottom level functions.
+- `threshold=1.0`: Entropy cutoff (default = 1.0 by obseving the behaviour of the boundary function on the `CircleSegment`). This also is useful since when we take the log of ot it is negative if below 1.0 and separration is clear.
+- `frac_threshold=0.1`: The default threshold for the L2 norm of the boudnary function on the boundary chosen with `which_segments` in the bottom level functions.
 
 # Returns
 - `Bool`: Whether the state is regular.
 """
-function is_regular(Pms::Vector{T},frac::T;threshold::Float64=1.0) where {T<:Real}
-    Shannon_entropy_cms(Pms)<threshold && frac>0.9 ? true : false
+function is_regular(Pms::Vector{T},frac::T;threshold=1.0,frac_threshold=0.1) where {T<:Real}
+    Shannon_entropy_cms(Pms)<threshold && frac<frac_threshold ? true : false
 end
