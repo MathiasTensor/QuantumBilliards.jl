@@ -846,6 +846,6 @@ function is_regular(Pms::Vector{T},frac::T;threshold=1.0,frac_threshold=0.1) whe
 end
 
 # HELPER FUNCTION SINCE THERE ARE ISOLATED CASES WHERE A REGULAR FUNCTION GRAZING THE 
-function is_mushroom_MUPO(frac::T,frac_threshold=0.1) where {T<:Real}
+function is_mushroom_MUPO(frac::T;frac_threshold=0.1) where {T<:Real}
     frac<frac_threshold ? true : false
 end
