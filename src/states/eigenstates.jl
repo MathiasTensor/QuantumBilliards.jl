@@ -253,6 +253,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @time pts=evaluate_points(solver,billiard, k)
     @info "F & dF/dk matrix construction..."
     @time F,Fk=construct_matrices(solver,basis_new,pts,k)
+    @info "F & dF/dk dims: $(size(F))"
     @warn "Initial condition num. F before regularization: $(cond(F))"
     @warn "Initial condition num. dF/dk before regularization: $(cond(Fk))"
     A=Symmetric(F)
