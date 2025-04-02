@@ -417,7 +417,7 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     println("Total number of eigenvalue problems to solve... ",length(dk_values))
     # Actual computation using precomputed dk values
     k0=k1
-    state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol)
+    @time "Total time per eigenvalue problem... " state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol)
     control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
     for i in eachindex(dk_values)[2:end]
         dk=dk_values[i]
