@@ -254,14 +254,27 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @time F,Fk=construct_matrices(solver,basis_new,pts,k)
     println("Condition num. F: ",cond(F))
     println("Condition num. dF/dk: ",cond(Fk))
-    @info "Eigenvalue problem..."
-    @time mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    A=Symmetric(F)
+    B=Symmetric(Fk)
+    @info "Removing numerical nullspace of ill conditioned F..."
+    @time d,S=eigen(Symmetric(A))
+    idx=d.>solver.eps*maximum(d)
+    q=1.0./sqrt.(d[idx])
+    C=@view S[:,idx]
+    C_scaled=C.*q'
+    n=size(C_scaled,2)
+    tmp=Matrix{eltype(B)}(undef,size(B,1),n)
+    E=Matrix{eltype(B)}(undef,n,n)
+    mul!(tmp,B,C_scaled)
+    mul!(E,C_scaled',tmp)
+    @info "Final eigenvalue problem with new condition number: $(cond(E))"
+    @time mu,Z=eigen(Symmetric(E))
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
     ten=ten[idx]
     Z=Z[:,idx]
-    X=C*Z #transform into original basis 
+    X=C_scaled*Z #transform into original basis 
     X=(sqrt.(ten))' .* X # Use the automatic normalization via tension values as described in Barnett's thesis. Maybe also use X = X .* reshape(sqrt.(ten), 1, :) ?
     p=sortperm(ks)
     ks,ten,X= ks[p],ten[p],X[:,p]
