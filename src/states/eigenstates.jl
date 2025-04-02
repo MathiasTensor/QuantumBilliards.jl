@@ -257,7 +257,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @warn "Initial condition num. dF/dk before regularization: $(cond(Fk))"
     A=Symmetric(F)
     B=Symmetric(Fk)
-    @info "Removing numerical nullspace of ill conditioned F..."
+    @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
     @time d,S=eigen(Symmetric(A))
     idx=d.>solver.eps*maximum(d)
     q=1.0./sqrt.(d[idx])
