@@ -246,12 +246,16 @@ end
 function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
-    @time "Basis resizing..." basis_new=resize_basis(basis,billiard,dim,k)
-    @time "Pts on boundary evaluation..." pts=evaluate_points(solver,billiard, k)
-    @time "F & dF/dk matrix construction..." F,Fk=construct_matrices(solver,basis_new,pts,k)
+    @info "Basis resizing..."
+    @time basis_new=resize_basis(basis,billiard,dim,k)
+    @info "Pts on boundary evaluation..."
+    @time pts=evaluate_points(solver,billiard, k)
+    @info "F & dF/dk matrix construction..."
+    @time F,Fk=construct_matrices(solver,basis_new,pts,k)
     println("Condition num. F: ",cond(F))
     println("Condition num. dF/dk: ",cond(Fk))
-    @time "Eigenvalue problem..." mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    @info "Eigenvalue problem..."
+    @time mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
