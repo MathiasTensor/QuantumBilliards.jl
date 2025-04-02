@@ -270,7 +270,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     E=Matrix{eltype(B)}(undef,n,n)
     mul!(tmp,B,C_scaled)
     mul!(E,C_scaled',tmp)
-    @warn "Final eigenvalue problem with new condition number: $(cond(E))"
+    @warn "Final eigenvalue problem with new condition number: $(cond(E)) and reduced dimension $(size(E))"
     @time mu,Z=eigen(Symmetric(E))
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
