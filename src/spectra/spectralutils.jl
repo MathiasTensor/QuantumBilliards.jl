@@ -1,6 +1,6 @@
 #include("../abstracttypes.jl")
 include("../states/eigenstates.jl")
-using ProgressMeter
+using ProgressMeter, Profile
 
 
 ################################################################
@@ -416,7 +416,9 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     p=Progress(length(dk_values),1)
     # Actual computation using precomputed dk values
     k0=k1
-    state_res::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk_values[1]+tol)
+    Profile.clear()
+    state_res::StateData{T,T}=@profile solve_state_data_bundle(solver,basis,billiard,k0,dk_values[1]+tol)
+    Profile.print()
     control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
     for i in eachindex(dk_values)[2:end]
         dk=dk_values[i]
@@ -456,7 +458,10 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,
     compute_spectrum_with_state(solver,basis,billiard,k1,k2,tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental)
 end
 
-# IN PREPARATION
+########################
+#### IN PREPARATION ####
+########################
+
 """
     compute_spectrum_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0),partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
 
