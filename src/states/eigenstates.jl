@@ -261,6 +261,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
     @time d,S=eigen(Symmetric(A))
     idx=d.>solver.eps*maximum(d)
+    @info "Dim of num Nullspace: $(count(!,idx))" # counts the number of falses = dim of nullspace
     q=1.0./sqrt.(d[idx])
     C=@view S[:,idx]
     C_scaled=C.*q'
