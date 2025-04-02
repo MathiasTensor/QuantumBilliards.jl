@@ -414,6 +414,7 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     # Initialize the progress bar with estimated number of intervals
     println("Scaling Method w/ StateData...")
     p=Progress(length(dk_values),1)
+    println("Total number of eigenvalue problems to solve...")
     # Actual computation using precomputed dk values
     k0=k1
     state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol)
