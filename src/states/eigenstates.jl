@@ -241,3 +241,25 @@ function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk) where 
     X_vectors=[Vector(col) for col in eachcol(X_matrix)]
     return StateData(ks,X_vectors,tens)
 end
+
+#### INTERNAL FUNCTION FOR TESTING TIME AND ALLOCATIONS OF MATRIX CONSTRUCTIONS AND EIGENVALUE SOLVING ####
+function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+    L=billiard.length
+    dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
+    @time "Basis resizing..." basis_new=resize_basis(basis,billiard,dim,k)
+    @time "Pts on boundary evaluation..." pts=evaluate_points(solver,billiard, k)
+    @time "F & dF/dk matrix construction..." F,Fk=construct_matrices(solver,basis_new,pts,k)
+    @time "Eigenvalue problem..." mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    ks,ten=sm_results(mu,k)
+    idx=abs.(ks.-k).<dk
+    ks=ks[idx]
+    ten=ten[idx]
+    Z=Z[:,idx]
+    X=C*Z #transform into original basis 
+    X=(sqrt.(ten))' .* X # Use the automatic normalization via tension values as described in Barnett's thesis. Maybe also use X = X .* reshape(sqrt.(ten), 1, :) ?
+    p=sortperm(ks)
+    ks,ten,X= ks[p],ten[p],X[:,p]
+    # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
+    X_vectors=[Vector(col) for col in eachcol(X)]
+    return StateData(ks,X_vectors,ten)
+end
