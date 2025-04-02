@@ -243,6 +243,7 @@ function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk) where 
 end
 
 #### INTERNAL FUNCTION FOR TESTING TIME AND ALLOCATIONS OF MATRIX CONSTRUCTIONS AND EIGENVALUE SOLVING ####
+# Primarily used for checking regularizations of ill-conditioned F and dF/dk matrices ala Barnett. Useful for observing allocations, execution time and observing the variation of the condition number as k increases
 function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
