@@ -249,6 +249,8 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @time "Basis resizing..." basis_new=resize_basis(basis,billiard,dim,k)
     @time "Pts on boundary evaluation..." pts=evaluate_points(solver,billiard, k)
     @time "F & dF/dk matrix construction..." F,Fk=construct_matrices(solver,basis_new,pts,k)
+    println("Condition num. F: ",cond(F))
+    println("Condition num. dF/dk: ",cond(Fk))
     @time "Eigenvalue problem..." mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
