@@ -252,8 +252,8 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @time pts=evaluate_points(solver,billiard, k)
     @info "F & dF/dk matrix construction..."
     @time F,Fk=construct_matrices(solver,basis_new,pts,k)
-    println("Condition num. F: ",cond(F))
-    println("Condition num. dF/dk: ",cond(Fk))
+    @info "Initial condition num. F before regularization: $(cond(F))"
+    @info "Initial condition num. dF/dk before regularization: $(cond(Fk))"
     A=Symmetric(F)
     B=Symmetric(Fk)
     @info "Removing numerical nullspace of ill conditioned F..."
