@@ -17,6 +17,7 @@ function try_MKL_on_x86_64!()
             @eval using MKL
             @info "Using MKL, setting BLAS backend: $(BLAS.vendor())"
         catch e
+            println(e)
             @warn "Install Math Kernel Library (MKL) via MKL.jl"
             @info "Defaulting to stock BLAS backend: $(BLAS.vendor())"
         end
