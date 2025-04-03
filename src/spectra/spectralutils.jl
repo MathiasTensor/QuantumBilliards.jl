@@ -2,29 +2,6 @@
 include("../states/eigenstates.jl")
 using ProgressMeter
 
-"""
-    try_MKL_on_x86_64()
-
-Tries to use the Math Kernel Library on x86_64 architecture if possible. If not, defaults to the stock vendor for BLAS for that architecture (:lbt)
-
-# Returns
-- `Nothing`
-"""
-function try_MKL_on_x86_64!()
-    if Sys.ARCH==:x86_64
-        try
-            using MKL
-            @info "Using MKL, setting BLAS backend: $(BLAS.vendor())"
-        catch e
-            @warn "Install Math Kernel Library (MKL) via MKL.jl"
-            @info "Defaulting to stock BLAS backend: $(BLAS.vendor())"
-        end
-    else
-        @info "Not on x86_64 architecture, defaulting to stock BLAS backend: $(BLAS.vendor())"
-    end
-end
-
-
 ################################################################
 ############## OVERLAP AND MERGE ALGORITHM  ####################
 ################################################################
