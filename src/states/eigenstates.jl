@@ -260,6 +260,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     B=Symmetric(Fk)
     @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
     @time d,S=eigen(Symmetric(A))
+    @info "Smallest & Largest eigval: $(extrema(d))"
     @info "Nullspace removal with criteria eigval > $(solver.eps*maximum(d))"
     idx=d.>solver.eps*maximum(d)
     @info "Dim of num Nullspace: $(count(!,idx))" # counts the number of falses = dim of nullspace
