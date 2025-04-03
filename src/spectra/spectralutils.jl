@@ -22,7 +22,7 @@ function try_MKL_on_x86_64!()
             @info "Defaulting to stock BLAS backend: $(BLAS.vendor())"
         end
     else
-        @info "Not on x86_64 architecture, defaulting to stock BLAS backend: $(BLAS.vendor())"
+        @info "Not on x86_64 architecture ($(Sys.ARCH)), defaulting to stock BLAS backend: $(BLAS.vendor())"
     end
 end
 
