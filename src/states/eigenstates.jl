@@ -303,10 +303,10 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
     println("%%%%% SUMMARY %%%%%")
     println("Percentage of total time (most relevant ones): ")
-    println("Boundary Pts evaluation: $((e_pts-s_pts)/total_time) %")
-    println("F & dF/dk construction: $((e_con-s_con)/total_time) %")
-    println("Nullspace removal: $((e_reg-s_reg)/total_time) %")
-    println("Final eigen problem: $((e_fin-s_fin)/total_time) %")
+    println("Boundary Pts evaluation: $(100*(e_pts-s_pts)/total_time) %")
+    println("F & dF/dk construction: $(100*(e_con-s_con)/total_time) %")
+    println("Nullspace removal: $(100*(e_reg-s_reg)/total_time) %")
+    println("Final eigen problem: $(100*(e_fin-s_fin)/total_time) %")
     println("%%%%%%%%%%%%%%%%%%%")
     return StateData(ks,X_vectors,ten)
 end
