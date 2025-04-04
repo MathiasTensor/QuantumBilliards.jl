@@ -225,18 +225,17 @@ A tuple `(bs, samplers)` where:
 - `bs::Vector{eltype{solver.pts_scaling_factor}}`: The adjusted vector of scaling factors, with length equal to the number of fundamental boundary curves.
 - `samplers::Vector{<:AbsSampler}`: The adjusted vector of samplers, with length equal to the number of fundamental boundary curves.
 """
-function adjust_scaling_and_samplers(solver::AbsSolver, billiard::AbsBilliard)
-    bs = solver.pts_scaling_factor
-    samplers = solver.sampler
-    default = samplers[1]
-    n_curves = length(billiard.fundamental_boundary)
-    b_min = minimum(bs)
+function adjust_scaling_and_samplers(solver::AbsSolver,billiard::AbsBilliard)
+    bs=solver.pts_scaling_factor
+    samplers=solver.sampler
+    default=samplers[1]
+    n_curves=length(billiard.fundamental_boundary)
+    b_min=minimum(bs)
     while length(bs)<n_curves
-        push!(bs, b_min)
+        push!(bs,b_min)
     end
-    
     while length(samplers)<n_curves
-        push!(samplers, default)
+        push!(samplers,default)
     end
-    return bs, samplers
+    return bs,samplers
 end
