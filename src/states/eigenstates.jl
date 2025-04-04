@@ -245,6 +245,7 @@ end
 #### INTERNAL FUNCTION FOR TESTING TIME AND ALLOCATIONS OF MATRIX CONSTRUCTIONS AND EIGENVALUE SOLVING ####
 # Primarily used for checking regularizations of ill-conditioned F and dF/dk matrices ala Barnett. Useful for observing allocations, execution time and observing the variation of the condition number as k increases
 function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+    start_init=time()
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
     @info "Basis resizing..."
@@ -254,8 +255,10 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     @info "F & dF/dk matrix construction..."
     @time F,Fk=construct_matrices(solver,basis_new,pts,k)
     @info "F & dF/dk dims: $(size(F))"
+    start1=time()
     @warn "Initial condition num. F before regularization: $(cond(F))"
     @warn "Initial condition num. dF/dk before regularization: $(cond(Fk))"
+    end1=time()
     A=Symmetric(F)
     B=Symmetric(Fk)
     @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
@@ -272,7 +275,9 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     E=Matrix{eltype(B)}(undef,n,n)
     mul!(tmp,B,C_scaled)
     mul!(E,C_scaled',tmp)
+    start2=time()
     @warn "Final eigenvalue problem with new condition number: $(cond(E)) and reduced dimension $(size(E))"
+    end2=time()
     @time mu,Z=eigen(Symmetric(E))
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
@@ -285,5 +290,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     ks,ten,X= ks[p],ten[p],X[:,p]
     # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
     X_vectors=[Vector(col) for col in eachcol(X)]
+    end_init=time()
+    @info "Final computation time without extrema of SVD for cond calculation: $(end_init-start_init-(end2-start2)-(end1-start1)) s"
     return StateData(ks,X_vectors,ten)
 end
