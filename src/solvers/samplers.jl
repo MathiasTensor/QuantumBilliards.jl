@@ -146,7 +146,7 @@ function sample_points(sampler::FourierNodes, N::Int)
         ds::Float64=0.0
         for l in crv_lengths
             ds=L/(l*M) 
-            println(start*ds)
+            #println(start*ds)
             t=collect(range(start*ds,1.0,step=ds))
             dt_end=1.0-t[end]
             start=(ds-dt_end)/ds
