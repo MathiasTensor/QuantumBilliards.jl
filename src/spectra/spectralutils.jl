@@ -417,7 +417,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect::Int=1,dk_threshold::T=T(0.05),fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
     k0=k1
     dk_values=[]
@@ -473,7 +473,7 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect::Int=1,dk_threshold=0.05,fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
@@ -511,7 +511,7 @@ The function partitions the interval `[k1, k2]` into subintervals and constructs
   - A vector of eigenvalue tensions (`tensions`).
   - A vector of control flags (`controls`).
 """
-function compute_spectrum_optimized(k1::T,k2::T,basis::Ba,billiard::Bi;N_expect::Integer=1,dk_threshold=T(0.05),tol::T=T(1e-4),d0::T=T(1.0),b0::T=T(2.0),partitions::Integer=10,samplers::Vector{Sam}=[GaussLegendreNodes()],fundamental::Bool=true,display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+function compute_spectrum_optimized(k1::T,k2::T,basis::Ba,billiard::Bi;N_expect=1,dk_threshold=T(0.05),tol::T=T(1e-4),d0::T=T(1.0),b0::T=T(2.0),partitions::Integer=10,samplers::Vector{Sam}=[GaussLegendreNodes()],fundamental::Bool=true,display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false,d0=d0,b0=b0)
     for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
@@ -604,7 +604,7 @@ A tuple containing:
    - `tens::Vector{T}`: Corresponding tensions for checking the correctness of the eigenvalues.
 2. `controls::Vector{T}`: Control flags to see which of the eigenvalues were compared w/ another wrt. lower tension value. 
 """
-function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect::Integer=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
+function compute_spectrum_with_state_optimized(k1::T, k2::T, basis::Ba, billiard::Bi; N_expect=3, dk_threshold=T(0.05), tol::T=T(1e-4), d0::T=T(1.0), b0::T=T(2.0), partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], fundamental::Bool=true, display_basis_matrices=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbsBasis,Sam<:AbsSampler}
     solvers,intervals=dynamical_solver_construction(k1,k2,basis,billiard;return_benchmarked_matrices=false,display_benchmarked_matrices=display_basis_matrices,partitions=partitions,samplers=samplers,solver_type=:Accelerated,print_params=false,d0=d0,b0=b0)
     for (i,solver) in enumerate(solvers)
         println("Solver $i d: ", solver.dim_scaling_factor)
@@ -673,7 +673,7 @@ Wrapper for the k1 to k2 compute_spectrum_with_state function. This one accepts 
 # Returns
 - A tuple `(state_res, control)` where state_res contains all the information about the eigenvalues and tensions of the problem together with the wavefunction expansion coefficients in the given basis and a control vector that determines if these values were merged in an overlap such that minimal tensions were compared
 """
-function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, N1::Int, N2::Int; tol=1e-4, N_expect::Int=3, dk_threshold=0.05, fundamental::Bool = true)
+function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, N1::Int, N2::Int; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental::Bool = true)
     # get the k1 and k2 from the N1 and N2
     k1 = k_at_state(N1, billiard; fundamental=fundamental)
     k2 = k_at_state(N2, billiard; fundamental=fundamental)
@@ -707,7 +707,7 @@ Computes the spectrum of the expanded BIM and their corresponding tensions for a
   - First element is a vector of corrected eigenvalues (`λ`).
   - Second element is a vector of corresponding tensions.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k)->(0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     ks=T[]
