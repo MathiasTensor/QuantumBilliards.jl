@@ -592,6 +592,7 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
         VL=VL[:,valid_indices]
         sort_order=sortperm(abs.(λ)) 
         λ=λ[sort_order]
+        @info "Smallest eigenvalue: $(minimum(abs.(λ)))"
         VR=VR[:,sort_order]
         VL=VL[:,sort_order]
         normalize!(VR)
@@ -613,6 +614,7 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
         VL=VL[:,valid_indices]
         sort_order=sortperm(abs.(λ)) 
         λ=λ[sort_order]
+        @info "Smallest eigenvalue: $(minimum(abs.(λ)))"
         VR=VR[:,sort_order]
         VL=VL[:,sort_order]
         normalize!(VR)
