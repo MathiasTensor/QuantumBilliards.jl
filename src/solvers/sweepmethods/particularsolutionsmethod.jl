@@ -262,6 +262,7 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     println("B & B_int construction: $(100*(e_constr-s_constr)/total_time) %")
     println("SVD: $(100*(e_svd-s_svd)/total_time) %")
     println("%%%%%%%%%%%%%%%%%%%")
+    return minimum(solution)
 end
 
 """
