@@ -696,6 +696,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     s_constr=time()
     @info "constructing Fredholm matrix A..."
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    @info "Condition number of A for svd: $(cond(A))"
     e_constr=time()
     @info "SVD..."
     s_svd=time()
