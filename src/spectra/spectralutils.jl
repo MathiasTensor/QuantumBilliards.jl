@@ -288,7 +288,7 @@ function compute_spectrum_LEGACY(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,
     println("Scaling Method...")
     p=Progress(num_intervals,1)
     #initial computation
-    k_res,ten_res=solve_spectrum(solver,basis,billiard,k0,dk+tol)
+    k_res,ten_res=solve_spectrum_with_INFO(solver,basis,billiard,k0,dk+tol)
     control=[false for i in 1:length(k_res)]
     while k0<k2
         println("Doing interval: [$(k0), $(k0+dk)]")
@@ -353,7 +353,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-
 
     k0=k1
     println("Initial solve...")
-    @time k_res,ten_res=solve_spectrum(solver,basis,billiard,k0,dk_values[1]+tol)
+    k_res,ten_res=solve_spectrum_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol)
     control=[false for i in 1:length(k_res)]
     for i in eachindex(dk_values)
         dk=dk_values[i]
@@ -673,14 +673,14 @@ Wrapper for the k1 to k2 compute_spectrum_with_state function. This one accepts 
 # Returns
 - A tuple `(state_res, control)` where state_res contains all the information about the eigenvalues and tensions of the problem together with the wavefunction expansion coefficients in the given basis and a control vector that determines if these values were merged in an overlap such that minimal tensions were compared
 """
-function compute_spectrum_with_state(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard, N1::Int, N2::Int; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental::Bool = true)
+function compute_spectrum_with_state(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliard,N1::Int,N2::Int;tol=1e-4,N_expect=3,dk_threshold=0.05,fundamental::Bool=true)
     # get the k1 and k2 from the N1 and N2
-    k1 = k_at_state(N1, billiard; fundamental=fundamental)
-    k2 = k_at_state(N2, billiard; fundamental=fundamental)
+    k1=k_at_state(N1,billiard;fundamental=fundamental)
+    k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
     # Call the k one
-    state_res, control = compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=tol, N_expect=N_expect, dk_threshold=dk_threshold, fundamental=fundamental)
-    return state_res, control
+    state_res,control=compute_spectrum_with_state(solver,basis,billiard,k1,k2;tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental)
+    return state_res,control
 end
 
 ################################################################
