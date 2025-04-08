@@ -243,6 +243,27 @@ function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) whe
     return minimum(solution)
 end
 
+# INTERNAL
+function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+    s=time()
+    s_constr=time()
+    @info "Constructing matrices"
+    @time B,B_int=construct_matrices(solver,basis,pts,k)
+    e_constr=time()
+    s_svd=time()
+    @info "SVD values"
+    @time solution=svdvals(B,B_int)
+    e_svd=time()
+    e=time()
+    total_time=e-s
+    @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
+    println("%%%%% SUMMARY %%%%%")
+    println("Percentage of total time (most relevant ones): ")
+    println("B & B_int construction: $(100*(e_constr-s_constr)/total_time) %")
+    println("SVD: $(100*(e_svd-s_svd)/total_time) %")
+    println("%%%%%%%%%%%%%%%%%%%")
+end
+
 """
     solve(solver::ParticularSolutionsMethod, B, B_int) -> Real
 

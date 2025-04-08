@@ -691,6 +691,26 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
     return mu[end]
 end
 
+# INTERNAL BENCHMARKS
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default) where {Ba<:AbstractHankelBasis}
+    s_constr=time()
+    @info "constructing Fredholm matrix A..."
+    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    e_constr=time()
+    @info "SVD..."
+    s_svd=time()
+    mu=svdvals(A)
+    e_svd=time()
+    total_time=(e_svd-s_svd)+(e_constr-s_constr)
+    @info "Total solve time for test k: $(total_time)"
+    println("%%%%% SUMMARY %%%%%")
+    println("Percentage of total time (most relevant ones): ")
+    println("F & G construction: $(100*(e_constr-s_constr)/total_time) %")
+    println("SVD: $(100*(e_svd-s_svd)/total_time) %")
+    println("%%%%%%%%%%%%%%%%%%%")
+    return mu[end]
+end
+
 """
     solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Tuple{T, Vector{T}}
 

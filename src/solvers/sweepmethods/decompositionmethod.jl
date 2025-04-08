@@ -302,7 +302,46 @@ function solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k) wh
     mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
     lam0=mu[end]
     t=1.0/lam0
-    return  t
+    return t
+end
+
+# INTERNAL BENCHMARKS
+function solve_INFO(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k) where {Ba<:AbsBasis}
+    s_constr=time()
+    @info "Constructing F,G for Fx=λGx..."
+    @time F,G=construct_matrices(solver,basis,pts,k)
+    e_constr=time()
+    @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
+    s_reg=time()
+    @time d,S=eigen(Symmetric(F))
+    e_reg=time()
+    @info "Smallest & Largest eigval: $(extrema(d))"
+    @info "Nullspace removal with criteria eigval > $(solver.eps*maximum(d))"
+    idx=d.>solver.eps*maximum(d)
+    @info "Dim of num Nullspace: $(count(!,idx))" # counts the number of falses = dim of nullspace
+    q=1.0./sqrt.(d[idx])
+    C=@view S[:,idx]
+    C_scaled=C.*q'
+    n=size(C_scaled,2)
+    tmp=Matrix{eltype(G)}(undef,size(G,1),n)
+    E=Matrix{eltype(G)}(undef,n,n)
+    mul!(tmp,G,C_scaled)
+    mul!(E,C_scaled',tmp)
+    @warn "Final eigenvalue problem with new condition number: $(cond(E)) and reduced dimension $(size(E))"
+    s_fin=time()
+    @time mu=eigvals(Symmetric(E))
+    e_fin=time()
+    lam0=mu[end]
+    t=1.0/lam0
+    total_time=(e_fin-s_fin)+(e_reg-s_reg)+(e_constr-s_constr)
+    @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
+    println("%%%%% SUMMARY %%%%%")
+    println("Percentage of total time (most relevant ones): ")
+    println("F & G construction: $(100*(e_constr-s_constr)/total_time) %")
+    println("Nullspace removal: $(100*(e_reg-s_reg)/total_time) %")
+    println("Final eigen problem: $(100*(e_fin-s_fin)/total_time) %")
+    println("%%%%%%%%%%%%%%%%%%%")
+    return t
 end
 
 """

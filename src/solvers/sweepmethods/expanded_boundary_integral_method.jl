@@ -552,13 +552,113 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        numerator=transpose(v_left)*ddA*v_right
-        denominator=transpose(v_left)*dA*v_right
+        t_v_left=transpose(v_left)
+        numerator=t_v_left*ddA*v_right
+        denominator=t_v_left*dA*v_right
         corr_1[i]=-λ[i]
         corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
     end
     λ_corrected=k.+corr_1.+corr_2
     tens=abs.(corr_1.+corr_2)
+    return λ_corrected,tens
+end
+
+# INTERNAL
+function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {Ba<:AbstractHankelBasis}
+    s=time()
+    s_constr=time()
+    @info "Constructing A,dA,ddA Fredholm matrix and it's derivatives..."
+    @time A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun)
+    e_constr=time()
+    if use_lapack_raw
+        if LAPACK.version()<v"3.6.0"
+            s_gev=time()
+            @info "Doing ggev!"
+            @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA))"
+            @time α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(dA))
+            e_gev=time()
+        else
+            s_gev=time()
+            @info "Doing ggev3!"
+            @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA))"
+            @time α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(dA))
+            e_gev=time()
+        end
+        λ=α./β
+        valid_indices=.!isnan.(λ).&.!isinf.(λ)
+        @info "Number of valid indices: $(count(valid_indices))"
+        λ=λ[valid_indices]
+        VR=VR[:,valid_indices]
+        VL=VL[:,valid_indices]
+        sort_order=sortperm(abs.(λ)) 
+        λ=λ[sort_order]
+        VR=VR[:,sort_order]
+        VL=VL[:,sort_order]
+        normalize!(VR)
+        normalize!(VL)
+    else
+        @info "Solving Julia's ggev for A, dA"
+        s_gev=time()
+        @time F=eigen(A,dA)
+        λ=F.values
+        VR=F.vectors 
+        @info "Solving Julia's ggev for A' and dA' for the left eigenvectors"
+        F_adj=eigen(A',dA') 
+        e_gev=time()
+        VL=F_adj.vectors 
+        valid_indices=.!isnan.(λ).&.!isinf.(λ)
+        @info "Number of valid indices: $(count(valid_indices))"
+        λ=λ[valid_indices]
+        VR=VR[:,valid_indices]
+        VL=VL[:,valid_indices]
+        sort_order=sortperm(abs.(λ)) 
+        λ=λ[sort_order]
+        VR=VR[:,sort_order]
+        VL=VL[:,sort_order]
+        normalize!(VR)
+        normalize!(VL)
+    end
+    T=eltype(real.(λ))
+    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
+    #valid=abs.(λ).<dk 
+    if !any(valid) # early termination
+        total_time=time()-s
+        @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
+        println("%%%%% SUMMARY %%%%%")
+        println("Percentage of total time (most relevant ones): ")
+        println("A, dA, ddA construction: $(100*(e_constr-s_constr)/total_time) %")
+        println("Generalized eigen: $(100*(e_gev-s_gev)/total_time) %")
+        println("%%%%%%%%%%%%%%%%%%%")
+        return Vector{T}(),Vector{T}() # early termination. In the INFO function we will get information upon finding a succesful find.
+    end
+    λ=real.(λ[valid])
+    VR=VR[:,valid]
+    VL=VL[:,valid]
+    corr_1=Vector{T}(undef,length(λ))
+    corr_2=Vector{T}(undef,length(λ))
+    @info "Corrections to the eigenvalues and eigenvectors..."
+    s_corr=time()
+    @time for i in eachindex(λ)
+        v_right=VR[:,i]
+        v_left=VL[:,i]
+        t_v_left=transpose(v_left)
+        numerator=t_v_left*ddA*v_right
+        denominator=t_v_left*dA*v_right
+        corr_1[i]=-λ[i]
+        corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
+    end
+    e_corr=time()
+    λ_corrected=k.+corr_1.+corr_2
+    tens=abs.(corr_1.+corr_2)
+    e=time()
+    total_time=e-s
+    @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
+    println("%%%%% SUMMARY %%%%%")
+    println("Percentage of total time (most relevant ones): ")
+    println("A, dA, ddA construction: $(100*(e_constr-s_constr)/total_time) %")
+    println("Generalized eigen: $(100*(e_gev-s_gev)/total_time) %")
+    println("2nd order corrections: $(100*(e_corr-s_corr)/total_time) %")
+    println("%%%%%%%%%%%%%%%%%%%")
     return λ_corrected,tens
 end
 

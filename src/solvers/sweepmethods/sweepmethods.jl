@@ -11,7 +11,7 @@ using LinearAlgebra, Optim, ProgressMeter
 """
     solve_wavenumber(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,k::Real,dk::Real) -> Tuple{Real, Real}
 
-Solves for the wavenumbers `k0` its corresponding tension `t0` within a given range `dk`.
+Solves for the wavenumbers `k0` its corresponding tension `t0` within a given range `dk`. It returns the one with the lowest tension and not all those that are in the interval.
 
 # Arguments
 - `solver::SweepSolver`: The solver configuration for performing the sweep.
@@ -40,7 +40,7 @@ end
 """
     k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::Vector{Real}) -> Vector{Real}
 
-Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res` each.
+Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res` each. If one wants to use different kernels in the BoundaryIntegralMethod one needs to change the kernel_fun which is the Second Layer potential of the original differential equation. By default the SL potential of the Helmholtz equation is used.
 
 # Arguments
 - `solver::SweepSolver`: The solver configuration for performing the sweep.
@@ -62,12 +62,14 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(num_intervals,1)
     if solver isa BoundaryIntegralMethod
-        for i in eachindex(ks)
+        res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun)
+        for i in eachindex(ks)[2:end]
             res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun)
             next!(p)
         end
     else
-        for i in eachindex(ks)
+        res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun)
+        for i in eachindex(ks)[2:end]
             res[i]=solve(solver,new_basis,pts,ks[i])
             next!(p)
         end
