@@ -68,7 +68,7 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
             next!(p)
         end
     else
-        res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun)
+        res[1]=solve_INFO(solver,new_basis,pts,ks[1])
         for i in eachindex(ks)[2:end]
             res[i]=solve(solver,new_basis,pts,ks[i])
             next!(p)
