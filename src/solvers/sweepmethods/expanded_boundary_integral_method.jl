@@ -900,7 +900,7 @@ end
                              num_print_idxs::Union{Integer,Symbol}=:all, d=0) where {Bi<:AbsBilliard}
 
 Performs singular distance checks for source points, source-target pairs under various reflections,
-and reports singular Cartesian indices both on and off diagonal
+and reports singular Cartesian indices both on and off diagonal. This might indicate a problem when symmetrizing the boundary full.
 
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The BIM solver.

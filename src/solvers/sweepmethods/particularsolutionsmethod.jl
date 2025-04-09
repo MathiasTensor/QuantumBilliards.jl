@@ -249,6 +249,7 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     s_constr=time()
     @info "Constructing matrices"
     @time B,B_int=construct_matrices(solver,basis,pts,k)
+    @info "Conditioning cond(B) = $(cond(B)), cond(B_int) = $(cond(B_int))"
     e_constr=time()
     s_svd=time()
     @info "SVD values"
