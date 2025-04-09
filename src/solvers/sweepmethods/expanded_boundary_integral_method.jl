@@ -397,13 +397,11 @@ the identity on the diagonal for the base matrix.
 
 # Note: Conditioning far away from a real eigenvalue
 ```math
-log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
 log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
 ```
 # Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
 ```math
-log(cond(A)) = 4.275721005223111, det(A) = -845.8597645859071 + 1.5705301055355108im
 log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
 ```
@@ -453,13 +451,11 @@ the identity on the diagonal for the base matrix.
 
 # Note: Conditioning far away from a real eigenvalue
 ```math
-log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
 log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
 ```
 # Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
 ```math
-log(cond(A)) = 4.275721005223111, det(A) = -845.8597645859071 + 1.5705301055355108im
 log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
 ```
