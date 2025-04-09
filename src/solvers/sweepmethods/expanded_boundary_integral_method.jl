@@ -612,13 +612,13 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
         if LAPACK.version()<v"3.6.0"
             s_gev=time()
             @info "Doing ggev!"
-            @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA)), cond(ddA) = $(cond(ddA))"
+            @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA))"
             @time α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(dA))
             e_gev=time()
         else
             s_gev=time()
             @info "Doing ggev3!"
-            @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA)), cond(ddA) = $(cond(ddA))"
+            @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA))"
             @time α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(dA))
             e_gev=time()
         end
