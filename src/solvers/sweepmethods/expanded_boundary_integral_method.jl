@@ -395,13 +395,19 @@ using a matrix approach. Specifically:
 Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
 the identity on the diagonal for the base matrix.
 
-# Note: Examples of conditioning (not close to real eigenvalue)
+# Note: Conditioning far away from a real eigenvalue
 ```math
 log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
 log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
 ```
-This shows need for `QZ` algorithm for ggev and `ddA` can only be used for matrix multiplication of vectors for 2nd order corrections.
+# Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
+```math
+log(cond(A)) = 4.275721005223111, det(A) = -845.8597645859071 + 1.5705301055355108im
+log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
+log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
+```
+This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
 
 # Arguments
 - `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
@@ -445,13 +451,19 @@ using a matrix approach. Specifically:
 Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
 the identity on the diagonal for the base matrix.
 
-# Note: Examples of conditioning (not close to real eigenvalue)
+# Note: Conditioning far away from a real eigenvalue
 ```math
 log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
 log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
 ```
-This shows need for `QZ` algorithm for ggev and `ddA` can only be used for matrix multiplication of vectors for 2nd order corrections.
+# Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
+```math
+log(cond(A)) = 4.275721005223111, det(A) = -845.8597645859071 + 1.5705301055355108im
+log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
+log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
+```
+This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
 
 # Arguments
 - `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
@@ -496,13 +508,19 @@ High-level routine that builds the Fredholm matrix and its first/second derivati
 for the given boundary `pts` and wavenumber `k`, relying on the matrix-based approach
 in `all_fredholm_associated_matrices`.
 
-# Note: Examples of conditioning (not close to real eigenvalue)
+# Note: Conditioning far away from a real eigenvalue
 ```math
 log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
 log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
 log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
 ```
-This shows need for `QZ` algorithm for ggev and `ddA` can only be used for matrix multiplication of vectors for 2nd order corrections.
+# Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
+```math
+log(cond(A)) = 4.275721005223111, det(A) = -845.8597645859071 + 1.5705301055355108im
+log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
+log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
+```
+This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
 
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: An EBIM solver configuration (its `rule` is used).
