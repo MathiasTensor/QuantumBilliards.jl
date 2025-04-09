@@ -310,6 +310,7 @@ function solve_INFO(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,
     s_constr=time()
     @info "Constructing F,G for Fx=λGx..."
     @time F,G=construct_matrices(solver,basis,pts,k)
+    @info "Conditioning: cond(F) = $(cond(F)), cond(G) = $(cond(G))"
     e_constr=time()
     @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
     s_reg=time()
