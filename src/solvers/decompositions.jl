@@ -88,8 +88,10 @@ end
 Computes the generalized eigenvalues and both left and right eigenvectors of the pair of matrices `(A, B)`. There are no further restrictions on the types of matrices `(A, B)`.
 
 ```math
-A * u = λ * B * u
+A * u = λ * B * u     ->     A * u = λ * dA/dk * u
 ```
+
+It is important to filter the eigenvalues λ for Inf or NaN since eigen internally calls ggev3/ggev which uses QZ algorithm which gives the diagonal elements of the triangular form of A and B (they are simulatenously transformed as T_A = Q * A * Z & T_B = Q * B * Z) as vectors α (diagonals of T_A) and vectors β (diagonals of T_B). The key observation here is that matrix B in EBIM is ill-conditioned (cond(B) > 1e16) and singular (since the diagonals are all zero in using the helmholtz kernel) and therefore the QZ algorithm returns many Inf values for β. And when we construct the final eigenvalues as λ=α./β this becomes problematic, hence the need to for this check. 
 
 # Arguments
 - `A::AbstractMatrix`: Square matrix.
@@ -128,6 +130,8 @@ This function is optimized for speed on small matrices (`dim < 350`) and can han
 ```math
 A * u = λ * B * u
 ```
+
+It is important to filter the eigenvalues λ for Inf or NaN since ggev3/ggev which uses QZ algorithm which gives the diagonal elements of the triangular form of A and B (they are simulatenously transformed as T_A = Q * A * Z & T_B = Q * B * Z) as vectors α (diagonals of T_A) and vectors β (diagonals of T_B). The key observation here is that matrix B in EBIM is ill-conditioned (cond(B) > 1e16) and singular (since the diagonals are all zero in using the helmholtz kernel) and therefore the QZ algorithm returns many Inf values for β. And when we construct the final eigenvalues as λ=α./β this becomes problematic, hence the need to for this check. 
 
 # Arguments
 - `A::AbstractMatrix`: Square matrix.

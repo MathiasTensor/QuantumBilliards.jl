@@ -395,6 +395,14 @@ using a matrix approach. Specifically:
 Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
 the identity on the diagonal for the base matrix.
 
+# Note: Examples of conditioning (not close to real eigenvalue)
+```math
+log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
+log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
+log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
+```
+This shows need for `QZ` algorithm for ggev and `ddA` can only be used for matrix multiplication of vectors for 2nd order corrections.
+
 # Arguments
 - `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
 - `symmetry_rule::SymmetryRuleBIM{T}`: Reflection/boundary condition rules.
@@ -436,6 +444,14 @@ using a matrix approach. Specifically:
 
 Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
 the identity on the diagonal for the base matrix.
+
+# Note: Examples of conditioning (not close to real eigenvalue)
+```math
+log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
+log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
+log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
+```
+This shows need for `QZ` algorithm for ggev and `ddA` can only be used for matrix multiplication of vectors for 2nd order corrections.
 
 # Arguments
 - `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
@@ -479,6 +495,14 @@ end
 High-level routine that builds the Fredholm matrix and its first/second derivatives
 for the given boundary `pts` and wavenumber `k`, relying on the matrix-based approach
 in `all_fredholm_associated_matrices`.
+
+# Note: Examples of conditioning (not close to real eigenvalue)
+```math
+log(cond(A)) = 3.0982833773882583, det(A) = 0.004361488184059069 + 0.006306845788048928im
+log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
+log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
+```
+This shows need for `QZ` algorithm for ggev and `ddA` can only be used for matrix multiplication of vectors for 2nd order corrections.
 
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: An EBIM solver configuration (its `rule` is used).
