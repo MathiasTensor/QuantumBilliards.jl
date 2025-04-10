@@ -687,6 +687,57 @@ end
 ############### EXPANDED BOUNDARY INTEGEAL METHOD###############
 ################################################################
 
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod, billiard::Bi, k1::T, k2::T;
+    dk::Function=(k)->(0.05*k^(-1/3)), tol=1e-4, use_lapack_raw::Bool=false,
+    kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)
+) where {T<:Real, Bi<:AbsBilliard}
+
+    basis = AbstractHankelBasis()
+    bim_solver = BoundaryIntegralMethod(solver.dim_scaling_factor, solver.pts_scaling_factor,
+        solver.sampler, solver.eps, solver.min_dim, solver.min_pts, solver.rule)
+
+    ks = T[]
+    dks = T[]
+    k = k1
+    while k < k2
+        push!(ks, k)
+        kstep = dk(k)
+        k += kstep
+        push!(dks, kstep)
+    end
+
+    println("EBIM...")
+
+    # Parallel computation step
+    results = Vector{Tuple{Vector{T}, Vector{T}}}(undef, length(ks))
+    Threads.@threads for i in eachindex(ks)
+        dd = dks[i]
+        pts = evaluate_points(bim_solver, billiard, ks[i])
+        λs, tensions = solve(solver, basis, pts, ks[i], dd; use_lapack_raw=use_lapack_raw, kernel_fun=kernel_fun)
+        results[i] = (λs, tensions)
+    end
+
+    # Sequential merging step
+    λs_all = T[]
+    tensions_all = T[]
+    control = Bool[]
+
+    for i in eachindex(ks)
+        λs, tensions = results[i]
+        if !isempty(λs)
+            overlap_and_merge!(λs_all, tensions_all, λs, tensions, control, ks[i]-dks[i], ks[i]; tol=tol)
+        end
+    end
+
+    if isempty(λs_all)
+        λs_all = [NaN]
+        tensions_all = [NaN]
+    end
+
+    return λs_all, tensions_all
+end
+
+#=
 """
     compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05 * k^(-1/3))) -> Tuple{Vector{T}, Vector{T}}
 
@@ -721,6 +772,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     λs_all=T[] 
     tensions_all=T[]
     control=Bool[]
+    println()
     println("EBIM...")
     dd=dks[1]
     λs,tensions=solve_INFO(solver,basis,evaluate_points(bim_solver,billiard,ks[1]),ks[1],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun)
@@ -742,6 +794,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     end
     return λs_all,tensions_all
 end
+=#
 
 # IN PREPARATION FOR EBIM
 function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
