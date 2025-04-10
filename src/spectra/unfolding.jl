@@ -15,9 +15,9 @@ Calculates the corner correction term for Weyl's law based on the internal angle
 # Description
 This function calculates the correction term for Weyl's law that accounts for the internal angles of the billiard.
 """
-function corner_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
-    corner_angles = fundamental ? billiard.angles_fundamental : billiard.angles
-    return isempty(corner_angles) ? 0.0 : sum((π^2 - c^2) / (24π * c) for c in corner_angles)
+function corner_correction(billiard::Bi;fundamental::Bool=true) where {Bi<:AbsBilliard}
+    corner_angles=fundamental ? billiard.angles_fundamental : billiard.angles
+    return isempty(corner_angles) ? 0.0 : sum((π^2-c^2)/(24π*c) for c in corner_angles)
 end
 
 """
@@ -32,15 +32,15 @@ Computes the curvature correction term for Weyl's law based on the curvature alo
 # Returns
 - `curvature_term::Real`: The total curvature correction.
 """
-function curvature_correction(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
-    let segments = fundamental ? billiard.fundamental_boundary : billiard.full_boundary
-        curvat = 0.0
+function curvature_correction(billiard::Bi;fundamental::Bool=true) where {Bi<:AbsBilliard}
+    let segments=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
+        curvat=0.0
         for seg in segments 
             if seg isa PolarSegment
-                curvat += 1/(12*pi)*quadgk(t -> curvature(seg, t), 0.0, 1.0)[1]
+                curvat+=1/(12*pi)*quadgk(t->curvature(seg,t),0.0,1.0)[1]
             end
             if seg isa CircleSegment
-                curvat += 1/(12*pi)*(1/seg.radius)*seg.length
+                curvat+=1/(12*pi)*(1/seg.radius)*seg.length
             end
         end
         return curvat
@@ -59,8 +59,8 @@ Convenience function to get the constant C in Weyl's law.
 # Returns
 - `C::Real`: The constant C in Weyl's law.
 """
-function curvature_and_corner_corrections(billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
-    return curvature_correction(billiard; fundamental=fundamental) + corner_correction(billiard; fundamental=fundamental)
+function curvature_and_corner_corrections(billiard::Bi;fundamental::Bool=true) where {Bi<:AbsBilliard}
+    return curvature_correction(billiard;fundamental=fundamental)+corner_correction(billiard;fundamental=fundamental)
 end
 
 """
@@ -76,30 +76,30 @@ Computes the eigenvalue counting function `N(k)` using Weyl's law, with correcti
 # Returns
 - `N(ks)::Vector`: The estimated number of eigenvalues less than or equal to each `k`, including corner and curvature corrections.
 """
-function weyl_law(ks::Vector, billiard::Bi; fundamental::Bool=true) where {Bi<:AbsBilliard}
-    A = fundamental ? billiard.area_fundamental : billiard.area
-    L = fundamental ? billiard.length_fundamental : billiard.length
-    N_ks = (A * ks.^2 .- L .* ks) ./ (4π)
-    N_ks .+= corner_correction(billiard; fundamental=fundamental)
-    N_ks .+= curvature_correction(billiard; fundamental=fundamental)
+function weyl_law(ks::Vector,billiard::Bi;fundamental::Bool=true) where {Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    L=fundamental ? billiard.length_fundamental : billiard.length
+    N_ks=(A*ks.^2 .- L .* ks)./(4π)
+    N_ks.+=corner_correction(billiard;fundamental=fundamental)
+    N_ks.+=curvature_correction(billiard;fundamental=fundamental)
     return N_ks
 end
 
 # INTERNAL
-function weyl_law(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
-    A = fundamental ? billiard.area_fundamental : billiard.area
-    L = fundamental ? billiard.length_fundamental : billiard.length
-    N_k = (A * k^2 - L * k)/(4π)
-    N_k += corner_correction(billiard; fundamental=fundamental)
-    N_k += curvature_correction(billiard; fundamental=fundamental)
+function weyl_law(k::T,billiard::Bi;fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    L=fundamental ? billiard.length_fundamental : billiard.length
+    N_k=(A*k^2-L*k)/(4π)
+    N_k+=corner_correction(billiard;fundamental=fundamental)
+    N_k+=curvature_correction(billiard;fundamental=fundamental)
     return N_k
 end
 
 # INTERNAL
-function dos_weyl(k::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
-    A = fundamental ? billiard.area_fundamental : billiard.area
-    L = fundamental ? billiard.length_fundamental : billiard.length
-    ρ_k = A/(2*pi)*k - L/(4*pi)
+function dos_weyl(k::T,billiard::Bi;fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    L=fundamental ? billiard.length_fundamental : billiard.length
+    ρ_k=A/(2*pi)*k-L/(4*pi)
     return ρ_k
 end
 
@@ -120,6 +120,17 @@ end
 
 Calculates the wave number `k` corresponding to a given state number using the inverted Weyl's law, including corner and curvature corrections.
 
+This function solves the quadratic equation of Weyl's law with corner corrections included:
+```math
+state * 4 * π = A * k^2 - L * k - Corr * 4*pi
+A * k^2 - L * k - 4 * π * (Corr + state)
+a = A
+b = - L
+c = - 4 * π * (Corr + state)
+k = (- b + sqrt(b^2 - 4 * a * c)) / (2 * a)
+
+```
+
 # Arguments
 - `state::T`: The eigenvalue index (state number).
 - `billiard::Bi`: The billiard instance containing area, length, and angle information.
@@ -128,18 +139,15 @@ Calculates the wave number `k` corresponding to a given state number using the i
 # Returns
 - `k::Real`: The estimated wave number corresponding to the given state.
 """
-function k_at_state(state::T, billiard::Bi; fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
-    A = fundamental ? billiard.area_fundamental : billiard.area
-    L = fundamental ? billiard.length_fundamental : billiard.length
-    
-    a = A
-    b = -L
-    c = -state * 4π
-    
-    c += corner_correction(billiard; fundamental=fundamental) * 4π
-    c += curvature_correction(billiard; fundamental=fundamental) * 4π
-    
-    dis = sqrt(b^2 - 4 * a * c)
-    return (-b + dis) / (2 * a)
+function k_at_state(state::T,billiard::Bi;fundamental::Bool=true) where {T<:Real, Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    L=fundamental ? billiard.length_fundamental : billiard.length
+    a=A
+    b=-L
+    c=-state*4π
+    c+=corner_correction(billiard;fundamental=fundamental)*4π
+    c+=curvature_correction(billiard;fundamental=fundamental)*4π
+    dis=sqrt(b^2-4*a*c)
+    return (-b+dis)/(2*a)
 end
 
