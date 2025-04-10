@@ -116,7 +116,6 @@ function generalized_eigen_all(A,B)
     λ=λ[sort_order]
     VR=VR[:,sort_order]
     VL=VL[:,sort_order]
-    #return λ,normalize!(VR),normalize!(VL)
     return λ,VR,VL
 end
 
@@ -158,7 +157,6 @@ function generalized_eigen_all_LAPACK_LEGACY(A,B)
     λ=λ[sort_order]
     VR=VR[:,sort_order]
     VL=VL[:,sort_order]
-    #return λ,normalize!(VR),normalize!(VL)
     return λ,VR,VL
 end
 
@@ -191,7 +189,6 @@ function generalized_eigen_symmetric_LAPACK_LEGACY(A,B)
     sort_order=sortperm(abs.(λ)) 
     λ=λ[sort_order]
     VR=VR[:,sort_order]
-    #return λ,normalize!(VR),normalize!(VR) 
     return λ,VR,VL
 end
 
