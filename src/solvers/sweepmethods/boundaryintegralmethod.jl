@@ -474,8 +474,8 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
-    Threads.@threads for i in 1:N
-        @inbounds for j in 1:i # symmetric hankel part
+    @inbounds for i in 1:N
+        for j in 1:i # symmetric hankel part
             distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(curvatures[i]/(2π))
@@ -519,8 +519,8 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
-    Threads.@threads for i in 1:N
-        @inbounds for j in 1:N
+    @inbounds for i in 1:N
+        for j in 1:N
             distance=distances[i,j]
             if distance<eps(T)
                 M[i,j]=Complex(curvatures[i]/(2π))

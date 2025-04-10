@@ -74,8 +74,8 @@ Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
-    Threads.@threads for i in 1:N
-        @inbounds for j in 1:(i-1) # symmetric hankel part
+    @inbounds for i in 1:N
+        for j in 1:(i-1) # symmetric hankel part
             distance=distances[i,j]
             cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
             hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
@@ -121,8 +121,8 @@ for each `(source_i, target_j)` pair based on the distance and the dot product w
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
-    Threads.@threads for i in 1:N
-        @inbounds for j in 1:N
+    @inbounds for i in 1:N
+        for j in 1:N
             distance=distances[i,j]
             if distance<eps(T) # pt on reflection axis!
                 M[i,j]=Complex(T(0.0),T(0.0))
@@ -171,8 +171,8 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
-    Threads.@threads for i in 1:N
-        @inbounds for j in 1:(i-1) # symmetric hankel part
+    @inbounds for i in 1:N
+        for j in 1:(i-1) # symmetric hankel part
             distance=distances[i,j]
             cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
             hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
@@ -219,8 +219,8 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
-    Threads.@threads for i in 1:N
-        @inbounds for j in 1:N
+    @inbounds for i in 1:N
+        for j in 1:N
             distance=distances[i,j]
             if distance<eps(T) # pt on reflection axis!
                 M[i,j]=Complex(T(0.0),T(0.0))
