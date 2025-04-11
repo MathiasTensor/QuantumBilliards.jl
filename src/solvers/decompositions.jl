@@ -144,7 +144,7 @@ It is important to filter the eigenvalues λ for Inf or NaN since ggev3/ggev whi
 """
 function generalized_eigen_all_LAPACK_LEGACY(A,B) 
     if LAPACK.version()<v"3.6.0"
-        α,β,VL,VR=LAPACK.ggev!('V','V',A,B)
+        α,β,VL,VR=LAPACK.ggev!('V','V',A,copy(B)) # dA needs to be copied since we still need it after inplace modification for 2nd order corrections
     else
         α,β,VL,VR=LAPACK.ggev3!('V','V',A,B)
     end
@@ -182,7 +182,7 @@ A * u = λ * B * u
 - `VL::Matrix{Complex{T}}`: Same as `VR`, since left eigenvectors = right eigenvectors for symmetric matrices.
 """
 function generalized_eigen_symmetric_LAPACK_LEGACY(A,B)
-    λ,VR=LAPACK.sygvd!(1,'V','U',A,B)
+    λ,VR=LAPACK.sygvd!(1,'V','U',A,copy(B)) # dA needs to be copied since we still need it after inplace modification for 2nd order corrections
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
     VR=VR[:,valid_indices]
