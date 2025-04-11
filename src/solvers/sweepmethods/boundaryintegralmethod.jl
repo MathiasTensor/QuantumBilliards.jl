@@ -706,7 +706,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     @info "Total solve time for test k: $(total_time)"
     println("%%%%% SUMMARY %%%%%")
     println("Percentage of total time (most relevant ones): ")
-    println("F & G construction: $(100*(e_constr-s_constr)/total_time) %")
+    println("Fredholm matrix A construction: $(100*(e_constr-s_constr)/total_time) %")
     println("SVD: $(100*(e_svd-s_svd)/total_time) %")
     println("%%%%%%%%%%%%%%%%%%%")
     return mu[end]
