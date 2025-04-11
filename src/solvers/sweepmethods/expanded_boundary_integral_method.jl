@@ -75,7 +75,7 @@ Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
-    @inbounds @use_threads multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         @inbounds for j in 1:(i-1) # symmetric hankel part
             distance=distances[i,j]
             cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
@@ -123,7 +123,7 @@ for each `(source_i, target_j)` pair based on the distance and the dot product w
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
-    @inbounds @use_threads multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         @inbounds for j in 1:N
             distance=distances[i,j]
             if distance<eps(T) # pt on reflection axis!
@@ -174,7 +174,7 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
     dx=xs.-xs'
     dy=ys.-ys'
     distances=hypot.(dx,dy)
-    @inbounds @use_threads multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         @inbounds for j in 1:(i-1) # symmetric hankel part
             distance=distances[i,j]
             cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
@@ -223,7 +223,7 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     dx=x_s.-x_t'
     dy= y_s.-y_t'
     distances=hypot.(dx,dy)
-    @inbounds @use_threads multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         @inbounds for j in 1:N
             distance=distances[i,j]
             if distance<eps(T) # pt on reflection axis!
