@@ -755,61 +755,6 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     return λs_all,tensions_all
 end
 
-# IN PREPARATION FOR EBIM
-function compute_spectrum_new(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
-    basis=AbstractHankelBasis()
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    ks=T[]
-    ks_tmp=T[] # temps for storing ebim inv checks
-    tens_tmp=T[] # temps for storing ebim inv checks
-    dks=T[]
-    k=k1
-    while k<k2
-        push!(ks,k)
-        k+=dk(k)
-        push!(dks,dk(k))
-    end
-    λs_all=T[] 
-    tensions_all=T[]
-    control=Bool[]
-    @showprogress desc="EBIM with 1/diff(ks) check..." for i in eachindex(ks)
-        dd=dks[i]
-        λs_in,tensions_in,λs_out,tensions_out=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,ks[i]),ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
-        if !isempty(λs_in) # overlap and merge 1st order corrections
-            overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,ks[i]-dd,ks[i];tol=tol)
-        end
-        idx=findmin(tensions_out)[2]
-        if log10(tensions_out[idx])<0.0
-            push!(ks_tmp,λs_out[idx])
-            push!(tens_tmp,tensions_out[idx])     
-        end
-    end
-    println("length of k_tmp: ",length(ks_tmp))
-    _,inv_tens=ebim_inv_diff(ks_tmp)
-    idxs=findall(x->x>0.0,inv_tens) # only these are sensible
-    inv_tens=inv_tens[idxs]
-    ks_tmp=ks_tmp[idxs] 
-    k_peaks=find_peaks(ks_tmp,log10.(inv_tens);threshold=[1.2*log10(1.0/dk(k)) for k in ks_tmp]) # check in neighboorhod of these ks if we have a solution (could either be or not) and if not do the solve again
-    println("length of k peaks: ",length(k_peaks))
-    @showprogress desc="EBIM resolving for peaks of 1/diff" for k in k_peaks
-        interval=(k-dk(k)/2,k+dk(k)/2)
-        existing_solutions=any(λ->interval[1]<=λ<=interval[2],λs_all)
-        if !existing_solutions # if none resolve
-            println("Re-solving in interval $interval...")
-            λs_in,tensions_in,_,_=solve_1st_order(solver,basis,evaluate_points(bim_solver,billiard,k),k,dk(k);use_lapack_raw=use_lapack_raw,kernel_fun=(kernel_fun[1],kernel_fun[2]))
-            println("λs_in length: ", length(λs_in))
-            if !isempty(λs_in)  # merge, if any
-                overlap_and_merge!(λs_all,tensions_all,λs_in,tensions_in,control,interval[1],interval[2];tol = tol)
-            end
-        end
-    end
-    if isempty(λs_all) # Handle case of no eigenvalues found
-        λs_all=[NaN]
-        tensions_all=[NaN]
-    end
-    return λs_all,tensions_all
-end
-
 ################################################################
 ######################## TEST FUNCTIONS ########################
 ################################################################
