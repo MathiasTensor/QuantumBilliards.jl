@@ -624,7 +624,7 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
         end
         λ=α./β
         valid_indices=.!isnan.(λ).&.!isinf.(λ)
-        @info "Number of valid indices: $(count(valid_indices))"
+        @info "% of valid indices: $(count(valid_indices)/length(λ))"
         λ=λ[valid_indices]
         VR=VR[:,valid_indices]
         VL=VL[:,valid_indices]
