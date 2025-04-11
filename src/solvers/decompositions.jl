@@ -182,7 +182,7 @@ A * u = λ * B * u
 - `VL::Matrix{Complex{T}}`: Same as `VR`, since left eigenvectors = right eigenvectors for symmetric matrices.
 """
 function generalized_eigen_symmetric_LAPACK_LEGACY(A,B)
-    λ,VR=LAPACK.sygvd!(1,'V','U',copy(A),copy(B))
+    λ,VR=LAPACK.sygvd!(1,'V','U',A,B)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
     VR=VR[:,valid_indices]
