@@ -730,10 +730,13 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     dd=dks[1]
     λs,tensions=solve_INFO(solver,basis,all_pts[1],ks[1],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
     results[1]=(λs,tensions)
-    @showprogress desc="EBIM evaluations..." @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+    p=Progress(length(ks)-1,1) # first one finished
+    println("Solving EBIM...")
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
         dd=dks[i]
         λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
         results[i]=(λs, tensions)
+        next!(p)
     end
     # Sequential merging step
     λs_all=T[]
