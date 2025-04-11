@@ -15,7 +15,7 @@ macro use_threads(args...)
         loop_expr=args[2]
         # If the provided value is literally true or false, we branch accordingly at compile time.
         if multithreading_val===true
-            return esc(:(@inbounds Base.Threads.@threads $loop_expr))
+            return esc(:(@inbounds Threads.@threads $loop_expr))
         elseif multithreading_val===false
             return esc(:(@inbounds $loop_expr))
         else
@@ -24,7 +24,7 @@ macro use_threads(args...)
             return esc(quote
                 @inbounds begin
                     if $multithreading_val
-                        Base.Threads.@threads $loop_expr
+                        Threads.@threads $loop_expr
                     else
                         $loop_expr
                     end
@@ -34,7 +34,7 @@ macro use_threads(args...)
     elseif length(args)==1
         # No keyword argument provided. Default behavior is multithreading=true.
         loop_expr=args[1]
-        return esc(:(@inbounds Base.Threads.@threads $loop_expr))
+        return esc(:(@inbounds Threads.@threads $loop_expr))
     else
         error("Usage: @use_threads [multithreading=[true|false]] for ...")
     end
