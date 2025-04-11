@@ -707,14 +707,16 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod, billiard::Bi, 
     end
 
     println("EBIM...")
+    all_pts=Vector{BoundaryPointsBIM{T}}(undef,length(ks))
+    Threads.@threads for i in eachindex(ks)
+        all_pts[i] = evaluate_points(deepcopy(bim_solver), billiard, ks[i])
+    end
 
     # Parallel computation step
     results = Vector{Tuple{Vector{T}, Vector{T}}}(undef, length(ks))
     @showprogress desc="EBIM evaluations..." Threads.@threads for i in eachindex(ks)
-        local_solver = deepcopy(bim_solver)
         dd = dks[i]
-        pts = evaluate_points(local_solver, billiard, ks[i])
-        λs, tensions = solve(solver, basis, pts, ks[i], dd; use_lapack_raw=use_lapack_raw, kernel_fun=kernel_fun)
+        λs, tensions = solve(solver, basis, all_pts[i], ks[i], dd; use_lapack_raw=use_lapack_raw, kernel_fun=kernel_fun)
         results[i] = (λs, tensions)
     end
 
