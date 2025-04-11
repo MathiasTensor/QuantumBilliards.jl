@@ -3,6 +3,7 @@ module QuantumBilliards
 
 #abstract types
 include("abstracttypes.jl")
+include("utils/macros.jl")
 #utils must be included here so modules work
 #export AbsBasis
 include("utils/coordinatesystems.jl")

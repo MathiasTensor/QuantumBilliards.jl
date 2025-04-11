@@ -701,13 +701,14 @@ Computes the spectrum of the expanded BIM and their corresponding tensions for a
 - `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
 - `use_lapack_raw::Bool=false`: Use the ggev LAPACK function directly without Julia's eigen(A,B) wrapper for it. Might provide speed-up for certain situations (small matrices...)
 - `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}`: Custom kernel functions for the boundary integral method. The default implementation is given by (:default,:first,:second) for the default hemlhholtz kernel and it's first and second derivative.
+- `multithreaded::Bool=true`: If the Fredholm matrix construction and it's derivatives should be done in parallel.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: 
   - First element is a vector of corrected eigenvalues (`λ`).
   - Second element is a vector of corresponding tensions.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k)->(0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k)->(0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     ks=T[]
@@ -726,11 +727,11 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     end
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     dd=dks[1]
-    λs,tensions=solve_INFO(solver,basis,all_pts[1],ks[1],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun)
+    λs,tensions=solve_INFO(solver,basis,all_pts[1],ks[1],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
     results[1]=(λs,tensions)
     @showprogress desc="EBIM evaluations..." Threads.@threads for i in eachindex(ks)[2:end]
         dd=dks[i]
-        λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun)
+        λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
         results[i]=(λs, tensions)
     end
     # Sequential merging step

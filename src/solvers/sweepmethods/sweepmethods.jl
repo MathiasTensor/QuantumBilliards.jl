@@ -48,11 +48,12 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `billiard::AbsBilliard`: The billiard configuration.
 - `ks::Vector{Real}`: Vector of wavenumbers over which to perform the sweep.
 - `kernel_fun::Union{Symbol, Function}`: Kernel function to use in the boundary integral method. Defaults to `:default`.
+- `multithreaded_fredholm::Bool=true`: If the matrix construction should be multithreaded for the Fredholm matrix. Relevant if doing `BoundaryIntegralMethod`
 
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_fredholm::Bool=true)
     k=maximum(ks)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
@@ -64,7 +65,7 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     if solver isa BoundaryIntegralMethod
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun)
         Threads.@threads for i in eachindex(ks)[2:end]
-            res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun)
+            res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_fredholm)
             next!(p)
         end
     else
