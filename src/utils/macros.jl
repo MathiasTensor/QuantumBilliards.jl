@@ -4,11 +4,11 @@
 Macro to conditionally enable multithreading via `Threads.@threads` based on `condition`.
 """
 macro use_threads(condition,loop)
-    return quote
-        if $condition
-            Threads.@threads $loop
+    quote
+        if $(esc(condition))
+            Threads.@threads $(esc(loop))
         else
-            $loop
+            $(esc(loop))
         end
     end
 end
