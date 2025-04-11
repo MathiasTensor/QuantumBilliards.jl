@@ -144,9 +144,9 @@ It is important to filter the eigenvalues λ for Inf or NaN since ggev3/ggev whi
 """
 function generalized_eigen_all_LAPACK_LEGACY(A,B) 
     if LAPACK.version()<v"3.6.0"
-        α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(B))
+        α,β,VL,VR=LAPACK.ggev!('V','V',A,B)
     else
-        α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(B))
+        α,β,VL,VR=LAPACK.ggev3!('V','V',A,B)
     end
     λ=α./β
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
