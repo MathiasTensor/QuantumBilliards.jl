@@ -1038,9 +1038,9 @@ Useful function to check the conditions numbers of the relevant Fredholm matrix 
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
 # Returns
-- `(ksA,resultsA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the A matrix where LAPACK did not crash.
-- `(ksdA,resultsdA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the dA matrix where LAPACK did not crash.
-- `(ksddA,resultsddA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the ddA matrix where LAPACK did not crash.
+- `(ksA,resultsA,det_resultsA)::Tuple{Vector{T},Vector{T},Vector{T}}`: The ks and conditions numbers for the A matrix where LAPACK did not crash.
+- `(ksdA,resultsdA,det_resultsdA)::Tuple{Vector{T},Vector{T},Vector{T}}`: The ks and conditions numbers for the dA matrix where LAPACK did not crash.
+- `(ksddA,resultsddA,det_resultsddA)::Tuple{Vector{T},Vector{T},Vector{T}}`: The ks and conditions numbers for the ddA matrix where LAPACK did not crash.
 
 """
 function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
@@ -1063,32 +1063,44 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
     resultsA=Vector{Union{T,Missing}}(missing,length(ks))
     resultsdA=Vector{Union{T,Missing}}(missing,length(ks))
     resultsddA=Vector{Union{T,Missing}}(missing,length(ks))
+    det_resultsA=Vector{Union{T,Missing}}(missing,length(ks))
+    det_resultsdA=Vector{Union{T,Missing}}(missing,length(ks))
+    det_resultsddA=Vector{Union{T,Missing}}(missing,length(ks))
     p=Progress(length(ks),1) # first one finished
     println("Constructing dA, ddA and evaluating cond...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)
         A,dA,ddA=construct_matrices(solver,basis,all_pts[i],ks[i],multithreaded=multithreaded_matrices)
         try
             cA=cond(A)
+            det_cA=det(A)
             resultsA[i]=cA
+            det_resultsA[i]=det_cA
         catch _ end
         try
             cdA=cond(dA)
+            det_cdA=det(dA)
             resultsdA[i]=cdA
+            det_resultsdA[i]=det_cdA
         catch _ end
         try # since most cases the LAPACK solver will crash when calculating the condition number of ddA. In those cases it is also useless to compute it since we need to divide by ddA in the 2nd order corrections and it will give unstable results.
             cddA=cond(ddA)
+            det_cddA=det(ddA)
             resultsddA[i]=cddA
+            det_resultsddA[i]=det_cddA
         catch _ end
         next!(p)
     end
     idxs=findall(x->!ismissing(x),resultsA)
     resultsA=resultsA[idxs]
+    det_resultsA=det_resultsA[idxs]
     ksA=ks[idxs]
     idxs=findall(x->!ismissing(x),resultsdA)
     resultsdA=resultsdA[idxs]
+    det_resultsdA=det_resultsdA[idxs]
     ksdA=ks[idxs]
     idxs=findall(x->!ismissing(x),resultsddA)
     resultsddA=resultsddA[idxs]
+    det_resultsddA=det_resultsddA[idxs]
     ksddA=ks[idxs]
-    return (ksA,resultsA),(ksdA,resultsdA),(ksddA,resultsddA)
+    return (ksA,resultsA,det_resultsA),(ksdA,resultsdA,det_resultsdA),(ksddA,resultsddA,det_resultsddA)
 end
