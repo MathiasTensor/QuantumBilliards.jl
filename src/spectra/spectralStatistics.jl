@@ -140,16 +140,16 @@ function plot_nnls_only_chaotic(chaotic_levels::Vector;nbins::Int=100,ρ_chaotic
     goe_pdf=x->(π/2)*x*exp(-π*x^2/4)
     f=Figure(resolution=(800,600))
     ax=Axis(f[1,1],xlabel=L"s",ylabel=L"P(s)",xlabelsize=30,ylabelsize=30)
-    barplot!(ax,bin_centers,bin_counts,label="Chaotic levels",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
+    barplot!(ax,bin_centers,bin_counts,label="Chaotic levels after separation",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
     s_values=collect(range(0,stop=maximum(bin_centers),length=1000))
     ys=goe_pdf.(s_values)
     lines!(ax,s_values,ys,label="GOE PDF",color=:green)
     if ρ_chaotic_classic!=1.0
         β=fit_brody_to_data(collect(bin_centers),bin_counts)
         ys=probability_brody(s_values,β)
-        lines!(ax,s_values,ys,label="Brody, ρ_ch=$(round(ρ_chaotic_classic;sigdigits=4)), β=$(round(β;sigdigits=4))",color=:red)
+        lines!(ax,s_values,ys,label="Brody, ρ_ch=$(round(ρ_chaotic_classic;sigdigits=3)), β=$(round(β;sigdigits=3))",color=:red)
     end
-    axislegend(ax,position=:rt,labelsize=30)
+    axislegend(ax,position=:rt,labelsize=25)
     return f
 end
 
