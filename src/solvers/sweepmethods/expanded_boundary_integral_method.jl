@@ -1093,26 +1093,17 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
         catch _ end
         next!(p)
     end
-    # COND
-    idxs=findall(x->!ismissing(x),resultsA)
-    resultsA=resultsA[idxs]
-    ksA=ks[idxs]
-    idxs=findall(x->!ismissing(x),resultsdA)
-    resultsdA=resultsdA[idxs]
-    ksdA=ks[idxs]
-    idxs=findall(x->!ismissing(x),resultsddA)
-    resultsddA=resultsddA[idxs]
-    ksddA=ks[idxs]
-    # DET
-    idxs=findall(x->!ismissing(x),det_resultsA)
-    det_resultsA=det_resultsA[idxs]
-    det_ksA=ks[idxs]
-    idxs=findall(x->!ismissing(x),det_resultsdA)
-    det_resultsdA=det_resultsdA[idxs]
-    det_ksdA=ks[idxs]
-    idxs=findall(x->!ismissing(x),det_resultsddA)
-    det_resultsddA=det_resultsddA[idxs]
-    det_ksddA=ks[idxs]
-
+    function filter_valid(xs::Vector{Union{T,Missing}},ks::Vector{T}) where {T}
+        idxs=findall(!ismissing,xs)
+        return xs[idxs],ks[idxs]
+    end
+    # Filter condition numbers and their corresponding ks
+    resultsA,ksA=filter_valid(resultsA,ks)
+    resultsdA,ksdA=filter_valid(resultsdA,ks)
+    resultsddA,ksddA=filter_valid(resultsddA,ks)
+    # Filter determinants and their corresponding ks
+    det_resultsA,det_ksA=filter_valid(det_resultsA,ks)
+    det_resultsdA,det_ksdA=filter_valid(det_resultsdA,ks)
+    det_resultsddA,det_ksddA=filter_valid(det_resultsddA,ks)
     return (ksA,resultsA),(ksdA,resultsdA),(ksddA,resultsddA),(det_ksA,det_resultsA),(det_ksdA,det_resultsdA),(det_ksddA,det_resultsddA)
 end
