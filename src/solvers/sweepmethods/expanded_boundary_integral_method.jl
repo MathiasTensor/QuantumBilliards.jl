@@ -1080,7 +1080,7 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
             @warn "cond(A) failed at k = $(ks[i]) with error $e"
         end
         try
-            det_cA=logabsdet(A)
+            det_cA=logabsdet(A)[1]
             det_resultsA[i]=det_cA
         catch e
             @warn "logabsdet(A) failed at k = $(ks[i]) with error $e"
@@ -1092,7 +1092,7 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
             @warn "cond(dA) failed at k = $(ks[i]) with error $e"
         end
         try
-            det_cdA=logabsdet(dA)
+            det_cdA=logabsdet(dA)[1]
             det_resultsdA[i]=det_cdA
         catch e
             @warn "logabsdet(dA) failed at k = $(ks[i]) with error $e"
@@ -1104,7 +1104,7 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
             @warn "cond(ddA) failed at k = $(ks[i]) with error $e"
         end
         try
-            det_cddA=logabsdet(ddA)
+            det_cddA=logabsdet(ddA)[1]
             det_resultsddA[i]=det_cddA
         catch e
             @warn "logabsdet(ddA) failed at k = $(ks[i]) with error $e"
