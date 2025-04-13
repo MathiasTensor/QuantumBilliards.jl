@@ -1021,3 +1021,74 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     ks_all_2=ks_all_2[idxs2]
     return ks_all_1,logtens_1, ks_all_2,logtens_2
 end
+
+"""
+    visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+
+Useful function to check the conditions numbers of the relevant Fredholm matrix and it's derivatives in the given k-range. This is to check the numerical stability of the method, especially very close to a true eigenvalue. It is quite useful to plot the ks vs. log of the returned results vectors for A, dA, ddA to see deeper insights.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the expanded boundary integral method.
+- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
+- `k1::T`: Starting wavenumber for the spectrum calculation.
+- `k2::T`: Ending wavenumber for the spectrum calculation.
+- `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
+- `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
+- `multithreaded_matrices::Bool=false`: If the Fredholm matrix construction and it's derivatives should be done in parallel.
+- `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
+
+# Returns
+- `(ksA,resultsA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the A matrix where LAPACK did not crash.
+- `(ksdA,resultsdA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the dA matrix where LAPACK did not crash.
+- `(ksddA,resultsddA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the ddA matrix where LAPACK did not crash.
+
+"""
+function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    basis=AbstractHankelBasis()
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    ks=T[]
+    dks=T[]
+    k=k1
+    while k<k2
+        push!(ks,k)
+        kstep=dk(k)
+        k+=kstep
+        push!(dks,kstep)
+    end
+    println("EBIM...")
+    all_pts=Vector{BoundaryPointsBIM{T}}(undef,length(ks))
+    @showprogress desc="Calculating boundary points EBIM..." Threads.@threads for i in eachindex(ks)
+        all_pts[i]=evaluate_points(deepcopy(bim_solver),billiard,ks[i])
+    end
+    resultsA=Vector{Union{T,Missing}}(missing,length(ks))
+    resultsdA=Vector{Union{T,Missing}}(missing,length(ks))
+    resultsddA=Vector{Union{T,Missing}}(missing,length(ks))
+    p=Progress(length(ks),1) # first one finished
+    println("Constructing dA, ddA and evaluating cond...")
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)
+        A,dA,ddA=construct_matrices(solver,basis,all_pts[i],ks[i],multithreaded=multithreaded_matrices)
+        try
+            cA=cond(A)
+            resultsA[i]=cA
+        catch _ end
+        try
+            cdA=cond(dA)
+            resultsdA[i]=cdA
+        catch _ end
+        try # since most cases the LAPACK solver will crash when calculating the condition number of ddA. In those cases it is also useless to compute it since we need to divide by ddA in the 2nd order corrections and it will give unstable results.
+            cddA=cond(ddA)
+            resultsddA[i]=cddA
+        catch _ end
+        next!(p)
+    end
+    idxs=findall(x->!ismissing(x),resultsA)
+    resultsA=resultsA[idxs]
+    ksA=ks[idxs]
+    idxs=findall(x->!ismissing(x),resultsdA)
+    resultsdA=resultsdA[idxs]
+    ksdA=ks[idxs]
+    idxs=findall(x->!ismissing(x),resultsddA)
+    resultsddA=resultsddA[idxs]
+    ksddA=ks[idxs]
+    return (ksA,resultsA),(ksdA,resultsdA),(ksddA,resultsddA)
+end
