@@ -139,7 +139,7 @@ function plot_nnls_only_chaotic(chaotic_levels::Vector;nbins::Int=100,ρ_chaotic
     bin_counts=hist.weights./sum(hist.weights)/diff(hist.edges[1])[1] # take the normalized histogram weights and create the counts with the diffs of the histogram edges
     goe_pdf=x->(π/2)*x*exp(-π*x^2/4)
     f=Figure(resolution=(800,600))
-    ax=Axis(f[1,1],xlabel=L"s",ylabel=L"P(s)",xlabelsize=25,ylabelsize=25)
+    ax=Axis(f[1,1],xlabel=L"s",ylabel=L"P(s)",xlabelsize=30,ylabelsize=30)
     barplot!(ax,bin_centers,bin_counts,label="Chaotic levels",color=:lightblue,transparency=0.1,alpha=0.1,width=diff(hist.edges[1])[1],gap=0.0,strokecolor=:black,strokewidth=1)
     s_values=collect(range(0,stop=maximum(bin_centers),length=1000))
     ys=goe_pdf.(s_values)
@@ -147,9 +147,9 @@ function plot_nnls_only_chaotic(chaotic_levels::Vector;nbins::Int=100,ρ_chaotic
     if ρ_chaotic_classic!=1.0
         β=fit_brody_to_data(collect(bin_centers),bin_counts)
         ys=probability_brody(s_values,β)
-        lines!(ax,s_values,ys,label="Brody, ρ_ch=$(ρ_chaotic_classic), β=$β",color=:red)
+        lines!(ax,s_values,ys,label="Brody, ρ_ch=$(round(ρ_chaotic_classic;sigdigits=4)), β=$(round(β;sigdigits=4))",color=:red)
     end
-    axislegend(ax,position=:rt,labelsize=20)
+    axislegend(ax,position=:rt,labelsize=30)
     return f
 end
 
