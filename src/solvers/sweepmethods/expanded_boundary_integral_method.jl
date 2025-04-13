@@ -1075,19 +1075,19 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
         A,dA,ddA=construct_matrices(solver,basis,all_pts[i],ks[i],multithreaded=multithreaded_matrices)
         try
             cA=cond(A)
-            det_cA=det(A)
+            det_cA=logabsdet(A)
             resultsA[i]=cA
             det_resultsA[i]=det_cA
         catch _ end
         try
             cdA=cond(dA)
-            det_cdA=det(dA)
+            det_cdA=logabsdet(dA)
             resultsdA[i]=cdA
             det_resultsdA[i]=det_cdA
         catch _ end
         try # since most cases the LAPACK solver will crash when calculating the condition number of ddA. In those cases it is also useless to compute it since we need to divide by ddA in the 2nd order corrections and it will give unstable results.
             cddA=cond(ddA)
-            det_cddA=det(ddA)
+            det_cddA=logabsdet(ddA)
             resultsddA[i]=cddA
             det_resultsddA[i]=det_cddA
         catch _ end
