@@ -1038,9 +1038,12 @@ Useful function to check the conditions numbers of the relevant Fredholm matrix 
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
 # Returns
-- `(ksA,resultsA,det_resultsA)::Tuple{Vector{T},Vector{T},Vector{T}}`: The ks and conditions numbers for the A matrix where LAPACK did not crash.
-- `(ksdA,resultsdA,det_resultsdA)::Tuple{Vector{T},Vector{T},Vector{T}}`: The ks and conditions numbers for the dA matrix where LAPACK did not crash.
-- `(ksddA,resultsddA,det_resultsddA)::Tuple{Vector{T},Vector{T},Vector{T}}`: The ks and conditions numbers for the ddA matrix where LAPACK did not crash.
+- `(ksA,resultsA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the A matrix where LAPACK did not crash.
+- `(ksdA,resultsdA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the dA matrix where LAPACK did not crash.
+- `(ksddA,resultsddA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the ddA matrix where LAPACK did not crash.
+- `(det_ksA,det_resultsA)::Tuple{Vector{T},Vector{T}}`: The ks and det numbers for the A matrix where LAPACK did not crash.
+- `(det_ksdA,det_resultsdA)::Tuple{Vector{T},Vector{T}}`: The ks and det numbers for the dA matrix where LAPACK did not crash.
+- `(det_ksddA,det_resultsddA)::Tuple{Vector{T},Vector{T}}`: The ks and det numbers for the ddA matrix where LAPACK did not crash.
 
 """
 function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
@@ -1090,17 +1093,26 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
         catch _ end
         next!(p)
     end
+    # COND
     idxs=findall(x->!ismissing(x),resultsA)
     resultsA=resultsA[idxs]
-    det_resultsA=det_resultsA[idxs]
     ksA=ks[idxs]
     idxs=findall(x->!ismissing(x),resultsdA)
     resultsdA=resultsdA[idxs]
-    det_resultsdA=det_resultsdA[idxs]
     ksdA=ks[idxs]
     idxs=findall(x->!ismissing(x),resultsddA)
     resultsddA=resultsddA[idxs]
-    det_resultsddA=det_resultsddA[idxs]
     ksddA=ks[idxs]
-    return (ksA,resultsA,det_resultsA),(ksdA,resultsdA,det_resultsdA),(ksddA,resultsddA,det_resultsddA)
+    # DET
+    idxs=findall(x->!ismissing(x),det_resultsA)
+    det_resultsA=det_resultsA[idxs]
+    det_ksA=ks[idxs]
+    idxs=findall(x->!ismissing(x),det_resultsdA)
+    det_resultsdA=det_resultsdA[idxs]
+    det_ksdA=ks[idxs]
+    idxs=findall(x->!ismissing(x),det_resultsddA)
+    det_resultsddA=det_resultsddA[idxs]
+    det_ksddA=ks[idxs]
+
+    return (ksA,resultsA),(ksdA,resultsdA),(ksddA,resultsddA),(det_ksA,det_resultsA),(det_ksdA,det_resultsdA),(det_ksddA,det_resultsddA)
 end
