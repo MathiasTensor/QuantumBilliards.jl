@@ -234,17 +234,17 @@ function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints
     end
     N=basis.dim
     #basis matrix
-    B=basis_matrix(basis,k,xy)
+    B=basis_matrix(basis,k,xy) # this is G in the docstring
     type=eltype(B)
     F=zeros(type,(N,N))
     Fk=similar(F)
-    T=(w.*B) #reused later
-    mul!(F,B',T) #boundary norm matrix
+    T=(w.*B) #reused later, this is W*G in the docstring
+    mul!(F,B',T) #boundary norm matrix, this is G'*(W*G) = F in the docstring
     #reuse B
-    B=dk_matrix(basis,k,xy)
-    mul!(Fk,B',T) #B is now derivative matrix
+    B=dk_matrix(basis,k,xy) # this is dG/dk in the docstring
+    mul!(Fk,B',T) #B is now derivative matrix, and since T = W*G from above this is dG/dk*(W*G). This is the first part of Fk
     #symmetrize matrix
-    Fk=Fk+Fk' 
+    Fk=Fk+Fk' # this is now truly the whole Fk = (dG/dk)*W*G + ((dG/dk)*W*G)' = (dG/dk)*W*G + G*W*(dG/dk)
     return F,Fk    
 end
 
