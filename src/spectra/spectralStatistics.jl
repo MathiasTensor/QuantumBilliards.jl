@@ -149,7 +149,7 @@ function plot_nnls_only_chaotic(chaotic_levels::Vector;nbins::Int=100,ρ_chaotic
         ys=probability_brody(s_values,β)
         lines!(ax,s_values,ys,label="Brody, ρ_ch=$(ρ_chaotic_classic), β=$β",color=:red)
     end
-    axislegend(ax,position=:rt)
+    axislegend(ax,position=:rt,labelsize=30)
     return f
 end
 
