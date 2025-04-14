@@ -1014,7 +1014,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         end
         next!(p)
     end
-    function filter_vec!(vec::Vector{Union{T,Missing}})
+    function filter_vec!(vec)
         idxs=findall(!ismissing,vec)
         vec=vec[idxs]
     end
