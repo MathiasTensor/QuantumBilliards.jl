@@ -986,10 +986,6 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     k=k1
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     T=eltype(k1)
-    ks_all_1=T[]
-    ks_all_2=T[]
-    tens_all_1=T[]
-    tens_all_2=T[]
     ks=T[] # these are the evaluation points
     push!(ks,k1)
     k=k1
@@ -997,23 +993,35 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         k+=dk(k)
         push!(ks,k)
     end
+    ks_all_1=Vector{Union{T,Missing}}(missing,length(ks))
+    ks_all_2=Vector{Union{T,Missing}}(missing,length(ks))
+    tens_all_1=Vector{Union{T,Missing}}(missing,length(ks))
+    tens_all_2=Vector{Union{T,Missing}}(missing,length(ks))
     @info "EBIM smallest tens..."
     p=Progress(length(ks),1)
-    @use_threads multithreading=multithreaded_ks for k in ks
-        pts=evaluate_points(bim_solver,billiard,k)
-        ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k,multithreaded=multithreaded)
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)
+        pts=evaluate_points(bim_solver,billiard,ks[i])
+        ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,ks[i],multithreaded=multithreaded)
         idx1=findmin(tens1)[2]
         idx2=findmin(tens2)[2]
         if log10(tens1[idx1])<0.0
-            push!(ks_all_1,ks1[idx1])
-            push!(tens_all_1,tens1[idx1])     
+            ks_all_1[i]=ks1[idx1]
+            tens_all_1[i]=tens1[idx1]   
         end
         if log10(tens2[idx2])<0.0
-            push!(ks_all_2,ks2[idx2])
-            push!(tens_all_2,tens2[idx2])
+            ks_all_2[i]=ks2[idx2]
+            tens_all_2[i]=tens2[idx2]
         end
         next!(p)
     end
+    function filter_vec!(vec::Vector{Union{T,Missing}})
+        idxs=findall(!ismissing,vec)
+        vec=vec[idxs]
+    end
+    filter_vec!(ks_all_1)
+    filter_vec!(tens_all_1)
+    filter_vec!(ks_all_2)
+    filter_vec!(tens_all_2)
     _,logtens_1=ebim_inv_diff(ks_all_1)
     _,logtens_2=ebim_inv_diff(ks_all_2)
     idxs1=findall(x->x>0.0,logtens_1)
