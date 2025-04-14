@@ -998,7 +998,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     tens_all_1=Vector{Union{T,Missing}}(missing,length(ks))
     tens_all_2=Vector{Union{T,Missing}}(missing,length(ks))
     all_pts=Vector{BoundaryPointsBIM{T}}(undef,length(ks))
-    @showprogress desc="Calculating bounndary points..." for i in eachindex(ks) 
+    @showprogress desc="Calculating boundary points..." for i in eachindex(ks) 
         all_pts[i]=evaluate_points(bim_solver,billiard,ks[i])
     end
     @info "EBIM smallest tens..."
@@ -1017,14 +1017,10 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         end
         next!(p)
     end
-    function filter_vec!(vec)
-        idxs=findall(!ismissing,vec)
-        vec=vec[idxs]
-    end
-    filter_vec!(ks_all_1)
-    filter_vec!(tens_all_1)
-    filter_vec!(ks_all_2)
-    filter_vec!(tens_all_2)
+    ks_all_1=skipmissing(ks_all_1)|>collect
+    tens_all_1=skipmissing(tens_all_1)|>collect
+    ks_all_2=skipmissing(ks_all_2)|>collect
+    tens_all_2=skipmissing(tens_all_2)|>collect
     _,logtens_1=ebim_inv_diff(ks_all_1)
     _,logtens_2=ebim_inv_diff(ks_all_2)
     idxs1=findall(x->x>0.0,logtens_1)
