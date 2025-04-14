@@ -420,6 +420,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
+#=
 function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
     k0=k1
@@ -469,6 +470,72 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     #    next!(p)
     #end
     return state_res,control
+end
+=#
+function compute_spectrum_with_state(
+    solver::Sol,
+    basis::Ba,
+    billiard::Bi,
+    k1::T,
+    k2::T;
+    tol::T = T(1e-4),
+    N_expect = 1,
+    dk_threshold::T = T(0.05),
+    fundamental::Bool = true,
+    multithreaded_matrices::Bool = false,
+    multithreaded_ks::Bool = true
+) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+
+    # Step 1: Precompute k-intervals (k_vals and dk_vals)
+    k_vals = T[]
+    dk_vals = T[]
+    k0 = k1
+    A_fund = billiard.area_fundamental
+    L_fund = billiard.length_fundamental
+    A_full = billiard.area
+    L_full = billiard.length
+
+    while k0 < k2
+        dk = fundamental ?
+            N_expect / (A_fund*k0 / (2π) - L_fund / (4π)) :
+            N_expect / (A_full*k0 / (2π) - L_full / (4π))
+        dk = abs(dk)
+        dk = min(dk, dk_threshold)
+        push!(k_vals, k0)
+        push!(dk_vals, dk)
+        k0 += dk
+    end
+
+    @info "Scaling Method w/ StateData..."
+    println("min/max dk: ", extrema(dk_vals))
+    println("Total intervals: ", length(k_vals))
+
+    # Step 2: Solve each interval in parallel
+    all_states = Vector{StateData{T,T}}(undef, length(k_vals))
+
+    Threads.@threads for i in eachindex(k_vals)
+        ki = k_vals[i]
+        dki = dk_vals[i]
+        all_states[i] = solve_state_data_bundle(solver, basis, billiard, ki, dki + tol;
+                                                multithreaded = multithreaded_matrices)
+    end
+
+    # Step 3: Merge sequentially
+    println("Merging intervals...")
+    state_res = all_states[1]
+    control = [false for _ in 1:length(state_res.ks)]
+    p = Progress(length(all_states) - 1, 1)
+
+    for i in 2:length(all_states)
+        overlap_and_merge_state!(
+            state_res.ks, state_res.tens, state_res.X,
+            all_states[i].ks, all_states[i].tens, all_states[i].X,
+            control, k_vals[i - 1], k_vals[i]; tol = tol
+        )
+        next!(p)
+    end
+
+    return state_res, control
 end
 
 """
