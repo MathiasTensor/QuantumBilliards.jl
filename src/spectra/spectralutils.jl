@@ -398,7 +398,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol
 end
 
 """
-    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
 
 Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors. MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved
 
@@ -414,11 +414,12 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 - `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
-
 # Returns
-    - `k_res::Vector{T}`: Vector of computed wavenumbers.
-    - `ten_res::Vector{T}`: Vector of corresponding tensions.
-    - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
+- `state-res::StateData{T,T}`: A struct containing:
+    - `ks::Vector{T}`: Vector of computed wavenumbers.
+    - `X::Vector{T}`: Matrix where each column are the coefficients for the basis expansion for the same indexed eigenvalue.
+    - `tens::Vector{T}`: Vector of tensions for each eigenvalue
+- `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
 #=
 function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
@@ -529,15 +530,17 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
 # Returns
-    - `k_res::Vector{T}`: Vector of computed wavenumbers.
-    - `ten_res::Vector{T}`: Vector of corresponding tensions.
-    - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
+- `state-res::StateData{T,T}`: A struct containing:
+    - `ks::Vector{T}`: Vector of computed wavenumbers.
+    - `X::Vector{T}`: Matrix where each column are the coefficients for the basis expansion for the same indexed eigenvalue.
+    - `tens::Vector{T}`: Vector of tensions for each eigenvalue
+- `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
 function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
-    compute_spectrum_with_state(solver,basis,billiard,k1,k2,tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental)
+    return compute_spectrum_with_state(solver,basis,billiard,k1,k2,tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental,multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks)
 end
 
 ########################
