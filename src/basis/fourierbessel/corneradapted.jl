@@ -1,16 +1,10 @@
-#include("../../abstracttypes.jl")
-#include("../../utils/coordinatesystems.jl")
-#include("../../utils/gridutils.jl")
-#using BenchmarkTools
-#using SpecialFunctions
 using Bessels
 using CoordinateTransformations, Rotations, StaticArrays
 
-#Jv(nu, r) = SpecialFunctions.besselj(nu,r)
 """
 Symbolic definition of the Bessel function of order `nu` with radius `r`
 """
-Jv(nu, r) = Bessels.besselj(nu, r)
+Jv(nu,r)=Bessels.besselj(nu,r)
 
 """
 This function calculates the cylindrical wave expansion term using the Bessel function of the first kind `Jv(nu, k*r)` and the sine of the angular component.
@@ -29,14 +23,14 @@ This function calculates the cylindrical wave expansion term using the Bessel fu
 - `phi`: The azimuthal angle.
 """
 function ca_fb(nu,k::T,r::T,phi::T) where {T<:Real}
-    return Jv(nu, k*r)*sin(nu*phi) 
+    return Jv(nu,k*r)*sin(nu*phi) 
 end
 
-function Jvp(nu, r::T) where {T<:Real}
+function Jvp(nu,r::T) where {T<:Real}
     let
-    j_minus = Jv(nu-one(T),r)
-    j_plus = Jv(nu+one(T),r)
-    return 0.5*( j_minus - j_plus)
+    j_minus=Jv(nu-one(T),r)
+    j_plus=Jv(nu+one(T),r)
+    return 0.5*(j_minus-j_plus)
     end
 end
 
@@ -56,23 +50,7 @@ Compute the derivative of the cylindrical wave expansion term with respect to th
 - `r`: The radial coordinate.
 - `phi`: The angle.
 """
-ca_fb_dk(nu,k,r,phi) = r * Jvp(nu, k*r) * sin(nu * phi)
-
-#=
-function _bessel_diff_formula(v, z, n, L, phase)
-    # from AMS55.
-    # L(v, z) = J(v, z), Y(v, z), H1(v, z), H2(v, z), phase = -1
-    # L(v, z) = I(v, z) or exp(v*pi*i)K(v, z), phase = 1
-    # For K, you can pull out the exp((v-k)*pi*i) into the caller
-    p = 1.0
-    s = L(v-n, z)
-    for i in 1:n
-        p = phase * (p * (n-i+1)) / i   # = choose(k, i)
-        s .+= p*L(v-n + i*2, z)
-    end
-    return s ./ (2.0^n)
-end
-=#
+ca_fb_dk(nu,k,r,phi)=r*Jvp(nu,k*r)*sin(nu*phi)
 
 struct CornerAdaptedFourierBessel{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
     cs::PolarCS{T}
@@ -96,21 +74,21 @@ For further reading please check Betcke's paper: Reviving the Method of Particul
 # Returns
 - A `CornerAdaptedFourierBessel` object, configured with the specified dimension, corner angle, and coordinate system.
 """
-function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, origin::SVector{2,T}, rot_angle::T; rotation_angle_discontinuity=zero(T)) where {T<:Real}
-    cs = PolarCS(origin, rot_angle)
-    nu = pi/corner_angle
-    return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, nothing, rotation_angle_discontinuity)
+function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,origin::SVector{2,T},rot_angle::T;rotation_angle_discontinuity=zero(T)) where {T<:Real}
+    cs=PolarCS(origin,rot_angle)
+    nu=pi/corner_angle
+    return CornerAdaptedFourierBessel{Float64,Nothing}(cs,dim,corner_angle,nu,nothing,rotation_angle_discontinuity)
 end
 
-function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, cs::CoordinateSystem, symmetry::Union{Vector{Any},Nothing}; rotation_angle_discontinuity=zero(T)) where {T<:Real}
-    nu = pi/corner_angle
-    return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, symmetry, rotation_angle_discontinuity)
+function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,cs::CoordinateSystem,symmetry::Union{Vector{Any},Nothing};rotation_angle_discontinuity=zero(T)) where {T<:Real}
+    nu=pi/corner_angle
+    return CornerAdaptedFourierBessel{Float64,Nothing}(cs,dim,corner_angle,nu,symmetry,rotation_angle_discontinuity)
 end
 
-function CornerAdaptedFourierBessel(dim::Int64, corner_angle::T, origin::SVector{2,T}, rot_angle::T, symmetry::Union{Vector{Any},Nothing}; rotation_angle_discontinuity=zero(T)) where {T<:Real}
-    cs = PolarCS(origin, rot_angle)
-    nu = pi/corner_angle
-    return CornerAdaptedFourierBessel{Float64,Nothing}(cs, dim, corner_angle, nu, symmetry, rotation_angle_discontinuity)
+function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,origin::SVector{2,T},rot_angle::T,symmetry::Union{Vector{Any},Nothing};rotation_angle_discontinuity=zero(T)) where {T<:Real}
+    cs=PolarCS(origin,rot_angle)
+    nu=pi/corner_angle
+    return CornerAdaptedFourierBessel{Float64,Nothing}(cs,dim,corner_angle,nu,symmetry,rotation_angle_discontinuity)
 end
 
 """
@@ -118,7 +96,7 @@ Convert a `CornerAdaptedFourierBessel` basis to use `Float32` precision.
 # Returns
 - A `CornerAdaptedFourierBessel` object with all relevant parameters converted to `Float32`.
 """
-toFloat32(basis::CornerAdaptedFourierBessel) = CornerAdaptedFourierBessel(basis.dim, Float32(basis.corner_angle), Float32.(basis.cs.origin), Float32(basis.cs.rot_angle))
+toFloat32(basis::CornerAdaptedFourierBessel) = CornerAdaptedFourierBessel(basis.dim,Float32(basis.corner_angle),Float32.(basis.cs.origin),Float32(basis.cs.rot_angle))
 
 """
 This function resizes the `CornerAdaptedFourierBessel` basis to a new dimension, if necessary. It checks whether the current dimension matches the desired dimension and returns the resized basis if they differ.
@@ -128,21 +106,13 @@ This function resizes the `CornerAdaptedFourierBessel` basis to a new dimension,
 # Returns
 - A `CornerAdaptedFourierBessel` object with the updated dimension, or the original basis if no resizing is needed.
 """
-function resize_basis(basis::CornerAdaptedFourierBessel, billiard::Bi, dim::Int, k) where {Bi<:AbsBilliard}
-    if basis.dim == dim
+function resize_basis(basis::CornerAdaptedFourierBessel,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
+    if basis.dim==dim
         return basis
     else
-        return CornerAdaptedFourierBessel(dim, basis.corner_angle, basis.cs, basis.symmetries; rotation_angle_discontinuity=basis.rotation_angle_discontinuity)
+        return CornerAdaptedFourierBessel(dim,basis.corner_angle,basis.cs,basis.symmetries;rotation_angle_discontinuity=basis.rotation_angle_discontinuity)
     end
 end
-
-#evaluation functions
-#=
-function local_coords(basis::CornerAdaptedFourierBessel{T}, pt::SVector{2,T}) where {T<:Number}
-     #new_pt::SVector{2,T} = cartesian_to_polar(f(pt))
-    return cartesian_to_polar(basis.cs.local_map(pt))
-end  
-=#
 
 """
 This function computes the basis function for a specified index `i` in the `CornerAdaptedFourierBessel` basis at a given wavenumber `k`. The function maps the input points to local polar coordinates and evaluates the corresponding Fourier-Bessel function.
@@ -161,11 +131,10 @@ This function computes the basis function for a specified index `i` in the `Corn
 - `k`: The wavenumber.
 - `pts`: An array of points where the basis function is to be evaluated.
 """
-@inline function basis_fun(basis::CornerAdaptedFourierBessel{T}, i::Int, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol = (cartesian_to_polar(pm(pt), rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
-        #norm::T = one(T)/sqrt(basis.dim)
-        return collect(ca_fb(nu*i, k, pt[1], pt[2]) for pt in pt_pol)
+@inline function basis_fun(basis::CornerAdaptedFourierBessel{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
+        pt_pol=(cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
+        return collect(ca_fb(nu*i,k,pt[1],pt[2]) for pt in pt_pol)
     end
 end
 
@@ -186,15 +155,14 @@ This function computes the basis functions for multiple specified indices in the
 - `k`: The wavenumber.
 - `pts`: An array of points where the basis functions are to be evaluated.
 """
-@inline function basis_fun(basis::CornerAdaptedFourierBessel{T}, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol = (cartesian_to_polar(pm(pt), rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
-        #norm::T = one(T)/sqrt(basis.dim)
-        M =  length(pts)
-        N = length(indices)
-        B = zeros(T,M,N)
+@inline function basis_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
+        pt_pol=(cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
+        M=length(pts)
+        N=length(indices)
+        B=zeros(T,M,N)
         Threads.@threads for i in eachindex(indices)
-            B[:,i] .= (ca_fb(nu*i, k, pt[1], pt[2]) for pt in pt_pol)
+            B[:,i] .= (ca_fb(nu*i,k,pt[1],pt[2]) for pt in pt_pol)
         end
         return B 
     end
@@ -220,14 +188,13 @@ This function computes the derivative of the basis function with respect to the 
 """
 @inline function dk_fun(basis::CornerAdaptedFourierBessel{T}, i::Int, k::T, pts::AbstractArray) where {T<:Real}
     #translation of coordiante origin
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol = [cartesian_to_polar(pm(pt), rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
-        #norm::T = one(T)/sqrt(basis.dim)
-        r = getindex.(pt_pol,1)
-        phi = getindex.(pt_pol,2) 
-        dj = @. Jvp(nu*i, k*r)
-        s = @. sin(nu*i*phi)
-        dk = @. r*dj*s
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
+        pt_pol=[cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
+        r=getindex.(pt_pol,1)
+        phi=getindex.(pt_pol,2) 
+        dj=@. Jvp(nu*i,k*r)
+        s=@. sin(nu*i*phi)
+        dk=@. r*dj*s
         return dk
     end
 end
@@ -252,17 +219,16 @@ This function computes the derivatives of the basis functions with respect to th
 - `pts`: An array of points where the derivatives are to be evaluated.
 """
 @inline function dk_fun(basis::CornerAdaptedFourierBessel{T}, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol = [cartesian_to_polar(pm(pt), rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
-        #norm::T = one(T)/sqrt(basis.dim)
-        r = getindex.(pt_pol,1)
-        phi = getindex.(pt_pol,2)
-        M =  length(pts)
-        N = length(indices)
-        dB_dk = zeros(T,M,N)
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
+        pt_pol=[cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
+        r=getindex.(pt_pol,1)
+        phi=getindex.(pt_pol,2)
+        M=length(pts)
+        N=length(indices)
+        dB_dk=zeros(T,M,N)
         Threads.@threads for i in eachindex(indices)
-            dj = @. Jvp(nu*i, k*r)
-            s = @. sin(nu*i*phi)
+            dj=@. Jvp(nu*i,k*r)
+            s=@. sin(nu*i*phi)
             dB_dk[:,i] .= @. r*dj*s
         end
         return dB_dk
@@ -289,24 +255,20 @@ This function computes the gradient of the basis function with respect to the Ca
 - `pts`: An array of points where the gradient is to be evaluated.
 """
 function gradient(basis::CornerAdaptedFourierBessel, i::Int, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_xy = collect(pm(pt) for pt in pts)
-        pt_pol = collect(cartesian_to_polar(pt, rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
-        #norm::T = one(T)/sqrt(basis.dim)
-        r = getindex.(pt_pol,1)
-        phi = getindex.(pt_pol,2)
-        X = getindex.(pt_xy,1)
-        Y = getindex.(pt_xy,2)
-        j = Jv.(nu*i, k*r)
-        #println(size(j))
-        dj = Jvp.(nu*i, k*r) 
-        #println(size(dj))
-        s = @. sin(nu*i*phi) 
-        c = @. cos(nu*i*phi) 
-        #println(size(s))
-        dx = @. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
-        dy = @. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
-    return dx, dy
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
+        pt_xy=collect(pm(pt) for pt in pts)
+        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
+        r=getindex.(pt_pol,1)
+        phi=getindex.(pt_pol,2)
+        X=getindex.(pt_xy,1)
+        Y=getindex.(pt_xy,2)
+        j=Jv.(nu*i,k*r)
+        dj=Jvp.(nu*i,k*r) 
+        s=@. sin(nu*i*phi) 
+        c=@. cos(nu*i*phi) 
+        dx=@. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
+        dy=@. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
+    return dx,dy
     end
 end
 
@@ -329,33 +291,28 @@ This function computes the gradients of the basis functions with respect to the 
 - `k`: The wavenumber.
 - `pts`: An array of points where the gradients are to be evaluated.
 """
-function gradient(basis::CornerAdaptedFourierBessel, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
+function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         #local cartesian coords
-        pt_xy = collect(pm(pt) for pt in pts)
-        pt_pol = collect(cartesian_to_polar(pt, rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy)
-        #norm::T = one(T)/sqrt(basis.dim)
-        r = getindex.(pt_pol,1)
-        phi = getindex.(pt_pol,2)
-        X = getindex.(pt_xy,1)
-        Y = getindex.(pt_xy,2)
-        M = length(pts)
-        N = length(indices)
-        dB_dx = zeros(T,M,N)
-        dB_dy = zeros(T,M,N)
+        pt_xy=collect(pm(pt) for pt in pts)
+        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy)
+        r=getindex.(pt_pol,1)
+        phi=getindex.(pt_pol,2)
+        X=getindex.(pt_xy,1)
+        Y=getindex.(pt_xy,2)
+        M=length(pts)
+        N=length(indices)
+        dB_dx=zeros(T,M,N)
+        dB_dy=zeros(T,M,N)
         Threads.@threads for i in eachindex(indices)
-            j = Jv.(nu*i, k*r)
-            #println(size(j))
-            dj = Jvp.(nu*i, k*r) 
-            #println(size(dj))
-            s = @. sin(nu*i*phi) 
-            c = @. cos(nu*i*phi) 
-            #println(size(s))
+            j=Jv.(nu*i,k*r)
+            dj=Jvp.(nu*i,k*r) 
+            s=@. sin(nu*i*phi) 
+            c=@. cos(nu*i*phi) 
             dB_dx[:,i] .= @. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
             dB_dy[:,i] .= @. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
         end
-        #println(size(s))
-    return dB_dx, dB_dy
+    return dB_dx,dB_dy
     end
 end
 
@@ -381,27 +338,22 @@ This function computes both the basis function and its gradient with respect to 
 - `k`: The wavenumber.
 - `pts`: An array of points where the basis function and its gradient are to be evaluated.
 """
-function basis_and_gradient(basis::CornerAdaptedFourierBessel, i::Int, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_xy = collect(pm(pt) for pt in pts)
-        pt_pol = collect(cartesian_to_polar(pt, rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
-        #norm::T = one(T)/sqrt(basis.dim)
-        r = getindex.(pt_pol,1)
-        phi = getindex.(pt_pol,2)
-        X = getindex.(pt_xy,1)
-        Y = getindex.(pt_xy,2)
-        j = Jv.(nu*i, k*r)
-        #println(size(j))
-        dj = Jvp.(nu*i, k*r) 
-        #println(size(dj))
-        s = @. sin(nu*i*phi) 
-        c = @. cos(nu*i*phi) 
-
-        #println(size(s))
-        bf = @. j*s
-        dx = @. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
-        dy = @. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
-    return bf, dx, dy
+function basis_and_gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
+        pt_xy=collect(pm(pt) for pt in pts)
+        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
+        r=getindex.(pt_pol,1)
+        phi=getindex.(pt_pol,2)
+        X=getindex.(pt_xy,1)
+        Y=getindex.(pt_xy,2)
+        j=Jv.(nu*i, k*r)
+        dj=Jvp.(nu*i, k*r) 
+        s=@. sin(nu*i*phi) 
+        c=@. cos(nu*i*phi) 
+        bf=@. j*s
+        dx=@. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
+        dy=@. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
+    return bf,dx,dy
     end
 end
 
@@ -428,35 +380,29 @@ This function computes both the basis functions and their gradients with respect
 - `pts`: An array of points where the basis functions and gradients are to be evaluated.
 """
 function basis_and_gradient(basis::CornerAdaptedFourierBessel, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
-    let pm = basis.cs.local_map, nu=basis.nu, pts=pts
+    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         #local cartesian coords
-        pt_xy = collect(pm(pt) for pt in pts)
-        pt_pol = collect(cartesian_to_polar(pt, rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy)
-         
-        #norm::T = one(T)/sqrt(basis.dim)
-        r = getindex.(pt_pol,1)
-        phi = getindex.(pt_pol,2)
-        X = getindex.(pt_xy,1)
-        Y = getindex.(pt_xy,2)
-        M =  length(pts)
-        N = length(indices)
-        B = zeros(T,M,N)
-        dB_dx = zeros(T,M,N)
-        dB_dy = zeros(T,M,N)
+        pt_xy=collect(pm(pt) for pt in pts)
+        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy)
+        r=getindex.(pt_pol,1)
+        phi=getindex.(pt_pol,2)
+        X=getindex.(pt_xy,1)
+        Y=getindex.(pt_xy,2)
+        M=length(pts)
+        N=length(indices)
+        B=zeros(T,M,N)
+        dB_dx=zeros(T,M,N)
+        dB_dy=zeros(T,M,N)
         Threads.@threads for i in eachindex(indices)
-            j = Jv.(nu*i, k*r)
-            #println(size(j))
-            dj = Jvp.(nu*i, k*r) 
-            #println(size(dj))
-            s = @. sin(nu*i*phi) 
-            c = @. cos(nu*i*phi) 
-            #println(size(s))
+            j=Jv.(nu*i,k*r)
+            dj=Jvp.(nu*i,k*r) 
+            s=@. sin(nu*i*phi) 
+            c=@. cos(nu*i*phi) 
             B[:,i] .= @. j*s
             dB_dx[:,i] .= @. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
             dB_dy[:,i] .= @. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
         end
-        #println(size(s))
-    return B, dB_dx, dB_dy
+    return B,dB_dx,dB_dy
     end
 end
 
