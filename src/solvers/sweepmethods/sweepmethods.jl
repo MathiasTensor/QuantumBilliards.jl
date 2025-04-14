@@ -51,6 +51,9 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
+# NOTE
+When using the BoundaryIntegralMethod solver it is advised to parallelize the matrix construction instead of the ks loop since the matrix construction uses the same or more resources as the SVD. It is an exception to
+
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """

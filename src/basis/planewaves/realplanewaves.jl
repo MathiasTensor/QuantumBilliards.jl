@@ -11,6 +11,11 @@ struct RealPlaneWaves{T,Sa} <: AbsBasis where  {T<:Real, Sa<:AbsSampler}
     sampler::Sa
 end
 
+"""
+     parity_pattern(symmetries::Vector{Any})
+
+Helper function to determine the 
+"""
 function parity_pattern(symmetries)
     # Default parity vectors assuming no symmetries
     parity_x=[1,1,-1,-1]

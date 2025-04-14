@@ -445,28 +445,29 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     k0=k1
     state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol;multithreaded=multithreaded_matrices)
     control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
-    all_states=Vector{StateData{T,T}}(undef,length(dk_values))
-    k_vals=Vector{T}(undef,length(dk_values))
-    all_states[1]=state_res
-    k_vals[1]=k0
-    @use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)[2:end]
+    #all_states=Vector{StateData{T,T}}(undef,length(dk_values))
+    #k_vals=Vector{T}(undef,length(dk_values))
+    #all_states[1]=state_res
+    #k_vals[1]=k0
+    #@use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)[2:end]
+    for i in eachindex(dk_values)[2:end]
         dk=dk_values[i]
         k0+=dk
         state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol;multithreaded=multithreaded_matrices)
         # Merge the new state into the accumulated state
-        #overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
-        all_states[i]=state_new
-        k_vals[i]=k0
+        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
+        #all_states[i]=state_new
+        #k_vals[i]=k0
         next!(p)
     end
     # do the merging here
-    println("Merging intervals...")
-    p=Progress(length(dk_values)-1,1)
-    state_res=all_states[1]
-    for i in 2:length(all_states)
-        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,all_states[i].ks,all_states[i].tens,all_states[i].X,control,k_vals[i-1],k_vals[i];tol=tol)
-        next!(p)
-    end
+    #println("Merging intervals...")
+    #p=Progress(length(dk_values)-1,1)
+    #state_res=all_states[1]
+    #for i in 2:length(all_states)
+    #    overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,all_states[i].ks,all_states[i].tens,all_states[i].X,control,k_vals[i-1],k_vals[i];tol=tol)
+    #    next!(p)
+    #end
     return state_res,control
 end
 
