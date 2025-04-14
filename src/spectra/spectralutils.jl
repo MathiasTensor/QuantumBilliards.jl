@@ -495,10 +495,12 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     all_states=Vector{StateData{T,T}}(undef,length(k_vals))
     all_states[1]=solve_state_data_bundle_with_INFO(solver,basis,billiard,k_vals[1],dk_vals[1]+tol;multithreaded=multithreaded_matrices)
     @info "Multithreading loop? $(multithreaded_ks), multithreading matrix construction? $(multithreaded_matrices)"
+    p=Progress(length(k_vals),1)
     @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[2:end]
         ki=k_vals[i]
         dki=dk_vals[i]
         all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dki+tol;multithreaded=multithreaded_matrices)
+        next!(p)
     end
     println("Merging intervals...")
     state_res=all_states[1]
