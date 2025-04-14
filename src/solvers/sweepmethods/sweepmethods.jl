@@ -48,16 +48,16 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `billiard::AbsBilliard`: The billiard configuration.
 - `ks::Vector{Real}`: Vector of wavenumbers over which to perform the sweep.
 - `kernel_fun::Union{Symbol, Function}`: Kernel function to use in the boundary integral method. Defaults to `:default`.
-- `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
-- `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
+- `multithreaded_matrices::Bool=true`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
+- `multithreaded_ks::Bool=false`: If the k loop is multithreaded.
 
 # NOTE
-When using the BoundaryIntegralMethod solver it is advised to parallelize the matrix construction instead of the ks loop since the matrix construction uses the same or more resources as the SVD. It is an exception to
+When using the Sweep solvers it is advised to parallelize the matrix construction instead of the ks loop since the matrix construction uses the same or more resources as the SVD.
 
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=false,multithreaded_ks=true)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false)
     k=maximum(ks)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
