@@ -2,11 +2,15 @@ using Bessels
 using CoordinateTransformations, Rotations, StaticArrays
 
 """
+    Jv(nu,r)=Bessels.besselj(nu,r)
+    
 Symbolic definition of the Bessel function of order `nu` with radius `r`
 """
 Jv(nu,r)=Bessels.besselj(nu,r)
 
 """
+    ca_fb(nu,k::T,r::T,phi::T) where {T<:Real}
+
 This function calculates the cylindrical wave expansion term using the Bessel function of the first kind `Jv(nu, k*r)` and the sine of the angular component.
 
 # Logic
@@ -99,6 +103,8 @@ Convert a `CornerAdaptedFourierBessel` basis to use `Float32` precision.
 toFloat32(basis::CornerAdaptedFourierBessel) = CornerAdaptedFourierBessel(basis.dim,Float32(basis.corner_angle),Float32.(basis.cs.origin),Float32(basis.cs.rot_angle))
 
 """
+    resize_basis(basis::CornerAdaptedFourierBessel,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
+
 This function resizes the `CornerAdaptedFourierBessel` basis to a new dimension, if necessary. It checks whether the current dimension matches the desired dimension and returns the resized basis if they differ.
 - If the dimensions match, the original basis is returned.
 - If the dimensions differ, a new `CornerAdaptedFourierBessel` object is created with the new dimension and the existing corner angle and coordinate system.
@@ -115,6 +121,8 @@ function resize_basis(basis::CornerAdaptedFourierBessel,billiard::Bi,dim::Int,k)
 end
 
 """
+    basis_fun(basis::CornerAdaptedFourierBessel{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
+
 This function computes the basis function for a specified index `i` in the `CornerAdaptedFourierBessel` basis at a given wavenumber `k`. The function maps the input points to local polar coordinates and evaluates the corresponding Fourier-Bessel function.
 
 # Logic
@@ -139,6 +147,8 @@ This function computes the basis function for a specified index `i` in the `Corn
 end
 
 """
+    basis_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
+
 This function computes the basis functions for multiple specified indices in the `CornerAdaptedFourierBessel` basis at a given wavenumber `k`. The function maps the input points to local polar coordinates and evaluates the corresponding Fourier-Bessel functions in parallel (using Threads).
 
 # Logic
@@ -154,14 +164,18 @@ This function computes the basis functions for multiple specified indices in the
 - `indices`: An array of indices for which the basis functions are to be computed.
 - `k`: The wavenumber.
 - `pts`: An array of points where the basis functions are to be evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+
+# Returns
+- `B::Matrix{T}`: The basis matrix.
 """
-@inline function basis_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+@inline function basis_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         pt_pol=(cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
         M=length(pts)
         N=length(indices)
         B=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             B[:,i] .= (ca_fb(nu*i,k,pt[1],pt[2]) for pt in pt_pol)
         end
         return B 
@@ -169,6 +183,8 @@ This function computes the basis functions for multiple specified indices in the
 end
 
 """
+    dk_fun(basis::CornerAdaptedFourierBessel{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
+
 This function computes the derivative of the basis function with respect to the wavenumber `k` for a specified index `i` in the `CornerAdaptedFourierBessel` basis. The derivative is evaluated at the provided points in the local polar coordinates.
 
 # Logic
@@ -185,8 +201,11 @@ This function computes the derivative of the basis function with respect to the 
 - `i`: The index of the basis function.
 - `k`: The wavenumber.
 - `pts`: An array of points where the derivative is to be evaluated.
+
+# Returns
+- `dk::Vector{T}`: A vector that symbolizes the column of dB/dk[:,i] for index i (that is the k-gradient column i).
 """
-@inline function dk_fun(basis::CornerAdaptedFourierBessel{T}, i::Int, k::T, pts::AbstractArray) where {T<:Real}
+@inline function dk_fun(basis::CornerAdaptedFourierBessel{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
     #translation of coordiante origin
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         pt_pol=[cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
@@ -200,6 +219,8 @@ This function computes the derivative of the basis function with respect to the 
 end
     
 """
+    dk_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
+
 This function computes the derivatives of the basis functions with respect to the wavenumber `k` for multiple specified indices in the `CornerAdaptedFourierBessel` basis. The derivatives are evaluated at the provided points in the local polar coordinates.
 
 # Logic
@@ -217,8 +238,12 @@ This function computes the derivatives of the basis functions with respect to th
 - `indices`: An array of indices for which the derivatives are to be computed.
 - `k`: The wavenumber.
 - `pts`: An array of points where the derivatives are to be evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+
+# Returns
+- `dB_dk`: The k-derivative of the basis matrix.
 """
-@inline function dk_fun(basis::CornerAdaptedFourierBessel{T}, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
+@inline function dk_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         pt_pol=[cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
         r=getindex.(pt_pol,1)
@@ -226,7 +251,7 @@ This function computes the derivatives of the basis functions with respect to th
         M=length(pts)
         N=length(indices)
         dB_dk=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             dj=@. Jvp(nu*i,k*r)
             s=@. sin(nu*i*phi)
             dB_dk[:,i] .= @. r*dj*s
@@ -236,6 +261,8 @@ This function computes the derivatives of the basis functions with respect to th
 end
 
 """
+    gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
+
 This function computes the gradient of the basis function with respect to the Cartesian coordinates `x` and `y` for a specified index `i` in the `CornerAdaptedFourierBessel` basis. The gradient is evaluated at the provided points in local Cartesian coordinates.
 
 # Logic
@@ -253,8 +280,11 @@ This function computes the gradient of the basis function with respect to the Ca
 - `i`: The index of the basis function.
 - `k`: The wavenumber.
 - `pts`: An array of points where the gradient is to be evaluated.
+
+# Returns
+- `(dx,dy)::Tuple{Vector{T},Vector{T}}`: Tuple of vectors representing the x and y derivative of the basis matrix at column index i.
 """
-function gradient(basis::CornerAdaptedFourierBessel, i::Int, k::T, pts::AbstractArray) where {T<:Real}
+function gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         pt_xy=collect(pm(pt) for pt in pts)
         pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
@@ -273,6 +303,8 @@ function gradient(basis::CornerAdaptedFourierBessel, i::Int, k::T, pts::Abstract
 end
 
 """
+    gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
+
 This function computes the gradients of the basis functions with respect to the Cartesian coordinates `x` and `y` for multiple specified indices in the `CornerAdaptedFourierBessel` basis. The gradients are evaluated at the provided points in local Cartesian coordinates.
 
 # Logic
@@ -290,8 +322,12 @@ This function computes the gradients of the basis functions with respect to the 
 - `indices`: An array of indices for which the gradients are to be computed.
 - `k`: The wavenumber.
 - `pts`: An array of points where the gradients are to be evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+
+# Returns
+- `(dB_dx,dB_dy)::Tuple{Matrix{T},Matrix{T}}`
 """
-function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         #local cartesian coords
         pt_xy=collect(pm(pt) for pt in pts)
@@ -304,7 +340,7 @@ function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,
         N=length(indices)
         dB_dx=zeros(T,M,N)
         dB_dy=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             j=Jv.(nu*i,k*r)
             dj=Jvp.(nu*i,k*r) 
             s=@. sin(nu*i*phi) 
@@ -317,6 +353,8 @@ function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,
 end
 
 """
+    basis_and_gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
+
 This function computes both the basis function and its gradient with respect to the Cartesian coordinates `x` and `y` for a specified index `i` in the `CornerAdaptedFourierBessel` basis. The function evaluates these quantities at the provided points. This is a composite of `basis_fun` and `gradient`.
 
 # Logic
@@ -337,6 +375,9 @@ This function computes both the basis function and its gradient with respect to 
 - `i`: The index of the basis function.
 - `k`: The wavenumber.
 - `pts`: An array of points where the basis function and its gradient are to be evaluated.
+
+# Returns
+- `(bf,dx,dy)::Tuple{Vector{T},Vector{T},Vector{T}}`
 """
 function basis_and_gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
@@ -358,6 +399,8 @@ function basis_and_gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::A
 end
 
 """
+    basis_and_gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
+
 This function computes both the basis functions and their gradients with respect to the Cartesian coordinates `x` and `y` for multiple specified indices in the `CornerAdaptedFourierBessel` basis. The function evaluates these quantities at the provided points. This is a composite of `basis_fun` and `gradient`.
 
 # Logic
@@ -378,8 +421,12 @@ This function computes both the basis functions and their gradients with respect
 - `indices`: An array of indices for which the basis functions and gradients are to be computed.
 - `k`: The wavenumber.
 - `pts`: An array of points where the basis functions and gradients are to be evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+
+# Returns
+- `(B,dB_dx,dB_dy)::Tuple{Matrix{T},Matrix{T},Matrix{T}}`
 """
-function basis_and_gradient(basis::CornerAdaptedFourierBessel, indices::AbstractArray, k::T, pts::AbstractArray) where {T<:Real}
+function basis_and_gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let pm=basis.cs.local_map, nu=basis.nu, pts=pts
         #local cartesian coords
         pt_xy=collect(pm(pt) for pt in pts)
@@ -393,7 +440,7 @@ function basis_and_gradient(basis::CornerAdaptedFourierBessel, indices::Abstract
         B=zeros(T,M,N)
         dB_dx=zeros(T,M,N)
         dB_dy=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             j=Jv.(nu*i,k*r)
             dj=Jvp.(nu*i,k*r) 
             s=@. sin(nu*i*phi) 

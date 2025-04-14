@@ -217,7 +217,7 @@ end
 
 # this is basically the new solve where we incur the smallest penalty for getting the ks and the relevant state information for saving the husimi functions but it is much more efficient than doint it again once we have the eigenvalues
 """
-    function solve_state_data_bundle(solver::Sol, basis::Ba, billiard::Bi, k, dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard} :: StateData
+    solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
 
 Solves the generalized eigenvalue problem in a small interval `[k0-dk, k0+dk]` and constructs the `StateData` object in that small interval. This function is iteratively called in the `compute_spectrum` function version that also computes the `StateData` object. The advantage of this version of the function from the regular `solve(solver...)` is that we get the eigenvectors here witjh minimal additional computational cost.
 
@@ -227,16 +227,17 @@ Solves the generalized eigenvalue problem in a small interval `[k0-dk, k0+dk]` a
 - `billiard<:AbsBilliard`: The billiard object to use for the eigenvalue problem.
 - `k<:Real`: The center of the interval for which to solve the eigenvalue problem.
 - `dk<:Real`: The width of the interval for which to solve the eigenvalue problem.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 A `StateData` object containing the wavenumbers, the tensions and the expansion coefficients for the basis stored as a Vector of Vectors after a generalized eigenvalue problem computation.
 """
-function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
     basis_new=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard, k)
-    ks,tens,X_matrix=solve_vectors(solver,basis_new,pts,k,dk) # this one filters the ks that are outside k+-dk and gives us the filtered out ks, tensions and X matrix of filtered vectors. No need to store dim as we can get it from the length(X[1])
+    ks,tens,X_matrix=solve_vectors(solver,basis_new,pts,k,dk;multithreaded=multithreaded) # this one filters the ks that are outside k+-dk and gives us the filtered out ks, tensions and X matrix of filtered vectors. No need to store dim as we can get it from the length(X[1])
     # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
     X_vectors=[Vector(col) for col in eachcol(X_matrix)]
     return StateData(ks,X_vectors,tens)
@@ -244,7 +245,7 @@ end
 
 #### INTERNAL FUNCTION FOR TESTING TIME AND ALLOCATIONS OF MATRIX CONSTRUCTIONS AND EIGENVALUE SOLVING ####
 # Primarily used for checking regularizations of ill-conditioned F and dF/dk matrices ala Barnett. Useful for observing allocations, execution time and observing the variation of the condition number as k increases
-function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
     start_init=time()
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
@@ -256,7 +257,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     e_pts=time()
     @info "F & dF/dk matrix construction..."
     s_con=time()
-    @time F,Fk=construct_matrices(solver,basis_new,pts,k)
+    @time F,Fk=construct_matrices(solver,basis_new,pts,k;multithreaded=multithreaded)
     e_con=time()
     @info "F & dF/dk dims: $(size(F))"
     start1=time()

@@ -398,7 +398,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol
 end
 
 """
-    compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental=true)
+    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
 
 Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors. MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved
 
@@ -411,13 +411,16 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 - `N_expect`: Expected number of eigenvalues per interval (default: `3`).
 - `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
+- `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
+- `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
+
 
 # Returns
     - `k_res::Vector{T}`: Vector of computed wavenumbers.
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
     k0=k1
     dk_values=[]
@@ -440,21 +443,35 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     @info "Total number of eigenvalue problems to solve... $(length(dk_values))"
     # Actual computation using precomputed dk values
     k0=k1
-    state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol)
+    state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol;multithreaded=multithreaded_matrices)
     control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
-    for i in eachindex(dk_values)[2:end]
+    all_states=Vector{StateData{T,T}}(undef,length(dk_values))
+    k_vals=Vector{T}(undef,length(dk_values))
+    all_states[1]=state_res
+    k_vals[1]=k0
+    @use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)[2:end]
         dk=dk_values[i]
         k0+=dk
-        state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol)
+        state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol;multithreaded=multithreaded_matrices)
         # Merge the new state into the accumulated state
-        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
+        #overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
+        all_states[i]=state_new
+        k_vals[i]=k0
+        next!(p)
+    end
+    # do the merging here
+    println("Merging intervals...")
+    p=Progress(length(dk_values)-1,1)
+    state_res=all_states[1]
+    for i in 2:length(all_states)
+        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,all_states[i].ks,all_states[i].tens,all_states[i].X,control,k_vals[i-1],k_vals[i];tol=tol)
         next!(p)
     end
     return state_res,control
 end
 
 """
-    compute_spectrum_with_state(solver, basis, billiard, k1, k2; tol=1e-4, N_expect=3, dk_threshold=0.05, fundamental=true)
+    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
 
 Computes the spectrum over a range of wavenumbers defined by the bracketing interval of their state number `[N1, N2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors. MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved. This one is just a wrapper function for the k version of this function.
 
@@ -467,13 +484,15 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
 - `N_expect`: Expected number of eigenvalues per interval (default: `3`).
 - `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
+- `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
+- `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
 # Returns
     - `k_res::Vector{T}`: Vector of computed wavenumbers.
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")

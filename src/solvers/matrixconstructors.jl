@@ -15,7 +15,7 @@ The modified matrix `M` with small values replaced by zero.
 function filter_matrix!(M;ϵ=eps(eltype(M)))
     type=eltype(M)
     k=1
-    for t in eachindex(M)
+    @inbounds Threads.@threads for t in eachindex(M)
         if abs.(M[t])<=ϵ
             M[t]=zero(type)
             k+=1
@@ -26,7 +26,7 @@ end
 
 #this will be usefull for basis sets containing several functions (plane and evanscent waves etc.)
 """
-    basis_matrix(basis::Ba, k::T, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
+    basis_matrix(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 Computes the basis matrix for a given basis set, wave number, and set of points, and filters out small values.
 
@@ -34,19 +34,20 @@ Computes the basis matrix for a given basis set, wave number, and set of points,
 - `basis::Ba`: The basis object of type `Ba <: AbsBasis`.
 - `k::T`: The wavenumber for which the basis functions are evaluated.
 - `pts::Vector{SVector{2,T}}`: A vector of 2D points where the basis functions are evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix` : The filtered basis matrix after removing elements smaller than the specified threshold.
 """
-function basis_matrix(basis::Ba,k,pts::Vector{SVector{2,T}}) where {T<:Real,Ba<:AbsBasis}
+function basis_matrix(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     let dim=basis.dim
-        B=basis_fun(basis,1:dim,k,pts)
+        B=basis_fun(basis,1:dim,k,pts,multithreaded=multithreaded)
         return filter_matrix!(B)
     end
 end
 
 """
-    gradient_matrices(basis::Ba, k::T, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
+    gradient_matrices(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 Computes the gradient matrices (partial derivatives with respect to `x` and `y`) for a given basis, wave number, and set of points, and filters out small values.
 
@@ -54,19 +55,20 @@ Computes the gradient matrices (partial derivatives with respect to `x` and `y`)
 - `basis::Ba`: The basis object of type `Ba <: AbsBasis`.
 - `k::T`: The wavenumber for which the gradients are computed.
 - `pts::Vector{SVector{2,T}}`: A vector of 2D points where the gradients are evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 A tuple `(dB_dx::Matrix, dB_dy::MAtrix)` of filtered gradient matrices with respect to `x` and `y`.
 """
-function gradient_matrices(basis::Ba,k,pts::Vector{SVector{2,T}}) where {T<:Real,Ba<:AbsBasis}
+function gradient_matrices(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     let dim=basis.dim
-        dB_dx,dB_dy=gradient(basis,1:dim,k,pts)
+        dB_dx,dB_dy=gradient(basis,1:dim,k,pts;multithreaded=multithreaded)
         return filter_matrix!(dB_dx),filter_matrix!(dB_dy)
     end
 end
 
 """
-    basis_and_gradient_matrices(basis::Ba, k::T, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
+    basis_and_gradient_matrices(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 Computes the basis matrix and its gradient matrices (partial derivatives with respect to `x` and `y`) for a given basis, wave number, and set of points, and filters out small values.
 
@@ -74,19 +76,20 @@ Computes the basis matrix and its gradient matrices (partial derivatives with re
 - `basis::Ba`: The basis object of type `Ba <: AbsBasis`.
 - `k::T`: The wavenumber for which the basis and gradients are computed.
 - `pts::Vector{SVector{2,T}}`: A vector of 2D points where the basis and gradients are evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 A tuple `(B::Matrix, dB_dx::Matrix, dB_dy::Matrix)` of the filtered basis matrix and gradient matrices.
 """
-function basis_and_gradient_matrices(basis::Ba,k,pts::Vector{SVector{2,T}}) where {T<:Real,Ba<:AbsBasis}
+function basis_and_gradient_matrices(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     let dim=basis.dim
-        B,dB_dx,dB_dy=basis_and_gradient(basis,1:dim,k,pts)
+        B,dB_dx,dB_dy=basis_and_gradient(basis,1:dim,k,pts;multithreaded=multithreaded)
         return filter_matrix!(B),filter_matrix!(dB_dx),filter_matrix!(dB_dy)
     end
 end
 
 """
-    dk_matrix(basis::Ba, k::T, pts::Vector{SVector{2,T}}) where {T<:Real, Ba<:AbsBasis}
+    dk_matrix(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 Computes the derivative of the basis matrix with respect to the wave number `k` for a given basis, wave number, and set of points, and filters out small values.
 
@@ -94,13 +97,14 @@ Computes the derivative of the basis matrix with respect to the wave number `k` 
 - `basis::Ba`: The basis object of type `Ba <: AbsBasis`.
 - `k::T`: The wavenumber for which the derivative is computed.
 - `pts::Vector{SVector{2,T}}`: A vector of 2D points where the derivative is evaluated.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix` : The filtered derivative matrix with respect to the wave number `k`.
 """
-function dk_matrix(basis::Ba,k,pts::Vector{SVector{2,T}}) where {T<:Real,Ba<:AbsBasis}
+function dk_matrix(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     let dim=basis.dim
-        dB_dk=dk_fun(basis,1:dim,k,pts)
+        dB_dk=dk_fun(basis,1:dim,k,pts;multithreaded=multithreaded)
         return filter_matrix!(dB_dk)
     end
 end

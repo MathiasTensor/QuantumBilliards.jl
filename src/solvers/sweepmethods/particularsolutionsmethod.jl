@@ -150,12 +150,7 @@ function evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where
 end
 
 """
-    construct_matrices_benchmark(
-        solver::ParticularSolutionsMethod,
-        basis::Ba,
-        pts::PointsPSM,
-        k
-    ) -> (B, B_int)
+    construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct the basis matrices for boundary points and interior points, with timing information.
 This is a benchmarking variant that uses a `TimerOutput` to measure the time spent creating each
@@ -166,30 +161,28 @@ matrix. It prints the timings at the end.
 - `basis::Ba<:AbsBasis`: A basis to evaluate (e.g. FourierBessel basis).
 - `pts::PointsPSM`: The boundary/interior points to evaluate.
 - `k::Real`: Wavenumber for the basis.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `(B, B_int)`: A pair of matrices:
   - `B::Matrix`: The basis matrix evaluated at boundary points.
   - `B_int::Matrix`: The basis matrix evaluated at interior points.
 """
-function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     to=TimerOutput()
     pts_bd=pts.xy_boundary
     pts_int=pts.xy_interior
     #basis and gradient matrices
     @timeit to "basis_matrices" begin
-        @timeit to "boundary" B=basis_matrix(basis,k,pts_bd)
-        @timeit to "interior" B_int=basis_matrix(basis,k,pts_int)
+        @timeit to "boundary" B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
+        @timeit to "interior" B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
     end
     print_timer(to)
     return B,B_int  
 end
 
 """
-    construct_matrices(solver::ParticularSolutionsMethod,
-                       basis::Ba,
-                       pts::PointsPSM,
-                       k) -> (B, B_int)
+     construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct two matrices for the Particular Solutions Method: one for boundary points, one for interior points.
 These represent the basis functions evaluated at the domain's boundary and interior.
@@ -199,26 +192,24 @@ These represent the basis functions evaluated at the domain's boundary and inter
 - `basis::Ba<:AbsBasis`: A basis type implementing `basis_matrix(...)`.
 - `pts::PointsPSM`: Contains boundary (`xy_boundary`) and interior (`xy_interior`) points.
 - `k::Real`: Wavenumber.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `(B, B_int)`: 
   - `B::Matrix`: Basis matrix at boundary points.
   - `B_int::Matrix`: Basis matrix at interior points.
 """
-function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     pts_bd=pts.xy_boundary
     pts_int=pts.xy_interior
-    B=basis_matrix(basis,k,pts_bd)
-    B_int=basis_matrix(basis,k,pts_int)
+    B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
+    B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
     return B,B_int  
 end
 
 
 """
-    solve(solver::ParticularSolutionsMethod,
-          basis::Ba,
-          pts::PointsPSM,
-          k::Real) -> Real
+    solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Solve the Particular Solutions Method by constructing `(B, B_int)` and computing a measure
 (e.g. minimum singular value) that indicates how well the interior and boundary constraints
@@ -232,23 +223,24 @@ The idea is to represent the minimization of the boundary tension of the wavefun
 - `basis::Ba<:AbsBasis`: The basis (e.g. a trigonometric or radial basis).
 - `pts::PointsPSM`: Boundary and interior points for evaluation.
 - `k::Real`: Wavenumber or frequency-like parameter.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `::Real`: The minimum generalized singular value (or similar measure). Lower values can
   indicate a better "fit" to the PDE boundary conditions.
 """
-function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
-    B,B_int=construct_matrices(solver,basis,pts,k)
+function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     solution=svdvals(B,B_int)
     return minimum(solution)
 end
 
 # INTERNAL
-function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
+function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     s=time()
     s_constr=time()
     @info "Constructing matrices"
-    @time B,B_int=construct_matrices(solver,basis,pts,k)
+    @time B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @info "Conditioning cond(B) = $(cond(B)), cond(B_int) = $(cond(B_int))"
     e_constr=time()
     s_svd=time()
@@ -267,7 +259,7 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
 end
 
 """
-    solve(solver::ParticularSolutionsMethod, B, B_int) -> Real
+    solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:AbstractMatrix}
 
 A lower-level solver method that accepts already-constructed matrices `B` and `B_int` rather
 than building them anew. Returns the minimum of `svdvals(B, B_int)`.
@@ -286,10 +278,7 @@ function solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:Abstra
 end
 
 """
-    solve_vect(solver::ParticularSolutionsMethod,
-               basis::Ba,
-               pts::PointsPSM,
-               k::Real) -> (σ_min, x_min)
+    solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Compute the generalized singular value decomposition (SVD) for the boundary and interior matrices `(B, B_int)`,
 and return both the smallest singular value and the associated vector `X` in the decomposition. 
@@ -299,6 +288,7 @@ and return both the smallest singular value and the associated vector `X` in the
 - `basis::Ba<:AbsBasis`: The basis object with a `basis_matrix` method.
 - `pts::PointsPSM`: Points on boundary and interior.
 - `k::Real`: Wavenumber/frequency parameter.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `σ_min::Real`: The smallest generalized singular value in the range.
@@ -316,8 +306,8 @@ and return both the smallest singular value and the associated vector `X` in the
 5. **Select the Optimal Solution**:
     - Take the smallest generalized singular value (`sv_min`) and its corresponding singular vector (`X_min`).
 """
-function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k) where {Ba<:AbsBasis}
-    B,B_int=construct_matrices(solver,basis,pts,k)
+function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     F=svd(B,B_int)
     H=F.R*F.Q'
     idx=1:F.k+F.l #inidices containing the singular values we need

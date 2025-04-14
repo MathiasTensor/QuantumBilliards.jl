@@ -156,7 +156,7 @@ function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:Abs
 end
 
 """
-    construct_matrices_benchmark(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k<:Real) where {Ba<:AbsBasis}
+    construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Benchmarks the construction of all the matrices needeed for the Scaling Method for a given reference k wavenumber. We need to construct from the solver a matrix that evaluates the basis function on the boundary, apply the weights to it and then multiplies it with the basis matrix transpose. This is detailed in section 6 of Barnett8s thesis: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html. To highlight:
 
@@ -170,12 +170,13 @@ With these we now have the neccesery matrices foe the Scaling Method `Fk*u+λF*u
 - `solver::ScalingMethodA`: The solver for which the matrices are constructed. Redundant information, used b/c other methods have functions with same signatures and multiple dispatches are useful.
 - `basis::Ba`: The basis on which the matrices are constructed.
 - `pts::BoundaryPointsSM`: The points on the boundary on which the matrices are constructed.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `F::Matrix{<:Real}`: The matrix that evaluates the basis function on the boundary and applies the weights.
 - `Fk::Matrix{<:Real}`: The matrix that evaluates the derivative of the basis function on the boundary and applies the weights.
 """
-function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     to=TimerOutput()
     symmetries=basis.symmetries 
     xy,w=pts.xy,pts.w
@@ -185,7 +186,7 @@ function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::Boun
     end
     N=basis.dim
     #basis matrix
-    @timeit to "basis_matrix" B=basis_matrix(basis,k,xy)
+    @timeit to "basis_matrix" B=basis_matrix(basis,k,xy;multithreaded=multithreaded)
     type=eltype(B)
     F=zeros(type,(N,N))
     Fk=similar(F)
@@ -194,7 +195,7 @@ function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::Boun
         @timeit to "product" mul!(F,B',T) #boundary norm matrix
     end
     #reuse B
-    @timeit to "dk_matrix" B=dk_matrix(basis,k,xy)
+    @timeit to "dk_matrix" B=dk_matrix(basis,k,xy;multithreaded=multithreaded)
     @timeit to "Fk construction" begin 
         @timeit to "product" mul!(Fk,B',T) #B is now derivative matrix
         #symmetrize matrix
@@ -205,7 +206,7 @@ function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::Boun
 end
 
 """
-    construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k) where {Ba<:AbsBasis}
+    construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Constructs all the matrices needeed for the Scaling Method for a given reference k wavenumber. We need to construct from the solver a matrix that evaluates the basis function on the boundary, apply the weights to it and then multiplies it with the basis matrix transpose. This is detailed in section 6 of Barnett8s thesis: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html. To highlight:
 
@@ -219,12 +220,13 @@ With these we now have the neccesery matrices for the Scaling Method `Fk*u+λF*u
 - `solver::ScalingMethodA`: The solver for which the matrices are constructed. Redundant information, used b/c other methods have functions with same signatures and multiple dispatches are useful.
 - `basis::Ba`: The basis on which the matrices are constructed.
 - `pts::BoundaryPointsSM`: The points on the boundary on which the matrices are constructed.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `F::Matrix{<:Real}`: The matrix that evaluates the basis function on the boundary and applies the weights.
 - `Fk::Matrix{<:Real}`: The matrix that evaluates the derivative of the basis function on the boundary and applies the weights.
 """
-function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k) where {Ba<:AbsBasis}
+function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w
     symmetries=basis.symmetries
@@ -234,14 +236,14 @@ function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints
     end
     N=basis.dim
     #basis matrix
-    B=basis_matrix(basis,k,xy) # this is G in the docstring
+    B=basis_matrix(basis,k,xy;multithreaded=multithreaded) # this is G in the docstring
     type=eltype(B)
     F=zeros(type,(N,N))
     Fk=similar(F)
     T=(w.*B) #reused later, this is W*G in the docstring
     mul!(F,B',T) #boundary norm matrix, this is G'*(W*G) = F in the docstring
     #reuse B
-    B=dk_matrix(basis,k,xy) # this is dG/dk in the docstring
+    B=dk_matrix(basis,k,xy;multithreaded=multithreaded) # this is dG/dk in the docstring
     mul!(Fk,B',T) #B is now derivative matrix, and since T = W*G from above this is dG/dk*(W*G). This is the first part of Fk
     #symmetrize matrix
     Fk=Fk+Fk' # this is now truly the whole Fk = (dG/dk)*W*G + ((dG/dk)*W*G)' = (dG/dk)*W*G + G*W*(dG/dk)
@@ -249,7 +251,7 @@ function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints
 end
 
 # UNUSED FOR NOW - HAS NO FUNCTION
-function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::BoundaryPointsSM,k) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     to=TimerOutput()
     xy,w=pts.xy,pts.w
     symmetries=basis.symmetries
@@ -258,7 +260,7 @@ function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::Boun
         w=w.*n
     end
     #basis and gradient matrices
-    @timeit to "basis_and_gradient_matrices" B,dX,dY=basis_and_gradient_matrices(basis,k,xy)
+    @timeit to "basis_and_gradient_matrices" B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded=multithreaded)
     N=basis.dim
     type=eltype(B)
     F=zeros(type,(N,N))
@@ -285,7 +287,7 @@ function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::Boun
 end
 
 # UNUSED FOR NOW - HAS NO FUNCTION
-function construct_matrices(solver::ScalingMethodB,basis::Ba,pts::BoundaryPointsSM,k) where {Ba<:AbsBasis}
+function construct_matrices(solver::ScalingMethodB,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w
     symmetries=basis.symmetries
@@ -295,7 +297,7 @@ function construct_matrices(solver::ScalingMethodB,basis::Ba,pts::BoundaryPoints
     end
     N=basis.dim
     #basis matrix
-    B,dX,dY=basis_and_gradient_matrices(basis,k,pts.xy)
+    B,dX,dY=basis_and_gradient_matrices(basis,k,pts.xy;multithreaded=multithreaded)
     type=eltype(B)
     F=zeros(type,(N,N))
     Fk=similar(F)
@@ -330,7 +332,7 @@ function sm_results(mu,k)
 end
 
 """
-    solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k<:Real, dk<:Real) where {Ba<:AbsBasis}
+    solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 For a given reference wavenumber k solves the generalized eigenproblem (internally calculates `generalized_eigvals` since we do not require the `X` matrix of coefficients for the wavefunction construction). The `dk` is the interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers). The `dk` is determined empirically for a given k range and the specific geometry (and possibly basis).
 
@@ -340,13 +342,14 @@ For a given reference wavenumber k solves the generalized eigenproblem (internal
 - `pts::BoundaryPointsSM`: The boundary points.
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `ks::Vector{<:Real}`: The computed real wavenumbers.
 - `ten::Vector{<:Real}`: The corresponding tensions.
 """
-function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk) where {Ba<:AbsBasis}
-    F,Fk=construct_matrices(solver,basis,pts,k)
+function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
@@ -384,7 +387,7 @@ function solve(solver::AbsScalingMethod,F,Fk,k,dk)
 end
 
 """
-    solve_vectors(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k<:Real, dk<:Real) where {Ba<:AbsBasis}
+    solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Solver in a given `dk` interval with reference wavenumber `k` the corresponding correct wavenumbers, their tensions and the `X` matrix that contains information about the basis expansion coefficients (every column of `X` corresponds to a vector of coefficents that construct the wavefunction for the same index eigenvalue in `ks`). Internally it calls `generalized_eigen` since this also returns/constructs the `X` matrix and not just the generalized eigenvalues.
 
@@ -394,14 +397,15 @@ Solver in a given `dk` interval with reference wavenumber `k` the corresponding 
 - `pts::BoundaryPointsSM`: The boundary points.
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `ks::Vector{<:Real}`: The computed real wavenumbers.
 - `ten::Vector{<:Real}`: The corresponding tensions.
 - `X::Matrix{<:Real}`: The X matrix that contains information about the basis expansion coefficients (`X[:,i] <-> ks[i]`, check function desc.).
 """
-function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk) where {Ba<:AbsBasis}
-    F,Fk=construct_matrices(solver,basis,pts,k)
+function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk

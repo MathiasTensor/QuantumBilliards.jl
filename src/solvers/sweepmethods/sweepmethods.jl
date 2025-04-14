@@ -30,7 +30,7 @@ function solve_wavenumber(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilli
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard,k)
     function f(k)
-        return solve(solver,new_basis,pts,k)
+        return solve(solver,new_basis,pts,k;multithreaded=true) # for a single tensions minima to check always multithread construction.
     end
     res=optimize(f,k-0.5*dk,k+0.5*dk)
     k0,t0=res.minimizer,res.minimum
@@ -48,13 +48,13 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `billiard::AbsBilliard`: The billiard configuration.
 - `ks::Vector{Real}`: Vector of wavenumbers over which to perform the sweep.
 - `kernel_fun::Union{Symbol, Function}`: Kernel function to use in the boundary integral method. Defaults to `:default`.
-- `multithreaded_fredholm::Bool=false`: If the matrix construction should be multithreaded for the Fredholm matrix. Relevant if doing `BoundaryIntegralMethod`
+- `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
 
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_fredholm::Bool=false,multithreaded_ks=true)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=false,multithreaded_ks=true)
     k=maximum(ks)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
@@ -66,13 +66,13 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     if solver isa BoundaryIntegralMethod
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
-            res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_fredholm)
+            res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
             next!(p)
         end
     else
         res[1]=solve_INFO(solver,new_basis,pts,ks[1])
-        for i in eachindex(ks)[2:end]
-            res[i]=solve(solver,new_basis,pts,ks[i])
+        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+            res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices)
             next!(p)
         end
     end

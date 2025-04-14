@@ -1,7 +1,7 @@
 include("scalingmethod.jl")
 
 """
-    solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k::T,dk::T) where {T<:Real}
+    solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
 
 Solves the wavenumber for an `AcceleratedSolver` by finding the one closest to the given reference wavenumber `k` if found in the `dk` interval.
 
@@ -11,22 +11,23 @@ Solves the wavenumber for an `AcceleratedSolver` by finding the one closest to t
 - `billiard<:AbsBilliard`: billiard instance, geometrical information.
 - `k::T`: The reference wavenumber.
 - `dk::T`: The interval in which to find the closest wavenumber.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `T`: The closest wavenumber found in the `dk` interval.
 - `T`: The corresponding tension found for the closest wavenumber (by construction smallest tension in the given interval via findmin in the code).
 """
-function solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk)
+function solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard,k)
-    ks,ts=solve(solver,new_basis,pts,k,dk)
+    ks,ts=solve(solver,new_basis,pts,k,dk;multithreaded=multithreaded)
     idx=findmin(abs.(ks.-k))[2]
     return ks[idx],ts[idx]
 end
 
 """
-    solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k::T,dk::T) where {T<:Real}
+    solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
 
 Solves for all the wavenumbers and corresponding tensions that `solve(<:AcceleratedSolver...)` gives us in the given interval `dk`.
 
@@ -36,21 +37,22 @@ Solves for all the wavenumbers and corresponding tensions that `solve(<:Accelera
 - `billiard<:AbsBilliard`: billiard instance, geometrical information.
 - `k::T`: The reference wavenumber.
 - `dk::T`: The interval in which to find the wavenumbers and corresponding tensions.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Vector{T}`: The wavenumbers found in the `dk` interval.
 - `Vector{T}`: The corresponding tensions found for the wavenumbers in the `dk` interval.
 """
-function solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk)
+function solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver, billiard,k)
-    ks,ts=solve(solver,new_basis,pts,k,dk)
+    ks,ts=solve(solver,new_basis,pts,k,dk;multithreaded=multithreaded)
     return ks,ts
 end
 
 # INTERNAL FUNCTION THAT GIVES US USEFUL INFORMATION OF THE TIME COMPLEXITY AND STABILITY OF THE ALGORITHM
-function solve_spectrum_with_INFO(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk)
+function solve_spectrum_with_INFO(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
     start_init=time()
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
@@ -62,7 +64,7 @@ function solve_spectrum_with_INFO(solver::AcceleratedSolver,basis::AbsBasis,bill
     e_pts=time()
     @info "F & dF/dk matrix construction..."
     s_con=time()
-    @time F,Fk=construct_matrices(solver,basis_new,pts,k)
+    @time F,Fk=construct_matrices(solver,basis_new,pts,k;multithreaded=multithreaded)
     e_con=time()
     @info "F & dF/dk dims: $(size(F))"
     start1=time()

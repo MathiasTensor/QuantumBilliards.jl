@@ -111,14 +111,14 @@ end
     end
 end
 
-@inline function basis_fun(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+@inline function basis_fun(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let par_x=basis.parity_x,par_y=basis.parity_y
         x=getindex.(pts,1)
         y=getindex.(pts,2)
         M=length(pts)
         N=length(indices)
         B=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             vx=cos(basis.angles[i])
             vy=sin(basis.angles[i])
             arg_x=k*vx.*x
@@ -145,7 +145,7 @@ function gradient(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T
     end
 end
 
-function gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+function gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let par_x=basis.parity_x, par_y=basis.parity_y
         x=getindex.(pts,1)
         y=getindex.(pts,2)
@@ -153,7 +153,7 @@ function gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::Abstrac
         N=length(indices)
         dB_dx=zeros(T,M,N)
         dB_dy=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             vx=cos(basis.angles[i])
             vy=sin(basis.angles[i])
             arg_x=k*vx.*x
@@ -186,7 +186,7 @@ function basis_and_gradient(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray
 end
 
 
-function basis_and_gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+function basis_and_gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let par_x=basis.parity_x,par_y=basis.parity_y
         x=getindex.(pts,1)
         y=getindex.(pts,2)
@@ -195,7 +195,7 @@ function basis_and_gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pt
         B=zeros(T,M,N)
         dB_dx=zeros(T,M,N)
         dB_dy=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             vx=cos(basis.angles[i])
             vy=sin(basis.angles[i])
             arg_x=k*vx.*x
@@ -228,14 +228,14 @@ end
 end
     
 
-@inline function dk_fun(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray) where {T<:Real}
+@inline function dk_fun(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     let par_x=basis.parity_x, par_y=basis.parity_y
         x=getindex.(pts,1)
         y=getindex.(pts,2)
         M=length(pts)
         N=length(indices)
         dB_dk=zeros(T,M,N)
-        Threads.@threads for i in eachindex(indices)
+        @use_threads multithreading=multithreaded for i in eachindex(indices)
             vx=cos(basis.angles[i])
             vy=sin(basis.angles[i])
             arg_x=k*vx.*x
