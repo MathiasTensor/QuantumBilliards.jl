@@ -958,8 +958,7 @@ function ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
 end
 
 """
-    visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod, basis::Ba, billiard::Bi, k1, k2; 
-                         dk=(k)->(0.05*k^(-1/3))) where {Ba<:AbstractHankelBasis, Bi<:AbsBilliard}
+    visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
 
 Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
 
@@ -976,13 +975,14 @@ scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 - `k1`: The initial value of `k` for the sweep.
 - `k2`: The final value of `k` for the sweep.
 - `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `multithreaded::Bool=false`: If the matrix construction should be multithreaded.
+- `multithreaded_ks::Bool=true`: If the ks loop should be rather multithreaded.
 
 # Returns
 - `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
 - `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
 """
-function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
     T=eltype(k1)
@@ -997,7 +997,9 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
         k+=dk(k)
         push!(ks,k)
     end
-    @showprogress desc="EBIM smallest tens..." for k in ks
+    @info "EBIM smallest tens..."
+    p=Progress(length(ks),1)
+    @use_threads multithreading=multithreaded_ks for k in ks
         pts=evaluate_points(bim_solver,billiard,k)
         ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,basis,pts,k,multithreaded=multithreaded)
         idx1=findmin(tens1)[2]
@@ -1010,6 +1012,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
             push!(ks_all_2,ks2[idx2])
             push!(tens_all_2,tens2[idx2])
         end
+        next!(p)
     end
     _,logtens_1=ebim_inv_diff(ks_all_1)
     _,logtens_2=ebim_inv_diff(ks_all_2)
