@@ -67,13 +67,13 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(num_intervals,1)
     if solver isa BoundaryIntegralMethod
-        res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun)
+        res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
             res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
             next!(p)
         end
     else
-        res[1]=solve_INFO(solver,new_basis,pts,ks[1])
+        res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
             res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices)
             next!(p)
