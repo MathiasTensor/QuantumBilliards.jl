@@ -29,19 +29,59 @@ end
 ################################################################
 ############## OVERLAP AND MERGE ALGORITHM  ####################
 ################################################################
+
+"""
+Overlap-and-Merge Algorithm for Eigenvalue Tracking in Spectral Sweeps
+
+implementationof  an algorithm to track and assemble eigenvalues (wavenumbers) 
+and associated data (e.g. tensions, eigenvectors) across a sweep over intervals of the 
+spectral domain `ks`.
+
+In spectral methods such as the Vergini–Saraceno scaling method or the Expanded 
+Boundary Integral Method (EBIM), eigenvalues are computed in successive overlapping intervals 
+of the spectral domain. However, eigenvalues may appear in multiple adjacent intervals, 
+and due to noise, precision limits, or varying basis quality, they may not match 
+perfectly across intervals. Therefore, a robust method is required to:
+
+1. Detect overlapping eigenvalues, based on their wavenumber and associated tension.
+2. Select the better eigenvalue when overlaps exist — the one with lower tension i.e. more precise.
+3. Merge the results from each interval into a single coherent spectrum without duplicates.
+
+### Core Concepts
+
+- `Tension`: A measure of how well a candidate solution satisfies the boundary condition. 
+  Lower tension suggests a better approximation of a true eigenstate.
+- `Matching`: Two wavenumbers are considered the same (or overlapping) if their intervals 
+  `[k - dk, k + dk]` intersect, with dk determined by the user's input -> heuristic.
+- `Control Flags`: Boolean indicators that track whether a merged eigenvalue came 
+  from a matched overlap (true) or was added uniquely (false).
+- `State Data`: When eigenvectors are involved, the merging logic must also track 
+  and resolve duplicates for the associated basis coefficients.
+
+### Key Functions
+
+- `is_equal`: Determines if two eigenvalues overlap based on tension.
+- `match_wavenumbers`: Merges two sorted lists of eigenvalues using overlap checks.
+- `match_wavenumbers_with_X`: Like `match_wavenumbers` but handles eigenvectors (`X`) as well.
+- `overlap_and_merge!`: In-place merge of eigenvalues and tensions across intervals.
+- `overlap_and_merge_state!`: In-place merge including eigenvectors (`X`), typically 
+  used in `compute_spectrum_with_state`.
+
+"""
+
 """
     is_equal(x::T, dx::T, y::T, dy::T) -> Bool where {T<:Real}
 
 Check if two wavenumbers with their respective tensions overlap. The function constructs intervals around each wavenumber based on the given tensions and checks for overlap.
 
 # Arguments
-x::T : The first wavenumber.
-dx::T : tension associated with the first wavenumber.
-y::T : The second wavenumber.
-dy::T : The tension associated with the second wavenumber.
+- `x::T` : The first wavenumber.
+- `dx::T` : tension associated with the first wavenumber.
+- `y::T` : The second wavenumber.
+- `dy::T` : The tension associated with the second wavenumber.
 
 # Returns
-Bool : `true` if the intervals `[x-dx, x+dx]` and `[y-dy, y+dy]` overlap, `false` otherwise.
+`Bool` : `true` if the intervals `[x-dx, x+dx]` and `[y-dy, y+dy]` overlap, `false` otherwise.
 """
 function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
     # Define the intervals
@@ -59,14 +99,14 @@ end
 Match wavenumbers and tensions from two sorted lists (`ks_l` and `ks_r`). The function ensures that overlapping wavenumbers (as determined by `is_equal`) are merged, keeping the one with the smaller tension. If no overlap exists, wavenumbers are appended in order of magnitude.
 
 # Arguments
-ks_l::Vector{T} : List of wavenumbers from the left list.
-ts_l::Vector{T} : List of tensions from the left list.
-ks_r::Vector{T} : List of wavenumbers from the right list.
-ts_r::Vector{T} : List of tensions from the right list.
+- `ks_l::Vector{T}` : List of wavenumbers from the left list.
+- `ts_l::Vector{T}` : List of tensions from the left list.
+- `ks_r::Vector{T}` : List of wavenumbers from the right list.
+- `ts_r::Vector{T}` : List of tensions from the right list.
 
 # Returns
-ks::Vector{T} : List of merged wavenumbers.
-ts::Vector{T} : List of merged tensions corresponding to the wavenumbers.
+- `ks::Vector{T}` : List of merged wavenumbers.
+- `ts::Vector{T}` : List of merged tensions corresponding to the wavenumbers.
 control::Vector{Bool} : A boolean vector indicating whether a merged wavenumber resulted from overlap between `ks_l` and `ks_r`.
 """
 function match_wavenumbers(ks_l::Vector, ts_l::Vector, ks_r::Vector, ts_r::Vector)
