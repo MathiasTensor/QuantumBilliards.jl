@@ -66,6 +66,40 @@ function read_matrix_jld2(filename::String)
 end
 
 """
+    save_regular_idx(regular_idx::Vector{Bool},filename::String)
+
+Helper for the idxs of the regular wavenumbers in a given sweep. One can then easily get the chaotic_idxs from the setdiff when knowing the full length of all the ks in the sweep.
+
+# Arguments
+- `regular_idx::Vector{Bool}`: vector of regular idxs where true implies that the k corresponds to a regular state.
+- `filename::String`: The name of the CSV file to save the data.
+
+# Returns
+- `Nothing`
+"""
+function save_regular_idx!(regular_idx::Vector{Bool},filename::String)
+    df=DataFrame(reg_idx=regular_idx)
+    CSV.write(filename,df)
+end
+
+"""
+    save_regular_idx(regular_idx::Vector{Bool},filename::String)
+
+Helper for the idxs of the regular wavenumbers in a given sweep. One can then easily get the chaotic_idxs from the setdiff when knowing the full length of all the ks in the sweep.
+
+# Arguments
+- `filename::String`: The name of the CSV file to save the data.
+
+# Returns
+- `Vector{Bool}`: Vector of regular idxs where true implies that the k corresponds to a regular state.
+"""
+function read_regular_idx(filename::String)
+    df=CSV.read(filename,DataFrame)
+    regular_idx=df.reg_idx
+    return Vector(regular_idx)
+end
+
+"""
     save_numerical_ks_and_tensions!(ks::Vector{T}, tens::Vector{T}, filename::String) where {T<:Real}
 
 Saves numerical values of `ks` (eigenvalues) and `tensions` to a CSV file.
