@@ -242,8 +242,7 @@ function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints
     Fk=similar(F)
     T=(w.*B) #reused later, this is W*G in the docstring
     mul!(F,B',T) #boundary norm matrix, this is G'*(W*G) = F in the docstring
-    #reuse B
-    B=dk_matrix(basis,k,xy;multithreaded=multithreaded) # this is dG/dk in the docstring
+    B=dk_matrix(basis,k,xy;multithreaded=multithreaded) # reuse B, this is dG/dk in the docstring
     mul!(Fk,B',T) #B is now derivative matrix, and since T = W*G from above this is dG/dk*(W*G). This is the first part of Fk
     #symmetrize matrix
     Fk=Fk+Fk' # this is now truly the whole Fk = (dG/dk)*W*G + ((dG/dk)*W*G)' = (dG/dk)*W*G + G*W*(dG/dk)
@@ -269,7 +268,6 @@ function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::Boun
         @timeit to "weights" T=(w.*B) #reused later
         @timeit to "product" mul!(F,B',T) #boundary norm matrix
     end
-    #reuse B
     @timeit to "Fk construction" begin 
         @timeit to "dilation derivative" x=getindex.(xy,1)
         @timeit to "dilation derivative" y=getindex.(xy,2)
@@ -277,7 +275,7 @@ function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::Boun
         @timeit to "dilation derivative" dX=x.*dX 
         @timeit to "dilation derivative" dY=y.*dY
         #reuse B
-        @timeit to "dilation derivative" B=dX.+dY
+        @timeit to "dilation derivative" B=dX.+dY #reuse B
         @timeit to "product" mul!(Fk,B',T) #B is now derivative matrix
         #symmetrize matrix
         @timeit to "addition" Fk=(Fk+Fk')./k
