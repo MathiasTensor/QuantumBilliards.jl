@@ -1,4 +1,4 @@
-using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
+using LinearAlgebra, StaticArrays, TimerOutputs, Bessels, Arpack
 const TO=TimerOutput()
 
 #### REGULAR BIM ####
@@ -694,8 +694,10 @@ Computes the smallest singular value of the Fredholm matrix for a given configur
 """
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    mu=svdvals(A)
-    return mu[end]
+    #mu=svdvals(A)
+    #return mu[end]
+    μmin=svdl(A,nsv=1,which=:SM)[1]
+    return μmin
 end
 
 # INTERNAL BENCHMARKS
