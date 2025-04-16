@@ -1,9 +1,11 @@
 using Bessels
 using CoordinateTransformations, Rotations, StaticArrays
 
+#TODO Replace independant sin and cos calls with sincos
+#TODO Steer's reccurence formula for besselj might provide speedup, already in Bessels but we have to compute redundant terms.
 """
     Jv(nu,r)=Bessels.besselj(nu,r)
-    
+
 Symbolic definition of the Bessel function of order `nu` with radius `r`
 """
 Jv(nu,r)=Bessels.besselj(nu,r)
