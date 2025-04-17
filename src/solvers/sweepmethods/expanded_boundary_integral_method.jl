@@ -135,6 +135,7 @@ for each `(source_i, target_j)` pair based on the distance and the dot product w
             end
         end
     end
+    filter_matrix!(M)
     return M
 end
 
@@ -185,6 +186,7 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
         end
     end
     M[diagind(M)].=Complex(T(0.0),T(0.0))
+    filter_matrix!(M)
     return M
 end
 
@@ -235,6 +237,7 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
             end
         end
     end
+    filter_matrix!(M)
     return M
 end
 

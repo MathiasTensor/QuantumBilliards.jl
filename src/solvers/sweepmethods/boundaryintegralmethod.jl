@@ -491,6 +491,7 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
             end
         end
     end
+    filter_matrix!(M)
     return M
 end
 
@@ -533,6 +534,7 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
             end
         end
     end
+    filter_matrix!(M)
     return M
 end
 
