@@ -12,7 +12,7 @@ The reason we do this is to get rid of numerical artifacts that would make the f
 # Returns
 The modified matrix `M` with small values replaced by zero.
 """
-function filter_matrix!(M;ϵ=eps(eltype(M)))
+function filter_matrix!(M;ϵ=eps(real(eltype(M))))
     type=eltype(M)
     k=1
     @inbounds Threads.@threads for t in eachindex(M)
