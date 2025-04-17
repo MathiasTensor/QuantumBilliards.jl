@@ -78,7 +78,7 @@ function solve_spectrum_with_INFO(solver::AcceleratedSolver,basis::AbsBasis,bill
     @time d,S=eigen(Symmetric(A))
     e_reg=time()
     @info "Smallest & Largest eigval: $(extrema(d))"
-    @info "Nullspace removal with criteria eigval > $(solver.eps*maximum(d))"
+    @info "Nullspace removal with criteria eigval < $(solver.eps*maximum(d))"
     idx=d.>solver.eps*maximum(d)
     @info "Dim of num Nullspace: $(count(!,idx))" # counts the number of falses = dim of nullspace
     q=1.0./sqrt.(d[idx])
