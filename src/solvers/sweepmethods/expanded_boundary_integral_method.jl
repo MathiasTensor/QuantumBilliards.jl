@@ -86,6 +86,7 @@ Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the
         end
     end
     M[diagind(M)].=Complex(T(0.0),T(0.0))
+    filter_matrix!(M)
     return M
 end
 
