@@ -34,6 +34,7 @@ include("basis/fourierbessel/corneradapted.jl")
 export CornerAdaptedFourierBessel
 export resize_basis, basis_fun, dk_fun, gradient, basis_and_gradient 
 include("basis/fundamental/fundamental.jl")
+include("basis/evanescent/evanescent_pw.jl")
 
 #billiards
 #include("billiards/Billiards.jl")
