@@ -75,9 +75,12 @@ Evaluates the composite basis functions (main + evanescent) at given spatial poi
 - `Matrix{Complex{T}}`: Matrix where each column corresponds to a basis function evaluated at all points.
 """
 function basis_fun(basis::CompositeBasis{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-   f_main=basis_fun(basis.main,indices,k,pts;multithreaded=multithreaded)
-   f_epw=basis_fun(basis.evanescent,1:basis.evanescent.dim,k,pts;multithreaded=multithreaded)
-   return reduce(hcat,[f_main,f_epw])
+    # indices_main = indices - epw indices
+    dim_main=basis.main.dim
+    main_idxs=indices[indices.<= dim_main]
+    f_main=basis_fun(basis.main,main_idxs,k,pts;multithreaded=multithreaded)
+    f_epw=basis_fun(basis.evanescent,1:basis.evanescent.dim,k,pts;multithreaded=multithreaded)
+    return reduce(hcat,[f_main,f_epw])
 end
 
 """
@@ -96,7 +99,10 @@ Computes derivatives of composite basis functions with respect to wavenumber `k`
 - `Matrix{Complex{T}}`: Derivatives of basis functions w.r.t. `k` at each point.
 """
 function dk_fun(basis::CompositeBasis{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    f_main=dk_fun(basis.main,indices,k,pts;multithreaded=multithreaded)
+    # indices_main = indices - epw indices
+    dim_main=basis.main.dim
+    main_idxs=indices[indices.<= dim_main]
+    f_main=dk_fun(basis.main,main_idxs,k,pts;multithreaded=multithreaded)
     f_epw=dk_fun(basis.evanescent,1:basis.evanescent.dim,k,pts;multithreaded=multithreaded)
     return reduce(hcat,[f_main,f_epw])
 end
@@ -117,7 +123,10 @@ Computes gradients of the composite basis in x and y directions.
 - `Tuple{Matrix{T}, Matrix{T}}`: A tuple `(dx, dy)` representing the gradients in the x and y directions.
 """
 function gradient(basis::CompositeBasis{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    main_dX,main_dY=gradient(basis.main,indices,k,pts;multithreaded=multithreaded)
+    # indices_main = indices - epw indices
+    dim_main=basis.main.dim
+    main_idxs=indices[indices.<= dim_main]
+    main_dX,main_dY=gradient(basis.main,main_idxs,k,pts;multithreaded=multithreaded)
     epw_dX,epw_dY=gradient(basis.evanescent,1:basis.evanescent.dim,k,pts;multithreaded=multithreaded)
     return reduce(hcat,[main_dX,epw_dX]),reduce(hcat,[main_dY,epw_dY])
 end
@@ -138,9 +147,12 @@ Evaluates both the values and gradients of the composite basis functions.
 - `Tuple{Matrix{T}, Matrix{T}, Matrix{T}}`: A tuple `(values, dx, dy)` containing the evaluated basis functions and their gradients.
 """
 function basis_and_gradient(basis::CompositeBasis{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    main_vec=basis_fun(basis.main,indices,k,pts;multithreaded=multithreaded)
+    # indices_main = indices - epw indices
+    dim_main=basis.main.dim
+    main_idxs=indices[indices.<= dim_main]
+    main_vec=basis_fun(basis.main,main_idxs,k,pts;multithreaded=multithreaded)
     epw_vec=basis_fun(basis.evanescent,1:basis.evanescent.dim,k,pts;multithreaded=multithreaded)
-    main_dX,main_dY=gradient(basis.main,indices,k,pts;multithreaded=multithreaded)
+    main_dX,main_dY=gradient(basis.main,main_idxs,k,pts;multithreaded=multithreaded)
     epw_dX,epw_dY=gradient(basis.evanescent,1:basis.evanescent.dim,k,pts;multithreaded=multithreaded)
     return reduce(hcat,[main_vec,epw_vec]),reduce(hcat,[main_dX,epw_dX]),reduce(hcat,[main_dY,epw_dY])
 end
