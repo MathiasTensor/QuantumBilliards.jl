@@ -37,7 +37,7 @@ Constructs a `CompositeBasis` from a main basis and an evanescent plane wave bas
 - `CompositeBasis{T,Ba}`: A new composite basis object containing both `main` and `evanescent` basis components.
 """
 function CompositeBasis(main::Ba,evanescent::EvanescentPlaneWaves{T}) where {T<:Real,Ba<:AbsBasis}
-    return CompositeBasis{T,typeof(main)}(main.dim,main,evanescent,main.symmetries)
+    return CompositeBasis{T,typeof(main)}(main.dim+evanescent.dim,main,evanescent,main.symmetries)
 end
 
 # dim corresponds to the main basis, evanescent basis has custom dim scaling based on k. dim in evanescent is placeholder
@@ -56,7 +56,7 @@ Resizes both the main and evanescent components of the composite basis.
 - `CompositeBasis`: A new instance of the composite basis with resized components.
 """
 function resize_basis(basis::CompositeBasis,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
-    return CompositeBasis(dim,resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k),basis.main.symmetries)
+    return CompositeBasis(dim+evanescent.dim,resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k),basis.main.symmetries)
 end
 
 """
