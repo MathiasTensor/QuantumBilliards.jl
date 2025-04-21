@@ -206,7 +206,7 @@ function get_origins_and_normals_(billiard::Bi,idxs::AbstractArray;fundamental=f
     normals=Vector{SVector{2,elt}}()
     for idx in idxs 
         crv=boundary[idx]
-        if typeof(crv) isa AbsRealCurve && typeof(boundary[mod1(idx-1,N)]) isa LineSegment # is the other curve is virtual then usually the BCs are already satisfied there so no need to add. Also only add the corners so must be a line segment adjacent to produce a corner.
+        if crv isa AbsRealCurve && typeof(boundary[mod1(idx-1,N)]) isa LineSegment # is the other curve is virtual then usually the BCs are already satisfied there so no need to add. Also only add the corners so must be a line segment adjacent to produce a corner.
             push!(origins,curve(crv,zero(elt))) # starting corner 
             push!(normals,normal_vec(crv,zero(elt))) # starting normal
         end
