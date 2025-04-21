@@ -151,6 +151,10 @@ struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymme
     shift_y::T
 end
 
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
+    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries,zero(T),zero(T))
+end
+
 function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
     EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries,shift_x,shift_y)
 end
