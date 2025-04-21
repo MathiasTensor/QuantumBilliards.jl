@@ -154,69 +154,65 @@ function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins,_=get_origins_and_normals_(billiard;fundamental=fundamental)
+    origins=get_origins_(billiard;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins,_=get_origins_and_normals_(billiard;fundamental=fundamental)
+    origins=get_origins_(billiard;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins,_=get_origins_and_normals_(billiard,idxs;fundamental=fundamental)
+    origins=get_origins_(billiard,idxs;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins,_=get_origins_and_normals_(billiard,idxs;fundamental=fundamental)
+    origins=get_origins_(billiard,idxs;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idx::Ti,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
-    origins,_=get_origins_and_normals_(billiard,idx;fundamental=fundamental)
+    origins=get_origins_(billiard,idx;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idx::Ti,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
-    origins,_=get_origins_and_normals_(billiard,idx;fundamental=fundamental)
+    origins=get_origins_(billiard,idx;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
 end
 
-function get_origins_and_normals_(billiard::Bi,idx::Ti;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer}
+function get_origins_(billiard::Bi,idx::Ti;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer}
     boundary= fundamental ? billiard.fundamental_boundary : billiard.full_boundary
     elt=eltype(boundary[1].length)
     N=length(boundary)
     origins=Vector{SVector{2,elt}}()
-    normals=Vector{SVector{2,elt}}()
     crv=boundary[idx]
     if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa LineSegment
         push!(origins,curve(crv,zero(elt)))
-        push!(normals,normal_vec(crv,[zero(elt)])[1])
     end
-    return origins,normals
+    return origins
 end
 
-function get_origins_and_normals_(billiard::Bi,idxs::AbstractArray;fundamental=false) where {Bi<:AbsBilliard}
+function get_origins_(billiard::Bi,idxs::AbstractArray;fundamental=false) where {Bi<:AbsBilliard}
     boundary= fundamental ? billiard.fundamental_boundary : billiard.full_boundary
     elt=eltype(boundary[1].length)
     N=length(boundary)
     @assert length(idxs)<=N "The number of idxs cannot be larger than the number of boundary segments. Check if fundamental kwarg is set correctly!"
     origins=Vector{SVector{2,elt}}()
-    normals=Vector{SVector{2,elt}}()
     for idx in idxs 
         crv=boundary[idx]
         if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa LineSegment # is the other curve is virtual then usually the BCs are already satisfied there so no need to add. Also only add the corners so must be a line segment adjacent to produce a corner.
             push!(origins,curve(crv,zero(elt))) # starting corner 
-            push!(normals,normal_vec(crv,[zero(elt)])[1]) # starting normal
         end
     end
-    return origins,normals
+    return origins
 end
 
-function get_origins_and_normals_(billiard::Bi;fundamental=false) where {Bi<:AbsBilliard}
+function get_origins_(billiard::Bi;fundamental=false) where {Bi<:AbsBilliard}
     boundary=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
-    return get_origins_and_normals_(billiard,eachindex(boundary);fundamental=fundamental)
+    return get_origins_(billiard,eachindex(boundary);fundamental=fundamental)
 end
 
 toFloat32(basis::EvanescentPlaneWaves)=EvanescentPlaneWaves(PolarCS(Float32.(basis.cs.origin),basis.cs.rot_angle),basis.dim,Float32.(basis.origins),basis.symmetries)
