@@ -265,15 +265,15 @@ end
 end
 
 @inline function basis_fun(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    return symmetrize_epw(basis_fun,basis,i,k,pts)
+    return symmetrize_epw(epw,basis,i,k,pts)
 end
 
 @inline function dk_fun(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    return symmetrize_epw(dk_fun,basis,i,k,pts)
+    return symmetrize_epw(epw_dk,basis,i,k,pts)
 end
 
 function gradient(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    return symmetrize_epw(gradient,basis,i,k,pts)
+    return symmetrize_epw(epw_gradient,basis,i,k,pts)
 end
 
 function basis_and_gradient(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
