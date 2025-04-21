@@ -212,7 +212,7 @@ end
 
 function get_origins_and_normals_(billiard::Bi;fundamental=false) where {Bi<:AbsBilliard}
     boundary=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
-    return get_origins_and_normals(billiard,eachindex(boundary);fundamental=fundamental)
+    return get_origins_and_normals_(billiard,eachindex(boundary);fundamental=fundamental)
 end
 
 toFloat32(basis::EvanescentPlaneWaves)=EvanescentPlaneWaves(PolarCS(Float32.(basis.cs.origin),basis.cs.rot_angle),basis.dim,Float32.(basis.origins),basis.symmetries)
