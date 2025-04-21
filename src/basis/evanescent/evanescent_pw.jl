@@ -189,7 +189,7 @@ function get_origins_(billiard::Bi,idx::Ti;fundamental=false) where {Bi<:AbsBill
     N=length(boundary)
     origins=Vector{SVector{2,elt}}()
     crv=boundary[idx]
-    if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa LineSegment
+    if crv isa LineSegment && boundary[mod1(idx-1,N)] isa LineSegment
         push!(origins,curve(crv,zero(elt)))
     end
     return origins
@@ -203,7 +203,7 @@ function get_origins_(billiard::Bi,idxs::AbstractArray;fundamental=false) where 
     origins=Vector{SVector{2,elt}}()
     for idx in idxs 
         crv=boundary[idx]
-        if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa LineSegment # is the other curve is virtual then usually the BCs are already satisfied there so no need to add. Also only add the corners so must be a line segment adjacent to produce a corner.
+        if crv isa LineSegment && boundary[mod1(idx-1,N)] isa LineSegment # is the other curve is virtual then usually the BCs are already satisfied there so no need to add. Also only add the corners so must be a line segment adjacent to produce a corner.
             push!(origins,curve(crv,zero(elt))) # starting corner 
         end
     end
