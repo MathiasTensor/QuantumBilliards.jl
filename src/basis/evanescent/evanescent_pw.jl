@@ -88,7 +88,9 @@ function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k:
     B=ni[1].*x.+ni[2].*y  # oscillatory argument
     αA=αi.*A
     αB=αi.*B
-    sinh_αA,cosh_αA=sinhcosh.(αA)
+    sinhcosh_vals=sinhcosh.(αA)
+    sinh_αA=getindex.(sinhcosh_vals,1)
+    cosh_αA=getindex.(sinhcosh_vals,2)
     decay=@. exp(-sinh_αA)
     ddecay_dA=@. -αi*cosh_αA*decay
     cosh_αB=cosh.(αB)
