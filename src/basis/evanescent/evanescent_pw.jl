@@ -147,40 +147,54 @@ struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymme
     dim::Int64 
     origins::Vector{SVector{2,T}}
     symmetries::Union{Vector{Any},Nothing}
+    shift_x::T
+    shift_y::T
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries)
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
+    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins=get_origins_(billiard;fundamental=fundamental)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins=get_origins_(billiard;fundamental=fundamental)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins=get_origins_(billiard,idxs;fundamental=fundamental)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins=get_origins_(billiard,idxs;fundamental=fundamental)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idx::Ti,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
     origins=get_origins_(billiard,idx;fundamental=fundamental)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,idx::Ti,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
     origins=get_origins_(billiard,idx;fundamental=fundamental)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
+    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries,shift_x,shift_y)
 end
 
 function get_origins_(billiard::Bi,idx::Ti;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer}
@@ -230,9 +244,9 @@ end
 #### SINGLE INDEX CONSTRUCTION - SEPARATE SINCE WE SYMMETRIZE EPW AT THIS STEP ####
 ###################################################################################
 
-@inline reflect_x_epw(p::SVector{2,T},origin::SVector{2,T}) where {T<:Real} = SVector(2origin[1]-p[1],p[2])
-@inline reflect_y_epw(p::SVector{2,T},origin::SVector{2,T}) where {T<:Real} = SVector(p[1],2*origin[2]-p[2])
-@inline reflect_xy_epw(p::SVector{2,T},origin::SVector{2,T}) where {T<:Real} = 2*origin.-p
+@inline reflect_x_epw(p::SVector{2,T},shift_x::T) where {T<:Real} = SVector(2*shift_x-p[1],p[2])
+@inline reflect_y_epw(p::SVector{2,T},shift_y::T) where {T<:Real} = SVector(p[1],2*shift_y-p[2])
+@inline reflect_xy_epw(p::SVector{2,T},shift_x::T,shift_y::T) where {T<:Real} = SVector(2*shift_x-p[1],2*shift_y-p[2])
 
 @inline function symmetrize_epw(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
     syms=basis.symmetries
@@ -241,19 +255,19 @@ end
     origin=basis.cs.origin
     fval=f(pts,i,basis.dim,basis.origins,k)
     @info "sym typeof: $(typeof(sym))"
-    if sym isa XReflection
+    if sym.axis==:y_axis # XReflection
         px=sym.parity
-        reflected_pts_x=reflect_x.(pts,Ref(origin))
+        reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
         return 0.5*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,k))
-    elseif sym isa YReflection
+    elseif sym.axis==:x_axis # YReflection
         py=sym.parity
-        reflected_pts_y=reflect_y.(pts,Ref(origin))
+        reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
         return 0.5*(fval.+py.*f(reflected_pts_y,i,basis.dim,basis.origins,k))
-    elseif sym isa XYReflection
+    elseif sym.axis==:origin # XYReflection
         px,py=sym.parity
-        reflected_pts_x=reflect_x.(pts,Ref(origin))
-        reflected_pts_y=reflect_y.(pts,Ref(origin))
-        reflected_pts_xy=reflect_xy.(pts,Ref(origin))
+        reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
+        reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
+        reflected_pts_xy=reflect_xy_epw.(pts,Ref(basis.shift_x),Ref(basis.shift_y))
         return 0.25*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,k).+py.*f(reflected_pts_y,i,basis.dim,basis.origins,k).+(px*py).*f(reflected_pts_xy,i,basis.dim,basis.origins,k))
     else
         @error "Unsupported symmetry type: $(typeof(sym)). Symmetrization skipped."
