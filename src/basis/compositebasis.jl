@@ -9,13 +9,18 @@ include("planewaves/realplanewaves.jl")
 # Neccesery functions to correctly add to a main basis the evanescent plave wave basis. The dim is only for the main basis, the indices for the evanescent basis are determined directly as 1:basis.evanescent.dim due to compatibility reasons.
 
 struct CompositeBasis{T<:Real,Ba<:AbsBasis} <: AbsBasis
+    dim::Int
     main::Ba
     evanescent::EvanescentPlaneWaves{T}
 end
 
+function CompositeBasis(main::Ba,evanescent::EvanescentPlaneWaves{T}) where {T<:Real,Ba<:AbsBasis}
+    return CompositeBasis{T,typeof(main)}(main.dim,main,evanescent)
+end
+
 # dim corresponds to the main basis, evanescent basis has custom dim scaling based on k. dim in evanescent is placeholder
 function resize_basis(basis::CompositeBasis,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
-    return CompositeBasis(resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k))
+    return CompositeBasis(dim,resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k))
 end
 
 function basis_fun(basis::CompositeBasis{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
