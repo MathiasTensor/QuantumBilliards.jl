@@ -1,3 +1,6 @@
+include("evanescent/evanescent_pw.jl")
+include("fourierbessel/corneradapted.jl")
+include("planewaves/realplanewaves.jl")
 
 #############################
 ###### COMPOSITE BASIS ######
