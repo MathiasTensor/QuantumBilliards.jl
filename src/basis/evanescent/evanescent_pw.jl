@@ -149,32 +149,32 @@ struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymme
     symmetries::Union{Vector{Any},Nothing}
 end
 
-function EvanescentPlaneWaves(billiard::Bi,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard}
+function EvanescentPlaneWaves(billiard::Bi,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins,_=get_origins_and_normals_(billiard;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard}
+function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins,_=get_origins_and_normals_(billiard;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard}
+function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins,_=get_origins_and_normals_(billiard,idxs;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard}
+function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins,_=get_origins_and_normals_(billiard,idxs;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,idx::Ti,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer}
+function EvanescentPlaneWaves(billiard::Bi,idx::Ti,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
     origins,_=get_origins_and_normals_(billiard,idx;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,idx::Ti,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer}
+function EvanescentPlaneWaves(billiard::Bi,idx::Ti,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
     origins,_=get_origins_and_normals_(billiard,idx;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries)
 end
