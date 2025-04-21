@@ -45,7 +45,7 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where
     ni=SVector(ci,si)
     αi=(3+i)/(2*k^(1/3))  # Evanescence parameter
     decay=exp.(-sinh.(αi.*(-ni[2].*x.+ni[1].*y)))
-    phase=αi.*(ni[1].*x.+ni[2].*y)
+    phase=cosh.(αi.*(ni[1].*x.+ni[2].*y))
     osc=iseven(i) ? cos.(phase) : sin.(phase)
     return decay.*osc
 end
@@ -65,15 +65,14 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) wh
     sinh_αA,cosh_αA=sinhcosh.(αA)
     decay=@. exp(-sinh_αA)
     ddecay_dk=@. decay*(-cosh_αA*A*dαdk)
-    phase=αB
-    dphase_dk=dαdk.*B
-    sphase,cphase=sincos.(phase)
+    cosh_αB=cosh.(αB)
+    sinh_αB=sinh.(αB)
     if iseven(i)
-        osc=cphase
-        dosc_dk=-sphase.*dphase_dk
+        osc=cos.(cosh_αB)
+        dosc_dk=@. -sin(cosh_αB)*sinh_αB*dαdk*B
     else
-        osc=sphase
-        dosc_dk=cphase.*dphase_dk
+        osc=sin.(cosh_αB)
+        dosc_dk=@. cos(cosh_αB)*sinh_αB*dαdk*B
     end
     return ddecay_dk.*osc.+decay.*dosc_dk
 end
@@ -92,13 +91,14 @@ function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k:
     sinh_αA,cosh_αA=sinhcosh.(αA)
     decay=@. exp(-sinh_αA)
     ddecay_dA=@. -αi*cosh_αA*decay
-    sphase,cphase=sincos.(αB)
+    cosh_αB=cosh.(αB)
+    sinh_αB=sinh.(αB)
     if iseven(i)
-        osc=cphase
-        dosc_dB=@. -αi*sphase
+        osc=cos.(cosh_αB)
+        dosc_dB=@. -αi*sin(cosh_αB)*sinh_αB
     else
-        osc=sphase
-        dosc_dB=@. αi*cphase
+        osc=sin.(cosh_αB)
+        dosc_dB=@. αi*cos(cosh_αB)*sinh_αB
     end
     dA_dx,dA_dy=-ni[2],ni[1] # Compute spatial derivatives of A and B
     dB_dx,dB_dy=ni[1],ni[2]
