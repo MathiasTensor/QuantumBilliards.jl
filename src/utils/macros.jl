@@ -4,6 +4,7 @@
 The macro expects either:
 (a) A keyword argument "multithreading" followed by a loop expression, or
 b) A lone loop expression (in which case multithreading defaults to true).
+NOTE: Already @inbounds 
 """
 macro use_threads(args...)
     if length(args)>=2 && args[1] isa Expr && args[1].head==:(=) && args[1].args[1]==:multithreading
