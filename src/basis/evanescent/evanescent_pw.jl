@@ -78,7 +78,7 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) wh
     return ddecay_dk.*osc.+decay.*dosc_dk
 end
 
-function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real}
+function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex(pts,1).-origin[1]
     y=getindex(pts,2).-origin[2]
     θi=2π*(i-0.5)/Ni
@@ -107,7 +107,7 @@ function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k:
     return dx,dy
 end
 
-function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real}
+function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M) # pts x origins
@@ -117,7 +117,7 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k:
     return sum(res,dims=2)[:] # for each row sum over all columns to get for each pt in pts all the different origin contributions. Converts Matrix (N,1) to a flat vector.
 end
 
-function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real}
+function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M)
@@ -127,7 +127,7 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}}
     return sum(res,dims=2)[:]
 end
 
-function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real}
+function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
     dx_mat=Matrix{Complex{T}}(undef,N,M)
@@ -230,9 +230,9 @@ end
 #### SINGLE INDEX CONSTRUCTION - SEPARATE SINCE WE SYMMETRIZE EPW AT THIS STEP ####
 ###################################################################################
 
-@inline reflect_x_epw(p::SVector{2,T},origin::SVector{2,T}) where {T} =SVector(2origin[1]-p[1],p[2])
-@inline reflect_y_epw(p::SVector{2,T},origin::SVector{2,T}) where {T} =SVector(p[1],2*origin[2]-p[2])
-@inline reflect_xy_epw(p::SVector{2,T},origin::SVector{2,T}) where {T} =2*origin.-p
+@inline reflect_x_epw(p::SVector{2,T},origin::SVector{2,T}) where {T<:Real} = SVector(2origin[1]-p[1],p[2])
+@inline reflect_y_epw(p::SVector{2,T},origin::SVector{2,T}) where {T<:Real} = SVector(p[1],2*origin[2]-p[2])
+@inline reflect_xy_epw(p::SVector{2,T},origin::SVector{2,T}) where {T<:Real} = 2*origin.-p
 
 @inline function symmetrize_epw(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
     syms=basis.symmetries
