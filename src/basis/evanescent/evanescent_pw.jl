@@ -38,8 +38,8 @@ function b(crv::Crv) where {Crv<:AbsRealCurve}
 end
 
 function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
-    x=getindex(pts,1).-origin[1]
-    y=getindex(pts,2).-origin[2]
+    x=getindex.(pts,1).-origin[1]
+    y=getindex.(pts,2).-origin[2]
     θi=2*pi*(i-0.5)/Ni
     si,ci=sincos(θi)
     ni=SVector(ci,si)
@@ -51,8 +51,8 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where
 end
 
 function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
-    x=getindex(pts,1).-origin[1]
-    y=getindex(pts,2).-origin[2]
+    x=getindex.(pts,1).-origin[1]
+    y=getindex.(pts,2).-origin[2]
     θi=2*pi*(i-0.5)/Ni
     si,ci=sincos(θi)
     ni=SVector(ci,si)
@@ -79,8 +79,8 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) wh
 end
 
 function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
-    x=getindex(pts,1).-origin[1]
-    y=getindex(pts,2).-origin[2]
+    x=getindex.(pts,1).-origin[1]
+    y=getindex.(pts,2).-origin[2]
     θi=2*pi*(i-0.5)/Ni
     si,ci=sincos(θi)
     ni=SVector(ci,si)
