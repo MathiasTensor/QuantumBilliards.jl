@@ -280,6 +280,43 @@ end
     end
 end
 
+@inline function symmetrize_epw_grad(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
+    syms=basis.symmetries
+    isnothing(syms) && return f(pts,i,basis.dim,basis.origins,k)
+    sym=syms[1]
+    origin=basis.cs.origin
+    fval=f(pts,i,basis.dim,basis.origins,k)
+    if sym.axis==:y_axis # XReflection
+        px=sym.parity
+        reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
+        fx=f(reflected_pts_x,i,basis.dim,basis.origins,k)
+        return (
+            0.5.*(fval[1].+px.*fx[1]),
+            0.5.*(fval[2].+px.*fx[2]))
+    elseif sym.axis==:x_axis # YReflection
+        py=sym.parity
+        reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
+        fy=f(reflected_pts_y,i,basis.dim,basis.origins,k)
+        return (
+            0.5.*(fval[1].+py.*fy[1]),
+            0.5.*(fval[2].+py.*fy[2]))
+    elseif sym.axis==:origin # XYReflection
+        px,py=sym.parity
+        reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
+        reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
+        reflected_pts_xy=reflect_xy_epw.(pts,Ref(basis.shift_x),Ref(basis.shift_y))
+        fx=f(reflected_pts_x,i,basis.dim,basis.origins,k)
+        fy=f(reflected_pts_y,i,basis.dim,basis.origins,k)
+        fxy=f(reflected_pts_xy,i,basis.dim,basis.origins,k)
+        return (
+            0.25.*(fval[1].+px.*fx[1].+py.*fy[1].+(px*py).*fxy[1]),
+            0.25.*(fval[2].+px.*fx[2].+py.*fy[2].+(px*py).*fxy[2]))
+    else
+        @error "Unsupported symmetry type: $(typeof(sym)). Symmetrization skipped."
+        return fval
+    end
+end
+
 @inline function basis_fun(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
     return symmetrize_epw(epw,basis,i,k,pts)
 end
@@ -289,7 +326,7 @@ end
 end
 
 function gradient(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    return symmetrize_epw(epw_gradient,basis,i,k,pts)
+    return symmetrize_epw_grad(epw_gradient,basis,i,k,pts)
 end
 
 function basis_and_gradient(basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
