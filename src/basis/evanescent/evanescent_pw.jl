@@ -240,15 +240,15 @@ end
     sym=syms[1]
     origin=basis.cs.origin
     fval=f(pts,i,basis.dim,basis.origins,k)
-    if sym==typeof(XReflection)
+    if sym isa XReflection
         px=sym.parity
         reflected_pts_x=reflect_x.(pts,Ref(origin))
         return 0.5*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,k))
-    elseif sym==typeof(YReflection)
+    elseif sym isa YReflection
         py=sym.parity
         reflected_pts_y=reflect_y.(pts,Ref(origin))
         return 0.5*(fval.+py.*f(reflected_pts_y,i,basis.dim,basis.origins,k))
-    elseif sym==typeof(XYReflection)
+    elseif sym isa XYReflection
         px,py=sym.parity
         reflected_pts_x=reflect_x.(pts,Ref(origin))
         reflected_pts_y=reflect_y.(pts,Ref(origin))
