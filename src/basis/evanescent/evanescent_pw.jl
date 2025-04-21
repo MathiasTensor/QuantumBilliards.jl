@@ -37,6 +37,21 @@ function b(crv::Crv) where {Crv<:AbsRealCurve}
     #TODO
 end
 
+"""
+    epw(pts::AbstractArray, i::Int64, Ni::Ti, origin::SVector{2,T}, k::T) -> Vector{T}
+
+Compute the evanescent plane wave function at given points for a single origin.
+
+# Arguments
+- `pts::AbstractArray`: Points in space where the function is evaluated.
+- `i::Int64`: Index of the basis function.
+- `Ni::Ti`: Total number of basis functions.
+- `origin::SVector{2,T}`: Origin of the evanescent wave.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Vector{T}`: Evaluated function values.
+"""
 function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex.(pts,1).-origin[1]
     y=getindex.(pts,2).-origin[2]
@@ -50,6 +65,21 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where
     return decay.*osc
 end
 
+"""
+    epw_dk(pts::AbstractArray, i::Int64, Ni::Ti, origin::SVector{2,T}, k::T) -> Vector{T}
+
+Compute the derivative of the evanescent plane wave function with respect to wavenumber `k`.
+
+# Arguments
+- `pts::AbstractArray`: Spatial evaluation points.
+- `i::Int64`: Function index.
+- `Ni::Ti`: Total number of basis functions.
+- `origin::SVector{2,T}`: Origin of the evanescent wave.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Vector{T}`: Derivative of the function with respect to `k`.
+"""
 function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex.(pts,1).-origin[1]
     y=getindex.(pts,2).-origin[2]
@@ -77,6 +107,21 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) wh
     return ddecay_dk.*osc.+decay.*dosc_dk
 end
 
+"""
+    epw_gradient(pts::AbstractArray, i::Int64, Ni::Ti, origin::SVector{2,T}, k::T) -> Tuple{Vector{T}, Vector{T}}
+
+Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function.
+
+# Arguments
+- `pts::AbstractArray`: Points where the gradient is evaluated.
+- `i::Int64`: Basis function index.
+- `Ni::Ti`: Number of basis functions.
+- `origin::SVector{2,T}`: Origin of the evanescent wave.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Tuple{Vector{T}, Vector{T}}`: Gradients with respect to x and y.
+"""
 function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex.(pts,1).-origin[1]
     y=getindex.(pts,2).-origin[2]
@@ -109,6 +154,21 @@ function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k:
     return dx,dy
 end
 
+"""
+    epw(pts::AbstractArray, i::Int64, Ni::Ti, origins::Vector{SVector{2,T}}, k::T) -> Vector{T}
+
+Evaluate the evanescent plane wave by summing contributions from multiple origins.
+
+# Arguments
+- `pts::AbstractArray`: Evaluation points.
+- `i::Int64`: Basis function index.
+- `Ni::Ti`: Total number of basis functions.
+- `origins::Vector{SVector{2,T}}`: List of origins.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Vector{T}`: Summed function values at each point.
+"""
 function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
@@ -119,6 +179,21 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k:
     return sum(res,dims=2)[:] # for each row sum over all columns to get for each pt in pts all the different origin contributions. Converts Matrix (N,1) to a flat vector.
 end
 
+"""
+    epw_dk(pts::AbstractArray, i::Int64, Ni::Ti, origins::Vector{SVector{2,T}}, k::T) -> Vector{T}
+
+Compute the summed ∂/∂k of EPW from multiple origins.
+
+# Arguments
+- `pts::AbstractArray`: Evaluation points.
+- `i::Int64`: Basis function index.
+- `Ni::Ti`: Number of basis functions.
+- `origins::Vector{SVector{2,T}}`: Origins for summation.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Vector{T}`: Derivatives summed across all origins.
+"""
 function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
@@ -129,6 +204,21 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}}
     return sum(res,dims=2)[:]
 end
 
+"""
+    epw_gradient(pts::AbstractArray, i::Int64, Ni::Ti, origins::Vector{SVector{2,T}}, k::T) -> Tuple{Vector{T}, Vector{T}}
+
+Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed across all origins.
+
+# Arguments
+- `pts::AbstractArray`: Points to evaluate.
+- `i::Int64`: Index of basis function.
+- `Ni::Ti`: Number of total functions.
+- `origins::Vector{SVector{2,T}}`: EPW origins.
+- `k::T`: Wavenumber.
+
+# Returns
+- `Tuple{Vector{T}, Vector{T}}`: Gradient in x and y directions.
+"""
 function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
@@ -339,6 +429,22 @@ end
 #### MULTI INDEX CONSTRUCTION ####
 ##################################
 
+"""
+    basis_fun(basis::EvanescentPlaneWaves{T}, indices::AbstractArray, k::T, pts::AbstractArray; multithreaded=true) 
+    -> Matrix{T}
+ 
+Computes values of the Evanescent Plane Wave (EPW) basis functions at given points for the provided indices.
+ 
+# Arguments
+- `basis::EvanescentPlaneWaves{T}`: The evanescent basis to evaluate.
+- `indices::AbstractArray`: Indices specifying which EPW functions to compute.
+- `k::T`: Wavenumber parameter.
+- `pts::AbstractArray`: 2D points where functions are evaluated.
+- `multithreaded::Bool=true`: Enables multithreading support.
+ 
+# Returns
+- `Matrix{T}`: Matrix of function values.
+"""
 function basis_fun(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     N=length(pts)
     M=length(indices)
@@ -349,6 +455,22 @@ function basis_fun(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pt
     return mat
 end
 
+"""
+    dk_fun(basis::EvanescentPlaneWaves{T}, indices::AbstractArray, k::T, pts::AbstractArray; multithreaded=true) 
+    -> Matrix{T}
+ 
+Evaluates the derivative of the Evanescent Plane Wave (EPW) basis functions with respect to the wavenumber `k`.
+ 
+# Arguments
+- `basis::EvanescentPlaneWaves{T}`: The evanescent basis structure.
+- `indices::AbstractArray`: Indices of the EPW functions.
+- `k::T`: Wavenumber.
+- `pts::AbstractArray`: Spatial points where functions are evaluated.
+- `multithreaded::Bool=true`: Enables threaded evaluation.
+ 
+# Returns
+- `Matrix{T}`: Matrix of ∂f/∂k evaluations.
+"""
 function dk_fun(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     N=length(pts)
     M=length(indices)
@@ -359,6 +481,22 @@ function dk_fun(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pts::
     return mat
 end
 
+"""
+    gradient(basis::EvanescentPlaneWaves{T}, indices::AbstractArray, k::T, pts::AbstractArray; multithreaded=true) 
+    -> Tuple{Matrix{T}, Matrix{T}}
+ 
+Computes the gradient (in x and y directions) of Evanescent Plane Wave (EPW) basis functions for a set of indices.
+ 
+# Arguments
+- `basis::EvanescentPlaneWaves{T}`: The evanescent basis object.
+- `indices::AbstractArray`: Array of indices specifying which EPWs to evaluate.
+- `k::T`: Wavenumber parameter.
+- `pts::AbstractArray`: Evaluation points in 2D.
+- `multithreaded::Bool=true`: Whether to use multithreading.
+ 
+# Returns
+- `Tuple{Matrix{T}, Matrix{T}}`: Matrices of partial derivatives with respect to x and y.
+"""
 function gradient(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     N=length(pts)
     M=length(indices)
@@ -372,6 +510,22 @@ function gradient(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pts
     return mat_dX,mat_dY
 end
 
+"""
+    basis_and_gradient(basis::EvanescentPlaneWaves{T}, indices::AbstractArray, k::T, pts::AbstractArray; multithreaded=true) 
+    -> Tuple{Matrix{T}, Matrix{T}, Matrix{T}}
+ 
+Computes both values and gradients of the Evanescent Plane Wave (EPW) basis functions over multiple indices.
+ 
+# Arguments
+- `basis::EvanescentPlaneWaves{T}`: The evanescent basis structure.
+- `indices::AbstractArray`: Indices specifying which EPW functions to evaluate.
+- `k::T`: Wavenumber parameter.
+- `pts::AbstractArray`: Array of points where the basis is evaluated.
+- `multithreaded::Bool=true`: Enables multithreaded computation if `true`.
+ 
+# Returns
+- `Tuple{Matrix{T}, Matrix{T}, Matrix{T}}`: Tuple containing values, x-derivatives, and y-derivatives of basis functions.
+"""
 function basis_and_gradient(basis::EvanescentPlaneWaves{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
     mat=basis_fun(basis,indices,k,pts;multithreaded=multithreaded)
     mat_dX,mat_dY=gradient(basis,indices,k,pts;multithreaded=multithreaded)
