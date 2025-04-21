@@ -56,7 +56,7 @@ Resizes both the main and evanescent components of the composite basis.
 - `CompositeBasis`: A new instance of the composite basis with resized components.
 """
 function resize_basis(basis::CompositeBasis,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
-    return CompositeBasis(dim+evanescent.dim,resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k),basis.main.symmetries)
+    return CompositeBasis(dim+basis.evanescent.dim,resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k),basis.main.symmetries)
 end
 
 """
