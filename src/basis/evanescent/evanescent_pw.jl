@@ -40,7 +40,7 @@ end
 function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex(pts,1).-origin[1]
     y=getindex(pts,2).-origin[2]
-    θi=2*pi(i-0.5)/Ni
+    θi=2*pi*(i-0.5)/Ni
     si,ci=sincos(θi)
     ni=SVector(ci,si)
     αi=(3+i)/(2*k^(1/3))  # Evanescence parameter
@@ -53,7 +53,7 @@ end
 function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex(pts,1).-origin[1]
     y=getindex(pts,2).-origin[2]
-    θi=2*pi(i-0.5)/Ni
+    θi=2*pi*(i-0.5)/Ni
     si,ci=sincos(θi)
     ni=SVector(ci,si)
     αi=(3+i)/(2*k^(1/3))
@@ -81,7 +81,7 @@ end
 function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
     x=getindex(pts,1).-origin[1]
     y=getindex(pts,2).-origin[2]
-    θi=2π*(i-0.5)/Ni
+    θi=2*pi*(i-0.5)/Ni
     si,ci=sincos(θi)
     ni=SVector(ci,si)
     αi=(3+i)/(2*k^(1/3))
