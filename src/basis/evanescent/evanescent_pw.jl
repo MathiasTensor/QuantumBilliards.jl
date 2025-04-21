@@ -240,6 +240,7 @@ end
     sym=syms[1]
     origin=basis.cs.origin
     fval=f(pts,i,basis.dim,basis.origins,k)
+    @info "sym typeof: $(typeof(sym))"
     if sym isa XReflection
         px=sym.parity
         reflected_pts_x=reflect_x.(pts,Ref(origin))
