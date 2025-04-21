@@ -36,6 +36,7 @@ export resize_basis, basis_fun, dk_fun, gradient, basis_and_gradient
 include("basis/fundamental/fundamental.jl")
 include("basis/evanescent/evanescent_pw.jl")
 export EvanescentPlaneWaves
+include("basis/compositebasis.jl")
 
 #billiards
 #include("billiards/Billiards.jl")
