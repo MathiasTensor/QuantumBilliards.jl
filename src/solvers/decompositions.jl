@@ -27,7 +27,7 @@ Reference: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html
 - `Z::Matrix`: Matrix of eigenvectors in the reduced space.
 - `C_scaled::Matrix`: Scaled eigenvector matrix corresponding to the truncated basis.
 """
-function generalized_eigen(A,B;eps=1e-14)
+function generalized_eigen(A,B;eps=1e-15)
     d,S=eigen(Symmetric(A))
     idx=d.>eps*maximum(d)
     q=1.0./sqrt.(d[idx])
@@ -67,7 +67,7 @@ Reference: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html
 # Returns
 - `mu::Vector`: Vector of generalized eigenvalues.
 """
-function generalized_eigvals(A,B;eps=1e-14)    
+function generalized_eigvals(A,B;eps=1e-15)    
     d,S=eigen(Symmetric(A))
     maxd=maximum(d)
     idx=d.>eps*maxd 
