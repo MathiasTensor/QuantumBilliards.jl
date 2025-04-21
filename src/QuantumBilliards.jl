@@ -37,6 +37,7 @@ include("basis/fundamental/fundamental.jl")
 include("basis/evanescent/evanescent_pw.jl")
 export EvanescentPlaneWaves
 include("basis/compositebasis.jl")
+export CompositeBasis
 
 #billiards
 #include("billiards/Billiards.jl")
