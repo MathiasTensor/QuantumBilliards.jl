@@ -149,6 +149,10 @@ struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymme
     symmetries::Union{Vector{Any},Nothing}
 end
 
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
+    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries)
+end
+
 function EvanescentPlaneWaves(billiard::Bi,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     origins,_=get_origins_and_normals_(billiard;fundamental=fundamental)
     return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing)
