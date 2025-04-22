@@ -365,7 +365,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
     println("Starting spectrum computation...")
     k0=k1
@@ -393,14 +393,77 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-
 
     k0=k1
     println("Initial solve...")
-    k_res,ten_res=solve_spectrum_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol)
+    k_res,ten_res=solve_spectrum_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol,multithreaded=multithreaded_matrices)
     control=[false for i in 1:length(k_res)]
-    for i in eachindex(dk_values)
+    @use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)
         dk=dk_values[i]
         k0+=dk
         println("Doing k: ", k0, " to: ", k0+dk+tol)
-        @time k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol)
+        @time k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices)
         overlap_and_merge!(k_res,ten_res,k_new,ten_new,control,k0-dk,k0;tol=tol)
+        next!(p)
+    end
+    return k_res,ten_res,control
+end
+
+"""
+    compute_spectrum(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T, dk::T;
+                     tol::T=1e-4, multithreaded_matrices::Bool=false, multithreaded_ks::Bool=true) 
+                     where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+
+Compute the eigenvalue spectrum over a fixed-resolution wavenumber grid `[k1, k2]` with step size `dk`, using a spectral method (e.g., Vergini–Saraceno). 
+
+This version **does not adapt `dk`** using Weyl’s law but instead uses a fixed step size, which can be useful for uniform spectral scans or debugging.
+
+# Arguments
+- `solver::Sol`: The solver used to compute the spectrum (`<:AcceleratedSolver`).
+- `basis::Ba`: The basis used to represent solutions (`<:AbsBasis`).
+- `billiard::Bi`: The domain geometry (`<:AbsBilliard`).
+- `k1::T`, `k2::T`: The starting and ending wavenumbers to sweep.
+- `dk::T`: The fixed step size in wavenumber space.
+- `tol::T=1e-4`: Tolerance for overlap-and-merge when stitching results between intervals.
+- `multithreaded_matrices::Bool=false`: Whether to enable multithreaded matrix construction for each `k` solve.
+- `multithreaded_ks::Bool=true`: Whether to parallelize over `k` intervals. Usually beneficial.
+
+# Returns
+- `k_res::Vector{T}`: Final merged list of wavenumbers.
+- `ten_res::Vector{T}`: Associated tension values for each wavenumber.
+- `control::Vector{Bool}`: Flags indicating whether the eigenvalue was part of an overlap merge (`true`) or added uniquely (`false`).
+
+# Details
+- The function evaluates eigenvalue problems in overlapping intervals `[k_i, k_i + dk + tol]` for each point in the `k_vals` range.
+- Each interval is solved independently (with optional multithreading).
+- The results are then merged using the `overlap_and_merge!` function, keeping lower-tension eigenvalues if overlaps are found.
+"""
+function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol=1e-4,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+    k_vals=collect(range(k1,k2,step=dk))
+    println("Scaling Method...")
+    p=Progress(length(k_vals),1)
+    k0=k_vals[1]
+    println("Initial solve...")
+    k_res,ten_res=solve_spectrum_with_INFO(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices)
+    all_ks=Vector{T}(undef,length(k_vals))
+    all_tens=Vector{T}(undef,length(k_vals))
+    all_ks[1]=k_res
+    all_tens[1]=ten_res
+    control=[false for i in 1:length(k_res)]
+    
+    @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[2:end]
+        k0=k_vals[i]
+        k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices)
+        all_ks[i]=k_new
+        all_tens[i]=ten_new
+        next!(p)
+    end
+
+    println("Merging intervals...")
+    p=Progress(length(all_ks)-1,1)
+    # Initialize result with first interval
+    k_res=all_ks[1]
+    ten_res=all_tens[1]
+    control=[false for _ in 1:length(k_res)]
+    for i in 2:length(all_ks) # Merge in all remaining intervals
+        overlap_and_merge!(k_res, ten_res,all_ks[i],all_tens[i],control,k_vals[i-1],k_vals[i];tol=tol)
         next!(p)
     end
     return k_res,ten_res,control
@@ -461,58 +524,6 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `tens::Vector{T}`: Vector of tensions for each eigenvalue
 - `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
-#=
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
-    # Estimate the number of intervals and store the dk values
-    k0=k1
-    dk_values=[]
-    A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
-    while k0<k2
-        if fundamental
-            dk=N_expect/(A_fund*k0/(2*pi)-L_fund/(4*pi)) # weyl estimate
-        else
-            dk=N_expect/(A_full*k0/(2*pi)-L_full/(4*pi))
-        end
-        dk<0.0 ? -dk : dk
-        dk>dk_threshold ? dk=dk_threshold : nothing # For small k this limits the size of the interval
-        push!(dk_values,dk)
-        k0+=dk
-    end
-    println("min/max dk value: ",extrema(dk_values))
-    # Initialize the progress bar with estimated number of intervals
-    println("Scaling Method w/ StateData...")
-    p=Progress(length(dk_values),1)
-    @info "Total number of eigenvalue problems to solve... $(length(dk_values))"
-    # Actual computation using precomputed dk values
-    k0=k1
-    state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol;multithreaded=multithreaded_matrices)
-    control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
-    #all_states=Vector{StateData{T,T}}(undef,length(dk_values))
-    #k_vals=Vector{T}(undef,length(dk_values))
-    #all_states[1]=state_res
-    #k_vals[1]=k0
-    #@use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)[2:end]
-    for i in eachindex(dk_values)[2:end]
-        dk=dk_values[i]
-        k0+=dk
-        state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol;multithreaded=multithreaded_matrices)
-        # Merge the new state into the accumulated state
-        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
-        #all_states[i]=state_new
-        #k_vals[i]=k0
-        next!(p)
-    end
-    # do the merging here
-    #println("Merging intervals...")
-    #p=Progress(length(dk_values)-1,1)
-    #state_res=all_states[1]
-    #for i in 2:length(all_states)
-    #    overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,all_states[i].ks,all_states[i].tens,all_states[i].X,control,k_vals[i-1],k_vals[i];tol=tol)
-    #    next!(p)
-    #end
-    return state_res,control
-end
-=#
 function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
     k_vals=T[]
     dk_vals=T[]
@@ -540,6 +551,60 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
         ki=k_vals[i]
         dki=dk_vals[i]
         all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dki+tol;multithreaded=multithreaded_matrices)
+        next!(p)
+    end
+    println("Merging intervals...")
+    state_res=all_states[1]
+    control=[false for _ in 1:length(state_res.ks)]
+    p=Progress(length(all_states)-1,1)
+    for i in 2:length(all_states)
+        overlap_and_merge_state!(
+            state_res.ks,state_res.tens,state_res.X,
+            all_states[i].ks,all_states[i].tens,all_states[i].X,
+            control,k_vals[i-1],k_vals[i];tol=tol)
+        next!(p)
+    end
+    return state_res,control
+end
+
+"""
+    compute_spectrum_with_state(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T, dk::T;
+                                tol::T=T(1e-4), multithreaded_matrices::Bool=false, multithreaded_ks::Bool=true) 
+                                where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+
+Compute the spectrum of a billiard system over a fixed-resolution wavenumber grid `[k1, k2]` using a specified step size `dk`, and return eigenstates (wavenumbers, tensions, basis coefficients) in a merged `StateData` structure.
+
+This is the fixed-interval version of the Vergini–Saraceno-style solver that **also captures the eigenvectors / basis expansion coefficients** for each wavenumber.
+After solving, results are merged using `overlap_and_merge_state!`, keeping lower-tension solutions when overlaps occur.
+
+# Arguments
+- `solver::Sol`: Spectral solver (e.g., scaling method), subtype of `AcceleratedSolver`.
+- `basis::Ba`: Basis object compatible with the billiard geometry, subtype of `AbsBasis`.
+- `billiard::Bi`: The geometry (domain), subtype of `AbsBilliard`.
+- `k1::T`, `k2::T`: Start and end values of the wavenumber range.
+- `dk::T`: Fixed step size between wavenumber intervals.
+- `tol::T=1e-4`: Tolerance for merging results in overlapping intervals.
+- `multithreaded_matrices::Bool=false`: Enable multithreading for matrix assembly.
+- `multithreaded_ks::Bool=true`: Enable multithreading over `k` intervals.
+
+# Returns
+- `state_res::StateData{T,T}`: Struct holding merged eigenvalues, tensions, and eigenvectors.
+  - `state_res.ks`: Final merged wavenumbers.
+  - `state_res.tens`: Tension values associated with each wavenumber.
+  - `state_res.X`: Basis coefficient vectors for each eigenvalue.
+- `control::Vector{Bool}`: Vector indicating if an eigenvalue was involved in overlap resolution (`true`) or added uniquely (`false`).
+"""
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol::T=T(1e-4),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+    k_vals=collect(range(k1,k2,step=dk))
+    @info "Scaling Method w/ StateData..."
+    println("Total intervals: ",length(k_vals))
+    all_states=Vector{StateData{T,T}}(undef,length(k_vals))
+    all_states[1]=solve_state_data_bundle_with_INFO(solver,basis,billiard,k_vals[1],dk+tol;multithreaded=multithreaded_matrices)
+    @info "Multithreading loop? $(multithreaded_ks), multithreading matrix construction? $(multithreaded_matrices)"
+    p=Progress(length(k_vals),1)
+    @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[2:end]
+        ki=k_vals[i]
+        all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dk+tol;multithreaded=multithreaded_matrices)
         next!(p)
     end
     println("Merging intervals...")
@@ -1155,5 +1220,58 @@ function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, 
     @info "Spectrum computation completed. Total levels found: $(length(ks_final))"
     #close(logfile) # close the logger
     return ks_final, tens_final, control_final
+end
+=#
+
+#=
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+    # Estimate the number of intervals and store the dk values
+    k0=k1
+    dk_values=[]
+    A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
+    while k0<k2
+        if fundamental
+            dk=N_expect/(A_fund*k0/(2*pi)-L_fund/(4*pi)) # weyl estimate
+        else
+            dk=N_expect/(A_full*k0/(2*pi)-L_full/(4*pi))
+        end
+        dk<0.0 ? -dk : dk
+        dk>dk_threshold ? dk=dk_threshold : nothing # For small k this limits the size of the interval
+        push!(dk_values,dk)
+        k0+=dk
+    end
+    println("min/max dk value: ",extrema(dk_values))
+    # Initialize the progress bar with estimated number of intervals
+    println("Scaling Method w/ StateData...")
+    p=Progress(length(dk_values),1)
+    @info "Total number of eigenvalue problems to solve... $(length(dk_values))"
+    # Actual computation using precomputed dk values
+    k0=k1
+    state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol;multithreaded=multithreaded_matrices)
+    control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
+    #all_states=Vector{StateData{T,T}}(undef,length(dk_values))
+    #k_vals=Vector{T}(undef,length(dk_values))
+    #all_states[1]=state_res
+    #k_vals[1]=k0
+    #@use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)[2:end]
+    for i in eachindex(dk_values)[2:end]
+        dk=dk_values[i]
+        k0+=dk
+        state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol;multithreaded=multithreaded_matrices)
+        # Merge the new state into the accumulated state
+        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
+        #all_states[i]=state_new
+        #k_vals[i]=k0
+        next!(p)
+    end
+    # do the merging here
+    #println("Merging intervals...")
+    #p=Progress(length(dk_values)-1,1)
+    #state_res=all_states[1]
+    #for i in 2:length(all_states)
+    #    overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,all_states[i].ks,all_states[i].tens,all_states[i].X,control,k_vals[i-1],k_vals[i];tol=tol)
+    #    next!(p)
+    #end
+    return state_res,control
 end
 =#
