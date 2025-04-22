@@ -268,7 +268,7 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_
     f = Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)))
     row=1
     col=1
-    for j in eachindex(ks)
+    @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
@@ -316,7 +316,7 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vec
     f=Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)))
     row=1
     col=1
-    for j in eachindex(ks)
+    @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
@@ -415,7 +415,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     f = Figure(resolution=(3*width_ax*max_cols,1.5*height_ax*n_rows),size=(3*width_ax*max_cols,1.5*height_ax*n_rows))
     row=1
     col=1
-    for j in eachindex(ks)
+    @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
@@ -490,7 +490,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     f=Figure(resolution=(3*width_ax*max_cols,2*height_ax*n_rows),size=(3*width_ax*max_cols,2*height_ax*n_rows))
     row=1
     col=1
-    for j in eachindex(ks)
+    @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax_wave=Axis(f[row, col][1, 1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
