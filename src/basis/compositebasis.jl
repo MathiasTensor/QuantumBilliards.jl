@@ -44,7 +44,7 @@ end
 """
     resize_basis(basis::CompositeBasis, billiard::Bi, dim::Int, k) -> CompositeBasis
  
-Resizes both the main and evanescent components of the composite basis.
+Resizes both the main and evanescent components of the composite basis. The new basis must hold the dim field as the total dimension, so add the dim of the main basis and add the dim of the evanescent basis. This is to ensure proper scaling is made (Only the dim of the main basis is b and k dependant, the dim of the evanescent basis is dependant only on k)
  
 # Arguments
 - `basis`: A `CompositeBasis` instance.
@@ -56,6 +56,7 @@ Resizes both the main and evanescent components of the composite basis.
 - `CompositeBasis`: A new instance of the composite basis with resized components.
 """
 function resize_basis(basis::CompositeBasis,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
+    # dim in resize_basis(basis.evanescent,billiard,dim,k) is just a placeholder as dim is determined uniqely with the max_i algorithm in evanescent_pw.jl
     return CompositeBasis(dim+basis.evanescent.dim,resize_basis(basis.main,billiard,dim,k),resize_basis(basis.evanescent,billiard,dim,k),basis.main.symmetries)
 end
 
