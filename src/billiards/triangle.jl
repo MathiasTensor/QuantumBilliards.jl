@@ -68,7 +68,7 @@ Construct a triangle given one internal angle `γ` and a ratio `χ = β / α` th
 # Returns
 - `Triangle`: A fully initialized `Triangle` object with boundary, area, and geometric metadata.
 """
-function Triangle(gamma,chi;curve_types=[:Real,:Virtual,:Virtual],x0=zero(gamma),y0=zero(gamma),h=one(gamma))
+function Triangle(gamma::T,chi::T;curve_types=[:Real,:Virtual,:Virtual],x0=zero(gamma),y0=zero(gamma),h=one(gamma)) where {T<:Real}
     alpha=(pi-gamma)/(1+chi)
     beta=alpha*chi
     angles_old=[alpha,beta,gamma]
@@ -81,7 +81,7 @@ function Triangle(gamma,chi;curve_types=[:Real,:Virtual,:Virtual],x0=zero(gamma)
     area=0.5*h*abs(corners[1][1]-corners[3][1])
     area_fundamental=area
     angles_new=[alpha,beta,gamma]
-    return Triangle(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,corners,angles_new,angles_new)
+    return Triangle{T}(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,corners,angles_new,angles_new)
 end
 
 """
