@@ -66,7 +66,7 @@ Evaluates the composite basis functions (main + evanescent) at given spatial poi
 
 # Arguments
 - `basis::CompositeBasis{T}`: The composite basis structure.
-- `indices::AbstractArray`: Indices for the main basis.
+- `indices`: Index range for the full basis (including evanescent tail).
 - `k::T`: The wavenumber.
 - `pts::AbstractArray`: Points at which the functions are evaluated.
 - `multithreaded::Bool=true`: Whether to use multithreaded execution.
@@ -89,7 +89,7 @@ Computes derivatives of composite basis functions with respect to wavenumber `k`
 
 # Arguments
 - `basis::CompositeBasis{T}`: The composite basis structure.
-- `indices::AbstractArray`: Indices for the main basis.
+- `indices`: Index range for the full basis (including evanescent tail).
 - `k::T`: The wavenumber.
 - `pts::AbstractArray`: Points at which the functions are evaluated.
 - `multithreaded::Bool=true`: Whether to use multithreaded execution.
@@ -112,7 +112,7 @@ Computes gradients of the composite basis in x and y directions.
 
 # Arguments
 - `basis::CompositeBasis{T}`: The composite basis structure.
-- `indices::AbstractArray`: Indices for the main basis.
+- `indices`: Index range for the full basis (including evanescent tail).
 - `k::T`: The wavenumber.
 - `pts::AbstractArray`: Points at which the gradients are computed.
 - `multithreaded::Bool=true`: Whether to use multithreaded execution.
@@ -135,7 +135,7 @@ Evaluates both the values and gradients of the composite basis functions.
 
 # Arguments
 - `basis::CompositeBasis{T}`: The composite basis structure.
-- `indices::AbstractArray`: Indices for the main basis.
+- `indices`: Index range for the full basis (including evanescent tail).
 - `k::T`: The wavenumber.
 - `pts::AbstractArray`: Points at which evaluation is performed.
 - `multithreaded::Bool=true`: Whether to use multithreaded execution.
