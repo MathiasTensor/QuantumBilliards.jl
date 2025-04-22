@@ -4,8 +4,9 @@ module QuantumBilliards
 #abstract types
 include("abstracttypes.jl")
 include("utils/macros.jl")
+
 #utils must be included here so modules work
-#export AbsBasis
+# utils
 include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/billiardutils.jl")
@@ -16,18 +17,16 @@ export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
 
 #solvers
-#include("solvers/Solvers.jl")
-#@reexport using .Solvers
 include("solvers/samplers.jl")
 export GaussLegendreNodes, LinearNodes, FourierNodes, PolarSampler
 export sample_points
 
+# boundary
 include("billiards/boundarypoints.jl")
 export BoundaryPoints
 export boundary_coords, dilated_boundary_points
+
 #basis
-#include("basis/Basis.jl")
-#@reexport using .Basis
 include("basis/planewaves/realplanewaves.jl")
 export RealPlaneWaves
 include("basis/fourierbessel/corneradapted.jl")
@@ -40,9 +39,6 @@ include("basis/compositebasis.jl")
 export CompositeBasis
 
 #billiards
-#include("billiards/Billiards.jl")
-#@reexport using .Billiards
-
 include("billiards/geometry/geometry.jl")
 export LineSegment, VirtualLineSegment
 export CircleSegment, VirtualCircleSegment
@@ -62,13 +58,11 @@ include("billiards/rectangle.jl")
 include("billiards/equilateraltriangle.jl")
 include("billiards/generalized_sinai.jl")
 export adapt_basis
-#include("limacon.jl")
-#include("rectangle.jl")
 export Stadium, Lemon, Triangle, Sinai
 export curve, tangent, arc_length
 export tangent_vec, normal_vec
-#convenience functions may be moved somewhere else
-#export make_stadium_and_basis, make_triangle_and_basis 
+
+#convenience functions
 export CircleBilliard, make_quarter_circle, make_circle, make_circle_and_basis
 export Ellipse, make_quarter_ellipse, make_full_ellipse, make_ellipse_and_basis
 export RobnikBilliard, make_half_robnik, make_full_robnik, make_robnik_and_basis
@@ -96,9 +90,6 @@ export BoundaryIntegralMethod, compute_kernel_matrix, fredholm_matrix, solve_tim
 export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matrix, default_helmholtz_kernel_second_derivative_matrix, compute_kernel_der_matrix, fredholm_matrix_der
 
 #spectra
-#include("spectra/Spectra.jl")
-#@reexport using .Spectra
-
 include("spectra/spectralutils.jl")
 include("spectra/unfolding.jl")
 export weyl_law
@@ -106,22 +97,18 @@ export compute_spectrum, compute_spectrum_optimized, compute_spectrum_with_state
 export curvature_correction, corner_correction, curvature_and_corner_corrections, dos_weyl, k_at_state
 include("spectra/spectralStatistics.jl")
 export number_variance, plot_subtract_level_counts_from_weyl, probability_berry_robnik, cumulative_berry_robnik, compare_level_count_to_weyl, plot_nnls, plot_cumulative_spacing_distribution, plot_subtract_level_counts_from_weyl, plot_point_distribution!, plot_length_spectrum!, length_spectrum, probability_berry_robnik_brody, cumulative_berry_robnik_brody, plot_U_diff
+
 #states
-#include("states/States.jl")
-#@reexport using .States
 include("states/eigenstates.jl")
 include("states/basisstates.jl")
 include("states/randomstates.jl")
-
 export Eigenstate, EigenstateBundle, BasisState, GaussianRandomState
 export compute_eigenstate, compute_eigenstate_bundle
-
 include("states/wavefunctions.jl")
 include("states/boundaryfunctions.jl")
 include("states/husimifunctions.jl")
 include("states/wavefunctions_from_boundary.jl")
-
-export wavefunction #wavefunction_norm 
+export wavefunction
 export boundary_function, momentum_function, husimi_function, husimi_functions_from_us_and_boundary_points, husimiAtPoint_LEGACY, husimiOnGrid_LEGACY, husimiOnGrid, husimi_functions_from_us_and_boundary_points_FIXED_GRID
 export billiard_polygon
 export wavefunctions
@@ -130,8 +117,6 @@ export save_husimi_functions!, load_husimi_functions, save_vec_from_StateData!, 
 export ϕ, wavefunction_multi, wavefunction_multi_with_husimi, plot_wavefunctions, plot_wavefunctions_with_husimi
 
 #plotting functions in Makie
-#include("plotting/Plotting.jl")
-#@reexport using .Plotting
 include("plotting/plottingmakie.jl")
 export plot_curve!, plot_boundary!, plot_boundary_orientation!, plot_symmetry_adapted_boundary
 export plot_domain_fun!, plot_domain!
