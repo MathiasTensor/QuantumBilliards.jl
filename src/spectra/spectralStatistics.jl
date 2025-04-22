@@ -487,8 +487,8 @@ function plot_nnls(unfolded_energies::Vector; nbins::Int=200, rho::Union{Nothing
 
     # Theoretical distributions
     poisson_pdf = x -> exp(-x)
-    goe_pdf = x -> (π / T(2)) * x * exp(-π * x^2 / T(4))
-    gue_pdf = x -> (T(32) / (π^2)) * x^2 * exp(-T(4) * x^2 / π)
+    goe_pdf = x -> (π / 2) * x * exp(-π * x^2 / 4)
+    gue_pdf = x -> (32 / (π^2)) * x^2 * exp(-4 * x^2 / π)
     # Optionally include Berry-Robnik distribution if rho is provided
     berry_robnik_pdf = rho !== nothing ? (x -> probability_berry_robnik(x, rho)) : nothing
     fig = Figure(resolution=(800, 600))
