@@ -888,8 +888,8 @@ function plot_subtract_level_counts_from_weyl(arr::Vector{T}, billiard::Bi; bin_
     fig = Figure()
     ax = Axis(fig[1, 1], xlabel="k", ylabel="N_count(k) - N_weyl(k)", title="Level Count - Weyl's Law")
     # Scatter plot for the numerical data
-    scatter!(ax, arr, new_ys, label="Numerical", color=:blue, marker=:circle, markersize=2)
-    lines!(ax, bin_centers, averaged_new_ys, color=:red, label="Averaged over k-interval $(bin_size)", linewidth=2)
+    lines!(ax, arr, new_ys, label="Numerical", color=:blue, marker=:circle, linewidth=3)
+    lines!(ax, bin_centers, averaged_new_ys, color=:red, label="Averaged over k-interval $(bin_size)", linewidth=3)
     axislegend(ax)
     return fig
 end
