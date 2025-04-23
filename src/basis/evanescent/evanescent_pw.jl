@@ -46,7 +46,7 @@ function _theta_i(i::Ti,Ni::Ti,φ₁::K,φ₂::K) where {T<:Real,Ti<:Integer,K<:
 end
 
 """
-    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
+    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
 
 Compute the evanescent plane wave function at given points for a single origin. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -57,13 +57,13 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `i::Int64`: Index of the basis function.
 - `Ni::Ti`: Total number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
-- `angle_range::Tuple{K,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Evaluated function values.
 """
-function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
+function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
     φ₁,φ₂=sort(Vector(angle_range)) # unpack & sort wedge
     θ=_theta_i(i,Ni,φ₁,φ₂) # get our direction θ
     s,c=sincos(θ)
@@ -81,7 +81,7 @@ end
 
 
 """
-    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
+    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
 
 Compute the derivative of the evanescent plane wave function with respect to wavenumber `k`. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -92,13 +92,13 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `i::Int64`: Function index.
 - `Ni::Ti`: Total number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
-- `angle_range::Tuple{K,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Derivative of the function with respect to `k`.
 """
-function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
+function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
     φ₁,φ₂=sort(Vector(angle_range))
     θ=_theta_i(i,Ni,φ₁,φ₂)
     s,c=sincos(θ)
@@ -129,7 +129,7 @@ function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVecto
 end
 
 """
-    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
+    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
 
 Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -140,13 +140,13 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `i::Int64`: Basis function index.
 - `Ni::Ti`: Number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
-- `angle_range::Tuple{K,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: Gradients with respect to x and y.
 """
-function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
+function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
     φ₁,φ₂=sort(Vector(angle_range))
     θ=_theta_i(i, Ni, φ₁, φ₂)
     s,c=sincos(θ)
@@ -178,7 +178,7 @@ function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::
 end
 
 """
-    epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+    epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
 
 Evaluate the evanescent plane wave by summing contributions from multiple origins.
 
@@ -187,13 +187,13 @@ Evaluate the evanescent plane wave by summing contributions from multiple origin
 - `i::Int64`: Basis function index.
 - `Ni::Ti`: Total number of basis functions.
 - `origins::Vector{SVector{2,T}}`: List of origins.
-- `angle_ranges::Vector{Tuple{K,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
+- `angle_ranges::Vector{SVector{2,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Summed function values at each point.
 """
-function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M) # pts x origins
@@ -204,7 +204,7 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},an
 end
 
 """
-    epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real,K<:Real}
+    epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real,K<:Real}
 
 Compute the summed ∂/∂k of EPW from multiple origins.
 
@@ -213,13 +213,13 @@ Compute the summed ∂/∂k of EPW from multiple origins.
 - `i::Int64`: Basis function index.
 - `Ni::Ti`: Number of basis functions.
 - `origins::Vector{SVector{2,T}}`: Origins for summation.
-- `angle_ranges::Vector{Tuple{K,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
+- `angle_ranges::Vector{SVector{2,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Derivatives summed across all origins.
 """
-function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M)
@@ -230,7 +230,7 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}}
 end
 
 """
-    epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+    epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
 
 Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed across all origins.
 
@@ -239,13 +239,13 @@ Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed ac
 - `i::Int64`: Index of basis function.
 - `Ni::Ti`: Number of total functions.
 - `origins::Vector{SVector{2,T}}`: EPW origins.
-- `angle_ranges::Vector{Tuple{K,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
+- `angle_ranges::Vector{SVector{2,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: Gradient in x and y directions.
 """
-function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
     N=length(pts)
     M=length(origins)
     dx_mat=Matrix{Complex{T}}(undef,N,M)
@@ -264,27 +264,27 @@ struct EvanescentPlaneWaves{T,Sy,K} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSym
     cs::PolarCS{T}
     dim::Int64 
     origins::Vector{SVector{2,T}}
-    angle_ranges::Vector{Tuple{K,K}}
+    angle_ranges::Vector{SVector{2,K}}
     symmetries::Union{Vector{Any},Nothing}
     shift_x::T
     shift_y::T
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real,K<:Real}
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real,K<:Real}
     EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,origins,angle_ranges,symmetries,zero(T),zero(T))
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real,K<:Real}
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real,K<:Real}
     EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,origins,angle_ranges,symmetries,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
+function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
     return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),10,origins,angle_ranges,nothing,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
+function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
     return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),10,origins,angle_ranges,symmetries,shift_x,shift_y)
