@@ -271,11 +271,11 @@ struct EvanescentPlaneWaves{T,Sy,K} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSym
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real,K<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries),typeof(angle_ranges[1])}(cs,dim,origins,angle_ranges,symmetries,zero(T),zero(T))
+    EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,origins,angle_ranges,symmetries,zero(T),zero(T))
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real,K<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries),typeof(angle_ranges[1])}(cs,dim,origins,angle_ranges,symmetries,shift_x,shift_y)
+    EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,origins,angle_ranges,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
