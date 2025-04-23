@@ -176,7 +176,7 @@ end
 #### INITILAIZERS ####
 ######################
 
-struct EvanescentParams{T} where {T<:Real}
+struct EvanescentParams{T<:Real}
     angles::Vector{Vector{T}} # a list of angle vectors, one per origin
     origins::Vector{SVector{2,T}} # one origin per angle set
     αs::Vector{T} # decay constants per origin
