@@ -418,7 +418,7 @@ end
     isnothing(syms) && return f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
     sym=syms[1]
     origin=basis.cs.origin
-    fval=f(pts,i,basis.dim,basis.origins,k)
+    fval=f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
     if sym.axis==:y_axis # XReflection
         px=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
