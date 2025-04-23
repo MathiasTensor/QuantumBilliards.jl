@@ -40,13 +40,8 @@ function sinhcosh(x::T) where {T<:Real}
     return (ex-ex_inv)/2,(ex+ex_inv)/2
 end
 
-# linearly sample i=1:Ni in [φ₁,φ₂]
-function _theta_i(i::Ti,Ni::Ti,φ₁::K,φ₂::K) where {T<:Real,Ti<:Integer,K<:Real}
-    return φ₁+(i-1)/(Ni-1)*(φ₂-φ₁)
-end
-
 """
-    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
+    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real}
 
 Compute the evanescent plane wave function at given points for a single origin. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -55,24 +50,22 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 # Arguments
 - `pts::AbstractArray`: Points in space where the function is evaluated.
 - `i::Int64`: Index of the basis function.
-- `Ni::Ti`: Total number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
 - `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Evaluated function values.
 """
-function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
-    φ₁,φ₂=sort(angle_range) # unpack & sort wedge
-    θ=_theta_i(i,Ni,φ₁,φ₂) # get our direction θ
+function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},α::T,k::T) where {T<:Real}
+    θ=angle_range[i] # get our direction θ
     s,c=sincos(θ)
     n=@SVector [c,s] # oscillation n = (cosθ,sinθ)
     d=@SVector [-s,c] # decay d = (−sinθ,cosθ)
     Rs=[p.-origin for p in pts]  # shift to corner‐origin
     As=[dot(d,r) for r in Rs]   # ỹ = d⋅(r-C) as per the paper
     Bs=[dot(n,r) for r in Rs]   # x̃ = n⋅(r-C) as per the paper
-    α=(3+i)/(2*k^(1/3)) # here I borrow Barnett's decay parameter
     decay=exp.(-k*sinh(α).*As) # decay and phase
     phase=k*cosh(α).*Bs
     osc=iseven(i) ? cos.(phase) : sin.(phase) # real‐basis: even=i⇒cos, odd⇒sin
@@ -81,7 +74,7 @@ end
 
 
 """
-    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
+    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real}
 
 Compute the derivative of the evanescent plane wave function with respect to wavenumber `k`. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -90,46 +83,48 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 # Arguments
 - `pts::AbstractArray`: Spatial evaluation points.
 - `i::Int64`: Function index.
-- `Ni::Ti`: Total number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
 - `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Derivative of the function with respect to `k`.
 """
-function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
-    φ₁,φ₂=sort(angle_range)
-    θ=_theta_i(i,Ni,φ₁,φ₂)
+function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},α::T,k::T) where {T<:Real}
+    # direction & local frames
+    θ=angle_range[i]
     s,c=sincos(θ)
-    n=@SVector [c,s]
-    d=@SVector [-s,c]
+    n=@SVector [c,s] # propagation
+    d=@SVector [-s,c] # decay
+    # shifted vectors
     Rs=[p.-origin for p in pts]
     As=[dot(d,r) for r in Rs]
     Bs=[dot(n,r) for r in Rs]
-    α=(3+i)/(2*k^(1/3))
-    dα=-(3+i)/(6*k^(4/3))
-    # decay = exp(-k*sinh(α)*A)
-    # ∂decay/∂k = decay * [ -sinh(α)*A - k*cosh(α)*A*dα ]
-    sinhα,coshα=sinhcosh(α)
+    # constant‐α factors
+    sinhα=sinh(α)
+    coshα=cosh(α)
+    # decay = exp(-k * sinhα * A)
     decay=exp.(-k*sinhα.*As)
-    ddecay=decay.*(.-sinhα.*As.-(k*coshα.*As.*dα))
-    # phase = k*cosh(α)*B
-    # ∂phase/∂k = cosh(α)*B + k*sinh(α)*B*dα
+    # ∂decay/∂k = -sinhα * A * decay
+    ddecay_dk=@. -sinhα*As*decay
+    # phase = k * coshα * B
     phase=k*coshα.*Bs
-    dphase_dk=coshα.*Bs.+k*sinhα.*Bs.*dα
-    if iseven(i) # osc = cos(phase) or sin(phase)
+    # ∂phase/∂k = coshα * B
+    dphase_dk=coshα.*Bs
+    # real basis (cos for even, sin for odd)
+    if iseven(i)
         osc=cos.(phase)
-        dosc_dk=-sin.(phase).*dphase_dk
+        dosc_dk=@. -sin(phase)*dphase_dk
     else
-        osc= sin.(phase)
-        dosc_dk=cos.(phase).*dphase_dk
+        osc=sin.(phase)
+        dosc_dk=@. cos(phase)*dphase_dk
     end
-    return ddecay.*osc.+decay.*dosc_dk
+    return ddecay_dk.*osc.+decay.*dosc_dk
 end
 
 """
-    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
+    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real}
 
 Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -138,120 +133,144 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 # Arguments
 - `pts::AbstractArray`: Points where the gradient is evaluated.
 - `i::Int64`: Basis function index.
-- `Ni::Ti`: Number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
 - `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: Gradients with respect to x and y.
 """
-function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real,K<:Real}
-    φ₁,φ₂=sort(angle_range)
-    θ=_theta_i(i, Ni, φ₁, φ₂)
+function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},α::T,k::T) where {T<:Real}
+    # direction & local frames
+    θ=angle_range[i]
     s,c=sincos(θ)
-    n=@SVector [c,s];d=@SVector [-s,c]
+    n=@SVector [c,s]
+    d=@SVector [-s,c]
+    # shifted vectors
     Rs=[p.-origin for p in pts]
     As=[dot(d,r) for r in Rs]
     Bs=[dot(n,r) for r in Rs]
-    α=(3+i)/(2*k^(1/3))
-    sinhα,coshα=sinhcosh(α)
-    # decay = exp(-k*sinhα*A)
+    # constant‐α factors
+    sinhα=sinh(α)
+    coshα=cosh(α)
+    # decay and its A‐derivative
     decay=exp.(-k*sinhα.*As)
-    # ∂decay/∂A = -k*sinhα * decay
-    ddecay_dA=-k*sinhα.*decay
-    # phase = k*coshα*B
+    ddecay_dA=@. -k*sinhα*decay
+    # phase
     phase=k*coshα.*Bs
-    # ∂osc/∂B = { -k*coshα*sin(phase),  k*coshα*cos(phase) }
     if iseven(i)
         osc=cos.(phase)
-        dosc_dB=-k*coshα.*sin.(phase)
+        dosc_dB=@. -k*coshα*sin(phase)
     else
         osc=sin.(phase)
-        dosc_dB=k*coshα.*cos.(phase)
+        dosc_dB=@. k*coshα*cos(phase)
     end
-    # ∇A = d,  ∇B = n
-    # so ∂ψ/∂x = ddecay_dA*d_x * osc + decay * dosc_dB*n_x, etc.
-    dx=[ddecay_dA[j]*d[1]*osc[j]+decay[j]*dosc_dB[j]*n[1] for j in eachindex(Rs)]
-    dy=[ddecay_dA[j]*d[2]*osc[j]+decay[j]*dosc_dB[j]*n[2] for j in eachindex(Rs)]
+    # ∇ψ = ∂ψ/∂A ∇A + ∂ψ/∂B ∇B  with ∇A = d, ∇B = n
+    dx=@. ddecay_dA*d[1]*osc+decay*dosc_dB*n[1]
+    dy=@. ddecay_dA*d[2]*osc+decay*dosc_dB*n[2]
     return dx, dy
 end
 
 """
-    epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+    epw(
+        pts::AbstractArray{<:SVector{2,T}},
+        i::Int,
+        params::EvanescentParams{T},
+        k::T
+    ) -> Vector{T}
 
-Evaluate the evanescent plane wave by summing contributions from multiple origins.
+Compute the real-valued evanescent plane‐wave basis function at a set of points,
+summing contributions from all configured origins and angles.
 
 # Arguments
-- `pts::AbstractArray`: Evaluation points.
-- `i::Int64`: Basis function index.
-- `Ni::Ti`: Total number of basis functions.
-- `origins::Vector{SVector{2,T}}`: List of origins.
-- `angle_ranges::Vector{SVector{2,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
+- `pts::AbstractArray{<:SVector{2,T}}`: Coordinates of evaluation points.
+- `i::Int`: Linear index of the basis function (1 ≤ i ≤ total dim).
+- `params::EvanescentParams{T}`: Contains:
+  - `params.origins`: Vector of 2D corner origins.
+  - `params.angles`: Vector of angle‐vectors, one per origin.
+  - `params.αs`: Vector of decay constants (α) matching each origin.
 - `k::T`: Wavenumber.
 
 # Returns
-- `Vector{T}`: Summed function values at each point.
+- `Vector{T}`: Values of the i-th EPW function at each point in `pts`.
 """
-function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+function epw(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
+    origins=params.origins
+    angle_ranges=params.angles
+    αs=params.αs
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M) # pts x origins
     for j in eachindex(origins) 
-        @inbounds res[:,j]=epw(pts,i,Ni,origins[j],angle_ranges[j],k)
+        @inbounds res[:,j]=epw(pts,i,origins[j],angle_ranges[j],αs[j],k)
     end
     return sum(res,dims=2)[:] # for each row sum over all columns to get for each pt in pts all the different origin contributions. Converts Matrix (N,1) to a flat vector.
 end
 
 """
-    epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real,K<:Real}
+    epw_dk(
+        pts::AbstractArray{<:SVector{2,T}},
+        i::Int,
+        params::EvanescentParams{T},
+        k::T
+    ) -> Vector{T}
 
-Compute the summed ∂/∂k of EPW from multiple origins.
+Compute the derivative of the evanescent plane‐wave basis function with respect to `k`,
+summing contributions across all origins.
 
 # Arguments
-- `pts::AbstractArray`: Evaluation points.
-- `i::Int64`: Basis function index.
-- `Ni::Ti`: Number of basis functions.
-- `origins::Vector{SVector{2,T}}`: Origins for summation.
-- `angle_ranges::Vector{SVector{2,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
+- `pts::AbstractArray{<:SVector{2,T}}`: Coordinates of evaluation points.
+- `i::Int`: Basis function index.
+- `params::EvanescentParams{T}`: As in `epw`.
 - `k::T`: Wavenumber.
 
 # Returns
-- `Vector{T}`: Derivatives summed across all origins.
+- `Vector{T}`: ∂/∂k of the i-th EPW at each point.
 """
-function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+function epw_dk(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
+    origins=params.origins
+    angle_ranges=params.angles
+    αs=params.αs
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M)
     for j in eachindex(origins)
-        @inbounds res[:,j]=epw_dk(pts,i,Ni,origins[j],angle_ranges[j],k)
+        @inbounds res[:,j]=epw_dk(pts,i,origins[j],angle_ranges[j],αs[j],k)
     end
     return sum(res,dims=2)[:]
 end
 
 """
-    epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+    epw_gradient(
+        pts::AbstractArray{<:SVector{2,T}},
+        i::Int,
+        params::EvanescentParams{T},
+        k::T
+    ) -> Tuple{Vector{T},Vector{T}}
 
-Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed across all origins.
+Compute the spatial gradient (∂/∂x, ∂/∂y) of the evanescent plane‐wave basis function,
+summing contributions from all origins.
 
 # Arguments
-- `pts::AbstractArray`: Points to evaluate.
-- `i::Int64`: Index of basis function.
-- `Ni::Ti`: Number of total functions.
-- `origins::Vector{SVector{2,T}}`: EPW origins.
-- `angle_ranges::Vector{SVector{2,K}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
+- `pts::AbstractArray{<:SVector{2,T}}`: Coordinates of evaluation points.
+- `i::Int`: Basis function index.
+- `params::EvanescentParams{T}`: As in `epw`.
 - `k::T`: Wavenumber.
 
 # Returns
-- `Tuple{Vector{T}, Vector{T}}`: Gradient in x and y directions.
+- `(dx, dy)::Tuple{Vector{T},Vector{T}}`: Partial derivatives of the i-th EPW with respect to x and y.
 """
-function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+function epw_gradient(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
+    origins=params.origins
+    angle_ranges=params.angles
+    αs=params.αs
     N=length(pts)
     M=length(origins)
     dx_mat=Matrix{Complex{T}}(undef,N,M)
     dy_mat=Matrix{Complex{T}}(undef,N,M)
     for j in eachindex(origins)
-        dx,dy=epw_gradient(pts,i,Ni,origins[j],angle_ranges[j],k)
+        dx,dy=epw_gradient(pts,i,origins[j],angle_ranges[j],αs[j],k)
         @inbounds dx_mat[:,j]=dx
         @inbounds dy_mat[:,j]=dy
     end
@@ -260,34 +279,47 @@ function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector
     return dx,dy
 end
 
-struct EvanescentPlaneWaves{T,Sy,K} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing},K<:Real}
+######################
+#### INITILAIZERS ####
+######################
+
+struct EvanescentParams{T} where {T<:Real}
+    angles::Vector{Vector{T}} # a list of angle vectors, one per origin
+    origins::Vector{SVector{2,T}} # one origin per angle set
+    αs::Vector{T} # decay constants per origin
+end
+
+struct EvanescentPlaneWaves{T,Sy,K} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
     cs::PolarCS{T}
     dim::Int64 
-    origins::Vector{SVector{2,T}}
-    angle_ranges::Vector{SVector{2,K}}
+    params::EvanescentParams{T}
     symmetries::Union{Vector{Any},Nothing}
     shift_x::T
     shift_y::T
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real,K<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,origins,angle_ranges,symmetries,zero(T),zero(T))
+function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
+    dim=length(vcat(params.angles...))
+    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,zero(T),zero(T))
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real,K<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,origins,angle_ranges,symmetries,shift_x,shift_y)
+function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
+    dim=length(vcat(params.angles...))
+    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
+function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
+    dim=length(vcat(params.angles...))
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),10,origins,angle_ranges,nothing,shift_x,shift_y)
+    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),dim,params,nothing,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{SVector{2,K}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real,K<:Real}
+function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
+    dim=length(vcat(params.angles...))
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),10,origins,angle_ranges,symmetries,shift_x,shift_y)
+    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),dim,params,symmetries,shift_x,shift_y)
 end
 
 #########################################################################################################
@@ -373,14 +405,9 @@ end
 #### SINGLE INDEX CONSTRUCTION - SEPARATE SINCE WE SYMMETRIZE EPW AT THIS STEP ####
 ###################################################################################
 
-toFloat32(basis::EvanescentPlaneWaves)=EvanescentPlaneWaves(PolarCS(Float32.(basis.cs.origin),basis.cs.rot_angle),basis.dim,Float32.(basis.origins),basis.angle_ranges,basis.symmetries)
-function resize_basis(basis::EvanescentPlaneWaves,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
-    new_dim=max_i(k) # use Barnett's algebraic progression eq. for the basis size determination
-    if new_dim==basis.dim
-        return basis
-    else
-        return EvanescentPlaneWaves(basis.cs,new_dim,basis.origins,basis.angle_ranges,basis.symmetries)
-    end
+toFloat32(basis::EvanescentPlaneWaves)=EvanescentPlaneWaves(PolarCS(Float32.(basis.cs.origin),basis.cs.rot_angle),basis.dim,basis.params,basis.symmetries)
+function resize_basis(basis::EvanescentPlaneWaves,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard} # compatibility function, does not do anything
+    return EvanescentPlaneWaves(basis.cs,basis.params,basis.symmetries)
 end
 
 @inline reflect_x_epw(p::SVector{2,T},shift_x::T) where {T<:Real} = SVector(2*shift_x-p[1],p[2])
@@ -392,21 +419,21 @@ end
     isnothing(syms) && return f(basis,i,k,pts)  # No symmetry applied
     sym=syms[1]
     origin=basis.cs.origin
-    fval=f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
+    fval=f(pts,i,basis.params,k)
     if sym.axis==:y_axis # XReflection
         px=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
-        return 0.5*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k))
+        return 0.5*(fval.+px.*f(reflected_pts_x,i,basis.params,k))
     elseif sym.axis==:x_axis # YReflection
         py=sym.parity
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
-        return 0.5*(fval.+py.*f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k))
+        return 0.5*(fval.+py.*f(reflected_pts_y,i,basis.params,k))
     elseif sym.axis==:origin # XYReflection
         px,py=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
         reflected_pts_xy=reflect_xy_epw.(pts,Ref(basis.shift_x),Ref(basis.shift_y))
-        return 0.25*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k).+py.*f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k).+(px*py).*f(reflected_pts_xy,i,basis.dim,basis.origins,basis.angle_ranges,k))
+        return 0.25*(fval.+px.*f(reflected_pts_x,i,basis.params,k).+py.*f(reflected_pts_y,i,basis.params,k).+(px*py).*f(reflected_pts_xy,i,basis.params,k))
     else
         @error "Unsupported symmetry type: $(typeof(sym)). Symmetrization skipped."
         return fval
@@ -415,21 +442,21 @@ end
 
 @inline function symmetrize_epw_grad(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
     syms=basis.symmetries
-    isnothing(syms) && return f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
+    isnothing(syms) && return f(pts,i,basis.params,k)
     sym=syms[1]
     origin=basis.cs.origin
-    fval=f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
+    fval=f(pts,i,basis.params,k)
     if sym.axis==:y_axis # XReflection
         px=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
-        fx=f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k)
+        fx=f(reflected_pts_x,i,basis.params,k)
         return (
             0.5.*(fval[1].+px.*fx[1]),
             0.5.*(fval[2].+px.*fx[2]))
     elseif sym.axis==:x_axis # YReflection
         py=sym.parity
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
-        fy=f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k)
+        fy=f(reflected_pts_y,i,basis.params,k)
         return (
             0.5.*(fval[1].+py.*fy[1]),
             0.5.*(fval[2].+py.*fy[2]))
@@ -438,9 +465,9 @@ end
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
         reflected_pts_xy=reflect_xy_epw.(pts,Ref(basis.shift_x),Ref(basis.shift_y))
-        fx=f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k)
-        fy=f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k)
-        fxy=f(reflected_pts_xy,i,basis.dim,basis.origins,basis.angle_ranges,k)
+        fx=f(reflected_pts_x,i,basis.params,k)
+        fy=f(reflected_pts_y,i,basis.params,k)
+        fxy=f(reflected_pts_xy,i,basis.params,k)
         return (
             0.25.*(fval[1].+px.*fx[1].+py.*fy[1].+(px*py).*fxy[1]),
             0.25.*(fval[2].+px.*fx[2].+py.*fy[2].+(px*py).*fxy[2]))
