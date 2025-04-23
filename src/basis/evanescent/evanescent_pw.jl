@@ -1,6 +1,13 @@
 using LinearAlgebra, CoordinateTransformations, Rotations, StaticArrays
 
 """
+MAIN REFERENCE: Jan Wiersig, Gabriel G. Carlo, Evanescent wave approach to diﬀractive phenomena in convex billiards with corners
+https://arxiv.org/pdf/nlin/0212011
+AUXILIARY REFERENCE: Alex Barnett, PhD Thesis
+https://users.flatironinstitute.org/~ahb/thesis_html/node157.html
+"""
+
+"""
     max_i(k::Real) -> Int
 
 Compute the maximum integer index `i` such that the evanescent decay parameter 
@@ -33,130 +40,145 @@ function sinhcosh(x::T) where {T<:Real}
     return (ex-ex_inv)/2,(ex+ex_inv)/2
 end
 
-function b(crv::Crv) where {Crv<:AbsRealCurve}
-    #TODO
+# linearly sample i=1:Ni in [φ₁,φ₂]
+function _theta_i(i::Ti,Ni::Ti,φ₁::Union{T,Irrational},φ₂::Union{T,Irrational}) where {T<:Real}
+    return φ₁+(i-1)/(Ni-1)*(φ₂-φ₁)
 end
 
 """
-    epw(pts::AbstractArray, i::Int64, Ni::Ti, origin::SVector{2,T}, k::T) -> Vector{T}
+    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}},k::T) where {T<:Real}
 
-Compute the evanescent plane wave function at given points for a single origin.
+Compute the evanescent plane wave function at given points for a single origin. It uses the following literature:
+https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
+https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 
 # Arguments
 - `pts::AbstractArray`: Points in space where the function is evaluated.
 - `i::Int64`: Index of the basis function.
 - `Ni::Ti`: Total number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
+- `angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Evaluated function values.
 """
-function epw(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
-    x=getindex.(pts,1).-origin[1]
-    y=getindex.(pts,2).-origin[2]
-    θi=2*pi*(i-0.5)/Ni
-    si,ci=sincos(θi)
-    ni=SVector(ci,si)
-    αi=(3+i)/(2*k^(1/3))  # Evanescence parameter
-    A=-ni[2].*x.+ni[1].*y
-    decay=exp.(-(sinh.(αi.*A)))
-    phase=cosh.(αi.*(ni[1].*x.+ni[2].*y))
-    osc=iseven(i) ? cos.(phase) : sin.(phase)
+function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}},k::T) where {T<:Real}
+    φ₁,φ₂=sort(angle_range) # unpack & sort wedge
+    θ=_theta_i(i,Ni,φ₁,φ₂) # get our direction θ
+    s,c=sincos(θ)
+    n=@SVector [c,s] # oscillation n = (cosθ,sinθ)
+    d=@SVector [-s,c] # decay d = (−sinθ,cosθ)
+    Rs=[p.-origin for p in pts]  # shift to corner‐origin
+    As=[dot(d,r) for r in Rs]   # ỹ = d⋅(r-C) as per the paper
+    Bs=[dot(n,r) for r in Rs]   # x̃ = n⋅(r-C) as per the paper
+    α=(3+i)/(2*k^(1/3)) # here I borrow Barnett's decay parameter
+    decay=exp.(-k*sinh(α).*As) # decay and phase
+    phase=k*cosh(α).*Bs
+    osc=iseven(i) ? cos.(phase) : sin.(phase) # real‐basis: even=i⇒cos, odd⇒sin
     return decay.*osc
 end
 
-"""
-    epw_dk(pts::AbstractArray, i::Int64, Ni::Ti, origin::SVector{2,T}, k::T) -> Vector{T}
 
-Compute the derivative of the evanescent plane wave function with respect to wavenumber `k`.
+"""
+    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}},k::T) where {T<:Real}
+
+Compute the derivative of the evanescent plane wave function with respect to wavenumber `k`. It uses the following literature:
+https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
+https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 
 # Arguments
 - `pts::AbstractArray`: Spatial evaluation points.
 - `i::Int64`: Function index.
 - `Ni::Ti`: Total number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
+- `angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Derivative of the function with respect to `k`.
 """
-function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
-    x=getindex.(pts,1).-origin[1]
-    y=getindex.(pts,2).-origin[2]
-    θi=2*pi*(i-0.5)/Ni
-    si,ci=sincos(θi)
-    ni=SVector(ci,si)
-    αi=(3+i)/(2*k^(1/3))
-    dαdk=-(3+i)/(6*k^(4/3))
-    A=-ni[2].*x.+ni[1].*y # for sinh decay
-    B=ni[1].*x.+ni[2].*y # for sin/cos oscillation
-    αA=αi.*A
-    αB=αi.*B
-    sinh_αA,cosh_αA=sinhcosh.(αA)
-    decay=@. exp(-sinh_αA)
-    ddecay_dk=@. -A*cosh_αA*decay*αi*dαdk
-    cosh_αB=cosh.(αB)
-    sinh_αB=sinh.(αB)
-    if iseven(i)
-        osc=cos.(cosh_αB)
-        dosc_dk=@. -sin(cosh_αB)*sinh_αB*dαdk*B
+function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}},k::T) where {T<:Real}
+    φ₁,φ₂=sort(angle_range)
+    θ=_theta_i(i,Ni,φ₁,φ₂)
+    s,c=sincos(θ)
+    n=@SVector [c,s]
+    d=@SVector [-s,c]
+    Rs=[p.-origin for p in pts]
+    As=[dot(d,r) for r in Rs]
+    Bs=[dot(n,r) for r in Rs]
+    α=(3+i)/(2*k^(1/3))
+    dα=-(3+i)/(6*k^(4/3))
+    # decay = exp(-k*sinh(α)*A)
+    # ∂decay/∂k = decay * [ -sinh(α)*A - k*cosh(α)*A*dα ]
+    sinhα,coshα=sinhcosh(α)
+    decay=exp.(-k*sinhα.*As)
+    ddecay=decay.*(.-sinhα.*As.-(k*coshα.*As.*dα))
+    # phase = k*cosh(α)*B
+    # ∂phase/∂k = cosh(α)*B + k*sinh(α)*B*dα
+    phase=k*coshα.*Bs
+    dphase_dk=coshα.*Bs.+k*sinhα.*Bs.*dα
+    if iseven(i) # osc = cos(phase) or sin(phase)
+        osc=cos.(phase)
+        dosc_dk=-sin.(phase).*dphase_dk
     else
-        osc=sin.(cosh_αB)
-        dosc_dk=@. cos(cosh_αB)*sinh_αB*dαdk*B
+        osc= sin.(phase)
+        dosc_dk=cos.(phase).*dphase_dk
     end
-    return ddecay_dk.*osc.+decay.*dosc_dk
+    return ddecay.*osc.+decay.*dosc_dk
 end
 
 """
-    epw_gradient(pts::AbstractArray, i::Int64, Ni::Ti, origin::SVector{2,T}, k::T) -> Tuple{Vector{T}, Vector{T}}
+    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}},k::T) where {T<:Real}
 
-Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function.
+Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function. It uses the following literature:
+https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
+https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 
 # Arguments
 - `pts::AbstractArray`: Points where the gradient is evaluated.
 - `i::Int64`: Basis function index.
 - `Ni::Ti`: Number of basis functions.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
+- `angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: Gradients with respect to x and y.
 """
-function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origin::SVector{2,T},k::T) where {T<:Real,Ti<:Integer}
-    x=getindex.(pts,1).-origin[1]
-    y=getindex.(pts,2).-origin[2]
-    θi=2*pi*(i-0.5)/Ni
-    si,ci=sincos(θi)
-    ni=SVector(ci,si)
-    αi=(3+i)/(2*k^(1/3))
-    A=-ni[2].*x.+ni[1].*y  # decay argument
-    B=ni[1].*x.+ni[2].*y  # oscillatory argument
-    αA=αi.*A
-    αB=αi.*B
-    sinhcosh_vals=sinhcosh.(αA)
-    sinh_αA=getindex.(sinhcosh_vals,1)
-    cosh_αA=getindex.(sinhcosh_vals,2)
-    decay=@. exp(-sinh_αA)
-    ddecay_dA = @. -αi*cosh_αA*decay
-    cosh_αB=cosh.(αB)
-    sinh_αB=sinh.(αB)
+function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{Union{T,Irrational},Union{T,Irrational}},k::T) where {T<:Real}
+    φ₁,φ₂=sort(angle_range)
+    θ=_theta_i(i, Ni, φ₁, φ₂)
+    s,c=sincos(θ)
+    n=@SVector [c,s];d=@SVector [-s,c]
+    Rs=[p.-origin for p in pts]
+    As=[dot(d,r) for r in Rs]
+    Bs=[dot(n,r) for r in Rs]
+    α=(3+i)/(2*k^(1/3))
+    sinhα,coshα=sinhcosh(α)
+    # decay = exp(-k*sinhα*A)
+    decay=exp.(-k*sinhα.*As)
+    # ∂decay/∂A = -k*sinhα * decay
+    ddecay_dA=-k*sinhα.*decay
+    # phase = k*coshα*B
+    phase=k*coshα.*Bs
+    # ∂osc/∂B = { -k*coshα*sin(phase),  k*coshα*cos(phase) }
     if iseven(i)
-        osc=cos.(cosh_αB)
-        dosc_dB=@. -αi*sin(cosh_αB)*sinh_αB
+        osc=cos.(phase)
+        dosc_dB=-k*coshα.*sin.(phase)
     else
-        osc=sin.(cosh_αB)
-        dosc_dB=@. αi*cos(cosh_αB)*sinh_αB
+        osc=sin.(phase)
+        dosc_dB=k*coshα.*cos.(phase)
     end
-    dA_dx,dA_dy=-ni[2],ni[1] # Compute spatial derivatives of A and B
-    dB_dx,dB_dy=ni[1],ni[2]
-    dx=ddecay_dA.*dA_dx.*osc.+decay.*dosc_dB.*dB_dx # Gradient components
-    dy=ddecay_dA.*dA_dy.*osc.+decay.*dosc_dB.*dB_dy
-    return dx,dy
+    # ∇A = d,  ∇B = n
+    # so ∂ψ/∂x = ddecay_dA*d_x * osc + decay * dosc_dB*n_x, etc.
+    dx=[ddecay_dA[j]*d[1]*osc[j]+decay[j]*dosc_dB[j]*n[1] for j in eachindex(Rs)]
+    dy=[ddecay_dA[j]*d[2]*osc[j]+decay[j]*dosc_dB[j]*n[2] for j in eachindex(Rs)]
+    return dx, dy
 end
 
 """
-    epw(pts::AbstractArray, i::Int64, Ni::Ti, origins::Vector{SVector{2,T}}, k::T) -> Vector{T}
+    epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},k::T) where {T<:Real,Ti<:Integer}
 
 Evaluate the evanescent plane wave by summing contributions from multiple origins.
 
@@ -165,23 +187,24 @@ Evaluate the evanescent plane wave by summing contributions from multiple origin
 - `i::Int64`: Basis function index.
 - `Ni::Ti`: Total number of basis functions.
 - `origins::Vector{SVector{2,T}}`: List of origins.
+- `angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Summed function values at each point.
 """
-function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
+function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M) # pts x origins
     for j in eachindex(origins) 
-        @inbounds res[:,j]=epw(pts,i,Ni,origins[j],k)
+        @inbounds res[:,j]=epw(pts,i,Ni,origins[j],angle_ranges[j],k)
     end
     return sum(res,dims=2)[:] # for each row sum over all columns to get for each pt in pts all the different origin contributions. Converts Matrix (N,1) to a flat vector.
 end
 
 """
-    epw_dk(pts::AbstractArray, i::Int64, Ni::Ti, origins::Vector{SVector{2,T}}, k::T) -> Vector{T}
+    epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},k::T) where {T<:Real,Ti<:Integer}
 
 Compute the summed ∂/∂k of EPW from multiple origins.
 
@@ -190,23 +213,24 @@ Compute the summed ∂/∂k of EPW from multiple origins.
 - `i::Int64`: Basis function index.
 - `Ni::Ti`: Number of basis functions.
 - `origins::Vector{SVector{2,T}}`: Origins for summation.
+- `angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Derivatives summed across all origins.
 """
-function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
+function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M)
     for j in eachindex(origins)
-        @inbounds res[:,j]=epw_dk(pts,i,Ni,origins[j],k)
+        @inbounds res[:,j]=epw_dk(pts,i,Ni,origins[j],angle_ranges[j],k)
     end
     return sum(res,dims=2)[:]
 end
 
 """
-    epw_gradient(pts::AbstractArray, i::Int64, Ni::Ti, origins::Vector{SVector{2,T}}, k::T) -> Tuple{Vector{T}, Vector{T}}
+    epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},k::T) where {T<:Real,Ti<:Integer}
 
 Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed across all origins.
 
@@ -215,18 +239,19 @@ Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed ac
 - `i::Int64`: Index of basis function.
 - `Ni::Ti`: Number of total functions.
 - `origins::Vector{SVector{2,T}}`: EPW origins.
+- `angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere. For all origins index wise.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: Gradient in x and y directions.
 """
-function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},k::T) where {T<:Real,Ti<:Integer}
+function epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},k::T) where {T<:Real,Ti<:Integer}
     N=length(pts)
     M=length(origins)
     dx_mat=Matrix{Complex{T}}(undef,N,M)
     dy_mat=Matrix{Complex{T}}(undef,N,M)
     for j in eachindex(origins)
-        dx,dy=epw_gradient(pts,i,Ni,origins[j],k)
+        dx,dy=epw_gradient(pts,i,Ni,origins[j],angle_ranges[j],k)
         @inbounds dx_mat[:,j]=dx
         @inbounds dy_mat[:,j]=dy
     end
@@ -239,73 +264,78 @@ struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymme
     cs::PolarCS{T}
     dim::Int64 
     origins::Vector{SVector{2,T}}
+    angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}}
     symmetries::Union{Vector{Any},Nothing}
     shift_x::T
     shift_y::T
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries,zero(T),zero(T))
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
+    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,angle_ranges,symmetries,zero(T),zero(T))
 end
 
-function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
-    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,symmetries,shift_x,shift_y)
+function EvanescentPlaneWaves(cs::PolarCS{T},dim::Int,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
+    EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,origins,angle_ranges,symmetries,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins=get_origins_(billiard;fundamental=fundamental)
+function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing,shift_x,shift_y)
+    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),10,origins,angle_ranges,nothing,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins=get_origins_(billiard;fundamental=fundamental)
+function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin_cs::SVector{2,T},origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{Union{T,Irrational},Union{T,Irrational}}},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries,shift_x,shift_y)
+    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),10,origins,angle_ranges,symmetries,shift_x,shift_y)
 end
 
-function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins=get_origins_(billiard,idxs;fundamental=fundamental)
-    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
-    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing,shift_x,shift_y)
-end
+#########################################################################################################
+#### HELPERS FOR GETTING ALL THE POTENTIAL CORNERS AND SERVES AS POTENTIAL INPUT TO EPW CONSTRUCTORS ####
+#########################################################################################################
 
-function EvanescentPlaneWaves(billiard::Bi,idxs::AbstractArray,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    origins=get_origins_(billiard,idxs;fundamental=fundamental)
-    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
-    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries,shift_x,shift_y)
-end
+"""
+    get_origins_(billiard::Bi, idx::Ti; fundamental=false) -> Vector{SVector{2, elt}}
 
-function EvanescentPlaneWaves(billiard::Bi,idx::Ti,origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
-    origins=get_origins_(billiard,idx;fundamental=fundamental)
-    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
-    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,nothing,shift_x,shift_y)
-end
+Compute the corner origins for a single boundary segment `idx` of the billiard.
 
-function EvanescentPlaneWaves(billiard::Bi,idx::Ti,symmetries::Vector{Any},origin::SVector{2,T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer,T<:Real}
-    origins=get_origins_(billiard,idx;fundamental=fundamental)
-    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
-    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin,rot_angle),10,origins,symmetries,shift_x,shift_y)
-end
+# Arguments
+- `billiard::Bi<:AbsBilliard`: The billiard object containing boundary curves.
+- `idx::Ti<:Integer`: Index of the boundary segment to examine.
+- `fundamental::Bool=false`: If `true`, use `fundamental_boundary`; otherwise `full_boundary`.
 
+# Returns
+- `Vector{SVector{2, elt}}`: A vector of 2D `SVector` points representing corner origins. 
+  Returns a vector containing the starting point of the curve at `idx` if it is an `AbsRealCurve` immediately following a `AbsRealCurve` (i.e., a corner); otherwise an empty vector.
+"""
 function get_origins_(billiard::Bi,idx::Ti;fundamental=false) where {Bi<:AbsBilliard,Ti<:Integer}
     boundary= fundamental ? billiard.fundamental_boundary : billiard.full_boundary
     elt=eltype(boundary[1].length)
     N=length(boundary)
     origins=Vector{SVector{2,elt}}()
     crv=boundary[idx]
-    if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa LineSegment
+    if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa AbsRealCurve
         push!(origins,curve(crv,zero(elt)))
     end
     return origins
 end
 
+"""
+    get_origins_(billiard::Bi, idxs::AbstractArray; fundamental=false) -> Vector{SVector{2, elt}}
+
+Compute the corner origins for multiple boundary segments `idxs` of the billiard.
+
+# Arguments
+- `billiard::Bi<:AbsBilliard`: The billiard object containing boundary curves.
+- `idxs::AbstractArray{<:Integer}`: A collection of indices of boundary segments to examine.
+- `fundamental::Bool=false`: If `true`, use `fundamental_boundary`; otherwise `full_boundary`.
+
+# Returns
+- `Vector{SVector{2, elt}}`: A vector of 2D `SVector` points for each segment in `idxs` that is an `AbsRealCurve` immediately following a `AbsRealCurve`.
+
+# Throws
+- AssertionError if `length(idxs)` exceeds the total number of boundary segments.
+"""
 function get_origins_(billiard::Bi,idxs::AbstractArray;fundamental=false) where {Bi<:AbsBilliard}
     boundary= fundamental ? billiard.fundamental_boundary : billiard.full_boundary
     elt=eltype(boundary[1].length)
@@ -314,32 +344,44 @@ function get_origins_(billiard::Bi,idxs::AbstractArray;fundamental=false) where 
     origins=Vector{SVector{2,elt}}()
     for idx in idxs 
         crv=boundary[idx]
-        if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa LineSegment # is the other curve is virtual then usually the BCs are already satisfied there so no need to add. Also only add the corners so must be a line segment adjacent to produce a corner.
+        if crv isa AbsRealCurve && boundary[mod1(idx-1,N)] isa AbsRealCurve # is the other curve is virtual then usually the BCs are already satisfied there so no need to add.
             push!(origins,curve(crv,zero(elt))) # starting corner 
         end
     end
     return origins
 end
 
+"""
+    get_origins_(billiard::Bi; fundamental=false) -> Vector{SVector{2, elt}}
+
+Compute all corner origins for the entire boundary of the billiard.
+
+# Arguments
+- `billiard::Bi<:AbsBilliard`: The billiard object containing boundary curves.
+- `fundamental::Bool=false`: If `true`, use `fundamental_boundary`; otherwise `full_boundary`.
+
+# Returns
+- `Vector{SVector{2, elt}}`: A vector of all corner origin points, equivalent to
+  `get_origins_(billiard, eachindex(boundary); fundamental=fundamental)`.
+"""
 function get_origins_(billiard::Bi;fundamental=false) where {Bi<:AbsBilliard}
     boundary=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
     return get_origins_(billiard,eachindex(boundary);fundamental=fundamental)
 end
 
-toFloat32(basis::EvanescentPlaneWaves)=EvanescentPlaneWaves(PolarCS(Float32.(basis.cs.origin),basis.cs.rot_angle),basis.dim,Float32.(basis.origins),basis.symmetries)
-
-function resize_basis(basis::EvanescentPlaneWaves,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
-    new_dim=max_i(k)
-    if new_dim==basis.dim
-        return basis
-    else
-        return EvanescentPlaneWaves(basis.cs,new_dim,basis.origins,basis.symmetries)
-    end
-end
-
 ###################################################################################
 #### SINGLE INDEX CONSTRUCTION - SEPARATE SINCE WE SYMMETRIZE EPW AT THIS STEP ####
 ###################################################################################
+
+toFloat32(basis::EvanescentPlaneWaves)=EvanescentPlaneWaves(PolarCS(Float32.(basis.cs.origin),basis.cs.rot_angle),basis.dim,Float32.(basis.origins),basis.angle_ranges,basis.symmetries)
+function resize_basis(basis::EvanescentPlaneWaves,billiard::Bi,dim::Int,k) where {Bi<:AbsBilliard}
+    new_dim=max_i(k) # use Barnett's algebraic progression eq. for the basis size determination
+    if new_dim==basis.dim
+        return basis
+    else
+        return EvanescentPlaneWaves(basis.cs,new_dim,basis.origins,basis.angle_ranges,basis.symmetries)
+    end
+end
 
 @inline reflect_x_epw(p::SVector{2,T},shift_x::T) where {T<:Real} = SVector(2*shift_x-p[1],p[2])
 @inline reflect_y_epw(p::SVector{2,T},shift_y::T) where {T<:Real} = SVector(p[1],2*shift_y-p[2])
@@ -350,21 +392,21 @@ end
     isnothing(syms) && return f(basis,i,k,pts)  # No symmetry applied
     sym=syms[1]
     origin=basis.cs.origin
-    fval=f(pts,i,basis.dim,basis.origins,k)
+    fval=f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
     if sym.axis==:y_axis # XReflection
         px=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
-        return 0.5*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,k))
+        return 0.5*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k))
     elseif sym.axis==:x_axis # YReflection
         py=sym.parity
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
-        return 0.5*(fval.+py.*f(reflected_pts_y,i,basis.dim,basis.origins,k))
+        return 0.5*(fval.+py.*f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k))
     elseif sym.axis==:origin # XYReflection
         px,py=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
         reflected_pts_xy=reflect_xy_epw.(pts,Ref(basis.shift_x),Ref(basis.shift_y))
-        return 0.25*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,k).+py.*f(reflected_pts_y,i,basis.dim,basis.origins,k).+(px*py).*f(reflected_pts_xy,i,basis.dim,basis.origins,k))
+        return 0.25*(fval.+px.*f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k).+py.*f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k).+(px*py).*f(reflected_pts_xy,i,basis.dim,basis.origins,basis.angle_ranges,k))
     else
         @error "Unsupported symmetry type: $(typeof(sym)). Symmetrization skipped."
         return fval
@@ -373,21 +415,21 @@ end
 
 @inline function symmetrize_epw_grad(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
     syms=basis.symmetries
-    isnothing(syms) && return f(pts,i,basis.dim,basis.origins,k)
+    isnothing(syms) && return f(pts,i,basis.dim,basis.origins,basis.angle_ranges,k)
     sym=syms[1]
     origin=basis.cs.origin
     fval=f(pts,i,basis.dim,basis.origins,k)
     if sym.axis==:y_axis # XReflection
         px=sym.parity
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
-        fx=f(reflected_pts_x,i,basis.dim,basis.origins,k)
+        fx=f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k)
         return (
             0.5.*(fval[1].+px.*fx[1]),
             0.5.*(fval[2].+px.*fx[2]))
     elseif sym.axis==:x_axis # YReflection
         py=sym.parity
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
-        fy=f(reflected_pts_y,i,basis.dim,basis.origins,k)
+        fy=f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k)
         return (
             0.5.*(fval[1].+py.*fy[1]),
             0.5.*(fval[2].+py.*fy[2]))
@@ -396,9 +438,9 @@ end
         reflected_pts_x=reflect_x_epw.(pts,Ref(basis.shift_x))
         reflected_pts_y=reflect_y_epw.(pts,Ref(basis.shift_y))
         reflected_pts_xy=reflect_xy_epw.(pts,Ref(basis.shift_x),Ref(basis.shift_y))
-        fx=f(reflected_pts_x,i,basis.dim,basis.origins,k)
-        fy=f(reflected_pts_y,i,basis.dim,basis.origins,k)
-        fxy=f(reflected_pts_xy,i,basis.dim,basis.origins,k)
+        fx=f(reflected_pts_x,i,basis.dim,basis.origins,basis.angle_ranges,k)
+        fy=f(reflected_pts_y,i,basis.dim,basis.origins,basis.angle_ranges,k)
+        fxy=f(reflected_pts_xy,i,basis.dim,basis.origins,basis.angle_ranges,k)
         return (
             0.25.*(fval[1].+px.*fx[1].+py.*fy[1].+(px*py).*fxy[1]),
             0.25.*(fval[2].+px.*fx[2].+py.*fy[2].+(px*py).*fxy[2]))
