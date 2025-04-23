@@ -98,7 +98,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 # Returns
 - `Vector{T}`: Derivative of the function with respect to `k`.
 """
-function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real}
+function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
     φ₁,φ₂=sort(angle_range)
     θ=_theta_i(i,Ni,φ₁,φ₂)
     s,c=sincos(θ)
@@ -129,7 +129,7 @@ function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVecto
 end
 
 """
-    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real}
+    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
 
 Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -178,7 +178,7 @@ function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::
 end
 
 """
-    epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer}
+    epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
 
 Evaluate the evanescent plane wave by summing contributions from multiple origins.
 
@@ -204,7 +204,7 @@ function epw(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},an
 end
 
 """
-    epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
+    epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real,K<:Real}
 
 Compute the summed ∂/∂k of EPW from multiple origins.
 
@@ -219,7 +219,7 @@ Compute the summed ∂/∂k of EPW from multiple origins.
 # Returns
 - `Vector{T}`: Derivatives summed across all origins.
 """
-function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer}
+function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M)
@@ -230,7 +230,7 @@ function epw_dk(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}}
 end
 
 """
-    epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer}
+    epw_gradient(pts::AbstractArray,i::Int64,Ni::Ti,origins::Vector{SVector{2,T}},angle_ranges::Vector{Tuple{K,K}},k::T) where {T<:Real,Ti<:Integer,K<:Real}
 
 Compute the gradient (∂/∂x, ∂/∂y) of the evanescent plane wave summed across all origins.
 
