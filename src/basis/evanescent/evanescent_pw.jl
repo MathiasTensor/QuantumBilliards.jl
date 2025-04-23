@@ -193,12 +193,12 @@ end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,zero(T),zero(T))
+    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,params,symmetries,zero(T),zero(T))
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,shift_x,shift_y)
+    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,params,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
