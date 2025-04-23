@@ -23,7 +23,7 @@ the recommended upper limit for numerical stability and efficiency.
 # Returns
 - `Int`: The maximum value of `i` such that αᵢ ≤ 3.
 """
-max_i(k)=floor(Int,6*k^(1/3)-3)
+max_i(k::T) where {T<:Real} = floor(Int,6*k^(1/3)-3)
 
 """
     sinhcosh(x::T) where {T<:Real}
@@ -41,7 +41,7 @@ function sinhcosh(x::T) where {T<:Real}
 end
 
 # linearly sample i=1:Ni in [φ₁,φ₂]
-function _theta_i(i::Ti,Ni::Ti,φ₁::Union{T,Irrational},φ₂::Union{T,Irrational}) where {T<:Real}
+function _theta_i(i::Ti,Ni::Ti,φ₁::Union{T,Irrational},φ₂::Union{T,Irrational}) where {T<:Real,Ti<:Integer}
     return φ₁+(i-1)/(Ni-1)*(φ₂-φ₁)
 end
 
