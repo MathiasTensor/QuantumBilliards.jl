@@ -41,7 +41,7 @@ function sinhcosh(x::T) where {T<:Real}
 end
 
 """
-    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real}
+    epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Vector{T},k::T) where {T<:Real}
 
 Compute the evanescent plane wave function at given points for a single origin. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -51,7 +51,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `pts::AbstractArray`: Points in space where the function is evaluated.
 - `i::Int64`: Index of the basis function.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
-- `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `angle_range::Vector{T}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
@@ -74,7 +74,7 @@ end
 
 
 """
-    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real}
+    epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Vector{T},k::T) where {T<:Real}
 
 Compute the derivative of the evanescent plane wave function with respect to wavenumber `k`. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -84,7 +84,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `pts::AbstractArray`: Spatial evaluation points.
 - `i::Int64`: Function index.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
-- `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `angle_range::Vector{T}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
@@ -124,7 +124,7 @@ function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},a
 end
 
 """
-    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::SVector{2,K},k::T) where {T<:Real}
+    epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Vector{T},k::T) where {T<:Real}
 
 Compute the gradient (∂/∂x, ∂/∂y) of an evanescent plane wave basis function. It uses the following literature:
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html # decay factor and comments
@@ -134,7 +134,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `pts::AbstractArray`: Points where the gradient is evaluated.
 - `i::Int64`: Basis function index.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
-- `angle_range::SVector{2,K}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
+- `angle_range::Vector{T}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
 - `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
@@ -182,7 +182,7 @@ struct EvanescentParams{T<:Real}
     αs::Vector{T} # decay constants per origin
 end
 
-struct EvanescentPlaneWaves{T,Sy,K} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
+struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
     cs::PolarCS{T}
     dim::Int64 
     params::EvanescentParams{T}
@@ -193,12 +193,12 @@ end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,zero(T),zero(T))
+    return EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,params,symmetries,zero(T),zero(T))
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,shift_x,shift_y)
+    return EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,params,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
