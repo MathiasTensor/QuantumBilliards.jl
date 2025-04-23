@@ -195,7 +195,7 @@ summing contributions from all configured origins and angles.
 # Returns
 - `Vector{T}`: Values of the i-th EPW function at each point in `pts`.
 """
-function epw(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
+function epw(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real}
     origins=params.origins
     angle_ranges=params.angles
     αs=params.αs
