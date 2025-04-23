@@ -64,7 +64,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `Vector{T}`: Evaluated function values.
 """
 function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
-    φ₁,φ₂=Tuple(sort(angle_range)) # unpack & sort wedge
+    φ₁,φ₂=sort(Vector(angle_range)) # unpack & sort wedge
     θ=_theta_i(i,Ni,φ₁,φ₂) # get our direction θ
     s,c=sincos(θ)
     n=@SVector [c,s] # oscillation n = (cosθ,sinθ)
@@ -99,7 +99,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `Vector{T}`: Derivative of the function with respect to `k`.
 """
 function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
-    φ₁,φ₂=Tuple(sort(angle_range))
+    φ₁,φ₂=sort(Vector(angle_range))
     θ=_theta_i(i,Ni,φ₁,φ₂)
     s,c=sincos(θ)
     n=@SVector [c,s]
@@ -147,7 +147,7 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `Tuple{Vector{T}, Vector{T}}`: Gradients with respect to x and y.
 """
 function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,Ni::Int,origin::SVector{2,T},angle_range::Tuple{K,K},k::T) where {T<:Real,K<:Real}
-    φ₁,φ₂=Tuple(sort(angle_range))
+    φ₁,φ₂=sort(Vector(angle_range))
     θ=_theta_i(i, Ni, φ₁, φ₂)
     s,c=sincos(θ)
     n=@SVector [c,s];d=@SVector [-s,c]
