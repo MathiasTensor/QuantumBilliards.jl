@@ -193,26 +193,24 @@ end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,params,symmetries,zero(T),zero(T))
+    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,zero(T),zero(T))
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,params,symmetries,shift_x,shift_y)
+    return EvanescentPlaneWaves{T,typeof(symmetries),K}(cs,dim,params,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    dim=length(vcat(params.angles...))
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),dim,params,nothing,shift_x,shift_y)
+    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),params,nothing,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,symmetries::Vector{Any},origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
-    dim=length(vcat(params.angles...))
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : T(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : T(0.0)
-    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),dim,params,symmetries,shift_x,shift_y)
+    return EvanescentPlaneWaves(PolarCS(origin_cs,rot_angle),params,symmetries,shift_x,shift_y)
 end
 
 ###########################################
