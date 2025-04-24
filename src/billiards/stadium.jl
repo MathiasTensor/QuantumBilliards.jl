@@ -35,7 +35,7 @@ end
 struct Stadium{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{LineSegment{T},CircleSegment{T},VirtualLineSegment{T}}}
     full_boundary::Vector{Union{LineSegment{T},CircleSegment{T}}}
-    desymmetrized_full_boundary::Vector{LineSegment{T},CircleSegment{T}}
+    desymmetrized_full_boundary::Vector{Union{LineSegment{T},CircleSegment{T}}}
     length::T
     length_fundamental::T
     area::T
