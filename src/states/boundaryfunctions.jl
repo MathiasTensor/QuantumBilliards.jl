@@ -302,8 +302,8 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
             us_all[i]=u
             pts_all[i]=pts
         #catch e
-            println("Error while constructing the u(s) for k = $(ks[i])")
-            valid_indices[i]=false
+            #println("Error while constructing the u(s) for k = $(ks[i])")
+            #valid_indices[i]=false
         #end
         next!(progress)
     end
