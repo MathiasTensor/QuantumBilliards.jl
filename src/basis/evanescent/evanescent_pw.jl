@@ -94,7 +94,7 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     s,c=sincos(θ)
     n=@SVector [c,s] # oscillation n = (cosθ,sinθ)
     d=@SVector [-s,c] # decay d = (−sinθ,cosθ)
-    Rs=k.*(pts.-origin) # Vector of SVector{2,T}
+    Rs=k*[p.-origin for p in pts] # Vector of SVector{2,T}
     xs=getindex.(Rs,1)
     ys=getindex.(Rs,2) 
     As=@. d[1]*xs+d[2]*ys # ỹ = d⋅(r-C) as per the paper
@@ -132,7 +132,7 @@ function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},a
     s,c=sincos(θ)
     d= SVector(-s,c)
     n= SVector(c,s)
-    Rs=k.*(pts.-origin)
+    Rs=k*[p.-origin for p in pts]
     xs,ys=getindex.(Rs,1),getindex.(Rs,2)
     As=@. d[1]*xs+d[2]*ys
     Bs=@. n[1]*xs+n[2]*ys
@@ -180,7 +180,7 @@ function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{
     s,c=sincos(θ)
     d=SVector(-s,c)
     n=SVector(c,s)
-    Rs=k.*(pts.-origin)
+    Rs=k*[p.-origin for p in pts]
     xs,ys=getindex.(Rs,1),getindex.(Rs,2)
     As=@. d[1]*xs+d[2]*ys
     Bs=@. n[1]*xs+n[2]*ys
