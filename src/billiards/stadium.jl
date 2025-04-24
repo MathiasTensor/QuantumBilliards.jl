@@ -6,7 +6,7 @@ function make_quarter_stadium(half_width;radius=one(half_width),x0=zero(half_wid
     line1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
     line2=VirtualLineSegment(corners[2],corners[3];origin=origin,rot_angle=rot_angle)
     line3=VirtualLineSegment(corners[3],corners[4];origin=origin,rot_angle=rot_angle)
-    boundary=[circle,line1,line2,line3]
+    boundary=Union{LineSegment,CircleSegment,VirtualLineSegment}[circle,line1,line2,line3]
     return boundary,corners
 end
 
@@ -16,7 +16,7 @@ function make_desymmetrized_full_boundary_stadium(half_width;radius=one(half_wid
     circle=CircleSegment(radius,pi/2,zero(type), half_width, zero(type); origin=origin, rot_angle = rot_angle)
     corners=[SVector(half_width, radius), SVector(zero(type), radius)]
     line1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
-    boundary=[circle,line1]
+    boundary=Union{LineSegment,CircleSegment}[circle,line1]
     return boundary,corners
 end
 
@@ -28,14 +28,14 @@ function make_full_stadium(half_width;radius=one(half_width),x0=zero(half_width)
     line1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
     circle2=CircleSegment(radius,1.0*pi, pi*0.5,-half_width,zero(type);origin=origin,rot_angle=rot_angle)
     line2=LineSegment(corners[3],corners[4];origin=origin,rot_angle=rot_angle)
-    boundary=[circle1,line1,circle2,line2]
+    boundary=Union{LineSegment,CircleSegment}[circle1,line1,circle2,line2]
     return boundary,corners
 end
 
 struct Stadium{T} <: AbsBilliard where {T<:Real}
-    fundamental_boundary::Vector{Union{LineSegment{T},CircleSegment{T},VirtualLineSegment{T}}}
-    full_boundary::Vector{Union{LineSegment{T},CircleSegment{T}}}
-    desymmetrized_full_boundary::Vector{Union{LineSegment{T},CircleSegment{T}}}
+    fundamental_boundary::Vector{Union{LineSegment,CircleSegment,VirtualLineSegment}}
+    full_boundary::Vector{Union{LineSegment,CircleSegment}}
+    desymmetrized_full_boundary::Vector{Union{LineSegment,CircleSegment}}
     length::T
     length_fundamental::T
     area::T

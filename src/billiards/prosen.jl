@@ -30,7 +30,7 @@ function make_quarter_prosen(a::T;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where
     line_segment1=VirtualLineSegment(pt1,SVector{2,T}(x0,y0);origin=origin,rot_angle=rot_angle)
     line_segment2=VirtualLineSegment(SVector{2,T}(x0,y0),pt0;origin=origin,rot_angle=rot_angle)
     # Construct the boundary
-    boundary=Union{PolarSegment{T},VirtualLineSegment{T}}[quarter_prosen_segment,line_segment1,line_segment2]
+    boundary=Union{PolarSegment,VirtualLineSegment}[quarter_prosen_segment,line_segment1,line_segment2]
     # Corners are pt0, pt1, and the origin
     corners=[pt0,pt1,SVector(x0,y0)]
     return boundary,corners
@@ -64,7 +64,7 @@ function make_prosen_desymmetrized_full_boundary(a::T;x0=zero(T),y0=zero(T),rot_
     quarter_prosen_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     pt0=curve(quarter_prosen_segment,zero(T))  # Start point at φ = 0
     pt1=curve(quarter_prosen_segment,one(T))   # End point at φ = π/2
-    boundary=PolarSegment{T}[quarter_prosen_segment]
+    boundary=PolarSegment[quarter_prosen_segment]
     return boundary,[]
 end
 
@@ -98,7 +98,7 @@ function make_full_prosen(a::T;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T
     end
     full_prosen_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     area_full=compute_area(full_prosen_segment)
-    boundary=[full_prosen_segment]
+    boundary=PolarSegment[full_prosen_segment]
     corners=[] 
     return boundary,corners,area_full
 end
@@ -117,9 +117,9 @@ Defines a Prosen billiard with quarter, half, and full boundaries.
 - `corners::Vector{SVector{2,T}}`: The corner points of the billiard.
 """
 struct ProsenBilliard{T} <: AbsBilliard where {T<:Real}
-    fundamental_boundary::Vector{Union{PolarSegment{T},VirtualLineSegment{T}}}
-    full_boundary::Vector{PolarSegment{T}}
-    desymmetrized_full_boundary::Vector{PolarSegment{T}}
+    fundamental_boundary::Vector{Union{PolarSegment,VirtualLineSegment}}
+    full_boundary::Vector{PolarSegment}
+    desymmetrized_full_boundary::Vector{PolarSegment}
     length::T
     length_fundamental::T
     a::T
