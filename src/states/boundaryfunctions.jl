@@ -110,6 +110,9 @@ Helper/hack function to rescaled the dimension of RealPlaneWaves struct b/c due 
 - `dim::Integer`: the rescaled dimension.
 """
 function rescale_rpw_dimension(basis::Ba,dim::Integer) where {Ba<:AbsBasis}
+    if basis isa CompositeBasis
+        basis=basis.main
+    end
     if basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
         if isnothing(basis.symmetries[1])
             dim=Int(dim/4) # always works by construction of parity_pattern
