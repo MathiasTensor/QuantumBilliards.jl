@@ -8,6 +8,14 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node157.html
 """
 
 """
+    α(i::Int,k::T)
+
+Barnett's algebraic decay constant for epw as used in the stadium. Used in automatic generation of decay constants for an angle set.
+"""
+α(i::Int,k::T) where {T<:Real} = (3+i)/(2*k^(1/3))
+dα_dk(i::Int,k::T) where {T<:Real} =-(3+i)/(6*k^(4/3))
+    
+"""
     max_i(k::Real) -> Int
 
 Compute the maximum integer index `i` such that the evanescent decay parameter 
@@ -24,6 +32,30 @@ the recommended upper limit for numerical stability and efficiency.
 - `Int`: The maximum value of `i` such that αᵢ ≤ 3.
 """
 max_i(k::T) where {T<:Real} = floor(Int,6*k^(1/3)-3)
+
+"""
+    max_billiard_impact(θ, pts, origin, k) → T
+
+Compute the maximum “impact parameter” b for an evanescent plane wave
+centered at `origin` with propagation direction `θ`, scaled by the wavenumber `k`.
+
+b = k * maxₚ [ d(θ) ⋅ (p - origin) ]  
+
+# Arguments
+- `θ::T`: Propagation angle in radians (measured from +x axis).
+- `pts::AbstractVector{SVector{2,T}}`: Sample points along ∂Ω (each SVector{2,T}).
+- `origin::SVector{2,T}`: The corner or diffraction center in the same coordinate system.
+- `k::T`: Wavenumber; used to scale the raw impact.
+
+# Returns
+- `b::T`: The scaled maximum impact parameter.
+
+"""
+function max_billiard_impact(θ::T,pts::AbstractArray{<:SVector{2,T}},origin::SVector{2,T},k::T) where {T<:Real}
+    s,c=sincos(θ)
+    d=SVector(s,c)
+    return k*maximum(dot(d,p-origin) for p in pts)
+end
 
 """
     sinhcosh(x::T) where {T<:Real}
@@ -52,24 +84,29 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `i::Int64`: Index of the basis function.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
 - `angle_range::Vector{T}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
-- `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Evaluated function values.
 """
-function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},α::T,k::T) where {T<:Real}
+function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},k::T) where {T<:Real}
     θ=angle_range[i] # get our direction θ
     s,c=sincos(θ)
     n=@SVector [c,s] # oscillation n = (cosθ,sinθ)
     d=@SVector [-s,c] # decay d = (−sinθ,cosθ)
-    Rs=[p.-origin for p in pts]  # shift to corner‐origin
-    As=[dot(d,r) for r in Rs]   # ỹ = d⋅(r-C) as per the paper
-    Bs=[dot(n,r) for r in Rs]   # x̃ = n⋅(r-C) as per the paper
-    decay=exp.(-k*sinh(α).*As) # decay and phase
-    phase=k*cosh(α).*Bs
-    osc=iseven(i) ? cos.(phase) : sin.(phase) # real‐basis: even=i⇒cos, odd⇒sin
-    return decay.*osc
+    Rs=k.*(pts.-origin) # Vector of SVector{2,T}
+    xs=getindex.(Rs,1)
+    ys=getindex.(Rs,2) 
+    As=@. d[1]*xs+d[2]*ys # ỹ = d⋅(r-C) as per the paper
+    Bs=@. n[1]*xs+n[2]*ys # x̃ = n⋅(r-C) as per the paper 
+    α_=α(i,k) #  Barnett's algebraic decay
+    b=max_billiard_impact(θ,pts,origin,k) # as per Barnett's construction
+    sinhα,coshα=sinhcosh(α_)
+    offA=@. As+b
+    decay=@. exp(-sinhα*offA)
+    phase=@. coshα*Bs
+    osc=iseven(i) ? cos.(phase) : sin.(phase)
+    return @. decay*osc
 end
 
 
@@ -85,42 +122,40 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `i::Int64`: Function index.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
 - `angle_range::Vector{T}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
-- `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Vector{T}`: Derivative of the function with respect to `k`.
 """
-function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},α::T,k::T) where {T<:Real}
-    # direction & local frames
+function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},k::T) where {T<:Real}
     θ=angle_range[i]
     s,c=sincos(θ)
-    n=@SVector [c,s] # propagation
-    d=@SVector [-s,c] # decay
-    # shifted vectors
-    Rs=[p.-origin for p in pts]
-    As=[dot(d,r) for r in Rs]
-    Bs=[dot(n,r) for r in Rs]
-    # constant‐α factors
-    sinhα=sinh(α)
-    coshα=cosh(α)
-    # decay = exp(-k * sinhα * A)
-    decay=exp.(-k*sinhα.*As)
-    # ∂decay/∂k = -sinhα * A * decay
-    ddecay_dk=@. -sinhα*As*decay
-    # phase = k * coshα * B
-    phase=k*coshα.*Bs
-    # ∂phase/∂k = coshα * B
-    dphase_dk=coshα.*Bs
-    # real basis (cos for even, sin for odd)
+    d= SVector(-s,c)
+    n= SVector(c,s)
+    Rs=k.*(pts.-origin)
+    xs,ys=getindex.(Rs,1),getindex.(Rs,2)
+    As=@. d[1]*xs+d[2]*ys
+    Bs=@. n[1]*xs+n[2]*ys
+    α_=α(i,k)
+    dα=dα_dk(i,k)
+    b= max_billiard_impact(θ,pts,origin,k)
+    b0=b/k # = ∂b/∂k
+    sinhα,coshα=sinhcosh(α_)
+    offA=@. As+b
+    decay=@. exp(-sinhα*offA)
+    phase=@. coshα*Bs
+    # ∂decay/∂k = decay * [ −(∂sinhα/∂k) * offA  − sinhα * (∂b/∂k) ]
+    dsinhα=@. coshα*dα         # since ∂sinh/∂α = coshα
+    ddecay_dk=@. decay*(-dsinhα*offA-sinhα*b0 )
+    # ∂osc/∂k = {even: −sin(phase), odd: cos(phase)} * [ (∂coshα/∂k)*Bs + coshα*(∂Bs/∂k) ]
+    dcoshα=@. sinhα*dα # since ∂cosh/∂α = sinhα
+    dBs_dk=b0 # since Bs = k*(n⋅(p-origin))
     if iseven(i)
-        osc=cos.(phase)
-        dosc_dk=@. -sin(phase)*dphase_dk
+        dosc_dk=@. -sin(phase)*(dcoshα*Bs+coshα*dBs_dk)
     else
-        osc=sin.(phase)
-        dosc_dk=@. cos(phase)*dphase_dk
+        dosc_dk=@. cos(phase)*(dcoshα*Bs+coshα*dBs_dk)
     end
-    return ddecay_dk.*osc.+decay.*dosc_dk
+    return @. ddecay_dk*(iseven(i) ? cos(phase) : sin(phase))+decay*dosc_dk
 end
 
 """
@@ -135,41 +170,40 @@ https://arxiv.org/pdf/nlin/0212011 # basis form and comments
 - `i::Int64`: Basis function index.
 - `origin::SVector{2,T}`: Origin of the evanescent wave.
 - `angle_range::Vector{T}`: The direction angle range for the EPW. Choose such that we do not get Inf anywhere.
-- `α::T`: The decay parameter for that particular origin.
 - `k::T`: Wavenumber.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: Gradients with respect to x and y.
 """
-function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},α::T,k::T) where {T<:Real}
-    # direction & local frames
+function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angle_range::Vector{T},k::T) where {T<:Real}
     θ=angle_range[i]
     s,c=sincos(θ)
-    n=@SVector [c,s]
-    d=@SVector [-s,c]
-    # shifted vectors
-    Rs=[p.-origin for p in pts]
-    As=[dot(d,r) for r in Rs]
-    Bs=[dot(n,r) for r in Rs]
-    # constant‐α factors
-    sinhα=sinh(α)
-    coshα=cosh(α)
-    # decay and its A‐derivative
-    decay=exp.(-k*sinhα.*As)
-    ddecay_dA=@. -k*sinhα*decay
-    # phase
-    phase=k*coshα.*Bs
+    d=SVector(-s,c)
+    n=SVector(c,s)
+    Rs=k.*(pts.-origin)
+    xs,ys=getindex.(Rs,1),getindex.(Rs,2)
+    As=@. d[1]*xs+d[2]*ys
+    Bs=@. n[1]*xs+n[2]*ys
+    α_=α(i,k)
+    b=max_billiard_impact(θ, pts, origin, k)
+    sinhα,coshα=sinhcosh(α_)
+    offA=@. As+b
+    decay=@. exp(-sinhα*offA)
+    phase=@. coshα*Bs
+    # ∂decay/∂A (spatial) = −sinhα * decay
+    ddecay_dA=@. -sinhα*decay
+    # ∂osc/∂B = even: −sin(phase)*coshα,  odd: cos(phase)*coshα
     if iseven(i)
+        dosc_dB=@. -coshα*sin(phase)
         osc=cos.(phase)
-        dosc_dB=@. -k*coshα*sin(phase)
     else
+        dosc_dB=@. coshα*cos(phase)
         osc=sin.(phase)
-        dosc_dB=@. k*coshα*cos(phase)
     end
-    # ∇ψ = ∂ψ/∂A ∇A + ∂ψ/∂B ∇B  with ∇A = d, ∇B = n
+    # ∇ψ = (∂ψ/∂A)⋅d + (∂ψ/∂B)⋅n
     dx=@. ddecay_dA*d[1]*osc+decay*dosc_dB*n[1]
     dy=@. ddecay_dA*d[2]*osc+decay*dosc_dB*n[2]
-    return dx, dy
+    return dx,dy
 end
 
 ######################
@@ -179,7 +213,6 @@ end
 struct EvanescentParams{T<:Real}
     angles::Vector{Vector{T}} # a list of angle vectors, one per origin
     origins::Vector{SVector{2,T}} # one origin per angle set
-    αs::Vector{T} # decay constants per origin
 end
 
 struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
@@ -243,12 +276,11 @@ summing contributions from all configured origins and angles.
 function epw(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real}
     origins=params.origins
     angle_ranges=params.angles
-    αs=params.αs
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M) # pts x origins
     for j in eachindex(origins) 
-        @inbounds res[:,j]=epw(pts,i,origins[j],angle_ranges[j],αs[j],k)
+        @inbounds res[:,j]=epw(pts,i,origins[j],angle_ranges[j],k)
     end
     return sum(res,dims=2)[:] # for each row sum over all columns to get for each pt in pts all the different origin contributions. Converts Matrix (N,1) to a flat vector.
 end
@@ -276,12 +308,11 @@ summing contributions across all origins.
 function epw_dk(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
     origins=params.origins
     angle_ranges=params.angles
-    αs=params.αs
     N=length(pts)
     M=length(origins)
     res=Matrix{Complex{T}}(undef,N,M)
     for j in eachindex(origins)
-        @inbounds res[:,j]=epw_dk(pts,i,origins[j],angle_ranges[j],αs[j],k)
+        @inbounds res[:,j]=epw_dk(pts,i,origins[j],angle_ranges[j],k)
     end
     return sum(res,dims=2)[:]
 end
@@ -309,13 +340,12 @@ summing contributions from all origins.
 function epw_gradient(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
     origins=params.origins
     angle_ranges=params.angles
-    αs=params.αs
     N=length(pts)
     M=length(origins)
     dx_mat=Matrix{Complex{T}}(undef,N,M)
     dy_mat=Matrix{Complex{T}}(undef,N,M)
     for j in eachindex(origins)
-        dx,dy=epw_gradient(pts,i,origins[j],angle_ranges[j],αs[j],k)
+        dx,dy=epw_gradient(pts,i,origins[j],angle_ranges[j],k)
         @inbounds dx_mat[:,j]=dx
         @inbounds dy_mat[:,j]=dy
     end
