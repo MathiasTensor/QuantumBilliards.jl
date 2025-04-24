@@ -102,7 +102,7 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     α_=α(i,k) #  Barnett's algebraic decay
     b=max_billiard_impact(θ,pts,origin,k) # as per Barnett's construction
     sinhα,coshα=sinhcosh(α_)
-    offA=@. As+b
+    offA=@. As-b
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     osc=iseven(i) ? cos.(phase) : sin.(phase)
@@ -141,7 +141,7 @@ function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},a
     b= max_billiard_impact(θ,pts,origin,k)
     b0=b/k # = ∂b/∂k
     sinhα,coshα=sinhcosh(α_)
-    offA=@. As+b
+    offA=@. As-b
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     # ∂decay/∂k = decay * [ −(∂sinhα/∂k) * offA  − sinhα * (∂b/∂k) ]
@@ -187,7 +187,7 @@ function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{
     α_=α(i,k)
     b=max_billiard_impact(θ, pts, origin, k)
     sinhα,coshα=sinhcosh(α_)
-    offA=@. As+b
+    offA=@. As-b
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     # ∂decay/∂A (spatial) = −sinhα * decay
