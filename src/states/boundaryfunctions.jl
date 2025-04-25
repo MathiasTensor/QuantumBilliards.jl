@@ -12,7 +12,7 @@ Regularizes the boudnary function to get rid of potential artifacts in them. Thi
 # Returns
 - `Nothing`: inplace modification.
 """
-function regularize!(u)
+@inline function regularize!(u)
     idx=findall(isnan,u)
     for i in idx
         if i!=1
@@ -97,8 +97,12 @@ function shift_starting_arclength(billiard::Bi,u_bundle::Matrix,pts::BoundaryPoi
     end
 end
 
+##########################
+#### BASIS RESCALINGS ####
+##########################
+
 """
-    rescale_rpw_dimension(basis::Ba, dim::T) where {T<:Real, Ba<:AbsBasis}
+    rescale_dimension(basis::Ba, dim::T) where {T<:Real, Ba<:AbsBasis}
 
 Helper/hack function to rescaled the dimension of RealPlaneWaves struct b/c due to the basis unique parity_pattern function which rescales the basis in a way that it multiplies it with the length of possible parity combinations. Since we require one in the fundamental domain for boundary function construction this effectively divides the dimension of the basis with the parity combination length.
 
@@ -109,18 +113,25 @@ Helper/hack function to rescaled the dimension of RealPlaneWaves struct b/c due 
 # Returns
 - `dim::Integer`: the rescaled dimension.
 """
-function rescale_rpw_dimension(basis::Ba,dim::Integer) where {Ba<:AbsBasis}
-    rpw=basis isa CompositeBasis ? basis.main : basis
-    if rpw isa RealPlaneWaves # hack since RealPlaneWaves have problems
-        if isnothing(rpw.symmetries[1])
+@inline function rescale_dimension(basis::Ba,dim::Integer) where {Ba<:AbsBasis}
+    main_basis=basis isa CompositeBasis ? basis.main : basis
+    if main_basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
+        if isnothing(main_basis.symmetries[1])
             dim=Int(dim/4) # always works by construction of parity_pattern
-        elseif (rpw.symmetries[1] isa Reflection)
-            if (rpw.symmetries[1].axis==:x_axis) || (rpw.symmetries[1].axis==:y_axis)
+        elseif (main_basis.symmetries[1] isa Reflection)
+            if (main_basis.symmetries[1].axis==:x_axis) || (main_basis.symmetries[1].axis==:y_axis)
                 dim=Int(dim/2) # always works by construction of parity_pattern
             end
         end
+    else
+        # Add custom logic here for basis which have symmetry adapted dimension scaling
     end
     return dim
+end
+
+# Helper to get the dimension of the evanescent basis, default to 0 if not a CompositeBasis
+@inline function get_evanescent_dim_in_CompositeBasis(basis::AbsBasis)
+    return basis isa CompositeBasis ? basis.evanescent.dim : 0
 end
 
 """
@@ -245,7 +256,7 @@ function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) w
         try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
             dim=length(vec)
-            dim=rescale_rpw_dimension(basis,dim)
+            dim=rescale_dimension(basis,dim)
             new_basis=resize_basis(basis,billiard,dim,ks[i])
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
             u,s,norm=boundary_function(state;b=b)
@@ -293,12 +304,14 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
             vec=X[i] # vector of vectors
             println("Type of basis: ",typeof(basis))
             dim=length(vec)
-            println("Length of vec: ",dim)
-            dim=rescale_rpw_dimension(basis,dim)
+            println("Length of vec BEFORE subtraction evanescent dim: ",dim)
+            dim=dim-get_evanescent_dim_in_CompositeBasis(basis)
+            println("Length of vec AFTER subtraction evanescent dim: ",dim)
+            dim=rescale_dimension(basis,dim)
             if basis isa CompositeBasis
                 println("Rescaled dim: ",dim," Main: ",basis.main.dim," EPW: ",basis.evanescent.dim)
             end 
-            new_basis=resize_basis(basis, billiard, dim, ks[i])
+            new_basis=resize_basis(basis,billiard,dim,ks[i]) # dim here should be for the main function
             println("New basis size: ",new_basis.dim)
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
             u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
