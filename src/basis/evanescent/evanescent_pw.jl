@@ -54,7 +54,7 @@ b = k * maxₚ [ d(θ) ⋅ (p - origin) ]
 function max_billiard_impact(θ::T,pts::AbstractArray{<:SVector{2,T}},origin::SVector{2,T},k::T) where {T<:Real}
     s,c=sincos(θ)
     d=SVector(s,c)
-    return k*maximum(dot(d,p-origin) for p in pts)
+    return -k*maximum(dot(d,p-origin) for p in pts)
 end
 
 """
