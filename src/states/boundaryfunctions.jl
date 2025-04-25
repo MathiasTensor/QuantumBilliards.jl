@@ -134,6 +134,8 @@ end
     return basis isa CompositeBasis ? basis.evanescent.dim : 0
 end
 
+##########################
+
 """
     boundary_function(state::S; b=5.0) where {S<:AbsState}
 
@@ -256,8 +258,9 @@ function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) w
         try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
             dim=length(vec)
+            dim=dim-get_evanescent_dim_in_CompositeBasis(basis) # this is to prevent double counting the EWP
             dim=rescale_dimension(basis,dim)
-            new_basis=resize_basis(basis,billiard,dim,ks[i])
+            new_basis=resize_basis(basis,billiard,dim,ks[i])  # dim here should be for the main function
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
             u,s,norm=boundary_function(state;b=b)
             us[i]=u
@@ -300,27 +303,20 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
     valid_indices=fill(true,length(ks))
     progress=Progress(length(ks);desc="Constructing the u(s)...")
     Threads.@threads for i in eachindex(ks) 
-        #try # the @. macro can faill in gradient_matrices when multithreading
+        try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
-            println("Type of basis: ",typeof(basis))
             dim=length(vec)
-            println("Length of vec BEFORE subtraction evanescent dim: ",dim)
-            dim=dim-get_evanescent_dim_in_CompositeBasis(basis)
-            println("Length of vec AFTER subtraction evanescent dim: ",dim)
+            dim=dim-get_evanescent_dim_in_CompositeBasis(basis) # this is to prevent double counting the EWP
             dim=rescale_dimension(basis,dim)
-            if basis isa CompositeBasis
-                println("Rescaled dim: ",dim," Main: ",basis.main.dim," EPW: ",basis.evanescent.dim)
-            end 
             new_basis=resize_basis(basis,billiard,dim,ks[i]) # dim here should be for the main function
-            println("New basis size: ",new_basis.dim)
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
             u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
             pts_all[i]=pts
-        #catch e
-            #println("Error while constructing the u(s) for k = $(ks[i])")
-            #valid_indices[i]=false
-        #end
+        catch e
+            println("Error while constructing the u(s) for k = $(ks[i])")
+            valid_indices[i]=false
+        end
         next!(progress)
     end
     ks=ks[valid_indices]
