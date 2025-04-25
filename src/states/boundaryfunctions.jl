@@ -295,8 +295,11 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
         #try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
             dim=length(vec)
+            println("Length of vec: ",dim)
             dim=rescale_rpw_dimension(basis,dim)
+            println("Rescaled dim: ",dim," Main: ",basis.main.dim," EPW: ",basis.evanescent.dim)
             new_basis=resize_basis(basis, billiard, dim, ks[i])
+            println("New basis size: ",new_basis.dim)
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
             u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
