@@ -106,7 +106,7 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     osc=iseven(i) ? cos.(phase) : sin.(phase) 
-    return decay*osc
+    return @. decay*osc
 end
 
 
