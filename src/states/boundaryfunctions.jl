@@ -291,6 +291,7 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
     Threads.@threads for i in eachindex(ks) 
         #try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
+            println("Type of basis: ",typeof(basis))
             dim=length(vec)
             println("Length of vec: ",dim)
             dim=rescale_rpw_dimension(basis,dim)
