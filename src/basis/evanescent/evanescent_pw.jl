@@ -102,7 +102,8 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     α_=α(i,k) #  Barnett's algebraic decay
     b=k*maximum(dot(d,p-origin) for p in pts) # as per Barnett's construction
     sinhα,coshα=sinhcosh(α_)
-    offA=@. -As+b # this is k-linear
+    b_=maximum(As)
+    offA=@. As-b_ # this is k-linear
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     osc=iseven(i) ? cos.(phase) : sin.(phase)
