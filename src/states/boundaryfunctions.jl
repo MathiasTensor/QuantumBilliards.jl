@@ -295,7 +295,9 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
             dim=length(vec)
             println("Length of vec: ",dim)
             dim=rescale_rpw_dimension(basis,dim)
-            println("Rescaled dim: ",dim," Main: ",basis.main.dim," EPW: ",basis.evanescent.dim)
+            if basis isa CompositeBasis
+                println("Rescaled dim: ",dim," Main: ",basis.main.dim," EPW: ",basis.evanescent.dim)
+            end 
             new_basis=resize_basis(basis, billiard, dim, ks[i])
             println("New basis size: ",new_basis.dim)
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
