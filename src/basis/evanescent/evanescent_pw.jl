@@ -106,10 +106,10 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     #offA=@. b_.-As # this is k-linear
     offA=As
     decay=@. exp(-sinhα*offA)
-    decay/=b_
     phase=@. coshα*Bs
     osc=iseven(i) ? cos.(phase) : sin.(phase)
-    return @. decay*osc
+    raw=@. decay*osc
+    return raw./maximum(abs,raw)
 end
 
 
