@@ -54,7 +54,7 @@ b = k * maxₚ [ d(θ) ⋅ (p - origin) ]
 function max_billiard_impact(θ::T,pts::AbstractArray{<:SVector{2,T}},origin::SVector{2,T},k::T) where {T<:Real}
     s,c=sincos(θ)
     d=SVector(-s,c)
-    return -k*maximum(dot(d,p-origin) for p in pts)
+    return k*maximum(dot(d,p-origin) for p in pts)
 end
 
 """
@@ -100,16 +100,13 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     As=@. d[1]*xs+d[2]*ys # ỹ = d⋅(r-C) as per the paper
     Bs=@. n[1]*xs+n[2]*ys # x̃ = n⋅(r-C) as per the paper 
     α_=α(i,k) #  Barnett's algebraic decay
-    #b=k*maximum(dot(d,p-origin) for p in pts) # as per Barnett's construction
+    b=k*maximum(dot(d,p-origin) for p in pts) # as per Barnett's construction
     sinhα,coshα=sinhcosh(α_)
-    b_=maximum(abs,As)
-    #offA=@. b_.-As # this is k-linear
-    offA=As
+    offA=@. As-b # this is k-linear
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
-    osc=iseven(i) ? cos.(phase) : sin.(phase)
-    raw=@. decay*osc
-    return raw./maximum(abs,raw)
+    osc=iseven(i) ? cos.(phase) : sin.(phase) 
+    return decay*osc
 end
 
 
@@ -144,7 +141,7 @@ function epw_dk(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},a
     b= max_billiard_impact(θ,pts,origin,k)
     b0=b/k # = ∂b/∂k
     sinhα,coshα=sinhcosh(α_)
-    offA=@. As+b # this is k-linear
+    offA=@. As-b # this is k-linear
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     # ∂decay/∂k = decay * [ −(∂sinhα/∂k) * offA  − sinhα * (∂b/∂k) ]
@@ -190,7 +187,7 @@ function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{
     α_=α(i,k)
     b=max_billiard_impact(θ, pts, origin, k)
     sinhα,coshα=sinhcosh(α_)
-    offA=@. As+b # this is k-linear
+    offA=@. As-b # this is k-linear
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
     # ∂decay/∂A (spatial) = −sinhα * decay
