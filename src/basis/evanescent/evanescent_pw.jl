@@ -190,19 +190,18 @@ function epw_gradient(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{
     offA=@. As+b # this is k-linear
     decay=@. exp(-sinhα*offA)
     phase=@. coshα*Bs
-    # ∂decay/∂A (spatial) = −sinhα * decay
-    ddecay_dA=@. -sinhα*decay
-    # ∂osc/∂B = even: −sin(phase)*coshα,  odd: cos(phase)*coshα
+    ref=@. decay*cos(phase)
+    imf=@. decay*sin(phase)
     if iseven(i)
-        dosc_dB=@. -coshα*sin(phase)
-        osc=cos.(phase)
+        ddx = @. s*sinhα*ref-c*coshα*imf
+        ddy = @. -c*sinhα*ref-s*coshα*imf
     else
-        dosc_dB=@. coshα*cos(phase)
-        osc=sin.(phase)
+        ddx=@. c*coshα*ref+s*sinhα*imf
+        ddy=@. s*coshα*ref-c*sinhα*imf
     end
-    # ∇ψ = (∂ψ/∂A)⋅d + (∂ψ/∂B)⋅n
-    dx=@. ddecay_dA*d[1]*osc+decay*dosc_dB*n[1]
-    dy=@. ddecay_dA*d[2]*osc+decay*dosc_dB*n[2]
+    # multiply by k to convert ∂/∂(kx,ky) → ∂/∂(x,y)
+    dx=@. k*ddx
+    dy=@. k*ddy
     return dx,dy
 end
 
