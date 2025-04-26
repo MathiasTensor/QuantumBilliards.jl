@@ -93,7 +93,7 @@ function epw(pts::AbstractArray{<:SVector{2,T}},i::Int,origin::SVector{2,T},angl
     θ=angle_range[i] # get our direction θ
     s,c=sincos(θ)
     n=@SVector [c,s] # oscillation n = (cosθ,sinθ)
-    d=@SVector [-s,c] # decay d = (−sinθ,cosθ)
+    d=@SVector [s,-c] # decay d = (−sinθ,cosθ)
     Rs=k*[p.-origin for p in pts] # Vector of SVector{2,T}
     xs=getindex.(Rs,1)
     ys=getindex.(Rs,2) 
