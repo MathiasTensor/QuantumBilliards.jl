@@ -94,7 +94,7 @@ function interval_roots_boyd(f::Function,a::T,b::T;Ftol::Float64=1e-12,Mmax::Int
             μ=eigvals(C)
             mask=abs.(abs.(μ).-1).<1e-6 # keep only those μ near the unit circle -> μ≈exp(iϕ)
             μ=μ[mask]
-            θr=angle.(μ)  # map back to real k = cen + rad * Re(μ)
+            θr=Base.angle.(μ)  # map back to real k = cen + rad * Re(μ)
             roots=cen.+rad*cos.(θr)
             sort!(roots)
             if !isempty(last_roots) &&  # stable two‐in‐a‐row, we’re done
