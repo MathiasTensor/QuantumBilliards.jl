@@ -57,7 +57,7 @@ to near machine precision, using Boyd's degree-doubling method.
 Example usage: https://users.flatironinstitute.org/~ahb/dartmouth/papers/zhaodet.pdf
 
 # Arguments
-- `f::Function`: Complex{T} -> Complex{T}
+- `f::Function`: T -> Complex{T}
 - `a::T`: Lower interval bound
 - `b::T`: Upper interval bound
 
