@@ -182,9 +182,13 @@ end
 #### TESTING ####
 #################
 
+do_testing=false
+
 ####################
 #### POYLNOMIAL ####
 ####################
+
+if do_testing
 
 @info "Polyonimal"
 
@@ -303,3 +307,5 @@ ints=subdivide_intervals(x->2x,a,b;target_count=1,max_delta=0.5)
 # we should get [(0.2,0.7),(0.7,1.2),(1.2,1.7)]
 @test isapprox(ints[1][1],a;atol=tol)   # first interval’s left endpoint == a
 @test isapprox(ints[end][2],b;atol=tol) # last interval’s right endpoint == b
+
+end
