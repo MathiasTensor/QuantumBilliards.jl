@@ -250,9 +250,9 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
       q       = qs[iq]
       lo,hi   = searchsortedfirst(s, q-width), searchsortedlast(s, q+width)
       len     = hi - lo + 1
-      @views s_win  = @view s[lo:hi]
-      @views u_win  = @view u[lo:hi]
-      @views ds_win = @view ds[lo:hi]
+      @views s_win  =  s[lo:hi]
+      @views u_win  =  u[lo:hi]
+      @views ds_win =  ds[lo:hi]
 
       #--- fill windowed arrays via broadcast (no alloc) ---
       @. si[1:len] = s_win - q
