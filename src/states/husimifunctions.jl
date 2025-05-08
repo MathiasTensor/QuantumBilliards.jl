@@ -230,9 +230,9 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     max_len=length(s)
     nt=Threads.nthreads()
     si_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
-    w_bufs=similar(si_bufs)
-    cr_bufs=similar(si_bufs)
-    ci_bufs=similar(si_bufs)
+    w_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
+    cr_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
+    ci_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
     Threads.@threads for iq=1:nx
         tid=Threads.threadid()
         si=si_bufs[tid]
