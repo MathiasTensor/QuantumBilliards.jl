@@ -219,44 +219,48 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
-    qs=range(0.0,stop=L,length=nx)
-    ps_positive=range(0.0,stop=1.0,length=ceil(Int,ny/2))
-    ps_full=vcat(-reverse(ps_positive[2:end]),ps_positive)
+    qs=range(0,stop=L,length=nx)
+    ps_pos=range(0,stop=1,length=ceil(Int,ny/2))
+    ps_full=vcat(-reverse(ps_pos[2:end]),ps_pos)
     N=length(s)
-    ds=diff(s)
-    ds=vcat(ds,L+s[1]-s[end])
-    sqrt_k_pi=sqrt(k/π)
-    norm_factor=sqrt(sqrt_k_pi)
+    ds=vcat(diff(s),L+s[1]-s[end])
+    nf=sqrt(sqrt(k/π))
     width=4/sqrt(k)
-    H_partial=zeros(T,length(ps_positive),nx)
-    Threads.@threads for i_q=1:nx
-        q=qs[i_q]
-        idx_start=searchsortedfirst(s,q-width)
-        idx_end=searchsortedlast(s,q+width)
-        len_window=idx_end-idx_start+1
-        si_window=Vector{T}(undef,len_window)
-        w=Vector{T}(undef,len_window)
-        cr=Vector{T}(undef,len_window)
-        ci=Vector{T}(undef,len_window)
-        @views s_window=s[idx_start:idx_end]
-        @views ui_window=u[idx_start:idx_end]
-        @views dsi_window=ds[idx_start:idx_end]
+    Hp=zeros(T,length(ps_pos),nx)
+    max_len=length(s)
+    nt=Threads.nthreads()
+    si_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
+    w_bufs=similar(si_bufs)
+    cr_bufs=similar(si_bufs)
+    ci_bufs=similar(si_bufs)
+    Threads.@threads for iq=1:nx
+        tid=Threads.threadid()
+        si=si_bufs[tid]
+        w=w_bufs[tid]
+        cr=cr_bufs[tid]
+        ci=ci_bufs[tid]
+        q=qs[iq]
+        lo=searchsortedfirst(s,q-width)
+        hi=searchsortedlast(s,q+width)
+        len=hi-lo+1
+        @views s_win=s[lo:hi]
+        @views u_win=u[lo:hi]
+        @views ds_win=ds[lo:hi]
         @inbounds begin
-            @. si_window=s_window-q
-            @. w=norm_factor*exp(-0.5*k*si_window^2)*dsi_window
-            for i_p in eachindex(ps_positive)
-                p=ps_positive[i_p]
+            @. si[1:len]=s_win-q
+            @. w[1:len]=nf*exp(-0.5*k*si[1:len]^2)*ds_win
+            for(ip,p) in enumerate(ps_pos)
                 kp=k*p
-                @. cr=w*cos(kp*si_window)
-                @. ci=w*sin(kp*si_window)
-                h_real=sum(cr.*ui_window)
-                h_imag=-sum(ci.*ui_window)
-                H_partial[i_p,i_q]=(h_real^2+h_imag^2)/(2π*k)
+                @. cr[1:len]=w[1:len]*cos(kp*si[1:len])
+                @. ci[1:len]=w[1:len]*sin(kp*si[1:len])
+                hr=sum(cr[1:len].*u_win)
+                hi=-sum(ci[1:len].*u_win)
+                Hp[ip,iq]=(hr^2+hi^2)/(2π*k)
             end
         end
     end
-    H_full=vcat(reverse(H_partial,dims=1),H_partial[2:end,:])
-    return H_full'./sum(H_full),qs,ps_full
+    H=vcat(reverse(Hp;dims=1),Hp[2:end,:])'
+    return H./sum(H),qs,ps_full
 end
 
 """
