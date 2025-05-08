@@ -1,5 +1,5 @@
 using LinearAlgebra, StaticArrays, TimerOutputs
-
+#TODO Logging.jl -> @debug
 """
     struct DecompositionMethod{T} <: SweepSolver where {T<:Real}
 
