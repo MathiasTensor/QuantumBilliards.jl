@@ -219,48 +219,59 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
-    qs=range(0,stop=L,length=nx)
-    ps_pos=range(0,stop=1,length=ceil(Int,ny/2))
-    ps_full=vcat(-reverse(ps_pos[2:end]),ps_pos)
-    N=length(s)
-    ds=vcat(diff(s),L+s[1]-s[end])
-    nf=sqrt(sqrt(k/π))
-    width=4/sqrt(k)
-    Hp=zeros(T,length(ps_pos),nx)
-    max_len=length(s)
-    nt=Threads.nthreads()
-    si_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
-    w_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
-    cr_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
-    ci_bufs=[Vector{T}(undef,max_len) for _ in 1:nt]
-    Threads.@threads for iq=1:nx
-        tid=Threads.threadid()
-        si=si_bufs[tid]
-        w=w_bufs[tid]
-        cr=cr_bufs[tid]
-        ci=ci_bufs[tid]
-        q=qs[iq]
-        lo=searchsortedfirst(s,q-width)
-        hi=searchsortedlast(s,q+width)
-        len=hi-lo+1
-        @views s_win=s[lo:hi]
-        @views u_win=u[lo:hi]
-        @views ds_win=ds[lo:hi]
-        @inbounds begin
-            @. si[1:len]=s_win-q
-            @. w[1:len]=nf*exp(-0.5*k*si[1:len]^2)*ds_win
-            for(ip,p) in enumerate(ps_pos)
-                kp=k*p
-                @. cr[1:len]=w[1:len]*cos(kp*si[1:len])
-                @. ci[1:len]=w[1:len]*sin(kp*si[1:len])
-                hr=sum(cr[1:len].*u_win)
-                hi=-sum(ci[1:len].*u_win)
-                Hp[ip,iq]=(hr^2+hi^2)/(2π*k)
-            end
-        end
+    #--- build grids ---
+    qs     = range(0,stop=L, length=nx)
+    ps_pos = range(0,stop=1, length=ceil(Int,ny/2))
+    ps     = vcat(-reverse(ps_pos[2:end]), ps_pos)
+
+    #--- precompute everything that doesn't depend on iq,ip ---
+    N      = length(s)
+    ds     = vcat(diff(s), L + s[1] - s[end])
+    sig    = inv(sqrt(k))               # = 1/σ
+    nf     = inv(2π*sqrt(π*k))          # your a     (up to overall abs²)
+    width  = 4*sig                      # =4/√k
+
+    #--- allocate output and thread-local buffers once ---
+    Hp     = zeros(T, length(ps_pos), nx)
+    nt     = Threads.nthreads()
+    maxlen = length(s)
+    si_buf = [Vector{T}(undef,maxlen) for _ in 1:nt]
+    w_buf  = [Vector{T}(undef,maxlen) for _ in 1:nt]
+    cr_buf = [Vector{T}(undef,maxlen) for _ in 1:nt]
+    ci_buf = [Vector{T}(undef,maxlen) for _ in 1:nt]
+
+    #--- main parallel sweep over q–columns ---
+    Threads.@threads for iq in 1:nx
+      tid     = Threads.threadid()
+      si      = si_buf[tid]
+      w       = w_buf[tid]
+      cr      = cr_buf[tid]
+      ci      = ci_buf[tid]
+      q       = qs[iq]
+      lo,hi   = searchsortedfirst(s, q-width), searchsortedlast(s, q+width)
+      len     = hi - lo + 1
+      @views s_win  = @view s[lo:hi]
+      @views u_win  = @view u[lo:hi]
+      @views ds_win = @view ds[lo:hi]
+
+      #--- fill windowed arrays via broadcast (no alloc) ---
+      @. si[1:len] = s_win - q
+      @. w[1:len]  = exp(-0.5*k*si[1:len].^2) .* ds_win
+
+      #--- inner loop over p, do one dot per p ---
+      for (ip,p) in enumerate(ps_pos)
+        kp = k*p
+        @. cr[1:len] =  w[1:len] * cos(kp * si[1:len])
+        @. ci[1:len] = -w[1:len] * sin(kp * si[1:len])   # note the minus built-in
+        hr = dot(cr, u_win)
+        hi = dot(ci, u_win)
+        Hp[ip, iq] = nf * (hr^2 + hi^2)
+      end
     end
-    H=vcat(reverse(Hp;dims=1),Hp[2:end,:])'
-    return H./sum(H),qs,ps_full
+
+    #--- mirror in p and normalize ---
+    H = vcat(reverse(Hp; dims=1), Hp[2:end, :])'
+    return H ./ sum(H), qs, ps
 end
 
 """
@@ -393,7 +404,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
     H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny)
     Hs_list[1]=H
     p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
-    for i in eachindex(ks)[2:end]
+    Threads.@threads for i in eachindex(ks)[2:end]
         try
             H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny)
             Hs_list[i]=H
@@ -434,7 +445,7 @@ function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T}, vec_u
     H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny)
     Hs_list[1]=H
     p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
-    for i in eachindex(ks)[2:end]
+    Threads.@threads for i in eachindex(ks)[2:end]
         try
             H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny)
             Hs_list[i]=H
