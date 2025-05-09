@@ -226,14 +226,17 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     nf=sqrt(sqrt(k/pi))
     width=4/sqrt(k)
     two_pi_k=2*pi*k
+    s_ext=vcat(s.-L,s,s.+L)
+    u_ext=vcat(u,u,u)
+    ds_ext=vcat(ds,ds,ds)
     Hp=zeros(T,length(ps_pos),nx)
     Threads.@threads for iq in 1:nx
         q=qs[iq]
-        lo=searchsortedfirst(s,q-width)
-        hi=searchsortedlast(s,q+width)
-        @views s_win=s[lo:hi]
-        @views u_win=u[lo:hi]
-        @views ds_win=ds[lo:hi]
+        lo=searchsortedfirst(s_ext,q-width)
+        hi=searchsortedlast(s_ext,q+width)
+        @views s_win=s_ext[lo:hi]
+        @views u_win=u_ext[lo:hi]
+        @views ds_win=ds_ext[lo:hi]
         si_win=@. s_win-q
         @fastmath @inbounds begin
             w=@. nf*exp(-0.5*k*si_win^2)*ds_win
