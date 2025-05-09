@@ -264,8 +264,9 @@ High level wrapper for the construction of the husimi functions from StateData w
 - `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+function husimi_functions_from_StateData(state_data::StateData,billiard::Bi,basis::Ba;b=5.0,c=10.0,w=7.0) where {Bi<:AbsBilliard,Ba<:AbsBasis}
     L=billiard.length
+    ks=state_data.ks
     valid_indices=fill(true,length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
     ps_return=Vector{Vector}(undef,length(ks))
