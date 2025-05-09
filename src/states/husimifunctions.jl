@@ -230,15 +230,15 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     u_ext=vcat(u,u,u)
     ds_ext=vcat(ds,ds,ds)
     Hp=zeros(T,length(ps_pos),nx)
-    Threads.@threads for iq in 1:nx
-        q=qs[iq]
+    @fastmath Threads.@threads for iq in 1:nx
+        q=qs[iq]+L
         lo=searchsortedfirst(s_ext,q-width)
         hi=searchsortedlast(s_ext,q+width)
         @views s_win=s_ext[lo:hi]
         @views u_win=u_ext[lo:hi]
         @views ds_win=ds_ext[lo:hi]
         si_win=@. s_win-q
-        @fastmath @inbounds begin
+        @inbounds begin
             w=@. nf*exp(-0.5*k*si_win^2)*ds_win
             for (ip,p) in enumerate(ps_pos)
                 kp=k*p
