@@ -239,7 +239,9 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
             w=@. nf*exp(-0.5*k*si_win^2)*ds_win
             for (ip,p) in enumerate(ps_pos)
                 kp=k*p
-                sinbuf,cosbuf=sincos(kp.*si_win) # matrix [length(si_win),1]
+                V=kp.*si_win
+                sinbuf=sin.(V)
+                cosbuf=cos.(V)
                 hr=sum(w.*cosbuf.*u_win)
                 hi=-sum(w.*sinbuf.*u_win)
                 Hp[ip,iq]=(hr^2+hi^2)/(two_pi_k)
