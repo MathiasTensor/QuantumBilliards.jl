@@ -19,7 +19,7 @@ function antisym_vec(x)
 end
 
 """
-    husimi_function(k, u, s, L; c = 10.0, w = 7.0)
+    husimi_function(k::T,u::Vector{T},s::Vector{T},L::T;c=10.0,w=7.0) where {T<:Real}
 
 Calculates the Husimi function on a grid defined by the boundary `s`. The logic is that from the arclengths `s` we construct the qs with the help of the width of the Gaussian at that k (width = 1/√k) and the parameter c (which determines how many q evaluations we will have per this width at k -> defines the step 1/(√k*c) so we will have tham many more q evaluations in peak). Analogously we do for the ps, where the step size (matrix size in ps direction) is range(0.0,1.0,step=1/(√k*c)) (we do only for half since symmetric with p=0 implies we can use antisym_vec(ps) to recreate the whole -1.0 to 1.0 range while also symmetrizing the Husimi function that is constructed from p=0.0 to 1.0 with the logic perscribed above). The w (how many sigmas we will take) is used in construction of the ds summation weights.
 Comment: Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we construct only the p=0 to p=1 matrix and then via symmetry automatically obtain the p=-1 to p=0 also.
@@ -38,7 +38,7 @@ Comment: Original algorithm by Črt Lozej
 - `qs::Vector`: Array of position coordinates on the grid.
 - `ps::Vector`: Array of momentum coordinates on the grid.
 """
-function husimi_function(k,u,s,L; c = 10.0, w = 7.0)
+function husimi_function(k::T,u::Vector{T},s::Vector{T},L::T;c=10.0,w=7.0) where {T<:Real}
     #c density of points in coherent state peak, w width in units of sigma
     #L is the boundary length for periodization
     #compute coherrent state weights
