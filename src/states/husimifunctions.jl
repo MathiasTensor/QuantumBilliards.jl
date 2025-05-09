@@ -219,59 +219,33 @@ Returns:
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
 function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
-    #--- build grids ---
-    qs     = range(0,stop=L, length=nx)
-    ps_pos = range(0,stop=1, length=ceil(Int,ny/2))
-    ps     = vcat(-reverse(ps_pos[2:end]), ps_pos)
-
-    #--- precompute everything that doesn't depend on iq,ip ---
-    N      = length(s)
-    ds     = vcat(diff(s), L + s[1] - s[end])
-    sig    = inv(sqrt(k))               # = 1/σ
-    nf     = inv(2π*sqrt(π*k))          # your a     (up to overall abs²)
-    width  = 4*sig                      # =4/√k
-
-    #--- allocate output and thread-local buffers once ---
-    Hp     = zeros(T, length(ps_pos), nx)
-    nt     = Threads.nthreads()
-    maxlen = length(s)
-    si_buf = [Vector{T}(undef,maxlen) for _ in 1:nt]
-    w_buf  = [Vector{T}(undef,maxlen) for _ in 1:nt]
-    cr_buf = [Vector{T}(undef,maxlen) for _ in 1:nt]
-    ci_buf = [Vector{T}(undef,maxlen) for _ in 1:nt]
-
-    #--- main parallel sweep over q–columns ---
+    qs=range(0.0,stop=L,length=nx)
+    ps_pos=range(0.0,stop=1.0,length=ceil(Int,ny/2))
+    ps_full=vcat(-reverse(ps_pos[2:end]),ps_pos)
+    ds=vcat(diff(s),L+s[1]-s[end])
+    nf=sqrt(sqrt(k/pi))
+    width=4/sqrt(k)
+    two_pi_k=2*pi*k
+    Hp=zeros(T,length(ps_pos),nx)
     Threads.@threads for iq in 1:nx
-      tid     = Threads.threadid()
-      si      = si_buf[tid]
-      w       = w_buf[tid]
-      cr      = cr_buf[tid]
-      ci      = ci_buf[tid]
-      q       = qs[iq]
-      lo,hi   = searchsortedfirst(s, q-width), searchsortedlast(s, q+width)
-      len     = hi - lo + 1
-      @views s_win  =  s[lo:hi]
-      @views u_win  =  u[lo:hi]
-      @views ds_win =  ds[lo:hi]
-
-      #--- fill windowed arrays via broadcast (no alloc) ---
-      @. si[1:len] = s_win - q
-      @. w[1:len]  = exp(-0.5*k*si[1:len].^2) .* ds_win
-
-      #--- inner loop over p, do one dot per p ---
-      for (ip,p) in enumerate(ps_pos)
-        kp = k*p
-        @. cr[1:len] =  w[1:len] * cos(kp * si[1:len])
-        @. ci[1:len] = -w[1:len] * sin(kp * si[1:len])   # note the minus built-in
-        hr = dot(cr, u_win)
-        hi = dot(ci, u_win)
-        Hp[ip, iq] = nf * (hr^2 + hi^2)
-      end
+        q=qs[iq]
+        lo=searchsortedfirst(s,q-width)
+        hi=searchsortedlast(s,q+width)
+        @views s_win=s[lo:hi]
+        @views u_win=u[lo:hi]
+        @views ds_win=ds[lo:hi]
+        si_win=@. s_win-q
+        w=@. nf*exp(-0.5*k*si_win^2)*ds_win
+        @inbounds for (ip,p) in enumerate(ps_pos)
+            kp=k*p
+            sinv,cosv=sincos.(kp.*si_win)
+            hr=sum(w.*cosv.*u_win)
+            hi=sum(-w.*sinv.*u_win)
+            Hp[ip,iq]=(hr^2+hi^2)/(two_pi_k)
+        end
     end
-
-    #--- mirror in p and normalize ---
-    H = vcat(reverse(Hp; dims=1), Hp[2:end, :])'
-    return H ./ sum(H), qs, ps
+    H=vcat(reverse(Hp;dims=1),Hp[2:end,:])'
+    return H./sum(H),qs,ps_full
 end
 
 """
@@ -290,9 +264,8 @@ High level wrapper for the construction of the husimi functions from StateData w
 - `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_StateData(state_data::StateData,billiard::Bi,basis::Ba;b=5.0,c=10.0,w=7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+function husimi_functions_from_StateData(state_data::StateData, billiard::Bi, basis::Ba;  b = 5.0, c = 10.0, w = 7.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     L=billiard.length
-    ks=state_data.ks
     valid_indices=fill(true,length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
     ps_return=Vector{Vector}(undef,length(ks))
