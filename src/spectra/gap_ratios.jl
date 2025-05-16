@@ -236,5 +236,5 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},Î
     #a=1.0
     avg_r_theor=[r_integ+a*(r-r_integ) for r in avg_r_theor]
     lines!(ax,Î¼_cs,avg_r_theor,color=:blue,label="Theoretical line")
-    scatter!(ax,x_axis_points,avg_rs./a,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
+    scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
 end
