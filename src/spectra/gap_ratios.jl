@@ -214,6 +214,7 @@ a=(⟨r⟩N_GOE−⟨r⟩P)/⟨r⟩3_GOE −⟨r⟩P)≈0.96524.
 - `Nothing`
 """
 function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},μ_cs::Vector{T},x_axis_points::Vector{K}) where {T<:Real,K<:Real}
+    a=0.96524 # the analytical scaling parameter
     avg_rs=Vector{T}(undef,length(vec_energies))
     Threads.@threads for i in eachindex(vec_energies) 
         energy_differences=diff(vec_energies[i])
@@ -225,15 +226,15 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},�
         end
         avg_rs[i]=sum(gap_ratios)/length(gap_ratios)
     end
-    r_integ=average_gap_ratio(:integrable)  # limits
-    r_chaot=average_gap_ratio(:chaotic)
+    r_integ=average_gap_ratio(:integrable)  # limits for Poisson
+    r_chaot=average_gap_ratio(:chaotic) # limits foe <r>(chaotic) N=3 Wigner
+    r_chaot_corr=a*average_gap_ratio(:chaotic) # as per Yan's argument in spacing ratios in mixed-type systems we also plot the <r>(chaotic) for the N>>3 case
     hlines!(ax,[r_integ,r_chaot],color=:red,linestyle=:dash)
+    hlines!(ax,[r_chaot_corr],color=:green,linestyle=:dash)
     avg_r_theor=Vector{T}(undef,length(μ_cs))
     @showprogress desc="Calculating <r> theoretical..." Threads.@threads for i in eachindex(μ_cs)
         avg_r_theor[i]=average_gap_ratio(:mixed,μ_c=μ_cs[i]) # theoretical lines
     end
-    a=0.96524 # the analytical scaling parameter
-    #a=1.0
     avg_r_theor=[r_integ+a*(r-r_integ) for r in avg_r_theor]
     lines!(ax,μ_cs,avg_r_theor,color=:blue,label="Theoretical line")
     scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
