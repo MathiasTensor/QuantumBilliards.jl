@@ -232,9 +232,9 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},�
     @showprogress desc="Calculating <r> theoretical..." Threads.@threads for i in eachindex(μ_cs)
         avg_r_theor[i]=average_gap_ratio(:mixed,μ_c=μ_cs[i]) # theoretical lines
     end
-    #a=0.96524 # the analytical scaling parameter
-    a=1.0
+    a=0.96524 # the analytical scaling parameter
+    #a=1.0
     avg_r_theor=[r_integ+a*(r-r_integ) for r in avg_r_theor]
     lines!(ax,μ_cs,avg_r_theor,color=:blue,label="Theoretical line")
-    scatter!(ax,x_axis_points,avg_rs,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
+    scatter!(ax,x_axis_points,avg_rs./a,markersize=10,color=:black,label="Numerical results")  # plot the numerical values
 end
