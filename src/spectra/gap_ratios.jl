@@ -228,7 +228,7 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},Î
     end
     r_integ=average_gap_ratio(:integrable)  # limits for Poisson
     r_chaot=average_gap_ratio(:chaotic) # limits foe <r>(chaotic) N=3 Wigner
-    r_chaot_corr=a*average_gap_ratio(:chaotic) # as per Yan's argument in spacing ratios in mixed-type systems we also plot the <r>(chaotic) for the N>>3 case
+    r_chaot_corr=r_integ+a*(r_chaot-r_integ) # as per Yan's argument in spacing ratios in mixed-type systems we also plot the <r>(chaotic) for the N>>3 case
     hlines!(ax,[r_integ,r_chaot],color=:red,linestyle=:dash)
     hlines!(ax,[r_chaot_corr],color=:green,linestyle=:dash)
     avg_r_theor=Vector{T}(undef,length(Î¼_cs))
