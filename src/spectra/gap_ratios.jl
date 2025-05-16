@@ -232,7 +232,7 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},�
     hlines!(ax,[r_integ],color=:red,linestyle=:dash,linewidth=3,label=L"\langle r \rangle Poisson")
     hlines!(ax,[r_chaot],color=:black,linestyle=:dash,linewidth=3,label=L"\langle r \rangle GOE 3 \times 3")
     hlines!(ax,[r_chaot_corr],color=:green,linestyle=:dash,linewidth=3,label=L"\langle r \rangle GOE N \times N")
-    avg_r_theor=Vector{T}(undef,length(μ_cs),linewidth=3)
+    avg_r_theor=Vector{T}(undef,length(μ_cs))
     @showprogress desc="Calculating <r> theoretical..." Threads.@threads for i in eachindex(μ_cs)
         avg_r_theor[i]=average_gap_ratio(:mixed,μ_c=μ_cs[i]) # theoretical lines
     end
