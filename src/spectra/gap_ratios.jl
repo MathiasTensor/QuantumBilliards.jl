@@ -228,7 +228,10 @@ function plot_average_r_vs_parameter!(ax::Axis,vec_energies::Vector{Vector{T}},�
     r_integ=average_gap_ratio(:integrable)  # limits
     r_chaot=average_gap_ratio(:chaotic)
     hlines!(ax,[r_integ,r_chaot],color=:red,linestyle=:dash)
-    avg_r_theor=[average_gap_ratio(:mixed,μ_c=μ) for μ in μ_cs] # theoretical lines
+    avg_r_theor=Vector{T}(undef,length(μ_cs))
+    @showprogress desc="Calculating <r> theoretical..." Threads.@threads for μ in μ_cs
+        avg_r_theor[i]=average_gap_ratio(:mixed,μ_c=μ) # theoretical lines
+    end
     a=0.96524 # the analytical scaling parameter
     avg_r_theor=[r_integ+a*(r-r_integ) for r in avg_r_theor]
     lines!(ax,μ_cs,avg_r_theor,color=:blue,label="Theoretical line")
