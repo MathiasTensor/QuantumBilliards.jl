@@ -1,6 +1,7 @@
 using GSL # for the derivatives of the Bessel functions
 using Bessels # for the Bessel functions themselves due to GSL underflow
 using QuadGK # for the radial integrand of the conformal mapping matrix
+using FastGaussQuadrature # for the radial integrand which is smooth on [0,1]
 using LinearAlgebra
 using CairoMakie # for plotting, especially tricontourf
 using ProgressMeter # useful for progress bars
@@ -9,14 +10,13 @@ using Arpack # for large matrices very useful due to lower 25% of the eigenvalue
 using ForwardDiff # numerical differentiation, used in area, perimeter and boundary function calculations
 using PyCall # for the symbolic routines to calculate the a(r,φ) coefficients
 using CircularArrays # for the husimi function construction where the window at beggining and end overlaps with indexes normally out of bounds
+using CSV,DataFrames # for saving the eigenvalues and/or their differences. If one does not need to save the eigenvalues one can comment this out and comment out/remove the comparison of the eigenvalues part in the examples section.
 
 # For Symbolic routines below
 sympy=pyimport("sympy") # use Python's sympy API
 z,w=sympy.symbols("z w") # symbol for z, w (both complex)
 
 #TODO New solve function which uses ARPACK to solve say 2000 eignevalues if a sigma inverse shifted matrix where we vary the sigma so we can get the lowest 25% of levels of A with iterating this process and merging the results.
-
-
 
 
 #=
@@ -404,6 +404,24 @@ Dispatch to the appropriate angular overlap integral based on basis symmetry:
 end
 
 """
+    integrand_rn(n::Int,k::Int, l::Int,kp::Int, lp::Int,roots::Dict{Tuple{Int,Int},T}) where {T<:Real} :: T
+
+Gives the functional form the radial overlap integrand `f(r) = r^n Jₖ(αₖₗ r) Jₖₚ(αₖₚ,ₗₚ r)`.
+
+# Arguments
+- `n::Int`: power of r  
+- `(k::Int,l::Int)`, `(kp::Int,lp::Int)`: Bessel orders and zero indices  
+- `roots::Dict{Tuple{Int,Int},T}`: map of zeros α
+
+# Returns
+- numerical value of the integral as `T`
+"""
+function integrand_rn(n::Int,k::Int,l::Int,kp::Int,lp::Int,all_roots::Dict{Tuple{Int,Int},T}) where {T<:Real}
+    f(r)=r^n*Bessels.besselj(k,all_roots[k,l]*r)*Bessels.besselj(kp,all_roots[kp,lp]*r)
+    return f
+end
+
+"""
     integrate_rn(n::Int,k::Int, l::Int,kp::Int, lp::Int,roots::Dict{Tuple{Int,Int},T}) where {T<:Real} :: T
 
 Compute the radial overlap integral
@@ -423,7 +441,7 @@ function integrate_rn(n::Int,k::Int,l::Int,kp::Int,lp::Int,all_roots::Dict{Tuple
 end
 
 """
-    construct_A(reduced_pairs::Vector{Pair{Tuple{Int,Int},PyObject}},ordered_modes::Vector{Tuple{Int,Int}},all_roots::Dict{Tuple{Int,Int},T},mask::Matrix{Bool};symmetry::Symbol=:EVEN) where {T<:Real}
+    construct_A(reduced_pairs::Vector{Pair{Tuple{Int,Int},PyObject}},ordered_modes::Vector{Tuple{Int,Int}},all_roots::Dict{Tuple{Int,Int},T},mask::Matrix{Bool};symmetry::Symbol=:EVEN,quadrature::Symbol=:GAUSS_KRONROD_ADAPTIVE) where {T<:Real}
 
 Assemble the sparse symmetric matrix A for the conformal map,
 using the pre-extracted (m,n) → aₘₙ pairs and a Boolean mask.
@@ -435,11 +453,13 @@ using the pre-extracted (m,n) → aₘₙ pairs and a Boolean mask.
 - `mask[i,j]`: true if A[i,j] may be nonzero
 - `param_vals`: dictionary of parameter values for the symbolic coefficients
 - `symmetry`: `:EVEN` or `:ODD` for the angular integral. Must be then used the same for the wavefunction construction
+- `quadrature::Symbol=:GAUSS_LEGENDRE_FIXED`: `:GAUSS_KRONROD_ADAPTIVE` or `:GAUSS_LEGENDRE_FIXED` for the quadrature method
+- `n_q_MIN::Int=12000`: minimum number of quadrature points for the Gauss–Legendre quadrature.
 
 # Returns
 - `A::SparseMatrixCSC`: the assembled symmetric matrix
 """
-function construct_A(reduced_pairs::Vector{Pair{Tuple{Int,Int},PyObject}},ordered_modes::Vector{Tuple{Int,Int}},all_roots::Dict{Tuple{Int,Int},T},mask::Matrix{Bool},param_vals::Dict{PyObject,T};symmetry::Symbol=:EVEN) where {T<:Real}
+function construct_A(reduced_pairs::Vector{Pair{Tuple{Int,Int},PyObject}},ordered_modes::Vector{Tuple{Int,Int}},all_roots::Dict{Tuple{Int,Int},T},mask::Matrix{Bool},param_vals::Dict{PyObject,T};symmetry::Symbol=:EVEN,quadrature::Symbol=:GAUSS_KRONROD_ADAPTIVE,n_q_MIN::Int=12000) where {T<:Real}
     @assert symmetry in [:EVEN,:ODD] "Symmetry must be :EVEN or :ODD"
     @info "All pairs: (cos(mϕ),r^n) -> aₘₙ: $(reduced_pairs)"
     ang_int(m::Int,k::Int,kp::Int)=angular_integral(m,k,kp,symmetry)
@@ -448,32 +468,79 @@ function construct_A(reduced_pairs::Vector{Pair{Tuple{Int,Int},PyObject}},ordere
     numeric_pairs=evaluate_pairs(reduced_pairs,param_vals)
     println("Numeric pairs: ",numeric_pairs)
     @info "Filled matrix: $(length(findall(x->x==true,mask))/prod(size(mask))*100) %"
-    @showprogress desc="Constructing matrix" Threads.@threads for i in eachindex(ordered_modes)
-        k,l=ordered_modes[i]
-        for j in i:N # only calculate j>i since A is symmetric
-            kp,lp=ordered_modes[j]
-            if !mask[i,j]
-                continue
+    if quadrature==:GAUSS_KRONROD_ADAPTIVE
+        @showprogress desc="Constructing matrix" Threads.@threads for i in eachindex(ordered_modes)
+            k,l=ordered_modes[i]
+            for j in i:N # only calculate j>i since A is symmetric
+                kp,lp=ordered_modes[j]
+                if !mask[i,j]
+                    continue
+                end
+                Ni=normalization(k,l,all_roots)
+                Nj=normalization(kp,lp,all_roots)
+                S=(k==kp && l==lp ? one(T) : zero(T))
+                for ((m,n),a) in numeric_pairs
+                    if m==0 && n==0
+                        continue
+                    end
+                    if isapprox(a,0.0)
+                        continue
+                    end
+                    ang=ang_int(m,k,kp)  # angular piece
+                    if isapprox(ang,0.0)
+                        continue
+                    end
+                    R=integrate_rn(n+1,k,l,kp,lp,all_roots) # radial piece, n+1 due to dS=r*dr*dϕ
+                    S+=a*ang*Ni*Nj*R
+                end
+                A[i,j]=(1/all_roots[kp,lp])^2*S
             end
-            Ni=normalization(k,l,all_roots)
-            Nj=normalization(kp,lp,all_roots)
-            S=(k==kp && l==lp ? one(T) : zero(T))
-            for ((m,n),a) in numeric_pairs
-                if m==0 && n==0
-                    continue
-                end
-                if isapprox(a,0.0)
-                    continue
-                end
-                ang=ang_int(m,k,kp)  # angular piece
-                if isapprox(ang,0.0)
-                    continue
-                end
-                R=integrate_rn(n+1,k,l,kp,lp,all_roots) # radial piece, n+1 due to dS=r*dr*dϕ
-                S+=a*ang*Ni*Nj*R
-            end
-            A[i,j]=(1/all_roots[kp,lp])^2*S
         end
+    elseif quadrature==:GAUSS_LEGENDRE_FIXED
+        n_q=ceil(Int,10*maximum(values(all_roots))) # number of quadrature points is ≈ 10*max(roots)
+        n_q=max(n_q,n_q_MIN) # at least n_q_MIN quadrature points, probably overkill
+        @info "Number of G-L quadrature points: $n_q"
+        numeric_pairs=[(mn,a) for (mn,a) in numeric_pairs if mn!=(0,0) && a!=0.0]
+        xg,wg=gausslegendre(n_q) # Gauss–Legendre on [0,1]
+        r_q=@. (xg+1)/2
+        w_q=wg./2
+        needed_ns=unique(n+1 for ((m,n),_) in numeric_pairs)
+        Rpows=Dict{Int,Vector{T}}()
+        for n1 in needed_ns
+            Rpows[n1]=r_q.^n1
+        end
+        jobs=Vector{Tuple{Int,Int}}()
+        for i in 1:N, j in i:N
+            mask[i,j] && push!(jobs,(i,j))
+        end
+        idxs=unique(vcat([i for (i,_) in jobs], [j for (_,j) in jobs]))
+        norm_vec=Vector{T}(undef,N)
+        for i in idxs
+            k,l=ordered_modes[i]
+            norm_vec[i]=normalization(k,l,all_roots)
+        end
+        J_cache=Vector{Vector{T}}(undef,N)
+        @showprogress desc="Calculating Bessel grid for G-L..." Threads.@threads for i in idxs
+            k,l=ordered_modes[i]
+            α=all_roots[(k,l)]
+            J_cache[i]=Bessels.besselj.(k,α.*r_q)
+        end
+        @showprogress desc="Fast Gauss–Legendre..." Threads.@threads for (i,j) in jobs
+            k,l=ordered_modes[i]
+            kp,lp=ordered_modes[j]
+            Ni,Nj=norm_vec[i],norm_vec[j]
+            S=(k==kp && l==lp ? one(T) : 0.0)
+            JJ=J_cache[i].*J_cache[j] # elementwise product of the two J‐vectors
+            for ((m,n),a) in numeric_pairs
+              ang=ang_int(m,k,kp)
+              ang==0.0 && continue
+              R=dot(Rpows[n+1].*JJ,w_q) # single BLAS dot for the radial integral
+              S+=a*ang*Ni*Nj*R
+            end
+            A[i,j]=(1/all_roots[(kp,lp)])^2*S
+        end
+    else
+        error("Quadrature method not implemented")
     end
     return sparse(Symmetric(A))
 end
@@ -485,7 +552,7 @@ Compute the lowest eigenvalues and eigenvectors of A, using either dense or ARPA
 
 # Arguments
 - `A`: sparse symmetric matrix  
-- `fraction_of_levels`: fraction of total modes to return  
+- `fraction_of_levels`: fraction of total modes to return. This is only applicable if use_ARPACK=true since otherwise the full dense matrix is used.
 - `use_ARPACK`: if true, use `eigs`; otherwise use dense `eigen`
 
 # Returns
@@ -886,6 +953,8 @@ coefficients and parameter values.
 - `coeffs::Vector{PyObject}`: symbolic coefficients of the map polynomial  
 - `param_vals::Dict{PyObject,T}`: mapping from each Sympy symbol to its numeric value  
 - `symmetry::Symbol`: `:EVEN` for cosine basis or `:ODD` for sine basis  
+- `quadrature::Symbol=:GAUSS_KRONROD_ADAPTIVE`: `:GAUSS_KRONROD_ADAPTIVE` or `:GAUSS_LEGENDRE_FIXED` for the quadrature method
+- `n_q_MIN::Int=12000`: minimum number of quadrature points for the Gauss–Legendre quadrature.
 
 # Returns
 A tuple `(A, ordered_modes, idx, all_roots)` where:
@@ -895,13 +964,13 @@ A tuple `(A, ordered_modes, idx, all_roots)` where:
 - `all_roots::Dict{Tuple{Int,Int},T}`: precomputed Bessel zeros for each (k,l)
 - `pairs_reduced::Vector{Pair{Tuple{Int,Int},PyObject}}`: list of nonzero pairs numerically evaluated
 """
-function A_construction_wrapper(kmin::Int,kmax::Int,lmin::Int,lmax::Int,coeffs::Vector{PyObject},param_vals::Dict{PyObject,T},symmetry::Symbol) where {T<:Real}
+function A_construction_wrapper(kmin::Int,kmax::Int,lmin::Int,lmax::Int,coeffs::Vector{PyObject},param_vals::Dict{PyObject,T},symmetry::Symbol;quadrature::Symbol=:GAUSS_KRONROD_ADAPTIVE,n_q_MIN::Int=12000) where {T<:Real}
     modes=[(k,l) for k in kmin:kmax for l in lmin:lmax]
     ordered_modes,idx=angular_radial_order(modes)
     pairs=integrand_coeff_dictionary(coeffs)
     A_mask,pairs_reduced=make_A_mask(pairs,ordered_modes)
     all_roots=all_bessel_J_nu_roots(kmin,kmax,lmin,lmax)
-    A=construct_A(pairs_reduced,ordered_modes,all_roots,A_mask,param_vals,symmetry=symmetry)
+    A=construct_A(pairs_reduced,ordered_modes,all_roots,A_mask,param_vals,symmetry=symmetry,quadrature=quadrature,n_q_MIN=n_q_MIN)
     return A,ordered_modes,idx,all_roots,pairs_reduced
 end
 
@@ -1048,13 +1117,14 @@ end
 # k - indexes order of bessel functions
 # l - indexes the root of the bessel function up to kmax
 kmin=1 # starting order of bessel functions for basis expansion. For now use kmin>0
-kmax=30 # final order of bessel functions for basis expansion
+kmax=200 # final order of bessel functions for basis expansion
 lmin=1 # starting index of bessel function roots. For now use lmin>0
-lmax=30 # final index of bessel function roots
-λ_value=0.2 # value of λ in the standard Robnik conformal mapping. If the mapping uses more parameters, their values should be added and also their symbols!
+lmax=200 # final index of bessel function roots
+λ_value=0.05 # value of λ in the standard Robnik conformal mapping. If the mapping uses more parameters, their values should be added and also their symbols!
 γ_value=0.1 # example of adding a new value
 δ_value=0.1 # example of adding a new value
 symmetry=:ODD # :EVEN (cos) or :ODD (sin) for the angular part of the basis expansion
+quadrature=:GAUSS_LEGENDRE_FIXED # :GAUSS_KRONROD_ADAPTIVE or :GAUSS_LEGENDRE_FIXED for the quadrature method
 
 
 ########################
@@ -1135,9 +1205,9 @@ coeffs_6=[PyObject(1),PyObject(0),PyObject(0),PyObject(0),PyObject(0),PyObject(0
 ####
 
 # Here we assign to generic variables used below their unique identifiers (aka {...}_i for the i-th mapping etc.)
-mapping=mapping_2
-param_vals=param_vals_2
-coeffs=coeffs_2
+mapping=mapping_6
+param_vals=param_vals_6
+coeffs=coeffs_6
 
 
 #############################
@@ -1149,7 +1219,7 @@ coeffs=coeffs_2
 
 # High level wrapper to calculate all the relevant parameters:
 # Sparse matrix A, ordered modes, index of the modes, all roots of the bessel functions and the pairs of (m,n) with their coefficients (determines which parts in the integrands survive)
-A,ordered_modes,idx,all_roots,pairs_reduced=A_construction_wrapper(kmin,kmax,lmin,lmax,coeffs,param_vals,symmetry)
+A,ordered_modes,idx,all_roots,pairs_reduced=A_construction_wrapper(kmin,kmax,lmin,lmax,coeffs,param_vals,symmetry,quadrature=quadrature)
 
 # Check the Sparsity pattern of the matrix partitioned into block. The ammount of block diagonals (and their spacing between each other) is determined by the complexity of the mapping.
 f=Figure()
@@ -1167,15 +1237,27 @@ ks=sqrt.(eigenvalues) # because we need the ks for statistics and Husimi functio
 @info "Eigenvalues: $(ks[1:10])"
 # This is useful to check for mapping_1 (Unit circle) as it should give the Bessel roots 
 
+
+##### Check the eigenvalues diff between :GAUSS_KRONROD_ADAPTIVE or :GAUSS_LEGENDRE_FIXED ####
+# Small debugging check to test the convergence of GAUSS_LEGENDRE_FIXED vs. GAUSS_KRONROD_ADAPTIVE
+check_convergence=false # check the convergence of the two quadrature methods
+if check_convergence
+A1,_,_,_,_=A_construction_wrapper(kmin,kmax,lmin,lmax,coeffs,param_vals,symmetry,quadrature=:GAUSS_KRONROD_ADAPTIVE)
+A2,_,_,_,_=A_construction_wrapper(kmin,kmax,lmin,lmax,coeffs,param_vals,symmetry,quadrature=:GAUSS_LEGENDRE_FIXED)
+@time eigenvalues1,C1=solve(A1,use_ARPACK=use_ARPACK,fraction_of_levels=fraction_of_levels)
+@time eigenvalues2,C2=solve(A2,use_ARPACK=use_ARPACK,fraction_of_levels=fraction_of_levels)
+df=DataFrame(k1=sqrt.(eigenvalues1),k2=sqrt.(eigenvalues2),ds=abs.(sqrt.(eigenvalues1).-sqrt.(eigenvalues2)))
+CSV.write("Eigenvalues_diff_$(param_vals).csv",df)
+end
 #### wavefunction plotting ####
 
 # for plotting lower levels
-N_min=1 # starting index of the wavefunction to plot
-N_max=20 # final index of the wavefunction to plot
+#N_min=1 # starting index of the wavefunction to plot
+#N_max=20 # final index of the wavefunction to plot
 
 # for plotting highest accepted levels
-#N_min=floor(Int,fraction_of_levels*kmax*lmax-21) 
-#N_max=floor(Int,fraction_of_levels*kmax*lmax-1)
+N_min=floor(Int,fraction_of_levels*kmax*lmax-21) 
+N_max=floor(Int,fraction_of_levels*kmax*lmax-1)
 
 # Bnd is the boundary function of the wavefunctions on the physical boundary. We need it to plot the husimi functions. We choose a subset of all the eigenvector expansions C[:,N_min:N_max]
 φs,Ls,Bnd=boundary_function(C[:,N_min:N_max],ordered_modes,all_roots,mapping;symmetry=symmetry,Nφ=10000)
