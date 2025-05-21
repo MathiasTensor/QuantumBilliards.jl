@@ -59,7 +59,7 @@ function husimi_function(k::T,u::Vector{T},s::Vector{T},L::T;c=10.0,w=7.0) where
     push!(q_idx,N) # add last point
     qs=s[q_idx] # evaluation points in q coordinate
     H=zeros(typeof(k),length(qs),length(ps))
-    for i in eachindex(ps)
+    @fastmath for i in eachindex(ps)
         cs=@. exp(im*ps[i]*k*x)*gauss + exp(im*ps[i]*k*(x+L))*gauss_l + exp(im*ps[i]*k*(x-L))*gauss_r
         for j in eachindex(q_idx)
             u_w=uc[q_idx[j]-idx+1:q_idx[j]+idx-1] # window with relevant values of u
