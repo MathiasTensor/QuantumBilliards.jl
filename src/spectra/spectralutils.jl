@@ -568,9 +568,7 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
 end
 
 """
-    compute_spectrum_with_state(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T, dk::T;
-                                tol::T=T(1e-4), multithreaded_matrices::Bool=false, multithreaded_ks::Bool=true) 
-                                where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol::T=T(1e-4),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
 
 Compute the spectrum of a billiard system over a fixed-resolution wavenumber grid `[k1, k2]` using a specified step size `dk`, and return eigenstates (wavenumbers, tensions, basis coefficients) in a merged `StateData` structure.
 
