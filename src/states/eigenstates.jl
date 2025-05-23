@@ -301,7 +301,7 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     X_vectors=[Vector(col) for col in eachcol(X)]
     end_init=time()
     total_time=end_init-start_init-(end2-start2)-(end1-start1)
-    @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
+    @info "Final computation time: $(total_time) s"
     println("%%%%% SUMMARY %%%%%")
     println("Percentage of total time (most relevant ones): ")
     println("Boundary Pts evaluation: $(100*(e_pts-s_pts)/total_time) %")
