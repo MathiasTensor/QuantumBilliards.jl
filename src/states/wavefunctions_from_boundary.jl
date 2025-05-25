@@ -126,7 +126,8 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
                 idx=pts_masked_indices[j]
                 @inbounds begin
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
+                    #Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
+                    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
                 end
             end
             Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
@@ -186,7 +187,8 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
                 idx=pts_masked_indices[j]
                 @inbounds begin
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
+                    #Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
+                    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
                 end
             end
             Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
