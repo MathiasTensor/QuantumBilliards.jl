@@ -31,7 +31,34 @@ end
     target_point=SVector(x,y)
     distances=norm.(Ref(target_point).-bdPoints.xy)
     weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
-    return sum(weighted_bessel_values)/4
+    return sum(weighted_bessel_values)*0.25
+end
+
+
+"""
+    ϕ_FASTMATH_SAFE(x::T, y::T, k::T, bd::BoundaryPoints{T}, us::Vector{T}; thresh = √eps)
+
+Compute the 2D Helmholtz wavefunction at point `(x,y)` via the boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds under relaxed (​`@fastmath`) floating-point rules, with a branchless guard
+against the Y0-singularity at zero.
+
+# Arguments
+- `x::T`: x-coordinate of the point to compute the wavefunction.
+- `y::T`: y-coordinate of the point to compute the wavefunction.
+- `k::T`: The eigenvalue for which the wavefunction is to be computed.
+- `bdPoints::BoundaryPoints`: Boundary discretization information.
+- `us::Vector`: Vector of boundary functions.
+
+# Returns
+- `ϕ::T`: The value of the wavefunction at the given point (x,y).
+"""
+@inline function ϕ_FASTMATH_SAFE(x::T,y::T,k::T,bd::BoundaryPoints{T},us::Vector{T};thresh=sqrt(eps(T))) where {T<:Real}
+    targ=SVector(x,y)
+    acc=zero(T)
+    @inbounds @simd for i in eachindex(bd.ds)
+        d=norm(targ-bd.xy[i])
+        acc+=ifelse(d>=thresh,bessely0(k*d)*us[i]*bd.ds[i],zero(T))  # branchless: ifelse → SIMD mask/blend
+    end
+    return 0.25*acc
 end
 
 """
@@ -68,13 +95,14 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
+- `thresh=sqrt(eps(T))`: Threshold when we get too close to the boundary and risk a `Y0` singularity. Just set it to `zero(T)` for those cases safely.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,thresh=sqrt(eps(T))) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -89,7 +117,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    for i in eachindex(ks)
+    @fastmath for i in eachindex(ks)
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,sz)
@@ -97,7 +125,7 @@ function wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoin
                 idx=pts_masked_indices[j]
                 @inbounds begin
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+                    Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
                 end
             end
             Psi2ds[i]=reshape(Psi_flat,ny,nx)
@@ -122,7 +150,8 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
 - `xgrid_size::Int=2000`: (Optional), Size of the x grid for the husimi functions. Default is 2000.
 - `ygrid_size::Int=1000`: (Optional), Size of the y grid for the husimi functions. Default is 1000.
-- `use_fixed_grid::Bool=true`: (Optional), Whether to use a fixed grid for the husimi functions (choice of calling function). Default is true.
+- `use_fixed_grid::Bool=true`: (Optional), Whether to use a fixed grid for the husimi functions. Default is true.
+- `thresh=sqrt(eps(T))`: Threshold when we get too close to the boundary and risk a `Y0` singularity. Just set it to `zero(T)` for those cases safely.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
@@ -132,7 +161,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true, use_fixed_grid=true, xgrid_size=2000, ygrid_size=1000) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true, use_fixed_grid=true, xgrid_size=2000, ygrid_size=1000, thresh=sqrt(eps(T))) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -147,7 +176,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    for i in eachindex(ks)
+    @fastmath for i in eachindex(ks)
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,sz)
@@ -155,7 +184,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
                 idx=pts_masked_indices[j]
                 @inbounds begin
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+                    Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
                 end
             end
             Psi2ds[i]=reshape(Psi_flat,ny,nx)
