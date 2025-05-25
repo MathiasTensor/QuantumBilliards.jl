@@ -129,7 +129,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
                     Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
                 end
             end
-            Psi2ds[i]=reshape(Psi_flat,nx,ny)
+            Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
             next!(progress)
         end
     end
