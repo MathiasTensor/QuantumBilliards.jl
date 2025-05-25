@@ -117,10 +117,11 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    @fastmath for i in eachindex(ks)
+    Psi_flat=zeros(type,sz)
+    @fastmath @inbounds for i in eachindex(ks)
         @inbounds begin
+            fill!(Psi_flat,zero(T))
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            Psi_flat=zeros(type,sz)
             Threads.@threads for j in eachindex(pts_masked_indices)
                 idx=pts_masked_indices[j]
                 @inbounds begin
@@ -176,10 +177,11 @@ function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}
     pts_masked_indices=findall(pts_mask)
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    @fastmath for i in eachindex(ks)
+    Psi_flat=zeros(type,sz)
+    @fastmath @inbounds for i in eachindex(ks)
         @inbounds begin
+            fill!(Psi_flat,zero(T))
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            Psi_flat=zeros(type,sz)
             Threads.@threads for j in eachindex(pts_masked_indices)
                 idx=pts_masked_indices[j]
                 @inbounds begin
