@@ -56,7 +56,7 @@ against the Y0-singularity at zero.
     acc=zero(T)
     @inbounds @simd for i in eachindex(bd.ds)
         d=norm(targ-bd.xy[i])
-        acc+=ifelse(d>=thresh,bessely0(k*d)*us[i]*bd.ds[i],zero(T))  # branchless: ifelse → SIMD mask/blend
+        acc+=ifelse(d>=thresh,Bessels.bessely0(k*d)*us[i]*bd.ds[i],zero(T))  # branchless: ifelse → SIMD mask/blend
     end
     return 0.25*acc
 end
