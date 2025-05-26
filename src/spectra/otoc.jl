@@ -33,7 +33,7 @@ function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T
     return Xmat
 end
 
-function Xmat_blocked(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};Mb::Int=50_000,blas_threads::Int=Threads.nthreads(),julia_threads::Int=Threads.nthreads(),multithreaded::Bool=true) 
+function Xmat_blocked(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};Mb::Int=50_000,blas_threads::Int=Threads.nthreads(),julia_threads::Int=Threads.nthreads(),multithreaded::Bool=true) where {T<:Real}
     BLAS.set_num_threads(blas_threads)
     N=length(Psis)
     nx,ny=length(xgrid),length(ygrid)
