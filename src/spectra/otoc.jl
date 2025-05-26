@@ -5,6 +5,69 @@ include("../states/wavefunctions.jl")
 
 ### GENERAL OTOC CONSTRUCTION - NOT USED FREQUENTLY, STILL BEING TESTED
 
+function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};multithreaded::Bool=true) where {T<:Real}
+    N=length(Psis)
+    @assert N>0 "Need at least one wavefunction"
+    nx,ny=length(xgrid),length(ygrid)
+    @assert size(Psis[1])==(nx,ny) "Each ψ must be (nx×ny) matching xgrid, ygrid"
+    Δx=xgrid[2]-xgrid[1]
+    Δy=ygrid[2]-ygrid[1]
+    area=Δx*Δy
+    # Pre-compute the X-weight matrix:
+    #   W[i,j]=xgrid[j]*Δx*Δy so that sum( conj(ψm) .* (W .* ψn) ) ≈ X_{mn}
+    W=@. xgrid'.*area  # size (1×nx); will broadcast across rows
+    Xmat=Matrix{Complex{T}}(undef,N,N)
+    @fastmath begin
+        @use_threads multithreading=multithreaded for m in 1:N
+            ψm=Psis[m]
+            ψm_conj=conj.(ψm)
+            @inbounds for n in m:N
+                ψn=Psis[n]
+                # sum over i=1:nx, j=1:ny of conj(ψm[i,j]) * xgrid[i]*ΔxΔy * ψn[i,j]
+                val=sum(ψm_conj.*(W.*ψn))
+                Xmat[m,n]=val
+                Xmat[n,m]=val
+            end
+        end
+    end
+    return Xmat
+end
+
+function Xmat_blocked(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};Mb::Int=50_000,blas_threads::Int=Threads.nthreads(),julia_threads::Int=Threads.nthreads(),multithreaded::Bool=true) 
+    BLAS.set_num_threads(blas_threads)
+    N=length(Psis)
+    nx,ny=length(xgrid),length(ygrid)
+    M=nx*ny
+    Δx,Δy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
+    Wbig=repeat(xgrid,inner=ny).*(Δx*Δy)  # length-M
+    njt=julia_threads # Allocate one accumulator per Julia thread
+    Xloc=[zeros(eltype(Wbig),N,N) for _ in 1:njt]
+    nb=ceil(Int,M/Mb)
+    @use_threads multithreading=multithreaded for bi in 1:nb
+        tid=Threads.threadid()
+        start=(bi-1)*Mb+1
+        stop=min(bi*Mb,M)
+        rng=start:stop
+        B=length(rng)
+        P_block=Matrix{eltype(Wbig)}(undef,B,N) # 1) Pack P_block (B×N)
+        @inbounds for j in 1:N
+            Pj=vec(Psis[j])
+            @views P_block[:,j]=Pj[rng]
+        end
+        @inbounds for i in 1:B # apply preconputed weights
+            P_block[i,:].*=Wbig[rng[i]]
+        end
+        # GEMM into this thread’s local accumulator  Xloc[tid] += P_block' * P_block
+        BLAS.gemm!('T','N',one(eltype(Wbig)),P_block,P_block,one(eltype(Wbig)),Xloc[tid])
+    end
+    # Reduce per-thread accumulators
+    X=reduce(+,Xloc)
+    @inbounds for i in 1:N, j in i+1:N # symmetric
+        X[j,i]=X[i,j]
+    end
+    return X
+end
+
 #=
 
 """
