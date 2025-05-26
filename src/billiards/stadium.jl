@@ -63,9 +63,9 @@ end
 function make_stadium_and_basis(half_width;radius=1.0,x0=zero(half_width),y0=zero(half_width),rot_angle=zero(half_width),basis_type=:cafb)
     billiard=Stadium(half_width;radius=radius,x0=x0,y0=y0)
     symmetry=Vector{Any}([XYReflection(-1,-1)])
-    if basis_type==:cafb
+    if basis_type==:rpw
         basis=RealPlaneWaves(10,symmetry;angle_arc=Float64(pi/2))
-    elseif basis_type==:bessel
+    elseif basis_type==:cafb
         basis=CornerAdaptedFourierBessel(10,pi/2,SVector(0.0,0.0),0.0,symmetry)
     else
         @error "Non-valid basis"
