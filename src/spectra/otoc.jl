@@ -15,7 +15,7 @@ function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T
     area=Δx*Δy
     # Pre-compute the X-weight matrix:
     #   W[i,j]=xgrid[j]*Δx*Δy so that sum( conj(ψm) .* (W .* ψn) ) ≈ X_{mn}
-    W=@. xgrid'.*area  # size (1×nx); will broadcast across rows
+    W=xgrid.*area 
     Xmat=Matrix{Complex{T}}(undef,N,N)
     @fastmath begin
         @use_threads multithreading=multithreaded for m in 1:N
@@ -39,7 +39,7 @@ function Xmat_blocked(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::
     nx,ny=length(xgrid),length(ygrid)
     M=nx*ny
     Δx,Δy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
-    Wbig=repeat(xgrid,inner=nx).*(Δx*Δy)  # length-M
+    Wbig=repeat(xgrid,outer=ny).*(Δx*Δy)  # length-M
     njt=julia_threads # Allocate one accumulator per Julia thread
     Xloc=[zeros(eltype(Wbig),N,N) for _ in 1:njt]
     nb=ceil(Int,M/Mb)
