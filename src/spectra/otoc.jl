@@ -39,7 +39,7 @@ function Xmat_blocked(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::
     nx,ny=length(xgrid),length(ygrid)
     M=nx*ny
     Δx,Δy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
-    Wbig=repeat(xgrid,outer=ny).*(Δx*Δy)  # length-M
+    Wbig=repeat(xgrid,outer=nx).*(Δx*Δy)  # length-M
     njt=julia_threads # Allocate one accumulator per Julia thread
     Xloc=[zeros(eltype(Wbig),N,N) for _ in 1:njt]
     nb=ceil(Int,M/Mb)
