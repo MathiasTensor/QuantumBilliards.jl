@@ -65,7 +65,7 @@ where:
 **Note**: For `(i ≠ j)`, a mirrored computation is performed for entry `(j,i)` using the normal at `pⱼ`.
 Hence, the matrix is typically *not* symmetric, because `cos(φ)` depends on the normal at the source row.
 """
-@inline function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
     N=length(xy)
@@ -112,7 +112,7 @@ the second set of points is taken from `xy_t` rather than the boundary itself.
 **Note**: This routine does not rely on reflection logic. It simply computes the derivative
 for each `(source_i, target_j)` pair based on the distance and the dot product with `normalᵢ`.
 """
-@inline function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T;multithreaded::Bool=true) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
     N=length(xy_s)

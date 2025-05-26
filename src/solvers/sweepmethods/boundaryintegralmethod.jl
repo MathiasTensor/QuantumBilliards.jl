@@ -464,7 +464,7 @@ Computes the Helmholtz kernel matrix for the given boundary points using the mat
 # Returns
 - `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between boundary points, incorporating curvature for singular cases.
 """
-@inline function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
     curvatures=bp.curvature
@@ -509,7 +509,7 @@ Computes the Helmholtz kernel matrix for interactions between source boundary po
 # Returns
 - `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between source and target points, incorporating curvature for singular cases.
 """
-@inline function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}},k::T;multithreaded::Bool=true) where {T<:Real}
     xy_s=bp_s.xy
     normals=bp_s.normal
     curvatures=bp_s.curvature
