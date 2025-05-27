@@ -285,7 +285,7 @@ function C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vect
     for i in eachindex(ts) 
         B=Bmat(X,Es,ts[i])
         Cs=C(B)
-        Cmat[:,i]
+        Cmat[:,i]=vec(Cs) # store the cₙ(t) vector as the i-th column
     end
     return Cmat
 end
