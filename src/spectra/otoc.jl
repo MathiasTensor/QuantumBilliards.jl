@@ -3,9 +3,58 @@ using Bessels, LinearAlgebra, ProgressMeter
 include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
 
-### GENERAL OTOC CONSTRUCTION - NOT USED FREQUENTLY, STILL BEING TESTED
+"""
+    Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
 
-function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};multithreaded::Bool=true) where {T<:Real}
+Compute the “X” overlap matrix for a set of discretized wavefunctions.
+
+This function builds the Hermitian matrix
+
+Xₘₙ = ∑_{i,j} ψₘ[i,j] * xgrid[i] * Δx * Δy * ψₙ[i,j]
+
+either by
+1.	a memory-efficient diagonal-block BLAS call (when memory_efficient=true), or
+2.	a BLAS-GEMM accelerated approach (when memory_efficient=false, via Xmat_gemm).
+
+# Arguments
+- `Psis::Psis::Vector{<:AbstractMatrix{T}}`: length-N Vector of real matrices, each of size (nx×ny), giving ψₘ[i,j].
+- `xgrid::Vector{T}, ygrid::Vector{T}`: 1D coordinate vectors of lengths nx and ny, respectively. Must be uniformly spaced.
+- `memory_efficient::Bool=false`: If true, uses X_block_diag to trade extra compute for lower peak memory.
+- `n_blas_threads::Int=ceil(Int,Threads.nthreads()/2)`: number of BLAS threads to use when memory_efficient=false.
+- `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
+
+# Returns
+- `X::Matrix{Complex{T}}`: N×N Hermitian overlap matrix.
+"""
+function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
+    if memory_efficient
+        return X_block_diag(Psis,xgrid,ygrid,direction=direction)
+    else
+        return Xmat_gemm(Psis,xgrid,ygrid,n_blas_threads=n_blas_threads,direction=direction)
+    end
+end
+
+"""
+    X_standard(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};multithreaded::Bool=true,direction::Symbol=:x) where {T<:Real}
+
+Compute the “X” overlap matrix by direct weighted summation over all grid points. One should not use this function in large scale calculations but just to check their results since this version is a brute-force approach.
+
+This function builds the Hermitian matrix
+
+Xₘₙ = ∑₍ᵢ,ⱼ₎ ψₘ[i,j] * xgrid[i] * Δx * Δy * ψₙ[i,j]
+
+using nested loops and optional multithreading.
+
+# Arguments
+- `Psis::Vector{<:AbstractMatrix{T}}`: length-N Vector of real matrices, each of size (nx×ny), giving ψₘ[i,j].
+- `xgrid::Vector{T}`, `ygrid::Vector{T}`: 1D coordinate vectors of lengths nx and ny, respectively. Must be uniformly spaced.
+- `multithreaded::Bool=true`: If true, parallelize the outer loops over m,n using `Threads.@threads`.
+- `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
+
+# Returns
+- `X::Matrix{Complex{T}}`: N×N Hermitian overlap matrix.
+"""
+function X_standard(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};multithreaded::Bool=true,direction::Symbol=:x) where {T<:Real}
     N=length(Psis)
     @assert N>0 "Need at least one wavefunction"
     nx,ny=length(xgrid),length(ygrid)
@@ -13,9 +62,14 @@ function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T
     Δx=xgrid[2]-xgrid[1]
     Δy=ygrid[2]-ygrid[1]
     area=Δx*Δy
-    # Pre-compute the X-weight matrix:
-    #   W[i,j]=xgrid[j]*Δx*Δy so that sum( conj(ψm) .* (W .* ψn) ) ≈ X_{mn}
-    W=xgrid.*area 
+    # Pre-compute the weight matrix:
+    if direction==:x
+        W=xgrid.*area # W[i,j]=xgrid[j]*Δx*Δy so that sum( conj(ψm) .* (W .* ψn) ) ≈ X_{mn}
+    elseif direction==:y
+        W=ygrid.*area # W[i,j]=ygrid[i]*Δx*Δy so that sum( conj(ψm) .* (W .* ψn) ) ≈ X_{mn}
+    else
+        throw(ArgumentError("direction must be either :x or :y"))
+    end
     Xmat=Matrix{Complex{T}}(undef,N,N)
     @fastmath begin
         @use_threads multithreading=multithreaded for m in 1:N
@@ -33,639 +87,203 @@ function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T
     return Xmat
 end
 
-function Xmat_blocked(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};Mb::Int=50_000,blas_threads::Int=Threads.nthreads(),julia_threads::Int=Threads.nthreads(),multithreaded::Bool=true) where {T<:Real}
-    BLAS.set_num_threads(blas_threads)
-    N=length(Psis)
-    nx,ny=length(xgrid),length(ygrid)
-    M=nx*ny
-    Δx,Δy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
-    Wbig=repeat(xgrid,outer=ny).*(Δx*Δy)  # length-M
-    njt=julia_threads # Allocate one accumulator per Julia thread
-    Xloc=[zeros(eltype(Wbig),N,N) for _ in 1:njt]
-    nb=ceil(Int,M/Mb)
-    @use_threads multithreading=multithreaded for bi in 1:nb
-        tid=Threads.threadid()
-        start=(bi-1)*Mb+1
-        stop=min(bi*Mb,M)
-        rng=start:stop
-        B=length(rng)
-        P_block=Matrix{eltype(Wbig)}(undef,B,N) # 1) Pack P_block (B×N)
-        @inbounds for j in 1:N
-            Pj=vec(Psis[j])
-            @views P_block[:,j]=Pj[rng]
-        end
-        @inbounds for i in 1:B # apply preconputed weights
-            P_block[i,:].*=Wbig[rng[i]]
-        end
-        # GEMM into this thread’s local accumulator  Xloc[tid] += P_block' * P_block
-        BLAS.gemm!('T','N',one(eltype(Wbig)),P_block,P_block,one(eltype(Wbig)),Xloc[tid])
+"""
+   X_block_diag(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};direction::Symbol=:x) where {T<:Real}
+
+Compute the “X” overlap matrix via one diagonal-block BLAS call. This one has smaller overhead then `Xmat_gemm` and is more memory efficient than `X_standard`, but slightly less efficient than `Xmat_gemm` for large N.
+
+This routine constructs
+
+P = hcat(vec.(Psis)…) # (nx*ny)×N
+Wbig = vec(repeat(xgrid, outer=ny)) * (Δx * Δy)
+X = P' * Diagonal(Wbig) * P
+
+in a single efficient BLAS operation.
+
+# Arguments
+- `Psis::Vector{<:AbstractMatrix{T}}`: length-N Vector of real matrices, each of size (nx×ny), giving ψₘ[i,j].
+- `xgrid::Vector{T}`, `ygrid::Vector{T}`: 1D coordinate vectors of lengths nx and ny, respectively. Must be uniformly spaced.
+- `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
+
+# Returns
+- `X::Matrix{T}`: N×N real overlap matrix.
+"""
+function X_block_diag(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};direction::Symbol=:x) where {T<:Real}
+    dx,dy=xgrid[2]-xgrid[1], ygrid[2]-ygrid[1]
+    area=dx*dy
+    _,ny=size(Psis[1])
+    if direction==:x
+        Wbig=repeat(xgrid,outer=ny).*area  # length‐M weight vector in column-major order
+    elseif direction==:y
+        Wbig=repeat(ygrid,inner=nx).*area  # length‐M weight vector in column-major order
+    else
+        throw(ArgumentError("direction must be either :x or :y"))
     end
-    # Reduce per-thread accumulators
-    X=reduce(+,Xloc)
-    @inbounds for i in 1:N, j in i+1:N # symmetric
-        X[j,i]=X[i,j]
+    P=hcat(vec.(Psis)...) # stack all flattened ψ’s into an M×N matrix
+    # compute X = P' * diag(Wbig) * P in one go, diagonal-block multiply + GEMM
+    return P'*(Diagonal(Wbig)*P)
+end
+
+"""
+     Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
+
+Compute the “X” overlap matrix using a BLAS-GEMM accelerated approach.
+Builds two matrices P and Y (both M×N), where Y has each row k scaled by its weight,
+and then performs one GEMM X = P’ * Y.
+
+# Arguments
+- `Psis::Vector{<:AbstractMatrix{T}}`: length-N Vector of real matrices, each of size (nx×ny), giving ψₘ[i,j].
+- `xgrid::Vector{T}`, `ygrid::Vector{T}`: 1D coordinate vectors of lengths nx and ny, respectively. Must be uniformly spaced.
+- `n_blas_threads::Int=ceil(Int,Threads.nthreads()/2)`: number of BLAS threads to use.
+- `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
+
+# Returns
+- `X::Matrix{T}`: N×N real overlap matrix.
+"""
+function Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
+    begin 
+        BLAS.set_num_threads(n_blas_threads) 
+        nx,ny=length(xgrid),length(ygrid)
+        N=length(Psis)
+        M=nx*ny
+        # auxillary matrices, raised RAM cost wrt X_block_diag but faster in the end due to single optimized GEMM call
+        P=Matrix{T}(undef,M,N)# for vec(Psis)
+        Wbig=Vector{T}(undef,M)# for weights
+        X=Matrix{T}(undef,N,N)# for result
+        # build weight‐vector exactly aligned with vec(P)
+        dx,dy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
+        # make an (nx×ny) weight‐matrix whose (i,j)=xgrid[i], then flatten
+        if direction==:x
+            Wmat=repeat(xgrid,1,ny) # size (nx×ny),  Wmat[i,j] == xgrid[i]
+        elseif direction==:y
+            Wmat=repeat(ygrid',nx,1) # size (nx×ny), Wmat[i,j] == ygrid[j]
+        end
+        Wbig.=vec(Wmat).*(dx*dy)      # length-M
+        @inbounds Threads.@threads for j in 1:N
+            P[:,j] .=vec(Psis[j]) # fill the un-weighted P (M×N) once
+        end
+        # make a *separate* copy Y of P and weight *only* its rows
+        Y=copy(P)
+        Threads.@threads for k in 1:M
+            BLAS.scal!(Wbig[k],view(Y,k,:))
+        end
+        # one call to GEMM:  X = Pᵀ * Y
+        BLAS.gemm!('T','N',one(T),P,Y,zero(T),X)
+        @inbounds for i in 1:N, j in i+1:N
+            X[j,i]=X[i,j] # symmetric
+        end
     end
     return X
 end
 
-#=
-
 """
-    b_nk(u_n::Vector, u_m::Vector, F_nk::Function)
+    Bmat(X::AbstractMatrix{T},E::Vector{T},t::Real) where {T<:Real}
 
-This is a general term that computes the matrix element of 2 and 4 point OTOC (but just a single element in the matrix). As inputs we need the integrals of the operator Ô with the Neumann function ∫∫dxdy[Y0(k|(x,y) - (x_s, y_s)|)]Ô[Y0(k|(x,y) - (x_s, y_s)|)]. This determines the effect of the operator on the resulting matrix element in the micro and macrocanonical OTOC.
+Cosntructs the b_{nm} matrix in the OTOC paper. With this one can construct the microcanonical OTOC. The b_{nm} matrix is defined as:
+
+b_{nm} = 0.5 * (∑_k (X[n,k]*exp(im*(E_n - E_k)*t)) * (X[k,m]*(E_k - E_m))  -  ∑_k (X[n,k]*(E_n - E_k)) * (X[k,m]*exp(im*(E_k - E_m)*t)))
+
+where we can write this as an efficient matrix multiplication with LEVEL 3 BLAS implementation of the form:
+
+B_{nm} = 0.5 * (T1 - T2)
+
+where T1 and T2 are defined as:
+
+T1[n,m] = ∑_k (X[n,k]*exp(im*(E_n - E_k)*t)) * (X[k,m]*(E_k - E_m))
+
+T2[n,m] = ∑_k (X[n,k]*(E_n - E_k)) * (X[k,m]*exp(im*(E_k - E_m)*t))
 
 # Arguments
-- `u_n::Vector{<:Real}`: Vector of boundary function values for the n-th state.
-- `u_m::Vector{<:Real}`: Vector of boundary function values for the m-th state.
-- `F_nk::Function`: `(s::T, s'::T) -> Complex{T}` Function that computes the integral opearator, should be in general Complex. The arguments are the arclength s values for each state along the boundary, used for boundary integrals.
-
-# Returns
-- `Complex{T}`: The computed matrix element.
-"""
-function b_nk(u_n::Vector, u_m::Vector, bdPoints_n::BoundaryPoints, bdPoints_m::BoundaryPoints, F_nk::Function)
-    ds_n = bdPoints_n.ds 
-    ds_m = bdPoints_m.ds
-    s_n = bdPoints_n.s
-    s_m = bdPoints_m.s
-    total_sum = zero(Complex{T})
-    Threads.@threads for i in eachindex(u_n)  # Iterate over boundary points of u_n and u_m
-        local_sum = zero(Complex{T})
-        for j in eachindex(u_m)
-            local_sum += u_n[i] * u_m[j] * F_nk(s_n[i], s_m[j]) * ds_n[i] * ds_m[j]
-        end
-        total_sum += local_sum
-    end
-    return total_sum
-end
-
-"""
-    b(vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, F_nk::Function)
-
-Construct the matrix of the b_nk function. This one is finally used as the main varying part in the 2 and 4 point OTOC.
-
-# Arguments
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `F_nk::Function`: `(s::T, s'::T) -> Complex{T}` Function that computes the integral opearator, should be in general Complex. The arguments are the arclength s values for each state along the boundary, used for boundary integrals.
-
-# Returns
-- `Matrix{T}`: The computed matrix of b_nk function values.
-"""
-function b(vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, F_nk::Function) where {T<:Real}
-    @assert length(vec_us) == length(vec_bdPoints) "Length of boundary functions should be the same as the number of BoundaryPoints structs"
-    N_states = length(vec_us)
-    full_matrix = fill(zero(Complex{T}), N_states, N_states)
-    for i in eachindex(vec_us) # lost of threading inside the inner loops
-        for j in eachindex(vec_us) 
-            full_matrix[i,j] = b_nk(vec_us[i], vec_us[j], vec_bdPoints[i], vec_bdPoints[j], F_nk)
-        end
-    end
-    return full_matrix
-end
-
-"""
-    B(ks::Vector{T}, A::Matrix, B::Matrix, t::T) where {T<:Real}
-
-Constructs the bₙₘ matrix from which we can construct the OTOC expression.
-
-# Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `A::Matrix`: Matrix representing the operator A.
-- `B::Matrix`: Matrix representing the operator B.
+- `X::AbstractMatrix{T}`: The matrix X representing the scalar products between the wavefunctions and the x or y grid.
+- `E::Vector{T}`: Vector of eigenvalues (energies) corresponding to the wavefunctions.
 - `t::T`: Time value for the OTOC computation.
 
 # Returns
-- `Matrix{Complex{T}}`: The computed bₙₘ matrix at a time t.
+- `Matrix{Complex{T}}`: The computed b_{nm} matrix at time t.
 """
-function B(ks::Vector{T}, A::Matrix, B::Matrix, t::T) where {T<:Real}
-    function matrix_term(i::Int,j::Int,k::Int,t)
-        return -im*(exp(im*(ks[i]-ks[j])*t)*A[i,k]*B[k,j] - exp(im*(ks[k]-ks[j])*t)*B[i,k]*A[k,m])
-    end
-    full_matrix = fill(zero(Complex{T}, size(A)))
-    for i in eachindex(size(A)[1]) 
-        for j in eachindex(size(A)[2]) # same as 1 since square matrix
-            full_matrix[i,j] = sum([matrix_term(j,j,k,t) for k in ks])
-        end
-    end
-    return full_matrix
+function Bmat(X::AbstractMatrix{T},E::Vector{T},t::T) where {T<:Real}
+    N=length(E)
+    En=reshape(E,N,1) # column vector
+    Em=reshape(E,1,N) # row vector
+    # energy‐difference matrices
+    ΔE_nk=En.-Em # (n,k): E_n – E_k
+    ΔE_km=En.-Em # (k,m) interpreted in second GEMM
+    Φ_nk=@. cis(ΔE_nk*t)
+    Φ_km=@. cis(ΔE_km*t)
+    # two GEMM calls
+    # T1[n,m] = ∑_k (X[n,k]*Φ_nk[n,k]) * (X[k,m]*ΔE_km[k,m])
+    T1=(X.*Φ_nk)*(X.*ΔE_km)
+    # T2[n,m] = ∑_k (X[n,k]*ΔE_nk[n,k]) * (X[k,m]*Φ_km[k,m])
+    T2=(X.*ΔE_nk)*(X.*Φ_km)
+    return 0.5*(T1.-T2)
 end
 
 """
-    B(ks::Vector{T}, A::Matrix, B::Matrix, t::T) where {T<:Real}
+    C(Bmat::AbstractMatrix{T}) where {T<:Real}
 
-Constructs the bₙₘ matrix from which we can construct the OTOC expression. Just a wrapper for iterated single t function.
+Compute the microcanonical out-of-time-order correlator vector for all eigenstates at the time `t` that has the corresponding `Bmat`.
+Given the commutator matrix Bmat with elements bₙₘ(t) = –i⟨n|[x(t), p(0)]|m⟩, this returns the length-N vector
+
+cₙ(t) = ∑ₘ |Bmat[n, m]|².
 
 # Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `A::Matrix`: Matrix representing the operator A.
-- `B::Matrix`: Matrix representing the operator B.
-- `t::T`: Time value for the OTOC computation.
+- `Bmat::AbstractMatrix{Complex{T}}`: An N×N matrix of real or complex values, where entry (n,m) is bₙₘ(t).
 
 # Returns
-- `Vector{Matrix{Complex{T}}}`: The computed bₙₘ matrix for times ts.
+- `c::Vector{T}`: length-N real vector whose nth entry is sum(abs2, Bmat[n, :]) at single time `t`.
 """
-function B(ks::Vector{T}, A::Matrix, B::Matrix, ts::Vector) where {T<:Real}
-    return [B(ks,A,B,t) for t in ts]
+function C(Bmat::AbstractMatrix{Complex{T}}) where {T<:Real}
+    return sum(abs2,Bmat,dims=2)  # returns an N×1 vector c[n] = ∑_m |B[n,m]|^2
 end
 
-"""
-    OTOC_2_Point_Precursor(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, A_nk::Function, B_nk::Function, ts::Vector{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
 
-High-level wrapper for the construction of 2 point OTOC using general operators, represented through the double integral / sum as A ↔ A_nk, B ↔ B_nk. These functions should be supplied by the user. For the most specific case where A = x̂ and B = p̂ we there is another simpler high level wrapper.
+"""
+    C(Bmat::AbstractMatrix{T},n::Int) where {T<:Real}
+
+Compute the microcanonical out-of-time-order correlator for a single eigenstate n.
+Returns the scalar
+
+cₙ(t) = ∑ₘ |Bmat[n, m]|²
+
+for the specified row n of the commutator matrix.
 
 # Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `bdPoints::BoundaryPoints{T}`: The BoundaryPoints struct that contains the (x,y) points on the boundary and the ds arclength differences.
-- `A_nk::Function`: `(s::T, s'::T) -> Complex{T}` Function that computes the integral opearator, should be in general Complex.
-- `B_nk::Function`: `(s::T, s'::T) -> Complex{T}` Function that computes the integral opearator, should be in general Complex.
-- `ts::Vector{T}`: Vector of time values for the OTOC computation.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `x0::T`: Initial x-position of the Gaussian wave packet.
-- `y0::T`: Initial y-position of the Gaussian wave packet.
-- `sigma_x::T`: Standard deviation of the Gaussian wave packet in the x-direction.
-- `sigma_y::T`: Standard deviation of the Gaussian wave packet in the y-direction.
-- `kx0::T`: Initial kx of the Gaussian wave packet.
-- `ky0::T`: Initial ky of the Gaussian wave packet.
+- `Bmat::AbstractMatrix{T}`: An N×N matrix of real or complex values, where entry (n,m) is bₙₘ(t) at a single time `t`.
+- `n::Int`: Index of the eigenstate (1 ≤ n ≤ size(Bmat,1)).
 
 # Returns
-- `Vector{Complex{T}}`: The computed 2-point OTOC at given times ts.
+- `cₙ::T`: real scalar equal to sum(abs2, Bmat[n, :]) at time `t`.
 """
-function OTOC_2_Point_Precursor(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, A_nk::Function, B_nk::Function, ts::Vector{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
-    O1 = b(vec_us, vec_bdPoints, A_nk)
-    O2 = b(vec_us, vec_bdPoints, B_nk)
-    αs = Vector{Complex{T}}(undef, length(ks))
-    println("Constructing wavepacket eigenbasis expansion coefficients...")
-    for i in eachindex(ks)
-        αs[i] = gaussian_wavepacket_eigenbasis_expansion_coefficient(ks[i], vec_us[i], vec_bdPoints[i], x_grid, y_grid, x0, y0, sigma_x, sigma_y, kx0, ky0)
-    end
-    println("Constructing the B matrix...")
-    B_matrix = B(ks,O1, O2,ts) # this is the the time dependance
-    result = Complex{0.0}
-    result = zero(Complex{T})
-    progress = Progress(length(ks), desc = "Computing OTOC precursor...")
-    for i in eachindex(ks)
-        for j in eachindex(ks)
-            result += αs[i]*αs[j]*B_matrix[i, j]
-        end
-        next!(progress)
-    end
-    return result
+function C(Bmat::AbstractMatrix{Complex{T}},n::Int) where {T<:Real}
+    return sum(abs2,view(Bmat[n,:]))
 end
 
 """
-    OTOC_4_Point_Precursor(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, A_nk::Function, B_nk::Function, ts::Vector{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
+    C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthread()/2),direction::Symbol=:x) where {T<:Real}
 
-High-level wrapper for the construction of 4 point OTOC using general operators, represented through the double integral / sum as A ↔ A_nk, B ↔ B_nk. These functions should be supplied by the user. For the most specific case where A = x̂ and B = p̂ we there is another simpler high level wrapper.
-This is one is different from the 2 Point in the fact that it has another B summation in the inside of the double sum.
+Compute the microcanonical out-of-time-order correlator cₙ(t) for each eigenstate over a sequence of times.
+Construct the overlap matrix X (via Xmat), then for each time t in ts, the commutator matrix B = Bmat(X, Es, t), and then the vector
+cₙ(t) = ∑ₘ |B[n,m]|².  Returns all cₙ values as the columns of a matrix.
 
 # Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `bdPoints::Vector{BoundaryPoints{T}}`: The BoundaryPoints struct that contains the (x,y) points on the boundary and the ds arclength differences.
-- `A_nk::Function`: `(s::T, s'::T) -> Complex{T}` Function that computes the integral opearator, should be in general Complex.
-- `B_nk::Function`: `(s::T, s'::T) -> Complex{T}` Function that computes the integral opearator, should be in general Complex.
-- `ts::Vector{T}`: Vector of time values for the OTOC computation.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `x0::T`: Initial x-position of the Gaussian wave packet.
-- `y0::T`: Initial y-position of the Gaussian wave packet.
-- `sigma_x::T`: Standard deviation of the Gaussian wave packet in the x-direction.
-- `sigma_y::T`: Standard deviation of the Gaussian wave packet in the y-direction.
-- `kx0::T`: Initial kx of the Gaussian wave packet.
-- `ky0::T`: Initial ky of the Gaussian wave packet.
+- `Psis::Vector{<:AbstractMatrix{T}}`: length-N vector of discretized wavefunction matrices (size nx×ny).
+- `Es::Vector{T}`: length-N vector of eigenvalues Eₙ.
+- `xgrid::Vector{T}, ygrid::Vector{T}`: 1D coordinate arrays of lengths nx and ny (uniformly spaced).
+- `ts::Vector{T}`: array of time points at which to evaluate cₙ(t).
+- `memory_efficient::Bool=false`: if true, uses the low-memory diagonal-block method for Xmat.
+- `n_blas_threads::Int`: number of BLAS threads to use when memory_efficient=false.
+- `direction::Symbol=:x`: choose :x or :y direction for the overlap matrix.
 
 # Returns
-- `Vector{Complex{T}}`: The computed 4-point OTOC at given times ts.
+- `Cmat::Matrix{T} : N×length(ts) real array whose (n,i) entry is cₙ(ts[i]) = ∑ₘ |Bn,m|².
 """
-function OTOC_4_Point_Precursor(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, A_nk::Function, B_nk::Function, ts::Vector{T}, x_grid::Vector{T}, y_grid::Vector{T}, x0::T, y0::T, sigma_x::T, sigma_y::T, kx0::T, ky0::T) where {T<:Real}
-    O1 = b(vec_us, vec_bdPoints, A_nk)
-    O2 = b(vec_us, vec_bdPoints, B_nk)
-    αs = Vector{Complex{T}}(undef, length(ks))
-    println("Constructing wavepacket eigenbasis expansion coefficients...")
-    for i in eachindex(ks)
-        αs[i] = gaussian_wavepacket_eigenbasis_expansion_coefficient(ks[i], vec_us[i], vec_bdPoints[i], x_grid, y_grid, x0, y0, sigma_x, sigma_y, kx0, ky0)
+function C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthread()/2),direction::Symbol=:x) where {T<:Real}
+    Cmat=Matrix{T}(undef,length(Psis),length(ts)) # N×T matrix
+    X=Xmat(Psis,xgrid,ygrid;direction=direction,memory_efficient=memory_efficient,n_blas_threads=n_blas_threads)
+    for i in eachindex(ts) 
+        B=Bmat(X,Es,ts[i])
+        Cs=C(B)
+        Cmat[:,i]
     end
-    println("Constructing the B matrix...")
-    B_matrix = B(ks,O1,O2,ts)
-    result = Complex{0.0}
-    result = zero(Complex{T})
-    progress = Progress(length(ks), desc = "Computing OTOC precursor...")
-    for i in eachindex(ks)
-        for j in eachindex(ks)
-            result += αs[i]*αs[j]*[B_matrix[i, k]*B_matrix[j, k] for k in eachindex(ks)]
-        end
-        next!(progress)
-    end
-    return result
-end
-
-=#
-
-
-
-
-
-
-### SPECIFIC AND MOST USEFUL CASE W/ TESTING : A = X, B = P -> [X,P] OTOC
-# Taken from : Out-of-time-order correlators in quantum mechanics by Koji Hashimoto, Keiju Murata and Ryosuke Yoshii. For the most typical [x(t),p(0)] expectation value with the gaussian wavepacket the calculations are greatly simplified. We just need to calculate the xₘₙ terms and have the eigenvalues.
-
-"""
-    X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoints_m::BoundaryPoints{T}, bdPoints_n::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::Vector) where {T<:Real}
-
-Constructs the (m,n)-th component of the xₘₙ term for the coordinate matrix element xₘₙ=⟨m|x|n⟩. This is calculated as:
-```math
-1/4*∮uₘ(s')uₙ(s)*[∫∫Y0(kₘ|(x,y)-(xₛ, yₛ)|)*x*Y0(kₙ|(x,y)-(x'ₛ, y'ₛ)|)dxdy]*ds*ds'
-```
-
-# Arguments
-- `k_m::T`: Eigenvalue for the m-th state.
-- `k_n::T`: Eigenvalue for the m-th state.
-- `us_m::Vector{T}`: Vector of boundary function values for the m-th state.
-- `us_n::Vector{T}`: Vector of boundary function values for the n-th state.
-- `bdPoints_m::BoundaryPoints{T}`: The BoundaryPoints struct for the m-th state.
-- `bdPoints_n::BoundaryPoints{T}`: The BoundaryPoints struct for the n-th state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `pts_mask::Vector{Bool}`: Vector indicating which points in the grid are inside the billiard. This is supplied from the top calling function. It uses the `inside_only=true` case always. In the top function this is the result of `points_in_billiard_polygon` function.
-
-# Returns
-- `T`: The (m,n)-th component of the xₘₙ term.
-"""
-function X_mn_standard(k_m::T, k_n::T, us_m::Vector{T}, us_n::Vector{T}, bdPoints_m::BoundaryPoints{T}, bdPoints_n::BoundaryPoints{T}, x_grid::Vector{T}, y_grid::Vector{T}, pts_mask::Vector) where {T<:Real}
-    # Grid spacings
-    dx = x_grid[2] - x_grid[1]
-    dy = y_grid[2] - y_grid[1]
-    dxdy = dx * dy
-    
-    # Create grid points and apply mask to determine points inside the billiard
-    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
-    pts_masked = pts[pts_mask]
-    
-    # Preallocate arrays for distances
-    distances_m = Vector{T}(undef, length(pts_masked))
-    distances_n = Vector{T}(undef, length(pts_masked))
-    
-    # Function to compute the double integral for a given boundary point pair (s, s')
-    function double_integral(xy_s_m::SVector{2, T}, xy_s_n::SVector{2, T})
-        x_s_m, y_s_m = xy_s_m
-        x_s_n, y_s_n = xy_s_n
-
-        # Compute distances for masked points
-        @inbounds Threads.@threads for idx in eachindex(pts_masked)
-            distances_m[idx] = norm(pts_masked[idx] - SVector(x_s_m, y_s_m))
-            distances_n[idx] = norm(pts_masked[idx] - SVector(x_s_n, y_s_n))
-        end
-
-        # Compute Bessel functions for masked points
-        Y0_m = Bessels.bessely0.(k_m .* distances_m)
-        Y0_n = Bessels.bessely0.(k_n .* distances_n)
-
-        # Apply x-operator and perform element-wise multiplication
-        x_operator_values = getindex.(pts_masked, 1)  # Extract x-coordinates of masked points
-        integrand = Y0_m .* x_operator_values .* Y0_n
-
-        # Compute the sum over the masked grid points
-        return sum(integrand) * dxdy
-    end
-    # Compute the full double boundary integral
-    total_result = Threads.Atomic{T}(0.0)
-    progress = Progress(length(us_m)*length(us_n), desc="Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
-    #println("Computing X_mn for k_m=$(round(k_m; sigdigits=5)), k_n=$(round(k_n; sigdigits=5))...")
-    Threads.@threads for i in eachindex(us_m)
-        local_result = zero(T)  # Thread-local accumulator
-        println("Thread $(Threads.threadid()): Starting i=", i)  # Thread-safe thread ID
-        @inbounds for j in eachindex(us_n)
-            xy_s_m = bdPoints_m.xy[i]
-            xy_s_n = bdPoints_n.xy[j]
-            local_result += us_m[i] * us_n[j] * double_integral(xy_s_m, xy_s_n) * bdPoints_m.ds[i] * bdPoints_n.ds[j]
-        end
-        Threads.atomic_add!(total_result, local_result)
-        #println("Thread $(Threads.threadid()): Done i=", i)  # Thread-safe completion log
-        next!(progress)
-    end
-    return total_result[] / 4.0
-end
-
-"""
-    X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-
-Computes the full X matrix of xₘₙ=⟨m|x|n⟩. Just a multithreaded wrapper for the `X_mn` function.
-
-# Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `Matrix{T}`: The full X matrix of xₘₙ=⟨m|x|n⟩. It's real!
-"""
-function X_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    full_matrix = fill(0.0, length(ks), length(ks))
-    pts = collect(SVector(x, y) for y in y_grid for x in x_grid)
-    sz = length(pts)
-    pts_mask = points_in_billiard_polygon(pts, billiard, round(Int, sqrt(sz)); fundamental_domain=true) # only compute once
-    progress = Progress(length(ks), desc="Computing X_mn matrix elements...")
-    for i in eachindex(ks)
-        for j in eachindex(ks)
-            full_matrix[i,j] = X_mn_standard(ks[i], ks[j], vec_us[i], vec_us[j], vec_bdPoints[j], vec_bdPoints[j], x_grid, y_grid, pts_mask)
-        end
-        next!(progress)
-    end
-    return full_matrix
-end
-
-"""
-    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-
-Standard `[x(t),p(0)]` OTOC B matrix construction, where we do not need to explicitely construct the Pₘₙ matrix since we only need Xₘₙ. This is based on the paper: Out-of-time-order correlators in quantum mechanics; Koji Hashimoto, Keiju Murata and Ryosuke Yoshii, specifically chapters 2 and 5.
-
-# Arguements
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `t::T`: Time parameter.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `Matrix{Complex{T}}`: The full B matrix of Bₘₙ=⟨m|B|n⟩. It's complex!
-"""
-function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    Es = ks .^2 # get energies
-    X_matrix = X_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, billiard)
-    B_matrix = fill(Complex(0.0), length(ks), length(ks))
-    Threads.@threads for i in eachindex(ks)
-        local_result = Vector{Complex{T}}(undef, length(ks))  # Thread-local storage for row `i`
-        for j in eachindex(ks)
-            # Inner summation over k
-            sum_k = zero(Complex{T})
-            for k in eachindex(ks)
-                E_ik = Es[i] - Es[k]
-                E_kj = Es[k] - Es[j]
-                # Compute the term for the summation
-                term = X_matrix[i, k] * X_matrix[k, j] * (E_kj * exp(im * E_ik * t) - E_ik * exp(im * E_kj * t))
-                sum_k += term  # Accumulate the term
-            end
-            local_result[j] = sum_k  # Store in thread-local result
-        end
-        B_matrix[i,:] = local_result # Doing it row by row
-    end
-    return 0.5*B_matrix
-end
-
-"""
-    B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-
-High level wrapper for standard `[x(t),p(0)]` OTOC B matrix construction. It just iterates the base `B_standard` function over a time interval.
-
-# Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `x_grid::Vector{T}`: Vector of x grid points.
-- `y_grid::Vector{T}`: Vector of y grid points.
-- `ts::Vector{T}`: Vector of time parameters.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `Vector{Matrix{Complex{T}}}`: Vector of B matrices for each time parameter in `ts`. The matrix elements are Complex.
-"""
-function B_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, x_grid::Vector{T}, y_grid::Vector{T}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    progress = Progress(length(ts), desc="Computing B matrices for all times...")
-    B_matrices = Vector{Matrix{Complex{T}}}(undef, length(ts))
-    for t_idx in eachindex(ts)
-        println("t idx: ", t_idx)
-        t = ts[t_idx]
-        B_matrices[t_idx] = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard)
-        next!(progress)
-    end
-    return B_matrices
-end
-
-"""
-    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-
-Computes the microcanonical cₙ(t) for all n for a time t.
-
-# Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `alphas::Vector{Complex{T}}`: Expansion coefficients for the Gaussian wavepacket in the eigenbasis.
-- `t::T`: Time parameter.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `T`: The microcanonical cₙ(t) for all n.
-"""
-function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, alphas::Vector{Complex{T}},t::T, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    k_max = maximum(ks)
-    type = eltype(k_max)
-    L = billiard.length
-    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
-    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
-    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
-    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
-    B_standard_matrix = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, t, billiard)
-    total_iterations = length(ks) * length(ks)
-    progress = Progress(total_iterations, desc="Computing single-time c_φ(t)")
-    c = Threads.Atomic{Complex{T}}(0.0)  # Thread-safe atomic variable
-
-    Threads.@threads for n in eachindex(ks)
-        local_sum = zero(Complex{T})  # Thread-local accumulator
-        for m in eachindex(ks)
-            alpha_factor = conj(alphas[n]) * alphas[m]  # Precompute αₙ* * αₘ since not depend on k
-            for k in eachindex(ks)
-                local_sum += alpha_factor * B_standard_matrix[n, k] * B_standard_matrix[k, m]
-            end
-            next!(progress)  # Update m+=1 otherwise bloat
-        end
-        Threads.atomic_add!(c, local_sum)  # Safely accumulate into the global result
-    end
-    return real(c[])  # Return real part / sanity check
-end
-
-"""
-    microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, ts::Vector{T}) where {T<:Real}
-
-Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts`.
-
-# Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `alphas::Vector{Complex{T}}`: Expansion coefficients for the Gaussian wavepacket in the eigenbasis.
-- `ts::Vector{T}`: Vector of time points.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `Vector{T}`: Vector of `cₙ(t) values for each t in ts.
-"""
-function microcanocinal_Cn_standard(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, alphas::Vector{Complex{T}}, ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    k_max = maximum(ks)
-    type = eltype(k_max)
-    L = billiard.length
-    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
-    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
-    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
-    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
-    total_iterations = length(ts) * length(ks) * length(ks)
-    progress = Progress(total_iterations, desc="Computing multi-time c_φ(t)")
-    B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
-    result = Vector{T}(undef, length(ts))  # Store c_φ(t) for each time step
-    Threads.@threads for t_idx in eachindex(ts)
-        B_standard_matrix = B_matrices[t_idx]
-        c = Threads.Atomic{Complex{T}}(0.0)  # Thread-safe accumulator for the current t_idx
-        Threads.@threads for n in eachindex(ks)
-            local_sum = zero(Complex{T})  # Thread-local accumulator
-            for m in eachindex(ks)
-                alpha_factor = conj(alphas[n]) * alphas[m]  # Precompute αₙ* * αₘ
-                for k in eachindex(ks)
-                    local_sum += alpha_factor * B_standard_matrix[n, k] * B_standard_matrix[k, m]
-                end
-                next!(progress)  # Update progress for the `m` loop
-            end
-            Threads.atomic_add!(c, local_sum)  # Accumulate into thread-safe atomic
-        end
-        result[t_idx] = real(c[])  # Store the real part for this time step
-    end
-    return result  # Return a vector of c_φ(t) values for each t
-end
-
-"""
-    plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, n::Int; log_scale::Bool=false) where {T<:Real}
-
-Plots the microcanonical `cₙ(t)` for a given eigenstate `n` over times `ts`.
-
-# Arguments
-- `ax::Axis`: Axis object from CairoMakie for plotting.
-- `ts::Vector{T}`: Vector of time points.
-- `c_values::Matrix{T}`: Matrix of cₙ(t) values. Rows correspond to times, columns to eigenstates.
-- `n::Int`: Index of the eigenstate to plot.
-- `log_scale::Bool=false`: Whether to use a logarithmic scale for the y-axis.
-
-# Returns
-- `Nothing`
-"""
-function plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, n::Int; log_scale::Bool=false) where {T<:Real}
-    @assert n > 0 && n <= size(c_values, 2) "Index `n` out of range for the c_values matrix." # Sanity check
-    cn_t = c_values[:, n]
-    if log_scale
-        lines!(ax, ts, log10.(cn_t), linewidth=2, color=:blue, label="c_$(n)(t)")
-        ax.ylabel = "log10(cₙ(t))"
-    else
-        lines!(ax, ts, cn_t, linewidth=2, color=:blue, label="c_$(n)(t)")
-        ax.ylabel = "cₙ(t)"
-    end
-    ax.xlabel = "t"
-    ax.title = "Microcanonical cₙ(t) for n = $n"
-    axislegend(ax)
-end
-
-"""
-    plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, indices::Vector{Int}; log_scale::Bool=false) where {T<:Real}
-
-Plots the microcanonical `cₙ(t)` for a set of eigenstates `indices` over times `ts`.
-
-# Arguments
-- `ax::Axis`: Axis object from CairoMakie for plotting.
-- `ts::Vector{T}`: Vector of time points.
-- `c_values::Matrix{T}`: Matrix of `cₙ(t)` values. Rows correspond to times, columns to eigenstates.
-- `indices::Vector{Int}`: Indices of the eigenstates to plot.
-- `log_scale::Bool=false`: Whether to use a logarithmic scale for the y-axis.
-
-# Returns
-- `Nothing`
-"""
-function plot_microcanonical_Cn!(ax::Axis, ts::Vector{T}, c_values::Matrix{T}, indices::Vector{Int}; log_scale::Bool=false) where {T<:Real}
-    for n in indices
-        @assert n > 0 && n <= size(c_values, 2) "Index `n` out of range for the c_values matrix."
-        cn_t = c_values[:, n]
-        if log_scale
-            lines!(ax, ts, log10.(cn_t), linewidth=2, label="c_$(n)(t)")
-        else
-            lines!(ax, ts, cn_t, linewidth=2, label="c_$(n)(t)")
-        end
-    end
-    ax.xlabel = "t"
-    ax.ylabel = log_scale ? "log10(cₙ(t))" : "cₙ(t)"
-    ax.title = "Microcanonical cₙ(t) for n ∈ $(indices)"
-    axislegend(ax)
-end
-
-
-### NO WAVEPACKET VERSIONS FOR Cₙ(t)
-
-"""
-    microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-
-Computes the microcanonical `cₙ(t)` for all `n` over a series of times `ts` without using wavepacket coefficients.
-
-# Arguments
-- `ks::Vector{T}`: Vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: Vector of vectors of boundary function values for each state.
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of BoundaryPoints structs for each state.
-- `ts::Vector{T}`: Vector of time points.
-- `billiard::Bi`: The billiard geometry.
-
-# Returns
-- `Matrix{T}`: A matrix where each row corresponds to a time `t` and each column to an eigenstate `n`.
-"""
-function microcanonical_Cn_no_wavepacket(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},ts::Vector{T}, billiard::Bi) where {T<:Real, Bi<:AbsBilliard}
-    b = 5.0
-    k_max = maximum(ks)
-    type = eltype(k_max)
-    L = billiard.length
-    xlim, ylim = boundary_limits(billiard.full_boundary; grd=max(1000, round(Int, k_max * L * b / (2 * pi))))
-    dx, dy = xlim[2] - xlim[1], ylim[2] - ylim[1]
-    nx, ny = max(round(Int, k_max * dx * b / (2 * pi)), 512), max(round(Int, k_max * dy * b / (2 * pi)), 512)
-    x_grid, y_grid = collect(type, range(xlim..., nx)), collect(type, range(ylim..., ny))
-    # Precompute B matrices for all time values
-    println("Constructing the B matrix...")
-    @time B_matrices = B_standard(ks, vec_us, vec_bdPoints, x_grid, y_grid, ts, billiard)
-    total_iterations = length(ts) * length(ks)
-    progress = Progress(total_iterations, desc="Computing cₙ(t) without wavepacket coefficients")
-    result = Matrix{T}(undef, length(ts), length(ks))  # Store cₙ(t) for each time step
-    Threads.@threads for t_idx in eachindex(ts)
-        B_standard_matrix = B_matrices[t_idx]
-        local_result = Vector{T}(undef, length(ks))  # Store cₙ(t) for this `t_idx`
-        Threads.@threads for n in eachindex(ks)  # Compute cₙ(t) = ∑ₘ |b_{nm}(t)|² for each row n
-            local_result[n] = sum(abs2, B_standard_matrix[n, :])  # Sum over m
-            next!(progress)  # Update the progress bar
-        end
-        result[t_idx, :] = local_result  # Store results for this time
-    end
-    return result  # Return a matrix where each row corresponds to cₙ(t) at different times
-end
-
-"""
-    plot_microcanonical_Cn_no_wavepacket!(ax::Axis, c_values::Matrix{T}, ts::Vector{T}, indices::Vector{Int}) where {T<:Real}
-
-Plots the microcanonical `cₙ(t)` values for specific `n` indices over time. NOT FOR THE WAVEPACKET VERSION
-
-# Arguments
-- `ax::Axis`: Axis object from CairoMakie for the plot.
-- `c_values::Matrix{T}`: The matrix of `cₙ(t)` values where each row corresponds to a time `t` and each column to an eigenstate `n`.
-- `ts::Vector{T}`: Vector of time points corresponding to the rows of `c_values`.
-- `indices::Vector{Int}`: Vector of indices specifying which `n` values to plot.
-"""
-function plot_microcanonical_Cn_no_wavepacket!(ax::Axis, c_values::Matrix{T}, ts::Vector{T}, indices::Vector{Int}) where {T<:Real}
-    for n in indices
-        if n > size(c_values, 2)
-            warn("Index $n is out of bounds for c_values with size $(size(c_values, 2))")
-            continue
-        end
-        plot!(ax, ts, c_values[:, n], label="n = $n")
-    end
-    ax.xlabel = "Time (t)"
-    ax.ylabel = "cₙ(t)"
-    ax.title = "Microcanonical cₙ(t) for Selected n"
-    ax.legend = true
+    return Cmat
 end
