@@ -157,6 +157,8 @@ function Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vec
             Wmat=repeat(xgrid,1,ny) # size (nx×ny),  Wmat[i,j] == xgrid[i]
         elseif direction==:y
             Wmat=repeat(ygrid',nx,1) # size (nx×ny), Wmat[i,j] == ygrid[j]
+        else
+            throw(ArgumentError("direction must be either :x or :y"))
         end
         Wbig.=vec(Wmat).*(dx*dy)      # length-M
         @inbounds Threads.@threads for j in 1:N
