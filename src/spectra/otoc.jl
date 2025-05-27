@@ -279,7 +279,7 @@ cₙ(t) = ∑ₘ |B[n,m]|².  Returns all cₙ values as the columns of a matrix
 # Returns
 - `Cmat::Matrix{T} : N×length(ts) real array whose (n,i) entry is cₙ(ts[i]) = ∑ₘ |Bn,m|².
 """
-function C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthread()/2),direction::Symbol=:x) where {T<:Real}
+function C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
     Cmat=Matrix{T}(undef,length(Psis),length(ts)) # N×T matrix
     X=Xmat(Psis,xgrid,ygrid;direction=direction,memory_efficient=memory_efficient,n_blas_threads=n_blas_threads)
     for i in eachindex(ts) 
