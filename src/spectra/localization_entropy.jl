@@ -544,9 +544,9 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     min_A = minimum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
     M_min = minimum(Ms) * 0.9
-    M_max = maximum(Ms) * 1.1
+    M_max = maximum(Ms) * 1.0
     R_min = minimum(Rs) * 0.9
-    R_max = maximum(Rs) * 1.1
+    R_max = maximum(Rs) * 1.0
 
     # Define the number of bins along the A-axis
     num_bins_A = 2 * round(Int, sqrt(desired_samples))  # e.g., 4 bins
@@ -633,7 +633,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_top.xticks = range(A_lim_min, A_lim_max, length=20)
     ylims!(ax_top, (M_min, M_max))
     hmap_M = heatmap!(ax_top, As_bin_centers_heatmap_M, Ms_bin_centers_heatmap, grid_M; colormap=Reverse(:gist_heat), alpha=0.7)
-    Colorbar(fig[1, 1][1, 1][1, 2], hmap_M)
+    Colorbar(fig[1, 1][1, 1][1, 2], hmap_M, size=30, ticklabelsize=35)
 
     # Label the selected points on the P(A, M) plot
     for (j, selected_index) in enumerate(selected_indices)
@@ -643,7 +643,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_top, [A], [M], marker=:rect, color=:transparent, markersize=30, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_top, A+0.01, M, text=roman_label, color=:black, fontsize=55, halign=:center, valign=:center)
+        text!(ax_top, A-0.01, M-0.02, text=roman_label, color=:blue, fontsize=55, halign=:center, valign=:center)
     end
 
     ### Middle Plot: P(A, R) ###
@@ -674,7 +674,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_middle.xticks = range(A_lim_min, A_lim_max, length=20)
     ylims!(ax_middle, (R_min, R_max))
     hmap_R = heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
-    Colorbar(fig[1, 1][1, 2][1, 2], hmap_R)
+    Colorbar(fig[1, 1][1, 2][1, 2], hmap_R, size=30, ticklabelsize=35)
 
     # Label the selected points on the P(A, R) plot
     for (j, selected_index) in enumerate(selected_indices)
@@ -684,7 +684,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_middle, [A], [R], marker=:rect, color=:transparent, markersize=30, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_middle, A+0.01, R, text=roman_label, color=:black, fontsize=55, halign=:center, valign=:center)
+        text!(ax_middle, A-0.01, R-0.02, text=roman_label, color=:blue, fontsize=55, halign=:center, valign=:center)
     end
 
     ### Husimi Functions at the Bottom ###
