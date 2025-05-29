@@ -712,9 +712,9 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         H_bg ./= maximum(H_bg)
         Threads.@threads for i in axes(H_bg,1)
             for j in axes(H_bg,2)
-                if projection_grid[i,j] == 1 # if it is chaotic
-                    H_bg[i,j] = ifelse(H_bg[i,j] > 1e-3, H_bg[i,j], NaN) 
-                else # the regular region
+                if projection_grid[i,j] == -1 # if it is regular
+                    H_bg[i,j] = ifelse(H_bg[i,j] > 1e-2, H_bg[i,j], NaN) 
+                else # the chaotic region
                     H_bg[i,j] = H_bg[i, j] 
                 end
             end
