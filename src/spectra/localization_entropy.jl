@@ -605,7 +605,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     fig = Figure(resolution=(3000, 2500), size=(3000, 2500))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
-    ax_top = Axis(fig[1, 1][1, 1], title=L"P(A, M)", xlabel=L"A", ylabel=L"M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=40, ylabelsize=40, xticklabelsize=35, yticklabelsize=35, titlesize=40)
+    ax_top = Axis(fig[1, 1][1, 1], title=L"P(A, M)", xlabel=L"A", ylabel=L"M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=45, ylabelsize=45, xticklabelsize=40, yticklabelsize=40, titlesize=45)
     #ax_top.xticks = range(min_A, max_A, 20) 
     ax_top.yticks = range(M_min, M_max, 10) 
     ax_top.xticklabelrotation = pi/2
@@ -642,11 +642,11 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_top, [A], [M], marker=:rect, color=:transparent, markersize=30, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_top, A, M, text=roman_label, color=:black, fontsize=45, halign=:center, valign=:center)
+        text!(ax_top, A+0.01, M, text=roman_label, color=:black, fontsize=55, halign=:center, valign=:center)
     end
 
     ### Middle Plot: P(A, R) ###
-    ax_middle = Axis(fig[1, 1][1, 2], title=L"P(A, R)", xlabel=L"A", ylabel=L"R", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=40, ylabelsize=40, xticklabelsize=35, yticklabelsize=35, titlesize=40)
+    ax_middle = Axis(fig[1, 1][1, 2], title=L"P(A, R)", xlabel=L"A", ylabel=L"R", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=45, ylabelsize=45, xticklabelsize=40, yticklabelsize=40, titlesize=45)
     #ax_middle.xticks = range(min_A, max_A, 20) 
     ax_middle.yticks = range(R_min, R_max, 10) 
     ax_middle.xticklabelrotation = pi/2
@@ -682,7 +682,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_middle, [A], [R], marker=:rect, color=:transparent, markersize=30, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_middle, A, R, text=roman_label, color=:black, fontsize=45, halign=:center, valign=:center)
+        text!(ax_middle, A+0.01, R, text=roman_label, color=:black, fontsize=55, halign=:center, valign=:center)
     end
 
     ### Husimi Functions at the Bottom ###
@@ -708,7 +708,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             ygridvisible=false,
             xticklabelsvisible=false,
             yticklabelsvisible=false,
-            titlesize=45
+            titlesize=55
         )
         H_bg ./= maximum(H_bg)
         Threads.@threads for i in axes(H_bg,1)
