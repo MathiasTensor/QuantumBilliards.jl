@@ -626,6 +626,9 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             grid_M[A_index, M_index] += 1
         end
     end
+
+    xlims!(ax_top, (min_A, max_A))
+    ylims!(ax_top, (M_min, M_max))
     heatmap!(ax_top, As_bin_centers_heatmap_M, Ms_bin_centers_heatmap, grid_M; colormap=Reverse(:gist_heat), alpha=0.7)
 
     # Label the selected points on the P(A, M) plot
@@ -661,6 +664,8 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             grid_R[A_index, R_index] += 1
         end
     end
+    xlims!(ax_middle, (min_A, max_A))
+    ylims!(ax_middle, (R_min, R_max))
     heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
 
     # Label the selected points on the P(A, R) plot
