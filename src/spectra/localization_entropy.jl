@@ -702,7 +702,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     row = 1
     col = 1
     for (j, selected_index) in enumerate(selected_indices)
-        H = Hs_list[selected_index]
+        H = copy(Hs_list[selected_index]) # because below we modify it
         qs_i = qs_list[selected_index]
         ps_i = ps_list[selected_index]
         # Create projection grid and chaotic mask
