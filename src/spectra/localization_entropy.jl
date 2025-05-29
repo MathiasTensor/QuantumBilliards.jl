@@ -602,7 +602,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     # Now proceed with plotting
-    fig = Figure(resolution=(2500, 2000), size=(2500, 2000))  # Adjusted size for three plots
+    fig = Figure(resolution=(3000, 2500), size=(3000, 2500))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
     ax_top = Axis(fig[1, 1][1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=35, ylabelsize=35, xticklabelsize=30, yticklabelsize=30)
@@ -642,7 +642,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_top, [A], [M], marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_top, A, M, text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+        text!(ax_top, A, M, text=roman_label, color=:black, fontsize=40, halign=:center, valign=:center)
     end
 
     ### Middle Plot: P(A, R) ###
@@ -687,7 +687,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     ### Husimi Functions at the Bottom ###
     # Husimi function grid layout at the bottom
-    husimi_grid = fig[2, 1] = GridLayout()
+    husimi_grid = fig[2:3, 1] = GridLayout()
     row = 1
     col = 1
     for (j, selected_index) in enumerate(selected_indices)
@@ -707,7 +707,8 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             xgridvisible=false,
             ygridvisible=false,
             xticklabelsvisible=false,
-            yticklabelsvisible=false
+            yticklabelsvisible=false,
+            titlesize=35
         )
         H_bg ./= maximum(H_bg)
         Threads.@threads for i in axes(H_bg,1)
@@ -721,7 +722,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         end
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), nan_color=:lightgray)
         # Label
-        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=35)
+        #text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=35)
         col += 1
         if col > 4
             col = 1
