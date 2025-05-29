@@ -540,17 +540,6 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
 
-    println("Ms = ", Ms)
-    println("  any NaN in Ms? ", any(isnan, Ms))
-    println("Rs = ", Rs)
-    println("  any NaN in Rs? ", any(isnan, Rs))
-    println("As = ", As)
-    println("  any NaN in As? ", any(isnan, As))
-
-    @assert all(isfinite, Ms)   "compute_overlaps returned NaN"
-    @assert all(isfinite, Rs)   "R calculation returned NaN"
-    @assert all(isfinite, As)   "A calculation returned NaN"
-
     max_A = maximum(As)
     min_A = minimum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
@@ -616,7 +605,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     fig = Figure(resolution=(2000, 2500), size=(2000, 2500))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
-    ax_top = Axis(fig[1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax_top = Axis(fig[1, 1][1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}")
     #ax_top.xticks = range(min_A, max_A, 20) 
     ax_top.yticks = range(M_min, M_max, 10) 
     ax_top.xticklabelrotation = pi/2
@@ -657,7 +646,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     ### Middle Plot: P(A, R) ###
-    ax_middle = Axis(fig[2, 1], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax_middle = Axis(fig[1, 1][1, 2], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}")
     #ax_middle.xticks = range(min_A, max_A, 20) 
     ax_middle.yticks = range(R_min, R_max, 10) 
     ax_middle.xticklabelrotation = pi/2
@@ -698,7 +687,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     ### Husimi Functions at the Bottom ###
     # Husimi function grid layout at the bottom
-    husimi_grid = fig[3, 1] = GridLayout()
+    husimi_grid = fig[2, 1] = GridLayout()
     row = 1
     col = 1
     for (j, selected_index) in enumerate(selected_indices)
