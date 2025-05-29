@@ -697,6 +697,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         # Create projection grid and chaotic mask
         projection_grid = classical_phase_space_matrix(classical_chaotic_s_vals, classical_chaotic_p_vals, qs_i, ps_i)
         H_bg, chaotic_mask = husimi_with_chaotic_background(H, projection_grid)
+        gray_overlay = map(x -> x == 1 ? 0.5 : NaN, chaotic_mask)
         roman_label = int_to_roman(j)
         # Plot individual Husimi functions
         ax_husimi = Axis(
@@ -710,9 +711,8 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             yticklabelsvisible=false
         )
         H_bg ./= maximum(H_bg)
-        heatmap!(ax_husimi, chaotic_mask; alpha=0.3, colorrange=(0, 1.0))
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0))
-        #heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 0.1))
+        heatmap!(ax_husimi, gray_overlay; colormap=cgrad([:white, :black]), alpha=0.5, colorrange=(0, 1))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
         col += 1
         if col > 4
