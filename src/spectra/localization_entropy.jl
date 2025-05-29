@@ -610,8 +610,8 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_top.yticks = range(M_min, M_max, 10) 
     ax_top.xticklabelrotation = pi/2
     # Plot the heatmap for P(A, M)
-    As_edges_heatmap_M = collect(range(0.0, A_max_range, length=51))
-    Ms_edges_heatmap = collect(range(M_min, M_max, length=51))
+    As_edges_heatmap_M = collect(range(0.0, A_max_range, length=101))
+    Ms_edges_heatmap = collect(range(M_min, M_max, length=101))
     As_bin_centers_heatmap_M = [(As_edges_heatmap_M[i] + As_edges_heatmap_M[i + 1]) / 2 for i in 1:(length(As_edges_heatmap_M) - 1)]
     Ms_bin_centers_heatmap = [(Ms_edges_heatmap[i] + Ms_edges_heatmap[i + 1]) / 2 for i in 1:(length(Ms_edges_heatmap) - 1)]
     grid_M = zeros(length(As_bin_centers_heatmap_M), length(Ms_bin_centers_heatmap))
@@ -653,8 +653,8 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_middle.yticks = range(R_min, R_max, 10) 
     ax_middle.xticklabelrotation = pi/2
     # Plot the heatmap for P(A, R)
-    As_edges_heatmap_R = collect(range(0.0, A_max_range, length=51))
-    Rs_edges_heatmap = collect(range(R_min, R_max, length=51))
+    As_edges_heatmap_R = collect(range(0.0, A_max_range, length=101))
+    Rs_edges_heatmap = collect(range(R_min, R_max, length=101))
     As_bin_centers_heatmap_R = [(As_edges_heatmap_R[i] + As_edges_heatmap_R[i + 1]) / 2 for i in 1:(length(As_edges_heatmap_R) - 1)]
     Rs_bin_centers_heatmap = [(Rs_edges_heatmap[i] + Rs_edges_heatmap[i + 1]) / 2 for i in 1:(length(Rs_edges_heatmap) - 1)]
     grid_R = zeros(length(As_bin_centers_heatmap_R), length(Rs_bin_centers_heatmap))
