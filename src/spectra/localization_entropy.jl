@@ -544,9 +544,9 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     min_A = minimum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
     M_min = minimum(Ms) #* 0.8
-    M_max = maximum(Ms) * 1.2
+    M_max = maximum(Ms) * 1.05
     R_min = minimum(Rs) #* 0.8
-    R_max = maximum(Rs) * 1.2
+    R_max = maximum(Rs) * 1.05
 
     # Define the number of bins along the A-axis
     num_bins_A = 2 * round(Int, sqrt(desired_samples))  # e.g., 4 bins
