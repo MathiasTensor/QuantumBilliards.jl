@@ -540,6 +540,17 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
     As = [localization_entropy(H, chaotic_classical_phase_space_vol_fraction) for H in Hs_list]
 
+    println("Ms = ", Ms)
+    println("  any NaN in Ms? ", any(isnan, Ms))
+    println("Rs = ", Rs)
+    println("  any NaN in Rs? ", any(isnan, Rs))
+    println("As = ", As)
+    println("  any NaN in As? ", any(isnan, As))
+
+    @assert all(isfinite, Ms)   "compute_overlaps returned NaN"
+    @assert all(isfinite, Rs)   "R calculation returned NaN"
+    @assert all(isfinite, As)   "A calculation returned NaN"
+
     max_A = maximum(As)
     min_A = minimum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
