@@ -713,13 +713,13 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         Threads.@threads for i in size(H_bg,1)
             for j in size(H_bg,2)
                 if projection_grid[i,j] == -1 # if it is regular
-                    H_bg[i,j] = ifelse(H_bg[i, j] > 1e-2, H_bg[i, j], NaN)  # Mid-gray where mask is true
+                    H_bg[i,j] = NaN 
                 else # the chaotic region
                     H_bg[i,j] = H_bg[i, j] 
                 end
             end
         end
-        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), nan_color=:lightgray)
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), nan_color=:gray)
         # Label
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
         col += 1
