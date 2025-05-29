@@ -724,7 +724,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             end
         end
 
-        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0))
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), nan_color=:lightgray)
 
         # Label
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
