@@ -630,7 +630,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     A_lim_min = minimum(As_bin_centers_heatmap_M)
     A_lim_max = maximum(As_bin_centers_heatmap_M)
     xlims!(ax_top, (A_lim_min, A_lim_max))
-    ax_top.xticks = range(A_lim_min, A_lim_max, length=10)
+    ax_top.xticks = range(A_lim_min, A_lim_max, length=20)
     ylims!(ax_top, (M_min, M_max))
     heatmap!(ax_top, As_bin_centers_heatmap_M, Ms_bin_centers_heatmap, grid_M; colormap=Reverse(:gist_heat), alpha=0.7)
 
@@ -670,7 +670,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     A_lim_min = minimum(As_bin_centers_heatmap_R)
     A_lim_max = maximum(As_bin_centers_heatmap_R)
     xlims!(ax_top, (A_lim_min, A_lim_max))
-    ax_top.xticks = range(A_lim_min, A_lim_max, length=10)
+    ax_top.xticks = range(A_lim_min, A_lim_max, length=20)
     ylims!(ax_middle, (R_min, R_max))
     heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
 
@@ -711,7 +711,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         )
         H_bg ./= maximum(H_bg)
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 1))
+        heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 0.1))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
         col += 1
         if col > 4
