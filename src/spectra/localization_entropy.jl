@@ -710,6 +710,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             yticklabelsvisible=false
         )
         H_bg ./= maximum(H_bg)
+        println("H_bg max: ", maximum(H_bg))
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
         heatmap!(ax_husimi, chaotic_mask; colormap=cgrad([:white, :black]), alpha=0.05, colorrange=(0, 0.1))
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
