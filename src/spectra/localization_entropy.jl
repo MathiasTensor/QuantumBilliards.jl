@@ -602,10 +602,10 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     # Now proceed with plotting
-    fig = Figure(resolution=(2000, 2500), size=(2000, 2500))  # Adjusted size for three plots
+    fig = Figure(resolution=(2500, 2000), size=(2500, 2000))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
-    ax_top = Axis(fig[1, 1][1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax_top = Axis(fig[1, 1][1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=35, ylabelsize=35, xticklabelsize=30, yticklabelsize=30)
     #ax_top.xticks = range(min_A, max_A, 20) 
     ax_top.yticks = range(M_min, M_max, 10) 
     ax_top.xticklabelrotation = pi/2
@@ -646,7 +646,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     ### Middle Plot: P(A, R) ###
-    ax_middle = Axis(fig[1, 1][1, 2], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}")
+    ax_middle = Axis(fig[1, 1][1, 2], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=35, ylabelsize=35, xticklabelsize=30, yticklabelsize=30)
     #ax_middle.xticks = range(min_A, max_A, 20) 
     ax_middle.yticks = range(R_min, R_max, 10) 
     ax_middle.xticklabelrotation = pi/2
@@ -721,7 +721,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         end
         heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), nan_color=:lightgray)
         # Label
-        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
+        text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=35)
         col += 1
         if col > 4
             col = 1
