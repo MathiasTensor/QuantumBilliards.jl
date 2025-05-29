@@ -141,7 +141,7 @@ and then performs one GEMM X = P’ * Y.
 - `X::Matrix{T}`: N×N real overlap matrix.
 """
 function Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
-    begin 
+    @fastmath begin 
         BLAS.set_num_threads(n_blas_threads) 
         nx,ny=length(xgrid),length(ygrid)
         N=length(Psis)
@@ -214,9 +214,9 @@ function Bmat(X::AbstractMatrix{T},E::Vector{T},t::T) where {T<:Real}
     Φ_km=@. cis(ΔE_km*t)
     # two GEMM calls
     # T1[n,m] = ∑_k (X[n,k]*Φ_nk[n,k]) * (X[k,m]*ΔE_km[k,m])
-    T1=(X.*Φ_nk)*(X.*ΔE_km)
+    T1=(X.*Φ_nk)*(X.*ΔE_km) # for each inner bracket elementwise product, then finally matrix product
     # T2[n,m] = ∑_k (X[n,k]*ΔE_nk[n,k]) * (X[k,m]*Φ_km[k,m])
-    T2=(X.*ΔE_nk)*(X.*Φ_km)
+    T2=(X.*ΔE_nk)*(X.*Φ_km) # for each inner bracket elementwise product, then finally matrix product
     return 0.5*(T1.-T2)
 end
 
