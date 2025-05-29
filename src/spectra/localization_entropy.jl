@@ -669,8 +669,8 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
     A_lim_min = minimum(As_bin_centers_heatmap_R)
     A_lim_max = maximum(As_bin_centers_heatmap_R)
-    xlims!(ax_top, (A_lim_min, A_lim_max))
-    ax_top.xticks = range(A_lim_min, A_lim_max, length=20)
+    xlims!(ax_middle, (A_lim_min, A_lim_max))
+    ax_middle.xticks = range(A_lim_min, A_lim_max, length=20)
     ylims!(ax_middle, (R_min, R_max))
     heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
 
