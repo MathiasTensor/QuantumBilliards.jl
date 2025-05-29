@@ -913,7 +913,7 @@ function combined_heatmaps_with_husimi( Hs_list::Vector, qs_list::Vector, ps_lis
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_top, [A], [M], marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_top, A, M, text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+        text!(ax_top, A, M, text=roman_label, color=:black, fontsize=40, halign=:center, valign=:center)
     end
 
     # Middle Plot: P(A, R)
@@ -945,7 +945,7 @@ function combined_heatmaps_with_husimi( Hs_list::Vector, qs_list::Vector, ps_lis
         # Plot a black square marker (outline) at the data point with transparent fill
         scatter!(ax_middle, [A], [R], marker=:rect, color=:transparent, markersize=8, strokecolor=:black, strokewidth=3.5)
         # Place the text inside the square
-        text!(ax_middle, A, R, text=roman_label, color=:black, fontsize=30, halign=:center, valign=:center)
+        text!(ax_middle, A, R, text=roman_label, color=:black, fontsize=40, halign=:center, valign=:center)
     end
 
     # Husimi Functions at the Bottom
