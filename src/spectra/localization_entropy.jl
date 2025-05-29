@@ -606,7 +606,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     ### Top Plot: P(A, M) ###
     ax_top = Axis(fig[1, 1], title="P(A, M)", xlabel="A", ylabel="M", xtickformat="{:.2f}", ytickformat="{:.2f}")
-    ax_top.xticks = range(min_A, max_A, 20) 
+    #ax_top.xticks = range(min_A, max_A, 20) 
     ax_top.yticks = range(M_min, M_max, 10) 
     ax_top.xticklabelrotation = pi/2
     # Plot the heatmap for P(A, M)
@@ -627,7 +627,10 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         end
     end
 
-    xlims!(ax_top, (min_A, max_A))
+    A_lim_min = minimum(As_bin_centers_heatmap_M)
+    A_lim_max = maximum(As_bin_centers_heatmap_M)
+    xlims!(ax_top, (A_lim_min, A_lim_max))
+    ax_top.xticks = range(A_lim_min, A_lim_max, length=10)
     ylims!(ax_top, (M_min, M_max))
     heatmap!(ax_top, As_bin_centers_heatmap_M, Ms_bin_centers_heatmap, grid_M; colormap=Reverse(:gist_heat), alpha=0.7)
 
@@ -644,7 +647,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
 
     ### Middle Plot: P(A, R) ###
     ax_middle = Axis(fig[2, 1], title="P(A, R)", xlabel="A", ylabel="R", xtickformat="{:.2f}", ytickformat="{:.2f}")
-    ax_middle.xticks = range(min_A, max_A, 20) 
+    #ax_middle.xticks = range(min_A, max_A, 20) 
     ax_middle.yticks = range(R_min, R_max, 10) 
     ax_middle.xticklabelrotation = pi/2
     # Plot the heatmap for P(A, R)
@@ -664,7 +667,10 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             grid_R[A_index, R_index] += 1
         end
     end
-    xlims!(ax_middle, (min_A, max_A))
+    A_lim_min = minimum(As_bin_centers_heatmap_R)
+    A_lim_max = maximum(As_bin_centers_heatmap_R)
+    xlims!(ax_top, (A_lim_min, A_lim_max))
+    ax_top.xticks = range(A_lim_min, A_lim_max, length=10)
     ylims!(ax_middle, (R_min, R_max))
     heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
 
