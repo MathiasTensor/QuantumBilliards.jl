@@ -714,14 +714,17 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
         #heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), alpha=0.9)
         # Normalize Husimi
 
-        # Create gray mask: gray where mask is true, NaN elsewhere (NaN = fully transparent)
-        gray_overlay = ifelse.(chaotic_mask .== 1, 0.5, NaN)  # 0.5 = mid-gray
+        Threads.@threads for i in size(H_bg,1)
+            for j in size(H_bg,2)
+                if chaotic_mask[i,j] == 1 # if it is chaotic
+                    H_bg[i,j] = ifelse(H_bg[i, j] > 1e-2, H_bg[i, j], NaN)  # Mid-gray where mask is true
+                else
+                    H_bg[i,j] = H_bg[i, j]  #if anything is left in the regular region
+                end
+            end
+        end
 
-        # Overlay gray chaotic mask with transparency only where mask is true
-        heatmap!(ax_husimi, gray_overlay; colormap=cgrad([:gray, :gray]), colorrange=(0, 1.0), alpha=0.05)
-
-        # Plot Husimi
-        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0), alpha=0.9)
+        heatmap!(ax_husimi, H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, 1.0))
 
         # Label
         text!(ax_husimi, 0.5, 0.1, text=roman_label, color=:black, fontsize=10)
