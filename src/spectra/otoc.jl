@@ -269,7 +269,7 @@ function C(Bmat::AbstractMatrix{Complex{T}},n::Int) where {T<:Real}
 end
 
 """
-    C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthread()/2),direction::Symbol=:x) where {T<:Real}
+    C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
 
 Compute the microcanonical out-of-time-order correlator cₙ(t) for each eigenstate over a sequence of times.
 Construct the overlap matrix X (via Xmat), then for each time t in ts, the commutator matrix B = Bmat(X, Es, t), and then the vector
