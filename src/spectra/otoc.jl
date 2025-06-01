@@ -121,7 +121,7 @@ function X_block_diag(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::
     end
     P=hcat(vec.(Psis)...) # stack all flattened ψ’s into an M×N matrix
     # compute X = P' * diag(Wbig) * P in one go, diagonal-block multiply + GEMM
-    return P'*(Diagonal(Wbig)*P)
+    return Symmetric(P'*(Diagonal(Wbig)*P))
 end
 
 """
@@ -171,11 +171,8 @@ function Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vec
         end
         # one call to GEMM:  X = Pᵀ * Y
         BLAS.gemm!('T','N',one(T),P,Y,zero(T),X)
-        @inbounds for i in 1:N, j in i+1:N
-            X[j,i]=X[i,j] # symmetric
-        end
     end
-    return X
+    return Symmetric(X)
 end
 
 """
