@@ -461,7 +461,7 @@ function c_wavepacket_evolution(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:Abstr
     X=ifelse(memory_efficient,X_block_diag(Psi2ds,xgrid,ygrid,direction=direction),Xmat_gemm(Psi2ds,xgrid,ygrid,direction=direction))
     Es=ks.^2 # E=k^2
     cs=Vector{Complex{T}}(undef,length(ts))
-    @showprogress desc="b(t) construction for ts..." Threads.@threads for i in eachindex(ts)
+    @showprogress desc="c(t) construction for ts..." Threads.@threads for i in eachindex(ts)
         B=Bmat(X,Es,ts[i])
         cs[i]=((conj(α_ns)'*B)*B)*α_ns # scalar c(t) = α_n^† B α_n B α_n
     end
