@@ -111,7 +111,7 @@ in a single efficient BLAS operation.
 function X_block_diag(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};direction::Symbol=:x) where {T<:Real}
     dx,dy=xgrid[2]-xgrid[1], ygrid[2]-ygrid[1]
     area=dx*dy
-    _,ny=size(Psis[1])
+    nx,ny=size(Psis[1])
     if direction==:x
         Wbig=repeat(xgrid,outer=ny).*area  # length‐M weight vector in column-major order
     elseif direction==:y
