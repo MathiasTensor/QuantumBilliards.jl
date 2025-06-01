@@ -3,6 +3,17 @@ using Bessels, LinearAlgebra, ProgressMeter
 include("../billiards/boundarypoints.jl")
 include("../states/wavefunctions.jl")
 
+#=
+Contains functions for computing the 2-point and 4-point out-of-time-order correlators (OTOCs) in billiard systems. It also supports wavepacket projections onto the eigenbasis of the billiard and their OTOC computations.
+Based on the paper by Hashimoto et. al.: Out-of-time-order correlators in quantum mechanics, link: https://arxiv.org/abs/1703.09435
+=#
+
+
+##############################
+#### GENERAL 2-POINT OTOC ####
+##############################
+
+
 """
     Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
 
@@ -24,7 +35,7 @@ either by
 - `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
 
 # Returns
-- `X::Matrix{Complex{T}}`: N×N Hermitian overlap matrix.
+- `X::Symmetric{T}`: N×N Hermitian overlap matrix.
 """
 function Xmat(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
     if memory_efficient
@@ -52,7 +63,7 @@ using nested loops and optional multithreading.
 - `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
 
 # Returns
-- `X::Matrix{Complex{T}}`: N×N Hermitian overlap matrix.
+- `X::Symmetric{T}`: N×N Hermitian overlap matrix.
 """
 function X_standard(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};multithreaded::Bool=true,direction::Symbol=:x) where {T<:Real}
     N=length(Psis)
@@ -84,7 +95,7 @@ function X_standard(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Ve
             end
         end
     end
-    return Xmat
+    return Symmetric(Xmat)
 end
 
 """
@@ -106,7 +117,7 @@ in a single efficient BLAS operation.
 - `direction::Symbol=:x`: Direction of the overlap matrix computation, possibility is :x or :y.
 
 # Returns
-- `X::Matrix{T}`: N×N real overlap matrix.
+- `X::Symmetric{T}`: N×N real overlap matrix.
 """
 function X_block_diag(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};direction::Symbol=:x) where {T<:Real}
     dx,dy=xgrid[2]-xgrid[1], ygrid[2]-ygrid[1]
@@ -141,17 +152,17 @@ and then performs one GEMM X = P’ * Y.
 - `X::Matrix{T}`: N×N real overlap matrix.
 """
 function Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
+    BLAS.set_num_threads(n_blas_threads) 
+    nx,ny=length(xgrid),length(ygrid)
+    N=length(Psis)
+    M=nx*ny
+    # auxillary matrices, raised RAM cost wrt X_block_diag but faster in the end due to single optimized GEMM call
+    P=Matrix{T}(undef,M,N)# for vec(Psis)
+    Wbig=Vector{T}(undef,M)# for weights
+    X=Matrix{T}(undef,N,N)# for result
+    # build weight‐vector exactly aligned with vec(P)
+    dx,dy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
     @fastmath begin 
-        BLAS.set_num_threads(n_blas_threads) 
-        nx,ny=length(xgrid),length(ygrid)
-        N=length(Psis)
-        M=nx*ny
-        # auxillary matrices, raised RAM cost wrt X_block_diag but faster in the end due to single optimized GEMM call
-        P=Matrix{T}(undef,M,N)# for vec(Psis)
-        Wbig=Vector{T}(undef,M)# for weights
-        X=Matrix{T}(undef,N,N)# for result
-        # build weight‐vector exactly aligned with vec(P)
-        dx,dy=xgrid[2]-xgrid[1],ygrid[2]-ygrid[1]
         # make an (nx×ny) weight‐matrix whose (i,j)=xgrid[i], then flatten
         if direction==:x
             Wmat=repeat(xgrid,1,ny) # size (nx×ny),  Wmat[i,j] == xgrid[i]
@@ -198,7 +209,7 @@ T2[n,m] = ∑_k (X[n,k]*(E_n - E_k)) * (X[k,m]*exp(im*(E_k - E_m)*t))
 - `t::T`: Time value for the OTOC computation.
 
 # Returns
-- `Matrix{Complex{T}}`: The computed b_{nm} matrix at time t.
+- `Hermitian{Complex{T}}`: The computed b_{nm} matrix at time t.
 """
 function Bmat(X::AbstractMatrix{T},E::Vector{T},t::T) where {T<:Real}
     N=length(E)
@@ -214,7 +225,7 @@ function Bmat(X::AbstractMatrix{T},E::Vector{T},t::T) where {T<:Real}
     T1=(X.*Φ_nk)*(X.*ΔE_km) # for each inner bracket elementwise product, then finally matrix product
     # T2[n,m] = ∑_k (X[n,k]*ΔE_nk[n,k]) * (X[k,m]*Φ_km[k,m])
     T2=(X.*ΔE_nk)*(X.*Φ_km) # for each inner bracket elementwise product, then finally matrix product
-    return 0.5*(T1.-T2)
+    return Hermitian(0.5*(T1.-T2))
 end
 
 """
@@ -285,4 +296,174 @@ function C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vect
         Cmat[:,i]=vec(Cs) # store the cₙ(t) vector as the i-th column
     end
     return Cmat
+end
+
+
+#########################################
+#### WAVAPACKET PROJECTIONS AND OTOC ####
+#########################################
+
+"""
+    α_n(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain::Bool=true) where {Bi<:AbsBilliard, T<:Real}
+
+Compute the projection of a Gaussian‐localized wavepacket onto the billiard eigenbasis.
+
+This routine calls `gaussian_coefficients(...)` to build:
+1. `Psi2ds` — a Vector of 2D Husimi‐like discretizations of the wavepacket on the (nx×ny) grid,
+2. `α_ns` — the complex amplitudes ⍺ₙ = ⟨n|ψ⟩ in the eigenbasis,
+3. `x_grid`,`y_grid` — the 1D coordinate arrays of lengths nx and ny,
+4. `pts_mask` — a boolean mask of valid interior points (true inside the fundamental domain),
+5. `dx`,`dy` — the grid spacings.
+
+# Arguments
+- `ks::Vector{T}`: Vector of eigen-wavenumbers kₙ (length N).
+- `vec_us::Vector{Vector{T}}`: Vector of boundary point parameterizations for each eigenstate.
+- `vec_bdPoints::Vector{BoundaryPoints{T}}`: Vector of boundary geometry objects for each state.
+- `billiard::Bi`: A subtype of `AbsBilliard` that defines the billiard domain.
+- `packet::Wavepacket{T}`: Parameters of the initial Gaussian wavepacket (center, width, momentum).
+- `b::Float64=5.0`: Optional Gaussian width parameter.
+- `fundamental_domain::Bool=true`: If true, restrict the computation to the fundamental billiard domain.
+
+# Returns
+- `Psi2ds::Vector{Matrix{T}}`: Length-N Vector of nx×ny real matrices representing the 2D wavepacket values.
+- `α_ns::Vector{Complex{T}}`: Length-N complex amplitudes of the packet in the eigenbasis.
+- `x_grid::Vector{T}`: 1D array of x-coordinates (length nx).
+- `y_grid::Vector{T}`: 1D array of y-coordinates (length ny).
+- `pts_mask::Matrix{Bool}`: (nx×ny) boolean mask marking interior points of the fundamental domain.
+- `dx::T`,`dy::T`: Scalar grid spacings in x and y.
+"""
+function α_n(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
+    Psi2ds,α_ns,x_grid,y_grid,pts_mask,dx,dy=gaussian_coefficients(ks,vec_us,vec_bdPoints,billiard,packet;b=b,fundamental_domain=fundamental_domain)
+    return Psi2ds,α_ns,x_grid,y_grid,pts_mask,dx,dy
+end
+
+
+"""
+    b_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},t::T;memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+
+Compute the 2-point OTOC b(t) = α† B(t) α at a single time t.
+
+Steps:
+1. Build the overlap matrix X of size N×N by summing over the 2D grids:
+   - If `direction == :x`, weight by xgrid[i] * Δx * Δy.
+   - If `direction == :y`, weight by ygrid[j] * Δx * Δy.
+   Two options for X:
+   - `X_block_diag` (lower memory, uses a block-diagonal BLAS approach).
+   - `Xmat_gemm` (uses a single GEMM call, faster for large N).
+2. Compute eigenenergies `Es = ks .^ 2`.
+3. Call `Bmat(X, Es, t)` to form Bₙₘ(t) = −i ⟨n|[x(t), p(0)]|m⟩.
+4. Return the scalar b(t) = α† * B * α.
+
+# Arguments
+- `α_ns::Vector{Complex{T}}`: Length-N complex amplitudes αₙ = ⟨n|ψ⟩.
+- `Psi2ds::Vector{<:AbstractMatrix{T}}`: Length-N vector of ψₙ[i,j] on an nx×ny grid.
+- `xgrid::Vector{T}`, `ygrid::Vector{T}`: 1D coordinate arrays (lengths nx and ny).
+- `ks::Vector{T}`: Length-N vector of wavenumbers (energies = ks.^2).
+- `t::T`: Time at which to evaluate b(t).
+- `memory_efficient::Bool=true`: If true, use `X_block_diag`; otherwise `Xmat_gemm`.
+- `direction::Symbol=:x`: Choose `:x` (weight by x) or `:y` (weight by y).
+
+# Returns
+- `b_val::Complex{T}`: Complex scalar b(t) = α† * B(t) * α.
+"""
+function b_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},t::T;memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+    X=ifelse(memory_efficient,X_block_diag(Psi2ds,xgrid,ygrid,direction=direction),Xmat_gemm(Psi2ds,xgrid,ygrid,direction=direction))
+    Es=ks.^2 # E=k^2
+    B=Bmat(X,Es,t)
+    return (conj(α_ns)'*B)*α_ns # scalar b(t) = α_n^† B α_n
+end
+
+"""
+    b_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+
+Compute the 2-point OTOC b(t) = α† B(t) α for multiple time points in parallel.
+
+Internally, X is constructed only once, then for each time t in ts:
+- Call `Bmat(X, Es, t)` to form B(t).
+- Compute b(t) = α† * B(t) * α.
+A progress bar shows the construction of B(t) across ts.
+
+# Arguments
+- `α_ns::Vector{Complex{T}}`: Projection amplitudes αₙ.
+- `Psi2ds::Vector{<:AbstractMatrix{T}}`: Vector of ψₙ[i,j] grids.
+- `xgrid::Vector{T}`,`ygrid::Vector{T}`: 1D coordinate arrays.
+- `ks::Vector{T}`: Wavenumbers (energies = ks.^2).
+- `ts::Vector{T}`: Array of time values.
+- `memory_efficient::Bool=true`: If true, use `X_block_diag`; otherwise `Xmat_gemm`.
+- `direction::Symbol=:x`: Weight direction (`:x` or `:y`).
+
+# Returns
+- `bs::Vector{Complex{T}}`: b(t_i) for each t_i.
+"""
+function b_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+    X=ifelse(memory_efficient,X_block_diag(Psi2ds,xgrid,ygrid,direction=direction),Xmat_gemm(Psi2ds,xgrid,ygrid,direction=direction))
+    Es=ks.^2 # E=k^2
+    bs=Vector{Complex{T}}(undef,length(ts))
+    @showprogress desc="b(t) construction for ts..." Threads.@threads for i in eachindex(ts)
+        B=Bmat(X,Es,ts[i])
+        bs[i]=(conj(α_ns)'*B)*α_ns # scalar b(t) = α_n^† B α_n
+    end
+    return bs # return vector of b(t) values for each t in ts
+end
+
+"""
+    c_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},t::T;memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+
+Compute the 4-point OTOC c(t) = α† B(t) B(t) α at a single time t.
+
+Steps:
+1. Build X once (same as in `b_wavepacket`).
+2. Form B(t) = Bmat(X, Es, t).
+3. Return c(t) = α† * B(t) * B(t) * α.
+
+# Arguments
+- `α_ns::Vector{Complex{T}}`: Projection amplitudes αₙ.
+- `Psi2ds::Vector{<:AbstractMatrix{T}}`: Vector of ψₙ[i,j] grids.
+- `xgrid::Vector{T}`,`ygrid::Vector{T}`: 1D coordinate arrays.
+- `ks::Vector{T}`: Wavenumbers (energies = ks.^2).
+- `t::T`: Time at which to evaluate c(t).
+- `memory_efficient::Bool=true`: If true, use `X_block_diag`; otherwise `Xmat_gemm`.
+- `direction::Symbol=:x`: Weight direction (`:x` or `:y`).
+
+# Returns
+- `c_val::Complex{T}`: Complex scalar c(t) = α† * B(t) * B(t) * α.
+"""
+function c_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},t::T;memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+    X=ifelse(memory_efficient,X_block_diag(Psi2ds,xgrid,ygrid,direction=direction),Xmat_gemm(Psi2ds,xgrid,ygrid,direction=direction))
+    Es=ks.^2 # E=k^2
+    B=Bmat(X,Es,t)
+    return ((conj(α_ns)'*B)*B)*α_ns # scalar c(t) = α_n^† B α_n B α_n
+end
+
+"""
+    c_wavepacket_evolution(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+
+Compute the 4-point OTOC c(t) = α† B(t) B(t) α over multiple times.
+
+This reuses the overlap matrix X once, then for each t ∈ ts:
+- Form B(t) = Bmat(X, Es, t).
+- Compute c(t) = α† * B(t) * B(t) * α.
+Displays a progress bar during the B(t) constructions.
+
+# Arguments
+- `α_ns::Vector{Complex{T}}`: Projection amplitudes αₙ.
+- `Psi2ds::Vector{<:AbstractMatrix{T}}`: Vector of ψₙ[i,j] grids.
+- `xgrid::Vector{T}`,`ygrid::Vector{T}`: 1D coordinate arrays.
+- `ks::Vector{T}`: Wavenumbers (energies = ks.^2).
+- `ts::Vector{T}`: Array of time points.
+- `memory_efficient::Bool=true`: If true, use `X_block_diag`; otherwise `Xmat_gemm`.
+- `direction::Symbol=:x`: Weight direction (`:x` or `:y`).
+
+# Returns
+- `cs::Vector{Complex{T}}`: c(t_i) for each t_i.
+"""
+function c_wavepacket_evolution(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+    X=ifelse(memory_efficient,X_block_diag(Psi2ds,xgrid,ygrid,direction=direction),Xmat_gemm(Psi2ds,xgrid,ygrid,direction=direction))
+    Es=ks.^2 # E=k^2
+    cs=Vector{Complex{T}}(undef,length(ts))
+    @showprogress desc="b(t) construction for ts..." Threads.@threads for i in eachindex(ts)
+        B=Bmat(X,Es,ts[i])
+        cs[i]=((conj(α_ns)'*B)*B)*α_ns # scalar c(t) = α_n^† B α_n B α_n
+    end
+    return cs # return vector of c(t) values for each t in ts
 end
