@@ -13,8 +13,8 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
 @testset "Vergini Saraceno (ScalingMethodA)" begin
     w=2.0
     h=1.0
-    d=5.0
-    b=10.0
+    d=4.0
+    b=7.0
     k1=18.0
     k2=20.0
     k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
@@ -40,9 +40,9 @@ end
 @testset "DecompositionMethod" begin
     w=2.0
     h=1.0
-    d=5.0
-    b=10.0
-    k1=18.0
+    d=4.0
+    b=7.0
+    k1=19.0
     k2=20.0
     k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
     ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
