@@ -1,4 +1,5 @@
 using Test
+using QuantumBilliards
 
 #=
 Contains tests for various methods for computing the eigenvalue. It is easiest to test for the accuracy of eigenvalues if integrable models like the rectangle or the circle. Here we choose the rectangle billiard as it is the most common one and has a known simple analytical solution.
