@@ -1,7 +1,7 @@
 using Test
 
 #=
-Contains tests for various methods for computing the eigenvalue. It is easiest to test for the accuracy of eigenvalues if integrable models like the rectangle or the circle.
+Contains tests for various methods for computing the eigenvalue. It is easiest to test for the accuracy of eigenvalues if integrable models like the rectangle or the circle. Here we choose the rectangle billiard as it is the most common one and has a known simple analytical solution.
 =#
 
 ###########################################
@@ -142,7 +142,7 @@ end
     γ=5.0
     σ=1.01
     Es,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
-    ks=sqrt.(abs.(2 .*Es))
+    ks=sqrt.(abs.(2 .*Es)) # careful with the factor 2 here, it is not a mistake but rather FDM is constructed with (1/2)*d^2/dx^2 operator
     @test all(k->any(ka->abs(ka-k)≤1e-2,ks_analytical),ks) 
 end
 
@@ -165,6 +165,6 @@ end
     fem=QuantumBilliards.FiniteElementMethod(billiard,400,400;k_max=1000.0)
     nev=2
     Es,wavefunctions=QuantumBilliards.compute_fem_eigenmodes(fem,nev=nev,maxiter=100000,tol=1e-8)
-    ks=sqrt.(abs.(2 .*Es))
+    ks=sqrt.(abs.(2 .*Es)) # careful with the factor 2 here, it is not a mistake but rather FDM is constructed with (1/2)*d^2/dx^2 operator
     @test all(k->any(ka->abs(ka-k)≤1e-2,ks_analytical),ks) 
 end
