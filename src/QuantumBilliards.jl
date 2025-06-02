@@ -160,4 +160,9 @@ include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes, compute_boundary, compute_boundary_tension
 include("solvers/gridmethods/phi_fdm.jl")
 export compute_extended_index, phiFD_Hamiltonian, compute_ϕ_fem_eigenmodes
+
+
+
+# testing
+include("test/testing.jl")
 end
