@@ -162,8 +162,8 @@ end
     sort!(ks_analytical)
 
     billiard,_=make_rectangle_and_basis(w,h)
-    fem=QuantumBilliards.FiniteElementMethod(billiard,300,300;k_max=1000.0)
-    nev=3
+    fem=QuantumBilliards.FiniteElementMethod(billiard,400,400;k_max=1000.0)
+    nev=2
     Es,wavefunctions=QuantumBilliards.compute_fem_eigenmodes(fem,nev=nev,maxiter=100000,tol=1e-8)
     ks=sqrt.(abs.(2 .*Es))
     println(ks)
