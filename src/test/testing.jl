@@ -138,7 +138,7 @@ end
     billiard,_=make_rectangle_and_basis(w,h)
     fundamental=false
     fem=QuantumBilliards.FiniteElementMethod(billiard,300,300;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
-    nev=1
+    nev=1 # check the ground state precision since this is the most precise one in FEM
     γ=5.0
     σ=1.01
     Es,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
