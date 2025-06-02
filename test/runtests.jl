@@ -1,6 +1,4 @@
-using QuantumBilliards
 using Test
+using QuantumBilliards
 
-@testset "QuantumBilliards.jl" begin
-    # Write your tests here.
-end
+include("testing.jl")
