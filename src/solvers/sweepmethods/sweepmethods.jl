@@ -30,7 +30,7 @@ function solve_wavenumber(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilli
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard,k)
     function f(k)
-        return solve(solver,new_basis,pts,k;multithreaded=true) # for a single tensions minima to check always multithread construction.
+        return solve(solver,new_basis,pts,k,multithreaded=true) # for a single tensions minima to check always multithread construction.
     end
     res=optimize(f,k-0.5*dk,k+0.5*dk)
     k0,t0=res.minimizer,res.minimum
