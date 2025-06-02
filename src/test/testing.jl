@@ -166,7 +166,5 @@ end
     nev=2
     Es,wavefunctions=QuantumBilliards.compute_fem_eigenmodes(fem,nev=nev,maxiter=100000,tol=1e-8)
     ks=sqrt.(abs.(2 .*Es))
-    println(ks)
-    println(ks_analytical)
     @test all(k->any(ka->abs(ka-k)≤1e-2,ks_analytical),ks) 
 end
