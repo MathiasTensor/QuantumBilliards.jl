@@ -33,7 +33,7 @@ end
     w=2.0
     h=1.0
     d=4.0
-    b=12.0
+    b=15.0
     k1=18.0
     k2=20.0
     k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
