@@ -27,6 +27,8 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
     ks_analytical=[k_analytical(m,n,w,h) for m=0:8, n=0:8 if isodd(m) && isodd(n) && (m>0 && n>0)]
     sort!(ks_analytical)
     ks_analytical=filter(k->k1-1e-4≤k≤k2+1e-4,ks_analytical) # filter to the range of interest
+    println("ks_analytical: ", ks_analytical)
+    println("ks: ", ks)
     @test length(ks_analytical)==length(ks) # check if the number of ks is the same
     @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3
 end
