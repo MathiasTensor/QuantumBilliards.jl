@@ -119,3 +119,28 @@ end
     k,_=solve_wavenumber(psm,basis,billiard,k_close_to_true,0.1)
     @test any(ka->abs(ka-k)≤1e-3,ks_analytical)
 end
+
+###################
+#### Phi - FDM ####
+###################
+
+@testset "phiFD" begin
+    function rectangle_phi(x,y,width,height)
+        dx=abs(x)-width/2
+        dy=abs(y)-height/2
+        return max(dx,dy) < 0 ? max(dx,dy) : sqrt(max(dx,0)^2+max(dy,0)^2)
+    end
+    w=2.0
+    h=1.0
+    phi(x,y)=rectangle_phi(x,y,w,h)
+    k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
+    ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
+    billiard,_=make_rectangle_and_basis(w,h)
+    fundamental=false
+    fem=QuantumBilliards.FiniteElementMethod(billiard,120,120;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
+    nev=10
+    γ=5.0
+    σ=1.01
+    ks,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
+    @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) 
+end
