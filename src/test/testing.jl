@@ -24,7 +24,7 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
     ks=state_res.ks
     # analytical data - for the odd-odd class we have m,n even
     k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
-    ks_analytical=[k_analytical(m,n,w,h) for m=0:8, n=0:8 if iseven(m) && iseven(n) && (m>0 && n>0)]
+    ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if isodd(m) && isodd(n) && (m>0 && n>0)]
     sort!(ks_analytical)
     ks_analytical=filter(k->k1-1e-4≤k≤k2+1e-4,ks_analytical) # filter to the range of interest
     println("ks_analytical: ", ks_analytical)
