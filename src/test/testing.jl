@@ -137,7 +137,7 @@ end
     ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
     billiard,_=make_rectangle_and_basis(w,h)
     fundamental=false
-    fem=QuantumBilliards.FiniteElementMethod(billiard,200,200;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
+    fem=QuantumBilliards.FiniteElementMethod(billiard,250,250;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
     nev=3 # check the ground states precision since this is the most precise one in FEM
     γ=5.0
     σ=1.01
