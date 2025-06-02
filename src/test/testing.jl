@@ -137,11 +137,12 @@ end
     ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
     billiard,_=make_rectangle_and_basis(w,h)
     fundamental=false
-    fem=QuantumBilliards.FiniteElementMethod(billiard,120,120;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
+    fem=QuantumBilliards.FiniteElementMethod(billiard,200,200;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
     nev=10
     γ=5.0
     σ=1.01
-    ks,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
+    Es,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
+    ks=sqrt.(abs.(Es))
     println(ks)
     println(ks_analytical)
     @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) 
