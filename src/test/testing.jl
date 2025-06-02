@@ -27,7 +27,5 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
     ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
     sort!(ks_analytical)
     ks_analytical=filter(k->k1≤k≤k2,ks_analytical) # filter to the range of interest
-    println("ks_analytical: ", ks_analytical)
-    println("ks: ", ks)
-    @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3
+    @test all(k->any(ka->abs(ka-k)≤1e-4,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-4
 end
