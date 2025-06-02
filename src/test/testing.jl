@@ -48,13 +48,13 @@ end
     ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
     sort!(ks_analytical)
     ks_analytical=filter(k->k1≤k≤k2,ks_analytical) # filter to the range of interest
-    
+
     kgrid=collect(range(k1,k2,step=1e-4))
     threshold=200.0
     billiard,basis=make_rectangle_and_basis(w,h)
     samplers=[GaussLegendreNodes(),LinearNodes()]
     for sampler in samplers 
-        dm=DecompositionMethod(d,b,sampler=sampler)
+        dm=DecompositionMethod(d,b,sampler)
         tens=k_sweep(dm,basis,billiard,kgrid)
         ks=get_eigenvalues(kgrid,tens,threshold=threshold)
         @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3 (smaller than the grid spacing)
