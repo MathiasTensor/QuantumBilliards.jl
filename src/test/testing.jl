@@ -45,7 +45,7 @@ end
     billiard,basis=make_rectangle_and_basis(w,h)
     symmetries=Vector{Any}([XYReflection(-1,-1)])
     ebim_solver=ExpandedBoundaryIntegralMethod(b,billiard,symmetries=symmetries)
-    ks_all,_=compute_spectrum(ebim_solver,billiard,k1,k2,dk=ebim_dk,use_lapack_raw=true)
+    ks,_=compute_spectrum(ebim_solver,billiard,k1,k2,dk=ebim_dk,use_lapack_raw=true)
     @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3
 end
 
