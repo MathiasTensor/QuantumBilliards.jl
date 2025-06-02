@@ -73,6 +73,7 @@ end
     symmetries=Vector{Any}([XYReflection(-1,-1)])
     bim=BoundaryIntegralMethod(b,billiard,symmetries=symmetries,x_bc=:D,y_bc=:D)
     k,_=solve_wavenumber(bim,AbstractHankelBasis(),billiard,k_close_to_true,0.1)
+    println(k)
     @test any(ka->abs(ka-k)≤1e-3,ks_analytical)
 end
 
