@@ -29,6 +29,26 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
     @test all(k->any(ka->abs(ka-k)≤1e-4,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-4
 end
 
+@testset "EBIM" begin
+    w=2.0
+    h=1.0
+    d=4.0
+    b=7.0
+    k1=18.0
+    k2=20.0
+    k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
+    ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
+    sort!(ks_analytical)
+    ks_analytical=filter(k->k1≤k≤k2,ks_analytical) # filter to the range of interest
+
+    ebim_dk(k)=0.03*k^(-1/3)
+    billiard,basis=make_rectangle_and_basis(w,h)
+    symmetries=Vector{Any}[XYReflection(-1,-1)]
+    ebim_solver=ExpandedBoundaryIntegralMethod(b,billiard,symmetries=symmetries)
+    ks_all,_=compute_spectrum(ebim_solver,billiard,k1,k2,dk=ebim_dk,use_lapack_raw=true)
+    @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3
+end
+
 #############################
 #### DecompositionMethod ####
 #############################
