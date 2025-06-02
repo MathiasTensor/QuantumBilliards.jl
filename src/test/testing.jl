@@ -46,8 +46,6 @@ end
     symmetries=Vector{Any}([XYReflection(-1,-1)])
     ebim_solver=ExpandedBoundaryIntegralMethod(b,billiard,symmetries=symmetries)
     ks,_=compute_spectrum(ebim_solver,billiard,k1,k2,dk=ebim_dk,use_lapack_raw=true)
-    println(ks_analytical)
-    println(ks)
     @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3
 end
 
@@ -58,22 +56,17 @@ end
 @testset "DecompositionMethod" begin
     w=2.0
     h=1.0
-    d=4.0
-    b=7.0
+    d=5.0
+    b=15.0
     k1=18.0
     k2=20.0
     k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
     ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
     sort!(ks_analytical)
     ks_analytical=filter(k->k1≤k≤k2,ks_analytical) # filter to the range of interest
-
-    kgrid=collect(range(k1,k2,step=1e-4))
-    threshold=200.0
+    k_close_to_true=19.1 # this is close to a true eigenvalue
     billiard,basis=make_rectangle_and_basis(w,h)
     dm=DecompositionMethod(d,b)
-    tens=k_sweep(dm,basis,billiard,kgrid)
-    ks=get_eigenvalues(kgrid,tens,threshold=threshold)
-    println(ks_analytical)
-    println(ks)
-    @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3 (smaller than the grid spacing)
+    k,_=solve_wavenumber(dm,basis,billiard,k_close_to_true,0.3)
+    @test any(ka->abs(ka-k)≤1e-3,ks_analytical) # check if all ks are in the analytical set up to 1e-3 (smaller than the grid spacing)
 end
