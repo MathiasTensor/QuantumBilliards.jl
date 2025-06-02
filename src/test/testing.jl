@@ -19,7 +19,7 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
     ###########################################
     #### Vergini Saraceno (ScalingMethodA) ####
     ###########################################
-    #=
+    
     dk=0.05
     billiard,basis=make_rectangle_and_basis(w,h)
     acc_solver=ScalingMethodA(d,b)
@@ -27,7 +27,7 @@ Contains tests for various methods for computing the eigenvalue. It is easiest t
     ks=state_res.ks
     # analytical data - for the odd-odd class we have m,n even
     @test all(k->any(ka->abs(ka-k)≤1e-4,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-4
-    =#
+    
     #############################
     #### DecompositionMethod ####
     #############################
