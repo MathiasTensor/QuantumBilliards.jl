@@ -142,6 +142,30 @@ end
     γ=5.0
     σ=1.01
     Es,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
-    ks=sqrt.(abs.(2. *Es))
+    ks=sqrt.(abs.(2 .*Es))
+    @test all(k->any(ka->abs(ka-k)≤1e-2,ks_analytical),ks) 
+end
+
+##################################
+#### Finite Difference Method ####
+##################################
+
+@testset "FDM" begin
+    w=2.0
+    h=1.0
+    d=5.0
+    b=15.0
+    k1=18.0
+    k2=20.0
+    k_analytical(_m,_n,_w,_h)=sqrt((_m*pi/_w)^2+(_n*pi/_h)^2)
+    ks_analytical=[k_analytical(m,n,w,h) for m=0:10, n=0:10 if (m>0 && n>0)]
+    sort!(ks_analytical)
+    ks_analytical=filter(k->k1≤k≤k2,ks_analytical) # filter to the range of interest
+
+    billiard,_=make_rectangle_and_basis(w,h)
+    fem=QuantumBilliards.FiniteElementMethod(billiard,200,200;k_max=1000.0)
+    nev=3
+    Es,wavefunctions=QuantumBilliards.compute_fem_eigenmodes(fem,nev=nev,maxiter=100000,tol=1e-8)
+    ks=sqrt.(abs.(2 .*Es))
     @test all(k->any(ka->abs(ka-k)≤1e-2,ks_analytical),ks) 
 end
