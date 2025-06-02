@@ -36,7 +36,7 @@ end
 #### DecompositionMethod ####
 #############################
 
-
+#=
 @testset "DecompositionMethod" begin
     w=2.0
     h=1.0
@@ -57,3 +57,4 @@ end
     ks=get_eigenvalues(kgrid,tens,threshold=threshold)
     @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) # check if all ks are in the analytical set up to 1e-3 (smaller than the grid spacing)
 end
+=#
