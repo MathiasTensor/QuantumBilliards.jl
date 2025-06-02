@@ -142,7 +142,7 @@ end
     γ=5.0
     σ=1.01
     Es,_=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
-    ks=sqrt.(abs.(Es))
+    ks=sqrt.(abs.(2. *Es))
     println(ks)
     println(ks_analytical)
     @test all(k->any(ka->abs(ka-k)≤1e-3,ks_analytical),ks) 
