@@ -41,7 +41,7 @@ ellip,_=make_ellipse_and_basis(2.0,1.0)
 geometry_closed_test(ellip.full_boundary)
 geometry_closed_test(ellip.fundamental_boundary)
 
-tri,_=make_equilateraltriangle_and_basis(1.0)
+tri,_=make_triangle_and_basis(2*pi/3,1.0)
 geometry_closed_test(tri.full_boundary)
 geometry_closed_test(tri.fundamental_boundary)
 
