@@ -6,23 +6,21 @@ using QuantumBilliards
 ########################
 
 function geometry_test(segs::Vector{C};atol=1e-6) where {C<:AbsCurve}
-    @testset "Geometry closed-loop check" begin
-        N=length(segs)
-        N==1 && return 
-        # Helpers to extract the endpoints of a segment:
-        get_start(seg)=curve(seg,0.0)
-        get_end(seg)=curve(seg,1.0)
-        # Check each consecutive pair
-        for i in 1:(N-1)
-            p_end=get_end(segs[i])
-            p_next_st=get_start(segs[i+1])
-            @test isapprox(p_end,p_next_st;atol=atol)
-        end
-        # Finally, wrap around: last segment’s end → first segment’s start
-        p_endlast=get_end(segs[N])
-        p_start0=get_start(segs[1])
-        @test isapprox(p_endlast,p_start0;atol=atol)
+    N=length(segs)
+    N==1 && return 
+    # Helpers to extract the endpoints of a segment:
+    get_start(seg)=curve(seg,0.0)
+    get_end(seg)=curve(seg,1.0)
+    # Check each consecutive pair
+    for i in 1:(N-1)
+        p_end=get_end(segs[i])
+        p_next_st=get_start(segs[i+1])
+        @test isapprox(p_end,p_next_st;atol=atol)
     end
+    # Finally, wrap around: last segment’s end → first segment’s start
+    p_endlast=get_end(segs[N])
+    p_start0=get_start(segs[1])
+    @test isapprox(p_endlast,p_start0;atol=atol)
 end
 
 ####################
