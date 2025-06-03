@@ -5,7 +5,7 @@ using QuantumBilliards
 #### GEOMETRY TESTS ####
 ########################
 
-function geometry_test(segs::Vector{C};atol=1e-6) where {C<:AbsCurve}
+function geometry_test(segs::Vector{C};atol=1e-6) where {C<:QuantumBilliards.AbsCurve}
     N=length(segs)
     N==1 && return 
     # Helpers to extract the endpoints of a segment:
