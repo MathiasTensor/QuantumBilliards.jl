@@ -1,4 +1,5 @@
 using Test
 using QuantumBilliards
 
-include("testing.jl")
+include("basistests.jl")
+include("solvers.jl")
