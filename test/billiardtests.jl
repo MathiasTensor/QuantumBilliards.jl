@@ -16,18 +16,12 @@ function geometry_test(segs::Vector{C};atol=1e-6) where {C<:AbsCurve}
         for i in 1:(N-1)
             p_end=get_end(segs[i])
             p_next_st=get_start(segs[i+1])
-            @test isapprox(p_end,p_next_st;atol=atol) ||
-            (@testset "Segment mismatch at index $i" begin
-                @test false "segs[$i].end = $p_end  does not match  segs[$(i+1)].start = $p_next_st"
-            end)
+            @test isapprox(p_end,p_next_st;atol=atol)
         end
         # Finally, wrap around: last segment’s end → first segment’s start
         p_endlast=get_end(segs[N])
         p_start0=get_start(segs[1])
-        @test isapprox(p_endlast,p_start0;atol=atol) ||
-        (@testset "Segment mismatch at wrap-around" begin
-            @test false "segs[$N].end = $p_endlast  does not match  segs[1].start = $p_start0"
-        end)
+        @test isapprox(p_endlast,p_start0;atol=atol)
     end
 end
 
