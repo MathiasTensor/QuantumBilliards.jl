@@ -27,7 +27,7 @@ using QuantumBilliards
     # symmetry on line check
     pts=[SVector(i*cos(2*pi/3),i*sin(2*pi/3)) for i in 0:0.1:1.0]
     vals=basis_fun(basis,1:10,10.0,pts)
-    @test all(abs.(sum(vals,dims=2)).≤1e-3)
+    @test all(abs.(sum(vals,dims=2)).≤1e-8)
 end
 
 ##########################
@@ -58,5 +58,5 @@ end
     pts_y=[SVector(0.0,i) for i in 0:0.1:1.0]
     vals_x=basis_fun(basis,1:10,10.0,pts_x)
     vals_y=basis_fun(basis,1:10,10.0,pts_y)
-    @test all(abs.(sum(vals_x,dims=2)).≤1e-3) && iall(abs.(sum(vals_y,dims=2)).≤1e-3)
+    @test all(abs.(sum(vals_x,dims=2)).≤1e-8) && all(abs.(sum(vals_y,dims=2)).≤1e-8)
 end
