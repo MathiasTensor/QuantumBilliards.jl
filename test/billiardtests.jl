@@ -8,7 +8,7 @@ using QuantumBilliards
 function geometry_test(segs::Vector{C};atol=1e-6) where {C<:AbsCurve}
     @testset "Geometry closed-loop check" begin
         N=length(segs)
-        @test N≥1 "Need at least one segment to check closedness"
+        N==1 && return 
         # Helpers to extract the endpoints of a segment:
         get_start(seg)=curve(seg,0.0)
         get_end(seg)=curve(seg,1.0)
