@@ -6,6 +6,7 @@ using QuantumBilliards
 ########################
 
 function geometry_test(segs::Vector{C};atol=1e-6) where {C<:QuantumBilliards.AbsCurve}
+    @testset begin
     N=length(segs)
     N==1 && return 
     # Helpers to extract the endpoints of a segment:
@@ -21,6 +22,7 @@ function geometry_test(segs::Vector{C};atol=1e-6) where {C<:QuantumBilliards.Abs
     p_endlast=get_end(segs[N])
     p_start0=get_start(segs[1])
     @test isapprox(p_endlast,p_start0;atol=atol)
+    end
 end
 
 ####################
