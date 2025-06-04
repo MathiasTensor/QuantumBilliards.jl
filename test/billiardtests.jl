@@ -1,11 +1,13 @@
 using Test
 using QuantumBilliards
 
-########################
-#### GEOMETRY TESTS ####
-########################
 
 function geometry_closed_test(segs::Vector{C};atol=1e-6) where {C<:QuantumBilliards.AbsCurve}
+
+    ###############################
+    #### CLOSED BOUNDARY TESTS ####
+    ###############################
+
     @testset begin
         N=length(segs)
         N==1 && return 
