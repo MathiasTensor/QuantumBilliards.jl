@@ -138,7 +138,7 @@ end
 """
      Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T};n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
 
-Compute the “X” overlap matrix using a BLAS-GEMM accelerated approach.
+Compute the “X” overlap matrix using a BLAS-GEMM accelerated approach. It is faster but has a higher RAM cast since it needs to allocate two large matrices P and Y.
 Builds two matrices P and Y (both M×N), where Y has each row k scaled by its weight,
 and then performs one GEMM X = P’ * Y.
 
