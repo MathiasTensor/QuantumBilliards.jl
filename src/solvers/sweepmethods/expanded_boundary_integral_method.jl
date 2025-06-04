@@ -592,8 +592,8 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
         λ,VR,VL=generalized_eigen_all(A,dA)
     end
     T=eltype(real.(λ))
-    #valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
-    valid=(abs.(real.(λ)).<dk)
+    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
+    #valid=(abs.(real.(λ)).<dk) # this one might work, but maybe not
     #valid=abs.(λ).<dk 
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
