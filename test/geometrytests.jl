@@ -37,15 +37,11 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
     # Test that tangent‐vector norm is 1 after normalization
     ts=range(0.0,1.0;length=20)
     tanvecs=QuantumBilliards.tangent_vec(seg,collect(ts))
-    for v in tanvecs
-        @test isapprox(norm(v),1.0;atol=1e-6)
-    end
+    @test all([isapprox(norm(v),1.0;atol=1e-6) for v in tanvecs])
 
     # Test that normal_vec is orthogonal to tangent_vec at each sample
     norvecs=QuantumBilliards.normal_vec(seg,collect(ts))
-    for (v,n) in zip(tanvecs,norvecs)
-        @test isapprox(dot(v,n),0.0;atol=1e-6)
-    end
+    @test all([isapprox(dot(v,n),0.0;atol=1e-6) for v in tanvecs, n in norvecs])
 
     # Test domain/is_inside:
     # - The center (0,0) must be inside.
@@ -69,8 +65,5 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
     @test isapprox(sum(ds),L_numeric;atol=1e-4)  # total ds should sum to L_numeric
 
     # Check a few random points from boundary_coords lie on the ellipse equation x^2/a^2 + y^2/b^2 ≈ 1
-    for pt in xy[1:10:end]
-        x,y=pt
-        @test isapprox(x^2/a^2+y^2/b^2,1.0;atol=1e-3)
-    end
+    @test all([isapprox(pt[1]^2/a^2+pt[2]^2/b^2,1.0;atol=1e-3)] for pt in  xy[1:10:end])
 end
