@@ -58,7 +58,11 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
     # Test boundary_coords:
     N=10000
     sampler=GaussLegendreNodes()
-    xy,normals,s_vals,ds=QuantumBilliards.boundary_coords(ellipse,sampler,N)
+    bp=QuantumBilliards.boundary_coords(ellipse,sampler,N)
+    bp.xy=xy
+    bp.normal=normals
+    bp.s=s_vals
+    bp.ds=ds
 
     @test length(xy)==length(normals)==length(s_vals)==length(ds)
     @test isapprox(sum(ds),L_numeric;atol=1e-4)  # total ds should sum to L_numeric
