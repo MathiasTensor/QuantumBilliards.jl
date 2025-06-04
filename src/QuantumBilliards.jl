@@ -45,7 +45,6 @@ include("basis/compositebasis.jl")
 export CompositeBasis
 
 #billiards
-include("billiards/geometry/geometry.jl")
 export LineSegment, VirtualLineSegment
 export CircleSegment, VirtualCircleSegment
 export DispersingCircleSegment, VirtualDispersingCircleSegment
