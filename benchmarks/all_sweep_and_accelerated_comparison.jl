@@ -65,10 +65,10 @@ do_husimi: Boolean flag to indicate whether to compute and plot the Husimi plots
 =#
 function spectrum_test(k1,k2;make_movie=false,b=10.0,x=:D,y=:D,type=:xy,sampler_bim=[LinearNodes()],sampler_other=[GaussLegendreNodes()],dk=(k)->(0.05*k^(-1/3)),save_wavefunctions=false,do_standard=true,do_VS=true,raw_lapack=false,do_ebim=true,fundamental=false,do_husimi=true,plot_ebim_debug=false)
     #billiard,basis=make_circle_and_basis(1.0)
-    #billiard,basis=make_stadium_and_basis(1.0)
+    billiard,basis=make_stadium_and_basis(1.0)
     #billiard,basis=make_prosen_and_basis(0.6)
     #billiard,basis=make_ellipse_and_basis(2.0,1.0)
-    billiard,basis=make_robnik_and_basis(0.15)
+    #billiard,basis=make_robnik_and_basis(0.1)
     #billiard,basis=make_rectangle_and_basis(2.0, 1.0)
     #billiard,basis=make_equilateral_triangle_and_basis(1.0)
     #billiard,basis=make_generalized_sinai_and_basis()
@@ -124,13 +124,13 @@ function spectrum_test(k1,k2;make_movie=false,b=10.0,x=:D,y=:D,type=:xy,sampler_
         #@time ks_ebim,tens_ebim=QuantumBilliards.compute_spectrum_new(ebim_solver,billiard,k1,k2,dk=dk,use_lapack_raw=raw_lapack)
         @time ks_debug1,tens_debug1,ks_debug2,tens_debug2=QuantumBilliards.visualize_ebim_sweep(ebim_solver,hankel_basis,billiard,k1,k2;dk=dk)
     end
-    @time tens_bim=k_sweep(bim_solver,hankel_basis,billiard,k_range)
+    @time tens_bim=k_sweep(bim_solver,hankel_basis,billiard,k_range,multithreaded_matrices=true,multithreaded_ks=true)
     if do_standard
         @time tens_dm=k_sweep(dm_solver,basis,billiard,k_range,multithreaded_matrices=true,multithreaded_ks=true)
         @time tens_psm=k_sweep(psm_solver,basis,billiard,k_range,multithreaded_matrices=true,multithreaded_ks=true)
     end
     if do_VS
-        @time ks_VS,tens_VS=compute_spectrum(acc_solver,basis,billiard,k1,k2,0.1)
+        @time ks_VS,tens_VS,control=QuantumBilliards.compute_spectrum(acc_solver,basis,billiard,k1,k2,0.03)
         idxs=findall(x->x<1e-3,tens_VS) # all the correct eigenvalues
         ks_VS=ks_VS[idxs]
         tens_VS=tens_VS[idxs]
@@ -208,7 +208,7 @@ function spectrum_test(k1,k2;make_movie=false,b=10.0,x=:D,y=:D,type=:xy,sampler_
         c+=3
     end
     save("$(nameof(typeof(billiard)))_A_dA_ddA_$(k1)_$(k2)_$(nameof(typeof(sampler_bim[1])))_b_$(b)_x_$(x)_y_$(y).png", f)
-    # save wavefunctions and husimi
+    # save wavefunctions and husimi. It is constructed from BIM data and actually we do not even remove the outside, so one can see that for highly curved geometries some outside wavefunction decay.
     if save_wavefunctions
         if do_ebim
             ks=ks_ebim
@@ -238,7 +238,7 @@ end
 
 # Here we choose all the relevant parameters for the sweep and the methods we want to test. Left to the user to change.
 k1,k2=30.0,32.0
-spectrum_test(k1,k2,make_movie=false,b=15.0,x=:D,y=:D,type=:y,sampler_bim=[LinearNodes()],dk=(k)->(0.04*k^(-1/3)),save_wavefunctions=true,do_standard=true,do_VS=true,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
-spectrum_test(k1,k2,make_movie=false,b=15.0,x=:D,y=:N,type=:y,sampler_bim=[LinearNodes()],dk=(k)->(0.04*k^(-1/3)),save_wavefunctions=true,do_standard=false,do_VS=false,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
-spectrum_test(k1,k2,make_movie=false,b=15.0,x=:N,y=:D,type=:y,sampler_bim=[LinearNodes()],dk=(k)->(0.04*k^(-1/3)),save_wavefunctions=true,do_standard=false,do_VS=false,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
-spectrum_test(k1,k2,make_movie=false,b=15.0,x=:N,y=:N,type=:y,sampler_bim=[LinearNodes()],dk=(k)->(0.04*k^(-1/3)),save_wavefunctions=true,do_standard=false,do_VS=false,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
+spectrum_test(k1,k2,make_movie=false,b=15.0,x=:D,y=:D,type=:xy,sampler_bim=[LinearNodes()],dk=(k)->(0.02*k^(-1/3)),save_wavefunctions=true,do_standard=true,do_VS=true,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
+spectrum_test(k1,k2,make_movie=false,b=15.0,x=:D,y=:N,type=:xy,sampler_bim=[LinearNodes()],dk=(k)->(0.02*k^(-1/3)),save_wavefunctions=true,do_standard=false,do_VS=false,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
+spectrum_test(k1,k2,make_movie=false,b=15.0,x=:N,y=:D,type=:xy,sampler_bim=[LinearNodes()],dk=(k)->(0.02*k^(-1/3)),save_wavefunctions=true,do_standard=false,do_VS=false,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
+spectrum_test(k1,k2,make_movie=false,b=15.0,x=:N,y=:N,type=:xy,sampler_bim=[LinearNodes()],dk=(k)->(0.02*k^(-1/3)),save_wavefunctions=true,do_standard=false,do_VS=false,do_ebim=true,fundamental=false,do_husimi=true,raw_lapack=true)
