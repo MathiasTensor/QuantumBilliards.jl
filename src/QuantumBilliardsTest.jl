@@ -1,4 +1,4 @@
-
+#=
 #using Reexport
 
 #abstract types
@@ -114,3 +114,4 @@ function make_triangle_and_basis(gamma,chi; edge_i=1)
     basis = CornerAdaptedFourierBessel(1, adapt_basis(tr,edge_i+2)...) 
     return tr, basis 
 end
+=#
