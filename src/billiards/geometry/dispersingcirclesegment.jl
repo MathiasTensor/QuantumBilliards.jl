@@ -114,7 +114,7 @@ Construct a `VirtualDispersingCircleSegment{T}` of radius `R` centered at `(x0,y
 # Returns
 - `VirtualDispersingCircleSegment{T}`: New virtual dispersing arc with `length = abs(R * arc_angle)`.
 """
-function VirtualCircleSegment(R::T,arc_angle::T,shift_angle::T,x0::T,y0::T;symmetry_type=:Dirichlet,origin=(zero(x0),zero(x0)),rot_angle=zero(x0),orientation=1)
+function VirtualCircleSegment(R::T,arc_angle::T,shift_angle::T,x0::T,y0::T;symmetry_type=:Dirichlet,origin=(zero(x0),zero(x0)),rot_angle=zero(x0),orientation=1) where {T<:Real}
     cs=PolarCS(SVector(origin...),rot_angle)
     center=SVector(x0,y0)
     L=abs(R*arc_angle)
