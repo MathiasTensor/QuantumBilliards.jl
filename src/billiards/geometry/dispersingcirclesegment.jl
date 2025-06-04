@@ -63,7 +63,7 @@ Construct a `DispersingCircleSegment{T}` of radius `R` centered at `(x0,y0)` wit
 # Returns
 - `DispersingCircleSegment{T}`: New dispersing (concave) circular‐arc segment with `length = abs(R * arc_angle)`.
 """
-function DispersingCircleSegment(R::T,arc_angle::T,shift_angle::T,x0::T,y0::T;origin=(zero(x0),zero(x0)),rot_angle=zero(x0),orientation::Int=1)
+function DispersingCircleSegment(R::T,arc_angle::T,shift_angle::T,x0::T,y0::T;origin=(zero(x0),zero(x0)),rot_angle=zero(x0),orientation::Int=1) where {T<:Real}
     cs=PolarCS(SVector(origin...),rot_angle)
     center=SVector(x0,y0)
     L=abs(R*arc_angle)
