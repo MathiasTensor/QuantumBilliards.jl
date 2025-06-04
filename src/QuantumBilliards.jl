@@ -101,6 +101,7 @@ export BoundaryIntegralMethod, compute_kernel_matrix, fredholm_matrix, solve_tim
 export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matrix, default_helmholtz_kernel_second_derivative_matrix, compute_kernel_der_matrix, fredholm_matrix_der
 
 #spectra
+include("states/eigenstates.jl")
 include("spectra/spectralutils.jl")
 include("spectra/unfolding.jl")
 export weyl_law
@@ -110,7 +111,6 @@ include("spectra/spectralStatistics.jl")
 export number_variance, plot_subtract_level_counts_from_weyl, probability_berry_robnik, cumulative_berry_robnik, compare_level_count_to_weyl, plot_nnls, plot_cumulative_spacing_distribution, plot_subtract_level_counts_from_weyl, plot_point_distribution!, plot_length_spectrum!, length_spectrum, probability_berry_robnik_brody, cumulative_berry_robnik_brody, plot_U_diff
 
 #states
-include("states/eigenstates.jl")
 include("states/basisstates.jl")
 include("states/randomstates.jl")
 export Eigenstate, EigenstateBundle, BasisState, GaussianRandomState
