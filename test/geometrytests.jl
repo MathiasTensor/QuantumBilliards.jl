@@ -13,7 +13,7 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
 @testset "Ellipse geometry" begin
     a=2.0 # semi-major axis
     b=1.0 # semi-minor axis
-    ellipse,_=make_ellipse_and_basis(a,b)
+    ellipse,_=QuantumBilliards.make_ellipse_and_basis(a,b)
     # Extract the single boundary segment (full_boundary should have one curve)
     @test length(ellipse.full_boundary)==1
     seg=ellipse.full_boundary[1]
@@ -24,24 +24,24 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
     @test isapprox(P0,P1;atol=1e-8)
 
     # Test that arc_length(seg, 1.0) matches the analytical perimeter
-    L_numeric=arc_length(seg,one(eltype(a)))
+    L_numeric=QuantumBilliards.arc_length(seg,one(eltype(a)))
     L_analytic=ellipse_perimeter(a,b)
     @test isapprox(L_numeric,L_analytic;atol=1e-6)
 
     # Area matches π * a * b
-    A_numeric=compute_area(seg)
+    A_numeric=QuantumBilliards.compute_area(seg)
     A_analytic=ellipse_area(a,b)
     @test isapprox(A_numeric,A_analytic;atol=1e-6)
 
     # Test that tangent‐vector norm is 1 after normalization
     ts=range(0.0,1.0;length=20)
-    tanvecs=tangent_vec(seg,collect(ts))
+    tanvecs=QuantumBilliards.tangent_vec(seg,collect(ts))
     for v in tanvecs
         @test isapprox(norm(v),1.0;atol=1e-8)
     end
 
     # Test that normal_vec is orthogonal to tangent_vec at each sample
-    norvecs=normal_vec(seg,collect(ts))
+    norvecs=QuantumBilliards.normal_vec(seg,collect(ts))
     for (v,n) in zip(tanvecs,norvecs)
         @test isapprox(dot(v,n),0.0;atol=1e-8)
     end
@@ -51,14 +51,14 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
     # - A point on the major axis but outside, e.g., (a + 0.5, 0), is outside.
     center_point=SVector(0.0,0.0)
     outside_point=SVector(a+0.5,0.0)
-    inside_vals=is_inside(seg,[center_point,outside_point])
+    inside_vals=QuantumBilliards.is_inside(seg,[center_point,outside_point])
     @test inside_vals[1]==true
     @test inside_vals[2]==false
 
     # Test boundary_coords:
     N=10000
     sampler=GaussLegendreNodes()
-    xy,normals,s_vals,ds=boundary_coords(ellipse,sampler,N)
+    xy,normals,s_vals,ds=QuantumBilliards.boundary_coords(ellipse,sampler,N)
 
     @test length(xy)==length(normals)==length(s_vals)==length(ds)
     @test isapprox(sum(ds),L_numeric;atol=1e-4)  # total ds should sum to L_numeric
