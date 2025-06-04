@@ -442,8 +442,8 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;t
     k0=k_vals[1]
     println("Initial solve...")
     k_res,ten_res=solve_spectrum_with_INFO(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices)
-    all_ks=Vector{T}(undef,length(k_vals))
-    all_tens=Vector{T}(undef,length(k_vals))
+    all_ks=Vector{Vector{T}}(undef,length(k_vals))
+    all_tens=Vector{Vector{T}}(undef,length(k_vals))
     all_ks[1]=k_res
     all_tens[1]=ten_res
     control=[false for i in 1:length(k_res)]
