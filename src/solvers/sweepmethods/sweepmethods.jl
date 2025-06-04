@@ -2,10 +2,10 @@
 #include("../../utils/billiardutils.jl")
 #include("decompositions.jl")
 #include("../samplers.jl")
-include("particularsolutionsmethod.jl")
-include("decompositionmethod.jl")
-include("boundaryintegralmethod.jl")
-include("expanded_boundary_integral_method.jl")
+#include("particularsolutionsmethod.jl")
+#include("decompositionmethod.jl")
+#include("boundaryintegralmethod.jl")
+#include("expanded_boundary_integral_method.jl")
 using LinearAlgebra, Optim, ProgressMeter
 
 """
