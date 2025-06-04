@@ -156,8 +156,6 @@ include("spectra/localization_entropy.jl")
 export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d, heatmap_R_vs_A_2d, combined_heatmaps_with_husimi, correlation_matrix, correlation_matrix_and_average
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
-include("spectra/evolution.jl")
-export Wavepacket, gaussian_wavepacket_2d, gaussian_coefficients, plot_gaussian_from_eigenfunction_expansion, evolution_gaussian_coefficients, animate_wavepacket_evolution!
 include("spectra/otoc.jl")
 export plot_wavefunctions, wavefunction_multi, X_mn_standard, X_standard, B_standard, microcanocinal_Cn_standard, plot_microcanonical_Cn!, microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
 include("spectra/classical_transport_time.jl")
@@ -166,6 +164,8 @@ include("spectra/antiscar_mushroom.jl")
 export calculate_bb_bbox_localization_mushroom, create_husimi_localization_mat, calculate_overlap, get_bb_localization_indexes
 include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes, compute_boundary, compute_boundary_tension
+include("spectra/evolution.jl")
+export Wavepacket, gaussian_wavepacket_2d, gaussian_coefficients, plot_gaussian_from_eigenfunction_expansion, evolution_gaussian_coefficients, animate_wavepacket_evolution!
 include("solvers/gridmethods/phi_fdm.jl")
 export compute_extended_index, phiFD_Hamiltonian, compute_ϕ_fem_eigenmodes
 end
