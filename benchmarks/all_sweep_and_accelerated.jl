@@ -307,7 +307,7 @@ function spectrum_test(k1,k2;make_movie=false,b=10.0,x=:D,y=:D,type=:xy,sampler_
         pts_all,us_all=QuantumBilliards.boundary_function_BIM(bim_solver,us_all,pts_all,billiard) # pts_all is of type BoundaryPoints
         s_vals_all=[pts.s for pts in pts_all]
         if do_husimi
-            Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list=QuantumBilliards.@time wavefunction_multi_with_husimi(ks,us_all,pts_all,billiard;fundamental=fundamental,inside_only=false,xgrid_size=1000,ygrid_size=500)
+            @time Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list=QuantumBilliards.wavefunction_multi_with_husimi(ks,us_all,pts_all,billiard;fundamental=fundamental,inside_only=false,xgrid_size=1000,ygrid_size=500)
             @time f=QuantumBilliards.plot_wavefunctions_with_husimi_BATCH(ks,[abs.(Psi) for Psi in Psi2ds],x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,s_vals_all,fundamental=fundamental)
         else
             @time Psi2ds,x_grid,y_grid=QuantumBilliards.wavefunction_multi(ks,us_all,pts_all,billiard;fundamental=fundamental,inside_only=false)
