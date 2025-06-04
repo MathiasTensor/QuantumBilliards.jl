@@ -5,7 +5,6 @@ using CairoMakie
 using Statistics
 using CSV
 using DataFrames
-using FunctionZeros
 
 #=
 Comparison of different methods for billiards and different geometries.
@@ -43,77 +42,6 @@ elseif x==:N && y==:N
 end
 
 =#
-
-
-#######################################################
-### HELPERS FOR EIGENVALUES OF RECTANGLE AND CIRCLE ###
-#######################################################
-
-# Compute the analytical eigenvalues for a circle billiard using Bessel function zeros. Useful since in the spectrum_test function we can compare the numerical results with the analytical ones.
-function compute_circle_analytical_eigenvalues(k_min::Real,k_max::Real,radius::Real)
-    analytical_eigenvalues=[]  # List to hold eigenvalues (k_mn, nu, zero_index)
-    nu=0
-    while true
-        stop_outer_loop=false
-        zero_index=1
-        while true
-            # Compute the zero of the Bessel function J_nu
-            zero=besselj_zero(nu,zero_index)  # `bessel_zero` gives the `zero_index`th root of J_nu
-            k_mn=zero/radius
-            # Stop conditions
-            if k_mn>k_max
-                if zero_index==1
-                    stop_outer_loop=true
-                end
-                break
-            end
-            if k_mn>=k_min
-                # Append (k_mn, nu, zero_index)
-                push!(analytical_eigenvalues,(k_mn,nu,zero_index))
-                # Add the negative nu case for doublets if nu > 0
-                if nu>0
-                    push!(analytical_eigenvalues,(k_mn,-nu,zero_index))
-                end
-            end
-            zero_index+=1
-        end
-        if stop_outer_loop
-            break
-        end
-        nu+=1
-    end
-    return analytical_eigenvalues
-end
-
-# Compute the analytical eigenvalues for a rectangle billiard using the formula k_mn = sqrt((m * π / width)^2 + (n * π / height)^2). Useful since in the spectrum_test function we can compare the numerical results with the analytical ones.
-function compute_rectangle_analytical_eigenvalues(k_min::Real, k_max::Real, width::Real, height::Real) 
-    analytical_eigenvalues=Vector{Tuple{Float64,Int,Int}}()
-    m=1
-    while true
-        stop_outer_loop=false
-        n=1
-        while true
-            k_mn_squared=(m*π/width)^2+(n*π/height)^2
-            if k_mn_squared>k_max^2
-                if n==1
-                    stop_outer_loop=true
-                end
-                break
-            end
-            if k_min^2<=k_mn_squared
-                k_mn=sqrt(k_mn_squared)
-                push!(analytical_eigenvalues,(k_mn,m,n))
-            end
-            n+=1
-        end
-        if stop_outer_loop
-            break
-        end
-        m+=1
-    end
-
-    return analytical_eigenvalues
-end
 
 #=
 k1: Minimum wavenumber to start the sweep.
