@@ -19,6 +19,7 @@ export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
 
 #solvers
+include("billiards/geometry/geometry.jl")
 include("solvers/samplers.jl")
 export GaussLegendreNodes, LinearNodes, FourierNodes, PolarSampler
 export sample_points
