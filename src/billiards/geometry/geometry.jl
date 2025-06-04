@@ -119,7 +119,7 @@ for `LineSegment`, otherwise `:VirtualLineSegment`). The last corner connects ba
 """
 function make_polygon(corners,curve_types;origin=(zero(corners[1][1]),zero(corners[1][1])),rot_angle=zero(corners[1][1]))
     N=length(corners)
-    boundary=[]
+    boundary=Union{LineSegment,VirtualLineSegment}[]
     circular_idx(i)=mod1(i,N)
     for i in 1:N
         idx0=circular_idx(i)
