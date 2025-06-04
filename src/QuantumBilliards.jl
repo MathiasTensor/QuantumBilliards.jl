@@ -80,6 +80,7 @@ include("solvers/decompositions.jl")
 include("solvers/matrixconstructors.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
+include("solvers/acceleratedmethods/scalingmethod.jl")
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
 export ScalingMethodA, ScalingMethodB 
