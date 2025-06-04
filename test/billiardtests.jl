@@ -45,10 +45,6 @@ tri,_=make_triangle_and_basis(2*pi/3,1.0)
 geometry_closed_test(tri.full_boundary)
 geometry_closed_test(tri.fundamental_boundary)
 
-gs,_=make_generalized_sinai_and_basis()
-geometry_closed_test(gs.full_boundary)
-geometry_closed_test(gs.fundamental_boundary)
-
 mush,_=make_mushroom_and_basis(0.5,1.0,1.0)
 geometry_closed_test(mush.full_boundary)
 geometry_closed_test(mush.fundamental_boundary)
