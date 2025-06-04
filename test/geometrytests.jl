@@ -41,9 +41,10 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
 
     # Test that normal_vec is orthogonal to tangent_vec at each sample
     norvecs=QuantumBilliards.normal_vec(seg,collect(ts))
+    dot_normals_tangents=[dot(tanvecs[i],norvecs[i]) for i in 1:length(ts)]
     println(tanvecs)
     println(norvecs)
-    println([dot(v,n) for v in tanvecs for n in norvecs])
+    println(dot_normals_tangents)
     @test all([isapprox(dot(v,n),0.0;atol=1e-6) for v in tanvecs, n in norvecs])
 
     # Test domain/is_inside:
