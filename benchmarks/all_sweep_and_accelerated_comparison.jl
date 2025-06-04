@@ -126,11 +126,11 @@ function spectrum_test(k1,k2;make_movie=false,b=10.0,x=:D,y=:D,type=:xy,sampler_
     end
     @time tens_bim=k_sweep(bim_solver,hankel_basis,billiard,k_range)
     if do_standard
-        @time tens_dm=k_sweep(dm_solver,basis,billiard,k_range)
-        @time tens_psm=k_sweep(psm_solver,basis,billiard,k_range)
+        @time tens_dm=k_sweep(dm_solver,basis,billiard,k_range,multithreaded_matrices=true,multithreaded_ks=true)
+        @time tens_psm=k_sweep(psm_solver,basis,billiard,k_range,multithreaded_matrices=true,multithreaded_ks=true)
     end
     if do_VS
-        @time ks_VS,tens_VS=compute_spectrum(acc_solver,basis,billiard,k1,k2,dk=0.1)
+        @time ks_VS,tens_VS=compute_spectrum(acc_solver,basis,billiard,k1,k2,0.1)
         idxs=findall(x->x<1e-3,tens_VS) # all the correct eigenvalues
         ks_VS=ks_VS[idxs]
         tens_VS=tens_VS[idxs]
