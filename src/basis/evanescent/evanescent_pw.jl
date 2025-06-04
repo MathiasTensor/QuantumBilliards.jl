@@ -305,7 +305,7 @@ summing contributions across all origins.
 # Returns
 - `Vector{T}`: ∂/∂k of the i-th EPW at each point.
 """
-function epw_dk(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
+function epw_dk(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real}
     origins=params.origins
     angle_ranges=params.angles
     N=length(pts)
@@ -337,7 +337,7 @@ summing contributions from all origins.
 # Returns
 - `(dx, dy)::Tuple{Vector{T},Vector{T}}`: Partial derivatives of the i-th EPW with respect to x and y.
 """
-function epw_gradient(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real,Ti<:Integer}
+function epw_gradient(pts::AbstractArray,i::Int64,params::EvanescentParams{T},k::T) where {T<:Real}
     origins=params.origins
     angle_ranges=params.angles
     N=length(pts)

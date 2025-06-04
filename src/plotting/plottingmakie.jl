@@ -146,7 +146,7 @@ function plot_boundary_orientation!(ax::Axis, billiard::Bi; fundamental_domain::
 end
 
 """
-    plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=100, print_symmetrized_sizes=true) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+    plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=100, print_symmetrized_sizes=true) where {Ba<:AbsBasis, Bi<:AbsBilliard}
 
 Debugging plotting function that checks if the symmetry procedures applied correctly. With different colors shows the old and then new boundary parts with the normals also plotted for visual inspection. The kwarg `fundamental_or_desymmetrized_full` is responsible for whether we apply the symmetries contained in the `basis` to the `fundamental_boundary` or the `desymmetrized_full_boundary` which is needed for any u(s) boundary function construction. Also plots the arclengths (`s`) and `ds` for all the components.
  
@@ -160,7 +160,7 @@ Debugging plotting function that checks if the symmetry procedures applied corre
 # Returns
 - `Figure`: A figure with an axis for the boundary and two axes for the arclength and ds.
 """
-function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=100, print_symmetrized_sizes=true) where {T<:Real, Ba<:AbsBasis, Bi<:AbsBilliard}
+function plot_symmetry_adapted_boundary(basis::Ba, billiard::Bi; fundamental_or_desymmetrized_full::Bool=false, N::Integer=100, print_symmetrized_sizes=true) where {Ba<:AbsBasis, Bi<:AbsBilliard}
     f = Figure(size=(1500,1000), resolution=(1500,1000))
     ax_main = Axis(f[1,1][1,1:2], title="Desymmetrized boundary w/ Symmetry", width=500, height=500)
     ax_s = Axis(f[1,2][1,1], title="Arclengths")
