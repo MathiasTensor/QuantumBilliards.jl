@@ -640,7 +640,7 @@ keep = findall(i -> min(abs.(σ1[i]), abs.(σ2[i])) > tol * σmax_joint, 1:lengt
 
 if isempty(keep)
     @warn "No joint directions survived tol = $tol. Try lowering tol."
-    return T[], T[]
+    return zeros(eltype(A), 0, size(A, 2)), zeros(eltype(A), 0, size(A, 2))
 end
 
 V_keep = X[:, keep]  # Reduced subspace (N × r′)
