@@ -620,7 +620,7 @@ end
 =#
 
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis}
-    tol=1e-4
+    tol=1e-8
     # 1) Build full matrices A, dA, ddA
   A, dA, ddA = construct_matrices(solver, basis, pts, k;
   kernel_fun = (:default, :first, :second),
