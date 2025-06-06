@@ -633,6 +633,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
         Σ = F.S
         σmax = Σ[1]
         keep = findall(s -> s > tol * σmax, Σ)
+        @info "percentage of kept singular values: $(length(keep) / length(Σ))"
         if isempty(keep)
             return Complex{T}[], Matrix{Complex{T}}(undef, 0, 0), Matrix{Complex{T}}(undef, 0, 0)
         end
