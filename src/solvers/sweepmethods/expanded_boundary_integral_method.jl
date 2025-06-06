@@ -619,14 +619,14 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
 end
 =#
 
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis}
     # 1) Build A, dA, ddA at wavenumber k
     A, dA, ddA = construct_matrices(solver, basis, pts, k;
                                      kernel_fun = kernel_fun,
                                      multithreaded = multithreaded)
 
     # 2) “Deflated” generalized‐eigenvalue solver: solve A_red * y = λ * dA_red * y
-    function ge_eigen_null_rem(A::Matrix{Complex{T}}, dA::Matrix{Complex{T}}; tol::T = 1e-12)
+    function ge_eigen_null_rem(A::Matrix{Complex{T}}, dA::Matrix{Complex{T}}; tol= 1e-12) where {T<:Real}
         N = size(A, 1)
         M = vcat(A, dA)                       # 2N × N
         F = svd(M; full = false)             # returns F.U (2N×r), F.S (r), F.Vt (r×N), F.V (N×r)
