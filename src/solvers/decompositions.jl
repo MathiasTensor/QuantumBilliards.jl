@@ -149,7 +149,8 @@ function generalized_eigen_all_LAPACK_LEGACY(A,B)
         α,β,VL,VR=LAPACK.ggev3!('V','V',A,copy(B)) # dA needs to be copied since we still need it after inplace modification for 2nd order corrections
     end
     λ=α./β
-    valid_indices=.!isnan.(λ).&.!isinf.(λ)
+    #valid_indices=.!isnan.(λ).&.!isinf.(λ)
+    valid_indices=.!isnan.(λ).&.!isinf.(λ).& (abs.(β).>1e-7)
     λ=λ[valid_indices]
     VR=VR[:,valid_indices]
     VL=VL[:,valid_indices]
