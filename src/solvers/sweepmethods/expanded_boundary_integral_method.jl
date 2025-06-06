@@ -628,23 +628,27 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
 
 # 2) Do the GSVD of (A, dA)
 Fg = svd(A,dA)   # thin GSVD
-σ1 = Fg.S1     # singular‐values for A
-σ2 = Fg.S2     # singular‐values for dA
-X  = Fg.X      # N×r matrix of joint basis vectors (r ≤ N)
+σ1 = diag(Fg.D1)  # Singular values for A
+σ2 = diag(Fg.D2)  # Singular values for dA
 
-# 3) Decide which columns to keep: those i for which min(σ1[i], σ2[i]) > tol·σmax_joint
+# Common right singular vectors (joint basis)
+X = Fg.Q  # Q is the common orthonormal basis (N × N)
+
+# Decide which directions to keep
 σmax_joint = maximum(min.(σ1, σ2))
 keep = findall(i -> min(σ1[i], σ2[i]) > tol * σmax_joint, 1:length(σ1))
-if isempty(keep)
-@warn "No joint directions survived tol = $tol.  Try raising tol so that some min(σ1, σ2) ≤ tol·σmax_joint."
-return T[], T[]
-end
-V_keep = X[:, keep]  # N×r′
 
-# 4) Project into the smaller subspace
-A_red   = V_keep' * A   * V_keep   # r′×r′
-dA_red  = V_keep' * dA  * V_keep   # r′×r′
-ddA_red = V_keep' * ddA * V_keep   # r′×r′
+if isempty(keep)
+    @warn "No joint directions survived tol = $tol. Try lowering tol."
+    return T[], T[]
+end
+
+V_keep = X[:, keep]  # Reduced subspace (N × r′)
+
+# Project into reduced subspace
+A_red   = V_keep' * A   * V_keep
+dA_red  = V_keep' * dA  * V_keep
+ddA_red = V_keep' * ddA * V_keep
 
 @info "After GSVD deflation: cond(A_red)  = $(cond(A_red))"
 @info "After GSVD deflation: cond(dA_red) = $(cond(dA_red))"
