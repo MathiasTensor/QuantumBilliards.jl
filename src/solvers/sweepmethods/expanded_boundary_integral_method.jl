@@ -627,7 +627,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
   multithreaded = multithreaded)
 
 # 2) Do the GSVD of (A, dA)
-Fg = gsvd(A, dA; full = false)   # thin GSVD
+Fg = svd(A,dA)   # thin GSVD
 σ1 = Fg.S1     # singular‐values for A
 σ2 = Fg.S2     # singular‐values for dA
 X  = Fg.X      # N×r matrix of joint basis vectors (r ≤ N)
