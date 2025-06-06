@@ -584,6 +584,7 @@ a second-order correction with `ddA`.
 **Note**: The corrections are computed from the first- and second-order expansions in terms of `λ[i]`,
 with final `k_corrected = k + corr₁ + corr₂`.
 """
+#=
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     if use_lapack_raw
@@ -615,6 +616,95 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ_corrected=k.+corr_1.+corr_2
     tens=abs.(corr_1.+corr_2)
     return λ_corrected,tens
+end
+=#
+
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    # 1) Build A, dA, ddA at wavenumber k
+    A, dA, ddA = construct_matrices(solver, basis, pts, k;
+                                     kernel_fun = kernel_fun,
+                                     multithreaded = multithreaded)
+
+    # 2) “Deflated” generalized‐eigenvalue solver: solve A_red * y = λ * dA_red * y
+    function ge_eigen_null_rem(A::Matrix{Complex{T}}, dA::Matrix{Complex{T}}; tol::T = 1e-12)
+        N = size(A, 1)
+        M = vcat(A, dA)                       # 2N × N
+        F = svd(M; full = false)             # returns F.U (2N×r), F.S (r), F.Vt (r×N), F.V (N×r)
+        Σ = F.S
+        σmax = Σ[1]
+        keep = findall(s -> s > tol * σmax, Σ)
+        if isempty(keep)
+            return Complex{T}[], Matrix{Complex{T}}(undef, 0, 0), Matrix{Complex{T}}(undef, 0, 0)
+        end
+        V_keep = F.V[:, keep]                 # N×r′
+        A_red  = V_keep' * A  * V_keep        # r′×r′
+        dA_red = V_keep' * dA * V_keep        # r′×r′
+
+        # 3) Solve (A_red, dA_red) via LAPACK.ggev! or fallback to Julia’s eigen
+        α = β = nothing
+        VL = VR = nothing
+        if use_lapack_raw
+            α, β, VL, VR = LAPACK.ggev!('V','V', copy(A_red), copy(dA_red))
+            λ = α ./ β
+        else
+            Fge = eigen(A_red, dA_red)
+            λ  = Fge.values
+            VR = Fge.vectors
+            # left‐eigenvectors from adjoint pair:
+            Fge_L = eigen(A_red', dA_red')
+            VL = Fge_L.vectors
+        end
+
+        # 4) Filter out NaN/Inf
+        valid = .!isnan.(λ) .& .!isinf.(λ)
+        λ = λ[valid]
+        VR = VR[:, valid]
+        VL = VL[:, valid]
+
+        # 5) Sort by |λ|
+        order = sortperm(abs.(λ))
+        return λ[order], VR[:, order], VL[:, order], V_keep
+    end
+
+    # 2′) Call the deflated eigensolver on (A, dA)
+    λs, VR_red, VL_red, V_basis = ge_eigen_null_rem(A, dA; tol = 1e-12)
+
+    # 3) Restrict to those |Re(λ)| < dk, |Im(λ)| < dk
+    mask = (abs.(real.(λs)) .< dk) .& (abs.(imag.(λs)) .< dk)
+    if !any(mask)
+        return Vector{T}(), Vector{T}()    # no spectrum in interval
+    end
+
+    λ_sel    = real.(λs[mask])
+    VR_sel_r = VR_red[:, mask]            # each column is length r′
+    VL_sel_r = VL_red[:, mask]            # same
+
+    m = length(λ_sel)
+    corr1 = Vector{T}(undef, m)
+    corr2 = Vector{T}(undef, m)
+    k_corr = Vector{T}(undef, m)
+    tens   = Vector{T}(undef, m)
+
+    # 4) Lift each eigenvector to original N‐space and apply 2nd‐order correction
+    for i in 1:m
+        λ_i = λ_sel[i]
+        v_r = VR_sel_r[:, i]               # size r′
+        u_r = VL_sel_r[:, i]               # size r′
+
+        x = V_basis * v_r                  # “right” eigenvector in N
+        y = V_basis * u_r                  # “left” eigenvector in N
+
+        corr1[i] = -λ_i
+
+        num = real( (y' * ddA) * x )
+        den = real( (y'  * dA) * x )
+        corr2[i] = -0.5 * corr1[i]^2 * (num / den)
+
+        k_corr[i] = k + corr1[i] + corr2[i]
+        tens[i]   = abs(corr1[i] + corr2[i])
+    end
+
+    return k_corr, tens
 end
 
 # INTERNAL
