@@ -635,8 +635,8 @@ Fg = svd(A,dA)   # thin GSVD
 X = Fg.Q  # Q is the common orthonormal basis (N × N)
 
 # Decide which directions to keep
-σmax_joint = maximum(min.(σ1, σ2))
-keep = findall(i -> min(σ1[i], σ2[i]) > tol * σmax_joint, 1:length(σ1))
+σmax_joint = maximum(min.(abs.(σ1), abs.(σ2)))
+keep = findall(i -> min(abs.(σ1[i]), abs.(σ2[i])) > tol * σmax_joint, 1:length(σ1))
 
 if isempty(keep)
     @warn "No joint directions survived tol = $tol. Try lowering tol."
