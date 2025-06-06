@@ -626,7 +626,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
                                      multithreaded = multithreaded)
 
     # 2) “Deflated” generalized‐eigenvalue solver: solve A_red * y = λ * dA_red * y
-    function ge_eigen_null_rem(A::Matrix{Complex{T}}, dA::Matrix{Complex{T}}; tol= 1e-12) where {T<:Real}
+    function ge_eigen_null_rem(A,dA;tol= 1e-12) where {T<:Real}
         N = size(A, 1)
         M = vcat(A, dA)                       # 2N × N
         F = svd(M; full = false)             # returns F.U (2N×r), F.S (r), F.Vt (r×N), F.V (N×r)
@@ -668,11 +668,11 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
 
     # 2′) Call the deflated eigensolver on (A, dA)
     λs, VR_red, VL_red, V_basis = ge_eigen_null_rem(A, dA; tol = 1e-12)
-
+    K=eltype(real.(λs))
     # 3) Restrict to those |Re(λ)| < dk, |Im(λ)| < dk
     mask = (abs.(real.(λs)) .< dk) .& (abs.(imag.(λs)) .< dk)
     if !any(mask)
-        return Vector{T}(), Vector{T}()    # no spectrum in interval
+        return Vector{K}(), Vector{K}()    # no spectrum in interval
     end
 
     λ_sel    = real.(λs[mask])
@@ -680,10 +680,10 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     VL_sel_r = VL_red[:, mask]            # same
 
     m = length(λ_sel)
-    corr1 = Vector{T}(undef, m)
-    corr2 = Vector{T}(undef, m)
-    k_corr = Vector{T}(undef, m)
-    tens   = Vector{T}(undef, m)
+    corr1 = Vector{K}(undef, m)
+    corr2 = Vector{K}(undef, m)
+    k_corr = Vector{K}(undef, m)
+    tens   = Vector{K}(undef, m)
 
     # 4) Lift each eigenvector to original N‐space and apply 2nd‐order correction
     for i in 1:m
