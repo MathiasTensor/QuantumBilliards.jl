@@ -584,7 +584,6 @@ a second-order correction with `ddA`.
 **Note**: The corrections are computed from the first- and second-order expansions in terms of `λ[i]`,
 with final `k_corrected = k + corr₁ + corr₂`.
 """
-#=
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     if use_lapack_raw
@@ -616,83 +615,6 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     λ_corrected=k.+corr_1.+corr_2
     tens=abs.(corr_1.+corr_2)
     return λ_corrected,tens
-end
-=#
-
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis}
-    tol=1e-8
-    # 1) Build full matrices A, dA, ddA
-  A, dA, ddA = construct_matrices(solver, basis, pts, k;
-  kernel_fun = (:default, :first, :second),
-  multithreaded = multithreaded)
-
-# 2) Do the GSVD of (A, dA)
-Fg = svd(A,dA)   # thin GSVD
-σ1 = diag(Fg.D1)  # Singular values for A
-σ2 = diag(Fg.D2)  # Singular values for dA
-
-# Common right singular vectors (joint basis)
-X = Fg.Q  # Q is the common orthonormal basis (N × N)
-
-# Decide which directions to keep
-σmax_joint = maximum(min.(abs.(σ1), abs.(σ2)))
-keep = findall(i -> min(abs.(σ1[i]), abs.(σ2[i])) > tol * σmax_joint, 1:length(σ1))
-
-if isempty(keep)
-    @warn "No joint directions survived tol = $tol. Try lowering tol."
-    return zeros(eltype(A), 0, size(A, 2)), zeros(eltype(A), 0, size(A, 2))
-end
-
-V_keep = X[:, keep]  # Reduced subspace (N × r′)
-
-# Project into reduced subspace
-A_red   = V_keep' * A   * V_keep
-dA_red  = V_keep' * dA  * V_keep
-ddA_red = V_keep' * ddA * V_keep
-
-@info "After GSVD deflation: cond(A_red)  = $(cond(A_red))"
-@info "After GSVD deflation: cond(dA_red) = $(cond(dA_red))"
-
-# 5) Solve reduced generalized eigenproblem A_red * y = λ * dA_red * y
-Fge = eigen(A_red, dA_red)
-λ_red = real.(Fge.values)
-VR_red = Fge.vectors
-
-# 6) Get left eigenvectors from (A_red', dA_red')
-Fge_L = eigen(A_red', dA_red')
-VL_red = Fge_L.vectors
-
-# 7) Filter those λ_red with |Re(λ)| < dk
-valid = abs.(λ_red) .< dk
-if !any(valid)
-return T[], T[]
-end
-
-λ_sel   = λ_red[valid]
-VR_sel  = VR_red[:, valid]
-VL_sel  = VL_red[:, valid]
-
-# 8) Lift back into full N‐space and do 2nd‐order corrections
-nfound = length(λ_sel)
-corr₁ = Vector{T}(undef, nfound)
-corr₂ = Vector{T}(undef, nfound)
-
-for i in 1:nfound
-y_r      = VR_sel[:, i]       # length r′
-y_l      = VL_sel[:, i]       # length r′
-v_r_full = V_keep * y_r       # length N
-v_l_full = V_keep * y_l       # length N
-
-num = v_l_full' * (ddA * v_r_full)
-den = v_l_full' * (dA  * v_r_full)
-corr₁[i] = - λ_sel[i]
-corr₂[i] = -0.5 * corr₁[i]^2 * real(num/den)
-end
-
-λ_corrected = k .+ corr₁ .+ corr₂
-tensions     = abs.(corr₁ .+ corr₂)
-
-return λ_corrected, tensions
 end
 
 # INTERNAL
