@@ -626,7 +626,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
                                      multithreaded = multithreaded)
 
     # 2) “Deflated” generalized‐eigenvalue solver: solve A_red * y = λ * dA_red * y
-    function ge_eigen_null_rem(A,dA;tol= 1e-12) where {T<:Real}
+    function ge_eigen_null_rem(A,dA;tol= 1e-6) where {T<:Real}
         N = size(A, 1)
         M = vcat(A, dA)                       # 2N × N
         F = svd(M; full = false)             # returns F.U (2N×r), F.S (r), F.Vt (r×N), F.V (N×r)
