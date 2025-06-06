@@ -631,7 +631,8 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
         M = vcat(A, dA)                       # 2N × N
         F = svd(M; full = false)             # returns F.U (2N×r), F.S (r), F.Vt (r×N), F.V (N×r)
         Σ = F.S
-        σmax = Σ[1]
+        #σmax = Σ[1]
+        σmax = 1.0
         keep = findall(s -> s > tol * σmax, Σ)
         @info "percentage of kept singular values: $(length(keep) / length(Σ))"
         if isempty(keep)
