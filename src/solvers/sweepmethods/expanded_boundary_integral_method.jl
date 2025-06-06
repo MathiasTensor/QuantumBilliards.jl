@@ -620,95 +620,75 @@ end
 =#
 
 function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis}
-    # 1) Build A, dA, ddA at wavenumber k
-    A, dA, ddA = construct_matrices(solver, basis, pts, k;
-                                     kernel_fun = kernel_fun,
-                                     multithreaded = multithreaded)
+    tol=1e-4
+    # 1) Build full matrices A, dA, ddA
+  A, dA, ddA = construct_matrices(solver, basis, pts, k;
+  kernel_fun = (:default, :first, :second),
+  multithreaded = multithreaded)
 
-    # 2) “Deflated” generalized‐eigenvalue solver: solve A_red * y = λ * dA_red * y
-    function ge_eigen_null_rem(A,dA;tol= 1e-3) where {T<:Real}
-        N = size(A, 1)
-        M = vcat(A, dA)                       # 2N × N
-        F = svd(M; full = false)             # returns F.U (2N×r), F.S (r), F.Vt (r×N), F.V (N×r)
-        Σ = F.S
-        σmax = Σ[1]
-        #σmax = 1.0
-        println("σmax = ", Σ[1],  "   σmin = ", Σ[end])
-        println("current cutoff = tol * σmax = ", tol * Σ[1])
-        keep = findall(s -> s > tol * σmax, Σ)
-        @info "percentage of kept singular values: $(length(keep) / length(Σ))"
-        if isempty(keep)
-            return Complex{T}[], Matrix{Complex{T}}(undef, 0, 0), Matrix{Complex{T}}(undef, 0, 0)
-        end
-        V_keep = F.V[:, keep]                 # N×r′
-        A_red  = V_keep' * A  * V_keep        # r′×r′
-        dA_red = V_keep' * dA * V_keep        # r′×r′
-        @info "Condition number of A_red: $(cond(A_red)), dA_red: $(cond(dA_red))"
-        # 3) Solve (A_red, dA_red) via LAPACK.ggev! or fallback to Julia’s eigen
-        α = β = nothing
-        VL = VR = nothing
-        if use_lapack_raw
-            α, β, VL, VR = LAPACK.ggev!('V','V', copy(A_red), copy(dA_red))
-            λ = α ./ β
-        else
-            Fge = eigen(A_red, dA_red)
-            λ  = Fge.values
-            VR = Fge.vectors
-            # left‐eigenvectors from adjoint pair:
-            Fge_L = eigen(A_red', dA_red')
-            VL = Fge_L.vectors
-        end
+# 2) Do the GSVD of (A, dA)
+Fg = gsvd(A, dA; full = false)   # thin GSVD
+σ1 = Fg.S1     # singular‐values for A
+σ2 = Fg.S2     # singular‐values for dA
+X  = Fg.X      # N×r matrix of joint basis vectors (r ≤ N)
 
-        # 4) Filter out NaN/Inf
-        valid = .!isnan.(λ) .& .!isinf.(λ)
-        λ = λ[valid]
-        VR = VR[:, valid]
-        VL = VL[:, valid]
+# 3) Decide which columns to keep: those i for which min(σ1[i], σ2[i]) > tol·σmax_joint
+σmax_joint = maximum(min.(σ1, σ2))
+keep = findall(i -> min(σ1[i], σ2[i]) > tol * σmax_joint, 1:length(σ1))
+if isempty(keep)
+@warn "No joint directions survived tol = $tol.  Try raising tol so that some min(σ1, σ2) ≤ tol·σmax_joint."
+return T[], T[]
+end
+V_keep = X[:, keep]  # N×r′
 
-        # 5) Sort by |λ|
-        order = sortperm(abs.(λ))
-        return λ[order], VR[:, order], VL[:, order], V_keep
-    end
+# 4) Project into the smaller subspace
+A_red   = V_keep' * A   * V_keep   # r′×r′
+dA_red  = V_keep' * dA  * V_keep   # r′×r′
+ddA_red = V_keep' * ddA * V_keep   # r′×r′
 
-    # 2′) Call the deflated eigensolver on (A, dA)
-    λs, VR_red, VL_red, V_basis = ge_eigen_null_rem(A, dA; tol = 1e-12)
-    K=eltype(real.(λs))
-    # 3) Restrict to those |Re(λ)| < dk, |Im(λ)| < dk
-    mask = (abs.(real.(λs)) .< dk) .& (abs.(imag.(λs)) .< dk)
-    if !any(mask)
-        return Vector{K}(), Vector{K}()    # no spectrum in interval
-    end
+@info "After GSVD deflation: cond(A_red)  = $(cond(A_red))"
+@info "After GSVD deflation: cond(dA_red) = $(cond(dA_red))"
 
-    λ_sel    = real.(λs[mask])
-    VR_sel_r = VR_red[:, mask]            # each column is length r′
-    VL_sel_r = VL_red[:, mask]            # same
+# 5) Solve reduced generalized eigenproblem A_red * y = λ * dA_red * y
+Fge = eigen(A_red, dA_red)
+λ_red = real.(Fge.values)
+VR_red = Fge.vectors
 
-    m = length(λ_sel)
-    corr1 = Vector{K}(undef, m)
-    corr2 = Vector{K}(undef, m)
-    k_corr = Vector{K}(undef, m)
-    tens   = Vector{K}(undef, m)
+# 6) Get left eigenvectors from (A_red', dA_red')
+Fge_L = eigen(A_red', dA_red')
+VL_red = Fge_L.vectors
 
-    # 4) Lift each eigenvector to original N‐space and apply 2nd‐order correction
-    for i in 1:m
-        λ_i = λ_sel[i]
-        v_r = VR_sel_r[:, i]               # size r′
-        u_r = VL_sel_r[:, i]               # size r′
+# 7) Filter those λ_red with |Re(λ)| < dk
+valid = abs.(λ_red) .< dk
+if !any(valid)
+return T[], T[]
+end
 
-        x = V_basis * v_r                  # “right” eigenvector in N
-        y = V_basis * u_r                  # “left” eigenvector in N
+λ_sel   = λ_red[valid]
+VR_sel  = VR_red[:, valid]
+VL_sel  = VL_red[:, valid]
 
-        corr1[i] = -λ_i
+# 8) Lift back into full N‐space and do 2nd‐order corrections
+nfound = length(λ_sel)
+corr₁ = Vector{T}(undef, nfound)
+corr₂ = Vector{T}(undef, nfound)
 
-        num = real( (y' * ddA) * x )
-        den = real( (y'  * dA) * x )
-        corr2[i] = -0.5 * corr1[i]^2 * (num / den)
+for i in 1:nfound
+y_r      = VR_sel[:, i]       # length r′
+y_l      = VL_sel[:, i]       # length r′
+v_r_full = V_keep * y_r       # length N
+v_l_full = V_keep * y_l       # length N
 
-        k_corr[i] = k + corr1[i] + corr2[i]
-        tens[i]   = abs(corr1[i] + corr2[i])
-    end
+num = v_l_full' * (ddA * v_r_full)
+den = v_l_full' * (dA  * v_r_full)
+corr₁[i] = - λ_sel[i]
+corr₂[i] = -0.5 * corr₁[i]^2 * real(num/den)
+end
 
-    return k_corr, tens
+λ_corrected = k .+ corr₁ .+ corr₂
+tensions     = abs.(corr₁ .+ corr₂)
+
+return λ_corrected, tensions
 end
 
 # INTERNAL
