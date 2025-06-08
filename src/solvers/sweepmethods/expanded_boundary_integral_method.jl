@@ -718,6 +718,7 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
     return λ_corrected,tens
 end
 
+#INTERNAL
 function solve_1st_order(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function}}=(:default,:first),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA=kernel_and_first_der(pts,solver.rule,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     if use_lapack_raw
