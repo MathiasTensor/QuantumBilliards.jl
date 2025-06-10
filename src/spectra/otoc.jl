@@ -364,7 +364,7 @@ function α_n(Psi2ds::Vector{<:AbstractMatrix{T}},wavepacket_2d::Matrix{Complex{
     Threads.@threads for i in 1:N
         vecφ=reshape(Psi2ds[i],:)
         n2=dot(vecφ,vecφ) # BLAS.ddot!
-        scal!(1/sqrt(real(n2)*area),vecφ)  # BLAS.dscal!
+        BLAS.scal!(1/sqrt(real(n2)*area),vecφ)  # BLAS.dscal!
     end
     # Build M×N matrix Φ by stacking vec(φₙ) as columns
     Φ=Matrix{Complex{T}}(undef,M,N)
