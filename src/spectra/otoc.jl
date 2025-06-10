@@ -337,6 +337,47 @@ function α_n(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{Bound
     return Psi2ds,α_ns,x_grid,y_grid,pts_mask,dx,dy
 end
 
+"""
+    α_n(Psi2ds::Vector{<:AbstractMatrix{T}},wavepacket_2d::AbstractMatrix{Complex{T}},xgrid::AbstractVector{T},ygrid::AbstractVector{T}) where {T<:Real} -> Vector{Complex{T}}
+
+Compute the overlap coefficients αₙ = ⟨φₙ | ψ⟩ for a set of 2D basis functions φₙ and a target wavepacket ψ,
+using a BLAS‐accelerated matrix–vector multiply (GEMV). Both φₙ and ψ are discretized on the same (x,y) grid.
+
+# Arguments
+- `Psi2ds::Vector{<:AbstractMatrix{T}}`: A vector of length *N* containing the 2D basis functions φₙ(x,y).  
+  Each element is an `M₁×M₂` real matrix (with `T<:Real`), representing φₙ evaluated on the Cartesian grid  
+  defined by `xgrid` and `ygrid`.  
+
+- `wavepacket_2d::AbstractMatrix{Complex{T}}`: A complex matrix representing the target wavepacket ψ(x,y) on the same grid.  
+- `xgrid::AbstractVector{T}`: A real vector of x‐coordinates of the grid points.  
+- `ygrid::AbstractVector{T}`  A real vector of y‐coordinates of the grid points.  
+
+# Returns
+- `Vector{Complex{T}}`: The complex overlap coefficients αₙ = ∑_{i,j} conj(φₙ(x_i,y_j)) ψ(x_i,y_j) Δx Δy,  
+"""
+function α_n(Psi2ds::Vector{<:AbstractMatrix{T}},wavepacket_2d::Matrix{Complex{T}},xgrid::Vector{T},ygrid::Vector{T}) where {T<:Real}
+    Δx=xgrid[2]-xgrid[1]
+    Δy=ygrid[2]-ygrid[1]
+    area=Δx*Δy
+    M=length(xgrid)*length(ygrid)
+    N=length(Psi2ds)
+    Threads.@threads for i in 1:N
+        vecφ=reshape(Psi2ds[i],:)
+        n2=dot(vecφ,vecφ) # BLAS.ddot!
+        scal!(1/sqrt(real(n2)*area),vecφ)  # BLAS.dscal!
+    end
+    # Build M×N matrix Φ by stacking vec(φₙ) as columns
+    Φ=Matrix{Complex{T}}(undef,M,N)
+    Threads.@threads for n in 1:N
+        Φ[:,n]=reshape(Psi2ds[n],M)
+    end
+    vecψ=reshape(wavepacket_2d, M) # Flatten wavepacket
+    α=Vector{Complex{T}}(undef,N) 
+    mul!(α,adjoint(Φ),vecψ) # α = Φ'*ψ via a single BLAS gemv, then multiply by area
+    @. α*=area
+    return α
+end
+
 
 """
     b_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},t::T;memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
