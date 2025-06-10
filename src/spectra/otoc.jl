@@ -175,7 +175,7 @@ function Xmat_gemm(Psis::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vec
         @inbounds Threads.@threads for j in 1:N
             P[:,j] .=vec(Psis[j]) # fill the un-weighted P (M×N) once
         end
-        # make a *separate* copy Y of P and weight *only* its rows
+        # make a separate copy Y of P and weight only its rows
         Y=copy(P)
         Threads.@threads for k in 1:M
             BLAS.scal!(Wbig[k],view(Y,k,:))
