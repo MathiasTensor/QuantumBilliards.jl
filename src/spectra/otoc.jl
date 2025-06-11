@@ -288,14 +288,9 @@ cₙ(t) = ∑ₘ |B[n,m]|².  Returns all cₙ values as the columns of a matrix
 - `Cmat::Matrix{T} : N×length(ts) real array whose (n,i) entry is cₙ(ts[i]) = ∑ₘ |Bn,m|².
 """
 function C_evolution(Psis::Vector{<:AbstractMatrix{T}},Es::Vector{T},xgrid::Vector{T},ygrid::Vector{T},ts::Vector{T};memory_efficient::Bool=false,n_blas_threads::Int=ceil(Int,Threads.nthreads()/2),direction::Symbol=:x) where {T<:Real}
-    Cmat=Matrix{T}(undef,length(Psis),length(ts)) # N×T matrix
     X=Xmat(Psis,xgrid,ygrid;direction=direction,memory_efficient=memory_efficient,n_blas_threads=n_blas_threads)
-    for i in eachindex(ts) 
-        B=Bmat(X,Es,ts[i])
-        Cs=C(B)
-        Cmat[:,i]=vec(Cs) # store the cₙ(t) vector as the i-th column
-    end
-    return Cmat
+    Bs=[QuantumBilliards.Bmat(X,Es,t) for t in ts]  # compute B(t) for each t in ts
+    return [sum(abs2,B,dims=2) for B in Bs]  # returns an N×1 vector c[n] = ∑_m |B[n,m]|^2 at a particular times t in ts
 end
 
 
