@@ -472,7 +472,7 @@ function c_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{
 end
 
 """
-    c_wavepacket_evolution(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+    c_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
 
 Compute the 4-point OTOC c(t) = α† B(t) B(t) α over multiple times.
 
@@ -493,7 +493,7 @@ Displays a progress bar during the B(t) constructions.
 # Returns
 - `cs::Vector{Complex{T}}`: c(t_i) for each t_i.
 """
-function c_wavepacket_evolution(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
+function c_wavepacket(α_ns::Vector{Complex{T}},Psi2ds::Vector{<:AbstractMatrix{T}},xgrid::Vector{T},ygrid::Vector{T},ks::Vector{T},ts::Vector{T};memory_efficient::Bool=true,direction::Symbol=:x) where {T<:Real}
     X=ifelse(memory_efficient,X_block_diag(Psi2ds,xgrid,ygrid,direction=direction),Xmat_gemm(Psi2ds,xgrid,ygrid,direction=direction))
     Es=ks.^2 # E=k^2
     cs=Vector{Complex{T}}(undef,length(ts))
