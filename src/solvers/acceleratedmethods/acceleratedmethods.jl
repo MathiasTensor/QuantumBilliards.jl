@@ -1,5 +1,3 @@
-#include("scalingmethod.jl")
-
 """
     solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
 

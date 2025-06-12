@@ -1,7 +1,3 @@
-#using LazyGrids
-#used for plotting etc.
-#include("../abstracttypes.jl")
-#include("billiardutils.jl")
 using StaticArrays
 
 

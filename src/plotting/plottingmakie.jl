@@ -1,5 +1,3 @@
-#include("../abstracttypes.jl")
-#include("../utils/gridutils.jl")
 using Makie
 using StaticArrays
 using CairoMakie

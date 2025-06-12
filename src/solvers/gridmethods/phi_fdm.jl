@@ -1,5 +1,4 @@
 using LinearAlgebra, SparseArrays, Arpack, ProgressMeter
-#include("fdm.jl")
 
 #TODO 9+ point stencil, currently supports 5 point stencil
 

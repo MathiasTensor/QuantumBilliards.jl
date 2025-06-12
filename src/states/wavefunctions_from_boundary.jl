@@ -1,8 +1,5 @@
 using Bessels, LinearAlgebra, ProgressMeter
 
-#include("../billiards/boundarypoints.jl")
-#include("../states/wavefunctions.jl")
-
 """
     ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
 

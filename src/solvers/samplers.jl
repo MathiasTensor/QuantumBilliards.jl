@@ -2,7 +2,6 @@
 using FastGaussQuadrature
 using StaticArrays
 using StatsBase
-#include("../billiards/geometry/polarsegment.jl")
 
 struct LinearNodes <: AbsSampler 
 end 

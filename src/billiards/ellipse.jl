@@ -1,9 +1,3 @@
-
-
-
-
-
-
 """
     make_quarter_ellipse(a::T, b::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
 

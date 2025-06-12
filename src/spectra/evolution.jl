@@ -1,7 +1,4 @@
 using Bessels, LinearAlgebra, ProgressMeter, FFTW, SparseArrays
-#include("../billiards/boundarypoints.jl")
-#include("../states/wavefunctions.jl")
-#include("../solvers/gridmethods/fdm.jl")
 
 ############### WAVEPACKET EVOLUTION VIA BASIS SET ###############
 

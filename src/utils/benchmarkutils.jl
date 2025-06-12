@@ -1,6 +1,3 @@
-#include("../abstracttypes.jl")
-#include("../solvers/particularsolutionsmethod.jl")
-#include("../plotting/matrixplotting.jl")
 using Makie, ProgressMeter
 
 # helper for determining the byte size of object "a"

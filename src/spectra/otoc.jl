@@ -1,8 +1,5 @@
 using Bessels, LinearAlgebra, ProgressMeter
 
-#include("../billiards/boundarypoints.jl")
-#include("../states/wavefunctions.jl")
-
 #=
 Contains functions for computing the 2-point and 4-point out-of-time-order correlators (OTOCs) in billiard systems. It also supports wavepacket projections onto the eigenbasis of the billiard and their OTOC computations.
 Based on the paper by Hashimoto et. al.: Out-of-time-order correlators in quantum mechanics, link: https://arxiv.org/abs/1703.09435
