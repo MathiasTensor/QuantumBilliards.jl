@@ -279,8 +279,6 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
     hm_real=heatmap!(ax_real,x_grid,y_grid,abs.(Psi),colormap=:balance)
     ax_momentum=Axis(fig[1,2],title="Momentum Distribution",xlabel="kx",ylabel="ky")
     dx,dy=x_grid[2]-x_grid[1],y_grid[2]-y_grid[1]
-    #kx_grid=fftshift(fftfreq(length(x_grid)))*(2π/(x_grid[end]-x_grid[1]))
-    #ky_grid=fftshift(fftfreq(length(y_grid)))*(2π/(y_grid[end]-y_grid[1]))
     kx_grid=fftshift(fftfreq(length(x_grid),1/dx)).*(2*pi)
     ky_grid=fftshift(fftfreq(length(y_grid),1/dy)).*(2*pi)
     compute_momentum_distribution(Ψ)=abs2.(fftshift(fft(Ψ)).*(dx*dy/(4*pi)))
