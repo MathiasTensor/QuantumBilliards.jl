@@ -302,9 +302,9 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
     dx,dy=x_grid[2]-x_grid[1],y_grid[2]-y_grid[1]
     #kx_grid=fftshift(fftfreq(length(x_grid)))*(2π/(x_grid[end]-x_grid[1]))
     #ky_grid=fftshift(fftfreq(length(y_grid)))*(2π/(y_grid[end]-y_grid[1]))
-    kx_grid=fftshift(fftfreq(length(x_grid),1/dx))
-    ky_grid=fftshift(fftfreq(length(y_grid),1/dy))
-    compute_momentum_distribution(Ψ)=abs2.(fftshift(fft(Ψ)).*(dx*dy/(2π)))
+    kx_grid=fftshift(fftfreq(length(x_grid),1/dx)).*(2*pi)
+    ky_grid=fftshift(fftfreq(length(y_grid),1/dy)).*(2*pi)
+    compute_momentum_distribution(Ψ)=abs2.(fftshift(fft(Ψ)).*(dx*dy/(4*pi)))
     frames_real=Vector{Matrix{T}}(undef,length(ts))
     frames_momentum=Vector{Matrix{T}}(undef,length(ts))
     frames_real[1]=abs.(Psi)
