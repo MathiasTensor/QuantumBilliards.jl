@@ -301,7 +301,7 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
     ax_momentum=Axis(fig[1,2],title="Momentum Distribution",xlabel="kx",ylabel="ky")
     #kx_grid=fftshift(fftfreq(length(x_grid)))*(2π/(x_grid[end]-x_grid[1]))
     #ky_grid=fftshift(fftfreq(length(y_grid)))*(2π/(y_grid[end]-y_grid[1]))
-    kx_grid=ftshift(fftfreq(length(x_grid)))*2π
+    kx_grid=fftshift(fftfreq(length(x_grid)))*2π
     ky_grid=fftshift(fftfreq(length(y_grid)))*2π
     compute_momentum_distribution(Ψ_x)=abs2.(fftshift(fft(Ψ_x)))
     frames_real=Vector{Matrix{T}}(undef,length(ts))
