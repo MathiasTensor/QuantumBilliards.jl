@@ -325,7 +325,6 @@ function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Co
     hm_momentum=heatmap!(ax_momentum,kx_grid,ky_grid,frames_momentum[1],colormap=:hot)
     xlims!(ax_momentum,momentum_x_lims)
     ylims!(ax_momentum,momentum_y_lims)
-    hidedecorations!(ax_momentum)
     function update_frame(i)
         hm_real[3]=frames_real[i]
         hm_momentum[3]=frames_momentum[i]
