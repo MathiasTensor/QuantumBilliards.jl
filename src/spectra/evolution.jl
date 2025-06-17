@@ -599,7 +599,7 @@ function reconstruct_fem_wavepacket(ψ_interior::Vector{Complex{T}}, cn::Crank_N
 end
 
 """
-    compute_shannon_entropy(ψ::Vector{Complex{T}},dx::T,dy::T) where {T<:Real}
+    compute_shannon_entropy(ψ::Vector{Complex{T}}) where {T<:Real}
 
 Computes the Shannon entropy of the wavefunction ψ. The wavefunction is given as a flattened Sparse matrix (Vector{Complex}).
 
