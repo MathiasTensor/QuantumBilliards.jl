@@ -166,9 +166,11 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     dX,dY=gradient_matrices(new_basis,k_basis,pts.xy)
     nx=getindex.(pts.normal,1)
     ny=getindex.(pts.normal,2)
-    dX=nx.*dX 
-    dY=ny.*dY
-    U::Array{type,2}=dX.+dY
+    U=similar(dX)
+    U.=nx.*dX.+ny.*dY
+    #dX=nx.*dX 
+    #dY=ny.*dY
+    #U::Array{type,2}=dX.+dY
     u::Vector{type}=U*vec
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
