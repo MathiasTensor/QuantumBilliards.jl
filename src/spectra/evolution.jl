@@ -294,7 +294,7 @@ end
 =#
 function animate_wavepacket_evolution!(filename::String,coeffs_matrix::Matrix{Complex{T}},Psi2ds::Vector{Matrix{T}},x_grid::Vector{T},y_grid::Vector{T},ts::Vector{T};framerate::Int=30,momentum_x_lims::Union{Symbol,Tuple{Float64,Float64}}=:default,momentum_y_lims::Union{Symbol,Tuple{Float64,Float64}}=:default) where {T<:Real}
     psi_idxs=eachindex(Psi2ds)
-    fig=Figure(size=(1600,800))
+    fig=Figure(size=(2500,1200))
     ax_real=Axis(fig[1,1],title="Wavepacket Evolution",xlabel="x",ylabel="y")
     Psi=sum(coeffs_matrix[1,j]*Psi2ds[j] for j in psi_idxs)
     hm_real=heatmap!(ax_real,x_grid,y_grid,abs.(Psi),colormap=:balance)
