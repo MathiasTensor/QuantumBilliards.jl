@@ -198,6 +198,57 @@ function tangent(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:DispersingC
 end
 
 """
+    tangent(circle::L, t::T) :: SVector{2,T} where {T<:Real, L<:DispersingCircleSegments{T}}
+
+Compute the tangent vector (first derivative) of the dispersing circle segment at a single parameter `t`.
+
+# Arguments
+- `circle::L`: A `DispersingCircleSegment{T}` or `VirtualDispersingCircleSegment{T}`.
+- `t::T`: A parameter in `[0,1]`.
+
+# Returns
+- `SVector{2,T}`: The tangent vector at `t`, scaled by `circle.orientation`.  
+"""
+function tangent(circle::L,t) where {T<:Real,L<:DispersingCircleSegments{T}}
+    affine_map=circle.cs.affine_map,R=circle.radius,c=circle.center,a=circle.arc_angle,s=circle.shift_angle 
+    orient=circle.orientation
+    r(t)=affine_map(circle_eq_reversed(R,a,s,c,t))
+    return orient*ForwardDiff.derivative(r,t)
+end
+
+"""
+    tangent_2(circle::L, t::T) :: SVector{2,T} where {T<:Real, L<:DispersingCircleSegments{T}}
+
+Compute the second derivative of the dispersing circle segment at a single parameter `t`.
+
+# Arguments
+- `circle::L`: A `DispersingCircleSegment{T}` or `VirtualDispersingCircleSegment{T}`.
+- `t::T`: A parameter in `[0,1]`.
+
+# Returns
+- `SVector{2,T}`: The second derivative vector at `t`.  
+"""
+function tangent_2(circle::L,t) where {T<:Real,L<:DispersingCircleSegments{T}}
+    return ForwardDiff.derivative(u->tangent(circle,u),t)
+end
+
+"""
+    tangent_2(circle::L, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where {T<:Real, L<:DispersingCircleSegments{T}}
+
+Compute the second derivative vectors of the dispersing circle segment at each parameter in `ts`.
+
+# Arguments
+- `circle::L`: A `DispersingCircleSegment{T}` or `VirtualDispersingCircleSegment{T}`.
+- `ts::AbstractVector{T}`: Vector of parameters in `[0,1]`.
+
+# Returns
+- `Vector{SVector{2,T}}`: Second derivative vectors at each `t` in `ts`.  
+"""
+function tangent_2(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:DispersingCircleSegments{T}}
+    return collect(tangent_2(circle,t) for t in ts)
+end
+
+"""
     reversed_circle_segment_domain(pt0::SVector{2,T}, pt1::SVector{2,T}, R::T, center::SVector{2,T}, orient::Int64, x::T, y::T) :: T where T<:Real
 
 Compute signed‐distance relative to a reversed (dispersing) circular segment bounded by chord `pt0 → pt1`.

@@ -118,7 +118,7 @@ function curve(polar::L,ts::AbstractArray) where {T,L<:PolarSegments{T}}
 end
 
 """
-    tangent(polar::PolarSegment{T}, t::T) :: SVector{2,T} where T<:Real
+    tangent(polar::PolarSegment{T},t) :: SVector{2,T} where T<:Real
 
 Compute the tangent vector (derivative w.r.t. `t`) of the polar segment at `t`, in global coords.
 
@@ -136,6 +136,22 @@ function tangent(polar::L,t) where {T,L<:PolarSegments{T}}
 end
 
 """
+    tangent_2(polar::PolarSegment{T},t) :: SVector{2,T} where T<:Real
+
+Compute the tangent vector derivative (2nd derivative w.r.t. `t`) of the polar segment at `t`, in global coords.
+
+# Arguments
+- `polar::PolarSegment{T}`: The polar segment.
+- `t::T`: Parameter in `[0,1]`.
+
+# Returns
+- `SVector{2,T}`: The derivative `d^2/dt^2 [ affine_map( r_func(t) ) ]`.
+"""
+function tangent_2(polar::L,t) where {T,L<:PolarSegments{T}}
+    return ForwardDiff.derivative(u->tangent(polar,u),t)
+end
+
+"""
     tangent(polar::PolarSegment{T}, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where T<:Real
 
 Compute tangent vectors at multiple `t ∈ ts`.
@@ -149,6 +165,22 @@ Compute tangent vectors at multiple `t ∈ ts`.
 """
 function tangent(polar::L,ts::AbstractArray) where {T,L<:PolarSegments{T}}
     return collect(tangent(polar,t) for t in ts)
+end
+
+"""
+    tangent_2(polar::PolarSegment{T}, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where T<:Real
+
+Compute derivative of tangent vectors at multiple `t ∈ ts`.
+
+# Arguments
+- `polar::PolarSegment{T}`: The polar segment.
+- `ts::AbstractVector{T}`: Vector of parameters in `[0,1]`.
+
+# Returns
+- `Vector{SVector{2,T}}`: Derivatives of tangent vectors at each `t`.
+"""
+function tangent_2(polar::L,ts::AbstractArray) where {T,L<:PolarSegments{T}}
+    return collect(tangent_2(polar,t) for t in ts)
 end
 
 """

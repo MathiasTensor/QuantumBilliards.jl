@@ -198,6 +198,58 @@ function tangent(line::L,ts::AbstractArray{T,1}) where {T<:Real,L<:LineSegments{
 end
 
 """
+    tangent(line::L, t::T) :: SVector{2,T} where {T<:Real, L<:LineSegments{T}}
+
+Compute the first derivative (tangent) vector of a line segment at a single parameter value `t`.
+
+# Arguments
+- `line::L`: A `LineSegment{T}` or `VirtualLineSegment{T}`.
+- `t::T`: The parameter in `[0,1]` at which to evaluate the tangent.
+
+# Returns
+- `SVector{2,T}`: The tangent vector at `t`, scaled by the segment’s `orientation`.
+"""
+function tangent(line::L,t) where {T<:Real,L<:LineSegments{T}}
+    pt0=line.cs.affine_map(line.pt0)
+    pt1=line.cs.affine_map(line.pt1)
+    orient=line.orientation
+    r(t)=line_eq(pt0,pt1,t)
+    return orient*ForwardDiff.derivative(r,t)
+end
+
+"""
+    tangent_2(line::L, t::T) :: SVector{2,T} where {T<:Real, L<:LineSegments{T}}
+
+Compute the second derivative (curvature‐related) vector of a line segment at parameter `t`.
+
+# Arguments
+- `line::L`: A `LineSegment{T}` or `VirtualLineSegment{T}`.
+- `t::T`: The parameter in `[0,1]` at which to evaluate the second derivative.
+
+# Returns
+- `SVector{2,T}`: The second derivative of the segment at `t`.
+"""
+function tangent_2(line::L,t) where {T<:Real,L<:LineSegments{T}}
+    return ForwardDiff.derivative(u->tangent(line,u),t)
+end
+
+"""
+    tangent_2(line::L, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where {T<:Real, L<:LineSegments{T}}
+
+Compute the second derivative vectors of a line segment at each parameter value in `ts`.
+
+# Arguments
+- `line::L`: A `LineSegment{T}` or `VirtualLineSegment{T}`.
+- `ts::AbstractVector{T}`: A collection of parameter values in `[0,1]`.
+
+# Returns
+- `Vector{SVector{2,T}}`: The second derivative vectors at each `t ∈ ts`.
+"""
+function tangent_2(line::L,ts::AbstractArray{T,1}) where {T<:Real,L<:LineSegments{T}}
+    return collect(tangent_2(line,t) for t in ts)
+end
+
+"""
     domain(line::L, pts::AbstractVector{<:SVector{2,T}}) :: Vector{T} where {T<:Real, L<:LineSegments{T}}
 
 Compute signed‐distance values for points relative to the infinite line containing the segment.

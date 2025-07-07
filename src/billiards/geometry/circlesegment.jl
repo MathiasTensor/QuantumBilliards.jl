@@ -188,9 +188,59 @@ function tangent(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:CircleSegme
     let affine_map=circle.cs.affine_map,R=circle.radius,c=circle.center,a=circle.arc_angle,s=circle.shift_angle 
         orient=circle.orientation
         r(t)=affine_map(circle_eq(R,a,s,c,t))
-        #ForwardDiff.derivative(r, t)
         return collect(orient*ForwardDiff.derivative(r,t) for t in ts)
     end
+end
+
+"""
+    tangent(circle::L, t::T) :: SVector{2,T} where {T<:Real, L<:CircleSegments{T}}
+
+Compute the first derivative (tangent) vector of a circular segment at a single parameter `t`.
+
+# Arguments
+- `circle::L`: A `CircleSegment{T}` or `VirtualCircleSegment{T}`.
+- `t::T`: A parameter value in `[0,1]`.
+
+# Returns
+- `SVector{2,T}`: The tangent vector at `t`, scaled by `circle.orientation`.
+"""
+function tangent(circle::L,t) where {T<:Real,L<:CircleSegments{T}}
+    affine_map=circle.cs.affine_map,R=circle.radius,c=circle.center,a=circle.arc_angle,s=circle.shift_angle 
+    orient=circle.orientation
+    r(t)=affine_map(circle_eq(R,a,s,c,t))
+    return orient*ForwardDiff.derivative(r,t)
+end
+
+"""
+    tangent_2(circle::L, t::T) :: SVector{2,T} where {T<:Real, L<:CircleSegments{T}}
+
+Compute the second derivative of a circular segment at a single parameter `t`.
+
+# Arguments
+- `circle::L`: A `CircleSegment{T}` or `VirtualCircleSegment{T}`.
+- `t::T`: A parameter value in `[0,1]`.
+
+# Returns
+- `SVector{2,T}`: The second derivative vector at `t`.
+"""
+function tangent_2(circle::L,t) where {T<:Real,L<:CircleSegments{T}}
+    return ForwardDiff.derivative(u->tangent(circle,u),t)
+end
+
+"""
+    tangent_2(circle::L, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where {T<:Real, L<:CircleSegments{T}}
+
+Compute the second derivative vectors of a circular segment at each parameter in `ts`.
+
+# Arguments
+- `circle::L`: A `CircleSegment{T}` or `VirtualCircleSegment{T}`.
+- `ts::AbstractVector{T}`: Parameter values in `[0,1]`.
+
+# Returns
+- `Vector{SVector{2,T}}`: Second derivative vectors at each `t`.
+"""
+function tangent_2(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:CircleSegments{T}}
+    return collect(ForwardDiff.derivative(tangent(circle,t),t) for t in ts)
 end
 
 """
