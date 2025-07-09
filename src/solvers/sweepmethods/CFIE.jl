@@ -163,6 +163,26 @@ function kress_R_sum!(R0::AbstractMatrix{T}) where {T<:Real}
     return nothing
 end
 
+function kress_R_sum!(R0::AbstractMatrix{T},Δs::AbstractVector{T}) where {T<:Real}
+    N = length(Δs)
+    @assert size(R0) == (N, N)
+    # work with half‐angles to save a division inside the loop
+    ds = Δs .* (T(0.5))
+    @inbounds for i in 1:N
+        R0[i,i] = zero(T)
+        let di = ds[i]
+            for j in i+1:N
+                d  = di - ds[j]
+                s2 = sin(d)
+                v  = -log(4 * s2 * s2)
+                R0[i,j] = v
+                R0[j,i] = v
+            end
+        end
+    end
+    return nothing
+end
+
 ################################################################
 #### FIRST AND SECOND LAYER BOUNDARY POTENTIAL CONSTRUCTION ####
 ################################################################
@@ -286,7 +306,8 @@ end
 function solve(solver::CFIE{T},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
-    kress_R_fft!(Rmat) # or kress_R_sum!(Rmat) for small N
+    #kress_R_fft!(Rmat) # or kress_R_sum!(Rmat) for small N
+    kress_R_sum!(R0,pts.sk)
     A=M(pts,k,Rmat;use_combined=use_combined)
     mu=svdvals(A)
     return mu[end]
