@@ -36,7 +36,7 @@ dw_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=dw_reparametrized
 #### CONSTRUCTOR CFIE ####
 ###########################
 
-struct CFIE{T}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
+struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
     fundamental::Bool
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
@@ -52,7 +52,7 @@ function CFIE(pts_scaling_factor::Union{T,Vector{T}},ws::Vector{Function},ws_der
     n_curves=fundamental ? length(billiard.fundamental_boundary) : length(billiard.full_boundary)
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor for _ in 1:n_curves] : pts_scaling_factor
     sampler=[LinearNodes() for _ in 1:n_curves] # placeholder for sampler, since we will rescale the quadrature weights
-    return CFIE{T}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts)
+    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard)
 end
 
 function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::Int=8,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
@@ -61,7 +61,7 @@ function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::
     sampler=[LinearNodes() for _ in 1:n_curves]
     ws::Vector{Function}=[v->w_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights for each segment, must be same length as the length of "fundamental::Bool" boundary, if true same as fundamental boundary, otherwise full boundary
     ws_der::Vector{Function}=[v->dw_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights derivatives for each segment
-    return CFIE{T}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts)
+    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard)
 end
 
 #############################
