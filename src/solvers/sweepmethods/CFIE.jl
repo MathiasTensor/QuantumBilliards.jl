@@ -124,6 +124,7 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0) where 
     f=Figure()
     ax=Axis(f[1,1][1,1],title="Boundary with weights")
     scatter!(ax,xs,ys;markersize=4,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
+    ws_ders=solver.ws_der
     r,c=1,1
     for (i,wder) in enumerate(solver.ws)
         if c>2
@@ -131,8 +132,12 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0) where 
         end
         tloc=range(0.0,1.0,length=200)
         wline=wder(tloc)
-        ax=Axis(f[1,2][r,c])
+        wderline=ws_ders[i](tloc)
+        ax=Axis(f[1,2][r,c][1,1])
         lines!(ax,tloc,wline;label="panel $i",linewidth=2)
+        axislegend(ax;position=:lt)
+        ax=Axis(f[1,2][r,c][1,2])
+        lines!(ax,tloc,wderline;label="panel $i derivative",linewidth=2)
         axislegend(ax;position=:lt)
         c+=1
     end
