@@ -127,6 +127,6 @@ function plot_boundary_with_weight_INFO!(ax_plot,ax_weights,billiard::Bi,solver:
         wline=wder(tloc)
         lines!(ax_weights,tloc,wline;label="panel $i",linewidth=2)
     end
-    axislegend(ax_weights;position=:rt)
+    axislegend(ax_weights;position=:lt)
     return nothing
 end
