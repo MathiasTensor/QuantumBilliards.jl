@@ -116,7 +116,7 @@ end
 #### CFIE UTILS ####
 ####################
 
-function plot_boundary_with_weight_INFO!(billiard::Bi,solver::CFIE;k=20.0) where {Bi<:AbsBilliard}
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0) where {Bi<:AbsBilliard}
     pts=evaluate_points(solver,billiard,k)
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
@@ -134,5 +134,5 @@ function plot_boundary_with_weight_INFO!(billiard::Bi,solver::CFIE;k=20.0) where
         axislegend(f[1,1][k,l];position=:lt)
         k+=1;l+=1
     end
-    return nothing
+    return f
 end
