@@ -92,6 +92,7 @@ include("solvers/sweepmethods/decompositionmethod.jl")
 include("solvers/sweepmethods/boundaryintegralmethod.jl")
 include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
+include("solvers/sweepmethods/CFIE.jl")
 export ScalingMethodA, ScalingMethodB 
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
