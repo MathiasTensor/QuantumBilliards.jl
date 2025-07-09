@@ -116,11 +116,12 @@ end
 #### CFIE UTILS ####
 ####################
 
-function plot_boundary_with_weight_INFO!(f,billiard::Bi,solver::CFIE;k=20.0) where {Bi<:AbsBilliard}
+function plot_boundary_with_weight_INFO!(billiard::Bi,solver::CFIE;k=20.0) where {Bi<:AbsBilliard}
     pts=evaluate_points(solver,billiard,k)
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
     ak=pts.ak
+    f=Figure()
     scatter!(f[1,1][1,1],xs,ys;markersize=4,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
     k,l=1,1
     for (i,wder) in enumerate(solver.ws)
