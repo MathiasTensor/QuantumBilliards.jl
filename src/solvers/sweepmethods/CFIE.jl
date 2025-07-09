@@ -307,7 +307,7 @@ function solve(solver::CFIE{T},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combin
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
     #kress_R_fft!(Rmat) # or kress_R_sum!(Rmat) for small N
-    kress_R_sum!(R0,pts.sk)
+    kress_R_sum!(Rmat,pts.sk)
     A=M(pts,k,Rmat;use_combined=use_combined)
     mu=svdvals(A)
     return mu[end]
