@@ -68,7 +68,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ak::Vector{T} # the new weights (derivatives) of the new mesh points
 end
 
-function evaluate_points(solver::CFIE{T},billiard::Bi,k::T) where {Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     two_pi=2*pi
     fundamental=solver.fundamental
     boundary=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
