@@ -36,7 +36,7 @@ dw_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=dw_reparametrized
 #### CONSTRUCTOR CFIE ####
 ###########################
 
-struct CFIE{T}<:SweepSolver where {T<:Real} 
+struct CFIE{T}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
     fundamental::Bool
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
@@ -45,6 +45,7 @@ struct CFIE{T}<:SweepSolver where {T<:Real}
     eps::T
     min_dim::Int64
     min_pts::Int64
+    billiard::Bi
 end
 
 function CFIE(pts_scaling_factor::Union{T,Vector{T}},ws::Vector{Function},ws_der::Vector{Function},billiard::Bi;min_pts=20,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
@@ -280,8 +281,8 @@ end
 #### MAIN ####
 ##############
 
-function solve(solver::CFIE,billiard::Bi,k::T;use_combined::Bool=false) where {Bi<:AbsBilliard,T<:Real}
-    pts=evaluate_points(solver,billiard,k)
+function solve(solver::CFIE,basis::Ba,pts::BoundaryPointsCFIE,k) where {Ba<:AbstractHankelBasis}
+    pts=evaluate_points(solver,solver.billiard,k)
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
     kress_R_fft!(Rmat) # or kress_R_sum!(Rmat) for small N
