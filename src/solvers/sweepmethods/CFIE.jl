@@ -281,7 +281,7 @@ end
 #### MAIN ####
 ##############
 
-function solve(solver::CFIE{T},basis::Ba,pts::BoundaryPointsCFIE{T},k) where {T<:Real,Ba<:AbstractHankelBasis}
+function solve(solver::CFIE{T},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
     pts=evaluate_points(solver,solver.billiard,k)
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
