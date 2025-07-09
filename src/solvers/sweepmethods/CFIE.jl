@@ -123,7 +123,7 @@ function plot_boundary_with_weight_INFO!(ax_plot,ax_weights,billiard::Bi,solver:
     ak=pts.ak
     scatter!(ax_plot,xs,ys;markersize=4,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
     for (i,wder) in enumerate(solver.ws)
-        tloc=range(0.0,1.0,length=1000)
+        tloc=range(0.0,1.0,length=200)
         wline=wder(tloc)
         lines!(ax_weights,tloc,wline;label="panel $i",linewidth=2)
     end
