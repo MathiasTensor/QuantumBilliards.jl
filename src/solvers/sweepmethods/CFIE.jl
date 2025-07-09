@@ -180,7 +180,7 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     dX=nys # tangent x
     dY=-nxs # tangent y
     κ=pts.curvature
-    Δs=@. pts.sk .-pts.sk'
+    Δs=pts.sk .-pts.sk'
     dX_mat=reshape(dX,1,N)
     dY_mat=reshape(dY,1,N)
     inner=@. dY_mat*ΔX-dX_mat*ΔY
@@ -218,7 +218,7 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     dX=nys # tangent x
     dY=-nxs # tangent y
     κ=pts.curvature
-    Δs=@. pts.sk .-pts.sk'
+    Δs=pts.sk .-pts.sk'
     dX_mat=reshape(dX,1,N)
     dY_mat=reshape(dY,1,N)
     inner=@. dY_mat*ΔX-dX_mat*ΔY
