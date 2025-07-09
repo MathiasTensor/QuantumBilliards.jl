@@ -85,7 +85,8 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     type=typeof(Ls_scaled[1])
     bs=solver.pts_scaling_factor
     Ns=[max(solver.min_pts,round(Int,k*Ls[i]*bs[i]/(two_pi))) for i in eachindex(Ls)];Ntot=sum(Ns)
-    ts_all=midpoints(range(0,two_pi,length=(Ntot+1)))
+    iseven(Ntot) ? Ntot+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
+    ts_all=midpoints(range(0,two_pi,length=(Ntot)))
     cuts=cumsum([0;Ns])
     ts_per_panel=[ts_all[cuts[i]+1:cuts[i+1]] for i in eachindex(Ns)]
     ws=solver.ws # we need only for adjacent segments the unique qaudrature 
@@ -265,13 +266,14 @@ end
 #####################################
 
 function M(pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=false) where {T<:Real}
+    N=length(pts.xy)
     if use_combined
       L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
       A_double=(Rmat.*L1.+(2π/N).*L2).*pts.ak' # DLP case
       A_single=(Rmat.*M1.+(2π/N).*M2).*pts.ak' # SLP case
       A=A_double.+(im*k)*A_single # D+i*k*S
     else
-      L1,L2=L1_L2_matrix(ts,k)
+      L1,L2=L1_L2_matrix(pts,k)
       A=@. (Rmat.*L1.+(2π/N).*L2).*pts.ak' # just DLP case
     end
     return Diagonal(ones(Complex{T},N))-A
