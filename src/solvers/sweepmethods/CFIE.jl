@@ -72,7 +72,7 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     two_pi=2*pi
     fundamental=solver.fundamental
     boundary=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
-    Ls=[crv.length for crv in boundary];L=sum(Ls);Ls_scaled=Ls./L
+    Ls=[crv.length for crv in boundary];L=sum(Ls);Ls_scaled=cumsum(Ls./L)
     type=typeof(Ls_scaled[1])
     bs=solver.pts_scaling_factor
     Ns=[max(solver.min_pts,round(Int,k*Ls[i]*bs[i]/(two_pi))) for i in eachindex(Ls)];Ntot=sum(Ns)
