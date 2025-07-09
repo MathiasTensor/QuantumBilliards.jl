@@ -289,12 +289,14 @@ function M(pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=fa
     N=length(pts.xy)
     if use_combined
       L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
-      A_double=(Rmat.*L1.+(2π/N).*L2).*pts.ak' # DLP case
-      A_single=(Rmat.*M1.+(2π/N).*M2).*pts.ak' # SLP case
+      W=Diagonal(pts.ak) # weights for the quadrature
+      A_double=(Rmat.*L1.+(2π/N).*L2)*W # DLP case
+      A_single=(Rmat.*M1.+(2π/N).*M2)*W # SLP case
       A=A_double.+(im*k)*A_single # D+i*k*S
     else
       L1,L2=L1_L2_matrix(pts,k)
-      A=@. (Rmat.*L1.+(2π/N).*L2).*pts.ak' # just DLP case
+      W=Diagonal(pts.ak) # weights for the quadrature
+      A=@. (Rmat.*L1.+(2π/N).*L2)*W # just DLP case
     end
     return Diagonal(ones(Complex{T},N))-A
 end
