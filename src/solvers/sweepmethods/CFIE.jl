@@ -116,17 +116,22 @@ end
 #### CFIE UTILS ####
 ####################
 
-function plot_boundary_with_weight_INFO!(ax_plot,ax_weights,billiard::Bi,solver::CFIE;k=20.0) where {Bi<:AbsBilliard}
+function plot_boundary_with_weight_INFO!(f,billiard::Bi,solver::CFIE;k=20.0) where {Bi<:AbsBilliard}
     pts=evaluate_points(solver,billiard,k)
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
     ak=pts.ak
-    scatter!(ax_plot,xs,ys;markersize=4,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
+    scatter!(f[1,1][1,1],xs,ys;markersize=4,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
+    k,l=1,1
     for (i,wder) in enumerate(solver.ws)
+        if l>2
+            k+=1;l=1
+        end
         tloc=range(0.0,1.0,length=200)
         wline=wder(tloc)
-        lines!(ax_weights,tloc,wline;label="panel $i",linewidth=2)
+        lines!(f[1,1][k,l],tloc,wline;label="panel $i",linewidth=2)
+        axislegend(f[1,1][k,l];position=:lt)
+        k+=1;l+=1
     end
-    axislegend(ax_weights;position=:lt)
     return nothing
 end
