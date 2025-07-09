@@ -123,7 +123,7 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0) where 
     ak=pts.ak
     m=div(length(solver.ws),2)
     f=Figure(size=(2500+550*2,600*m),resolution=(2500+550*2,600*m))
-    ax=Axis(f[1,1][1,1],title="Boundary with weights",width=1000,height=1000)
+    ax=Axis(f[1,1][1,1],title="Boundary with weights",width=1000,height=1000,aspect=DataAspect())
     scatter!(ax,xs,ys;markersize=4,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
     ws_ders=solver.ws_der
     r,c=1,1
