@@ -70,7 +70,7 @@ end
 
 struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
-    normal::Vector{SVector{2,T}} # normals evaluated at the new mesh points
+    tangent::Vector{SVector{2,T}} # normals evaluated at the new mesh points
     curvature::Vector{T} # curvature evaluated at new mesh points
     sk::Vector{T} # new mesh points by w in solver
     sk_local::Vector{Vector{T}} # the local mesh points in [0,1] parametrizations for each segment
@@ -92,7 +92,7 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     ws=solver.ws # we need only for adjacent segments the unique qaudrature 
     ws_der=solver.ws_der # derivativs of them
     xy_all=Vector{SVector{2,type}}()
-    normal_all=Vector{SVector{2,type}}()
+    tangent_all=Vector{SVector{2,type}}()
     kappa_all=Vector{type}()
     sk_all=Vector{type}()
     sk_local_all=Vector{Vector{type}}() # local mesh points in [0,1] parametrization for each segment
@@ -108,18 +108,18 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
         t_scaled=(t.-t_i)./(t_f-t_i) # need to rescale to ts_per_panel to local [0,1] parametrization since the ws and ws_der applied locally
         sk_local=ws[i](t_scaled) # we need to evaluate the sk first locally since the ws[i] is a local function (each segment has its own quadrature) and then project it to a global parameter; mapping [0,1] -> [0,1]
         xy=curve(crv,sk_local) # the xy coordinates of the new mesh points, these are global now
-        normal=normal_vec(crv,sk_local) # the normals evaluated at the new mesh points, these are global now
+        tangent=tangent_vec(crv,sk_local) # the normals evaluated at the new mesh points, these are global now
         kappa=curvature(crv,sk_local) # the curvature evaluated at the new mesh points, these are global now
         ak=ws_der[i](sk_local) # the weights of the new mesh points in the local coordinates
         sk=t_i.+sk_local.*(t_f-t_i) # now we can project it to the global parameter (w : [0,1] -> [0,1])
         append!(xy_all,xy)
-        append!(normal_all,normal)
+        append!(tangent_all,tangent)
         append!(kappa_all,kappa)
         append!(sk_all,sk)
         push!(sk_local_all,sk_local) # need to add as Vector, not splated with append!
         append!(ak_all,ak)
     end
-    return BoundaryPointsCFIE(xy_all,normal_all,kappa_all,sk_all,sk_local_all,ak_all)
+    return BoundaryPointsCFIE(xy_all,tangent_all,kappa_all,sk_all,sk_local_all,ak_all)
 end
 
 ##################################
@@ -197,10 +197,8 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     ΔY=@. Y-Y'   # ΔY[i,j] = Y[i] - Y[j] = y(t_i) - y(t_j)
     R=hypot.(ΔX,ΔY)
     R[diagind(R)].=one(T) # avoid zeros on diagonal, does not influence result since overwritten few lines below
-    nxs=getindex.(pts.normal,1)
-    nys=getindex.(pts.normal,2)
-    dX=nys # tangent x
-    dY=-nxs # tangent y
+    dX=getindex.(pts.tangent,1) # tangent x
+    dY=getindex.(pts.tangent,2) # tangent y
     κ=pts.curvature
     Δs=pts.sk .-pts.sk'
     dX_mat=reshape(dX,1,N)
@@ -235,10 +233,8 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     ΔY=@. Y-Y'   # ΔY[i,j] = Y[i] - Y[j] = y(t_i) - y(t_j)
     R=hypot.(ΔX,ΔY)
     R[diagind(R)].=one(T) # avoid zeros on diagonal, does not influence result since overwritten few lines below
-    nxs=getindex.(pts.normal,1)
-    nys=getindex.(pts.normal,2)
-    dX=nys # tangent x
-    dY=-nxs # tangent y
+    dX=getindex.(pts.tangent,1) # tangent x
+    dY=getindex.(pts.tangent,2) # tangent y
     κ=pts.curvature
     Δs=pts.sk .-pts.sk'
     dX_mat=reshape(dX,1,N)
