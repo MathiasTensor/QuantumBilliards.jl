@@ -286,12 +286,12 @@ function M(pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=fa
     w_row=pts.ak'  
     if use_combined
         L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
-        A_d=(Rmat.*L1).+((2π/N).*L2).*w_row
-        A_s=(Rmat.*M1).+((2π/N).*M2).*w_row
+        A_d=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        A_s=((Rmat.*M1).+((2π/N).*M2)).*w_row
         A=A_d.+(im*k).*A_s
     else
         L1,L2=L1_L2_matrix(pts,k)
-        A=(Rmat.*L1).+((2π/N).*L2).*w_row
+        A=((Rmat.*L1).+((2π/N).*L2)).*w_row
     end
     return Diagonal(ones(Complex{T},N)).-A
 end
