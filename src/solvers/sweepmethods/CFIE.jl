@@ -258,7 +258,8 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     speed=@. sqrt(dX^2+dY^2) 
     speed_row=reshape(speed,1,N) # 1×N this should be [x'(τ)^2 + y'(τ) for τ is ts]
     # assemble L and L1 off the diagonal element wise 
-    L1=-k/(2*pi)*inner.*J1./R
+    #L1=-k/(2*pi)*inner.*J1./R
+    L1=k/(2*pi)*inner.*J1./R
     L=im*k/2*inner.*H1./R
     L2=L.-L1.*log.(4*sin.(Δs/2).^2)
     # assemble M1 and M2 off the diagonal element wise 
