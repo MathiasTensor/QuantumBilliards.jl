@@ -322,6 +322,9 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0,markers
     f=Figure(size=(2500+550*2,600*m),resolution=(2500+550*2,600*m))
     ax=Axis(f[1,1][1,1],title="Boundary with weights",width=1000,height=1000,aspect=DataAspect())
     scatter!(ax,xs,ys;markersize=markersize,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
+    nxs=getindex.(pts.tangent,2)
+    nys=-getindex.(pts.tangent,1)
+    arrows!(ax,xs,ys,nxs,nys,color=:black,lengthscale=0.1)
     ws_ders=solver.ws_der
     r,c=1,1
     for (i,wder) in enumerate(solver.ws)
