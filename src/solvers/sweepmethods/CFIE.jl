@@ -332,8 +332,8 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0,markers
             r+=1;c=1
         end
         tloc=collect(range(0.0,1.0,length=200))
-        wline=wder.(tloc)
-        wderline=ws_ders[i].(tloc)
+        wline=wder(tloc)
+        wderline=ws_ders[i](tloc)
         ax=Axis(f[1,2][r,c][1,1],width=500,height=500)
         lines!(ax,tloc,wline;label="panel $i",linewidth=2)
         axislegend(ax;position=:lt)
