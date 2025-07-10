@@ -164,19 +164,17 @@ function kress_R_sum!(R0::AbstractMatrix{T}) where {T<:Real}
 end
 
 function kress_R_sum!(R0::AbstractMatrix{T},Δs::AbstractVector{T}) where {T<:Real}
-    N = length(Δs)
-    @assert size(R0) == (N, N)
-    # work with half‐angles to save a division inside the loop
-    ds = Δs .* (T(0.5))
+    N=length(Δs)
+    ds=Δs.*(T(0.5))  # work with half‐angles to save a division inside the loop
     @inbounds for i in 1:N
-        R0[i,i] = zero(T)
-        let di = ds[i]
+        R0[i,i]=zero(T)
+        let di=ds[i]
             for j in i+1:N
-                d  = di - ds[j]
-                s2 = sin(d)
-                v  = -log(4 * s2 * s2)
-                R0[i,j] = v
-                R0[j,i] = v
+                d=di-ds[j]
+                s2=sin(d)
+                v=-log(4*s2*s2)
+                R0[i,j]=v
+                R0[j,i]=v
             end
         end
     end
