@@ -213,7 +213,7 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     end
     J1=real.(H1)
     # assemble L and L1 off the diagonal
-    L1=-k/(two_pi)*inner.*J1./R
+    L1=k/(two_pi)*inner.*J1./R
     L=im*k/2*inner.*H1./R
     L2=L.-L1.*log.(4*sin.(Δs/2).^2)
     # fix diagonal entries by taking the known limits
