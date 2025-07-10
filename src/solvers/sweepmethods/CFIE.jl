@@ -198,7 +198,7 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     dX=getindex.(pts.tangent,1) # tangent x
     dY=getindex.(pts.tangent,2) # tangent y
     κ=pts.curvature
-    Δs=pts.sk .-pts.sk'
+    Δs=pts.sk .-pts.sk' # pts.sk ∈ [0,2π]
     dX_mat=reshape(dX,1,N)
     dY_mat=reshape(dY,1,N)
     inner=@. dY_mat*ΔX-dX_mat*ΔY
