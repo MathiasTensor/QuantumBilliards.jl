@@ -40,15 +40,15 @@ struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     fundamental::Bool
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
-    ws::Vector{Function} # quadrature weights for each segment, must be same length as the length of "fundamental::Bool" boundary, if true same as fundamental boundary, otherwise full boundary
-    ws_der::Vector{Function} # quadrature weights derivatives for each segment
+    ws::Vector{<:Function} # quadrature weights for each segment, must be same length as the length of "fundamental::Bool" boundary, if true same as fundamental boundary, otherwise full boundary
+    ws_der::Vector{<:Function} # quadrature weights derivatives for each segment
     eps::T
     min_dim::Int64
     min_pts::Int64
     billiard::Bi
 end
 
-function CFIE(pts_scaling_factor::Union{T,Vector{T}},ws::Vector{Function},ws_der::Vector{Function},billiard::Bi;min_pts=20,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+function CFIE(pts_scaling_factor::Union{T,Vector{T}},ws::Vector{<:Function},ws_der::Vector{<:Function},billiard::Bi;min_pts=20,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
     n_curves=fundamental ? length(billiard.fundamental_boundary) : length(billiard.full_boundary)
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor for _ in 1:n_curves] : pts_scaling_factor
     sampler=[LinearNodes() for _ in 1:n_curves] # placeholder for sampler, since we will rescale the quadrature weights
