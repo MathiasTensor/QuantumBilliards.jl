@@ -46,13 +46,14 @@ struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     min_dim::Int64
     min_pts::Int64
     billiard::Bi
+    use_weigths::Bool # if true use the weights, otherwise use the trapezoidal rule
 end
 
 function CFIE(pts_scaling_factor::Union{T,Vector{T}},ws::Vector{<:Function},ws_der::Vector{<:Function},billiard::Bi;min_pts=20,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
     n_curves=fundamental ? length(billiard.fundamental_boundary) : length(billiard.full_boundary)
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor for _ in 1:n_curves] : pts_scaling_factor
     sampler=[LinearNodes() for _ in 1:n_curves] # placeholder for sampler, since we will rescale the quadrature weights
-    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard)
+    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,true)
 end
 
 function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::Int=8,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
@@ -61,7 +62,16 @@ function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::
     sampler=[LinearNodes() for _ in 1:n_curves]
     ws::Vector{Function}=[v->w_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights for each segment, must be same length as the length of "fundamental::Bool" boundary, if true same as fundamental boundary, otherwise full boundary
     ws_der::Vector{Function}=[v->dw_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights derivatives for each segment
-    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard)
+    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,true)
+end
+
+function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+    n_curves=fundamental ? length(billiard.fundamental_boundary) : length(billiard.full_boundary)
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor for _ in 1:n_curves] : pts_scaling_factor # one needs to be careful there are enough bs for all 
+    sampler=[LinearNodes() for _ in 1:n_curves]
+    ws=[v->v for _ in 1:length(billiard.n_curves)] 
+    ws_der=[v->fill(one(eltype(v)),length(v)) for _ in 1:length(billiard.n_curves)]
+    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,false)
 end
 
 #############################
@@ -303,7 +313,7 @@ function solve(solver::CFIE{T},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combin
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
     #kress_R_fft!(Rmat) # or kress_R_sum!(Rmat) for small N
-    kress_R_sum!(Rmat,pts.sk)
+    solver.use_weigths ? kress_R_sum!(Rmat,pts.sk) : kress_R_fft!(Rmat) # fft work for trapezoidal parametrization, sum for reparametrized weights
     A=M(pts,k,Rmat;use_combined=use_combined)
     mu=svdvals(A)
     return mu[end]
