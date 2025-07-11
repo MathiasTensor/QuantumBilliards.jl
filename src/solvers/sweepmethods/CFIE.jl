@@ -56,22 +56,19 @@ function CFIE(pts_scaling_factor::Union{T,Vector{T}},ws::Vector{<:Function},ws_d
     return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,true)
 end
 
-function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::Int=8,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::Int=8,fundamental::Bool=true,eps=T(1e-15),use_weights::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     n_curves=fundamental ? length(billiard.fundamental_boundary) : length(billiard.full_boundary)
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor for _ in 1:n_curves] : pts_scaling_factor # one needs to be careful there are enough bs for all segments
     sampler=[LinearNodes() for _ in 1:n_curves]
-    ws::Vector{Function}=[v->w_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights for each segment, must be same length as the length of "fundamental::Bool" boundary, if true same as fundamental boundary, otherwise full boundary
-    ws_der::Vector{Function}=[v->dw_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights derivatives for each segment
-    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,true)
-end
-
-function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,fundamental::Bool=true,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
-    n_curves=fundamental ? length(billiard.fundamental_boundary) : length(billiard.full_boundary)
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor for _ in 1:n_curves] : pts_scaling_factor # one needs to be careful there are enough bs for all 
-    sampler=[LinearNodes() for _ in 1:n_curves]
-    ws=[v->v for _ in 1:length(billiard.n_curves)] 
-    ws_der=[v->fill(one(eltype(v)),length(v)) for _ in 1:length(billiard.n_curves)]
-    return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,false)
+    if use_weights
+        ws::Vector{Function}=[v->w_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights for each segment, must be same length as the length of "fundamental::Bool" boundary, if true same as fundamental boundary, otherwise full boundary
+        ws_der::Vector{Function}=[v->dw_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights derivatives for each segment
+        return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,true)
+    else
+        ws=[v->v for _ in 1:length(billiard.n_curves)] 
+        ws_der=[v->fill(one(eltype(v)),length(v)) for _ in 1:length(billiard.n_curves)]
+        return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,false)
+    end
 end
 
 #############################
