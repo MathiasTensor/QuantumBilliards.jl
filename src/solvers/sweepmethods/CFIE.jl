@@ -117,7 +117,7 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
         xy=curve(crv,sk_local) # the xy coordinates of the new mesh points, these are global now
         tangent=tangent_vec(crv,sk_local) # the normals evaluated at the new mesh points, these are global now
         kappa=curvature(crv,sk_local) # the curvature evaluated at the new mesh points, these are global now
-        ak=ws_der[i](t_scaled) # the weights of the new mesh points in the local coordinates
+        ak=ws_der[i](t_scaled).*(t_f-t_i) # the weights of the new mesh points in the local coordinates
         sk=t_i.+sk_local.*(t_f-t_i) # now we can project it to the global parameter (w : [0,1] -> [0,1])
         append!(xy_all,xy)
         append!(tangent_all,tangent)
@@ -292,12 +292,16 @@ function M(pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=fa
     w_row=pts.ak'  
     if use_combined
         L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
-        A_d=((Rmat.*L1).+((2π/N).*L2)).*w_row
-        A_s=((Rmat.*M1).+((2π/N).*M2)).*w_row
+        #A_d=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        #A_s=((Rmat.*M1).+((2π/N).*M2)).*w_row
+        #A=A_d.+(im*k).*A_s
+        A_d=((Rmat.*L1).+(L2)).*w_row
+        A_s=((Rmat.*M1).+(M2)).*w_row
         A=A_d.+(im*k).*A_s
     else
         L1,L2=L1_L2_matrix(pts,k)
-        A=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        #A=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        A=((Rmat.*L1).+((L2)).*w_row
     end
     return Diagonal(ones(Complex{T},N)).-A
 end
