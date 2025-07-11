@@ -65,8 +65,8 @@ function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,q::
         ws_der::Vector{Function}=[v->dw_reparametrized(v,q) for _ in 1:n_curves] # quadrature weights derivatives for each segment
         return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,true)
     else
-        ws=[v->v for _ in 1:length(n_curves)] 
-        ws_der=[v->fill(one(eltype(v)),length(v)) for _ in 1:length(n_curves)]
+        ws=[v->v for _ in 1:n_curves] 
+        ws_der=[v->fill(one(eltype(v)),length(v)) for _ in 1:n_curves]
         return CFIE{T,Bi}(fundamental,sampler,bs,ws,ws_der,eps,min_pts,min_pts,billiard,false)
     end
 end
