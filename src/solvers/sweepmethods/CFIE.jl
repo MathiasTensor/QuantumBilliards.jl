@@ -324,7 +324,7 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0,markers
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
     ak=pts.ak
-    m=div(length(solver.ws),2)
+    m=div(length(solver.ws),2)> 0 ? div(length(solver.ws),2) : 1 # number of rows for the weights
     f=Figure(size=(2500+550*2,1200*m),resolution=(2500+550*2,1200*m))
     ax=Axis(f[1,1][1,1],title="Boundary with weights",width=1000,height=1000,aspect=DataAspect())
     scatter!(ax,xs,ys;markersize=markersize,color=ak,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
