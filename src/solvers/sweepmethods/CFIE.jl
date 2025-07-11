@@ -301,7 +301,7 @@ function M(pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=fa
     else
         L1,L2=L1_L2_matrix(pts,k)
         #A=((Rmat.*L1).+((2π/N).*L2)).*w_row
-        A=((Rmat.*L1).+((L2)).*w_row
+        A=((Rmat.*L1).+(L2)).*w_row
     end
     return Diagonal(ones(Complex{T},N)).-A
 end
