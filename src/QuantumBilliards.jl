@@ -62,6 +62,7 @@ include("billiards/mushroom.jl")
 include("billiards/rectangle.jl")
 include("billiards/equilateraltriangle.jl")
 include("billiards/generalized_sinai.jl")
+include("billiards/teardrop.jl")
 export adapt_basis
 export Stadium, Lemon, Triangle, Sinai
 export curve, tangent, arc_length
