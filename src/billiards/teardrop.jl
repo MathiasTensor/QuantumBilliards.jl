@@ -7,8 +7,8 @@ function make_half_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Fl
         SVector(2*sin(φ/2),sin(φ))
     end
     half_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
-    pt0=curve(quarter_prosen_segment,zero(T))  # Start point at φ = 0
-    pt1=curve(quarter_prosen_segment,one(T))   # End point at φ = π
+    pt0=curve(half_teardrop_segment,zero(T))  # Start point at φ = 0
+    pt1=curve(half_teardrop_segment,one(T))   # End point at φ = π
     line_segment1=VirtualLineSegment(pt1,SVector{2,T}(x0,y0);origin=origin,rot_angle=rot_angle)
     # Construct the boundary
     boundary=Union{PolarSegment,VirtualLineSegment}[half_teardrop_segment,line_segment1]
