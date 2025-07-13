@@ -3,7 +3,7 @@ function make_half_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Fl
     origin=SVector(x0,y0)
     φ_multiplier=1.0  # t from 0 to 1 maps to φ from 0 to π
     r_func=t -> begin
-        φ=φ_multiplier*π*t  # φ ranges from 0 to π
+        φ=-φ_multiplier*π*t  # φ ranges from 0 to π
         SVector(2*sin(φ/2),sin(φ))
     end
     half_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
@@ -21,7 +21,7 @@ function make_teardrop_desymmetrized_full_boundary(;x0=zero(Float64),y0=zero(Flo
     origin=SVector(x0,y0)
     φ_multiplier=1.0  # t from 0 to 1 maps to φ from 0 to π/2
     r_func=t -> begin
-        φ=φ_multiplier*π*t  # φ ranges from 0 to π
+        φ=-φ_multiplier*π*t  # φ ranges from 0 to π
         SVector(2*sin(φ/2),sin(φ))
     end
     half_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
@@ -33,7 +33,7 @@ function make_full_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Fl
     origin=SVector(x0,y0)
     φ_multiplier=2.0  # t from 0 to 1 maps to φ from 0 to 2π
     r_func=t -> begin
-        φ=φ_multiplier*π*t  # φ ranges from 0 to π
+        φ=-φ_multiplier*π*t  # φ ranges from 0 to π
         SVector(2*sin(φ/2),sin(φ))
     end
     full_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
