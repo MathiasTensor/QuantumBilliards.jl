@@ -1,5 +1,5 @@
 
-function make_half_teardrop(;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
+function make_half_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64))
     origin=SVector(x0,y0)
     φ_multiplier=1.0  # t from 0 to 1 maps to φ from 0 to π
     r_func=t -> begin
@@ -17,7 +17,7 @@ function make_half_teardrop(;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:
     return boundary,corners
 end
 
-function make_teardrop_desymmetrized_full_boundary(;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
+function make_teardrop_desymmetrized_full_boundary(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64))
     origin=SVector(x0,y0)
     φ_multiplier=1.0  # t from 0 to 1 maps to φ from 0 to π/2
     r_func=t -> begin
@@ -29,7 +29,7 @@ function make_teardrop_desymmetrized_full_boundary(;x0=zero(T),y0=zero(T),rot_an
     return boundary,[]
 end
 
-function make_full_teardrop(;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
+function make_full_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64))
     origin=SVector(x0,y0)
     φ_multiplier=2.0  # t from 0 to 1 maps to φ from 0 to 2π
     r_func=t -> begin
@@ -57,7 +57,7 @@ struct TeardropBilliard{T} <: AbsBilliard where {T<:Real}
     s_shift::T
 end
 
-function TeardropBilliard(;x0=zero(T),y0=zero(T),rot_angle=zero(T)) :: ProsenBilliard where {T<:Real}
+function TeardropBilliard(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64)) :: ProsenBilliard 
     fundamental_boundary,_=make_half_teardrop(;x0=x0,y0=y0,rot_angle=rot_angle)
     full_boundary,corners,area_full=make_full_teardrop(;x0=x0,y0=y0,rot_angle=rot_angle)
     desymmetrized_full_boundary,_=make_teardrop_desymmetrized_full_boundary(;x0=x0,y0=y0,rot_angle=rot_angle)
@@ -70,7 +70,7 @@ function TeardropBilliard(;x0=zero(T),y0=zero(T),rot_angle=zero(T)) :: ProsenBil
     return TeardropBilliard(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,corners,area_full,area_fundamental,angles,angles_fundamental,s_shift)
 end
 
-function make_teardrop_and_basis(;x0=zero(T),y0=zero(T),rot_angle=zero(T),basis_type=:cafb) where {T<:Real}
+function make_teardrop_and_basis(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64),basis_type=:cafb) 
     teardrop_billiard=TeardropBilliard(;x0=x0,y0=y0,rot_angle=rot_angle)
     symmetry=Vector{Any}([YReflection(-1)])
     if basis_type==:cafb
