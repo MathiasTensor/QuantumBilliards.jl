@@ -57,7 +57,7 @@ struct TeardropBilliard{T} <: AbsBilliard where {T<:Real}
     s_shift::T
 end
 
-function TeardropBilliard(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64)) :: ProsenBilliard 
+function TeardropBilliard(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64)) :: TeardropBilliard 
     fundamental_boundary,_=make_half_teardrop(;x0=x0,y0=y0,rot_angle=rot_angle)
     full_boundary,corners,area_full=make_full_teardrop(;x0=x0,y0=y0,rot_angle=rot_angle)
     desymmetrized_full_boundary,_=make_teardrop_desymmetrized_full_boundary(;x0=x0,y0=y0,rot_angle=rot_angle)
