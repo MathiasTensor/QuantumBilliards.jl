@@ -3,10 +3,11 @@ function make_half_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Fl
     origin=SVector(x0,y0)
     φ_multiplier=1.0  # t from 0 to 1 maps to φ from 0 to π
     r_func=t -> begin
-        φ=-φ_multiplier*π*t  # φ ranges from 0 to π
+        φ=φ_multiplier*π*t  # φ ranges from 0 to π
         SVector(2*sin(φ/2),sin(φ))
     end
-    half_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
+    r_func_rev(t)=r_func(1-t)
+    half_teardrop_segment=PolarSegment(r_func_rev;origin=origin,rot_angle=rot_angle)
     pt0=curve(half_teardrop_segment,zero(Float64))  # Start point at φ = 0
     pt1=curve(half_teardrop_segment,one(Float64))   # End point at φ = π
     line_segment1=VirtualLineSegment(pt1,SVector{2,Float64}(x0,y0);origin=origin,rot_angle=rot_angle)
@@ -21,10 +22,11 @@ function make_teardrop_desymmetrized_full_boundary(;x0=zero(Float64),y0=zero(Flo
     origin=SVector(x0,y0)
     φ_multiplier=1.0  # t from 0 to 1 maps to φ from 0 to π/2
     r_func=t -> begin
-        φ=-φ_multiplier*π*t  # φ ranges from 0 to π
+        φ=φ_multiplier*π*t  # φ ranges from 0 to π
         SVector(2*sin(φ/2),sin(φ))
     end
-    half_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
+    r_func_rev(t)=r_func(1-t)
+    half_teardrop_segment=PolarSegment(r_func_rev;origin=origin,rot_angle=rot_angle)
     boundary=PolarSegment[half_teardrop_segment]
     return boundary,[]
 end
@@ -33,10 +35,11 @@ function make_full_teardrop(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Fl
     origin=SVector(x0,y0)
     φ_multiplier=2.0  # t from 0 to 1 maps to φ from 0 to 2π
     r_func=t -> begin
-        φ=-φ_multiplier*π*t  # φ ranges from 0 to π
+        φ=φ_multiplier*π*t  # φ ranges from 0 to π
         SVector(2*sin(φ/2),sin(φ))
     end
-    full_teardrop_segment=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
+    r_func_rev(t)=r_func(1-t)
+    full_teardrop_segment=PolarSegment(r_func_rev;origin=origin,rot_angle=rot_angle)
     area_full=compute_area(full_teardrop_segment)
     boundary=PolarSegment[full_teardrop_segment]
     corners=[origin] 
