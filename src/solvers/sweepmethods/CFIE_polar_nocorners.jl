@@ -338,28 +338,19 @@ end
 #### MAIN ####
 ##############
 
-function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
-    kress_R_fft!(Rmat) # fft work for trapezoidal parametrization, sum needs to be for weights (domains with corners)
+    solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts) # fft work for trapezoidal parametrization, sum needs to be for weights (domains with corners)
     A=M(solver,pts,k,Rmat;use_combined=use_combined)
     mu=svdvals(A)
     return mu[end]
 end
 
-function solve(solver::CFIE_polar_corner_correction,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
-    kress_R_sum!(Rmat,pts.ts)
-    A=M(solver,pts,k,Rmat;use_combined=use_combined)
-    mu=svdvals(A)
-    return mu[end]
-end
-
-function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
-    N=length(pts.xy)
-    Rmat=zeros(T,N,N)
-    kress_R_fft!(Rmat)
+    solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts)
     A=M(solver,pts,k,Rmat;use_combined=use_combined)
     _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
     idx=findmin(S)[2]
@@ -369,7 +360,7 @@ function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCF
     return mu,u_mu
 end
 
-function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vector{T};use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
+function solve_eigenvectors_CFIE(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,ks::Vector{T};use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsCFIE{eltype(ks)}}(undef,length(ks))
     for i in eachindex(ks)
