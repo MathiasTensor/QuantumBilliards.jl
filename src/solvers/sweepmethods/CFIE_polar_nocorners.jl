@@ -114,8 +114,8 @@ function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) wher
     ss=arc_length(boundary,ts_rescaled)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws=[one(T) for _ in 1:N] # weights for the trapezoidal rule, all ones since we use the trapezoidal rule
-    ws_der=[zero(T) for _ in 1:N] # derivatives of the weights, all zeros since we use the trapezoidal rule
+    ws=ts
+    ws_der=[one(T) for _ in 1:N]
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ss,ds)
 end
 
@@ -296,7 +296,7 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     L1[d].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
     L2[d].=κ # the "curvature type" limit for DLP
     M1[d].=-1/(two_pi).*speed
-    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ws).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
+    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ws_der).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
     #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
     return L1,L2,M1,M2
 end
@@ -321,16 +321,16 @@ end
 
 function M(solver::CFIE_polar_corner_correction,pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=false) where {T<:Real}
     N=length(pts.xy)
-    ws=pts.ws
+    ws_der=pts.ws_der
     if use_combined
         L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
         A_double=Rmat.*L1.+(two_pi/N).*L2 # D
         A_single=Rmat.*M1.+(two_pi/N).*M2 # S
-        A=(A_double.+(im*k)*A_single).*ws' # D+i*k*S
+        A=(A_double.+(im*k)*A_single).*ws_der' # D+i*k*S
     else
         L1,L2=L1_L2_matrix(pts,k)
         A=@. Rmat.*L1.+(two_pi/N).*L2 # pure double layer
-        A=A.*ws'
+        A=A.*ws_der'
     end
     return Diagonal(ones(Complex{T},N))-A
 end
