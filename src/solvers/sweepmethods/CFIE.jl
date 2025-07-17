@@ -100,7 +100,7 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     ws_der=solver.ws_der # derivativs of them
     xy_all=Vector{SVector{2,type}}()
     tangent_all=Vector{SVector{2,type}}()
-    tangent_2_all=Vector{type}()
+    tangent_2_all=Vector{SVector{2,type}}()
     sk_all=Vector{type}()
     sk_local_all=Vector{Vector{type}}() # local mesh points in [0,1] parametrization for each segment
     ak_all=Vector{type}()
