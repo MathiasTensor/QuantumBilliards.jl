@@ -233,7 +233,7 @@ end
 #### MAIN ####
 ##############
 
-function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
+function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
     kress_R_fft!(Rmat) # fft work for trapezoidal parametrization, sum needs to be for weights (domains with corners)
@@ -242,7 +242,7 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T}
     return mu[end]
 end
 
-function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
+function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
     kress_R_fft!(Rmat)
@@ -255,7 +255,7 @@ function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCF
     return mu,u_mu
 end
 
-function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vector{T};use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
+function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vector{T};use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsCFIE{eltype(ks)}}(undef,length(ks))
     for i in eachindex(ks)
