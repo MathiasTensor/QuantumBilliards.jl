@@ -40,6 +40,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
     tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
     ts::Vector{T} # parametrization that needs to go from [0,2π]
+    ws::Vector{T} # the weights for the quadrature at ts
     s::Vector{T} # arc lengths at ts
     ds::Vector{T} # diffs between crv lengths at ts
 end
@@ -58,7 +59,8 @@ function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<
     ss=arc_length(boundary,ts_rescaled)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ss,ds)
+    ws=[one(T) for _ in 1:N] # weights for the trapezoidal rule, all ones since we use the trapezoidal rule
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ss,ds)
 end
 
 function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
