@@ -69,6 +69,7 @@ function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},bil
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     w::Function=v->w_reparametrized(v,q) # quadrature weights 
     w_der::Function=v->dw_reparametrized(v,q) # quadrature weights derivatives 
+    sampler=[LinearNodes()]
     return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der)}(sampler,bs,w,w_der,eps,min_pts,min_pts,billiard)
 end
 
@@ -76,6 +77,7 @@ function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},bil
     billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[LinearNodes()]
     return CFIE_polar_corner_correction{T,Bi,F1,F2}(sampler,bs,w,w_der,eps,min_pts,min_pts,billiard)
 end
 
@@ -314,6 +316,22 @@ function M(solver::CFIE_polar_nocorners,pts::BoundaryPointsCFIE{T},k::T,Rmat::Ma
     return Diagonal(ones(Complex{T},N))-A
 end
 
+function M(solver::CFIE_polar_corner_correction,pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=false) where {T<:Real}
+    N=length(pts.xy)
+    ws=pts.ws
+    if use_combined
+        L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
+        A_double=Rmat.*L1.+(two_pi/N).*L2 # D
+        A_single=Rmat.*M1.+(two_pi/N).*M2 # S
+        A=(A_double.+(im*k)*A_single).*ws' # D+i*k*S
+    else
+        L1,L2=L1_L2_matrix(pts,k)
+        A=@. Rmat.*L1.+(two_pi/N).*L2 # pure double layer
+        A=A.*ws'
+    end
+    return Diagonal(ones(Complex{T},N))-A
+end
+
 ##############
 #### MAIN ####
 ##############
@@ -322,6 +340,15 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
     kress_R_fft!(Rmat) # fft work for trapezoidal parametrization, sum needs to be for weights (domains with corners)
+    A=M(solver,pts,k,Rmat;use_combined=use_combined)
+    mu=svdvals(A)
+    return mu[end]
+end
+
+function solve(solver::CFIE_polar_corner_correction,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbsBasis}
+    N=length(pts.xy)
+    Rmat=zeros(T,N,N)
+    kress_R_sum!(Rmat,pts.ts)
     A=M(solver,pts,k,Rmat;use_combined=use_combined)
     mu=svdvals(A)
     return mu[end]
