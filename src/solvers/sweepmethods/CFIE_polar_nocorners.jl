@@ -49,10 +49,10 @@ function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
     isodd(N) ? N+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
     ts=[s(k,N) for k in 1:N]
-    ts_rescaled=ts./two_pi
+    ts_rescaled=ts./two_pi # b/c our curves and tangents are defined on [0,1]
     xy=curve(boundary,ts_rescaled) 
-    tangent_1st=tangent(boundary,ts_rescaled)./(two_pi)
-    tangent_2nd=tangent_2(boundary,ts_rescaled)./(two_pi)^2
+    tangent_1st=tangent(boundary,ts_rescaled)./(two_pi) # ! Rescaled tangents due to chain rule ∂γ/∂θ = ∂γ/∂u * ∂u/∂θ = ∂γ/∂u * 1/(2π)
+    tangent_2nd=tangent_2(boundary,ts_rescaled)./(two_pi)^2 # ! Rescaled tangents due to chain rule ∂²γ/∂θ² = ∂²γ/∂u² * (∂u/∂θ)² + ∂γ/∂u * ∂²u/∂θ² = ∂²γ/∂u² * 1/(2π)^2 + ∂γ/∂u * 0 = ∂²γ/∂u² * 1/(2π)^2
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts)
 end
 
@@ -62,8 +62,7 @@ end
 
 # Provide 2 functions, kress_R_fft! and kress_R_sum!, to compute the circulant R matrix for the Kress method. kress_R_fft! uses the FFT to compute the matrix efficiently, while kress_R_sum! computes it using a direct summation approach. Both functions modify the input matrix R0 in place. The best performance is achieved with kress_R_fft! for large matrices, while kress_R_sum! is more straightforward and may be easier to understand for smaller matrices.
 # Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
-
-# Alex Barnett's idea to use ifft to get the circulant vector kernel and construct the circulant with circshift.
+# Alex Barnett's idea to use ifft to get the circulant vector kernel and construct the circulant with circshift, .
 function kress_R_fft!(R0::AbstractMatrix{T}) where {T<:Real}
     N=size(R0,1)
     n=N÷2
@@ -82,7 +81,7 @@ function kress_R_fft!(R0::AbstractMatrix{T}) where {T<:Real}
     return nothing
 end
 
-function kress_R_sum!(R0::AbstractMatrix{T}) where {T<:Real}
+function kress_R_sum_LEGACY!(R0::AbstractMatrix{T}) where {T<:Real}
     N=size(R0,1)
     M=N/2-1
     ks=collect(0:N-1) # build the 1d series s[0:N-1] 
@@ -97,23 +96,13 @@ function kress_R_sum!(R0::AbstractMatrix{T}) where {T<:Real}
     return nothing
 end
 
-function kress_R_sum!(R0::AbstractMatrix{T},Δs::AbstractVector{T}) where {T<:Real}
-    N=length(Δs)
-    ds=Δs.*(T(0.5))  # work with half‐angles to save a division inside the loop
-    @inbounds for i in 1:N
-        R0[i,i]=zero(T)
-        let di=ds[i]
-            for j in i+1:N
-                d=di-ds[j]
-                s2=sin(d)
-                v=-log(4*s2*s2)
-                R0[i,j]=v
-                R0[j,i]=v
-            end
-        end
-    end
+function kress_R_sum!(R0::AbstractMatrix{T}, ts::Vector{T}) where {T<:Real}
+    ds=ts.*T(0.5) # ds[i] = s_i/2
+    D=ds.-ds' # D[i,j] = (s_i/2) - (s_j/2) = (s_i - s_j)/2
+    R0.=-log.(4 .*sin.(D).^2)
+    R0[diagind(R0)].=zero(T)
     return nothing
-end
+  end
 
 ################################################################
 #### FIRST AND SECOND LAYER BOUNDARY POTENTIAL CONSTRUCTION ####
@@ -247,4 +236,29 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T}
     A=M(solver,pts,k,Rmat;use_combined=use_combined)
     mu=svdvals(A)
     return mu[end]
+end
+
+function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
+    N=length(pts.xy)
+    Rmat=zeros(T,N,N)
+    kress_R_fft!(Rmat)
+    A=M(solver,pts,k,Rmat;use_combined=use_combined)
+    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    u_mu=real.(u_mu)
+    return mu,u_mu
+end
+
+function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vector{T};use_combined::Bool=false) where {T<:Real,Ba<:AbstractHankelBasis}
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPointsCFIE{eltype(ks)}}(undef,length(ks))
+    for i in eachindex(ks)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i];use_combined=use_combined)
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
 end
