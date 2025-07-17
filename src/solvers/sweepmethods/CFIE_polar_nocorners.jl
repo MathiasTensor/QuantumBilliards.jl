@@ -51,12 +51,12 @@ function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<
     isodd(N) ? N+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
     ts=[s(k,N) for k in 1:N]
     ts_rescaled=ts./two_pi # b/c our curves and tangents are defined on [0,1]
-    ss=arc_length(crv,ts_rescaled)
-    ds=diff(ss)
-    append!(ds,L+ss[1]-ss[end])
     xy=curve(boundary,ts_rescaled) 
     tangent_1st=tangent(boundary,ts_rescaled)./(two_pi) # ! Rescaled tangents due to chain rule ∂γ/∂θ = ∂γ/∂u * ∂u/∂θ = ∂γ/∂u * 1/(2π)
     tangent_2nd=tangent_2(boundary,ts_rescaled)./(two_pi)^2 # ! Rescaled tangents due to chain rule ∂²γ/∂θ² = ∂²γ/∂u² * (∂u/∂θ)² + ∂γ/∂u * ∂²u/∂θ² = ∂²γ/∂u² * 1/(2π)^2 + ∂γ/∂u * 0 = ∂²γ/∂u² * 1/(2π)^2
+    ss=arc_length(boundary,ts_rescaled)
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ds)
 end
 
