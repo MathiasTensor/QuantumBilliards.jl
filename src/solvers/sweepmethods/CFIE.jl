@@ -78,7 +78,7 @@ end
 struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
     tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
-    tangent_2::Vector{T} # derivatives of tangents evaluated at new mesh points
+    tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
     sk::Vector{T} # new mesh points by w in solver
     sk_local::Vector{Vector{T}} # the local mesh points in [0,1] parametrizations for each segment
     ak::Vector{T} # the new weights (derivatives) of the new mesh points
