@@ -48,7 +48,7 @@ function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<
     type=typeof(L)
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
-    isodd(Ntot) ? Ntot+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
+    isodd(N) ? N+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
     ts=[s(k,N) for k in 1:N]
     ts_rescaled=ts./two_pi
     xy=curve(boundary,ts_rescaled) 
