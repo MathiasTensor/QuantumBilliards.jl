@@ -45,15 +45,14 @@ end
 function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<:AbsBilliard}
     boundary=billiard.full_boundary[1]
     L=boundary.length
-    type=typeof(L)
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
     isodd(N) ? N+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
     ts=[s(k,N) for k in 1:N]
     ts_rescaled=ts./two_pi
     xy=curve(boundary,ts_rescaled) 
-    tangent_1st=tangent(boundary,ts_rescaled)
-    tangent_2nd=tangent_2(boundary,ts_rescaled)
+    tangent_1st=tangent(boundary,ts_rescaled)./(two_pi)
+    tangent_2nd=tangent_2(boundary,ts_rescaled)./(two_pi)^2
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts)
 end
 
