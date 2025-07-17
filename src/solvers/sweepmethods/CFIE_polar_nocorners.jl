@@ -95,6 +95,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
     ts::Vector{T} # parametrization that needs to go from [0,2π]
     ws::Vector{T} # the weights for the quadrature at ts
+    ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
     s::Vector{T} # arc lengths at ts
     ds::Vector{T} # diffs between crv lengths at ts
 end
@@ -114,7 +115,8 @@ function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) wher
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
     ws=[one(T) for _ in 1:N] # weights for the trapezoidal rule, all ones since we use the trapezoidal rule
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ss,ds)
+    ws_der=[zero(T) for _ in 1:N] # derivatives of the weights, all zeros since we use the trapezoidal rule
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ss,ds)
 end
 
 function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
@@ -123,25 +125,24 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     bs=solver.pts_scaling_factor[1]
     N=max(solver.min_pts,round(Int,k*L*bs/two_pi))
     isodd(N) ? N+=1 : nothing
-    ts=[s(i,N) for i in 1:N ]
+    ts=[s(i,N) for i in 1:N]
     u0=ts./two_pi
-    u=solver.w.(u0) # new local param
-    du_du0=solver.w_der.(u0) # derivative w.r.t. u0
-    du_dtheta=du_du0./two_pi
+    u=solver.w.(u0)               # new local param
+    du_du0=solver.w_der.(u0)      # derivative w.r.t. u0
+    du_dtheta=du_du0./two_pi      # ∂u/∂θ
+    dtheta_du0=one(T)./(two_pi.*du_du0)  # dθ/du₀ = 1/(2π·w′(u₀))
     xy_local=curve(crv,u)
     T_loc=tangent(crv,u)
     T2_loc=tangent_2(crv,u)
-    J1=one(T)/two_pi # chain rule: ∂/∂θ = (du/du0)*(du0/dθ) ∂/∂u = du_du0*(1/2π)
-    # second derivative requires product + second derivative of w; for simplicity we drop w″ term,
-    # which is consistent with Kress’ corner‐correction that only adjusts log term:
     T_global=[SVector(du_dtheta[i]*T_loc[i][1],du_dtheta[i]*T_loc[i][2]) for i in eachindex(T_loc)]
-    T2_global=[SVector((du_dtheta[i]^2)*T2_loc[i][1],(du_dtheta[i]^2)*T2_loc[i][2]) for i in eachindex(T2_loc)]
+    T2_global=[ SVector((du_dtheta[i]^2)*T2_loc[i][1],(du_dtheta[i]^2)*T2_loc[i][2]) for i in eachindex(T2_loc)]
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws=@. du_du0 * J1 # quadrature weights for kress are du_du0*(1/2π)
+    ws=dtheta_du0 # quadrature weights dθ = (dθ/du₀)·du₀
+    ws_der=du_du0 # shape‐function derivative w′(u₀)
     ts_final=two_pi.*u
-    return BoundaryPointsCFIE(xy_local,T_global,T2_global,ts_final,ws,ss,ds)
+    return BoundaryPointsCFIE(xy_local,T_global,T2_global,ts_final,ws,ws_der,ss,ds)
 end
 
 function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
