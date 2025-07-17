@@ -93,7 +93,8 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs=solver.pts_scaling_factor
     Ns=[max(solver.min_pts,round(Int,k*Ls[i]*bs[i]/(two_pi))) for i in eachindex(Ls)];Ntot=sum(Ns)
     isodd(Ntot) ? Ntot+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
-    ts_all=midpoints(range(0,two_pi,length=(Ntot+1))) # 1 more since midpoints gives array smaller by 1
+    #ts_all=midpoints(range(0,two_pi,length=(Ntot+1))) # 1 more since midpoints gives array smaller by 1
+    ts_all=collect(range(0,two_pi,length=Ntot)) # 1 more since range gives array smaller by 1
     cuts=cumsum([0;Ns])
     ts_per_panel=[ts_all[cuts[i]+1:cuts[i+1]] for i in eachindex(Ns)]
     ws=solver.ws # we need only for adjacent segments the unique qaudrature 
