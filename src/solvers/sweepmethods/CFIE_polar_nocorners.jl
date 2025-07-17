@@ -412,10 +412,8 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_polar_no
         wderline=ws_der_funs[i](tloc)
         a1=Axis(f[row,2*col-1],title="panel $i w(u)",xlabel="u",ylabel="w")
         lines!(a1,tloc,wline,linewidth=2)
-        axislegend(a1,position=:lt)
         a2=Axis(f[row,2*col],title="panel $i w′(u)",xlabel="u",ylabel="w′")
         lines!(a2,tloc,wderline,linewidth=2)
-        axislegend(a2;position=:lt)
     end
     return f
 end
