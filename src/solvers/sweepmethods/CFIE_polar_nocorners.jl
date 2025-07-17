@@ -132,15 +132,15 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     du_dtheta=du_du0./two_pi      # ∂u/∂θ
     dtheta_du0=one(T)./(two_pi.*du_du0)  # dθ/du₀ = 1/(2π·w′(u₀))
     xy_local=curve(crv,u)
-    T_loc=tangent(crv,u)
-    T2_loc=tangent_2(crv,u)
-    T_global=[SVector(du_dtheta[i]*T_loc[i][1],du_dtheta[i]*T_loc[i][2]) for i in eachindex(T_loc)]
-    T2_global=[ SVector((du_dtheta[i]^2)*T2_loc[i][1],(du_dtheta[i]^2)*T2_loc[i][2]) for i in eachindex(T2_loc)]
+    tangent_1st=tangent(crv,u)./(two_pi)
+    tangent_2nd=tangent_2(crv,u)./(two_pi)^2
+    #T_global=[SVector(du_dtheta[i]*T_loc[i][1],du_dtheta[i]*T_loc[i][2]) for i in eachindex(T_loc)]
+    #T2_global=[ SVector((du_dtheta[i]^2)*T2_loc[i][1],(du_dtheta[i]^2)*T2_loc[i][2]) for i in eachindex(T2_loc)]
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws=dtheta_du0 # quadrature weights dθ = (dθ/du₀)·du₀
-    ws_der=du_du0 # shape‐function derivative w′(u₀)
+    ws=two_pi.*u 
+    ws_der=two_pi.*du_du0
     ts_final=two_pi.*u
     return BoundaryPointsCFIE(xy_local,T_global,T2_global,ts_final,ws,ws_der,ss,ds)
 end
