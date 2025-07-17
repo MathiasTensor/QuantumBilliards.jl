@@ -11,7 +11,6 @@ J(ns::As,x::T) where {T<:Real,As<:AbstractRange{Int}}=Bessels.besselj(ns,x)
 ###########################
 
 struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
-    fundamental::Bool
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
     eps::T
@@ -25,7 +24,7 @@ function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::B
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_nocorners{T,Bi}(fundamental,sampler,bs,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_nocorners{T,Bi}(sampler,bs,eps,min_pts,min_pts,billiard)
 end
 
 #############################
