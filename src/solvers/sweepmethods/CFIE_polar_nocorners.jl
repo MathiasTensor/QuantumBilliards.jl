@@ -389,30 +389,33 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_polar_no
     pts=evaluate_points(solver,billiard,k)
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
-    ws=pts.ws # weights for the quadrature rule
-    m=max(1,div(length(solver.ws),2))
-    f=Figure(size=(2500+550*2,1200*m),resolution=(2500+550*2,1200*m))
-    ax=Axis(f[1,1][1,1],title="Boundary with weights",width=1000,height=1000,aspect=DataAspect())
-    scatter!(ax,xs,ys;markersize=markersize,color=ws,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
+    ws_pts=pts.ws
+    f=Figure(resolution=(1200,1200))
+    ax=Axis(f[1,1],title="boundary + point‐wise weights",aspect=DataAspect())
+    scatter!(ax,xs,ys;markersize=markersize,color=ws_pts,colormap=:viridis,strokewidth=0)
     nxs=getindex.(pts.tangent,2)
     nys=-getindex.(pts.tangent,1)
     arrows!(ax,xs,ys,nxs,nys,color=:black,lengthscale=0.1)
-    ws_ders=solver.ws_der
-    r,c=1,1
-    for (i,wder) in enumerate(solver.ws)
-        if c>2
-            r+=1;c=1
-        end
-        tloc=collect(range(0.0,1.0,length=200))
-        wline=wder(tloc)
-        wderline=ws_ders[i](tloc)
-        ax=Axis(f[1,2][r,c][1,1],width=500,height=500)
-        lines!(ax,tloc,wline;label="panel $i",linewidth=2)
-        axislegend(ax;position=:lt)
-        ax=Axis(f[1,2][r,c][1,2],width=500,height=500)
-        lines!(ax,tloc,wderline;label="panel $i derivative",linewidth=2)
-        axislegend(ax;position=:lt)
-        c+=1
+    if solver isa CFIE_polar_corner_correction
+        ws_funs=[solver.w] 
+        ws_der_funs=[solver.w_der]
+    else
+        ws_funs=[v->fill(one(eltype(v)),length(v))]
+        ws_der_funs=[v->fill(zero(eltype(v)),length(v))]
+    end
+    panels=length(ws_funs)
+    for i in 1:panels
+        row=2+div(i-1,2)
+        col=1+((i-1) % 2)
+        tloc=collect(range(0,1,length=200))
+        wline=ws_funs[i](tloc)
+        wderline=ws_der_funs[i](tloc)
+        a1=Axis(f[row,2*col-1],title="panel $i w(u)",xlabel="u",ylabel="w")
+        lines!(a1,tloc,wline,linewidth=2)
+        axislegend(a1,position=:lt)
+        a2=Axis(f[row,2*col],title="panel $i w′(u)",xlabel="u",ylabel="w′")
+        lines!(a2,tloc,wderline,linewidth=2)
+        axislegend(a2;position=:lt)
     end
     return f
 end
