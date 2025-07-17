@@ -127,10 +127,11 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     u0=ts./two_pi
     u=solver.w.(u0) # new local param
     du_du0=solver.w_der.(u0) # derivative w.r.t. u0
+    du_dtheta=du_du0./two_pi
     xy_local=curve(crv,u)
     T_loc=tangent(crv,u)
     T2_loc=tangent_2(crv,u)
-    J1 = one(T)/two_pi # chain rule: ∂/∂θ = (du/du0)*(du0/dθ) ∂/∂u = du_du0*(1/2π)
+    J1=one(T)/two_pi # chain rule: ∂/∂θ = (du/du0)*(du0/dθ) ∂/∂u = du_du0*(1/2π)
     # second derivative requires product + second derivative of w; for simplicity we drop w″ term,
     # which is consistent with Kress’ corner‐correction that only adjusts log term:
     T_global=[SVector(du_dtheta[i]*T_loc[i][1],du_dtheta[i]*T_loc[i][2]) for i in eachindex(T_loc)]
