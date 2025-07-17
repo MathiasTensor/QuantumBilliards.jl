@@ -40,6 +40,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
     tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
     ts::Vector{T} # parametrization that needs to go from [0,2π]
+    s::Vector{T} # arc lengths at ts
     ds::Vector{T} # diffs between crv lengths at ts
 end
 
@@ -57,7 +58,12 @@ function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<
     ss=arc_length(boundary,ts_rescaled)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ds)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ss,ds)
+end
+
+function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
+    normal=[SVector(-getindex(t,2),getindex(t,1)) for t in bdPoints.tangent]
+    return BoundaryPoints(bdPoints.xy,normal,bdPoints.s,bdPoints.ds)
 end
 
 ##################################
@@ -69,7 +75,7 @@ end
 # Alex Barnett's idea to use ifft to get the circulant vector kernel and construct the circulant with circshift, .
 function kress_R_fft!(R0::AbstractMatrix{T}) where {T<:Real}
     N=size(R0,1)
-    n=N÷2
+    n=N÷2 # integer division
     a=zeros(Complex{T},N) #  build the spectral vector a (first col)
     for m in 1:(n-1)
         a[m+1]=1/m     # positive freq
@@ -78,7 +84,7 @@ function kress_R_fft!(R0::AbstractMatrix{T}) where {T<:Real}
     rjn=real(ifft(a)) # inverse FFT → rjn[j] = (2/N)*∑_{m=1..n-1} (1/m) cos(2π m (j-1)/N)
     ks=0:(N-1) # build the first column, adding the “alternating” correction
     alt=(-1).^ks # alt[j+1] = (-1)^j
-    @. R0[:,1]=-2*pi*rjn+(4*pi/(N^2))*alt # R0[:,1] = -2π*rjn .+ (4π/N^2)*alt, first col is ref
+    @. R0[:,1]=-two_pi*rjn+(2*two_pi/(N^2))*alt # R0[:,1] = -2π*rjn .+ (4π/N^2)*alt, first col is ref
     for j in 2:N # fill out the rest circulantly:
         @views R0[:,j].=circshift(R0[:,j-1],1) # shift by +1 wrt previous column
     end
@@ -91,12 +97,12 @@ function kress_R_sum_LEGACY!(R0::AbstractMatrix{T}) where {T<:Real}
     ks=collect(0:N-1) # build the 1d series s[0:N-1] 
     s=zeros(T,N)
     @inbounds for m in 1:M
-        s.+=(1/m).*cos.(2*pi*m.*ks./N)
+        s.+=(1/m).*cos.(two_pi*m.*ks./N)
     end
     alt=(-1).^ks # "alternating" term  cos((N/2)*(i-j)*2π/N) = (-1)^(i-j)
     # build the index‐difference matrix once: idx[i,j] = mod(i-j, N) in 0:(N-1)
     idx=@. mod((1:N)'.-(1:N),N)  # this is N×N of UInts
-    @. R0=-4*pi/N*(s[idx.+1].-(1/N)*alt[idx.+1]) # fill R0 with one big broadcast
+    @. R0=-2*two_pi/N*(s[idx.+1].-(1/N)*alt[idx.+1]) # fill R0 with one big broadcast
     return nothing
 end
 
