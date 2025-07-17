@@ -77,8 +77,8 @@ end
 
 struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
-    tangent::Vector{SVector{2,T}} # normals evaluated at the new mesh points
-    curvature::Vector{T} # curvature evaluated at new mesh points
+    tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
+    tangent_2::Vector{T} # derivatives of tangents evaluated at new mesh points
     sk::Vector{T} # new mesh points by w in solver
     sk_local::Vector{Vector{T}} # the local mesh points in [0,1] parametrizations for each segment
     ak::Vector{T} # the new weights (derivatives) of the new mesh points
@@ -100,7 +100,7 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
     ws_der=solver.ws_der # derivativs of them
     xy_all=Vector{SVector{2,type}}()
     tangent_all=Vector{SVector{2,type}}()
-    kappa_all=Vector{type}()
+    tangent_2_all=Vector{type}()
     sk_all=Vector{type}()
     sk_local_all=Vector{Vector{type}}() # local mesh points in [0,1] parametrization for each segment
     ak_all=Vector{type}()
@@ -116,17 +116,17 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
         sk_local=ws[i](t_scaled) # we need to evaluate the sk first locally since the ws[i] is a local function (each segment has its own quadrature) and then project it to a global parameter; mapping [0,1] -> [0,1]
         xy=curve(crv,sk_local) # the xy coordinates of the new mesh points, these are global now
         tangent=tangent_vec(crv,sk_local) # the normals evaluated at the new mesh points, these are global now
-        kappa=curvature(crv,sk_local) # the curvature evaluated at the new mesh points, these are global now
+        tangent_2=tangent_2(crv,sk_local) # the second derivative of the tangent vector evaluated at the new mesh points, these are global now
         ak=ws_der[i](t_scaled) # the weights of the new mesh points in the local coordinates
         sk=t_i.+sk_local.*(t_f-t_i) # now we can project it to the global parameter (w : [0,1] -> [0,1])
         append!(xy_all,xy)
         append!(tangent_all,tangent)
-        append!(kappa_all,kappa)
+        append!(tangent_2_all,tangent_2)
         append!(sk_all,sk)
         push!(sk_local_all,sk_local) # need to add as Vector, not splated with append!
         append!(ak_all,ak)
     end
-    return BoundaryPointsCFIE(xy_all,tangent_all,kappa_all,sk_all,sk_local_all,ak_all)
+    return BoundaryPointsCFIE(xy_all,tangent_all,tangent_2_all,sk_all,sk_local_all,ak_all)
 end
 
 ##################################
@@ -202,9 +202,13 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     ΔY=@. Y-Y'   # ΔY[i,j] = Y[i] - Y[j] = y(t_i) - y(t_j)
     R=hypot.(ΔX,ΔY)
     R[diagind(R)].=one(T) # avoid zeros on diagonal, does not influence result since overwritten few lines below
-    dX=getindex.(pts.tangent,1) # tangent x
-    dY=getindex.(pts.tangent,2) # tangent y
-    κ=pts.curvature
+    dX=getindex.(pts.tangent,1) # dx/dt
+    dY=getindex.(pts.tangent,2) # dy/dt
+    ddX=getindex.(pts.tangent_2,1) # d2x/dt2
+    ddY=getindex.(pts.tangent_2,2) # d2y/dt2
+    κnum=dX.*ddY.-dY.*ddX  # length-N
+    κden=dX.^2 .+dY.^2 # length-N
+    κ=(1/(two_pi))*(κnum./κden) # length-N
     Δs=pts.sk .-pts.sk' # pts.sk ∈ [0,2π]
     dX_mat=reshape(dX,1,N)
     dY_mat=reshape(dY,1,N)
@@ -225,7 +229,7 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     L2=L.-L1.*log.(4*sin.(Δs/2).^2)
     # fix diagonal entries by taking the known limits
     L1[diagind(L1)].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
-    L2[diagind(L2)].=κ./(two_pi) # the diagona of SLP is 0 so no contribution with log(w'(s))L1(s,s)
+    L2[diagind(L2)].=κ # the diagona of SLP is 0 so no contribution with log(w'(s))L1(s,s), # the "curvature type" limit for DLP
     return L1,L2
 end
 
@@ -240,7 +244,11 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     R[diagind(R)].=one(T) # avoid zeros on diagonal, does not influence result since overwritten few lines below
     dX=getindex.(pts.tangent,1) # tangent x
     dY=getindex.(pts.tangent,2) # tangent y
-    κ=pts.curvature
+    ddX=getindex.(pts.tangent_2,1) # d2x/dt2
+    ddY=getindex.(pts.tangent_2,2) # d2y/dt2
+    κnum=dX.*ddY.-dY.*ddX  # length-N
+    κden=dX.^2 .+dY.^2 # length-N
+    κ=(1/(two_pi))*(κnum./κden) # length-N
     Δs=pts.sk .-pts.sk'
     dX_mat=reshape(dX,1,N)
     dY_mat=reshape(dY,1,N)
@@ -274,10 +282,9 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     M=im/2. *H0.*speed_row
     M2=M.-M1.*log.(4*sin.(Δs/2).^2)
     # fix diagonal entries by taking the known limits
-    κlim=1/(two_pi)*κ # length-N
     d=diagind(L1)
     L1[d].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
-    L2[d].=κlim # the curvature limit for DLP
+    L2[d].=κ # the "curvature type" limit for DLP
     M1[d].=-1/(two_pi).*speed
     M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ak).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
     return L1,L2,M1,M2
