@@ -259,7 +259,7 @@ function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vect
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsCFIE{eltype(ks)}}(undef,length(ks))
     for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i])
+        pts=evaluate_points(solver,solver.billiard,ks[i])
         _,u=solve_vect(solver,basis,pts,ks[i];use_combined=use_combined)
         us_all[i]=u
         pts_all[i]=pts
