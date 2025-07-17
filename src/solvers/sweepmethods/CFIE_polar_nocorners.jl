@@ -142,7 +142,7 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     ws=two_pi.*u 
     ws_der=two_pi.*du_du0
     ts_final=two_pi.*u
-    return BoundaryPointsCFIE(xy_local,T_global,T2_global,ts_final,ws,ws_der,ss,ds)
+    return BoundaryPointsCFIE(xy_local,tangent_1st,tangent_2nd,ts_final,ws,ws_der,ss,ds)
 end
 
 function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
