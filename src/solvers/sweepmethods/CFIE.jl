@@ -286,7 +286,8 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     L1[d].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
     L2[d].=κ # the "curvature type" limit for DLP
     M1[d].=-1/(two_pi).*speed
-    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ak).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
+    #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ak).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
+    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
     return L1,L2,M1,M2
 end
 
@@ -295,18 +296,23 @@ end
 #####################################
 
 function M(pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=false) where {T<:Real}
+    two_pi=2*pi
     N=length(pts.xy)
-    w_row=pts.ak'  
+    #w_row=pts.ak'  
     if use_combined
         L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k)
-        A_d=((Rmat.*L1).+((2π/N).*L2)).*w_row
-        A_s=((Rmat.*M1).+((2π/N).*M2)).*w_row
-        A=A_d.+(im*k).*A_s
+        #A_d=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        #A_s=((Rmat.*M1).+((2π/N).*M2)).*w_row
+        #A=A_d.+(im*k).*A_s
+        A_double=Rmat.*L1.+(two_pi/N).*L2 # D
+        A_single=Rmat.*M1.+(two_pi/N).*M2 # S
+        A=A_double.+(im*k)*A_single # D+i*k*S
     else
         L1,L2=L1_L2_matrix(pts,k)
-        A=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        #A=((Rmat.*L1).+((2π/N).*L2)).*w_row
+        A=@. Rmat.*L1.+(two_pi/N).*L2 # pure double layer
     end
-    return Diagonal(ones(Complex{T},N)).-A
+    return Diagonal(ones(Complex{T},N))-A
 end
 
 ##############
