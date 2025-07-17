@@ -6,6 +6,31 @@ H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
 J(n::Int,x::T) where {T<:Real}=Bessels.besselj(n,x)
 J(ns::As,x::T) where {T<:Real,As<:AbstractRange{Int}}=Bessels.besselj(ns,x)
 
+##########################################################################################################
+#### WEIGHT FUNCTIONS USED BY KRESS: Boundary Integral Equations in time-harmonic acoustic scattering ####
+##########################################################################################################
+
+# The parameter s ∈ [0,2π] in all non-reparametried functions. We rescale it since segment parametrizations go from [0,1]
+v(s::T,q::Int) where {T<:Real}=(1/q-1/2)*((pi-s)/pi)^3+1/q*((s-pi)/pi)+0.5
+dv(s::T,q::Int) where {T<:Real}=-(3*(1/q-1/2)/π)*((π-s)/π)^2+1/(q*π)
+w_kress(s::T,q::Int) where {T<:Real}=2*pi*(v(s,q)^q)/(v(s,q)^q+v(2*pi-s,q)^q)
+w_reparametrized(s::T,q::Int) where {T<:Real}=w_kress(2*pi*s,q)/(2*pi)
+function dw_reparametrized(t::T,q::Int) where {T<:Real}
+    s=2π*t
+    As=v(s,q)^q
+    Cs=v(2*pi-s,q)^q
+    Bs=As+Cs
+    dAs=q*v(s,q)^(q-1)*dv(s,q)
+    dCs=-q*v(2π-s,q)^(q-1)*dv(2π-s,q)
+    dwk=2π*(dAs*Bs-As*(dAs+dCs))/Bs^2
+    return dwk
+end
+v(s::AbstractVector{T},q::Int) where {T<:Real}=v.(s,q)
+dv(s::AbstractVector{T},q::Int) where {T<:Real}=dv.(s,q)
+w_kress(s::AbstractVector{T},q::Int) where {T<:Real}=w_kress.(s,q)
+w_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=w_reparametrized.(s,q)
+dw_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=dw_reparametrized.(s,q)
+
 ###########################
 #### CONSTRUCTOR CFIE ####
 ###########################
@@ -19,12 +44,39 @@ struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     billiard::Bi
 end
 
+struct CFIE_polar_corner_correction{T,Bi,F1,F2}<:SweepSolver where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function} 
+    sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
+    pts_scaling_factor::Vector{T}
+    w::F1
+    w_der::F2
+    eps::T
+    min_dim::Int64
+    min_pts::Int64
+    billiard::Bi
+end
+
 function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
     billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     return CFIE_polar_nocorners{T,Bi}(sampler,bs,eps,min_pts,min_pts,billiard)
+end
+
+function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;q=8,min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+    billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
+    length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    w::Function=v->w_reparametrized(v,q) # quadrature weights 
+    w_der::Function=v->dw_reparametrized(v,q) # quadrature weights derivatives 
+    return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der)}(sampler,bs,w,w_der,eps,min_pts,min_pts,billiard)
+end
+
+function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2;q=8,min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function}
+    billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
+    length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    return CFIE_polar_corner_correction{T,Bi,F1,F2}(sampler,bs,w,w_der,eps,min_pts,min_pts,billiard)
 end
 
 #############################
@@ -61,6 +113,31 @@ function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k) where {
     append!(ds,L+ss[1]-ss[end])
     ws=[one(T) for _ in 1:N] # weights for the trapezoidal rule, all ones since we use the trapezoidal rule
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ss,ds)
+end
+
+function evaluate_points(solver::CFIE_polar_corner_correction,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    crv=billiard.full_boundary[1]
+    L=crv.length
+    bs=solver.pts_scaling_factor[1]
+    N=max(solver.min_pts,round(Int,k*L*bs/two_pi))
+    isodd(N) ? N+=1 : nothing
+    ts=[s(i,N) for i in 1:N ]
+    u0=ts./two_pi
+    u=solver.w.(u0) # new local param
+    du_du0=solver.w_der.(u0) # derivative w.r.t. u0
+    xy_local=curve(crv,u)
+    T_loc=tangent(crv,u)
+    T2_loc=tangent_2(crv,u)
+    J1 = one(T)/two_pi # chain rule: ∂/∂θ = (du/du0)*(du0/dθ) ∂/∂u = du_du0*(1/2π)
+    # second derivative requires product + second derivative of w; for simplicity we drop w″ term,
+    # which is consistent with Kress’ corner‐correction that only adjusts log term:
+    T_global=@. SVector(T_loc[1]*du_du0*J1,T_loc[2]*du_du0*J1)
+    T2_global=@. SVector(T2_loc[1]*(du_du0*J1)^2,T2_loc[2]*(du_du0*J1)^2)
+    ss=arc_length(crv,u)
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
+    ws = @. du_du0 * J1 # quadrature weights for kress are du_du0*(1/2π)
+    return BoundaryPointsCFIE(xy_local,T_global,T2_global,θs,ws,ss,ds)
 end
 
 function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
@@ -157,7 +234,7 @@ function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     L2=L.-L1.*log.(4*sin.(ΔT/2).^2)
     # fix diagonal entries by taking the known limits
     L1[diagind(L1)].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
-    L2[diagind(L2)].=κ # the diagona of SLP is 0 so no contribution with log(w'(s))L1(s,s), # the "curvature type" limit for DLP
+    L2[diagind(L2)].=κ # the diagonal of SLP is 0 so no contribution with log(w'(s))L1(s,s), # the "curvature type" limit for DLP
     return L1,L2
 end
 
@@ -214,8 +291,8 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T) where {T<:Real}
     L1[d].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
     L2[d].=κ # the "curvature type" limit for DLP
     M1[d].=-1/(two_pi).*speed
-    #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ak).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
-    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
+    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ws).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
+    #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
     return L1,L2,M1,M2
 end
 
@@ -273,4 +350,40 @@ function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vect
         pts_all[i]=pts
     end
     return us_all,pts_all
+end
+
+####################
+#### CFIE UTILS ####
+####################
+
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},;k=20.0,markersize=5) where {Bi<:AbsBilliard}
+    pts=evaluate_points(solver,billiard,k)
+    xs=getindex.(pts.xy,1)
+    ys=getindex.(pts.xy,2)
+    ws=pts.ws # weights for the quadrature rule
+    m=max(1,div(length(solver.ws),2))
+    f=Figure(size=(2500+550*2,1200*m),resolution=(2500+550*2,1200*m))
+    ax=Axis(f[1,1][1,1],title="Boundary with weights",width=1000,height=1000,aspect=DataAspect())
+    scatter!(ax,xs,ys;markersize=markersize,color=ws,colormap=:viridis,strokewidth=0) #  colour by ak so you see where points are denser
+    nxs=getindex.(pts.tangent,2)
+    nys=-getindex.(pts.tangent,1)
+    arrows!(ax,xs,ys,nxs,nys,color=:black,lengthscale=0.1)
+    ws_ders=solver.ws_der
+    r,c=1,1
+    for (i,wder) in enumerate(solver.ws)
+        if c>2
+            r+=1;c=1
+        end
+        tloc=collect(range(0.0,1.0,length=200))
+        wline=wder(tloc)
+        wderline=ws_ders[i](tloc)
+        ax=Axis(f[1,2][r,c][1,1],width=500,height=500)
+        lines!(ax,tloc,wline;label="panel $i",linewidth=2)
+        axislegend(ax;position=:lt)
+        ax=Axis(f[1,2][r,c][1,2],width=500,height=500)
+        lines!(ax,tloc,wderline;label="panel $i derivative",linewidth=2)
+        axislegend(ax;position=:lt)
+        c+=1
+    end
+    return f
 end
