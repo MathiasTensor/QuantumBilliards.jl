@@ -99,7 +99,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ds::Vector{T} # diffs between crv lengths at ts
 end
 
-function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary[1]
     L=boundary.length
     bs=solver.pts_scaling_factor
@@ -117,7 +117,7 @@ function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k) where {
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ss,ds)
 end
 
-function evaluate_points(solver::CFIE_polar_corner_correction,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     crv=billiard.full_boundary[1]
     L=crv.length
     bs=solver.pts_scaling_factor[1]
@@ -133,13 +133,14 @@ function evaluate_points(solver::CFIE_polar_corner_correction,billiard::Bi,k::T)
     J1 = one(T)/two_pi # chain rule: ∂/∂θ = (du/du0)*(du0/dθ) ∂/∂u = du_du0*(1/2π)
     # second derivative requires product + second derivative of w; for simplicity we drop w″ term,
     # which is consistent with Kress’ corner‐correction that only adjusts log term:
-    T_global=@. SVector(T_loc[1]*du_du0*J1,T_loc[2]*du_du0*J1)
-    T2_global=@. SVector(T2_loc[1]*(du_du0*J1)^2,T2_loc[2]*(du_du0*J1)^2)
+    T_global=[SVector(du_dtheta[i]*T_loc[i][1],du_dtheta[i]*T_loc[i][2]) for i in eachindex(T_loc)]
+    T2_global=[SVector((du_dtheta[i]^2)*T2_loc[i][1],(du_dtheta[i]^2)*T2_loc[i][2]) for i in eachindex(T2_loc)]
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws = @. du_du0 * J1 # quadrature weights for kress are du_du0*(1/2π)
-    return BoundaryPointsCFIE(xy_local,T_global,T2_global,θs,ws,ss,ds)
+    ws=@. du_du0 * J1 # quadrature weights for kress are du_du0*(1/2π)
+    ts_final=two_pi.*u
+    return BoundaryPointsCFIE(xy_local,T_global,T2_global,ts_final,ws,ss,ds)
 end
 
 function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
