@@ -115,8 +115,8 @@ function evaluate_points(solver::CFIE,billiard::Bi,k) where {Bi<:AbsBilliard}
         t_scaled=(t.-t_i)./(t_f-t_i) # need to rescale to ts_per_panel to local [0,1] parametrization since the ws and ws_der applied locally
         sk_local=ws[i](t_scaled) # we need to evaluate the sk first locally since the ws[i] is a local function (each segment has its own quadrature) and then project it to a global parameter; mapping [0,1] -> [0,1]
         xy=curve(crv,sk_local) # the xy coordinates of the new mesh points, these are global now
-        tangent=tangent_vec(crv,sk_local) # the normals evaluated at the new mesh points, these are global now
-        tangent_2=tangent_2(crv,sk_local) # the second derivative of the tangent vector evaluated at the new mesh points, these are global now
+        tangent_1st=tangent(crv,sk_local) # the normals evaluated at the new mesh points, these are global now
+        tangent_2nd_der=tangent_2(crv,sk_local) # the second derivative of the tangent vector evaluated at the new mesh points, these are global now
         ak=ws_der[i](t_scaled) # the weights of the new mesh points in the local coordinates
         sk=t_i.+sk_local.*(t_f-t_i) # now we can project it to the global parameter (w : [0,1] -> [0,1])
         append!(xy_all,xy)
