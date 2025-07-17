@@ -45,7 +45,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ds::Vector{T} # diffs between crv lengths at ts
 end
 
-function evaluate_points(solver::CFIE_polar_nocorners,billiard::Bi,k) where {Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary[1]
     L=boundary.length
     bs=solver.pts_scaling_factor
