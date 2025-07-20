@@ -98,7 +98,7 @@ function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},bil
     return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der),typeof(w2_der)}(sampler,bs,w,w_der,w2_der,eps,min_pts,min_pts,billiard)
 end
 
-function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2,w2_der::F32;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function,F3<:Function}
+function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2,w2_der::F3;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function,F3<:Function}
     billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
