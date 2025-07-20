@@ -422,10 +422,10 @@ function solve_INFO(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correct
     svd_time=t4-t3
     total=build_R+build_A+svd_time
     println("────────── SOLVE_INFO SUMMARY ──────────")
-    println(@sprintf(" R-matrix build:  %6.2f %%",100*build_R/total))
-    println(@sprintf(" A-matrix build:  %6.2f %%",100*build_A/total))
-    println(@sprintf(" SVD:             %6.2f %%",100*svd_time/total))
-    println(@sprintf("      (total = %.3f s)",total))
+    println(" R-matrix build:  %6.2f %%",100*build_R/total)
+    println(" A-matrix build:  %6.2f %%",100*build_A/total)
+    println(" SVD:             %6.2f %%",100*svd_time/total)
+    println(" (total = %.3f s)",total)
     println("─────────────────────────────────────────")
     return s[end]
 end
