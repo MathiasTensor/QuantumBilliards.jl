@@ -98,13 +98,14 @@ Given a coarse sampling of wavenumbers `ks` and their associated spectral indica
 - `multithreaded_matrices::Bool = true`: Whether to build boundary‐integral matrices in parallel.
 - `multithreaded_ks::Bool = false`: Whether to refine each bracketed minimum in parallel.
 - `use_combined::Bool = false`: For CFIE solvers, whether to use the combined‐field formulation.
+- `threshold=200`: Minimum 2nd derivative value at k to count as approximate eigenvalue.
 
 # Returns
 Tuple `(sols, tens_refined)` where
 - `sols::Vector{T}`: The refined minimizer wavenumbers.
 - `tens_refined::Vector{T}`: The corresponding objective values (i.e. minimum of `solve(...)`).
 """
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false,threshold=200) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     ks_approx=get_eigenvalues(ks,log10.(abs.(tens));threshold=threshold)
