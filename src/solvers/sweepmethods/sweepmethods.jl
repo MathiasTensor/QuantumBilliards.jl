@@ -129,7 +129,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     end
     sols=similar(ks_approx)
     tens=similar(ks_approx)
-    dk=minimum(abs.(diff(ks_approx)))/2 #half of the minimum distance between the k values
+    dk=(ks[2]-ks[1])/2
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
         res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk)
         k0,t0=res.minimizer,res.minimum
