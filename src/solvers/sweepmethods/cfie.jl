@@ -61,7 +61,7 @@ d2w_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=d2w_reparametriz
 struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
-    dim_scaling_factor::Vector{T}
+    dim_scaling_factor::T
     eps::T
     min_dim::Int64
     min_pts::Int64
@@ -71,7 +71,7 @@ end
 struct CFIE_polar_corner_correction{T,Bi,F1,F2,F3}<:SweepSolver where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function} 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
-    dim_scaling_factor::Vector{T}
+    dim_scaling_factor::T
     w::F1
     w_der::F2
     w2_der::F3
@@ -86,7 +86,7 @@ function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::B
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard)
 end
 
 function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;q=8,min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
@@ -98,7 +98,7 @@ function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},bil
     w_der::Function=v->dw_reparametrized(v,q) # quadrature weights derivatives 
     w2_der::Function=v->d2w_reparametrized(v,q) # second derivatives of quadrature weights
     sampler=[LinearNodes()]
-    return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der),typeof(w2_der)}(sampler,bs,bs,w,w_der,w2_der,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der),typeof(w2_der)}(sampler,bs,bs[1],w,w_der,w2_der,eps,min_pts,min_pts,billiard)
 end
 
 function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2,w2_der::F3;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function,F3<:Function}
@@ -107,7 +107,7 @@ function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},bil
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_corner_correction{T,Bi,F1,F2,F3}(sampler,bs,bs,w,w_der,w2_der,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_corner_correction{T,Bi,F1,F2,F3}(sampler,bs,bs[1],w,w_der,w2_der,eps,min_pts,min_pts,billiard)
 end
 
 #############################
