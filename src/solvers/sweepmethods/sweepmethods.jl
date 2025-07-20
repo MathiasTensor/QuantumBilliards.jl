@@ -150,7 +150,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             t_ref=log10.(abs.(tens_refined[i]))
             dk=k_ref-k_app
             dt=t_ref-t_app
-            println(rpad("$(i)",4),rpad("$(round(k_app,sigdigits=6))",12),rpad("$(round(k_ref,sigdigits=6))",12),rpad("$(round(dk,sigdigits=6))",12),rpad("$(round(t_app,sigdigits=6))",12),rpad("$(round(t_ref,sigdigits=6))",12),"$(round(dt,sigdigits=6))")
+            println(rpad("$(i)",4),rpad("$(round(k_app,digits=6))",12),rpad("$(round(k_ref,digits=6))",12),rpad("$(round(dk,digits=6))",12),rpad("$(round(t_app,digits=6))",12),rpad("$(round(t_ref,digits=6))",12),"$(round(dt,digits=6))")
         end
         println("================================\n")
     end
