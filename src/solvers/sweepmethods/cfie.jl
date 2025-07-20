@@ -397,6 +397,39 @@ function solve_eigenvectors_CFIE(solver::Union{CFIE_polar_nocorners,CFIE_polar_c
     return us_all,pts_all
 end
 
+function solve_INFO(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k::T;use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    t0=time()
+    @info "Constructing circulant R matrix..."
+    N=length(pts.xy)
+    Rmat=zeros(T,N,N)
+    if solver isa CFIE_polar_nocorners
+        kress_R_fft!(Rmat)
+    else
+        kress_R_sum!(Rmat,pts.ts)
+    end
+    t1=time()
+    @info "Building boundary operator A (S + L ? $(use_combined))..."
+    A=M(solver,pts,k,Rmat;use_combined=use_combined,multithreaded=multithreaded)
+    t2=time()
+    cA=cond(A)
+    @info "Condition number of A: $(round(cA;sigdigits=4))"
+    @info "Performing SVD..."
+    t3=time()
+    s=svdvals(A)
+    t4=time()
+    build_R=t1-t0
+    build_A=t2-t1
+    svd_time=t4-t3
+    total=build_R+build_A+svd_time
+    println("────────── SOLVE_INFO SUMMARY ──────────")
+    println(@sprintf(" R-matrix build:  %6.2f %%",100*build_R/total))
+    println(@sprintf(" A-matrix build:  %6.2f %%",100*build_A/total))
+    println(@sprintf(" SVD:             %6.2f %%",100*svd_time/total))
+    println(@sprintf("      (total = %.3f s)",total))
+    println("─────────────────────────────────────────")
+    return s[end]
+end
+
 ####################
 #### CFIE UTILS ####
 ####################

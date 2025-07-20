@@ -42,6 +42,7 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `kernel_fun::Union{Symbol, Function}`: Kernel function to use in the boundary integral method. Defaults to `:default`.
 - `multithreaded_matrices::Bool=true`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
 - `multithreaded_ks::Bool=false`: If the k loop is multithreaded.
+- `use_combined::Bool=false`: Whether to use Single and Double Layer potential in CFIE methods. Defaults to `false` corresponding to just the Double Layer potential.
 
 # NOTE
 When using the Sweep solvers it is advised to parallelize the matrix construction instead of the ks loop since the matrix construction uses the same or more resources as the SVD.
@@ -49,7 +50,7 @@ When using the Sweep solvers it is advised to parallelize the matrix constructio
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false)
     k=maximum(ks)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
@@ -62,6 +63,12 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
             res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
+            next!(p)
+        end
+    elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corners)
+        res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices,use_combined=use_combined)
+        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+            res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices,use_combined=use_combined)
             next!(p)
         end
     else
