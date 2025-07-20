@@ -146,8 +146,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
-            t_app=log10.(abs.(tens[i]))       
-            t_ref=log10.(abs.(tens_refined[i]))
+            t_app=log10(abs(f_min(ks_approx[i])))       
+            t_ref=log10(abs(tens_refined[i]))
             dk=k_ref-k_app
             dt=t_ref-t_app
             println(rpad("$(i)",4),rpad("$(round(k_app,digits=6))",12),rpad("$(round(k_ref,digits=6))",12),rpad("$(round(dk,digits=6))",12),rpad("$(round(t_app,digits=6))",12),rpad("$(round(t_ref,digits=6))",12),"$(round(dt,digits=6))")
