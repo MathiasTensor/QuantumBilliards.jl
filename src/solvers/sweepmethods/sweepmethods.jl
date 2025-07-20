@@ -113,16 +113,16 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     f_min=nothing
     if solver isa BoundaryIntegralMethod
         f_min=x->begin # x=(k,b)
-            solver=BoundaryIntegralMethod(solver.dim_scaling_factor,x[2],solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+            solver=BoundaryIntegralMethod(solver.dim_scaling_factor,[x[2]],solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
             pts=evaluate_points(solver,billiard,x[1])
             solve(solver,basis,pts,x[1];multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
         end
     elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corner_correction
         f_min=x->begin # x=(k,b)
             if solver isa CFIE_polar_nocorners
-                solver=CFIE_polar_nocorners(solver.sampler,x[2],solver.dim_scaling_factor,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
+                solver=CFIE_polar_nocorners(solver.sampler,[x[2]],solver.dim_scaling_factor,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
             else
-                solver=CFIE_polar_corner_correction(solver.sampler,x[2],solver.dim_scaling_factor,solver.w,solver.w_der,solver.w2_der,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
+                solver=CFIE_polar_corner_correction(solver.sampler,[x[2]],solver.dim_scaling_factor,solver.w,solver.w_der,solver.w2_der,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
             end
             pts=evaluate_points(solver,billiard,x[1])
             solve(solver,basis,pts,x[1];multithreaded=multithreaded_matrices,use_combined=use_combined)
@@ -139,7 +139,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     tens_refined=similar(ks_approx)
     dk=(ks[2]-ks[1])
     p=Progress(N;desc="Refining approximate ks...")
-    b0=[20.0]
+    b0=20.0
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
         res=optimize(f_min,[ks_approx[i],b0],LBFGS();autodiff=:forward)
         k0,t0=res.minimizer,res.minimum
