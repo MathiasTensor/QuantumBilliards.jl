@@ -130,10 +130,9 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     u=solver.w.(u0)               # new local param
     du_du0=solver.w_der.(u0)      # derivative w.r.t. u0
     du_dθ=du_du0./two_pi          # ∂u/∂θ
-    dtheta_du0=one(T)./(two_pi.*du_du0)  # dθ/du₀ = 1/(2π·w′(u₀))
     xy_local=curve(crv,u)
     tangent_1st=tangent(crv,u).*du_dθ
-    tangent_2nd.=tangent_2(crv,u).*(du_dθ.^2).+tangent(crv,u).*(w2_der./(two_pi)^2)
+    tangent_2nd=tangent_2(crv,u).*(du_dθ.^2).+tangent(crv,u).*(w2_der./(two_pi)^2)
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
