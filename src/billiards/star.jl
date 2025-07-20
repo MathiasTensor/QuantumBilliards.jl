@@ -7,8 +7,7 @@ function make_desymmetrized_star(n::Int64;x0=zero(Float64),y0=zero(Float64),rot_
         fac=1+sin(n*φ)/4
         return SVector(fac*c,fac*s)
     end
-    r_func_rev(t)=r_func(1-t)
-    desymmetrized_star=PolarSegment(r_func_rev;origin=origin,rot_angle=rot_angle)
+    desymmetrized_star=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     pt0=curve(desymmetrized_star,zero(Float64)) 
     pt1=curve(desymmetrized_star,one(Float64)) 
     line_segment1=VirtualLineSegment(pt1,origin;origin=origin,rot_angle=rot_angle)
@@ -26,8 +25,7 @@ function make_star_desymmetrized_full_boundary(n::Int64;x0=zero(Float64),y0=zero
         fac=1+sin(n*φ)/4
         return SVector(fac*c,fac*s)
     end
-    r_func_rev(t)=r_func(1-t)
-    desymmetrized_star=PolarSegment(r_func_rev;origin=origin,rot_angle=rot_angle)
+    desymmetrized_star=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     boundary=PolarSegment[desymmetrized_star]
     return boundary,[]
 end
@@ -40,8 +38,7 @@ function make_full_star(n::Int64;x0=zero(Float64),y0=zero(Float64),rot_angle=zer
         fac=1+sin(n*φ)/4
         return SVector(fac*c,fac*s)
     end
-    r_func_rev(t)=r_func(1-t)
-    desymmetrized_star=PolarSegment(r_func_rev;origin=origin,rot_angle=rot_angle)
+    desymmetrized_star=PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
     area_full=compute_area(desymmetrized_star)
     boundary=PolarSegment[desymmetrized_star] 
     return boundary,[],area_full
