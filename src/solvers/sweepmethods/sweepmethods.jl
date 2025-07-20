@@ -142,12 +142,12 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     end
     if print_refinement
         println("\n===== Refinement summary =====")
-        println(rpad(" #",4),rpad("k_pprox",12),rpad("k_ref",12),rpad("Δk",12),rpad("t_pprox",12),rpad("t_ref",12),"Δt")
+        println(rpad(" #",4),rpad("k_approx",12),rpad("k_ref",12),rpad("Δk",12),rpad("t_approx",12),rpad("t_ref",12),"Δt")
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
-            t_app=tens[i]          
-            t_ref=tens_refined[i] 
+            t_app=log10.(abs.(tens[i]))       
+            t_ref=log10.(abs.(tens_refined[i]))
             dk=k_ref-k_app
             dt=t_ref-t_app
             println(rpad("$(i)",4),rpad("$(round(k_app,sigdigits=6))",12),rpad("$(round(k_ref,sigdigits=6))",12),rpad("$(round(dk,sigdigits=6))",12),rpad("$(round(t_app,sigdigits=6))",12),rpad("$(round(t_ref,sigdigits=6))",12),"$(round(dt,sigdigits=6))")
