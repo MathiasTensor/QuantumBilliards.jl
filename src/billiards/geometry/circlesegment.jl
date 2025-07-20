@@ -184,7 +184,7 @@ Compute tangent vectors along the circular segment at each `t ∈ ts`.
 # Returns
 - `Vector{SVector{2,T}}`: Tangent vectors (derivatives) at each `t`.
 """
-function tangent(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:CircleSegments{T}}
+function tangent(circle::L,ts::AbstractArray) where {T<:Real,L<:CircleSegments{T}}
     let affine_map=circle.cs.affine_map,R=circle.radius,c=circle.center,a=circle.arc_angle,s=circle.shift_angle 
         orient=circle.orientation
         r(t)=affine_map(circle_eq(R,a,s,c,t))
@@ -239,7 +239,7 @@ Compute the second derivative vectors of a circular segment at each parameter in
 # Returns
 - `Vector{SVector{2,T}}`: Second derivative vectors at each `t`.
 """
-function tangent_2(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:CircleSegments{T}}
+function tangent_2(circle::L,ts::AbstractArray) where {T<:Real,L<:CircleSegments{T}}
     return collect(tangent_2(circle,t) for t in ts)
 end
 
