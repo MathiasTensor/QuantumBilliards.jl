@@ -74,7 +74,7 @@ function StarBilliard(n::Int64;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(
     return StarBilliard(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,corners,area_full,area_fundamental,angles,angles_fundamental,s_shift)
 end
 
-function make_teardrop_and_basis(n::Int64;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64)) 
+function make_star_and_basis(n::Int64;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64)) 
     star_billiard=StarBilliard(n::Int64;x0=x0,y0=y0,rot_angle=rot_angle)
     symmetry=Vector{Any}([]) # not yet implemented
     basis=CornerAdaptedFourierBessel(10,Float64(2*pi/n),SVector(x0,y0),rot_angle,symmetry)
