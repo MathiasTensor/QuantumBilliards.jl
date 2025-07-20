@@ -131,11 +131,13 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     sols=similar(ks_approx)
     tens=similar(ks_approx)
     dk=(ks[2]-ks[1])/2
+    p=Progress(N;desc="Refining approximate ks...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
         res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk)
         k0,t0=res.minimizer,res.minimum
         sols[i]=k0
         tens[i]=t0
+        next!(p)
     end
     return sols,tens 
 end
