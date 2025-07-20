@@ -154,5 +154,5 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         end
         println("================================\n")
     end
-    return sols,tens 
+    return sols,tens_refined 
 end
