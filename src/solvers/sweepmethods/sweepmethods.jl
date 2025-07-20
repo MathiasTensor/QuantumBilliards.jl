@@ -118,7 +118,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             solve(solver,basis,pts,x[1];multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
         end
     elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corner_correction
-        f_min=(k,b)->begin # x=(k,b)
+        f_min=x->begin # x=(k,b)
             if solver isa CFIE_polar_nocorners
                 solver=CFIE_polar_nocorners(solver.sampler,x[2],solver.dim_scaling_factor,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
             else
@@ -128,7 +128,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             solve(solver,basis,pts,x[1];multithreaded=multithreaded_matrices,use_combined=use_combined)
         end
     else
-        f_min=(k,d)->begin # x=(k,d)
+        f_min=x->begin # x=(k,d)
             dim=max(solver.min_dim,round(Int,billiard.length*x[1]*x[2]/(2*pi)))
             new_basis=resize_basis(basis,billiard,dim,x[1])
             pts=evaluate_points(solver,billiard,x[1])
