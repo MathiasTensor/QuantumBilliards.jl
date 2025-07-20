@@ -9,27 +9,50 @@ J(ns::As,x::T) where {T<:Real,As<:AbstractRange{Int}}=Bessels.besselj(ns,x)
 ##########################################################################################################
 #### WEIGHT FUNCTIONS USED BY KRESS: Boundary Integral Equations in time-harmonic acoustic scattering ####
 ##########################################################################################################
+two_pi=2*pi
 
 # The parameter s ∈ [0,2π] in all non-reparametried functions. We rescale it since segment parametrizations go from [0,1]
 v(s::T,q::Int) where {T<:Real}=(1/q-1/2)*((pi-s)/pi)^3+1/q*((s-pi)/pi)+0.5
 dv(s::T,q::Int) where {T<:Real}=-(3*(1/q-1/2)/π)*((π-s)/π)^2+1/(q*π)
+ddv(s::T,q::Int) where {T<:Real}=-6*(1/q-1/2)/π^3*(π-s)
 w_kress(s::T,q::Int) where {T<:Real}=2*pi*(v(s,q)^q)/(v(s,q)^q+v(2*pi-s,q)^q)
 w_reparametrized(s::T,q::Int) where {T<:Real}=w_kress(2*pi*s,q)/(2*pi)
 function dw_reparametrized(t::T,q::Int) where {T<:Real}
-    s=2π*t
+    s=two_pi*t
     As=v(s,q)^q
-    Cs=v(2*pi-s,q)^q
+    Cs=v(two_pi-s,q)^q
     Bs=As+Cs
     dAs=q*v(s,q)^(q-1)*dv(s,q)
-    dCs=-q*v(2π-s,q)^(q-1)*dv(2π-s,q)
-    dwk=2π*(dAs*Bs-As*(dAs+dCs))/Bs^2
+    dCs=-q*v(two_pi-s,q)^(q-1)*dv(two_pi-s,q)
+    dwk=two_pi*(dAs*Bs-As*(dAs+dCs))/Bs^2
     return dwk
 end
+function d2w_reparametrized(t::T,q::Int) where {T<:Real}
+    s=two_pi*t
+    vs=v(s,q)
+    dv1=dv(s,q)
+    dv2=d2v(s,q)
+    As=vs^q
+    Bs=v(two_pi-s,q)^q
+    D=As+Bs
+    A1=q*vs^(q-1)*dv1
+    B1=-q*v(two_pi-s,q)^(q-1)*dv(two_pi-s,q)
+    D1=A1+B1
+    A2=q*(q-1)*vs^(q-2)*dv1^2 + q*vs^(q-1)*dv2
+    B2=q*(q-1)*v(two_pi-s,q)^(q-2)*dv(two_pi-s,q)^2+q*v(two_pi-s,q)^(q-1)*(-d2v(two_pi-s,q))
+    D2=A2+B2
+    num=(A2*D-As*D2)*D^2-2*D*D1*(A1*D-As*D1)
+    den=D^4
+    return (two_pi)^2*(num/den)
+end
+
+# Reparametrized functions for vectors
 v(s::AbstractVector{T},q::Int) where {T<:Real}=v.(s,q)
 dv(s::AbstractVector{T},q::Int) where {T<:Real}=dv.(s,q)
 w_kress(s::AbstractVector{T},q::Int) where {T<:Real}=w_kress.(s,q)
 w_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=w_reparametrized.(s,q)
 dw_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=dw_reparametrized.(s,q)
+d2w_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=d2w_reparametrized.(s,q)
 
 ###########################
 #### CONSTRUCTOR CFIE ####
@@ -44,11 +67,12 @@ struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     billiard::Bi
 end
 
-struct CFIE_polar_corner_correction{T,Bi,F1,F2}<:SweepSolver where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function} 
+struct CFIE_polar_corner_correction{T,Bi,F1,F2,F3}<:SweepSolver where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function} 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
     w::F1
     w_der::F2
+    w2_der::F3
     eps::T
     min_dim::Int64
     min_pts::Int64
@@ -69,22 +93,22 @@ function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},bil
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     w::Function=v->w_reparametrized(v,q) # quadrature weights 
     w_der::Function=v->dw_reparametrized(v,q) # quadrature weights derivatives 
+    w2_der::Function=v->d2w_reparametrized(v,q) # second derivatives of quadrature weights
     sampler=[LinearNodes()]
-    return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der)}(sampler,bs,w,w_der,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der),typeof(w2_der)}(sampler,bs,w,w_der,w2_der,eps,min_pts,min_pts,billiard)
 end
 
-function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2;q=8,min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function}
+function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2,w2_der::F32;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function,F3<:Function}
     billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_corner_correction{T,Bi,F1,F2}(sampler,bs,w,w_der,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_corner_correction{T,Bi,F1,F2,F3}(sampler,bs,w,w_der,w2_der,eps,min_pts,min_pts,billiard)
 end
 
 #############################
 #### BOUNDARY EVALUATION ####
 #############################
-two_pi=2*pi
 
 #### use N even for the algorithm - equidistant parameters ####
 s(k::Int,N::Int)=two_pi*k/N
@@ -129,10 +153,12 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     u0=ts./two_pi
     u=solver.w.(u0)               # new local param
     du_du0=solver.w_der.(u0)      # derivative w.r.t. u0
+    d2u_du0=solver.w2_der.(u0)    # second derivative w.r.t. u0
     du_dθ=du_du0./two_pi          # ∂u/∂θ
+    du_dθ2=d2u_du0./(two_pi)^2   # ∂²u/∂θ²
     xy_local=curve(crv,u)
     tangent_1st=tangent(crv,u).*du_dθ
-    tangent_2nd=tangent_2(crv,u).*(du_dθ.^2).+tangent(crv,u).*(w2_der./(two_pi)^2)
+    tangent_2nd=tangent_2(crv,u).*(du_dθ.^2).+tangent(crv,u).*du_dθ2
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
