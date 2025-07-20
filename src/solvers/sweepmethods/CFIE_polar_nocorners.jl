@@ -129,20 +129,17 @@ function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k:
     u0=ts./two_pi
     u=solver.w.(u0)               # new local param
     du_du0=solver.w_der.(u0)      # derivative w.r.t. u0
-    du_dtheta=du_du0./two_pi      # ∂u/∂θ
+    du_dθ=du_du0./two_pi          # ∂u/∂θ
     dtheta_du0=one(T)./(two_pi.*du_du0)  # dθ/du₀ = 1/(2π·w′(u₀))
     xy_local=curve(crv,u)
-    tangent_1st=tangent(crv,u)./(two_pi)
-    tangent_2nd=tangent_2(crv,u)./(two_pi)^2
-    #T_global=[SVector(du_dtheta[i]*T_loc[i][1],du_dtheta[i]*T_loc[i][2]) for i in eachindex(T_loc)]
-    #T2_global=[ SVector((du_dtheta[i]^2)*T2_loc[i][1],(du_dtheta[i]^2)*T2_loc[i][2]) for i in eachindex(T2_loc)]
+    tangent_1st=tangent(crv,u).*du_dθ
+    tangent_2nd.=tangent_2(crv,u).*(du_dθ.^2).+tangent(crv,u).*(w2_der./(two_pi)^2)
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws=two_pi.*u 
     ws_der=two_pi.*du_du0
     ts_final=two_pi.*u
-    return BoundaryPointsCFIE(xy_local,tangent_1st,tangent_2nd,ts_final,ws,ws_der,ss,ds)
+    return BoundaryPointsCFIE(xy_local,tangent_1st,tangent_2nd,ts_final,ts_final,ws_der,ss,ds)
 end
 
 function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
