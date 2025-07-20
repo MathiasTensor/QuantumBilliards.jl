@@ -99,13 +99,14 @@ Given a coarse sampling of wavenumbers `ks` and their associated spectral indica
 - `multithreaded_ks::Bool = false`: Whether to refine each bracketed minimum in parallel.
 - `use_combined::Bool = false`: For CFIE solvers, whether to use the combined‐field formulation.
 - `threshold::Float64=200`: Minimum 2nd derivative value at k to count as approximate eigenvalue.
+- `print_refinement::Bool = true`: Whether to print the refinement progress for each k in ks_approx.
 
 # Returns
 Tuple `(sols, tens_refined)` where
 - `sols::Vector{T}`: The refined minimizer wavenumbers.
 - `tens_refined::Vector{T}`: The corresponding objective values (i.e. minimum of `solve(...)`).
 """
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false,threshold=200.0) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false,threshold=200.0,print_refinement=true) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     ks_approx=get_eigenvalues(ks,abs.(tens);threshold=threshold)
@@ -129,15 +130,29 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         end
     end
     sols=similar(ks_approx)
-    tens=similar(ks_approx)
+    tens_refined=similar(ks_approx)
     dk=(ks[2]-ks[1])/2
     p=Progress(N;desc="Refining approximate ks...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
         res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk)
         k0,t0=res.minimizer,res.minimum
         sols[i]=k0
-        tens[i]=t0
+        tens_refined[i]=t0
         next!(p)
+    end
+    if print_refinement
+        println("\n===== Refinement summary =====")
+        println(rpad(" #",4),rpad("k_pprox",12),rpad("k_ref",12),rpad("Δk",12),rpad("t_pprox",12),rpad("t_ref",12),"Δt")
+        for i in eachindex(sols)
+            k_app=ks_approx[i]
+            k_ref=sols[i]
+            t_app=tens[i]          
+            t_ref=tens_refined[i] 
+            dk=k_ref-k_app
+            dt=t_ref-t_app
+            println(rpad("$(i)",4),rpad("$(round(k_app,sigdigits=6))",12),rpad("$(round(k_ref,sigdigits=6))",12),rpad("$(round(dk,sigdigits=6))",12),rpad("$(round(t_app,sigdigits=6))",12),rpad("$(round(t_ref,sigdigits=6))",12),"$(round(dt,sigdigits=6))")
+        end
+        println("================================\n")
     end
     return sols,tens 
 end
