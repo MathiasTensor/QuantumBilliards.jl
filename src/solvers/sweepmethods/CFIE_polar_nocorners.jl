@@ -31,7 +31,7 @@ function d2w_reparametrized(t::T,q::Int) where {T<:Real}
     s=two_pi*t
     vs=v(s,q)
     dv1=dv(s,q)
-    dv2=d2v(s,q)
+    dv2=ddv(s,q)
     As=vs^q
     Bs=v(two_pi-s,q)^q
     D=As+Bs
@@ -39,7 +39,7 @@ function d2w_reparametrized(t::T,q::Int) where {T<:Real}
     B1=-q*v(two_pi-s,q)^(q-1)*dv(two_pi-s,q)
     D1=A1+B1
     A2=q*(q-1)*vs^(q-2)*dv1^2 + q*vs^(q-1)*dv2
-    B2=q*(q-1)*v(two_pi-s,q)^(q-2)*dv(two_pi-s,q)^2+q*v(two_pi-s,q)^(q-1)*(-d2v(two_pi-s,q))
+    B2=q*(q-1)*v(two_pi-s,q)^(q-2)*dv(two_pi-s,q)^2+q*v(two_pi-s,q)^(q-1)*(-ddv(two_pi-s,q))
     D2=A2+B2
     num=(A2*D-As*D2)*D^2-2*D*D1*(A1*D-As*D1)
     den=D^4
