@@ -121,7 +121,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_combined=use_combined)
         end
     else
-        f_min=k- begin
+        f_min=k->begin
             dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
             new_basis=resize_basis(basis,billiard,dim,k)
             pts=evaluate_points(solver,billiard,k)
