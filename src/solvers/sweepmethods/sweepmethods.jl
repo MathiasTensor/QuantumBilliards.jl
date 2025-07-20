@@ -112,36 +112,29 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     ks_approx=get_eigenvalues(ks,abs.(tens);threshold=threshold)
     f_min=nothing
     if solver isa BoundaryIntegralMethod
-        f_min=x->begin # x=(k,b)
-            solver=BoundaryIntegralMethod(solver.dim_scaling_factor,[x[2]],solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-            pts=evaluate_points(solver,billiard,x[1])
-            solve(solver,basis,pts,x[1];multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
+        f_min=k->begin
+            pts=evaluate_points(solver,billiard,k)
+            solve(solver,basis,pts,k;multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
         end
-    elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corner_correction
-        f_min=x->begin # x=(k,b)
-            if solver isa CFIE_polar_nocorners
-                solver=CFIE_polar_nocorners(solver.sampler,[x[2]],solver.dim_scaling_factor,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
-            else
-                solver=CFIE_polar_corner_correction(solver.sampler,[x[2]],solver.dim_scaling_factor,solver.w,solver.w_der,solver.w2_der,solver.eps,solver.min_dim,solver.min_pts,solver.billiard)
-            end
-            pts=evaluate_points(solver,billiard,x[1])
-            solve(solver,basis,pts,x[1];multithreaded=multithreaded_matrices,use_combined=use_combined)
+    elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corners
+        f_min=k->begin
+            pts=evaluate_points(solver,billiard,k)
+            solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_combined=use_combined)
         end
     else
-        f_min=x->begin # x=(k,d)
-            dim=max(solver.min_dim,round(Int,billiard.length*x[1]*x[2]/(2*pi)))
-            new_basis=resize_basis(basis,billiard,dim,x[1])
-            pts=evaluate_points(solver,billiard,x[1])
-            solve(solver,new_basis,pts,x[1];multithreaded=multithreaded_matrices)
+        f_min=k->begin
+            dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+            new_basis=resize_basis(basis,billiard,dim,k)
+            pts=evaluate_points(solver,billiard,k)
+            solve(solver,new_basis,pts,k;multithreaded=multithreaded_matrices)
         end
     end
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     dk=(ks[2]-ks[1])
     p=Progress(N;desc="Refining approximate ks...")
-    b0=20.0
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
-        res=optimize(f_min,[ks_approx[i],b0],LBFGS();autodiff=:forward)
+        res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk)
         k0,t0=res.minimizer,res.minimum
         sols[i]=k0
         tens_refined[i]=t0
