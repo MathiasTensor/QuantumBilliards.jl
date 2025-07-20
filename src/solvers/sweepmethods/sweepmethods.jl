@@ -108,7 +108,7 @@ Tuple `(sols, tens_refined)` where
 function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false,threshold=200) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
-    ks_approx=get_eigenvalues(ks,log10.(abs.(tens));threshold=threshold)
+    ks_approx=get_eigenvalues(ks,abs.(tens);threshold=threshold)
     if solver isa BoundaryIntegralMethod
         function f_min(k)
             pts=evaluate_points(solver,billiard,k)
