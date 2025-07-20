@@ -374,6 +374,12 @@ function solve(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},
     return mu[end]
 end
 
+function solve_external_R(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    A=M(solver,pts,k,Rmat;use_combined=use_combined,multithreaded=multithreaded)
+    mu=svdvals(A)
+    return mu[end]
+end
+
 function solve_vect(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)

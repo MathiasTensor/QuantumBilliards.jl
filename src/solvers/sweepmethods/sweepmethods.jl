@@ -54,7 +54,7 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     k=maximum(ks)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
-    pts=evaluate_points(solver, billiard, k)
+    pts=evaluate_points(solver,billiard,k)
     res=similar(ks)
     num_intervals=length(ks)
     println("$(nameof(typeof(solver))) sweep...")
@@ -67,8 +67,12 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
         end
     elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corners)
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices,use_combined=use_combined)
+        pts=evaluate_points(solver,billiard,k)
+        N=length(pts.xy)
+        Rmat=zeros(eltype(res[1]),N,N)
+        solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
-            res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices,use_combined=use_combined)
+            res[i]=solve_external_R(solver,new_basis,pts,ks[i],Rmat,multithreaded=multithreaded_matrices,use_combined=use_combined)
             next!(p)
         end
     else
