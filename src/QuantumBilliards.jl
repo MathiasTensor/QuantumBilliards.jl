@@ -100,7 +100,7 @@ export BoundaryPointsSM, BoundaryPointsDM
 export evaluate_points, construct_matrices, construct_matrices_benchmark
 export solve, solve_vect
 export solve_wavenumber, solve_spectrum
-export k_sweep
+export k_sweep, refine_minima
 export BoundaryIntegralMethod, compute_kernel_matrix, fredholm_matrix, solve_timed, AbstractHankelBasis
 export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matrix, default_helmholtz_kernel_second_derivative_matrix, compute_kernel_der_matrix, fredholm_matrix_der
 

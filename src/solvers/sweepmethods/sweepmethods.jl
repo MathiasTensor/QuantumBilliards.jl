@@ -80,3 +80,60 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     end
     return res
 end
+
+"""
+    refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol, Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_combined::Bool= false) where {T<:Real}
+
+Given a coarse sampling of wavenumbers `ks` and their associated spectral indicators `tens` (e.g. singular‐value magnitudes), this function locates and refines the local minima of `log10(abs.(tens))` by a 1D optimization on each interval.
+
+# Arguments
+- `solver::SweepSolver`: A boundary‐integral solver implementing `evaluate_points(solver, billiard, k)` → sample geometry at wavenumber `k`, and `solve(solver, basis, pts, k; ...)` → compute the spectrum.
+- `basis::AbsBasis`: The basis type passed to `solve`, e.g. `AbstractHankelBasis()`.
+- `billiard::AbsBilliard`: The geometric domain description used by `evaluate_points`.
+- `ks::AbstractVector{T}`: Coarse wavenumber grid (`T<:Real`).
+- `tens::AbstractVector{T}`: Corresponding spectral measures (e.g. smallest singular values) at each `ks[i]`.
+
+# Keyword Arguments
+- `kernel_fun::Union{Symbol, Function} = :default`: If supported, which integral‐kernel variant to use.
+- `multithreaded_matrices::Bool = true`: Whether to build boundary‐integral matrices in parallel.
+- `multithreaded_ks::Bool = false`: Whether to refine each bracketed minimum in parallel.
+- `use_combined::Bool = false`: For CFIE solvers, whether to use the combined‐field formulation.
+
+# Returns
+Tuple `(sols, tens_refined)` where
+- `sols::Vector{T}`: The refined minimizer wavenumbers.
+- `tens_refined::Vector{T}`: The corresponding objective values (i.e. minimum of `solve(...)`).
+"""
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false) where {T<:Real}
+    N=length(tens)
+    @assert N==length(ks)
+    ks_approx=get_eigenvalues(ks,log10.(abs.(tens));threshold=threshold)
+    if solver isa BoundaryIntegralMethod
+        function f_min(k)
+            pts=evaluate_points(solver,billiard,k)
+            return solve(solver,basis,pts,k;multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
+        end
+    elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corners)
+        function f_min(k)
+            pts=evaluate_points(solver,billiard,k)
+            return solve(solver,basis,pts,ks[i],multithreaded=multithreaded_matrices,use_combined=use_combined)
+        end
+    else 
+        function f_min(k)
+            dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+            new_basis=resize_basis(basis,billiard,dim,k)
+            pts=evaluate_points(solver,billiard,k)
+            solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices)
+        end
+    end
+    sols=similar(ks_approx)
+    tens=similar(ks_approx)
+    dk=minimum(abs.(diff(ks_approx)))/2 #half of the minimum distance between the k values
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
+        res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk)
+        k0,t0=res.minimizer,res.minimum
+        sols[i]=k0
+        tens[i]=t0
+    end
+    return sols,tens 
+end
