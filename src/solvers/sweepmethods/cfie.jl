@@ -82,7 +82,7 @@ struct CFIE_polar_corner_correction{T,Bi,F1,F2,F3}<:SweepSolver where {T<:Real,B
 end
 
 function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
-    billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
+    billiard.full_boundary[1] isa PolarSegment || billiard.full_boundary[1] isa CircleSegment ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
@@ -91,7 +91,7 @@ end
 
 function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;q=8,min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
     @error "NOT YET CORRECTLY IMPLEMENTED"
-    billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
+    billiard.full_boundary[1] isa PolarSegment || billiard.full_boundary[1] isa CircleSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     w::Function=v->w_reparametrized(v,q) # quadrature weights 
@@ -103,7 +103,7 @@ end
 
 function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2,w2_der::F3;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function,F3<:Function}
     @error "NOT YET CORRECTLY IMPLEMENTED"
-    billiard.full_boundary[1] isa PolarSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
+    billiard.full_boundary[1] isa PolarSegment || billiard.full_boundary[1] isa CircleSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
