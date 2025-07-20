@@ -240,7 +240,7 @@ Compute the second derivative vectors of a circular segment at each parameter in
 - `Vector{SVector{2,T}}`: Second derivative vectors at each `t`.
 """
 function tangent_2(circle::L,ts::AbstractArray{T,1}) where {T<:Real,L<:CircleSegments{T}}
-    return collect(ForwardDiff.derivative(tangent(circle,t),t) for t in ts)
+    return collect(tangent_2(circle,t) for t in ts)
 end
 
 """
