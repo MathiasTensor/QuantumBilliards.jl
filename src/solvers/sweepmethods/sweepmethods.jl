@@ -118,7 +118,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     if solver isa BoundaryIntegralMethod
         f_min=k->begin
             pts=evaluate_points(solver,billiard,k)
-            solve(solver,basis,pts,k;multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
+            solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,kernel_fun=kernel_fun)
         end
     elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corner_correction
         f_min=k->begin
