@@ -200,7 +200,7 @@ Constructs a Mushroom billiard with a rectangular stem and a circular cap.
 # Returns
 - An instance of the `Mushroom` struct.
 """
-function EllipseMushroom(stem_width::T,stem_height::T,ellipse_cap_height::T,ellipse_cap_width::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),triangle_stem::Bool=false,x_axis_reflection=zero(T)) :: Mushroom where {T<:Real}
+function EllipseMushroom(stem_width::T,stem_height::T,ellipse_cap_height::T,ellipse_cap_width::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),triangle_stem::Bool=false,x_axis_reflection=zero(T)) :: EllipseMushroom where {T<:Real}
     fundamental_boundary,corners=make_half_ellipse_mushroom(stem_width,stem_height,ellipse_cap_height,ellipse_cap_width;x0=x0,y0=y0,rot_angle=rot_angle,triangle_stem=triangle_stem)
     full_boundary,_=make_full_ellipse_mushroom(stem_width,stem_height,ellipse_cap_height,ellipse_cap_width;x0=x0,y0=y0,rot_angle=rot_angle,triangle_stem=triangle_stem)
     area=compute_area(PolarSegment(t->SVector(ellipse_cap_width*cos(2*pi*t),ellipse_cap_height*sin(2*pi*t))))
