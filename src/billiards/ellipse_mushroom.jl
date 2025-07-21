@@ -22,7 +22,7 @@ function make_half_ellipse_mushroom(stem_width::T,stem_height::T,ellipse_cap_hei
     stem_width=stem_width/2
     origin=SVector(x0,y0)
     r_func=t->SVector(ellipse_cap_width*cos(0.5*pi*t+pi/2),ellipse_cap_height*sin(0.5*pi*t+pi/2))
-    cap_segment=PolarSegment(r_func;origin=SVector(stem_width/2,zero(T)),rot_angle=rot_angle)
+    cap_segment=PolarSegment(r_func;origin=SVector(stem_width,zero(T)),rot_angle=rot_angle)
     # Define the stem: a rectangle with width `stem_width` and height `stem_height` or a triangle with base `stem_width` and height `stem_height`
     stem_top_right_corner=SVector(stem_width,ellipse_cap_height)
     stem_bottom_right_corner=SVector(stem_width,-stem_height)
@@ -114,7 +114,7 @@ function make_half_full_boundary_ellipse_mushroom(stem_width::T,stem_height::T,e
     stem_width=stem_width/2
     origin=SVector(x0,y0)
     r_func=t->SVector(ellipse_cap_width*cos(0.5*pi*t+pi/2),ellipse_cap_height*sin(0.5*pi*t+pi/2))
-    cap_segment=PolarSegment(r_func;origin=SVector(stem_width/2,zero(T)),rot_angle=rot_angle)
+    cap_segment=PolarSegment(r_func;origin=SVector(stem_width,zero(T)),rot_angle=rot_angle)
     # Define the stem: a rectangle with width `stem_width` and height `stem_height` or a triangle with base `stem_width` and height `stem_height`
     stem_top_right_corner=SVector(stem_width,ellipse_cap_height)
     stem_bottom_right_corner=SVector(stem_width,-stem_height)
