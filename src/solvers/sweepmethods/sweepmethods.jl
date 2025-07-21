@@ -65,7 +65,7 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
             res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
             next!(p)
         end
-    elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corners)
+    elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corner_correction)
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices,use_combined=use_combined)
         pts=evaluate_points(solver,billiard,k)
         N=length(pts.xy)
@@ -120,7 +120,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             pts=evaluate_points(solver,billiard,k)
             solve(solver,basis,pts,k;multithreaded=multithreaded_matrix_construction,kernel_fun=kernel_fun)
         end
-    elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corners
+    elseif solver isa CFIE_polar_nocorners || solver isa CFIE_polar_corner_correction
         f_min=k->begin
             pts=evaluate_points(solver,billiard,k)
             solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_combined=use_combined)
