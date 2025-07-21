@@ -167,7 +167,6 @@ struct EllipseMushroom{T} <: AbsBilliard where {T<:Real}
     area_fundamental::T
     stem_width::T
     stem_height::T
-    cap_radius::T
     ellipse_cap_height::T
     ellipse_cap_width::T
     corners::Vector{SVector{2,T}}
