@@ -248,6 +248,7 @@ function EllipseMushroom(stem_width::T,stem_height::T,ellipse_cap_height::T,elli
     α=ifelse(triangle_stem,3*pi/2-atan((stem_width/2)/stem_height),3*pi/2)
     angles=[α,pi/2,pi/2,α]
     angles_fundamental=[α,pi/2,pi/2]
-    shift_s=sum(crv.length for crv in desymmetrized_full_boundary[1:3]) # so that the start of the arclength will be at the bottom left corner of the full mushroom boundary
+    #shift_s=sum(crv.length for crv in desymmetrized_full_boundary[1:3]) # so that the start of the arclength will be at the bottom left corner of the full mushroom boundary
+    shift_s=0.0
     return EllipseMushroom(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,stem_width,stem_height,ellipse_cap_height,ellipse_cap_width,corners,angles,angles_fundamental,x_axis_reflection,shift_s,triangle_stem)
 end
