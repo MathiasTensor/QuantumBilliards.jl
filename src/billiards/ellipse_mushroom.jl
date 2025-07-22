@@ -129,14 +129,16 @@ function make_half_full_boundary_ellipse_mushroom(stem_width::T,stem_height::T,e
         stem_right_side=LineSegment(stem_bottom_right_corner,stem_top_right_corner;origin=origin,rot_angle=rot_angle)
         stem_left_side=LineSegment(stem_top_left_corner,stem_bottom_right_corner;origin=origin,rot_angle=rot_angle)
         cap_stem_connector=LineSegment(SVector(-(ellipse_cap_width-stem_width),zero(T)),stem_top_left_corner;origin=origin,rot_angle=rot_angle)
-        boundary=Union{LineSegment,PolarSegment}[stem_left_side,stem_right_side,cap_segment,cap_stem_connector]
+        #boundary=Union{LineSegment,PolarSegment}[stem_left_side,stem_right_side,cap_segment,cap_stem_connector]
+        boundary=Union{LineSegment,PolarSegment}[cap_segment,cap_stem_connector,stem_left_side]
         corners=[stem_top_right_corner,stem_bottom_right_corner,stem_bottom_left_corner,stem_top_left_corner]
     else
         stem_right_side=LineSegment(stem_bottom_right_corner,stem_top_right_corner;origin=origin,rot_angle=rot_angle)
         stem_bottom_side=LineSegment(stem_bottom_left_corner,stem_bottom_right_corner;origin=origin,rot_angle=rot_angle)
         stem_left_side=LineSegment(stem_top_left_corner,stem_bottom_left_corner;origin=origin,rot_angle=rot_angle)
         cap_stem_connector=LineSegment(SVector(-(ellipse_cap_width-stem_width),zero(T)),stem_top_left_corner;origin=origin,rot_angle=rot_angle)
-        boundary=Union{LineSegment,PolarSegment}[stem_bottom_side,stem_right_side,cap_segment,cap_stem_connector,stem_left_side]
+        #boundary=Union{LineSegment,PolarSegment}[stem_bottom_side,stem_right_side,cap_segment,cap_stem_connector,stem_left_side]
+        boundary=Union{LineSegment,PolarSegment}[cap_segment,cap_stem_connector,stem_left_side,stem_bottom_side]
         corners=[stem_top_right_corner,stem_bottom_right_corner,stem_bottom_left_corner,stem_top_left_corner]
     end
     return boundary,corners
