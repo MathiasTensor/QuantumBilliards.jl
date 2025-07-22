@@ -130,7 +130,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     else
         f_min=x->begin # x=(k,b)
             solver_new=update_field(solver,:pts_scaling_factor,[x[2]])
-            solver_new=update_field(solver,:dim_scaling_factor,x[2])
+            solver_new=update_field(solver_new,:dim_scaling_factor,x[2])
             dim=max(solver.min_dim,round(Int,billiard.length*x[1]*solver_new.dim_scaling_factor/(2*pi)))
             new_basis=resize_basis(basis,billiard,dim,x[1])
             pts=evaluate_points(solver_new,billiard,x[1])
