@@ -162,6 +162,7 @@ Defines an EllipseMushroom billiard with a stem and an elliptic cap.
 - `angles_fundamental::Vector`: The angles of the fundamental boundary segments in radians.
 - `x_axis::T`: The actual "axis" of reflection, shifted from the origin.
 - `shift_s::T`: For shifting the arclengths for the husimi function construction.
+- `triangle_stem::Bool`: Whether the stem is triangular (to remove bouncing‐ball modes).
 """
 struct EllipseMushroom{T} <: AbsBilliard where {T<:Real}
     fundamental_boundary::Vector{Union{LineSegment,PolarSegment,VirtualLineSegment}}
@@ -180,6 +181,7 @@ struct EllipseMushroom{T} <: AbsBilliard where {T<:Real}
     angles_fundamental::Vector
     x_axis::T # For correct reflection. This is the actual "axis" of reflection
     shift_s::T # for shifting the arclenthgs for the husimi function.
+    triangle_stem::Bool
 end
 
 """
@@ -247,5 +249,5 @@ function EllipseMushroom(stem_width::T,stem_height::T,ellipse_cap_height::T,elli
     angles=[α,pi/2,pi/2,α]
     angles_fundamental=[α,pi/2,pi/2]
     shift_s=sum(crv.length for crv in desymmetrized_full_boundary[1:3]) # so that the start of the arclength will be at the bottom left corner of the full mushroom boundary
-    return EllipseMushroom(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,stem_width,stem_height,ellipse_cap_height,ellipse_cap_width,corners,angles,angles_fundamental,x_axis_reflection,shift_s)
+    return EllipseMushroom(fundamental_boundary,full_boundary,desymmetrized_full_boundary,length,length_fundamental,area,area_fundamental,stem_width,stem_height,ellipse_cap_height,ellipse_cap_width,corners,angles,angles_fundamental,x_axis_reflection,shift_s,triangle_stem)
 end
