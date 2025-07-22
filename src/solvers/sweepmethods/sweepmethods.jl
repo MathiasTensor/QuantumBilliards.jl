@@ -143,7 +143,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     p=Progress(N;desc="Refining approximate ks...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx) 
         #res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk) # the old 1d optimization with simple refining
-        res=optimize(f_min,g!,[ks_approx[i],solver.pts_scaling_factor[1]],NelderMead())
+        res=optimize(f_min,[ks_approx[i],solver.pts_scaling_factor[1]],NelderMead()) # must be gradient free due to Optim's Dual type usage
         k0,t0=res.minimizer,res.minimum
         sols[i]=k0
         tens_refined[i]=t0
