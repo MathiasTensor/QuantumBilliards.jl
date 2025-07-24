@@ -62,7 +62,14 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     if solver isa BoundaryIntegralMethod
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
-            res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
+            is_calculating=true
+            while is_calculating
+                try
+                    is_calculating=false # if the solve function fails, we will retry it
+                    res[i]=solve(solver,new_basis,pts,ks[i],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
+                    is_calculating=false
+                catch e @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..." end
+            end
             next!(p)
         end
     elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corner_correction)
@@ -72,13 +79,29 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
         Rmat=zeros(eltype(res[1]),N,N)
         solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts) # external R since quite costly
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
-            res[i]=solve_external_R(solver,new_basis,pts,ks[i],Rmat,multithreaded=multithreaded_matrices,use_combined=use_combined)
+            is_calculating=true
+            pts=evaluate_points(solver,billiard,ks[i])
+            new_basis=resize_basis(basis,billiard,dim,ks[i])
+            while is_calculating
+                try
+                    res[i]=solve_external_R(solver,new_basis,pts,ks[i],Rmat,multithreaded=multithreaded_matrices,use_combined=use_combined)
+                    is_calculating=false
+                catch e @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..." end
+            end
             next!(p)
         end
     else
         res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
-            res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices)
+            is_calculating=true
+            pts=evaluate_points(solver,billiard,ks[i])
+            new_basis=resize_basis(basis,billiard,dim,ks[i])
+            while is_calculating
+                try
+                    res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices)
+                    is_calculating=false
+                catch e @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..." end
+            end
             next!(p)
         end
     end
