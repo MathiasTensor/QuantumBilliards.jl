@@ -648,7 +648,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     ### Middle Plot: P(A, R) ###
-    ax_middle = Axis(fig[1, 1][1, 2][1, 1], title=L"P(A, R)", xlabel=L"A", ylabel=L"R", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=70, ylabelsize=70, xticklabelsize=60, yticklabelsize=60, titlesize=70)
+    ax_middle = Axis(fig[1, 1][1, 2][1, 1], title=L"P(A, IPR)", xlabel=L"A", ylabel=L"IPR", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=70, ylabelsize=70, xticklabelsize=60, yticklabelsize=60, titlesize=70)
     #ax_middle.xticks = range(min_A, max_A, 20) 
     ax_middle.yticks = range(R_min, R_max, 8) 
     #ax_middle.xticklabelrotation = pi/2
