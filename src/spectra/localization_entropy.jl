@@ -602,10 +602,10 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     # Now proceed with plotting
-    fig = Figure(resolution=(3600, 2700), size=(3600, 2700))  # Adjusted size for three plots
+    fig = Figure(resolution=(3700, 2800), size=(3700, 2800))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
-    ax_top = Axis(fig[1, 1][1, 1][1, 1], title=L"P(A, M)", xlabel=L"A", ylabel=L"M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=60, ylabelsize=60, xticklabelsize=50, yticklabelsize=50, titlesize=70)
+    ax_top = Axis(fig[1, 1][1, 1][1, 1], title=L"P(A, M)", xlabel=L"A", ylabel=L"M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=70, ylabelsize=70, xticklabelsize=60, yticklabelsize=60, titlesize=70)
     #ax_top.xticks = range(min_A, max_A, 20) 
     ax_top.yticks = range(M_min, M_max, 8) 
     #ax_top.xticklabelrotation = pi/2
@@ -633,7 +633,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_top.xticks = range(A_lim_min, A_lim_max, length=10)
     ylims!(ax_top, (M_min, M_max))
     hmap_M = heatmap!(ax_top, As_bin_centers_heatmap_M, Ms_bin_centers_heatmap, grid_M; colormap=Reverse(:gist_heat), alpha=0.7)
-    cb=Colorbar(fig[1, 1][1, 1][1, 2], hmap_M, size=50, ticklabelsize=50)
+    cb=Colorbar(fig[1, 1][1, 1][1, 2], hmap_M, size=50, ticklabelsize=60)
     cb.alignmode = Mixed(right = 0)
 
     # Label the selected points on the P(A, M) plot
@@ -648,7 +648,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     ### Middle Plot: P(A, R) ###
-    ax_middle = Axis(fig[1, 1][1, 2][1, 1], title=L"P(A, R)", xlabel=L"A", ylabel=L"R", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=60, ylabelsize=60, xticklabelsize=50, yticklabelsize=50, titlesize=70)
+    ax_middle = Axis(fig[1, 1][1, 2][1, 1], title=L"P(A, R)", xlabel=L"A", ylabel=L"R", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=70, ylabelsize=70, xticklabelsize=60, yticklabelsize=60, titlesize=70)
     #ax_middle.xticks = range(min_A, max_A, 20) 
     ax_middle.yticks = range(R_min, R_max, 8) 
     #ax_middle.xticklabelrotation = pi/2
@@ -675,7 +675,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_middle.xticks = range(A_lim_min, A_lim_max, length=10)
     ylims!(ax_middle, (R_min, R_max))
     hmap_R = heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
-    cb = Colorbar(fig[1, 1][1, 2][1, 2], hmap_R, size=30, ticklabelsize=40)
+    cb = Colorbar(fig[1, 1][1, 2][1, 2], hmap_R, size=30, ticklabelsize=60)
     cb.alignmode = Mixed(right = 0)
 
     # Label the selected points on the P(A, R) plot
