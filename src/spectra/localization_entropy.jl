@@ -602,7 +602,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     # Now proceed with plotting
-    fig = Figure(resolution=(3800, 2800), size=(3800, 2800))  # Adjusted size for three plots
+    fig = Figure(resolution=(3900, 2800), size=(3900, 2800))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
     ax_top = Axis(fig[1, 1][1, 1][1, 1], title=L"P(A, M)", xlabel=L"A", ylabel=L"M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=70, ylabelsize=70, xticklabelsize=60, yticklabelsize=60, titlesize=70)
@@ -675,7 +675,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     ax_middle.xticks = range(A_lim_min, A_lim_max, length=10)
     ylims!(ax_middle, (R_min, R_max))
     hmap_R = heatmap!(ax_middle, As_bin_centers_heatmap_R, Rs_bin_centers_heatmap, grid_R; colormap=Reverse(:gist_heat), alpha=0.7)
-    cb = Colorbar(fig[1, 1][1, 2][1, 2], hmap_R, size=30, ticklabelsize=60)
+    cb = Colorbar(fig[1, 1][1, 2][1, 2], hmap_R, size=50, ticklabelsize=60)
     cb.alignmode = Mixed(right = 0)
 
     # Label the selected points on the P(A, R) plot
