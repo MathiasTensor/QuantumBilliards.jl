@@ -602,7 +602,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     # Now proceed with plotting
-    fig = Figure(resolution=(3700, 2800), size=(3700, 2800))  # Adjusted size for three plots
+    fig = Figure(resolution=(3800, 2800), size=(3800, 2800))  # Adjusted size for three plots
 
     ### Top Plot: P(A, M) ###
     ax_top = Axis(fig[1, 1][1, 1][1, 1], title=L"P(A, M)", xlabel=L"A", ylabel=L"M", xtickformat="{:.2f}", ytickformat="{:.2f}", xlabelsize=70, ylabelsize=70, xticklabelsize=60, yticklabelsize=60, titlesize=70)
