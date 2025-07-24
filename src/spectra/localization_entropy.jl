@@ -626,6 +626,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
             grid_M[A_index, M_index] += 1
         end
     end
+    hlines!(ax_top,[1.0],color=:blue,linestyle=:dash,linewidth=4)
 
     A_lim_min = minimum(As_bin_centers_heatmap_M)
     A_lim_max = maximum(As_bin_centers_heatmap_M)
