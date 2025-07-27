@@ -242,7 +242,7 @@ Constructs an EllipseMushroom billiard with a stem (rectangle or triangle) and a
 function EllipseMushroom(stem_width::T,stem_height::T,ellipse_cap_height::T,ellipse_cap_width::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),triangle_stem::Bool=false,x_axis_reflection=zero(T)) :: EllipseMushroom where {T<:Real}
     fundamental_boundary,corners=make_half_ellipse_mushroom(stem_width,stem_height,ellipse_cap_height,ellipse_cap_width;x0=x0,y0=y0,rot_angle=rot_angle,triangle_stem=triangle_stem)
     full_boundary,_=make_full_ellipse_mushroom(stem_width,stem_height,ellipse_cap_height,ellipse_cap_width;x0=x0,y0=y0,rot_angle=rot_angle,triangle_stem=triangle_stem)
-    area_half_ellipse=0.5*compute_area(PolarSegment(t->SVector(ellipse_cap_width*cos(2*pi*t),ellipse_cap_height*sin(2*pi*t))))
+    area_half_ellipse=0.5*pi*ellipse_cap_height*ellipse_cap_width
     area=ifelse(triangle_stem,area_half_ellipse+0.5*stem_width*stem_height,area_half_ellipse+stem_width*stem_height)
     area_fundamental=area/2
     length=sum([crv.length for crv in full_boundary])
