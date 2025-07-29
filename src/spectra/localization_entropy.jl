@@ -543,7 +543,7 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     max_A = maximum(As)
     min_A = minimum(As)
     A_max_range = max(0.7, max_A)  # Extend to the maximum A value if needed
-    M_min = minimum(Ms) * 1.1
+    M_min = minimum(Ms) * 0.9
     M_max = maximum(Ms) * 1.1
     R_min = minimum(Rs) * 1.1
     R_max = maximum(Rs) * 1.1
