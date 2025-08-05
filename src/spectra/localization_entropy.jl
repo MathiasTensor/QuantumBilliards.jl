@@ -533,8 +533,9 @@ Plots the P(M,A) 2d heatmap and P(R,A) 2d heatmap along with random representati
 # Returns
 - `fig::Figure`: Figure object from Makie to save or display.
 """
-function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T; desired_samples::Int = 12, resolution=(4000, 2800), size=(4000, 2800)) where {T<:Real}
+function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list::Vector, classical_chaotic_s_vals::Vector, classical_chaotic_p_vals::Vector, chaotic_classical_phase_space_vol_fraction::T; resolution=(4000, 2800), size=(4000, 2800), save_indices::Bool=false, load_indices::Bool=false, indices_file::String="selected_indices.csv") where {T<:Real}
 
+    desired_samples = 12
     # Compute M, R, and A values
     Ms = compute_overlaps(Hs_list, qs_list, ps_list, classical_chaotic_s_vals, classical_chaotic_p_vals)
     Rs = [normalized_inverse_participation_ratio_R(H) for H in Hs_list]
@@ -568,37 +569,61 @@ function combined_heatmaps_with_husimi(Hs_list::Vector, qs_list::Vector, ps_list
     end
 
     # Initialize selected indices and bins
-    selected_indices = []
+    selected_indices = Int[]
     bins_available = collect(keys(bin_to_indices))
+    do_selection = true
 
-    # Iteratively select data points from bins
-    while length(selected_indices) < desired_samples && !isempty(bins_available)
-        # Make a copy of bins_available to iterate over
-        bins_to_iterate = copy(bins_available)
-        for bin_index in bins_to_iterate
-            indices_in_bin = bin_to_indices[bin_index]
-            if !isempty(indices_in_bin)
-                # Randomly select a data point from the bin
-                random_pos = rand(1:length(indices_in_bin))
-                selected_index = indices_in_bin[random_pos]
-                push!(selected_indices, selected_index)
-                # Remove selected index from bin
-                deleteat!(indices_in_bin, random_pos)
-                # If bin is empty, remove it from bins_available
-                if isempty(indices_in_bin)
+    if load_indices && isfile(indices_file)
+        @info "Loading selected indices from $indices_file"
+        df = CSV.read(indices_file, DataFrame)
+        selected_indices = Vector{Int}(df.indices)
+        do_selection = false
+    elseif load_indices && !isfile(indices_file)
+        @warn "Indices file $indices_file does not exist. Will select new indices."
+    elseif !load_indices && isfile(indices_file)
+        @warn "Indices file $indices_file exists but load_indices is false. Overwriting."
+    end
+
+    if do_selection
+        # Iteratively select data points from bins
+        while length(selected_indices) < desired_samples && !isempty(bins_available)
+            # Make a copy of bins_available to iterate over
+            bins_to_iterate = copy(bins_available)
+            for bin_index in bins_to_iterate
+                indices_in_bin = bin_to_indices[bin_index]
+                if !isempty(indices_in_bin)
+                    # Randomly select a data point from the bin
+                    random_pos = rand(1:length(indices_in_bin))
+                    selected_index = indices_in_bin[random_pos]
+                    push!(selected_indices, selected_index)
+                    # Remove selected index from bin
+                    deleteat!(indices_in_bin, random_pos)
+                    # If bin is empty, remove it from bins_available
+                    if isempty(indices_in_bin)
+                        delete!(bin_to_indices, bin_index)
+                        filter!(x -> x != bin_index, bins_available)
+                    end
+                    # Check if we have reached desired samples
+                    if length(selected_indices) >= desired_samples
+                        break
+                    end
+                else
+                    # Bin is empty, remove it from bins_available
                     delete!(bin_to_indices, bin_index)
                     filter!(x -> x != bin_index, bins_available)
                 end
-                # Check if we have reached desired samples
-                if length(selected_indices) >= desired_samples
-                    break
-                end
-            else
-                # Bin is empty, remove it from bins_available
-                delete!(bin_to_indices, bin_index)
-                filter!(x -> x != bin_index, bins_available)
             end
         end
+    end
+
+    if save_indices && isfile(indices_file)
+        @warn "Indices file $indices_file already exists. Remove it to start new selection."
+    elseif save_indices && !isfile(indices_file)
+        @info "Saving selected indices to $indices_file"
+        df = DataFrame(indices = selected_indices)
+        CSV.write(indices_file, df)
+    else
+        @info "Not saving indices, will not write to $indices_file"
     end
 
     # Now proceed with plotting
