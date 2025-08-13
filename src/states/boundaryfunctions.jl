@@ -621,6 +621,44 @@ function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function 
 end
 
 """
+    momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
+
+Returns a function that computes the momentum representation of a given quantum state described by a boundary function `us`.
+
+# Arguments
+- `us::Vector{T}`: Boundary function constructed from `boundary_function`.
+- `pts::BP`: The struct containing the xy::Vector{SVector{2,<:Real}} information of the boundary.
+
+# Returns
+- A function `mom(p::SVector{2, <:Real})` that computes the momentum representation for a momentum vector `p`.
+
+"""
+function momentum_representation_of_state(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
+    pts_coords=pts.xy  #  pts.xy is Vector{SVector{2, T}}
+    num_points=length(pts_coords)
+    function mom(p::SVector) # p = (px, py)
+        local_sum=zero(Complex{T})
+        k_squared=k^2
+        p_squared=norm(p)^2
+        if abs(p_squared-k_squared)>sqrt(eps(T))
+            # Far from energy shell
+            for i in 1:num_points
+                local_sum+=us[i]*exp(im*(pts_coords[i][1]*p[1]+pts_coords[i][2]*p[2]))
+            end
+            return 1/(p_squared-k_squared)*(1/(2*pi))*local_sum
+        else
+            # Near energy shell, use approximation by Backer
+            for i in 1:num_points
+                phase_term=pts_coords[i][1]*p[1]+pts_coords[i][2]*p[2]
+                local_sum+=us[i]*exp(im*phase_term)*phase_term
+            end
+            return -im/(4*pi*k_squared)*local_sum
+        end
+    end
+    return mom
+end
+
+"""
     computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
 
 Computes the radially integrated momentum density function `I(φ)` from a given state.
