@@ -705,6 +705,36 @@ function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) :: 
     return I_phi
 end
 
+function computeRadiallyIntegratedDensityFromState(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
+    pts_coords=pts.xy  # pts.xy is Vector{SVector{2, T}}
+    num_points=length(pts_coords)
+    function I_phi(phi)
+        I_phi_array=zeros(T,Threads.nthreads())
+        p=k
+        Threads.@threads for i in 1:num_points
+            thread_id=Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
+            I_phi_i=zero(T)
+            for j in 1:num_points
+                delta_x=pts_coords[i][1]-pts_coords[j][1]
+                delta_y=pts_coords[i][2]-pts_coords[j][2]
+                alpha=abs(cos(phi)*delta_x+sin(phi)*delta_y)
+                x=alpha*p
+                if abs(x)<sqrt(eps(T))
+                    x=sqrt(eps(T))
+                end
+                Si_x=sinint(x)
+                Ci_x=cosint(x)
+                f_x=sin(x)*Ci_x-cos(x)*Si_x
+                I_phi_i+=f_x*us[i]*us[j]
+            end
+            I_phi_array[thread_id]+=I_phi_i
+        end
+        I_phi_total=sum(I_phi_array)
+        return abs((one(T)/(T(8)*T(pi)^2))*I_phi_total)
+    end
+    return I_phi
+end
+
 """
     computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5.0) where {S<:AbsState}
 
@@ -764,5 +794,46 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     return R_r
 end
 
+function computeAngularIntegratedMomentumDensityFromState(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
+    pts_coords=pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
+    k_squared=k^2
+    epsilon=sqrt(eps(T))
+    num_points=length(pts_coords)
+    function R_r(r)
+        if abs(r-sqrt(k_squared))<epsilon
+            # This just uses Backer's first approximation to the R(r) at the wavefunctions's k value
+            R_r_array=zeros(T,Threads.nthreads())
+            Threads.@threads for i in 1:num_points
+                thread_id=Threads.threadid()
+                R_r_i=zero(T)
+                for j in 1:num_points
+                    delta_x=pts_coords[i][1]-pts_coords[j][1]
+                    delta_y=pts_coords[i][2]-pts_coords[j][2]
+                    distance=hypot(delta_x,delta_y)
+                    J0_value=Bessels.besselj(0,distance*r)
+                    J2_value=Bessels.besselj(2,distance*r)
+                    R_r_i+=us[i]*us[j]*distance^2*0.5*(J2_value-J0_value)
+                end
+                R_r_array[thread_id]+=R_r_i
+            end
+        return 1/(16*pi*k)*sum(R_r_array)
+        end
+        R_r_array=zeros(T,Threads.nthreads())
+        Threads.@threads for i in 1:num_points
+            thread_id=Threads.threadid()
+            R_r_i=zero(T)
+            for j in 1:num_points
+                delta_x=pts_coords[i][1]-pts_coords[j][1]
+                delta_y=pts_coords[i][2]-pts_coords[j][2]
+                distance=hypot(delta_x,delta_y)
+                J0_value=Bessels.besselj(0,distance*r)
+                R_r_i+=us[i]*us[j]*J0_value
+            end
+            R_r_array[thread_id]+=R_r_i
+        end
+        return (r/(r^2-k_squared)^2)*sum(R_r_array)
+    end
+    return R_r
+end
 
 
