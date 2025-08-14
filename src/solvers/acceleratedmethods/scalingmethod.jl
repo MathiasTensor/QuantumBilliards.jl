@@ -107,7 +107,7 @@ struct BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}}
     w::Vector{T}
     ds::Vector{T}
-    normal::Vector{T}
+    normal::Vector{SVector{2,T}}
 end
 
 """
