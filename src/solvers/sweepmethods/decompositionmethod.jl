@@ -159,6 +159,25 @@ function evaluate_points(solver::DecompositionMethod,billiard::Bi,k) where {Bi<:
 end
 
 """
+    BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsDM{T}) where {T<:Real}
+
+Convert a `BoundaryPointsDM{T}` to a `BoundaryPoints{T}` by extracting the coordinates, normals, arc-lengths, and integration weights.
+
+# Arguments
+- `pts::BoundaryPointsDM{T}`: The boundary points data structure containing coordinates, normals, and weights.
+
+# Returns
+- `BoundaryPoints{T}`: A new boundary points structure with the same coordinates, normals, arc-lengths, and integration weights.
+"""
+function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsDM{T}) where {T<:Real}
+    xy=pts.xy
+    normal=pts.normal
+    ds=pts.w
+    s=cumsum(ds)
+    return BoundaryPoints{T}(xy,normal,s,ds)
+end
+
+"""
     construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct two matrices `F` and `G` for the Decomposition Method, with timing output. Uses `TimerOutput`

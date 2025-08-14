@@ -342,7 +342,7 @@ Processes the boundary function and associated boundary points by applying symme
 """
 function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     symmetries=SymmetryRuleBIM_to_Symmetry(solver.rule) 
-    pts=BoundaryPointsBIM_to_BoundaryPoints(pts)
+    pts=BoundaryPointsMethod_to_BoundaryPoints(pts)
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
     u=apply_symmetries_to_boundary_function(Vector{Float64}(u),symmetries)
@@ -621,7 +621,7 @@ function momentum_representation_of_state(state::S; b::Float64=5.0) :: Function 
 end
 
 """
-    momentum_representation_of_state(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
+    momentum_representation_of_wavefunction(state::S; b::Float64=5.0) :: Function where {S<:AbsState}
 
 Returns a function that computes the momentum representation of a given quantum state described by a boundary function `us`.
 
@@ -631,28 +631,28 @@ Returns a function that computes the momentum representation of a given quantum 
 
 # Returns
 - A function `mom(p::SVector{2, <:Real})` that computes the momentum representation for a momentum vector `p`.
-
 """
-function momentum_representation_of_state(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
-    pts_coords=pts.xy  #  pts.xy is Vector{SVector{2, T}}
-    num_points=length(pts_coords)
-    function mom(p::SVector) # p = (px, py)
-        local_sum=zero(Complex{T})
-        k_squared=k^2
-        p_squared=norm(p)^2
-        if abs(p_squared-k_squared)>sqrt(eps(T))
-            # Far from energy shell
-            for i in 1:num_points
-                local_sum+=us[i]*exp(im*(pts_coords[i][1]*p[1]+pts_coords[i][2]*p[2]))
+function momentum_representation_of_wavefunction(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
+    xy=pts.xy
+    ds=pts.ds
+    N=length(xy)
+    k2=k^2
+    function mom(p::SVector{2,T}) # ψ̂(p) from boundary data (Backer Eq. 11 off-shell; Eq. 13 on shell)
+        p2=dot(p,p)
+        sumI=zero(Complex{T})
+        @inbounds for j in 1:N  # I(p) = ∫ u(s) e^{-i p·q(s)} ds  ≈ Σ u_j e^{-i p·q_j} ds_j
+            phase=-(p[1]*xy[j][1]+p[2]*xy[j][2])
+            sumI+=us[j]*exp(im*phase)*ds[j]
+        end
+        if abs(p2-k2)>sqrt(eps(T))
+            return (one(T)/(2*pi))*sumI/(p2-k2) # we are in the ok zone
+        else # on-shell
+            sumOn=zero(Complex{T})
+            @inbounds for j in 1:N # on-shell: ψ̂(p) = -(i/(4π k^2)) ∫ e^{-i p·q}(p·q) u(s) ds
+                pq=p[1]*xy[j][1]+p[2]*xy[j][2]
+                sumOn+=us[j]*exp(-im*pq)*pq*ds[j]
             end
-            return 1/(p_squared-k_squared)*(1/(2*pi))*local_sum
-        else
-            # Near energy shell, use approximation by Backer
-            for i in 1:num_points
-                phase_term=pts_coords[i][1]*p[1]+pts_coords[i][2]*p[2]
-                local_sum+=us[i]*exp(im*phase_term)*phase_term
-            end
-            return -im/(4*pi*k_squared)*local_sum
+            return -(im/(4*pi*k2))*sumOn
         end
     end
     return mom
@@ -705,32 +705,34 @@ function computeRadiallyIntegratedDensityFromState(state::S; b::Float64=5.0) :: 
     return I_phi
 end
 
-function computeRadiallyIntegratedDensityFromState(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
-    pts_coords=pts.xy  # pts.xy is Vector{SVector{2, T}}
-    num_points=length(pts_coords)
-    function I_phi(phi)
-        I_phi_array=zeros(T,Threads.nthreads())
-        p=k
-        Threads.@threads for i in 1:num_points
-            thread_id=Threads.threadid() # for indexing threads. Maybe not necessary since we just take the sum in the end
-            I_phi_i=zero(T)
-            for j in 1:num_points
-                delta_x=pts_coords[i][1]-pts_coords[j][1]
-                delta_y=pts_coords[i][2]-pts_coords[j][2]
-                alpha=abs(cos(phi)*delta_x+sin(phi)*delta_y)
-                x=alpha*p
-                if abs(x)<sqrt(eps(T))
-                    x=sqrt(eps(T))
-                end
-                Si_x=sinint(x)
-                Ci_x=cosint(x)
-                f_x=sin(x)*Ci_x-cos(x)*Si_x
-                I_phi_i+=f_x*us[i]*us[j]
+# I(φ) (Eq. 25; real-u case drops the imaginary term)
+function computeRadiallyIntegratedDensity(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
+    xy=pts.xy
+    ds=pts.ds
+    N=length(xy)
+    k2=k^2
+    ε=sqrt(eps(T))
+    # for the constant term -(1/(2k^2)) (∫ u ds)^2, vanishes for odd-symmetry classes
+    s0=zero(T)
+    @inbounds for j in 1:N
+        s0+=us[j]*ds[j]
+    end
+    const_term=(s0^2)/(2*k2)
+    function I_phi(phi::T)
+        c=cos(phi);s=sin(phi)
+        acc=zero(T)
+        @inbounds for i in 1:N
+            xi=xy[i];wi=ds[i];ui=us[i]
+            for j in 1:N
+                dx=xi[1]-xy[j][1];dy=xi[2]-xy[j][2]
+                α=abs(c*dx+s*dy)
+                x=α*k
+                x=abs(x)<ε ? ε : x  # avoid 0 in special functions
+                f=sin(x)*cosint(x)-cos(x)*sinint(x) # Eq. (24)
+                acc+=ui*us[j]*wi*ds[j]*f
             end
-            I_phi_array[thread_id]+=I_phi_i
         end
-        I_phi_total=sum(I_phi_array)
-        return abs((one(T)/(T(8)*T(pi)^2))*I_phi_total)
+        return (one(T)/(8*pi^2))*acc-const_term
     end
     return I_phi
 end
@@ -794,44 +796,38 @@ function computeAngularIntegratedMomentumDensityFromState(state::S; b::Float64=5
     return R_r
 end
 
-function computeAngularIntegratedMomentumDensityFromState(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
-    pts_coords=pts.xy  # Assuming pts.xy is already Vector{SVector{2, T}}
-    k_squared=k^2
-    epsilon=sqrt(eps(T))
-    num_points=length(pts_coords)
-    function R_r(r)
-        if abs(r-sqrt(k_squared))<epsilon
-            # This just uses Backer's first approximation to the R(r) at the wavefunctions's k value
-            R_r_array=zeros(T,Threads.nthreads())
-            Threads.@threads for i in 1:num_points
-                thread_id=Threads.threadid()
-                R_r_i=zero(T)
-                for j in 1:num_points
-                    delta_x=pts_coords[i][1]-pts_coords[j][1]
-                    delta_y=pts_coords[i][2]-pts_coords[j][2]
-                    distance=hypot(delta_x,delta_y)
-                    J0_value=Bessels.besselj(0,distance*r)
-                    J2_value=Bessels.besselj(2,distance*r)
-                    R_r_i+=us[i]*us[j]*distance^2*0.5*(J2_value-J0_value)
+# R(r) (Eq. 28 general; Eq. 31 at r≈k)
+function computeAngularIntegratedMomentumDensity(us::Vector{T},pts::BP,k::T) :: Function where {T<:Real,BP<:AbsPoints}
+    xy=pts.xy
+    ds=pts.ds
+    N=length(xy)
+    k2=k^2
+    ε=sqrt(eps(T))
+    function R_r(r::T)
+        if abs(r-k)<ε
+            acc=zero(T)
+            @inbounds for i in 1:N
+                xi=xy[i];wi=ds[i];ui=us[i]
+                for j in 1:N
+                    dx=xi[1]-xy[j][1];dy=xi[2]-xy[j][2]
+                    d=hypot(dx,dy)
+                    J0=Bessels.besselj(0,d*r)
+                    J2=Bessels.besselj(2,d*r)
+                    acc+=ui*us[j]*wi*ds[j]*(d^2*0.5*(J2-J0))
                 end
-                R_r_array[thread_id]+=R_r_i
             end
-        return 1/(16*pi*k)*sum(R_r_array)
-        end
-        R_r_array=zeros(T,Threads.nthreads())
-        Threads.@threads for i in 1:num_points
-            thread_id=Threads.threadid()
-            R_r_i=zero(T)
-            for j in 1:num_points
-                delta_x=pts_coords[i][1]-pts_coords[j][1]
-                delta_y=pts_coords[i][2]-pts_coords[j][2]
-                distance=hypot(delta_x,delta_y)
-                J0_value=Bessels.besselj(0,distance*r)
-                R_r_i+=us[i]*us[j]*J0_value
+            return (one(T)/(16*pi*k))*acc # Eq. (31)
+        else
+            acc=zero(T)
+            @inbounds for i in 1:N
+                xi=xy[i];wi=ds[i];ui=us[i]
+                for j in 1:N
+                    d=hypot(xi[1]-xy[j][1],xi[2]-xy[j][2])
+                    acc+=ui*us[j]*wi*ds[j]*Bessels.besselj(0,d*r)
+                end
             end
-            R_r_array[thread_id]+=R_r_i
+            return (one(T)/(2*pi))*(r/((r^2-k2)^2))*acc  # Eq. (28)
         end
-        return (r/(r^2-k_squared)^2)*sum(R_r_array)
     end
     return R_r
 end

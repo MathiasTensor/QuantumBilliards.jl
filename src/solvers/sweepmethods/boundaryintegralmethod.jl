@@ -260,7 +260,7 @@ function Symmetry_to_SymmetryBIM(symmetry::Union{Vector{Any},Nothing},billiard::
 end
 
 """
-    BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
+    BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
 
 Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
 
@@ -277,7 +277,7 @@ Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
   - `s::Vector{T}`: Arc length coordinates (cumulative sum of `ds`).
   - `ds::Vector{T}`: diff(s).
 """
-function BoundaryPointsBIM_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
+function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
     xy=pts.xy
     normal=pts.normal
     ds=pts.ds

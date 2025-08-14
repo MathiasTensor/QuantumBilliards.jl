@@ -100,10 +100,14 @@ Represents the boundary points and their information that is neccesery to constr
 # Fields
 - `xy::Vector{SVector{2,T}}`: The coordinates of the boundary points.
 - `w::Vector{T}`: The weights of the boundary points. To be used for the weight matrix construction for F and Fk.
+- `ds::Vector{T}`: The arc length differences between the boundary points.
+- `normal::Vector{SVector{2,T}}`: The normal vectors at the boundary points.
 """
 struct BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}}
     w::Vector{T}
+    ds::Vector{T}
+    normal::Vector{T}
 end
 
 """
@@ -125,6 +129,8 @@ function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:Abs
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     w_all=Vector{type}()
+    ds_all=Vector{type}()
+    normal_all=Vector{SVector{2,type}}()
     for i in eachindex(curves)
         crv=curves[i]
         if typeof(crv)<:AbsRealCurve
@@ -150,9 +156,30 @@ function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:Abs
             w=ds./rn
             append!(xy_all,xy)
             append!(w_all,w)
+            append!(ds_all,ds)
+            append!(normal_all,normal)
         end
     end
-    return BoundaryPointsSM{type}(xy_all, w_all)
+    return BoundaryPointsSM{type}(xy_all,w_all,ds_all,normal_all)
+end
+
+"""
+    BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsSM{T}) where {T<:Real}
+
+Converts a `BoundaryPointsSM` struct to a `BoundaryPoints` struct by computing the cumulative arc length and returning the new struct.
+
+# Arguments
+- `pts::BoundaryPointsSM{T}`: The boundary points struct of the scaling method to convert to generic `BoundaryPoints`.
+
+# Returns
+- `BoundaryPoints{T}`: A new struct with the same coordinates, normals, and weights, but with cumulative arc length and integration weights.
+"""
+function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsSM{T}) where {T<:Real}
+    xy=pts.xy
+    normal=pts.normal
+    ds=pts.ds
+    s=cumsum(ds)
+    BoundaryPoints{T}(xy,normal,s,ds)
 end
 
 """
