@@ -113,9 +113,11 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     else
         xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     end
+    dx=xlim[2]-xlim[1] # these represent the x and y limits
+    dy=ylim[2]-ylim[1]
     nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
     x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
-    dx=x_grid[2]-x_grid[1]
+    dx=x_grid[2]-x_grid[1] # these are now rebranded to grid differences
     dy=y_grid[2]-y_grid[1]
     w=dx*dy # the area element for sums, since linear grid approximates the integration measure
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid) # all possible points on the maximal rectangle grid domain of the billiard
