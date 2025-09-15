@@ -94,7 +94,6 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `packet::Wavepacket{T}`: The initial Gaussian wavepacket to be projected onto the eigenfunctions.
 - `b::Float64=5.0`: Scaling parameter for the spatial resolution grid.
 - `fundamental_domain::Bool=true`: If we consider only the desymmetrized billiard domain.
-- `multithreaded::Bool=false`: If the outer (ks) loop is to be multithreaded, only for high spec machines.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: List of wavefunction matrices corresponding to the given wavenumbers.
@@ -105,7 +104,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
 """
-function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true,multithreaded::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks) # the wavefunction size must be the same for all k, therefore largest k size for all since we must resolve many points per wavelength
     type=eltype(k_max)
     L=billiard.length
@@ -133,7 +132,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     G_norm=w*sum(abs2,@view G[pts_masked_indices]) # this is sum( G[i,j]*dx*dy for (i,j) in pts_masked_indices), where we do sum only on the interior points
     G_norm2=G_norm>zero(T) ? sqrt(G_norm) : one(T)
     G./=G_norm2  # now sum( |G[i,j|^2*dx*dy for (i,j) in pts_masked_indices ) ≈ 1
-    @use_threads multithreading=multithreaded for i in eachindex(ks)
+    for i in eachindex(ks) # unless thousands of cores never multithread this
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,sz)
@@ -167,7 +166,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
         @error "Σ |overlap|^2 = $(a): basis may be too small or not well resolved."
     end
     @info "numerical Σ |overlap|^2 = $(a), renormalized to 1"
-    overlaps./=a # inplace normalize the overlaps to 1
+    overlaps./=sqrt(a) # inplace normalize the overlaps to 1
     return Psi2ds,overlaps,x_grid,y_grid,pts_mask,dx,dy
 end
 
@@ -794,7 +793,7 @@ function _autocorr_from_coeffs_with_Es(c0::Vector{Complex{T}},Es::Vector{T},ts::
     C=Vector{Complex{T}}(undef,length(ts))
     @inbounds for i in eachindex(ts)
         t=ts[i]
-        C[i]=sum(@. w0*exp(-im*Es*(t/ħ)))/denom
+        C[i]=sum(@. w0*exp(-im*Es*(t/ħ)))
     end
     return C
 end
