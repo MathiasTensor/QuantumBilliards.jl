@@ -226,7 +226,7 @@ function FEM_Hamiltonian(fem::FiniteElementMethod{T}) where {T<:Real}
     return sparse(rows,cols,vals,fem.Q,fem.Q)
 end
 
-# NEEDS PRECONDITIONING
+# NEEDS PRECONDITIONING - NOT CURRENTLY FOR USE
 function FEM_Hamiltonian(fem::FiniteElementMethod{T},V::Matrix{T}) where {T<:Real}
     ℏ,m=fem.ℏ,fem.m;A_const=ℏ^2/(2m)
     dx²,dy²=fem.dx^2,fem.dy^2;Nx,Ny=fem.Nx,fem.Ny

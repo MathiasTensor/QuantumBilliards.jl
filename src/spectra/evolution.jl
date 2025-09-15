@@ -12,25 +12,27 @@ Contains the initialization parameters that construct the Gaussian wavepacket.
 - `y0::T`: Initial y position of the Gaussian wavepacket.
 - `sigma_x::T`: Standard deviation of the Gaussian wavepacket in the x direction.
 - `sigma_y::T`: Standard deviation of the Gaussian wavepacket in the y direction.
-- `kx0::T`: wavevector in the x direction.
-- `ky0::T`: wavevector in the y direction.
+- `px0::T`: momentum in the x direction.
+- `py0::T`: momentum in the y direction.
+- `ħ::T`: Reduced Planck constant
 """
 struct Wavepacket{T<:Real}
     x0::T
     y0::T
     sigma_x::T
     sigma_y::T
-    kx0::T
-    ky0::T
+    px0::T
+    py0::T
+    ħ::T
 end
 
 """
     gaussian_wavepacket_2d(x::Vector{T}, y::Vector{T}, packet::Wavepacket{T}) where {T<:Real}
 
-Generates a 2D Gaussian wavepacket in coordinate space on a grid of `(x,y)` values and then returns in on a grid as a `Matrix`
+Generates a 2D Gaussian wavepacket in coordinate space on a grid of `(x,y)` values and then returns in on a grid as a `Matrix`. It is not normalized!
 
 ```math
-f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp(-iky(y-y0))
+f(x,y) = exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-i*px*(x-x0)/ħ)*exp(-i*py(y-y0)ħ)
 ```
 
 # Arguments
@@ -41,24 +43,23 @@ f(x,y) = 1/(2*π*σx*σy)*exp(-(x-x0)^2/2σx-(y-y0)^2/2σy)*exp(-ikx*(x-x0))*exp
 - `Matrix{Complex{T}}`: The value at those params on a 2D grid.
 """
 function gaussian_wavepacket_2d(x::Vector{T},y::Vector{T},packet::Wavepacket{T}) where {T<:Real}
-    x0=packet.x0;y0=packet.y0;sigma_x=packet.sigma_x;sigma_y=packet.sigma_y;kx0=packet.kx0;ky0=packet.ky0
+    x0=packet.x0;y0=packet.y0;sigma_x=packet.sigma_x;sigma_y=packet.sigma_y;px0=packet.px0;py0=packet.py0;ħ=packet.ħ
     dx=x.-x0
     dy=y.-y0
-    gx_amp= @. exp(-dx^2/(2*sigma_x^2))
-    gy_amp= @. exp(-dy^2/(2*sigma_y^2))
-    gx_phase= @. exp(im*kx0*dx)
-    gy_phase= @. exp(im*ky0*dy)
+    gx_amp=@. exp(-dx^2/(2*sigma_x^2))
+    gy_amp=@. exp(-dy^2/(2*sigma_y^2))
+    gx_phase=@. exp(im*px0*dx/ħ)
+    gy_phase=@. exp(im*py0*dy/ħ)
     gx=gx_amp.*gx_phase
     gy=gy_amp.*gy_phase
-    norm_factor=1/sqrt(sqrt(2π*sigma_x*sigma_y))
-    result=norm_factor.*(gx*transpose(gy)) # Outer product: result[i,j] = norm_factor * gx[i] * gy[j]
+    result=(gx*transpose(gy)) # Outer product: result[i,j] = gx[i] * gy[j]
     return result
 end
 
 """
     gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wavepacket{T}) where {T<:Real}
 
-Computes the Gaussian wavepacket for a set of points inside the billiard.
+Computes the Gaussian wavepacket for a set of points inside the billiard. It is not normalized!
 
 # Arguments
 - `pts_in_billiard::Vector{SVector{2,T}}`: Points inside the billiard.
@@ -68,15 +69,14 @@ Computes the Gaussian wavepacket for a set of points inside the billiard.
 - `Vector{Complex{T}}`: Gaussian wavepacket evaluated at the points.
 """
 function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wavepacket{T}) where {T<:Real}
-    x0=packet.x0;y0=packet.y0;sigma_x=packet.sigma_x;sigma_y=packet.sigma_y;kx0=packet.kx0;ky0=packet.ky0
+    x0=packet.x0;y0=packet.y0;sigma_x=packet.sigma_x;sigma_y=packet.sigma_y;px0=packet.px0;py0=packet.py0;ħ=packet.ħ
     xs=getindex.(pts_in_billiard,1)  # x-coordinates
     ys=getindex.(pts_in_billiard,2)  # y-coordinates
     dx=xs.-x0
     dy=ys.-y0
-    amp= @. exp(-dx^2/(2*sigma_x^2)-dy^2/(2*sigma_y^2))
-    phase= @. exp(im*(kx0*dx+ky0*dy))
-    norm_factor = 1/sqrt(2π*sigma_x*sigma_y)
-    return norm_factor.*(amp.*phase)
+    amp=@. exp(-dx^2/(2*sigma_x^2)-dy^2/(2*sigma_y^2))
+    phase=@. exp(im*(px0*dx+py0*dy)/ħ)
+    return (amp.*phase)
 end
 
 """
@@ -105,7 +105,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `dy::T`: Grid spacing in the y-direction.
 """
 function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
-    k_max=maximum(ks)
+    k_max=maximum(ks) # the wavefunction size must be the same for all k, therefore largest k size for all since we must resolve many points per wavelength
     type=eltype(k_max)
     L=billiard.length
     if fundamental_domain
@@ -113,73 +113,93 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     else
         xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     end
-    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
     nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
     x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
+    dx=x_grid[2]-x_grid[1]
+    dy=y_grid[2]-y_grid[1]
+    w=dx*dy # the area element for sums, since linear grid approximates the integration measure
+    pts=collect(SVector(x,y) for y in y_grid for x in x_grid) # all possible points on the maximal rectangle grid domain of the billiard
     sz=length(pts)
     pts_mask=points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental_domain)
-    pts_masked_indices=findall(pts_mask)
-    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
-    overlaps=Vector{Complex{type}}(undef,length(ks))
+    pts_masked_indices=findall(pts_mask) # all these (i,j) in pts_masked_indices are inside the billiard domain
+    Psi2ds=Vector{Matrix{type}}(undef,length(ks)) # Preallocate vector of all wavefunction matrices
+    overlaps=Vector{Complex{type}}(undef,length(ks)) # Preallocate vector of all overlap coefficients
     progress=Progress(length(ks),desc="Constructing wavefunction matrices and computing overlaps...")
-    gaussian_mat::Matrix{Complex{type}}=gaussian_wavepacket_2d(x_grid,y_grid,packet) # create a 2d mat
+    gaussian_mat::Matrix{Complex{type}}=gaussian_wavepacket_2d(x_grid,y_grid,packet) # create a 2d mat, unnormalized
+    G=vec(gaussian_mat) # single vector for fast indexing
+    G_norm=w*sum(abs2,@view G[pts_masked_indices]) # this is sum( G[i,j]*dx*dy for (i,j) in pts_masked_indices), where we do sum only on the interior points
+    G_norm2=G_norm>zero(T) ? sqrt(G_norm) : one(T)
+    G./=G_norm2  # now sum( |G[i,j|^2*dx*dy for (i,j) in pts_masked_indices ) ≈ 1
     for i in eachindex(ks)
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
             Psi_flat=zeros(type,sz)
-            thread_overlaps=Vector{Complex{type}}(undef,Threads.nthreads())
+            thread_overlaps=Vector{Complex{type}}(undef,Threads.nthreads()) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
+            thread_norm2=Vector{type}(undef,Threads.nthreads()) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
             for t in 1:Threads.nthreads() # thread safe local accumulators
-                thread_overlaps[t]=zero(type)
+                thread_overlaps[t]=zero(Complex{type}) # since the G is complex but wavefunction real
+                thread_norm2[t]=zero(type) # wavefunction norm is real
             end
             Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
-                idx=pts_masked_indices[j]
-                tid=Threads.threadid()  # thread ID for safe accumulation
+                idx=pts_masked_indices[j] # each interior point [idx] -> (x,y)
+                tid=Threads.threadid()  # thread ID for safe accumulation, one per calculation
                 @inbounds begin
                     x,y=pts[idx]
-                    psi_val=ϕ(x,y,k,bdPoints,us)
+                    psi_val=ϕ(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G
                     Psi_flat[idx]=psi_val
-                    thread_overlaps[tid]+=psi_val*gaussian_mat[idx]
+                    thread_overlaps[tid]+=psi_val*G[idx] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j]
+                    thread_norm2[tid]+=abs2(psi_val) # accumulate local Ψ value for later normalization
                 end
             end
-            overlap=sum(thread_overlaps) # from the thread safe local accumulation we 
+            sum_norm2=sum(thread_norm2) # norm accumulator for a given eigenstate
+            norm_i=sqrt(w*sum_norm2) # 1/norm_i*dx*dy, this should give sum( 1/√Norm*dx*dy Ψ^2 ) ≈ 1
+            Psi_flat./=norm_i # make the wavefunctions normalized inplace, Ψ -> 1/norm_i * Ψ
             Psi2ds[i]=reshape(Psi_flat,ny,nx) # also return the normalized wavefunction matrices
-            overlaps[i]=overlap
+            overlaps[i]=sum(thread_overlaps)*(w/norm_i) # from the thread safe local accumulation we then multiply with the dx*dy element due to linear grid. This is 1/norm_i * sum( conj(Ψ) * G ) * w 
             next!(progress)
         end
     end
+    a=sum(abs2,overlaps)
+    if ((a<0.95) || (a>1.05))
+        @error "Σ |overlap|^2 = $(a): basis may be too small or not well resolved."
+    end
+    @info "numerical Σ |overlap|^2 = $(a), renormalized to 1"
+    overlaps./=a # inplace normalize the overlaps to 1
     return Psi2ds,overlaps,x_grid,y_grid,pts_mask,dx,dy
 end
 
 """
-    evolution_gaussian_coefficients(coeffs_init::Vector{Complex{T}}, ks::Vector{T}, ts::Vector{K}) where {T<:Real, K<:Real} 
+    evolution_gaussian_coefficients(coeffs_init::Vector{Complex{T}},ks::Vector{T},ts::Vector{K},ħ::T;m::T=one(T)) where {T<:Real,K<:Real}
     -> Matrix{Complex{T}}
 
-Computes the time evolution of the expansion coefficients of a wavepacket in a quantum billiard.
+Computes the time evolution of the expansion coefficients of a wavepacket in a quantum billiard. One needs to be careful with the energy scaling as the original `ks` are gotten with ΔΨ=k*Ψ and not ħ^2/(2*m)ΔΨ=k*Ψ = α*ΔΨ=k*Ψ.
 
 # Description
 Given an initial set of expansion coefficients `coeffs_init`, corresponding wavenumbers `ks`, 
 and time values `ts`, this function computes the time-evolved coefficients based on the 
 Schrödinger equation solution:
 
-`c_n(t) = c_n(0) e^{-i E_n t}`
+`c_n(t) = c_n(0) e^{-i*E_n*t/ħ}`
 
 # Arguments
-`coeffs_init::Vector{Complex{T}}`: The initial expansion coefficients of the wavepacket in the eigenbasis.
-`ks::Vector{T}`: The wavenumbers associated with each eigenfunction.
-`ts::Vector{K}`: A vector of time points at which to evaluate the evolved coefficients.
+- `coeffs_init::Vector{Complex{T}}`: The initial expansion coefficients of the wavepacket in the eigenbasis.
+- `ks::Vector{T}`: The wavenumbers associated with each eigenfunction.
+- `ts::Vector{K}`: A vector of time points at which to evaluate the evolved coefficients.
+- `ħ::T`: Reduced Planck constant for the correct energy scaling.
+- `m::T=one(T)`: Mass in the Schrodinger equation.
 
 # Returns
-`Matrix{Complex{T}}`: A matrix mat of shape (length(ts),length(ks)) where mat[i, j] represents the coefficient for the j-th eigenmode at time ts[i].
+- `Matrix{Complex{T}}`: A matrix mat of shape (length(ts),length(ks)) where mat[i, j] represents the coefficient for the j-th eigenmode at time ts[i].
 """
-function evolution_gaussian_coefficients(coeffs_init::Vector{Complex{T}},ks::Vector{T},ts::Vector{K}) where {T<:Real,K<:Real}
+function evolution_gaussian_coefficients(coeffs_init::Vector{Complex{T}},ks::Vector{T},ts::Vector{K},ħ::T;m::T=one(T)) where {T<:Real,K<:Real}
+    α=ħ^2/(2*m)
     N=length(coeffs_init)
     @assert N==length(ks) "The number of coefficients must match the number of eigenvalues, and they need to be correctly ordered: ks[i] -> Psi2d[i] -> coefficient[i]"
-    Es=[k^2 for k in ks]
+    Es=[α*k^2 for k in ks]
     mat=Matrix{Complex{T}}(undef, length(ts), N)
     @showprogress desc="Calculating the evolution of coefficients..." for i in eachindex(ts)
         t=ts[i]
-        mat[i,:].=coeffs_init.*exp.(-im.*Es.*t) 
+        mat[i,:].=coeffs_init.*exp.(-im.*Es.*t./ħ) 
     end
     return mat
 end
@@ -343,7 +363,7 @@ At each time step, we solve the linear system:
 
     Ψⁿ⁺¹ = A⁻¹ B Ψⁿ
 
-Since A does not change over time, we can factorize it once using LU decomposition for efficient iterative solving. 
+Since A does not change over time (also B does not change with time), we can factorize it once using LU decomposition for efficient iterative solving. 
 Using LU decomposition ensures better numerical stability and prevents inaccuracies due to floating-point precision errors.
 
 ------------------------------------------------------------------------------------
@@ -374,7 +394,7 @@ where we remove the indexes that defined the outside boundary. This eliminates t
 ------------------------------------------------------------------------------------
 
 ### 4.1 GRID SETUP
-- The computational grid is defined on a uniform 2D mesh** with Nx × Ny points.
+- The computational grid is defined on a uniform 2D mesh with Nx × Ny points.
 - The spatial step sizes are:
   
       dx = Lx / (Nx - 1),  dy = Ly / (Ny - 1)
@@ -384,7 +404,7 @@ where we remove the indexes that defined the outside boundary. This eliminates t
 
       Ψ₀(x, y) = exp( -((x - x₀)² + (y - y₀)²) / 2σ² ) * exp(i(kx₀ x + ky₀ y))
 
-- The wavefunction is **normalized** at every time step:
+- The wavefunction is normalized at every time step (just for safety, norm should stay unchanged during evolution):
 
       Ψ /= sqrt(sum(abs2.(Ψ) * dx * dy))
 
@@ -486,56 +506,6 @@ function Crank_Nicholson(billiard::Bi,Nt::Integer;fundamental::Bool=true,k_max=1
         return Crank_Nicholson(billiard,fem,pts_mask,ℏ,m,xlim,ylim,Nx,Ny,Lx,Ly,dx,dy,dt,x_grid,y_grid,Nt)
     end
 end
-
-### UNUSED ###
-"""
-    build_1D_Laplacian(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
-
-The Laplacian operator ∇²Ψ in one dimension is given by:
-    ∇²Ψ(x) = ∂²Ψ / ∂x²
-Using **central finite differences**, this is approximated as:
-    ∂²Ψ / ∂x² ≈ (Ψ_{i+1} - 2Ψ_{i} + Ψ_{i-1}) / Δx²
-This can be written as a matrix equation:
-    D_{xx} Ψ = (1/Δx²) * M Ψ
-where `M` is the **finite difference matrix**, given by:
-
-    ⎡ -2   1   0   0  ⋯   0 ⎤
-    ⎢  1  -2   1   0  ⋯   0 ⎥
-    ⎢  0   1  -2   1  ⋯   0 ⎥
-M=  ⎢  0   0   1  -2  ⋯   0 ⎥   (Nx × Nx)
-    ⎢  ⋮   ⋮   ⋮   ⋮   ⋱   1 ⎥
-    ⎣  0   0   0   0   1  -2⎦
-
-# Arguments
-- `N`: The number of grid points in one dimension.
-- `d`: The spatial step size in one dimension.
-
-# Returns
-- `SparseMatrixCSC`: A sparse matrix representing the 1D Laplacian operator.
-"""
-function build_1D_Laplacian_LEGACY(N::Integer,d::T)::SparseMatrixCSC where {T<:Real}
-    return spdiagm(0=>fill(-2.0,N), 1=>fill(1.0,N-1), -1 => fill(1.0,N-1))/d^2
-end
-
-"""
-    boundary_condition_infinite_potential(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
-
-Construct the Boundary as a Sparse Matrix since it will only have diagonal elements by construction (from the Schrodinger equation, check reference for more details).
-
-# Arguements
-- `cn`: A `Crank_Nicholson` object.
-- `V0=1e12`: The effective "infinite" potential energy value for the billiard boundary condition. Must be a very large value to prevent leakage to the outside.
-
-# Returns
-- `SparseMatrixCSC`: A sparse matrix representing the infinite potential boundary condition.
-"""
-function boundary_condition_infinite_potential_LEGACY(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
-    V=V0.*(1 .-cn.pts_mask)
-    V_default=spdiagm(0=>vec(V)) 
-    return V_default
-end
-
-### END UNUSED ###
 
 """
     Hamiltonian(cn::Crank_Nicholson{T};V0=1e12)::SparseMatrixCSC where {T<:Real}
@@ -642,14 +612,14 @@ function evolve_clark_nicholson(cn::Crank_Nicholson{T},H::SparseMatrixCSC,ψ0::M
     raw_snapshots=Vector{Vector{Complex{T}}}(undef,nsnap)
     snap_idx=1
     @showprogress desc="Evolving the wavepacket..." for t in 1:cn.Nt
-        mul!(b,B,ψ)  # Compute B * ψ efficiently
-        ψ=Afactor\b  # Solve linear system (main expensive step). For large matrices the default solve is much faster than calling gmres
+        mul!(b,B,ψ)  # Compute b = B * ψ efficiently (from Ψ_{n+1} = A^-1 * B * Ψ_{n} == A * Ψ_{n+1} = B * Ψ_{n}). This step is O(nnz(B)) * O(nnz(H)).
+        ψ=Afactor\b  # Solve linear system (main expensive step) (solves A * Ψ = b for Ψ). For large matrices the default solve is much faster than calling gmres.
         if t % save_after_iterations==0
             raw_snapshots[snap_idx]=copy(ψ)  # Store raw wavefunction vector
             snap_idx+=1
         end
     end
-    # --- Postprocessing (Separate from expensive loop) ---
+    # Postprocessing (Separate from expensive loop)
     snapshots=Vector{Matrix{T}}(undef,nsnap)
     matrices_raw=Vector{Matrix{Complex{T}}}(undef,nsnap)
     shannon_entropy_values=Vector{T}(undef,nsnap)
@@ -734,6 +704,118 @@ function animate_wavepacket_clark_nicholson!(cn::Crank_Nicholson{T},info::Tuple{
         next!(progress)
     end
     println("Animation saved as $(filename)")
+end
+
+##### ENERGY EXPECTATION VALUES AND THE AUTOCORRELATION FUNCTION #####
+
+"""
+    energy_levels(ks::AbstractVector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
+
+Calculates the energy levels with the correct ħ and m scaling.
+
+### Arguments:
+- `ks::AbstractVector{T}`: The wavevectors of the basis.
+- `ħ::T=one(T)`: Reduced Planck constant.
+- `m::T=one(T)`: Mass of the problem.
+"""
+function energy_levels(ks::AbstractVector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
+    return (ħ^2/(2*m)).*(ks.^2)
+end
+
+
+
+"""
+    _expectation_E(coeffs::Vector{Complex{T}}, ks::AbstractVector{T}; ħ::T=one(T), m::T=one(T)) where {T<:Real}
+
+Energy expectation value for a single coefficient vector:
+⟨E⟩ = ∑ₙ |cₙ|² Eₙ with `Eₙ` from `energy_levels(ks; ħ, m)`.
+
+### Arguments:
+- `coeffs::Vector{Complex{T}}`: Modal coefficients (same ordering as `ks`).
+- `ks::AbstractVector{T}`: Wavenumbers of the modes.
+- `ħ::T=one(T)`: Reduced Planck constant.
+- `m::T=one(T)`: Particle mass.
+
+### Returns:
+- `T`: The expectation value ⟨E⟩. If `coeffs` are normalized (∑|c|²=1) this is the physical mean energy.
+"""
+function _expectation_E(coeffs::Vector{Complex{T}},ks::Vector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
+    return sum(abs2.(coeffs).*energy_levels(ks,ħ=ħ,m=m))
+end
+
+"""
+    expectation_E(C::Matrix{Complex{T}}, ks::AbstractVector{T}; ħ::T=one(T), m::T=one(T)) where {T<:Real}
+
+Energy expectation values for a **time series** of coefficient rows.
+Assumes `C` has shape (ntimes, nmodes), with `C[i,j]` the coefficient of mode `j` at time index `i`.
+
+Computes for each time `i`:
+⟨E⟩(tᵢ) = ∑ⱼ |C[i,j]|² Eⱼ.
+
+### Arguments:
+- `C::Matrix{Complex{T}}`: Coefficient matrix of size (ntimes, nmodes).
+- `ks::AbstractVector{T}`: Wavenumbers of the modes (length `nmodes`).
+- `ħ::T=one(T)`: Reduced Planck constant.
+- `m::T=one(T)`: Particle mass.
+
+### Returns:
+- `Vector{T}`: Vector `E_of_t` of length `ntimes` with the energy expectation at each time.
+"""
+function expectation_E(C::Matrix{Complex{T}},ks::Vector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
+    nt,_=size(C)
+    Es=energy_levels(ks; ħ=ħ, m=m)
+    E=Vector{T}(undef, nt)
+    @inbounds for i in 1:nt
+        E[i]=sum(abs2.(view(C,i,:)).*Es)
+    end
+    return E
+end
+
+"""
+    _autocorr_from_coeffs_with_Es(c0::Vector{Complex{T}}, Es::AbstractVector{T}, ts::AbstractVector{T}; ħ::T=one(T)) where {T<:Real}
+
+Autocorrelation using only the **initial** coefficients and energies:
+C(t) = ⟨ψ(0)|ψ(t)⟩ = ∑ₙ |cₙ(0)|² * exp(-i Eₙ t / ħ).
+
+### Arguments:
+- `c0::Vector{Complex{T}}`: Initial coefficients at t=0 (ordering must match `Es`).
+- `Es::AbstractVector{T}`: Energy levels (e.g. from `energy_levels`).
+- `ts::AbstractVector{T}`: Times at which to evaluate `C(t)`.
+- `ħ::T=one(T)`: Reduced Planck constant.
+
+### Returns:
+- `Vector{Complex{T}}`: Values of the autocorrelation `C(t)` at each `t` in `ts`.
+"""
+function _autocorr_from_coeffs_with_Es(c0::Vector{Complex{T}},Es::Vector{T},ts::Vector{T};ħ=one(T))
+    w0=abs2.(c0)
+    C=Vector{Complex{T}}(undef,length(ts))
+    @inbounds for i in eachindex(ts)
+        t=ts[i]
+        C[i]=sum(@. w0*exp(-im*Es*(t/ħ)))/denom
+    end
+    return C
+end
+
+"""
+    autocorr_from_coeffs(c0::Vector{Complex{T}}, ks::AbstractVector{T}, ts::AbstractVector{T}; ħ::T=one(T), m::T=one(T)) where {T<:Real}
+
+Convenience wrapper to compute the autocorrelation
+C(t) = ∑ₙ |cₙ(0)|² * exp(-i Eₙ t / ħ)
+from initial coefficients `c0` and wavenumbers `ks`.
+
+### Arguments:
+- `c0::Vector{Complex{T}}`: Initial coefficients at t=0 (ordering matches `ks`).
+- `ks::AbstractVector{T}`: Wavenumbers of the modes.
+- `ts::AbstractVector{T}`: Times at which to evaluate `C(t)`.
+- `ħ::T=one(T)`: Reduced Planck constant.
+- `m::T=one(T)`: Particle mass.
+
+### Returns:
+- `Vector{Complex{T}}`: Values of the autocorrelation `C(t)` at each `t` in `ts`.
+"""
+function autocorr_from_coeffs(c0::Vector{Complex{T}},ks::Vector{T},ts::Vector{T};ħ=one(T),m=one(T)) where {T<:Real}
+    Es=energy_levels(ks;ħ=ħ,m=m)
+    return _autocorr_from_coeffs_with_Es(c0,Es,ts;ħ=ħ)
 end
 
 ##### UNCERTANTIES ######
