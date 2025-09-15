@@ -248,12 +248,13 @@ Saves the evolution basis parameters required for reconstructing a wavepacket ev
 - `pts_mask::Vector{Bool}`: Boolean mask indicating which grid points are inside the billiard.
 - `dx::T`: The grid spacing in the x-direction.
 - `dy::T`: The grid spacing in the y-direction.
+- `ks::Vector{T}`: Vector of wavenumbers.
 
 # Returns
 - `Nothing`
 """
-function save_evolution_basis_params!(filename::String,Psi2ds::Vector{Matrix{T}},overlaps::Vector{Complex{T}},x_grid::Vector{T},y_grid::Vector{T},pts_mask::Vector{Bool},dx::T,dy::T) where {T<:Real}
-    @save filename Psi2ds overlaps x_grid y_grid pts_mask dx dy
+function save_evolution_basis_params!(filename::String,Psi2ds::Vector{Matrix{T}},overlaps::Vector{Complex{T}},x_grid::Vector{T},y_grid::Vector{T},pts_mask::Vector{Bool},dx::T,dy::T,ks::Vector{T}) where {T<:Real}
+    @save filename Psi2ds overlaps x_grid y_grid pts_mask dx dy ks
 end
 
 """
@@ -273,10 +274,12 @@ A tuple containing:
 - `pts_mask::Vector{Bool}`: Boolean mask indicating grid points inside the billiard.
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
+- `ks::Vector{T}`: Vector of wavenumbers.
+
 """
 function read_evolution_basis_params(filename::String)
-    @load filename Psi2ds overlaps x_grid y_grid pts_mask dx dy
-    return Psi2ds,overlaps,x_grid,y_grid,pts_mask,dx,dy
+    @load filename Psi2ds overlaps x_grid y_grid pts_mask dx dy ks
+    return Psi2ds,overlaps,x_grid,y_grid,pts_mask,dx,dy,ks
 end
 
 """
