@@ -142,15 +142,17 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
                 thread_overlaps[t]=zero(Complex{type}) # since the G is complex but wavefunction real
                 thread_norm2[t]=zero(type) # wavefunction norm is real
             end
-            Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
-                idx=pts_masked_indices[j] # each interior point [idx] -> (x,y)
-                tid=Threads.threadid()  # thread ID for safe accumulation, one per calculation
-                @inbounds begin
-                    x,y=pts[idx]
-                    psi_val=ϕ(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G
-                    Psi_flat[idx]=psi_val
-                    thread_overlaps[tid]+=psi_val*G[idx] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j]
-                    thread_norm2[tid]+=abs2(psi_val) # accumulate local Ψ value for later normalization
+            @fastmath begin
+                Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
+                    idx=pts_masked_indices[j] # each interior point [idx] -> (x,y)
+                    tid=Threads.threadid()  # thread ID for safe accumulation, one per calculation
+                    @inbounds begin
+                        x,y=pts[idx]
+                        psi_val=ϕ(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G
+                        Psi_flat[idx]=psi_val
+                        thread_overlaps[tid]+=psi_val*G[idx] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j]
+                        thread_norm2[tid]+=abs2(psi_val) # accumulate local Ψ value for later normalization
+                    end
                 end
             end
             sum_norm2=sum(thread_norm2) # norm accumulator for a given eigenstate
