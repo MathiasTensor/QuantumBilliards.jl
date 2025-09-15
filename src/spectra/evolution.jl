@@ -786,7 +786,7 @@ C(t) = ⟨ψ(0)|ψ(t)⟩ = ∑ₙ |cₙ(0)|² * exp(-i Eₙ t / ħ).
 ### Returns:
 - `Vector{Complex{T}}`: Values of the autocorrelation `C(t)` at each `t` in `ts`.
 """
-function _autocorr_from_coeffs_with_Es(c0::Vector{Complex{T}},Es::Vector{T},ts::Vector{T};ħ=one(T))
+function _autocorr_from_coeffs_with_Es(c0::Vector{Complex{T}},Es::Vector{T},ts::Vector{T};ħ=one(T)) where {T<:Real}
     w0=abs2.(c0)
     C=Vector{Complex{T}}(undef,length(ts))
     @inbounds for i in eachindex(ts)
