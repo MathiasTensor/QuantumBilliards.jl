@@ -79,13 +79,6 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wa
     return (amp.*phase)
 end
 
-@inline function _blockrange(t::Int,n::Int,nt::Int)
-    q,r=divrem(n,nt)
-    lo=(t-1)*q+min(t-1,r)+1
-    hi=lo+q-1+(t<=r ? 1 : 0)
-    return lo:hi
-end
-
 """
     gaussian_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, 
                           billiard::Bi, packet::Wavepacket{T}; b::Float64=5.0) 
@@ -148,47 +141,33 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     for i in eachindex(ks) # unless thousands of cores never multithread this
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            #=
-            @fastmath begin
-                Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
-                    idx=pts_masked_indices[j] # each interior point [idx] -> (x,y)
-                    tid=Threads.threadid()  # thread ID for safe accumulation, one per calculation
-                    x,y=pts[idx]
-                    psi_val=ϕ_float_bessel(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G. Do it with floating point bessel computation, no need for double_precision here
-                    Psi_flat[idx]=psi_val
-                    thread_overlaps[tid]+=psi_val*G[idx] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j]
-                    thread_norm2[tid]+=abs2(psi_val) # accumulate local Ψ value for later normalization
-                end
-            end
-            =#
-
             @fastmath begin
                 Threads.@threads :static for t in 1:NT_eff
                     # compute this thread's block [lo:hi]
-                    q,r=divrem(nmask, NT_eff)
+                    q,r=divrem(nmask,NT_eff)
                     lo=(t-1)*q+min(t-1,r) + 1
                     hi=lo+q-1+(t <= r ? 1 : 0)
-                    local_o=zero(Complex{T})
+                    local_o=zero(Complex{T}) # local accumulators in each thread
                     local_n=zero(T)
                     @inbounds for jj in lo:hi
-                        idx=pts_masked_indices[jj]
+                        idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                         x,y=pts[idx]
-                        ψ=ϕ_float_bessel(x,y,k,bdPoints,us)
+                        ψ=ϕ_float_bessel(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G. Do it with floating point bessel computation, no need for double_precision here
                         Psi_flat[idx]=ψ
-                        local_o+=ψ*G[idx] 
-                        local_n+=abs2(ψ)
+                        local_o+=ψ*G[idx] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j], thread safe
+                        local_n+=abs2(ψ) # accumulate local Ψ value for later normalization, thread safe
                     end
                     thread_overlaps[t]=local_o
                     thread_norm2[t]=local_n
                 end
             end
-            
             sum_norm2=sum(thread_norm2) # norm accumulator for a given eigenstate
             norm_i=sqrt(w*sum_norm2) # 1/norm_i*dx*dy, this should give sum( 1/√Norm*dx*dy Ψ^2 ) ≈ 1
-            @inbounds @simd for jj in eachindex(pts_masked_indices)
-                Psi_flat[pts_masked_indices[jj]]/=norm_i # make the wavefunctions normalized inplace, Ψ -> 1/norm_i * Ψ
+            M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
+            @inbounds @simd for jj in 1:nmask
+                M[pts_masked_indices[jj]]=psi_masked[jj]/norm_i
             end
-            Psi2ds[i]=copy(reshape(Psi_flat,ny,nx)) # also return the normalized wavefunction matrices
+            Psi2ds[i]=M
             overlaps[i]=sum(thread_overlaps)*(w/norm_i) # from the thread safe local accumulation we then multiply with the dx*dy element due to linear grid. This is 1/norm_i * sum( conj(Ψ) * G ) * w 
             next!(progress)
         end
