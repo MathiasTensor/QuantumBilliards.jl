@@ -94,6 +94,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `packet::Wavepacket{T}`: The initial Gaussian wavepacket to be projected onto the eigenfunctions.
 - `b::Float64=5.0`: Scaling parameter for the spatial resolution grid.
 - `fundamental_domain::Bool=true`: If we consider only the desymmetrized billiard domain.
+- `use_single_precision::Bool=true`: If the bessel Y0 function in wavefunction calculations is calculated in single precision for speed.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: List of wavefunction matrices corresponding to the given wavenumbers.

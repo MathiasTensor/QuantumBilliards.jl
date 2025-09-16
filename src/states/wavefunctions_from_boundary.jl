@@ -56,14 +56,14 @@ end
 - `ϕ::T`: The value of the wavefunction at the given point (x,y).
 """
 @inline function ϕ_float_bessel(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
-    xy=bdPoints.xy # ::Vector{SVector{2,T}}
-    ds=bdPoints.ds # ::Vector{T}
+    xy=bdPoints.xy 
+    ds=bdPoints.ds 
     s=zero(T)
     @inbounds @simd for j in eachindex(us)
         p=xy[j]
         r=hypot(x-p[1],y-p[2]) # stays in T
-        bj=T(Bessels.bessely0(T(k*r))) # guard against type T return
-        s=muladd(bj,us[j]*ds[j],s) # s += bj * us[j] * ds[j]
+        yj=T(Bessels.bessely0(T(k*r))) # guard against type T return
+        s=muladd(yj,us[j]*ds[j],s) # s += yj * us[j] * ds[j] efficiently
     end
     return s*T(0.25)
 end
