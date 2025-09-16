@@ -189,6 +189,8 @@ k_max=maximum(ks)
     Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     MIN_CHUNK=4_096 # keep ≥ this many points per thread
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
+    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     for i in eachindex(ks)
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
