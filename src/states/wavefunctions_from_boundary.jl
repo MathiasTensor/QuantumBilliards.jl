@@ -68,54 +68,6 @@ end
     return s*T(0.25)
 end
 
-
-"""
-    ϕ_FASTMATH_SAFE(x::T, y::T, k::T, bd::BoundaryPoints{T}, us::Vector{T}; thresh = √eps)
-
-Compute the 2D Helmholtz wavefunction at point `(x,y)` via the boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds under relaxed (​`@fastmath`) floating-point rules, with a branchless guard
-against the Y0-singularity at zero.
-
-# Arguments
-- `x::T`: x-coordinate of the point to compute the wavefunction.
-- `y::T`: y-coordinate of the point to compute the wavefunction.
-- `k::T`: The eigenvalue for which the wavefunction is to be computed.
-- `bdPoints::BoundaryPoints`: Boundary discretization information.
-- `us::Vector`: Vector of boundary functions.
-
-# Returns
-- `ϕ::T`: The value of the wavefunction at the given point (x,y).
-"""
-@inline function ϕ_FASTMATH_SAFE(x::T,y::T,k::T,bd::BoundaryPoints{T},us::Vector{T};thresh=sqrt(eps(T))) where {T<:Real}
-    targ=SVector(x,y)
-    acc=zero(T)
-    @inbounds @simd for i in eachindex(bd.ds)
-        d=norm(targ-bd.xy[i])
-        acc+=ifelse(d>=thresh,Bessels.bessely0(k*d)*us[i]*bd.ds[i],zero(T))  # branchless: ifelse → SIMD mask/blend
-    end
-    return T(0.25*acc)
-end
-
-"""
-    ϕ(pts::Vector{SVector{2,T}},k::T,bdPoints::BoundaryPoints{T},us::Vector{T}) where {T<:Real}
-
-Maximally vectorized version of the single point ϕ(x::T,y::T,...) function. Use only if there are at most a few dozen of wavefunctions to construct as the memory usage is extremely big.
-
-# Arguments
-- `pts::Vector{SVector{2,T}}`: Vector of points (x,y) to compute the wavefunctions.
-- `k::T`: The eigenvalue for which the wavefunction is to be computed.
-- `bdPoints::BoundaryPoints{T}`: Boundary discretization information.
-- `us::Vector{T}`: Vector of boundary functions.
-
-# Returns
-- `ϕs::Vector{T}`: Vector of the values of the wavefunctions at the given points (x,y).
-"""
-@inline function ϕ(pts::Vector{SVector{2,T}},k::T,bdPoints::BoundaryPoints{T},us::Vector{T}) where {T<:Real}
-    xs_pts,ys_pts=getindex.(pts,1),getindex.(pts,2)
-    xs_bd,ys_bd=getindex.(bdPoints.xy,1),getindex.(bdPoints.xy,2)
-    distances=hypot.(xs_pts.-xs_bd',ys_pts.-ys_bd')
-    return T.(sum(Bessels.bessely0.(k.*distances).* us'.* bdPoints.ds',dims=2)./4)
-end
-
 """
     wavefunction_multi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
