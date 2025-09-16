@@ -131,9 +131,9 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     G_norm=w*sum(abs2,@view G[pts_masked_indices]) # this is sum( G[i,j]*dx*dy for (i,j) in pts_masked_indices), where we do sum only on the interior points
     G_norm2=G_norm>zero(T) ? sqrt(G_norm) : one(T)
     G./=G_norm2  # now sum( |G[i,j|^2*dx*dy for (i,j) in pts_masked_indices ) ≈ 1
-    Psi_flat=zeros(T,sz) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
+    Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     MIN_CHUNK=4_096 # keep ≥ this many points per thread
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     thread_overlaps=Vector{Complex{T}}(undef,NT_eff) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
@@ -165,7 +165,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
             norm_i=sqrt(w*sum_norm2) # 1/norm_i*dx*dy, this should give sum( 1/√Norm*dx*dy Ψ^2 ) ≈ 1
             M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
             @inbounds @simd for jj in 1:nmask
-                M[pts_masked_indices[jj]]=psi_masked[jj]/norm_i
+                M[pts_masked_indices[jj]]=Psi_flat[jj]/norm_i
             end
             Psi2ds[i]=M
             overlaps[i]=sum(thread_overlaps)*(w/norm_i) # from the thread safe local accumulation we then multiply with the dx*dy element due to linear grid. This is 1/norm_i * sum( conj(Ψ) * G ) * w 
