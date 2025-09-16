@@ -139,12 +139,12 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     G_norm2=G_norm>zero(T) ? sqrt(G_norm) : one(T)
     G./=G_norm2  # now sum( |G[i,j|^2*dx*dy for (i,j) in pts_masked_indices ) ≈ 1
     Psi_flat=zeros(T,sz) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    NT_all=Threads.nthreads()
+    NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
     MIN_CHUNK=4_096 # keep ≥ this many points per thread
-    NT_eff=max(1,min(NT_all,cld(nmask,MIN_CHUNK)))
-    thread_overlaps=Vector{Complex{T}}(undef,NT) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
-    thread_norm2=Vector{T}(undef,NT) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
+    NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
+    thread_overlaps=Vector{Complex{T}}(undef,NT_eff) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
+    thread_norm2=Vector{T}(undef,NT_eff) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
     for i in eachindex(ks) # unless thousands of cores never multithread this
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
