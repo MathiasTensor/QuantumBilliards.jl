@@ -28,7 +28,44 @@ end
     target_point=SVector(x,y)
     distances=norm.(Ref(target_point).-bdPoints.xy)
     weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
-    return sum(weighted_bessel_values)*0.25
+    return T(sum(weighted_bessel_values)*0.25)
+end
+
+"""
+    ϕ_float_bessel(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
+
+Computes the wavefunction via the boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds with Float32 input tipe to bessely0 for any T<:Real in arguments and returns the value in type T. It is useful whenever high precision for the wavefunctions is not neccesery (like in wavepacket evolution). For a specific `k` it needs the boundary discretization information encoded into the `BoundaryPoints` struct:
+
+```julia
+struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
+xy::Vector{SVector{2, T}} # boundary (x,y) pts
+normal::Vector{SVector{2, T}} # Normals at for those (x,y) pts
+s::Vector{T} # Arclengths for those (x,y) pts
+ds::Vector{T} # Differences between the arclengths of pts.
+end
+```
+
+# Arguments
+- `x::T`: x-coordinate of the point to compute the wavefunction.
+- `y::T`: y-coordinate of the point to compute the wavefunction.
+- `k::T`: The eigenvalue for which the wavefunction is to be computed.
+- `bdPoints::BoundaryPoints`: Boundary discretization information.
+- `us::Vector`: Vector of boundary functions.
+
+# Returns
+- `ϕ::T`: The value of the wavefunction at the given point (x,y).
+"""
+@inline function ϕ_float_bessel(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
+    xy=bdPoints.xy # ::Vector{SVector{2,T}}
+    ds=bdPoints.ds # ::Vector{T}
+    s=zero(T)
+    @inbounds @simd for j in eachindex(us)
+        p=xy[j]
+        r=hypot(x-p[1],y-p[2]) # stays in T
+        bj=T(Bessels.bessely0(T(k*r))) # guard against type T return
+        s=muladd(bj,us[j]*ds[j],s) # s += bj * us[j] * ds[j]
+    end
+    return s*T(0.25)
 end
 
 
@@ -55,7 +92,7 @@ against the Y0-singularity at zero.
         d=norm(targ-bd.xy[i])
         acc+=ifelse(d>=thresh,Bessels.bessely0(k*d)*us[i]*bd.ds[i],zero(T))  # branchless: ifelse → SIMD mask/blend
     end
-    return 0.25*acc
+    return T(0.25*acc)
 end
 
 """
@@ -76,7 +113,7 @@ Maximally vectorized version of the single point ϕ(x::T,y::T,...) function. Use
     xs_pts,ys_pts=getindex.(pts,1),getindex.(pts,2)
     xs_bd,ys_bd=getindex.(bdPoints.xy,1),getindex.(bdPoints.xy,2)
     distances=hypot.(xs_pts.-xs_bd',ys_pts.-ys_bd')
-    return sum(Bessels.bessely0.(k.*distances).* us'.* bdPoints.ds',dims=2)./4
+    return T.(sum(Bessels.bessely0.(k.*distances).* us'.* bdPoints.ds',dims=2)./4)
 end
 
 """
