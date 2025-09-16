@@ -84,7 +84,7 @@ end
                           billiard::Bi, packet::Wavepacket{T}; b::Float64=5.0) 
                           -> (Vector{Matrix{T}}, Vector{T}, Vector{T}, Vector{T}, BitVector, T, T)
 
-Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacket in a given billiard system. This gives us the coefficients and the basis eigenfunction for evolution and visualization. For constructing the basis elements uses single precision for efficiency.
+Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacket in a given billiard system. This gives us the coefficients and the basis eigenfunction for evolution and visualization. For constructing the basis elements uses single precision for efficiency. This function is well optimized for large number of cores (64+).
 
 # Arguments
 - `ks::Vector{T}`: Vector of wavenumbers associated with the eigenfunctions.
@@ -165,7 +165,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
             sum_norm2=sum(thread_norm2) # norm accumulator for a given eigenstate
             norm_i=sqrt(w*sum_norm2) # 1/norm_i*dx*dy, this should give sum( 1/√Norm*dx*dy Ψ^2 ) ≈ 1
             M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
-            @inbounds @simd for jj in 1:nmask
+            @inbounds for jj in 1:nmask
                 M[pts_masked_indices[jj]]=Psi_flat[jj]/norm_i
             end
             Psi2ds[i]=M
@@ -175,7 +175,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     end
     a=sum(abs2,overlaps)
     if ((a<0.95) || (a>1.05))
-        @error "Σ |overlap|^2 = $(a): basis may be too small or not well resolved."
+        @warn "Σ |overlap|^2 = $(a): basis may be too small or not well resolved."
     end
     @info "numerical Σ |overlap|^2 = $(a), renormalized to 1"
     overlaps./=sqrt(a) # inplace normalize the overlaps to 1
@@ -735,7 +735,7 @@ Calculates the energy levels with the correct ħ and m scaling.
 - `ħ::T=one(T)`: Reduced Planck constant.
 - `m::T=one(T)`: Mass of the problem.
 """
-function energy_levels(ks::AbstractVector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
+@inline function energy_levels(ks::AbstractVector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
     return (ħ^2/(2*m)).*(ks.^2)
 end
 
@@ -756,8 +756,8 @@ Energy expectation value for a single coefficient vector:
 ### Returns:
 - `T`: The expectation value ⟨E⟩. If `coeffs` are normalized (∑|c|²=1) this is the physical mean energy.
 """
-function _expectation_E(coeffs::Vector{Complex{T}},ks::Vector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
-    return sum(abs2.(coeffs).*energy_levels(ks,ħ=ħ,m=m))
+@inline function _expectation_E(coeffs::Vector{Complex{T}},ks::Vector{T};ħ::T=one(T),m::T=one(T)) where {T<:Real}
+    return @inbounds(sum(abs2.(coeffs).*energy_levels(ks,ħ=ħ,m=m)))
 end
 
 """
@@ -782,7 +782,7 @@ function expectation_E(C::Matrix{Complex{T}},ks::Vector{T};ħ::T=one(T),m::T=one
     nt,_=size(C)
     Es=energy_levels(ks; ħ=ħ, m=m)
     E=Vector{T}(undef, nt)
-    @inbounds for i in 1:nt
+    @inbounds @simd for i in 1:nt
         E[i]=sum(abs2.(view(C,i,:)).*Es)
     end
     return E
