@@ -81,13 +81,14 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
+- `MIN_CHUNK::Int=4096`: keep ≥ this many boundary points per thread
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -107,7 +108,6 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
     Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    MIN_CHUNK=4_096 # keep ≥ this many points per thread
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
@@ -154,6 +154,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `xgrid_size::Int=2000`: (Optional), Size of the x grid for the husimi functions. Default is 2000.
 - `ygrid_size::Int=1000`: (Optional), Size of the y grid for the husimi functions. Default is 1000.
 - `use_fixed_grid::Bool=true`: (Optional), Whether to use a fixed grid for the husimi functions. Default is true.
+- `MIN_CHUNK::Int=4096`: keep ≥ this many boundary points per thread
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
@@ -163,7 +164,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -183,7 +184,6 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
     Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    MIN_CHUNK=4_096 # keep ≥ this many points per thread
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")

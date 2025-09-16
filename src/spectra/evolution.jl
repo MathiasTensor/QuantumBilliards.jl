@@ -94,6 +94,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `packet::Wavepacket{T}`: The initial Gaussian wavepacket to be projected onto the eigenfunctions.
 - `b::Float64=5.0`: Scaling parameter for the spatial resolution grid.
 - `fundamental_domain::Bool=true`: If we consider only the desymmetrized billiard domain.
+- `MIN_CHUNK::Int=4096`: keep ≥ this many boundary points per thread
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: List of wavefunction matrices corresponding to the given wavenumbers.
@@ -104,7 +105,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
 """
-function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
+function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks) # the wavefunction size must be the same for all k, therefore largest k size for all since we must resolve many points per wavelength
     L=billiard.length
     if fundamental_domain
@@ -135,7 +136,6 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
     Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    MIN_CHUNK=4_096 # keep ≥ this many points per thread
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     thread_overlaps=Vector{Complex{T}}(undef,NT_eff) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
     thread_norm2=Vector{T}(undef,NT_eff) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
