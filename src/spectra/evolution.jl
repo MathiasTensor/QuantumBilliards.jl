@@ -113,7 +113,6 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 """
 function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks) # the wavefunction size must be the same for all k, therefore largest k size for all since we must resolve many points per wavelength
-    type_t=use_single_precision ? Float32 : T
     L=billiard.length
     if fundamental_domain
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
