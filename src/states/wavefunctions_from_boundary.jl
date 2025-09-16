@@ -129,50 +129,14 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
-- `thresh=sqrt(eps(T))`: Threshold when we get too close to the boundary and risk a `Y0` singularity. Just set it to `zero(T)` for those cases safely.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,thresh=sqrt(eps(T))) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
-    type=eltype(k_max)
-    L=billiard.length
-    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
-    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
-    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
-    x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-    sz=length(pts)
-    # Determine points inside the billiard only once if inside_only is true
-    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
-    pts_masked_indices=findall(pts_mask)
-    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
-    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    Psi_flat=zeros(type,sz)
-    @fastmath @inbounds for i in eachindex(ks)
-        @inbounds begin
-            fill!(Psi_flat,zero(T))
-            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            Threads.@threads for j in eachindex(pts_masked_indices)
-                idx=pts_masked_indices[j]
-                @inbounds begin
-                    x,y=pts[idx]
-                    #Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
-                    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
-                end
-            end
-            Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
-            next!(progress)
-        end
-    end
-    return Psi2ds,x_grid,y_grid
-end
-
-function wavefunction_multi_TEST(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,thresh=sqrt(eps(T))) where {Bi<:AbsBilliard,T<:Real}
-k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
     xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
@@ -234,7 +198,6 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `xgrid_size::Int=2000`: (Optional), Size of the x grid for the husimi functions. Default is 2000.
 - `ygrid_size::Int=1000`: (Optional), Size of the y grid for the husimi functions. Default is 1000.
 - `use_fixed_grid::Bool=true`: (Optional), Whether to use a fixed grid for the husimi functions. Default is true.
-- `thresh=sqrt(eps(T))`: Threshold when we get too close to the boundary and risk a `Y0` singularity. Just set it to `zero(T)` for those cases safely.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
@@ -244,35 +207,47 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi; b::Float64=5.0, inside_only::Bool=true, fundamental=true, use_fixed_grid=true, xgrid_size=2000, ygrid_size=1000, thresh=sqrt(eps(T))) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
-    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
     nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
-    x_grid,y_grid=collect(type,range(xlim...,nx)),collect(type,range(ylim...,ny))
+    x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
     sz=length(pts)
     # Determine points inside the billiard only once if inside_only is true
     pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
     pts_masked_indices=findall(pts_mask)
+    NT=Threads.nthreads()
+    nmask=length(pts_masked_indices)
+    Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    MIN_CHUNK=4_096 # keep ≥ this many points per thread
+    NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    Psi_flat=zeros(type,sz)
-    @fastmath @inbounds for i in eachindex(ks)
+    for i in eachindex(ks)
         @inbounds begin
-            fill!(Psi_flat,zero(T))
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            Threads.@threads for j in eachindex(pts_masked_indices)
-                idx=pts_masked_indices[j]
-                @inbounds begin
-                    x,y=pts[idx]
-                    #Psi_flat[idx]=ϕ_FASTMATH_SAFE(x,y,k,bdPoints,us,thresh=thresh)
-                    Psi_flat[idx]=ϕ(x,y,k,bdPoints,us)
+            @fastmath begin
+                Threads.@threads :static for t in 1:NT_eff
+                    # compute this thread's block [lo:hi]
+                    q,r=divrem(nmask,NT_eff)
+                    lo=(t-1)*q+min(t-1,r) + 1
+                    hi=lo+q-1+(t<=r ? 1 : 0)
+                    @inbounds for jj in lo:hi
+                        idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
+                        x,y=pts[idx]
+                        Psi_flat[jj]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
+                    end
                 end
             end
-            Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
+            M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
+            @inbounds for jj in 1:nmask 
+                M[pts_masked_indices[jj]]=Psi_flat[jj]
+            end
+            Psi2ds[i]=M
             next!(progress)
         end
     end
