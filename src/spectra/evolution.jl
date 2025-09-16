@@ -79,12 +79,19 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wa
     return (amp.*phase)
 end
 
+@inline function _blockrange(t::Int,n::Int,nt::Int)
+    q,r=divrem(n,nt)
+    lo=(t-1)*q+min(t-1,r)+1
+    hi=lo+q-1+(t<=r ? 1 : 0)
+    return lo:hi
+end
+
 """
     gaussian_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, 
                           billiard::Bi, packet::Wavepacket{T}; b::Float64=5.0) 
                           -> (Vector{Matrix{T}}, Vector{T}, Vector{T}, Vector{T}, BitVector, T, T)
 
-Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacket in a given billiard system. This gives us the coefficients and the basis eigenfunction for evolution and visualization.
+Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacket in a given billiard system. This gives us the coefficients and the basis eigenfunction for evolution and visualization. For constructing the basis elements uses single precision for efficiency.
 
 # Arguments
 - `ks::Vector{T}`: Vector of wavenumbers associated with the eigenfunctions.
@@ -94,7 +101,6 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `packet::Wavepacket{T}`: The initial Gaussian wavepacket to be projected onto the eigenfunctions.
 - `b::Float64=5.0`: Scaling parameter for the spatial resolution grid.
 - `fundamental_domain::Bool=true`: If we consider only the desymmetrized billiard domain.
-- `use_single_precision::Bool=true`: If the bessel Y0 function in wavefunction calculations is calculated in single precision for speed.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`: List of wavefunction matrices corresponding to the given wavenumbers.
@@ -105,7 +111,7 @@ Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacke
 - `dx::T`: Grid spacing in the x-direction.
 - `dy::T`: Grid spacing in the y-direction.
 """
-function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true,use_single_precision::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks) # the wavefunction size must be the same for all k, therefore largest k size for all since we must resolve many points per wavelength
     type_t=use_single_precision ? Float32 : T
     L=billiard.length
@@ -134,13 +140,16 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     G_norm2=G_norm>zero(T) ? sqrt(G_norm) : one(T)
     G./=G_norm2  # now sum( |G[i,j|^2*dx*dy for (i,j) in pts_masked_indices ) ≈ 1
     Psi_flat=zeros(T,sz) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    thread_overlaps=Vector{Complex{T}}(undef,Threads.nthreads()) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
-    thread_norm2=Vector{T}(undef,Threads.nthreads()) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
+    NT_all=Threads.nthreads()
+    nmask=length(pts_masked_indices)
+    MIN_CHUNK=4_096 # keep ≥ this many points per thread
+    NT_eff=max(1,min(NT_all,cld(nmask,MIN_CHUNK)))
+    thread_overlaps=Vector{Complex{T}}(undef,NT) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
+    thread_norm2=Vector{T}(undef,NT) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
     for i in eachindex(ks) # unless thousands of cores never multithread this
         @inbounds begin
             k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            fill!(thread_overlaps,zero(Complex{T})) # since the G is complex but wavefunction real
-            fill!(thread_norm2,zero(T)) # wavefunction norm is real
+            #=
             @fastmath begin
                 Threads.@threads for j in eachindex(pts_masked_indices) # multithread this one since has most elements to thread over
                     idx=pts_masked_indices[j] # each interior point [idx] -> (x,y)
@@ -152,9 +161,34 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
                     thread_norm2[tid]+=abs2(psi_val) # accumulate local Ψ value for later normalization
                 end
             end
+            =#
+
+            @fastmath begin
+                Threads.@threads :static for t in 1:NT_eff
+                    # compute this thread's block [lo:hi]
+                    q,r=divrem(nmask, NT_eff)
+                    lo=(t-1)*q+min(t-1,r) + 1
+                    hi=lo+q-1+(t <= r ? 1 : 0)
+                    local_o=zero(Complex{T})
+                    local_n=zero(T)
+                    @inbounds for jj in lo:hi
+                        idx=pts_masked_indices[jj]
+                        x,y=pts[idx]
+                        ψ=ϕ_float_bessel(x,y,k,bdPoints,us)
+                        Psi_flat[idx]=ψ
+                        local_o+=ψ*G[idx] 
+                        local_n+=abs2(ψ)
+                    end
+                    thread_overlaps[t]=local_o
+                    thread_norm2[t]=local_n
+                end
+            end
+            
             sum_norm2=sum(thread_norm2) # norm accumulator for a given eigenstate
             norm_i=sqrt(w*sum_norm2) # 1/norm_i*dx*dy, this should give sum( 1/√Norm*dx*dy Ψ^2 ) ≈ 1
-            Psi_flat./=norm_i # make the wavefunctions normalized inplace, Ψ -> 1/norm_i * Ψ
+            @inbounds @simd for jj in eachindex(pts_masked_indices)
+                Psi_flat[pts_masked_indices[jj]]/=norm_i # make the wavefunctions normalized inplace, Ψ -> 1/norm_i * Ψ
+            end
             Psi2ds[i]=copy(reshape(Psi_flat,ny,nx)) # also return the normalized wavefunction matrices
             overlaps[i]=sum(thread_overlaps)*(w/norm_i) # from the thread safe local accumulation we then multiply with the dx*dy element due to linear grid. This is 1/norm_i * sum( conj(Ψ) * G ) * w 
             next!(progress)
