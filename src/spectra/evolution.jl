@@ -131,6 +131,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     G_norm=w*sum(abs2,@view G[pts_masked_indices]) # this is sum( G[i,j]*dx*dy for (i,j) in pts_masked_indices), where we do sum only on the interior points
     G_norm2=G_norm>zero(T) ? sqrt(G_norm) : one(T)
     G./=G_norm2  # now sum( |G[i,j|^2*dx*dy for (i,j) in pts_masked_indices ) ≈ 1
+    G_view=@view G[pts_masked_indices] 
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
     Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
@@ -146,15 +147,15 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
                     # compute this thread's block [lo:hi]
                     q,r=divrem(nmask,NT_eff)
                     lo=(t-1)*q+min(t-1,r) + 1
-                    hi=lo+q-1+(t <= r ? 1 : 0)
+                    hi=lo+q-1+(t<=r ? 1 : 0)
                     local_o=zero(Complex{T}) # local accumulators in each thread
                     local_n=zero(T)
                     @inbounds for jj in lo:hi
                         idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                         x,y=pts[idx]
                         ψ=ϕ_float_bessel(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G. Do it with floating point bessel computation, no need for double_precision here
-                        Psi_flat[idx]=ψ
-                        local_o+=ψ*G[idx] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j], thread safe
+                        Psi_flat[jj]=ψ
+                        local_o+=ψ*G_view[jj] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j], thread safe
                         local_n+=abs2(ψ) # accumulate local Ψ value for later normalization, thread safe
                     end
                     thread_overlaps[t]=local_o
