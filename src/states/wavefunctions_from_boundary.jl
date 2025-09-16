@@ -139,7 +139,11 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
-    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    if fundamental
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    else
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    end
     dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
     nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
     x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
@@ -211,7 +215,11 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
-    xlim,ylim=boundary_limits(billiard.full_boundary; grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    if fundamental
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    else
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
+    end
     dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
     nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
     x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
