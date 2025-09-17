@@ -107,7 +107,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     pts_masked_indices=findall(pts_mask)
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
-    Psi_flat=Vector{T}(undef,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    Psi_flat=zeros(T,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
