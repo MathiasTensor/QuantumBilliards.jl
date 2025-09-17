@@ -122,7 +122,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
                 @inbounds for jj in lo:hi
                     idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                     x,y=pts[idx]
-                    Psi_flat[jj]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
+                    Psi_flat[idx]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
                 end
             end
         end
