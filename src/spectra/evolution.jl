@@ -133,7 +133,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
     G_view=@view G[pts_masked_indices] 
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
-    Psi_flat=Vector{T}(undef,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    Psi_flat=zeros(T,undef,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     thread_overlaps=Vector{Complex{T}}(undef,NT_eff) # each thread will have it's own calculation of ϕ[idx] and G[idx] and then later sum all the threads. Each thread works independently and no race conditions.
     thread_norm2=Vector{T}(undef,NT_eff) # since this function normalizes both overlaps and wavefunctions we use the same thread safe accumulator logic
@@ -151,7 +151,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
                     idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                     x,y=pts[idx]
                     ψ=ϕ_float_bessel(x,y,k,bdPoints,us) # Construct the wavefunction value only in the interior points, less expensive than construction wavefunction matrix and then broadcasting product with G. Do it with floating point bessel computation, no need for double_precision here
-                    Psi_flat[jj]=ψ
+                    Psi_flat[idx]=ψ
                     local_o+=ψ*G_view[jj] # no need for conj since Ψ is real, this is Ψ[i,j]*G[i,j], thread safe
                     local_n+=abs2(ψ) # accumulate local Ψ value for later normalization, thread safe
                 end
