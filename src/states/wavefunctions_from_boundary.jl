@@ -111,29 +111,27 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    for i in eachindex(ks)
-        @inbounds begin
-            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            @fastmath begin
-                Threads.@threads :static for t in 1:NT_eff
-                    # compute this thread's block [lo:hi]
-                    q,r=divrem(nmask,NT_eff)
-                    lo=(t-1)*q+min(t-1,r) + 1
-                    hi=lo+q-1+(t<=r ? 1 : 0)
-                    @inbounds for jj in lo:hi
-                        idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
-                        x,y=pts[idx]
-                        Psi_flat[jj]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
-                    end
+    q,r=divrem(nmask,NT_eff)
+    @inbounds for i in eachindex(ks)
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        @fastmath begin
+            Threads.@threads :static for t in 1:NT_eff
+                # compute this thread's block [lo:hi]
+                lo=(t-1)*q+min(t-1,r) + 1
+                hi=lo+q-1+(t<=r ? 1 : 0)
+                @inbounds for jj in lo:hi
+                    idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
+                    x,y=pts[idx]
+                    Psi_flat[jj]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
                 end
             end
-            M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
-            @inbounds for jj in 1:nmask 
-                M[pts_masked_indices[jj]]=Psi_flat[jj]
-            end
-            Psi2ds[i]=M
-            next!(progress)
         end
+        M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
+        @inbounds for jj in 1:nmask 
+            M[pts_masked_indices[jj]]=Psi_flat[jj]
+        end
+        Psi2ds[i]=M
+        next!(progress)
     end
     return Psi2ds,x_grid,y_grid
 end
@@ -187,29 +185,27 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
+    q,r=divrem(nmask,NT_eff)
     for i in eachindex(ks)
-        @inbounds begin
-            k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-            @fastmath begin
-                Threads.@threads :static for t in 1:NT_eff
-                    # compute this thread's block [lo:hi]
-                    q,r=divrem(nmask,NT_eff)
-                    lo=(t-1)*q+min(t-1,r) + 1
-                    hi=lo+q-1+(t<=r ? 1 : 0)
-                    @inbounds for jj in lo:hi
-                        idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
-                        x,y=pts[idx]
-                        Psi_flat[jj]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
-                    end
+        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
+        @fastmath begin
+            Threads.@threads :static for t in 1:NT_eff
+                # compute this thread's block [lo:hi]
+                lo=(t-1)*q+min(t-1,r) + 1
+                hi=lo+q-1+(t<=r ? 1 : 0)
+                @inbounds for jj in lo:hi
+                    idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
+                    x,y=pts[idx]
+                    Psi_flat[jj]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
                 end
             end
-            M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
-            @inbounds for jj in 1:nmask 
-                M[pts_masked_indices[jj]]=Psi_flat[jj]
-            end
-            Psi2ds[i]=M
-            next!(progress)
         end
+        M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
+        @inbounds for jj in 1:nmask 
+            M[pts_masked_indices[jj]]=Psi_flat[jj]
+        end
+        Psi2ds[i]=M
+        next!(progress)
     end
     if use_fixed_grid
         vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
