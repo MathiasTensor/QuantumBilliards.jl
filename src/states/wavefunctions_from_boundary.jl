@@ -126,7 +126,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
                 end
             end
         end
-        Psi2ds[i]=copy(reshape(Psi_flat,ny,nx))
+        Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
         next!(progress)
     end
     return Psi2ds,x_grid,y_grid
