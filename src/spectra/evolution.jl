@@ -161,7 +161,7 @@ function gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoi
         end
         sum_norm2=sum(thread_norm2) # norm accumulator for a given eigenstate
         norm_i=sqrt(w*sum_norm2) # 1/norm_i*dx*dy, this should give sum( 1/√Norm*dx*dy Ψ^2 ) ≈ 1
-        Psi2ds[i]=copy(reshape(Psi_flat,ny,nx))
+        Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
         overlaps[i]=sum(thread_overlaps)*(w/norm_i) # from the thread safe local accumulation we then multiply with the dx*dy element due to linear grid. This is 1/norm_i * sum( conj(Ψ) * G ) * w 
         next!(progress)
     end

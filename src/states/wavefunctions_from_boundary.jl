@@ -196,7 +196,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
                 end
             end
         end
-        Psi2ds[i]=copy(reshape(Psi_flat,ny,nx))
+        Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
         next!(progress)
     end
     if use_fixed_grid
