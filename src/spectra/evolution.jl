@@ -80,9 +80,7 @@ function gaussian_wavepacket_2d(pts_in_billiard::Vector{SVector{2,T}},packet::Wa
 end
 
 """
-    gaussian_coefficients(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, 
-                          billiard::Bi, packet::Wavepacket{T}; b::Float64=5.0) 
-                          -> (Vector{Matrix{T}}, Vector{T}, Vector{T}, Vector{T}, BitVector, T, T)
+    gaussian_coefficients(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi,packet::Wavepacket{T};b::Float64=5.0,fundamental_domain=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
 
 Computes the eigenfunction matrices and their overlaps with a Gaussian wavepacket in a given billiard system. This gives us the coefficients and the basis eigenfunction for evolution and visualization. For constructing the basis elements uses single precision for efficiency. This function is well optimized for large number of cores (64+).
 
