@@ -107,7 +107,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     pts_masked_indices=findall(pts_mask)
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
-    Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    Psi_flat=Vector{T}(undef,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
@@ -126,11 +126,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
                 end
             end
         end
-        M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
-        @inbounds for jj in 1:nmask 
-            M[pts_masked_indices[jj]]=Psi_flat[jj]
-        end
-        Psi2ds[i]=M
+        Psi2ds[i]=copy(reshape(Psi_flat,ny,nx))
         next!(progress)
     end
     return Psi2ds,x_grid,y_grid
@@ -181,7 +177,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
     pts_masked_indices=findall(pts_mask)
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
-    Psi_flat=Vector{T}(undef,nmask) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    Psi_flat=Vector{T}(undef,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{type}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
@@ -200,11 +196,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
                 end
             end
         end
-        M=Matrix{T}(undef,ny,nx);fill!(M,zero(T))
-        @inbounds for jj in 1:nmask 
-            M[pts_masked_indices[jj]]=Psi_flat[jj]
-        end
-        Psi2ds[i]=M
+        Psi2ds[i]=copy(reshape(Psi_flat,ny,nx))
         next!(progress)
     end
     if use_fixed_grid
