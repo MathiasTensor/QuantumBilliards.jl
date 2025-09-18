@@ -14,7 +14,7 @@ Represents the configuration for the expanded boundary integral method.
 - `eps::T`: Numerical tolerance.
 - `min_dim::Int64`: Minimum dimensions (compatibility field).
 - `min_pts::Int64`: Minimum points for evaluation.
-- `rule::SymmetryRuleBIM`: Symmetry rule for the configuration.
+- `symmetry::Union{Vector{Any},Nothing}`: Symmetry for the configuration.
 """
 struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
     dim_scaling_factor::T
@@ -23,18 +23,18 @@ struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
     eps::T
     min_dim::Int64 
     min_pts::Int64
-    rule::SymmetryRuleBIM
+    symmetry::Union{Vector{Any},Nothing}
 end
 
-function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetries::Union{Vector{Any},Nothing}=nothing,x_bc=:D,y_bc=:D) where {T<:Real, Bi<:AbsBilliard}
+function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real,Bi<:AbsBilliard}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
+    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
 end
 
-function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts = 20,symmetries::Union{Vector{Any},Nothing}=nothing, x_bc=:D,y_bc=:D) where {T<:Real, Bi<:AbsBilliard} 
+function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real,Bi<:AbsBilliard} 
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,SymmetryRuleBIM(billiard,symmetries=symmetries,x_bc=x_bc,y_bc=y_bc))
+    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,symmetry)
 end
 
 #### NEW MATRIX APPROACH FOR FASTER CODE #### 
@@ -72,20 +72,24 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPointsBIM{T},k::
     M=Matrix{Complex{T}}(undef,N,N)
     xs=getindex.(xy,1)
     ys=getindex.(xy,2)
-    dx=xs.-xs'
-    dy=ys.-ys'
-    distances=hypot.(dx,dy)
+    nx=getindex.(normals,1)
+    ny=getindex.(normals,2)
+    pref=Complex{T}(zero(T),-k/2) # -im*k/2
     @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i];yi=ys[i]
+        nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:(i-1) # symmetric hankel part
-            distance=distances[i,j]
-            cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-            hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
+            dx=xi-xs[j];dy=yi-ys[j]
+            d=sqrt(muladd(dx,dx,dy*dy))
+            invd=inv(d)
+            cos_phi=(nxi*dx+nyi*dy)*invd
+            hankel=pref*d*Bessels.hankelh1(0,k*d)
             M[i,j]=cos_phi*hankel
-            cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+            cos_phi_symmetric=(nx[j]*(-dx)+ny[j]*(-dy))*invd # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
             M[j,i]=cos_phi_symmetric*hankel
         end
     end
-    M[diagind(M)].=Complex(T(0.0),T(0.0))
+    M[diagind(M)].=Complex(zero(T),zero(T))
     filter_matrix!(M)
     return M
 end
@@ -117,21 +121,25 @@ function default_helmholtz_kernel_derivative_matrix(bp_s::BoundaryPointsBIM{T},x
     normals=bp_s.normal
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
+    nx=getindex.(normals,1)
+    ny=getindex.(normals,2)
     x_s=getindex.(xy_s,1)
     y_s=getindex.(xy_s,2)
     x_t=getindex.(xy_t,1)
     y_t=getindex.(xy_t,2)
-    dx=x_s.-x_t'
-    dy= y_s.-y_t'
-    distances=hypot.(dx,dy)
+    tol=eps(T)
+    pref=Complex{T}(zero(T),-k/2) # -im*k/2
     @use_threads multithreading=multithreaded for i in 1:N
+        xi=x_s[i];yi=y_s[i];nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:N
-            distance=distances[i,j]
-            if distance<eps(T) # pt on reflection axis!
-                M[i,j]=Complex(T(0.0),T(0.0))
+            dx=xi-x_t[j];dy=yi-y_t[j]
+            d=sqrt(muladd(dx,dx,dy*dy))
+            invd=inv(d)
+            if d<tol # pt on reflection axis!
+                M[i,j]=Complex(zero(T),zero(T))
             else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=-im*k/2.0*distance*Bessels.hankelh1(0,k*distance)
+                cos_phi=(nxi*dx+nyi*dy)*invd
+                hankel=pref*d*Bessels.hankelh1(0,k*d)
                 M[i,j]=cos_phi*hankel
             end
         end
@@ -173,20 +181,24 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
     M=Matrix{Complex{T}}(undef,N,N)
     xs=getindex.(xy,1)
     ys=getindex.(xy,2)
-    dx=xs.-xs'
-    dy=ys.-ys'
-    distances=hypot.(dx,dy)
+    nx=getindex.(normals,1)
+    ny=getindex.(normals,2)
+    pref=Complex{T}(zero(T),inv(2*k)) # im/(2*k)
     @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i];yi=ys[i]
+        nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:(i-1) # symmetric hankel part
-            distance=distances[i,j]
-            cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-            hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
+            dx=xi-xs[j];dy=yi-ys[j]
+            d=sqrt(muladd(dx,dx,dy*dy))
+            invd=inv(d)
+            cos_phi=(nxi*dx+nyi*dy)*invd
+            hankel=pref*((-2+(k*d)^2)*Bessels.hankelh1(1,k*d)+k*d*Bessels.hankelh1(2,k*d))
             M[i,j]=cos_phi*hankel
-            cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+            cos_phi_symmetric=(nx[j]*(-dx)+ny[j]*(-dy))*invd # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
             M[j,i]=cos_phi_symmetric*hankel
         end
     end
-    M[diagind(M)].=Complex(T(0.0),T(0.0))
+    M[diagind(M)].=Complex(zero(T),zero(T))
     filter_matrix!(M)
     return M
 end
@@ -219,21 +231,25 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     normals=bp_s.normal
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
+    nx=getindex.(normals,1)
+    ny=getindex.(normals,2)
     x_s=getindex.(xy_s,1)
     y_s=getindex.(xy_s,2)
     x_t=getindex.(xy_t,1)
     y_t=getindex.(xy_t,2)
-    dx=x_s.-x_t'
-    dy= y_s.-y_t'
-    distances=hypot.(dx,dy)
+    tol=eps(T)
+    pref=Complex{T}(zero(T),inv(2*k)) # im/(2*k)
     @use_threads multithreading=multithreaded for i in 1:N
+        xi=x_s[i];yi=y_s[i];nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:N
-            distance=distances[i,j]
-            if distance<eps(T) # pt on reflection axis!
-                M[i,j]=Complex(T(0.0),T(0.0))
+            dx=xi-x_t[j];dy=yi-y_t[j]
+            d=sqrt(muladd(dx,dx,dy*dy))
+            invd=inv(d)
+            if d<tol # pt on reflection axis!
+                M[i,j]=Complex(zero(T),zero(T))
             else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=im/(2*k)*((-2+(k*distance)^2)*Bessels.hankelh1(1,k*distance)+k*distance*Bessels.hankelh1(2,k*distance))
+                cos_phi=(nxi*dx+nyi*dy)*invd
+                hankel=pref*((-2+(k*d)^2)*Bessels.hankelh1(1,k*d)+k*d*Bessels.hankelh1(2,k*d))
                 M[i,j]=cos_phi*hankel
             end
         end
@@ -242,276 +258,194 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     return M
 end
 
-"""
-    compute_kernel_der_matrix(bp::BoundaryPointsBIM{T}, k::T; kernel_fun=:first) -> Matrix{Complex{T}}
-
-Compute the Helmholtz derivative kernel matrix (first or second derivative w.r.t. `k`) for boundary points
-`bp`, using one of the default matrix functions or a custom function. If `kernel_fun = :first`, it returns
-the first derivative matrix; if `kernel_fun = :second`, it returns the second derivative matrix; otherwise,
-`kernel_fun` should be a custom function `(bp, k) -> Matrix{Complex{T}}`.
-
-# Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points with `(x, y)` and normal vectors.
-- `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol,Function} = :first`: Either `:first`, `:second`, or a custom function.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `Matrix{Complex{T}}`: The `N×N` matrix with the derivative of the Helmholtz kernel w.r.t. `k`.
-
-**Note**: This version does not apply reflection or boundary-condition logic; it’s purely the direct
-derivative matrix for the given set of points.
-"""
-function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first,multithreaded::Bool=true) where {T<:Real}
-    if kernel_fun==:first
-        return default_helmholtz_kernel_derivative_matrix(bp,k,multithreaded=multithreaded)
-    elseif kernel_fun==:second
-        return default_helmholtz_kernel_second_derivative_matrix(bp,k,multithreaded=multithreaded)
-    else
-        return kernel_fun(bp,k)
+@inline function add_pair3_no_symmetry_default!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::T=one(T)) where {T<:Real,C<:Complex}
+    dx=xi-xj;dy=yi-yj
+    d2=muladd(dx,dx,dy*dy)
+    if i==j # when we have no symmetry safely modify the Diagonal elements, otherwise the d^2<tol2 check in the symmetry version 
+        @inbounds K[i,j]+=scale*Complex(κi/TWO_PI)
+        return false
     end
+    d=sqrt(d2);invd=inv(d);kd=k*d
+    c_ij=(nxi*dx+nyi*dy)*invd # cosϕ[i,j]
+    c_ji=(nxj*(-dx)+nyj*(-dy))*invd # cosϕ[j,i]
+    H0,H1,H2=Bessels.besselh(0:2,1,kd) # allocates a 3-vector, but this is the biggest efficiency due to reccurence
+    pref=Complex{T}(zero(T),-k/2)  # base: (-im*k/2) * H1(kd)
+    pref2=Complex{T}(zero(T),inv(2*k)) # second derivative prefix
+    hK=pref*H1 # base val (before cosϕ) # (-im*k/2)*H1(kd)
+    hdK=pref*d*H0  # first derivative val (-im*k/2)*d*H0(kd)
+    hddK=pref2*((-2+kd*kd)*H1+kd*H2) # second derivative:  im/(2k) * [ (-2 + (kd)^2) H1(kd) + kd H2(kd) ]
+    @inbounds begin 
+        K[i,j]+=scale*(c_ij*hK)
+        dK[i,j]+=scale*(c_ij*hdK)
+        ddK[i,j]+=scale*(c_ij*hddK)
+        K[j,i]+=scale*(c_ji*hK) # i!=j since otherwise it would terminate in the i==j check
+        dK[j,i]+=scale*(c_ji*hdK)
+        ddK[j,i]+=scale*(c_ji*hddK)
+    end
+    return true
+end
+
+@inline function add_pair3_custom!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T,kernel_fun,kernel_der_fun,kernel_der2_fun;scale::T=one(T)) where {T<:Real,C<:Complex}
+    val_ij=kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
+    val_der_ij=kernel_der_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
+    val_der2_ij=kernel_der2_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
+    @inbounds begin
+        K[i,j]+=val_ij
+        dK[i,j]+=val_der_ij
+        ddK[i,j]+=val_der2_ij
+    end
+    return true
+end
+
+@inline function add_pair3_reflected_default!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xjr::T,yjr::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::T=one(T))::Bool where {T<:Real}
+    dx=xi-xjr; dy=yi-yjr
+    d2=muladd(dx,dx,dy*dy)
+    if d2<=tol2
+        @inbounds K[i,j]+=scale*Complex(κi/TWO_PI)
+        return false # no curvature on reflected self-pairs
+    end
+    d=sqrt(d2);invd=inv(d);kd=k*d
+    cij=(nxi*dx+nyi*dy)*invd
+    H0,H1,H2=Bessels.besselh(0:2,1,kd) # allocates a 3-vector, but this is the biggest efficiency due to reccurence
+    pref=Complex{T}(zero(T),-k/2)  # base: (-im*k/2) * H1(kd)
+    pref2=Complex{T}(zero(T),inv(2*k)) # second derivative prefix
+    hK=pref*H1 # base val (before cosϕ) # (-im*k/2)*H1(kd)
+    hdK=pref*d*H0  # first derivative val (-im*k/2)*d*H0(kd)
+    hddK=pref2*((-2+kd*kd)*H1+kd*H2) # second derivative:  im/(2k) * [ (-2 + (kd)^2) H1(kd) + kd H2(kd) ]
+    @inbounds begin
+        K[i,j]+=scale*(cij*hK)
+        dK[i,j]+=scale*(cij*hdK)
+        ddK[i,j]+=scale*(cij*hddK)
+    end
+    return true
+end
+
+function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true,kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
+    N=length(bp.xy)
+    K=zeros(Complex{T},N,N)
+    dK=similar(K)
+    ddK=similar(K)
+    xs=getindex.(bp.xy,1);ys=getindex.(bp.xy,2)
+    nx=getindex.(bp.normal,1);ny=getindex.(bp.normal,2)
+    κ=bp.curvature
+    tol2=(eps(T))^2
+    isdef=(kernel_functions[1]===:default) # this is enough of a check
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
+        @inbounds for j in 1:i
+            xj=xs[j];yj=ys[j];nxj=nx[j];nyj=ny[j]
+            if isdef ? 
+                add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) :
+                add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3])
+            end
+        end
+    end
+    return K,dK,ddK
+end
+
+function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true,kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
+    N=length(bp.xy)
+    K=zeros(Complex{T},N,N)
+    dK=similar(K)
+    ddK=similar(K)
+    xs=getindex.(bp.xy,1);ys=getindex.(bp.xy,2)
+    nx=getindex.(bp.normal,1);ny=getindex.(bp.normal,2)
+    κ=bp.curvature
+    tol2=(eps(T))^2
+    shift_x=bp.shift_x;shift_y=bp.shift_y
+    add_x=false;add_y=false;add_xy=false
+    sxgn=one(T);sygn=one(T);sxy=one(T)
+    @inbounds for s in symmetry
+        if s isa XReflection
+            add_x=true
+            sxgn=(s.parity==-1 ? -one(T) : one(T))
+        elseif s isa YReflection
+            add_y=true
+            sygn=(s.parity==-1 ? -one(T) : one(T))
+        elseif s isa XYReflection
+            add_x=true;add_y=true;add_xy=true
+            sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+            sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+            sxy=sxgn*sygn
+        end
+    end
+    isdef=(kernel_functions[1]===:default) # this is enough of a check
+    @use_threads multithreading=multithreaded for i in 1:N
+            xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
+            @inbounds for j in 1:N
+                xj=xs[j];yj=ys[j];nxj=nx[j];nyj=ny[j]
+                # base (upper triangle only; mirrors into [j,i]; curvature on diag)
+                if j<=i
+                    if isdef ? 
+                        add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) : 
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3])
+                    end
+                end
+                # reflected legs (always full j=1:N; never add curvature)
+                if add_x
+                    xjr=_x_reflect(xj,shift_x);yjr=yj
+                    if isdef ?
+                        add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
+                    end
+                    
+                end
+                if add_y
+                    xjr=xj;yjr=_y_reflect(yj,shift_y)
+                    if isdef ?
+                        add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn) :
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
+                    end
+                    
+                end
+                if add_xy
+                    xjr=_x_reflect(xj,shift_x);yjr=_y_reflect(yj,shift_y)
+                    if isdef ?
+                        add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy) :
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
+                    end
+                end
+            end
+        end
+    return K,dK,ddK
 end
 
 """
-    compute_kernel_der_matrix(bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T;
-                              kernel_fun=:first) -> Matrix{Complex{T}}
+    fredholm_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::T;kernel_fun::Union{Symbol,Function}=:first,multithreaded::Bool=true) where {T<:Real}
 
-Compute the Helmholtz derivative kernel matrix (first or second derivative w.r.t. `k`) for boundary points
-`bp`, incorporating reflection logic based on `symmetry_rule`. This builds a “base” derivative matrix,
-then constructs reflected submatrices (if `symmetry_type` is `:x`, `:y`, or `:xy`) and applies add/sub
-depending on boundary conditions (`:D` vs. `:N`).
-
-# Arguments
-- `bp::BoundaryPointsBIM{T}`: The boundary points, with positions and normals.
-- `symmetry_rule::SymmetryRuleBIM{T}`: Reflection/boundary-condition info (like `:x_bc`, `:y_bc`).
-- `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol,Function}=:first`: Either `:first`, `:second`, or a custom function that
-  returns a matrix for the derivative kernel.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `Matrix{Complex{T}}`: The derivative kernel matrix, including reflection corrections. Size is `N×N`
-  if there are `N` boundary points in `bp`.
-
-**Note**: Each reflection (x, y, or xy) is computed as a separate NxN matrix, then added or subtracted
-from the base matrix according to the boundary condition (Dirichlet or Neumann). The final result
-matches the “pointwise reflection” logic from the legacy code.
-"""
-function compute_kernel_der_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first,multithreaded::Bool=true) where {T<:Real}
-    xy_points=bp.xy
-    reflected_points_x=symmetry_rule.symmetry_type in [:x,:xy] ?
-        [apply_reflection(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_y=symmetry_rule.symmetry_type in [:y,:xy] ?
-        [apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] : nothing
-    reflected_points_xy=symmetry_rule.symmetry_type==:xy ?
-        [apply_reflection(p,symmetry_rule) for p in xy_points] : nothing
-    function use_kernel(bp,k)
-        if kernel_fun==:first
-            kernel=default_helmholtz_kernel_derivative_matrix(bp,k,multithreaded=multithreaded) # starting der kernel where no reflections
-        elseif kernel_fun==:second
-            kernel=default_helmholtz_kernel_second_derivative_matrix(bp,k,multithreaded=multithreaded) # starting der2 kernel where no reflections
-        else
-            kernel=kernel_fun(bp,k) # starting kernel where no reflections
-        end
-    end
-    function use_kernel(bp,refl_pts,k)
-        if kernel_fun==:first
-            kernel=default_helmholtz_kernel_derivative_matrix(bp,refl_pts,k,multithreaded=multithreaded) # starting der kernel where no reflections
-        elseif kernel_fun==:second
-            kernel=default_helmholtz_kernel_second_derivative_matrix(bp,refl_pts,k,multithreaded=multithreaded) # starting der2 kernel where no reflections
-        else
-            kernel=kernel_fun(bp,refl_pts,k) # starting kernel where no reflections
-        end
-    end
-    kernel_val=use_kernel(bp,k) # base 
-    if symmetry_rule.symmetry_type in [:x,:y,:xy]
-        if symmetry_rule.symmetry_type in [:x,:xy]  # Reflection across x-axis
-            reflected_kernel_x=use_kernel(bp,reflected_points_x,k)
-            if symmetry_rule.x_bc==:D # Adjust kernel based on boundary condition
-                kernel_val.-=reflected_kernel_x
-            elseif symmetry_rule.x_bc==:N
-                kernel_val.+=reflected_kernel_x
-            end
-        end
-        if symmetry_rule.symmetry_type in [:y,:xy]
-            reflected_kernel_y=use_kernel(bp,reflected_points_y,k)
-            if symmetry_rule.y_bc==:D # # Adjust kernel based on boundary condition
-                kernel_val.-=reflected_kernel_y
-            elseif symmetry_rule.y_bc==:N
-                kernel_val.+=reflected_kernel_y
-            end
-        end
-        if symmetry_rule.symmetry_type==:xy # both x and y additional logic
-            reflected_kernel_xy=use_kernel(bp,reflected_points_xy,k)
-            if symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:D # Adjust kernel based on boundary conditions
-                kernel_val.+=reflected_kernel_xy
-            elseif symmetry_rule.x_bc==:D && symmetry_rule.y_bc==:N
-                kernel_val.-=reflected_kernel_xy
-            elseif symmetry_rule.x_bc==:N && symmetry_rule.y_bc==:D
-                kernel_val.-=reflected_kernel_xy
-            elseif symmetry_rule.x_bc==:N && symmetry_rule.y_bc==:N
-                kernel_val.+=reflected_kernel_xy
-            end
-        end
-    end
-    return kernel_val
-end
-
-"""
-    fredholm_matrix_der(bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T;
-                        kernel_fun=:first) -> Matrix{Complex{T}}
-
-Build a Fredholm derivative matrix `dA/dk` by combining the derivative kernel matrix and the boundary
-elements `ds`. Specifically, it computes
-
-    - ( derivative_kernel_matrix ) .* ds'
-
-where `ds'` is a broadcast of the boundary segment lengths onto each column.
+Build the Fredholm matrix `A` and it's derivative matrices `dA/dk & d^2A/dk^2`.
 
 # Arguments
 - `bp::BoundaryPointsBIM{T}`: Boundary points with `(x,y)`, normals, and `ds`.
-- `symmetry_rule::SymmetryRuleBIM{T}`: Optional reflection/boundary condition rules.
+- `symmetry::Vector{Any}`: Symmetry to apply.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol,Function}=:first`: If `:first`, uses the first derivative matrix;
-  if `:second`, uses the second derivative matrix; else a custom function.
+- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: If `:first`, uses the first derivative matrix; if `:second`, uses the second derivative matrix; else a custom function. All these have the same signature: `kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
-- `Matrix{Complex{T}}`: The `N×N` derivative Fredholm matrix, i.e. `- K_der .* ds'`.
-
-**Note**: This function is analogous to `fredholm_matrix_derivative` in the legacy code, except it
-uses a matrix approach to compute all pairwise derivatives at once.
+- `Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}`: The 3`N×N` matrices representing the Fredholm matrix and it's first and second derivative, respectively.
 """
-function fredholm_matrix_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:first,multithreaded::Bool=true) where {T<:Real}
-    kernel_matrix=isnothing(symmetry_rule) ?
-        compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun,multithreaded=multithreaded) :
-        compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    ds=bp.ds
-    N=length(ds)
-    fredholm_der_matrix=-kernel_matrix.*ds'
-    return fredholm_der_matrix
-end
-
-"""
-    kernel_and_first_der(
-        bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T;
-        kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function} = (:default, :first)
-    ) -> (Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}})
-
-Construct the full Fredholm matrix and its first derivative w.r.t. the wavenumber,
-using a matrix approach. Specifically:
-  1. `kernel_fun[1]` -> the base Helmholtz kernel,
-  2. `kernel_fun[2]` -> the first derivative wrt `k`,
-
-Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
-the identity on the diagonal for the base matrix.
-
-# Note: Conditioning far away from a real eigenvalue
-```math
-log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
-log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
-```
-# Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
-```math
-log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
-log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
-```
-This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
-
-# Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
-- `symmetry_rule::SymmetryRuleBIM{T}`: Reflection/boundary condition rules.
-- `k::T`: Wavenumber.
-- `kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function} = (:default, :first)`: The base kernel,
-  plus derivative kernel.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `fredholm_matrix::Matrix{Complex{T}}`: The base matrix `I - kernel .* ds'`.
-- `fredholm_der_matrix::Matrix{Complex{T}}`: The first derivative matrix `- kernel_der .* ds'`.
-- `fredholm_der2_matrix::Matrix{Complex{T}}`: The second derivative matrix `- kernel_der2 .* ds'`.
-"""
-function kernel_and_first_der(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function}}=(:default,:first),multithreaded::Bool=true) where {T<:Real}
+function fredholm_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::T;kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real}
     if isnothing(symmetry_rule)
-        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun[1],multithreaded=multithreaded)
-        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[2],multithreaded=multithreaded)
+        K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,k;kernel_functions=kernel_functions,multithreaded=multithreaded)
     else
-        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[1],multithreaded=multithreaded)
-        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[2],multithreaded=multithreaded)
+        K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,symmetry,k;kernel_functions=kernel_functions,multithreaded=multithreaded)
     end
     ds=bp.ds
-    N=length(ds)
-    fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
-    fredholm_der_matrix=-kernel_der_matrix.*ds'
-    return fredholm_matrix,fredholm_der_matrix
-end
-
-"""
-    all_fredholm_associated_matrices(
-        bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T;
-        kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function} = (:default, :first, :second)
-    ) -> (Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}})
-
-Construct the full Fredholm matrix and its first and second derivatives w.r.t. the wavenumber,
-using a matrix approach. Specifically:
-  1. `kernel_fun[1]` -> the base Helmholtz kernel,
-  2. `kernel_fun[2]` -> the first derivative wrt `k`,
-  3. `kernel_fun[3]` -> the second derivative wrt `k`.
-
-Applies reflection logic if `symmetry_rule` is non-nothing. Then multiplies by `ds` and inserts
-the identity on the diagonal for the base matrix.
-
-# Note: Conditioning far away from a real eigenvalue
-```math
-log(cond(dA)) = 18.647070547612767, det(dA) = 0.0 + 0.0im
-log(cond(ddA)) = LAPACK crashes, det(A) = NaN + NaN*im
-```
-# Note: Conditioning extremely close (2e-5 away in the k scale) to real eigenvalue
-```math
-log(cond(dA)) = 18.30361267862381, det(dA) = 0.0 + 0.0im
-log(cond(ddA)) = 18.852888588688973, det(A) = -0.0 + 0.0im
-```
-This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
-
-# Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points (positions, normals, ds).
-- `symmetry_rule::SymmetryRuleBIM{T}`: Reflection/boundary condition rules.
-- `k::T`: Wavenumber.
-- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: The base kernel,
-  plus derivative kernels.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `fredholm_matrix::Matrix{Complex{T}}`: The base matrix `I - kernel .* ds'`.
-- `fredholm_der_matrix::Matrix{Complex{T}}`: The first derivative matrix `- kernel_der .* ds'`.
-- `fredholm_der2_matrix::Matrix{Complex{T}}`: The second derivative matrix `- kernel_der2 .* ds'`.
-"""
-function all_fredholm_associated_matrices(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real}
-    if isnothing(symmetry_rule)
-        kernel_matrix=compute_kernel_matrix(bp,k;kernel_fun=kernel_fun[1],multithreaded=multithreaded)
-        kernel_der_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[2],multithreaded=multithreaded)
-        kernel_der2_matrix=compute_kernel_der_matrix(bp,k;kernel_fun=kernel_fun[3],multithreaded=multithreaded)
-    else
-        kernel_matrix=compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[1],multithreaded=multithreaded)
-        kernel_der_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[2],multithreaded=multithreaded)
-        kernel_der2_matrix=compute_kernel_der_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun[3],multithreaded=multithreaded)
+    @inbounds for j in 1:length(ds)
+        @views K[:,j].*=ds[j]
+        @views dK[:,j].*=ds[j]
+        @views ddK[:,j].*=ds[j]
     end
-    ds=bp.ds
-    N=length(ds)
-    fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
-    fredholm_der_matrix=-kernel_der_matrix.*ds'
-    fredholm_der2_matrix=-kernel_der2_matrix.*ds'
-    return fredholm_matrix,fredholm_der_matrix,fredholm_der2_matrix
+    K.*=-one(T);dK.*=-one(T);ddK.*=-one(T)
+    @inbounds for i in axes(K,1) # only the regular kernel has +I, for others vanishes due to taking the derivative
+        K[i,i]+=one(T)
+    end
+    return K,dK,ddK
 end
 
 """
-    construct_matrices(
-        solver::ExpandedBoundaryIntegralMethod, 
-        basis::Ba, 
-        pts::BoundaryPointsBIM{T}, 
-        k::T;
-        kernel_fun::Union{Tuple,Function} = (:default, :first, :second)
-    ) -> (Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}})
+    construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
 
 High-level routine that builds the Fredholm matrix and its first/second derivatives
 for the given boundary `pts` and wavenumber `k`, relying on the matrix-based approach
@@ -536,7 +470,7 @@ This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
 - `basis::Ba`: The basis function type (not used directly here, but part of the pipeline).
 - `pts::BoundaryPointsBIM{T}`: Boundary points with geometry data.
 - `k::T`: The wavenumber.
-- `kernel_fun::Union{Tuple,Function} = (:default, :first, :second)`: A triple specifying
+- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: A triple specifying
   (base kernel, first derivative kernel, second derivative kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -546,8 +480,8 @@ This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
   - `dA`: The first derivative wrt `k`.
   - `ddA`: The second derivative wrt `k`.
 """
-function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    return all_fredholm_associated_matrices(pts,solver.rule,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+    return fredholm_matrix_with_derivatives(pts,solver.symmetry,k;kernel_functions=kernel_functions,multithreaded=multithreaded)
 end
 
 """
@@ -574,7 +508,7 @@ a second-order correction with `ddA`.
 - `k::T`: Central wavenumber.
 - `dk::T`: Half-width of the search interval in real and imaginary parts of `λ`.
 - `use_lapack_raw::Bool=false`: If true, call a direct LAPACK routine for `A,dA` eigen solves.
-- `kernel_fun::Union{Tuple,Function} = (:default,:first,:second)`: The base kernel and its derivatives.
+- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: The base kernel and its derivatives.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
@@ -617,7 +551,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     return λ_corrected,tens
 end
 
-# INTERNAL
+# HELPS PROFILE THE solve FUNCTION AND DETERMINE THE CRITICAL PARAMETERS OF A CALCULATION
 function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     s=time()
     s_constr=time()
@@ -718,73 +652,7 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
     return λ_corrected,tens
 end
 
-#INTERNAL
-function solve_1st_order(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol},Tuple{Function,Function}}=(:default,:first),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A,dA=kernel_and_first_der(pts,solver.rule,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    if use_lapack_raw
-        λ,_,_=generalized_eigen_all_LAPACK_LEGACY(A,dA)
-    else
-        λ,_,_=generalized_eigen_all(A,dA)
-    end
-    T=eltype(real.(λ))
-    valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk)
-    λ_in=real.(λ[valid])
-    λ_all=real.(λ)
-    corr_1=-λ_in
-    corr_1_all=-λ_all
-    λ_corrected=k.+corr_1
-    λ_corrected_all=k.+corr_1_all
-    tens=abs.(corr_1)
-    tens_all=abs.(corr_1_all)
-    return λ_corrected,tens,λ_corrected_all,tens_all
-end
-
 #### DEBUGGING TOOLS ####
-
-"""
-    solve_DEBUG_w_1st_order_corrections(
-        solver::ExpandedBoundaryIntegralMethod,
-        basis::Ba,
-        pts::BoundaryPointsBIM,
-        k;
-        kernel_fun=(:default, :first, :second)
-    ) -> (Vector{T}, Vector{T})
-
-A debug routine that solves the generalized eigenproblem `(A, dA)` at wavenumber `k`, extracts eigenvalues
-`λ`, then applies *only first-order corrections* `corr₁ = -λ[i]`. The returned `k + corr₁` is the
-first-order guess for each root. The tension is `abs(corr₁)`.
-
-# Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: EBIM solver config.
-- `basis::Ba`: Basis function type.
-- `pts::BoundaryPointsBIM`: Boundary geometry.
-- `k`: The wavenumber for which we do `(A, dA)`.
-- `kernel_fun`: A triple or custom functions specifying the base kernel, first derivative, etc.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `(λ_corrected, tens)::(Vector{T}, Vector{T})`: The first-order corrected k-values and their "tensions".
-
-**Note**: No second derivative `ddA` is used here; purely `A,dA`.
-"""
-function solve_DEBUG_w_1st_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A,dA,_=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    F=eigen(A,dA)
-    λ=F.values
-    valid_indices=.!isnan.(λ).&.!isinf.(λ)
-    λ=λ[valid_indices]
-    sort_order=sortperm(abs.(λ)) 
-    λ=λ[sort_order]
-    T=eltype(real.(λ))
-    λ=real.(λ)
-    corr_1=Vector{T}(undef,length(λ))
-    for i in eachindex(λ)
-        corr_1[i]=-λ[i]
-    end
-    λ_corrected=k.+corr_1
-    tens=abs.(corr_1)
-    return λ_corrected,tens
-end
 
 """
     solve_DEBUG_w_2nd_order_corrections(
@@ -845,105 +713,6 @@ function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMet
     tens_2=abs.(corr_1.+corr_2)
     return λ_corrected_1,tens_1,λ_corrected_2,tens_2
 end
-
-# HELPERS FOR DETERMINING THE BEHAVIOUR OF DISTANCE -> 0 LIMIT FOR VARIOUS TYPES (SINCE THE eps(T) CAN CHANGE) AND ALSO UNDER REFLECTIONS IF THE POINTS ARE ON THE SYMMETRY AXES THEN PROBLEMS MIGHT OCCUR
-
-"""
-    source_check(bp::BoundaryPointsBIM{T}; num_print_idxs::Union{Integer,Symbol}=:all, d=0) where {T<:Real}
-
-Checks for singular source indices where the distance between source points is less than `eps(T)`.
-
-# Arguments
-- `bp_s::BoundaryPointsBIM{T}`: Source boundary points for xy source coordinates.
-- `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
-- `d::T=eps(T)`: The 0 numerical distance.
-"""
-function source_check!(bp::BoundaryPointsBIM{T};num_print_idxs::Union{Integer,Symbol}=:all,d=0) where {T<:Real}
-    d==0 && (d=eps(T))
-    xy=bp.xy
-    N=length(xy)
-    M=Matrix{Complex{T}}(undef,N,N)
-    xs=getindex.(xy,1)
-    ys=getindex.(xy,2)
-    dx=xs.-xs'
-    dy=ys.-ys'
-    distances=hypot.(dx,dy)
-    singular_idxs=findall(distances.<d)
-    if num_print_idxs==:all
-        println("Source cartesian indices where distance < $d: ", singular_idxs)
-    else 
-        println("Source first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
-    end
-    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check off-diagonal Cartesian Indexes
-    println("Source any off-diagonal elements near singular? ",off_diag)
-end
-
-"""
-    source_target_check(bp_s::BoundaryPointsBIM{T}, xy_t::Vector{SVector{2, T}};
-                        num_print_idxs::Union{Integer,Symbol}=:all, reflection::Symbol=:x, d=0) where {T<:Real}
-
-Checks for singular source-target indices where the distance between source and target points is less than `eps(T)`.
-
-# Arguments
-- `bp_s::BoundaryPointsBIM{T}`: Source boundary points for xy source coordinates.
-- `xy_t::Vector{SVector{2,T}}`: Target points vector.
-- `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
-- `reflection::Symbol`: Type of reflection. Default is `:x`.
-- `d::T=eps(T)`: The 0 numerical distance.
-"""
-function source_target_check!(bp_s::BoundaryPointsBIM{T},xy_t::Vector{SVector{2,T}};num_print_idxs::Union{Integer,Symbol}=:all,reflection::Symbol=:x,d=0) where {T<:Real}
-    d==0 && (d=eps(T))
-    println("Reflection type: ",reflection)
-    xy_s=bp_s.xy
-    N=length(xy_s)
-    M=Matrix{Complex{T}}(undef,N,N)
-    x_s=getindex.(xy_s,1)
-    y_s=getindex.(xy_s,2)
-    x_t=getindex.(xy_t,1)
-    y_t=getindex.(xy_t,2)
-    dx=x_s.-x_t'
-    dy= y_s.-y_t'
-    distances=hypot.(dx,dy)
-    singular_idxs=findall(distances.<d)
-    if num_print_idxs==:all
-        println("Source-Target Cartesian indices where distance < $d: ", singular_idxs)
-    else 
-        println("Source-Target first $(num_print_idxs) Cartesian indices where distance < $d: ",singular_idxs[1:min(num_print_idxs,length(singular_idxs))])
-    end
-    off_diag=any(i!=j for (i,j) in map(Tuple,singular_idxs)) # check off-diagonal Cartesian Indexes
-    println("Source-Target any off-diagonal elements near singular? ",off_diag)
-end
-
-"""
-    distance_singular_check!(solver::ExpandedBoundaryIntegralMethod, billiard::Bi, k;
-                             num_print_idxs::Union{Integer,Symbol}=:all, d=0) where {Bi<:AbsBilliard}
-
-Performs singular distance checks for source points, source-target pairs under various reflections,
-and reports singular Cartesian indices both on and off diagonal. This might indicate a problem when symmetrizing the boundary full.
-
-# Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: The BIM solver.
-- `billiard::Bi`: The billiard object.
-- `k`: Wavenumber.
-- `num_print_idxs::Union{Integer,Symbol}`: Number of indices to print. Default is `:all`.
-- `d::T=eps(T)`: The 0 numerical distance.
-"""
-function distance_singular_check!(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k;num_print_idxs::Union{Integer,Symbol}=:all,d=0) where {Bi<:AbsBilliard}
-    d==0 && (d=eps(eltype(k)))
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
-    bp=evaluate_points(bim_solver,billiard,k)
-    xy_points=bp.xy
-    symmetry_rule=solver.rule
-    reflected_points_x=[apply_reflection(p,SymmetryRuleBIM(:x,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points] 
-    reflected_points_y=[apply_reflection(p,SymmetryRuleBIM(:y,symmetry_rule.x_bc,symmetry_rule.y_bc,symmetry_rule.shift_x,symmetry_rule.shift_y)) for p in xy_points]
-    reflected_points_xy=[apply_reflection(p,symmetry_rule) for p in xy_points]
-    source_check!(bp,num_print_idxs=num_print_idxs)
-    source_target_check!(bp,reflected_points_x,num_print_idxs=num_print_idxs,reflection=:x,d=d)
-    source_target_check!(bp,reflected_points_y,num_print_idxs=num_print_idxs,reflection=:y,d=d)
-    source_target_check!(bp,reflected_points_xy,num_print_idxs=num_print_idxs,reflection=:xy,d=d)
-end
-
-### HELPERS ###
 
 """
     ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
