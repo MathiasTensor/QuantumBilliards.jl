@@ -356,13 +356,13 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
     add_x=false;add_y=false;add_xy=false
     sxgn=one(T);sygn=one(T);sxy=one(T)
     @inbounds for s in symmetry
-        if s isa XReflection
+        if s isa typeof(XReflection)
             add_x=true
             sxgn=(s.parity==-1 ? -one(T) : one(T))
-        elseif s isa YReflection
+        elseif s isa typeof(YReflection)
             add_y=true
             sygn=(s.parity==-1 ? -one(T) : one(T))
-        elseif s isa XYReflection
+        elseif s isa typeof(XYReflection)
             add_x=true;add_y=true;add_xy=true
             sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
             sygn=(s.parity[2]==-1 ? -one(T) : one(T))
