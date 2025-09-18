@@ -521,21 +521,25 @@ function default_helmholtz_kernel_matrix(bp_s::BoundaryPointsBIM{T},xy_t::Vector
     curvatures=bp_s.curvature
     N=length(xy_s)
     M=Matrix{Complex{T}}(undef,N,N)
+    nx=getindex.(normals,1)
+    ny=getindex.(normals,2)
     x_s=getindex.(xy_s,1)
     y_s=getindex.(xy_s,2)
     x_t=getindex.(xy_t,1)
     y_t=getindex.(xy_t,2)
-    dx=x_s.-x_t'
-    dy= y_s.-y_t'
-    distances=hypot.(dx,dy)
+    tol=eps(T)
+    pref=Complex{T}(0,-k/2) # -im*k/2
     @use_threads multithreading=multithreaded for i in 1:N
+        xi=x_s[i];yi=y_s[i];nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:N
-            distance=distances[i,j]
-            if distance<eps(T)
-                M[i,j]=Complex(curvatures[i]/(2π))
+            dx=xi-x_t[j];dy=yi-y_t[j]
+            d=sqrt(muladd(dx,dx,dy*dy))
+            if d<tol
+                M[i,j]=Complex(curvatures[i]/TWO_PI)
             else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=-im*k/2.0*Bessels.hankelh1(1,k*distance)
+                invd=inv(d)
+                cos_phi=(nxi*dx+nyi*dy)*invd
+                hankel=pref*Bessels.hankelh1(1,k*d)
                 M[i,j]=cos_phi*hankel
             end
         end
