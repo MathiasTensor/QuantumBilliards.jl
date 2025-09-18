@@ -1,5 +1,6 @@
 using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 const TO=TimerOutput()
+const TWO_PI=2*pi
 
 #### REGULAR BIM ####
 
@@ -472,21 +473,26 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;multithre
     M=Matrix{Complex{T}}(undef,N,N)
     xs=getindex.(xy,1)
     ys=getindex.(xy,2)
-    dx=xs.-xs'
-    dy=ys.-ys'
-    distances=hypot.(dx,dy)
+    nx=getindex.(normals,1)
+    ny=getindex.(normals,2)
+    tol=eps(T)
+    pref=Complex{T}(0,-k/2) # -im*k/2
     @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i];yi=ys[i]
+        nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:i # symmetric hankel part
-            distance=distances[i,j]
-            if distance<eps(T)
-                M[i,j]=Complex(curvatures[i]/(2π))
+            dx=xi-xs[j];dy=yi-ys[j]
+            d=sqrt(muladd(dx,dx,dy*dy)) # an efficient dy^2+dx*dx
+            if d<tol
+                M[i,j]=Complex(curvatures[i]/TWO_PI)
             else
-                cos_phi=(normals[i][1]*dx[i,j]+normals[i][2]*dy[i,j])/distance
-                hankel=-im*k/2.0*Bessels.hankelh1(1,k*distance)
+                invd=inv(d)
+                cos_phi=(nxi*dx+nyi*dy)*invd
+                hankel=pref*Bessels.hankelh1(1,k*distance)
                 M[i,j]=cos_phi*hankel
             end
             if i!=j
-                cos_phi_symmetric=(normals[j][1]*(-dx[i,j])+normals[j][2]*(-dy[i,j]))/distance # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+                cos_phi_symmetric=(nx[j]*(-dx)+ny[j]*(-dy))*invd # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
                 M[j,i]=cos_phi_symmetric*hankel
             end
         end
