@@ -387,8 +387,7 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
                     if isdef ?
                         add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
                         add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
-                    end
-                    
+                    end 
                 end
                 if add_y
                     xjr=xj;yjr=_y_reflect(yj,shift_y)
