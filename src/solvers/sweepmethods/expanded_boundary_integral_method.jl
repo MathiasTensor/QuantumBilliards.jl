@@ -320,7 +320,7 @@ end
     return true
 end
 
-function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true,kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
+function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     N=length(bp.xy)
     K=zeros(Complex{T},N,N)
     dK=similar(K)
@@ -329,21 +329,21 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},k::T;mu
     nx=getindex.(bp.normal,1);ny=getindex.(bp.normal,2)
     κ=bp.curvature
     tol2=(eps(T))^2
-    isdef=(kernel_functions[1]===:default) # this is enough of a check
+    isdef=(kernel_fun[1]===:default) # this is enough of a check
     @use_threads multithreading=multithreaded for i in 1:N
         xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:i
             xj=xs[j];yj=ys[j];nxj=nx[j];nyj=ny[j]
             if isdef ? 
                 add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) :
-                add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3])
+                add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
             end
         end
     end
     return K,dK,ddK
 end
 
-function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true,kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
+function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     N=length(bp.xy)
     K=zeros(Complex{T},N,N)
     dK=similar(K)
@@ -369,7 +369,7 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
             sxy=sxgn*sygn
         end
     end
-    isdef=(kernel_functions[1]===:default) # this is enough of a check
+    isdef=(kernel_fun[1]===:default) # this is enough of a check
     @use_threads multithreading=multithreaded for i in 1:N
             xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
             @inbounds for j in 1:N
@@ -378,7 +378,7 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
                 if j<=i
                     if isdef ? 
                         add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) : 
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3])
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
                     end
                 end
                 # reflected legs (always full j=1:N; never add curvature)
@@ -386,14 +386,14 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
                     xjr=_x_reflect(xj,shift_x);yjr=yj
                     if isdef ?
                         add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_fun[3];scale=sxgn)
                     end 
                 end
                 if add_y
                     xjr=xj;yjr=_y_reflect(yj,shift_y)
                     if isdef ?
                         add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn) :
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
                     end
                     
                 end
@@ -401,7 +401,7 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
                     xjr=_x_reflect(xj,shift_x);yjr=_y_reflect(yj,shift_y)
                     if isdef ?
                         add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy) :
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_functions[3];scale=sxgn)
+                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
                     end
                 end
             end
@@ -418,17 +418,17 @@ Build the Fredholm matrix `A` and it's derivative matrices `dA/dk & d^2A/dk^2`.
 - `bp::BoundaryPointsBIM{T}`: Boundary points with `(x,y)`, normals, and `ds`.
 - `symmetry::Vector{Any}`: Symmetry to apply.
 - `k::T`: Wavenumber.
-- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: If `:first`, uses the first derivative matrix; if `:second`, uses the second derivative matrix; else a custom function. All these have the same signature: `kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`.
+- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: If `:first`, uses the first derivative matrix; if `:second`, uses the second derivative matrix; else a custom function. All these have the same signature: `kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}`: The 3`N×N` matrices representing the Fredholm matrix and it's first and second derivative, respectively.
 """
-function fredholm_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::T;kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real}
+function fredholm_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real}
     if isnothing(symmetry_rule)
-        K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,k;kernel_functions=kernel_functions,multithreaded=multithreaded)
+        K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     else
-        K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,symmetry,k;kernel_functions=kernel_functions,multithreaded=multithreaded)
+        K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     end
     ds=bp.ds
     @inbounds for j in 1:length(ds)
@@ -469,7 +469,7 @@ This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
 - `basis::Ba`: The basis function type (not used directly here, but part of the pipeline).
 - `pts::BoundaryPointsBIM{T}`: Boundary points with geometry data.
 - `k::T`: The wavenumber.
-- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: A triple specifying
+- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: A triple specifying
   (base kernel, first derivative kernel, second derivative kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -479,8 +479,8 @@ This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
   - `dA`: The first derivative wrt `k`.
   - `ddA`: The second derivative wrt `k`.
 """
-function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    return fredholm_matrix_with_derivatives(pts,solver.symmetry,k;kernel_functions=kernel_functions,multithreaded=multithreaded)
+function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+    return fredholm_matrix_with_derivatives(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
 end
 
 """
