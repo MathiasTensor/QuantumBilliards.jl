@@ -356,13 +356,13 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
     add_x=false;add_y=false;add_xy=false
     sxgn=one(T);sygn=one(T);sxy=one(T)
     @inbounds for s in symmetry
-        if s isa typeof(XReflection)
+        if s.axis==:y_axis
             add_x=true
             sxgn=(s.parity==-1 ? -one(T) : one(T))
-        elseif s isa typeof(YReflection)
+        elseif s.axis==:x_axis
             add_y=true
             sygn=(s.parity==-1 ? -one(T) : one(T))
-        elseif s isa typeof(XYReflection)
+        elseif s.axis==:origin
             add_x=true;add_y=true;add_xy=true
             sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
             sygn=(s.parity[2]==-1 ? -one(T) : one(T))
@@ -376,33 +376,28 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
                 xj=xs[j];yj=ys[j];nxj=nx[j];nyj=ny[j]
                 # base (upper triangle only; mirrors into [j,i]; curvature on diag)
                 if j<=i
-                    if isdef ? 
-                        add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) : 
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
-                    end
+                    isdef ? 
+                    add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) : 
+                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
                 end
                 # reflected legs (always full j=1:N; never add curvature)
                 if add_x
                     xjr=_x_reflect(xj,shift_x);yjr=yj
-                    if isdef ?
-                        add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_fun[3];scale=sxgn)
-                    end 
+                    isdef ?
+                    add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
+                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_fun[3];scale=sxgn) 
                 end
                 if add_y
                     xjr=xj;yjr=_y_reflect(yj,shift_y)
-                    if isdef ?
-                        add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn) :
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
-                    end
-                    
+                    isdef ?
+                    add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn) :
+                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
                 end
                 if add_xy
                     xjr=_x_reflect(xj,shift_x);yjr=_y_reflect(yj,shift_y)
-                    if isdef ?
-                        add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy) :
-                        add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
-                    end
+                    isdef ?
+                    add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy) :
+                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
                 end
             end
         end

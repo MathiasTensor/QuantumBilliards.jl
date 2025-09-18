@@ -358,9 +358,9 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k:
     sxgn=one(T);sygn=one(T);sxy=one(T) # the scalings +/- depending on the symmetry considerations
     shift_x=bp.shift_x;shift_y=bp.shift_y # the reflection axes shifts from billiard geometry
     @inbounds for s in symmetry # symmetry here is always != nothing
-        if s isa typeof(XReflection);add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
-        if s isa typeof(YReflection);add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
-        if s isa typeof(XYReflection)
+        if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:origin
             add_x=true;add_y=true;add_xy=true
             sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
             sygn=(s.parity[2]==-1 ? -one(T) : one(T))
