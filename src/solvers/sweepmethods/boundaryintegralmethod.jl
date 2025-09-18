@@ -351,7 +351,7 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k:
     nrm=bp.normal
     κ=bp.curvature 
     N=length(xy)
-    K=Matrix{Complex{T}}(undef,N,N)
+    K=zeros(Complex{T},N,N)
     tol2=(eps(T))^2
     pref=Complex{T}(0,-k/2)
     add_x=false;add_y=false;add_xy=false # true if the symmetry is present
