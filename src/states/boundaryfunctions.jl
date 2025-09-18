@@ -341,7 +341,7 @@ Processes the boundary function and associated boundary points by applying symme
 - `Vector{T}`: The processed boundary function.
 """
 function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
-    symmetries=SymmetryRuleBIM_to_Symmetry(solver.rule) 
+    symmetries=solver.symmetry
     pts=BoundaryPointsMethod_to_BoundaryPoints(pts)
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
