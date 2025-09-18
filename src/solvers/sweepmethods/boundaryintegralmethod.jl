@@ -311,65 +311,7 @@ function apply_reflection(p::SVector{2,T},rule::SymmetryRuleBIM{T}) where {T}
     end
 end
 
-"""
-    reverse_angle(pt::SVector{2, T}) -> SVector{2, T}
-
-Reverses the angle of a 2D point represented in Cartesian coordinates.
-
-# Arguments
-- `pt::SVector{2, T}`: Cartesian coordinates of the point (`x, y`). 
-
-# Returns
-- `SVector{2, T}`: Point with negative angle.
-"""
-function reverse_angle(pt::SVector{2,T}) where {T<:Real}
-    x,y=pt[1],pt[2]
-    φ=atan(y,x) # angle
-    φ_neg=-2*φ # final angle
-    cosφ,sinφ=cos(φ_neg),sin(φ_neg)
-    x_new=cosφ*x-sinφ*y
-    y_new=sinφ*x+cosφ*y
-    return SVector(x_new,y_new)
-end
-
-"""
-    apply_rotation(p::SVector{2,T}, rule::SymmetryRuleBIM{T}) -> Vector{SVector{2,T}}
-
-Applies symmetry rotation to a point and gives all the rotations of that point.
-
-# Arguments
-- `p::SVector{2,T}`: Original point.
-- `rule::SymmetryRuleBIM{T}`: Symmetry rule to apply.
-
-# Returns
-- `Tuple{Vector{SVector{2,T}}}`: Rotated point for all the angles of the rotation symmetry and it's rotated reverse angle counterparts or the `[p]` if `symmetry_type` is `nothing`.
-"""
-function apply_rotation(p::SVector{2,T},rule::SymmetryRuleBIM{T}) where {T}
-    shift_x, shift_y = rule.shift_x, rule.shift_y
-    if rule.symmetry_type isa Integer # angle ϕ=2*π/n
-        n=rule.symmetry_type;θ=2*π/n;cosθ,sinθ=cos(θ),sin(θ)
-        pts=Vector{SVector{2,T}}(undef,n-1)
-        pts_revang=Vector{SVector{2,T}}(undef,n-1)
-        px,py=p[1]-shift_x,p[2]-shift_y # translate to origin
-        p_revang=reverse_angle(SVector(px,py))
-        px_revang,py_revang=p_revang[1],p_revang[2]
-        for i in 1:(n-1) # rotate point for all the angles sequentially
-            rot_x=cos(i*θ)*px-sin(i*θ)*py
-            rot_y=sin(i*θ)*px+cos(i*θ)*py
-            rot_x_revang=cos(i*θ)*px_revang-sin(i*θ)*py_revang
-            rot_y_revang=sin(i*θ)*px_revang+cos(i*θ)*py_revang
-            pts[i]=SVector(rot_x+shift_x,rot_y+shift_y)  # translate back
-            pts_revang[i]=SVector(rot_x_revang+shift_x,rot_y_revang+shift_y)  # translate back
-        end
-        return (pts,pts_revang)
-    else
-        return [p]
-    end
-end
-
-
 ### STANDARD BIM ###
-
 
 """
     BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
@@ -568,6 +510,31 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{S
     else
         return kernel_fun(bp,k)
     end
+end
+
+"""
+    @inline function add_pair_default!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,tol2::T,pref::Complex{T};scale::T=one(T)) where {T<:Real}
+        
+Compute and add the default Helmholtz double-layer contribution for the pair (i,j).
+Writes scalars directly into `M` (both M[i,j] and M[j,i] if i≠j). Returns `true`
+if the pair was non-singular (distance² > tol2), `false` otherwise.
+"""
+@inline function add_pair_default!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,tol2::T,pref::Complex{T};scale::T=one(T)) where {T<:Real}
+    dx=xi-xj;dy=yi-yj
+    d2=muladd(dx,dx,dy*dy)
+    if d2<=tol2
+        return false
+    end
+    d=sqrt(d2)
+    invd=inv(d)
+    h=pref*Bessels.hankelh1(1,k*d)
+    @inbounds begin
+        M[i,j]+=scale*((nxi*dx+nyi*dy)*invd)*h
+        if i != j
+            M[j,i]+=scale*((nxj*(-dx)+nyj*(-dy))*invd)*h
+        end
+    end
+    return true
 end
 
 """
