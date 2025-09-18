@@ -425,7 +425,7 @@ Build the Fredholm matrix `A` and it's derivative matrices `dA/dk & d^2A/dk^2`.
 - `Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}`: The 3`N×N` matrices representing the Fredholm matrix and it's first and second derivative, respectively.
 """
 function fredholm_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {T<:Real}
-    if isnothing(symmetry_rule)
+    if isnothing(symmetry)
         K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     else
         K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
@@ -526,8 +526,6 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     end
     T=eltype(real.(λ))
     valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
-    #valid=(abs.(real.(λ)).<dk) # this one might work, but maybe not
-    #valid=abs.(λ).<dk 
     if !any(valid)
         return Vector{T}(),Vector{T}() # early termination
     end
