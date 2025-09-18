@@ -323,8 +323,8 @@ end
 function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     N=length(bp.xy)
     K=zeros(Complex{T},N,N)
-    dK=similar(K)
-    ddK=similar(K)
+    dK=zeros(Complex{T},N,N)
+    ddK=zeros(Complex{T},N,N)
     xs=getindex.(bp.xy,1);ys=getindex.(bp.xy,2)
     nx=getindex.(bp.normal,1);ny=getindex.(bp.normal,2)
     κ=bp.curvature
@@ -346,8 +346,8 @@ end
 function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)) where {T<:Real}
     N=length(bp.xy)
     K=zeros(Complex{T},N,N)
-    dK=similar(K)
-    ddK=similar(K)
+    dK=zeros(Complex{T},N,N)
+    ddK=zeros(Complex{T},N,N)
     xs=getindex.(bp.xy,1);ys=getindex.(bp.xy,2)
     nx=getindex.(bp.normal,1);ny=getindex.(bp.normal,2)
     κ=bp.curvature
