@@ -655,13 +655,18 @@ Constructs the Fredholm matrix for the boundary integral method using the comput
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix, incorporating differential arc lengths and symmetry reflections.
 """
 function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry_rule::SymmetryRuleBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {T<:Real}
-    kernel_matrix=isnothing(symmetry_rule) ?
+    K=isnothing(symmetry_rule) ?
         compute_kernel_matrix(bp,k;kernel_fun=kernel_fun,multithreaded=multithreaded) :
         compute_kernel_matrix(bp,symmetry_rule,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     ds=bp.ds
-    N=length(ds)
-    fredholm_matrix=Diagonal(ones(Complex{T},N))-kernel_matrix.*ds'
-    return fredholm_matrix
+    @inbounds for j in 1:length(ds)
+        @views K[:,j].*=ds[j]
+    end
+    K.*=-one(T)
+    @inbounds for i in axes(K,1)
+        K[i,i]+=one(T)
+    end
+    return K
 end
 
 """
