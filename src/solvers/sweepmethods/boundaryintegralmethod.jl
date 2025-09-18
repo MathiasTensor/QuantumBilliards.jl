@@ -488,7 +488,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;multithre
             else
                 invd=inv(d)
                 cos_phi=(nxi*dx+nyi*dy)*invd
-                hankel=pref*Bessels.hankelh1(1,k*distance)
+                hankel=pref*Bessels.hankelh1(1,k*d)
                 M[i,j]=cos_phi*hankel
             end
             if i!=j
