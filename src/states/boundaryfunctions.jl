@@ -340,14 +340,14 @@ Processes the boundary function and associated boundary points by applying symme
 - `BoundaryPoints{T}`: The processed boundary points after applying symmetries and shifting the arclengths.
 - `Vector{T}`: The processed boundary function.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::Vector{T},pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     symmetries=solver.symmetry
     pts=BoundaryPointsMethod_to_BoundaryPoints(pts)
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(Vector{Float64}(u),symmetries)
-    pts,u=shift_starting_arclength(billiard,Vector{Float64}(u),pts)
-    return pts,u::Vector{Float64}
+    u=apply_symmetries_to_boundary_function(Vector{T}(u),symmetries)
+    pts,u=shift_starting_arclength(billiard,Vector{T}(u),pts)
+    return pts,u::Vector{T}
 end
 
 """
