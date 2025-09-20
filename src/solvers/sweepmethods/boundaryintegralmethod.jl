@@ -298,7 +298,7 @@ Compute and add the default Helmholtz double-layer contribution for the pair (i,
 Writes scalars directly into `M` (both M[i,j] and M[j,i] if i≠j). Returns `true`
 if the pair was non-singular (distance² > tol2), `false` otherwise.
 """
-@inline function add_pair_default!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,tol2::T,pref::Complex{T};scale::T=one(T)) where {T<:Real}
+@inline function _add_pair_default!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,tol2::T,pref::Complex{T};scale::T=one(T)) where {T<:Real}
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
     if d2<=tol2
@@ -319,7 +319,7 @@ end
 Like `add_pair_default!` but uses a user-supplied kernel evaluator:
 `kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`.
 """
-@inline function add_pair_custom!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,kernel_fun;scale::T=one(T)) where {T<:Real}
+@inline function _add_pair_custom!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,kernel_fun;scale::T=one(T)) where {T<:Real}
     val_ij=kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
     @inbounds begin
         M[i,j]+=val_ij
@@ -373,25 +373,25 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k:
         @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
             xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
             if isdef
-                ok=add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
+                ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
                 if !ok; K[i,j]+=Complex(κ[i]/TWO_PI); end
             else
-                add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,kernel_fun)
+                _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,kernel_fun)
             end
             if add_x # reflect only over the x axis
                 xr=_x_reflect(xj,shift_x);yr=yj
-                isdef ? add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn) :
-                        add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sxgn)
+                isdef ? _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn) :
+                        _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sxgn)
             end
             if add_y # reflect only over the y axis
                 xr=xj;yr=_y_reflect(yj,shift_y)
-                isdef ? add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn) :
-                        add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sygn)
+                isdef ? _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn) :
+                        _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sygn)
             end
             if add_xy # reflect over both the axes
                 xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
-                isdef ? add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy) :
-                        add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sxy)
+                isdef ? _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy) :
+                        _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sxy)
             end
         end
     end

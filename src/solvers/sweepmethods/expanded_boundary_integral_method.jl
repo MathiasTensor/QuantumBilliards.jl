@@ -258,7 +258,7 @@ the second derivative of the kernel formula at each `(source_i, target_j)`.
     return M
 end
 
-@inline function add_pair3_no_symmetry_default!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::T=one(T)) where {T<:Real,C<:Complex}
+@inline function _add_pair3_no_symmetry_default!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::T=one(T)) where {T<:Real,C<:Complex}
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
     if i==j # when we have no symmetry safely modify the Diagonal elements, otherwise the d^2<tol2 check in the symmetry version 
@@ -285,7 +285,7 @@ end
     return true
 end
 
-@inline function add_pair3_custom!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T,kernel_fun,kernel_der_fun,kernel_der2_fun;scale::T=one(T)) where {T<:Real,C<:Complex}
+@inline function _add_pair3_custom!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T,kernel_fun,kernel_der_fun,kernel_der2_fun;scale::T=one(T)) where {T<:Real,C<:Complex}
     val_ij=kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
     val_der_ij=kernel_der_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
     val_der2_ij=kernel_der2_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
@@ -297,7 +297,7 @@ end
     return true
 end
 
-@inline function add_pair3_reflected_default!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xjr::T,yjr::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::T=one(T))::Bool where {T<:Real}
+@inline function _add_pair3_reflected_default!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xjr::T,yjr::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::T=one(T))::Bool where {T<:Real}
     dx=xi-xjr; dy=yi-yjr
     d2=muladd(dx,dx,dy*dy)
     if d2<=tol2
@@ -335,8 +335,8 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},k::T;mu
         @inbounds for j in 1:i
             xj=xs[j];yj=ys[j];nxj=nx[j];nyj=ny[j]
             if isdef ? 
-                add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) :
-                add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
+                _add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) :
+                _add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
             end
         end
     end
@@ -377,27 +377,27 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPointsBIM{T},symmetr
                 # base (upper triangle only; mirrors into [j,i]; curvature on diag)
                 if j<=i
                     isdef ? 
-                    add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) : 
-                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
+                    _add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2) : 
+                    _add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3])
                 end
                 # reflected legs (always full j=1:N; never add curvature)
                 if add_x
                     xjr=_x_reflect(xj,shift_x);yjr=yj
                     isdef ?
-                    add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
-                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_fun[3];scale=sxgn) 
+                    _add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn) :
+                    _add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_functions[1],kernel_functions[2],kernel_fun[3];scale=sxgn) 
                 end
                 if add_y
                     xjr=xj;yjr=_y_reflect(yj,shift_y)
                     isdef ?
-                    add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn) :
-                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
+                    _add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn) :
+                    _add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
                 end
                 if add_xy
                     xjr=_x_reflect(xj,shift_x);yjr=_y_reflect(yj,shift_y)
                     isdef ?
-                    add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy) :
-                    add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
+                    _add_pair3_reflected_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy) :
+                    _add_pair3_custom!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2,kernel_fun[1],kernel_fun[2],kernel_fun[3];scale=sxgn)
                 end
             end
         end
