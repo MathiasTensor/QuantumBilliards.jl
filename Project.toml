@@ -71,7 +71,7 @@ SparseArrays = "1.10, 1.11"
 Arpack = "0.5.4"
 IterativeSolvers = "0.9.4"
 MKL = "0.8.0"
-KrylovKit = "0.9.5"
+KrylovKit = "0.10"
 
 
 [extras]
