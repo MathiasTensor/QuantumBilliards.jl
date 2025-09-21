@@ -1,4 +1,4 @@
-module QuantumBilliardsKrylovExt
+module KrylovExternal
 using ..QuantumBilliards
 using KrylovKit, LinearMaps, LinearAlgebra
 
