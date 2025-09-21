@@ -37,8 +37,13 @@ Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
 MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 
+[weakdeps]
+KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
+
+[extensions]
+QuantumBilliardsKrylovExternal = ["KrylovKit", "LinearMaps"]
 
 [compat]
 Bessels = "0.2.8 - 3"
@@ -56,7 +61,7 @@ Optim = "1"
 Rotations = "1"
 StaticArrays = "1"
 TimerOutputs = "0.5"
-julia = "1.8"
+julia = "1.9"
 QuadGK = "2.11.0"
 ProgressMeter = "1.10.2"
 BenchmarkTools = "1.5.0"
@@ -72,7 +77,7 @@ Arpack = "0.5.4"
 IterativeSolvers = "0.9.4"
 MKL = "0.8.0"
 KrylovKit = "0.10"
-
+LinearMaps = "3"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
