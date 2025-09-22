@@ -317,7 +317,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     i_min=argmin(sv)
     return sv[i_min],X[i_min,:] 
     =#
-    F=svd(B,B_int) 
+    F=svd!(B,B_int) 
     n=size(B,2) 
     kF,lF=F.k,F.l
     idx=kF+1:kF+lF
