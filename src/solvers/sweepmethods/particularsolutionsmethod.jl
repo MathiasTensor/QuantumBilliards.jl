@@ -325,23 +325,14 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     return minimum(σ),c
     =#
     
-    B, C = construct_matrices(solver, basis, pts, k; multithreaded=multithreaded)
-    F    = svd!(B, C)                    # GSVD-like object: fields a, b, Q, R, k, l, …
-
-    n    = size(B, 2)
-    kF   = F.k
-    lR   = size(F.R, 1)                  # ← trust the actual order of R (not F.l)
-
-    # generalized singular values in the “coupled” block (length lR):
-    σslice = kF .+ (1:lR)                # indices into F.a, F.b
-    σ      = F.a[σslice] ./ F.b[σslice]
-
-    jR  = argmin(σ)                      # 1…lR index in the R-block
-    J   = (n - lR + 1):n                 # columns of Q associated with R
-
-    e   = zeros(eltype(F.R), lR); e[jR] = one(eltype(e))
-    z   = F.R \ e                        # solve R z = e_jR
-    c   = F.Q[:, J] * z                  # right vector in original coordinates
-
-    return σ[jR], c
+    B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
+    F=svd!(B,C)                                   # GSVD-like object
+    n=size(B,2); kF=F.k; lR=size(F.R,1); J=n-lR+1:n
+    σ= F.a[kF+1:kF+lR]./ F.b[kF+1:kF+lR] # ratios in the coupled block
+    jR=argmin(σ)
+    e=zeros(eltype(F.R),lR); e[jR]=1
+    z=F.R\e
+    c=F.Q[:,J]*z                                   # right vector in original coords
+    rc=norm(C*c); if rc>0 c./=rc end               # <- fix scaling: ‖C c‖ = 1
+    return σ[jR],c
 end
