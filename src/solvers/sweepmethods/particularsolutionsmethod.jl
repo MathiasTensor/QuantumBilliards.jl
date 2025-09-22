@@ -307,6 +307,7 @@ and return both the smallest singular value and the associated vector `X` in the
     - Take the smallest generalized singular value (`sv_min`) and its corresponding singular vector (`X_min`).
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    #=
     B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     F=svd!(B,B_int) 
     n=size(B,2) 
@@ -321,4 +322,24 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     z=F.R\ev 
     c=F.Q[:,J]*z # c is the eigenvector
     return minimum(σ),c
+    =#
+    reg=1e-14
+    B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) # C ≡ interior/stabilizer
+    T=promote_type(eltype(B),eltype(C)); p=size(B,2)
+    w=sqrt.(sum(abs2,eachcol(C))).+eps(real(T))
+    Dinv=Diagonal(inv.(w))
+    B=B*Dinv; C=C*Dinv
+    # minimize ‖B c‖/‖C c‖ via small SPD generalized EVP:
+    # (B'B)c = γ^2 (C'C)c  ⇒ Cholesky(C'C)=L*L', eigen(L^{-1}B'B L^{-T})
+    S=Hermitian(B'B)
+    CC=Hermitian(C'C)
+    τ=(reg==0 ? eps(real(T))*maximum(diag(CC)) : T(reg))
+    F=cholesky(CC+τ*I)                 # SPD; tiny τ stabilizes near-null(C)
+    M=F.L\(S/F.L')                     # p×p symmetric matrix
+    vals,vecs=eigen(Symmetric(M))      # dense small eigenproblem
+    j=argmin(vals)
+    σ=sqrt(vals[j])
+    ĉ=F.L'\vecs[:,j]                   # back-substitute
+    c=(scale_cols ? Dinv*ĉ : ĉ)        # undo column scaling if used
+    return σ,c
 end
