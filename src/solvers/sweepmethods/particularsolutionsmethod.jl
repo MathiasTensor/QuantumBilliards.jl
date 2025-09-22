@@ -328,6 +328,6 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     ev=zeros(eltype(B),lF)
     ev[jR]=1
     z=F.R\ev 
-    c=F.Q[:,J]*z  
-    return minimum(σ),B_int*c
+    c=F.Q[:,J]*z # c is the eigenvector
+    return minimum(σ),c
 end
