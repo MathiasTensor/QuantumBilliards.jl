@@ -308,6 +308,7 @@ and return both the smallest singular value and the associated vector `X` in the
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     
+    #=
     B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     F=svd!(B,B_int) 
     n=size(B,2) 
@@ -322,22 +323,25 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     z=F.R\ev 
     c=F.Q[:,J]*z # c is the eigenvector
     return minimum(σ),c
-    
-    #=
-    reg=1e-10
-    B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) # C ≡ interior/stabilizer
-    T=promote_type(eltype(B),eltype(C)); p=size(B,2)
-    # minimize ‖B c‖/‖C c‖ via small SPD generalized EVP:
-    # (B'B)c = γ^2 (C'C)c  ⇒ Cholesky(C'C)=L*L', eigen(L^{-1}B'B L^{-T})
-    S=Hermitian(B'B)
-    CC=Hermitian(C'C)
-    τ=(reg==0 ? eps(real(T))*maximum(diag(CC)) : T(reg))
-    F=cholesky(CC+τ*I)                 # SPD; tiny τ stabilizes near-null(C)
-    M=F.L\(S/F.L')                     # p×p symmetric matrix
-    vals,vecs=eigen(Symmetric(M))      # dense small eigenproblem
-    j=argmin(vals)
-    σ=sqrt(vals[j])
-    ĉ=F.L'\vecs[:,j]                   # back-substitute
-    return σ,ĉ
     =#
+    
+    B, C = construct_matrices(solver, basis, pts, k; multithreaded=multithreaded)
+    F    = svd!(B, C)                    # GSVD-like object: fields a, b, Q, R, k, l, …
+
+    n    = size(B, 2)
+    kF   = F.k
+    lR   = size(F.R, 1)                  # ← trust the actual order of R (not F.l)
+
+    # generalized singular values in the “coupled” block (length lR):
+    σslice = kF .+ (1:lR)                # indices into F.a, F.b
+    σ      = @view F.a[σslice] ./ @view F.b[σslice]
+
+    jR  = argmin(σ)                      # 1…lR index in the R-block
+    J   = (n - lR + 1):n                 # columns of Q associated with R
+
+    e   = zeros(eltype(F.R), lR); e[jR] = one(eltype(e))
+    z   = F.R \ e                        # solve R z = e_jR
+    c   = F.Q[:, J] * z                  # right vector in original coordinates
+
+    return σ[jR], c
 end
