@@ -337,6 +337,5 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     j=argmin(vals)
     σ=sqrt(vals[j])
     ĉ=F.L'\vecs[:,j]                   # back-substitute
-    c=(scale_cols ? Dinv*ĉ : ĉ)        # undo column scaling if used
-    return σ,c
+    return σ,ĉ
 end
