@@ -308,6 +308,7 @@ and return both the smallest singular value and the associated vector `X` in the
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
+    #=
     F=svd(B,B_int)
     H=F.R*F.Q'
     idx=1:F.k+F.l #inidices containing the singular values we need
@@ -315,4 +316,18 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     X=H[idx,:]
     i_min=argmin(sv)
     return sv[i_min],X[i_min,:] 
+    =#
+    F=svd(B,B_int) 
+    n=size(B,2) 
+    kF,lF=F.k,F.l
+    idx=kF+1:kF+lF
+    σ=F.a[idx]./F.b[idx]  
+    jhat=idx[argmin(σ)]  
+    jR=jhat-kF  
+    J=n-(kF+lF)+1:n 
+    ev=zeros(eltype(B),lF)
+    ev[jR]=1
+    z=F.R\ev 
+    c=F.Q[:,J]*z  
+    return minimum(σ),B_int*c
 end
