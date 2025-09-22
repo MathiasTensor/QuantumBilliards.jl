@@ -326,9 +326,6 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     reg=1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) # C ≡ interior/stabilizer
     T=promote_type(eltype(B),eltype(C)); p=size(B,2)
-    w=sqrt.(sum(abs2,eachcol(C))).+eps(real(T))
-    Dinv=Diagonal(inv.(w))
-    B=B*Dinv; C=C*Dinv
     # minimize ‖B c‖/‖C c‖ via small SPD generalized EVP:
     # (B'B)c = γ^2 (C'C)c  ⇒ Cholesky(C'C)=L*L', eigen(L^{-1}B'B L^{-T})
     S=Hermitian(B'B)
