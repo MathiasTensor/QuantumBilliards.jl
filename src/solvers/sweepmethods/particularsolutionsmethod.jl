@@ -323,7 +323,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     c=F.Q[:,J]*z # c is the eigenvector
     return minimum(σ),c
     =#
-    reg=1e-14
+    reg=1e-10
     B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) # C ≡ interior/stabilizer
     T=promote_type(eltype(B),eltype(C)); p=size(B,2)
     # minimize ‖B c‖/‖C c‖ via small SPD generalized EVP:
