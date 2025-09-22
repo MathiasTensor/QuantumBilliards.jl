@@ -334,7 +334,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
 
     # generalized singular values in the “coupled” block (length lR):
     σslice = kF .+ (1:lR)                # indices into F.a, F.b
-    σ      = @view F.a[σslice] ./ @view F.b[σslice]
+    σ      = F.a[σslice] ./ F.b[σslice]
 
     jR  = argmin(σ)                      # 1…lR index in the R-block
     J   = (n - lR + 1):n                 # columns of Q associated with R
