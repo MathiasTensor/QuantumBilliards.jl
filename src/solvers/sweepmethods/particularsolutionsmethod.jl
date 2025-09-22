@@ -307,7 +307,7 @@ and return both the smallest singular value and the associated vector `X` in the
     - Take the smallest generalized singular value (`sv_min`) and its corresponding singular vector (`X_min`).
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    #=
+    
     B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     F=svd!(B,B_int) 
     n=size(B,2) 
@@ -322,7 +322,8 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     z=F.R\ev 
     c=F.Q[:,J]*z # c is the eigenvector
     return minimum(σ),c
-    =#
+    
+    #=
     reg=1e-10
     B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) # C ≡ interior/stabilizer
     T=promote_type(eltype(B),eltype(C)); p=size(B,2)
@@ -338,4 +339,5 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     σ=sqrt(vals[j])
     ĉ=F.L'\vecs[:,j]                   # back-substitute
     return σ,ĉ
+    =#
 end
