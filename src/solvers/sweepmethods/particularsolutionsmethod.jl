@@ -347,7 +347,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     B .= B ./ sB';  C .= C ./ sC'
 
     # Rank-revealing QR on C to orthonormalize the interior metric
-    F = qr(C, pivot=ColumnNorm())                          # thin RRQR
+    F = qr(C)                          # thin RRQR
     R = UpperTriangular(F.R)
     piv = F.p                                        # permutation vector
     r = findlast(i->abs(R[i,i]) > 1e-10*abs(R[1,1]), 1:min(size(R)...))  # effective rank
