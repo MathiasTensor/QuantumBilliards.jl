@@ -361,7 +361,13 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
 
     # smallest singular value/vector of Br
     σs, _, vlist, _ = svdsolve(Br, 1, :SR)
-    y = vlist[1]
+
+    _,S,Vt=LAPACK.gesvd!('A','A',Br) 
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    y=real.(u_mu)
+
     ĉ = zeros(T, size(B,2))
     ĉ[piv[1:r]] = Rr \ y                      # back-substitute
     ĉ ./= sB                                  # undo column scaling of B,C
