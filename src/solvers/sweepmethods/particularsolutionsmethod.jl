@@ -297,10 +297,6 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     tol=1e-10
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
-    #sB=vec(norm.(eachcol(B))).+eps(real(T)) # biasing the Rayleigh quotient by tiny/huge columns; eps prevents 0
-    #sC=vec(norm.(eachcol(C))).+eps(real(T))
-    #B.=B./sB' # B = B * Diag(sB)^{-1} rescale
-    #C.=C./sC' # C = C * Diag(sC)^{-1} rescale
     F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
     R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
     piv=F.p # permutation vector piv such that C[:,piv] = Q*R
@@ -315,6 +311,5 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     y=real.(u_mu)
     chat=zeros(T,size(B,2))
     chat[piv[1:r]]=Rr\y  # back-substitute: c[piv[1:r]]=Rr^{-1} y; rest are zeros
-    #chat./=sB # undo B/C column scaling so c corresponds to the original unscaled matrices B,C from construct_matrices
     return mu,chat
 end
