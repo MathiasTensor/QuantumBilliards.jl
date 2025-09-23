@@ -359,9 +359,6 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     # form Br = B[:,piv[1:r]] * inv(Rr) without explicit inverse:
     Br = B[:, piv[1:r]] / Rr                 # triangular solve is stable
 
-    # smallest singular value/vector of Br
-    σs, _, vlist, _ = svdsolve(Br, 1, :SR)
-
     _,S,Vt=LAPACK.gesvd!('A','A',Br) 
     idx=findmin(S)[2]
     mu=S[idx]
@@ -371,5 +368,5 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     ĉ = zeros(T, size(B,2))
     ĉ[piv[1:r]] = Rr \ y                      # back-substitute
     ĉ ./= sB                                  # undo column scaling of B,C
-    return σs[1], ĉ
+    return mu, ĉ
 end
