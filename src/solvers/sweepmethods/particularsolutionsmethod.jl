@@ -280,93 +280,41 @@ end
 """
     solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
-Compute the generalized singular value decomposition (SVD) for the boundary and interior matrices `(B, B_int)`,
-and return both the smallest singular value and the associated vector `X` in the decomposition. 
+Returns the smallest singular value and the basis expansion coefficient vector for use in `boundary_function`.
 
 # Arguments
 - `solver::ParticularSolutionsMethod`: PSM solver configuration.
-- `basis::Ba<:AbsBasis`: The basis object with a `basis_matrix` method.
-- `pts::PointsPSM`: Points on boundary and interior.
-- `k::Real`: Wavenumber/frequency parameter.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `basis::Ba<:AbsBasis`: Basis used to assemble boundary/interior matrices.
+- `pts::PointsPSM`: Collocation points (boundary + interior).
+- `k::Real`: Wavenumber.
+- `multithreaded::Bool=true`: Pass-through for matrix construction.
 
 # Returns
-- `σ_min::Real`: The smallest generalized singular value in the range.
-- `x_min::AbstractVector{<:Complex}`: The vector corresponding to that smallest singular value,
-  typically from the decomposition `H[idx, :]`.
-
-# Methodology
-1. **Matrix Construction**:
-    - Construct matrices `B` and `B_int` from the solver, basis, points, and wavenumber `k`.
-2. **GSVD Decomposition**:
-    - Perform the generalized singular value decomposition (GSVD) of `B` and `B_int`, resulting in matrices `F.R - left singular vectors of B`, `F.Q - right singular vectors of B_int` (from the factorization object `F=GeneralizedSVD`), and singular values stored in `F.a` and `F.b` (similarly how we have to construct the generalized eigenvalues in ggev3! via λ=α./β in decompositions.jl here). Then we form the product matrix `H=F.R*F.Q'` which reconstructs the generalized eigenvectors.
-3. **Compute Generalized Singular Values**:
-    - Indices `idx=1:F.k+F.l` specify all the relevant generalized singular values (since we could have artefacts of overdetermined systems or numerical padding).
-    - Generalized singular values are computed as the element-wise ratio `sv=F.a[idx]./F.b[idx]` as afformentioned above.
-5. **Select the Optimal Solution**:
-    - Take the smallest generalized singular value (`sv_min`) and its corresponding singular vector (`X_min`).
+- `μ::Real`: The minimized value of `‖B*ĉ‖` under the normalization induced by `C` (the stabilized analogue of the smallest generalized singular value).
+- `chat::Vector`: Coefficient vector in the given `basis`.
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    
-    #=
-    B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    F=svd!(B,B_int) 
-    n=size(B,2) 
-    kF,lF=F.k,F.l
-    idx=kF+1:kF+lF
-    σ=F.a[idx]./F.b[idx]  
-    jhat=idx[argmin(σ)]  
-    jR=jhat-kF  
-    J=n-(kF+lF)+1:n 
-    ev=zeros(eltype(B),lF)
-    ev[jR]=1
-    z=F.R\ev 
-    c=F.Q[:,J]*z # c is the eigenvector
-    return minimum(σ),c
-    =#
-    
-    #=
-    B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    F=svd!(B,C)                                   # GSVD-like object
-    n=size(B,2); kF=F.k; lR=size(F.R,1); J=n-lR+1:n
-    σ= F.a[kF+1:kF+lR]./ F.b[kF+1:kF+lR] # ratios in the coupled block
-    jR=argmin(σ)
-    e=zeros(eltype(F.R),lR); e[jR]=1
-    z=F.R\e
-    c=F.Q[:,J]*z                                   # right vector in original coords
-    rc=norm(C*c); if rc>0 c./=rc end               # <- fix scaling: ‖C c‖ = 1
-    return σ[jR],c
-    =#
-
-    B, C = construct_matrices(solver, basis, pts, k; multithreaded)
-    T = promote_type(eltype(B), eltype(C))
-
-    # Column equilibration helps a lot at high k (optional but cheap)
-    sB = vec(norm.(eachcol(B))) .+ eps(real(T))
-    sC = vec(norm.(eachcol(C))) .+ eps(real(T))
-    B .= B ./ sB';  C .= C ./ sC'
-
-    # Rank-revealing QR on C to orthonormalize the interior metric
-    F = qr(C, ColumnNorm())                          # thin RRQR
-    R = UpperTriangular(F.R)
-    piv = F.p                                        # permutation vector
-    r = findlast(i->abs(R[i,i]) > 1e-10*abs(R[1,1]), 1:min(size(R)...))  # effective rank
-    r === nothing && return (Inf, zeros(T, size(B,2)))                    # degenerate
-
-    # Work in the interior-orthonormal coordinates: minimize ||B*R^{-1} y|| s.t. ||y||=1
-    Rr = R[1:r, 1:r]
-    Qc = I                                   # not formed
-    # form Br = B[:,piv[1:r]] * inv(Rr) without explicit inverse:
-    Br = B[:, piv[1:r]] / Rr                 # triangular solve is stable
-
-    _,S,Vt=LAPACK.gesvd!('A','A',Br) 
+    tol=1e-10
+    B,C=construct_matrices(solver,basis,pts,k;multithreaded)
+    T=eltype(B)
+    sB=vec(norm.(eachcol(B))).+eps(real(T)) # biasing the Rayleigh quotient by tiny/huge columns; eps prevents 0
+    sC=vec(norm.(eachcol(C))).+eps(real(T))
+    B.=B./sB' # B = B * Diag(sB)^{-1} rescale
+    C.=C./sC' # C = C * Diag(sC)^{-1} rescale
+    F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
+    R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
+    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+    r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
+    isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+    Rr=R[1:r,1:r] # well-determined r×r block on Q
+    Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
+    _,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=Vt[idx,:]
     y=real.(u_mu)
-
-    ĉ = zeros(T, size(B,2))
-    ĉ[piv[1:r]] = Rr \ y                      # back-substitute
-    ĉ ./= sB                                  # undo column scaling of B,C
-    return mu, ĉ
+    chat=zeros(T,size(B,2))
+    chat[piv[1:r]]=Rr\y  # back-substitute: c[piv[1:r]]=Rr^{-1} y; rest are zeros
+    chat./=sB # undo B/C column scaling so c corresponds to the original unscaled matrices B,C from construct_matrices
+    return mu,chat
 end
