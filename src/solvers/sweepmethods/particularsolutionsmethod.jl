@@ -325,6 +325,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     return minimum(σ),c
     =#
     
+    #=
     B,C=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     F=svd!(B,C)                                   # GSVD-like object
     n=size(B,2); kF=F.k; lR=size(F.R,1); J=n-lR+1:n
@@ -335,4 +336,34 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     c=F.Q[:,J]*z                                   # right vector in original coords
     rc=norm(C*c); if rc>0 c./=rc end               # <- fix scaling: ‖C c‖ = 1
     return σ[jR],c
+    =#
+
+    B, C = construct_matrices(solver, basis, pts, k; multithreaded)
+    T = promote_type(eltype(B), eltype(C))
+
+    # Column equilibration helps a lot at high k (optional but cheap)
+    sB = vec(norm.(eachcol(B))) .+ eps(real(T))
+    sC = vec(norm.(eachcol(C))) .+ eps(real(T))
+    B .= B ./ sB';  C .= C ./ sC'
+
+    # Rank-revealing QR on C to orthonormalize the interior metric
+    F = qr(C, pivot=ColumnNorm())                          # thin RRQR
+    R = UpperTriangular(F.R)
+    piv = F.p                                        # permutation vector
+    r = findlast(i->abs(R[i,i]) > 1e-10*abs(R[1,1]), 1:min(size(R)...))  # effective rank
+    r === nothing && return (Inf, zeros(T, size(B,2)))                    # degenerate
+
+    # Work in the interior-orthonormal coordinates: minimize ||B*R^{-1} y|| s.t. ||y||=1
+    Rr = R[1:r, 1:r]
+    Qc = I                                   # not formed
+    # form Br = B[:,piv[1:r]] * inv(Rr) without explicit inverse:
+    Br = B[:, piv[1:r]] / Rr                 # triangular solve is stable
+
+    # smallest singular value/vector of Br
+    σs, _, vlist, _ = svdsolve(Br, 1, :SR)
+    y = vlist[1]
+    ĉ = zeros(T, size(B,2))
+    ĉ[piv[1:r]] = Rr \ y                      # back-substitute
+    ĉ ./= sB                                  # undo column scaling of B,C
+    return σs[1], ĉ
 end
