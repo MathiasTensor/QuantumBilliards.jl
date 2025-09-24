@@ -90,7 +90,7 @@ function solve_vect_krylov(solver::ParticularSolutionsMethod,basis::Ba,pts::Poin
     isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail    
     Rr=R[1:r,1:r] # well-determined r×r block on Q
     Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
-    vals,_,rvect,_=svdsolve(Br,1,:SM,tol=tol,maxiter=maxiter) # take the lowest singular value and the associated eigenvector, might add option to choose the number of lowest lying singualr values for symmetry reasons.
+    vals,_,rvect,_=svdsolve(Br,1,:SR,tol=tol,maxiter=maxiter) # take the lowest singular value and the associated eigenvector, might add option to choose the number of lowest lying singualr values for symmetry reasons.
     y=real.(rvect[1])
 
     #_,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y. In principle could use Krylov with :SM but this is not called in the bottleneck eigenvalue search.
