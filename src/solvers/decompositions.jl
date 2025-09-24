@@ -47,7 +47,7 @@ end
 
 Computes the generalized eigenvalues of the system `A * x = λ * B * x`
 using a truncated basis where eigenvalues of `A` smaller than `eps * max(eigenvalues(A))` 
-are ignored. This optimized implementation minimizes memory allocations.
+are ignored.
 
 Reference: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html
 | Step                                      | Code Line                                                                                     | Explanation                                                                                                      |

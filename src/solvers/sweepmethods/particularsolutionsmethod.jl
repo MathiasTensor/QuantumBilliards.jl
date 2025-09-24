@@ -290,11 +290,11 @@ Returns the smallest singular value and the basis expansion coefficient vector f
 - `multithreaded::Bool=true`: Pass-through for matrix construction.
 
 # Returns
-- `μ::Real`: The minimized value of `‖B*ĉ‖` under the normalization induced by `C` (the stabilized analogue of the smallest generalized singular value).
+- `μ::Real`: the stabilized analogue of the smallest generalized singular value.
 - `chat::Vector`: Coefficient vector in the given `basis`.
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    tol=1e-10
+    tol=1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
@@ -304,7 +304,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
     Rr=R[1:r,1:r] # well-determined r×r block on Q
     Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
-    _,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y
+    _,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y. In principle could use Krylov with :SM but this is not called in the bottleneck eigenvalue search.
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=Vt[idx,:]

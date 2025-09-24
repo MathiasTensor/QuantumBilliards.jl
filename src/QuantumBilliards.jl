@@ -96,6 +96,7 @@ include("solvers/sweepmethods/boundaryintegralmethod.jl")
 include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
 include("solvers/sweepmethods/cfie.jl")
+include("../ext/KrylovExternal.jl")
 export ScalingMethodA, ScalingMethodB 
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
@@ -103,7 +104,7 @@ export evaluate_points, construct_matrices, construct_matrices_benchmark
 export solve, solve_vect
 export solve_wavenumber, solve_spectrum
 export k_sweep, refine_minima
-export BoundaryIntegralMethod, compute_kernel_matrix, fredholm_matrix, solve_timed, AbstractHankelBasis
+export BoundaryIntegralMethod, compute_kernel_matrix, fredholm_matrix, solve_timed, AbstractHankelBasis, BoundaryPointsBIM
 export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matrix, default_helmholtz_kernel_second_derivative_matrix, compute_kernel_der_matrix, fredholm_matrix_der
 
 #spectra
