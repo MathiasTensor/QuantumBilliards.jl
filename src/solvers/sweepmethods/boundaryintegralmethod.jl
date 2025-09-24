@@ -510,13 +510,14 @@ Computes the smallest singular value and its corresponding singular vector for t
   - `Vector{T}`: The corresponding singular vector.
 """
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
-    return mu,u_mu
+    #A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+    #_,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
+    #idx=findmin(S)[2]
+    #mu=S[idx]
+    #u_mu=Vt[idx,:]
+    #u_mu=real.(u_mu)
+    #return mu,u_mu
+    return solve_vect_krylov(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
 end
 
 """

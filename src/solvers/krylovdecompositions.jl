@@ -78,29 +78,3 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
     resize!(λ_out,m);resize!(tens_out,m) # since nev > expected eigvals in dk due to added padding, trim it
     return λ_out,tens_out
 end
-
-function solve_vect_krylov(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,maxiter=5000) where {Ba<:AbsBasis}
-    tol=1e-10
-    B,C=construct_matrices(solver,basis,pts,k;multithreaded)
-    T=eltype(B)
-    F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
-    R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
-    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
-    r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
-    isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail    
-    Rr=R[1:r,1:r] # well-determined r×r block on Q
-    Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
-    vals,_,rvect,_=svdsolve(Br,1,:SR,tol=1e-8,maxiter=maxiter) # take the lowest singular value and the associated eigenvector, might add option to choose the number of lowest lying singualr values for symmetry reasons.
-    y=real.(rvect[1])
-
-    #_,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y. In principle could use Krylov with :SM but this is not called in the bottleneck eigenvalue search.
-    #idx=findmin(S)[2]
-    #mu=S[idx]
-    #u_mu=Vt[idx,:]
-    #y=real.(u_mu)
-
-    chat=zeros(T,size(B,2))
-    chat[piv[1:r]]=Rr\y  # back-substitute: c[piv[1:r]]=Rr^{-1} y; rest are zeros
-    return vals[1],chat
-    #return mu,chat
-end
