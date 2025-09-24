@@ -294,6 +294,7 @@ Returns the smallest singular value and the basis expansion coefficient vector f
 - `chat::Vector`: Coefficient vector in the given `basis`.
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    #=
     tol=1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
@@ -312,4 +313,6 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     chat=zeros(T,size(B,2))
     chat[piv[1:r]]=Rr\y  # back-substitute: c[piv[1:r]]=Rr^{-1} y; rest are zeros
     return mu,chat
+    =#
+    return solve_vect_krylov(solver,basis,pts,k,multithreaded=multithreaded)
 end
