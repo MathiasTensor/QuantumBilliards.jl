@@ -30,7 +30,7 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
         ldiv!(F,y) # y <- A \ y  (using LU) without extra allocations
         return y
     end
-    C=LinearMap{CT}(op_r!,n,n;ismutating=true) # LinearMaps wraps the op for Krylov without forming A^{-1}dA explicitly. Crucial to reduce allocations
+    C=LinearMaps.LinearMap{CT}(op_r!,n,n;ismutating=true) # LinearMaps wraps the op for Krylov without forming A^{-1}dA explicitly. Crucial to reduce allocations
     μr,VRlist,_=eigsolve(C,n,nev,:LM;tol=tol,maxiter=maxiter,krylovdim=krylovdim) # compute the largest |μ| -> smallest |λ|
     λ=inv.(μr) # # map back via λ = 1/μ                          
     ord=sortperm(abs.(λ))
@@ -46,7 +46,7 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
         mul!(y,dAt,tmp) # y <- (dA') * tmp = (dA') * (A')^{-1} * x  without extra allocations
         return y
     end
-    Cl=LinearMap{CT}(op_l!,n,n;ismutating=true) # adjoint-side LinearMap (no explicit transposed matrices formed beyond dA', A')
+    Cl=LinearMaps.LinearMap{CT}(op_l!,n,n;ismutating=true) # adjoint-side LinearMap (no explicit transposed matrices formed beyond dA', A')
     #w0=zeros(CT,n);randn!(rng,w0) # random complex starting vector for krylov
     μl,ULlist,_=eigsolve(Cl,n,nev,:LM;tol=tol,maxiter=maxiter,krylovdim=krylovdim) # left eigenvalues should match μr (up to num. noise), reuse v0
     # Pair left and right sets by closeness in μ (using conjugation to be robust for complex arithmetic)
