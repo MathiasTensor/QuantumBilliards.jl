@@ -40,13 +40,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
 
-[weakdeps]
-KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
-LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
-
-[extensions]
-KrylovExternal = ["KrylovKit", "LinearMaps"]
-
 [compat]
 Bessels = "0.2.8 - 3"
 CairoMakie = "0.10"
