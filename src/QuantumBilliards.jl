@@ -82,7 +82,7 @@ export EquilateralTriangleBilliard, make_fundamental_equilateral_triangle, make_
 export adapt_basis, triangle_corners, make_triangle_and_basis
 export GeneralizedSinai, make_quarter_generalized_sinai, make_full_boundary_generalized_sinai, make_desymmetrized_full_generalized_sinai, make_generalized_sinai_and_basis
 
-include("solvers/densedecompositions.jl")
+include("solvers/fulldecompositions.jl")
 include("solvers/matrixconstructors.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
@@ -96,7 +96,7 @@ include("solvers/sweepmethods/boundaryintegralmethod.jl")
 include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
 include("solvers/sweepmethods/cfie.jl")
-include("solvers/krylovdecompositions.jl")
+include("solvers/krylovsolvers.jl")
 export ScalingMethodA, ScalingMethodB 
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
