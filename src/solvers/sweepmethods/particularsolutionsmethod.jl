@@ -243,7 +243,7 @@ function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;mult
     isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
     Rr=R[1:r,1:r] # well-determined r×r block on Q
     Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
-    vals,_,_,_=svdsolve(Br,3,:SR,tol=tol)
+    vals,_,_,_=svdsolve(Br,3,:SM,tol=tol)
     return minimum(vals)
 end
 
