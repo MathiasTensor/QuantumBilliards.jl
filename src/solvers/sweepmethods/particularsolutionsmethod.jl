@@ -230,9 +230,21 @@ The idea is to represent the minimization of the boundary tension of the wavefun
   indicate a better "fit" to the PDE boundary conditions.
 """
 function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    solution=svdvals(B,B_int)
-    return minimum(solution)
+    #B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
+    #solution=svdvals(B,B_int)
+    #return minimum(solution)
+    tol=1e-14 # this can in principle be adjustable, based on how the R[1,1] scales below with k
+    B,C=construct_matrices(solver,basis,pts,k;multithreaded)
+    T=eltype(B)
+    F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
+    R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
+    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+    r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
+    isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+    Rr=R[1:r,1:r] # well-determined r×r block on Q
+    Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
+    vals,_,_,_=svdsolve(Br,3,:SR,tol=tol)
+    return minimum(vals)
 end
 
 # INTERNAL

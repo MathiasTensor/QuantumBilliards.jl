@@ -14,6 +14,7 @@ function solve_vect_krylov(solver::BoundaryIntegralMethod,basis::Ba,pts::Boundar
     return vals[1],rvect[1]
 end
 
+#TODO When compatibility is resolved for KrylovKit > 10.1 we ca use BiArnoldi method - bieigsolve that is designed for non-hermitian EVP and will give simultaneously both left and right eigenvectors. Currently we do 2 separate solver for left and right eigenvectors.
 function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     CT=eltype(A)
@@ -61,9 +62,9 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
         λj=λ[j]
         if abs(real(λj))<dk && abs(imag(λj))<dk # rectangular acceptance window in the (Re λ, Im λ) plane
             v=VRlist[j];u=ULlist[j]
-            mul!(buf,ddA,v) # buf ← ddA * v
+            mul!(buf,ddA,v) # buf <- ddA * v
             num=dot(u,buf)  # numerator = u' * ddA * v
-            mul!(buf,dA,v)  # buf ← dA * v, overwrites previous buf
+            mul!(buf,dA,v)  # buf <- dA * v, overwrites previous buf
             den=dot(u,buf)   # denominator = u' * dA * v  (bi-orthogonal pairing; scaling cancels in the ratio)
             # first-order: ε1 = -λ  (since A v = λ dA v with λ = -ε to first order)
             # second-order: ε2 = -0.5 ε1^2 * (u' ddA v)/(u' dA v)
