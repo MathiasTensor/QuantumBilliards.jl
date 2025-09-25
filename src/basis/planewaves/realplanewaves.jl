@@ -158,7 +158,7 @@ Constructs the basis function Matrix of the Real plane wave basis for column i.
     M=length(pts)
     N=length(indices)
     B=Matrix{T}(undef,M,N)
-    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+    @use_threads multithreading=multithreaded for c in 1:N
         idx=indices[c]
         parx=basis.parity_x[idx]
         pary=basis.parity_y[idx]
@@ -235,7 +235,7 @@ function gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::Abstrac
     M=length(pts); N=length(indices)
     dBdx=Matrix{T}(undef,M,N)
     dBdy=Matrix{T}(undef,M,N)
-    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+    @use_threads multithreading=multithreaded for c in 1:N
         idx=indices[c]
         parx=basis.parity_x[idx]
         pary=basis.parity_y[idx]
@@ -323,7 +323,7 @@ function basis_and_gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pt
     B=Matrix{T}(undef,M,N)
     dBdx=Matrix{T}(undef,M,N)
     dBdy=Matrix{T}(undef,M,N)
-    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+    @use_threads multithreading=multithreaded for c in 1:N
         idx=indices[c]
         parx=basis.parity_x[idx]
         pary=basis.parity_y[idx]
@@ -408,7 +408,7 @@ Constructs the k-gradient of the basis matrix.
     M=length(pts)
     N=length(indices)
     dBdk=Matrix{T}(undef,M,N)
-    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+    @use_threads multithreading=multithreaded for c in 1:N
         idx=indices[c]
         parx=basis.parity_x[idx]
         pary=basis.parity_y[idx]
