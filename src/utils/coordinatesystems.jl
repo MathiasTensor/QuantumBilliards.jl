@@ -91,34 +91,33 @@ Convert a 2D Cartesian point to polar coordinates, with an optional rotation app
 function cartesian_to_polar(pt::SVector{2,T};rotation_angle_discontinuity::T=zero(T)) where {T<:Number}
     if rotation_angle_discontinuity!=zero(T)
         s,c=sincos(rotation_angle_discontinuity)
-        # Rotate the point (x, y) by the given rotation_angle_discontinuity
-        x_rot=pt[1]*c-pt[2]*s
-        y_rot=pt[1]*s+pt[2]*c
-        # Convert the rotated point to polar coordinates
-        r=hypot(x_rot,y_rot)
-        θ=atan(y_rot,x_rot)
-        # Subtract the rotation angle from θ to adjust the angle back
+        xr=pt[1]*c-pt[2]*s
+        yr=pt[1]*s+pt[2]*c
+        r=hypot(xr,yr)
+        θ=atan(yr,xr)
         return SVector(r,θ-rotation_angle_discontinuity)
     else
-        # No rotation, directly convert to polar coordinates
         r=hypot(pt[1],pt[2])
         θ=atan(pt[2],pt[1])
         return SVector(r,θ)
     end
 end
 
-#=
-#Complex coordinates
-struct ComplexCS{T} <:CoordinateSystem where T<:Number
-    origin::SVector{2,T}
-    rot_angle::T
+# in-place polar (zero allocs)
+@inline function _polar_coords!(r::AbstractVector,φ::AbstractVector,pm,pts,rotation_angle_discontinuity)
+    θ0=rotation_angle_discontinuity
+    s0,c0=sincos(θ0)
+    @inbounds for j in eachindex(pts)
+        x=pm(pts[j])
+        if θ0==zero(θ0)
+            xr=x[1]
+            yr=x[2]
+        else
+            xr=x[1]*c0-x[2]*s0
+            yr=x[1]*s0+x[2]*c0
+        end
+        r[j]=hypot(xr,yr)
+        φ[j]=atan(yr,xr)-θ0
+    end
+    return r,φ
 end
-
-#Convex coordinates (for convex billiards only)
-struct ConvexCS{T} <:CoordinateSystem where T<:Number
-    origin::SVector{2,T}
-    rot_angle::T
-end
-
-cs = CartesianCS(SVector(0.0,0.0),0.0)
-=#

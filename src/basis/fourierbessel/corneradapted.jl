@@ -33,11 +33,9 @@ function ca_fb(nu,k::T,r::T,phi::T) where {T<:Real}
 end
 
 function Jvp(nu,r::T) where {T<:Real}
-    let
     j_minus=Jv(nu-one(T),r)
     j_plus=Jv(nu+one(T),r)
     return 0.5*(j_minus-j_plus)
-    end
 end
 
 """
@@ -142,10 +140,17 @@ This function computes the basis function for a specified index `i` in the `Corn
 - `pts`: An array of points where the basis function is to be evaluated.
 """
 @inline function basis_fun(basis::CornerAdaptedFourierBessel{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol=(cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
-        return collect(ca_fb(nu*i,k,pt[1],pt[2]) for pt in pt_pol)
-    end
+    pm=basis.cs.local_map
+    ν=basis.nu
+    M=length(pts)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    out=Vector{T}(undef,M)
+    m=ν*i
+    @inbounds @simd for j=1:M
+        out[j]=ca_fb(m,k,r[j],φ[j]); end
+    return out
 end
 
 """
@@ -172,16 +177,22 @@ This function computes the basis functions for multiple specified indices in the
 - `B::Matrix{T}`: The basis matrix.
 """
 @inline function basis_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol=(cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts)
-        M=length(pts)
-        N=length(indices)
-        B=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            B[:,i] .= (ca_fb(nu*i,k,pt[1],pt[2]) for pt in pt_pol)
+    pm=basis.cs.local_map
+    ν=basis.nu
+    M=length(pts)
+    N=length(indices)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    B=Matrix{T}(undef,M,N)
+    @use_threads multithreading=multithreaded for c=1:N
+        m=ν*indices[c]
+        col=@view B[:,c]
+        @inbounds @simd for j=1:M
+            col[j]=ca_fb(m,k,r[j],φ[j])
         end
-        return B 
     end
+    return B
 end
 
 """
@@ -208,16 +219,18 @@ This function computes the derivative of the basis function with respect to the 
 - `dk::Vector{T}`: A vector that symbolizes the column of dB/dk[:,i] for index i (that is the k-gradient column i).
 """
 @inline function dk_fun(basis::CornerAdaptedFourierBessel{T},i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    #translation of coordiante origin
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol=[cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
-        r=getindex.(pt_pol,1)
-        phi=getindex.(pt_pol,2) 
-        dj=@. Jvp(nu*i,k*r)
-        s=@. sin(nu*i*phi)
-        dk=@. r*dj*s
-        return dk
+    pm=basis.cs.local_map
+    ν=basis.nu
+    m=ν*i
+    M=length(pts)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    dk=Vector{T}(undef,M)
+    @inbounds @simd for j in 1:M
+        dk[j]=r[j]*Jvp(m,k*r[j])*sin(m*φ[j])
     end
+    return dk
 end
     
 """
@@ -246,20 +259,22 @@ This function computes the derivatives of the basis functions with respect to th
 - `dB_dk`: The k-derivative of the basis matrix.
 """
 @inline function dk_fun(basis::CornerAdaptedFourierBessel{T},indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_pol=[cartesian_to_polar(pm(pt),rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pts]
-        r=getindex.(pt_pol,1)
-        phi=getindex.(pt_pol,2)
-        M=length(pts)
-        N=length(indices)
-        dB_dk=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            dj=@. Jvp(nu*i,k*r)
-            s=@. sin(nu*i*phi)
-            dB_dk[:,i] .= @. r*dj*s
+    pm=basis.cs.local_map
+    ν=basis.nu
+    M=length(pts)
+    N=length(indices)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    dB_dk=Matrix{T}(undef,M,N)
+    @use_threads multithreading=multithreaded for c in 1:N
+        m=ν*indices[c]
+        col=@view dB_dk[:,c]
+        @inbounds @simd for j in 1:M
+            col[j]=r[j]*Jvp(m,k*r[j])*sin(m*φ[j])
         end
-        return dB_dk
     end
+    return dB_dk
 end
 
 """
@@ -287,21 +302,28 @@ This function computes the gradient of the basis function with respect to the Ca
 - `(dx,dy)::Tuple{Vector{T},Vector{T}}`: Tuple of vectors representing the x and y derivative of the basis matrix at column index i.
 """
 function gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_xy=collect(pm(pt) for pt in pts)
-        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
-        r=getindex.(pt_pol,1)
-        phi=getindex.(pt_pol,2)
-        X=getindex.(pt_xy,1)
-        Y=getindex.(pt_xy,2)
-        j=Jv.(nu*i,k*r)
-        dj=Jvp.(nu*i,k*r) 
-        s=@. sin(nu*i*phi) 
-        c=@. cos(nu*i*phi) 
-        dx=@. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
-        dy=@. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
-    return dx,dy
+    pm=basis.cs.local_map
+    ν=basis.nu
+    m=ν*i
+    M=length(pts)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    dx=Vector{T}(undef,M)
+    dy=Vector{T}(undef,M)
+    @inbounds for j in 1:M
+        rj=r[j]
+        invr=(rj==0 ? zero(T) : inv(rj))
+        sφ=sin(φ[j])
+        cφ=cos(φ[j])
+        jv=Jv(m,k*rj)
+        dj=Jvp(m,k*rj)
+        fr=k*dj*sin(m*φ[j])
+        fφ=m*jv*cos(m*φ[j])
+        dx[j]=cφ*fr-sφ*invr*fφ
+        dy[j]=sφ*fr+cφ*invr*fφ
     end
+    return dx,dy
 end
 
 """
@@ -330,28 +352,32 @@ This function computes the gradients of the basis functions with respect to the 
 - `(dB_dx,dB_dy)::Tuple{Matrix{T},Matrix{T}}`
 """
 function gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        #local cartesian coords
-        pt_xy=collect(pm(pt) for pt in pts)
-        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy)
-        r=getindex.(pt_pol,1)
-        phi=getindex.(pt_pol,2)
-        X=getindex.(pt_xy,1)
-        Y=getindex.(pt_xy,2)
-        M=length(pts)
-        N=length(indices)
-        dB_dx=zeros(T,M,N)
-        dB_dy=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            j=Jv.(nu*i,k*r)
-            dj=Jvp.(nu*i,k*r) 
-            s=@. sin(nu*i*phi) 
-            c=@. cos(nu*i*phi) 
-            dB_dx[:,i] .= @. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
-            dB_dy[:,i] .= @. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
+    pm=basis.cs.local_map
+    ν=basis.nu
+    M=length(pts)
+    N=length(indices)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    dB_dx=Matrix{T}(undef,M,N); dB_dy=Matrix{T}(undef,M,N)
+    @use_threads multithreading=multithreaded for c in 1:N
+        m=ν*indices[c]
+        cx=@view dB_dx[:,c]
+        cy=@view dB_dy[:,c]
+        @inbounds for j in 1:M
+            rj=r[j]
+            invr=(rj==0 ? zero(T) : inv(rj))
+            sφ=sin(φ[j])
+            cφ=cos(φ[j])
+            jv=Jv(m,k*rj)
+            dj=Jvp(m,k*rj)
+            fr=k*dj*sin(m*φ[j])
+            fφ=m*jv*cos(m*φ[j])
+            cx[j]=cφ*fr-sφ*invr*fφ
+            cy[j]=sφ*fr+cφ*invr*fφ
         end
-    return dB_dx,dB_dy
     end
+    return dB_dx,dB_dy
 end
 
 """
@@ -382,22 +408,32 @@ This function computes both the basis function and its gradient with respect to 
 - `(bf,dx,dy)::Tuple{Vector{T},Vector{T},Vector{T}}`
 """
 function basis_and_gradient(basis::CornerAdaptedFourierBessel,i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        pt_xy=collect(pm(pt) for pt in pts)
-        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy) #local cartesian coords
-        r=getindex.(pt_pol,1)
-        phi=getindex.(pt_pol,2)
-        X=getindex.(pt_xy,1)
-        Y=getindex.(pt_xy,2)
-        j=Jv.(nu*i, k*r)
-        dj=Jvp.(nu*i, k*r) 
-        s=@. sin(nu*i*phi) 
-        c=@. cos(nu*i*phi) 
-        bf=@. j*s
-        dx=@. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
-        dy=@. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
-    return bf,dx,dy
+    pm=basis.cs.local_map
+    ν=basis.nu
+    m=ν*i
+    M=length(pts)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    bf=Vector{T}(undef,M)
+    dx=Vector{T}(undef,M)
+    dy=Vector{T}(undef,M)
+    @inbounds for j in 1:M
+        rj=r[j]
+        invr=(rj==0 ? zero(T) : inv(rj))
+        sφ=sin(φ[j])
+        cφ=cos(φ[j])
+        jv=Jv(m,k*rj)
+        dj=Jvp(m,k*rj)
+        s=sin(m*φ[j])
+        c=cos(m*φ[j])
+        bf[j]=jv*s
+        fr=k*dj*s
+        fφ=m*jv*c
+        dx[j]=cφ*fr-sφ*invr*fφ
+        dy[j]=sφ*fr+cφ*invr*fφ
     end
+    return bf,dx,dy
 end
 
 """
@@ -429,29 +465,37 @@ This function computes both the basis functions and their gradients with respect
 - `(B,dB_dx,dB_dy)::Tuple{Matrix{T},Matrix{T},Matrix{T}}`
 """
 function basis_and_gradient(basis::CornerAdaptedFourierBessel,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let pm=basis.cs.local_map, nu=basis.nu, pts=pts
-        #local cartesian coords
-        pt_xy=collect(pm(pt) for pt in pts)
-        pt_pol=collect(cartesian_to_polar(pt,rotation_angle_discontinuity=basis.rotation_angle_discontinuity) for pt in pt_xy)
-        r=getindex.(pt_pol,1)
-        phi=getindex.(pt_pol,2)
-        X=getindex.(pt_xy,1)
-        Y=getindex.(pt_xy,2)
-        M=length(pts)
-        N=length(indices)
-        B=zeros(T,M,N)
-        dB_dx=zeros(T,M,N)
-        dB_dy=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            j=Jv.(nu*i,k*r)
-            dj=Jvp.(nu*i,k*r) 
-            s=@. sin(nu*i*phi) 
-            c=@. cos(nu*i*phi) 
-            B[:,i] .= @. j*s
-            dB_dx[:,i] .= @. (dj*k*(X/r)*s-nu*i*j*c*Y/(r^2))
-            dB_dy[:,i] .= @. (dj*k*(Y/r)*s+nu*i*j*c*X/(r^2))
+    pm=basis.cs.local_map
+    ν=basis.nu
+    M=length(pts)
+    N=length(indices)
+    r=Vector{T}(undef,M)
+    φ=Vector{T}(undef,M)
+    _polar_coords!(r,φ,pm,pts,basis.rotation_angle_discontinuity)
+    B=Matrix{T}(undef,M,N)
+    dB_dx=Matrix{T}(undef,M,N)
+    dB_dy=Matrix{T}(undef,M,N)
+    @use_threads multithreading=multithreaded for c in 1:N
+        m=ν*indices[c]
+        bc=@view B[:,c]
+        cx=@view dB_dx[:,c]
+        cy=@view dB_dy[:,c]
+        @inbounds for j in 1:M
+            rj=r[j]
+            invr=(rj==0 ? zero(T) : inv(rj))
+            sφ=sin(φ[j])
+            cφ=cos(φ[j])
+            jv=Jv(m,k*rj)
+            dj=Jvp(m,k*rj)
+            s=sin(m*φ[j])
+            c=cos(m*φ[j])
+            bc[j]=jv*s
+            fr=k*dj*s
+            fφ=m*jv*c
+            cx[j]=cφ*fr-sφ*invr*fφ
+            cy[j]=sφ*fr+cφ*invr*fφ
         end
-    return B,dB_dx,dB_dy
     end
+    return B,dB_dx,dB_dy
 end
 

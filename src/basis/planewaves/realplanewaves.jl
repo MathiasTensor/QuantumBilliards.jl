@@ -103,45 +103,10 @@ function resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:RealPlaneWav
     return RealPlaneWaves(dim,basis.symmetries;angle_arc=basis.angle_arc,angle_shift=basis.angle_shift,sampler=basis.sampler)
 end
 
-"""
-    rpw(arg,parity::Int64)
-
-Constructs the cos (parity 1) or sin (parity -1) of the arguments that can be a scalar or vector. The parity decides the behaviour of the basis on the symmetry axes.
-
-# Arguements
-- `arg::Union{<:Real,Vector{<:Real}}`: Arguments of the real plane wave basis.
-- `parity::Int64`: Either +/-1
-
-# Returns
-- `Vector{<:Real}`
-"""
-@inline function rpw(arg,parity::Int64)
-    if parity==1
-        return cos.(arg)
-    else
-        return sin.(arg)
-    end 
-end
-
-"""
-    d_rpw(arg,parity::Int64)
-
-Constructs the -sin (parity 1) or cos (parity -1) of the arguments that can be a scalar or vector. The parity decides the behaviour of the basis on the symmetry axes.
-
-# Arguements
-- `arg::Union{<:Real,Vector{<:Real}}`: Arguments of the real plane wave basis.
-- `parity::Int64`: Either +/-1
-
-# Returns
-- `Vector{<:Real}`
-"""
-@inline function d_rpw(arg,parity::Int64)
-    if parity==1
-        return -sin.(arg)
-    else
-        return cos.(arg)
-    end 
-end
+@inline _cos(arg)=cos(arg)
+@inline _sin(arg)=sin(arg)
+@inline _rpw_fun(par::Int)=par==1 ? _cos : _sin
+@inline _drpw_fun(par::Int)=par==1 ? (x->-sin(x)) : _cos
 
 """
     basis_fun(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T<:Real}
@@ -158,16 +123,20 @@ Constructs the basis function Vector of the Real plane wave basis for column i.
 - `Vetor{T}`: Column of the basis matrix for index i.
 """
 @inline function basis_fun(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let par_x=basis.parity_x,par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        vx=cos(basis.angles[i])
-        vy=sin(basis.angles[i])
-        arg_x=k*vx.*x
-        arg_y=k*vy.*y
-        b=rpw(arg_x,par_x[i]).*rpw(arg_y,par_y[i])
-        return b
+    parx=basis.parity_x[i]
+    pary=basis.parity_y[i]
+    vx=cos(basis.angles[i])
+    vy=sin(basis.angles[i])
+    fx=_rpw_fun(parx)
+    fy=_rpw_fun(pary)
+    M=length(pts)
+    out=Vector{T}(undef,M)
+    @inbounds @simd for j=1:M
+        x=pts[j][1]
+        y=pts[j][2]
+        out[j]=fx(k*vx*x)*fy(k*vy*y)
     end
+    return out
 end
 
 """
@@ -186,21 +155,25 @@ Constructs the basis function Matrix of the Real plane wave basis for column i.
 - `Matrix{T}`: The full basis matrix.
 """
 @inline function basis_fun(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let par_x=basis.parity_x,par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        M=length(pts)
-        N=length(indices)
-        B=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            vx=cos(basis.angles[i])
-            vy=sin(basis.angles[i])
-            arg_x=k*vx.*x
-            arg_y=k*vy.*y
-            B[:,i] .= rpw(arg_x, par_x[i]).*rpw(arg_y, par_y[i])
+    M=length(pts)
+    N=length(indices)
+    B=Matrix{T}(undef,M,N)
+    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+        idx=indices[c]
+        parx=basis.parity_x[idx]
+        pary=basis.parity_y[idx]
+        vx=cos(basis.angles[idx])
+        vy=sin(basis.angles[idx])
+        fx=_rpw_fun(parx)
+        fy=_rpw_fun(pary)
+        col=@view B[:,c]
+        @inbounds @simd for j=1:M
+            x=pts[j][1]
+            y=pts[j][2]
+            col[j]=fx(k*vx*x)*fy(k*vy*y)
         end
-        return B 
     end
+    return B
 end
 
 """
@@ -219,19 +192,28 @@ Constructs the gradient basis function vectors of the Real plane wave basis for 
 - `(dx,dy)::Tuple{Vector{T},Vector{T}}`: The full gradient vectors for x and y directions for the index i.
 """
 function gradient(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let par_x=basis.parity_x, par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        vx=cos(basis.angles[i])
-        vy=sin(basis.angles[i])
-        arg_x=k*vx.*x
-        arg_y=k*vy.*y
-        bx=rpw(arg_x,par_x[i])
-        by=rpw(arg_y,par_y[i])
-        dx=k*vx.*d_rpw(arg_x,par_x[i]).*by
-        dy=bx.*k*vy.*d_rpw(arg_y,par_y[i])
-        return dx,dy
+    parx=basis.parity_x[i]
+    pary=basis.parity_y[i]
+    vx=cos(basis.angles[i])
+    vy=sin(basis.angles[i])
+    fx=_rpw_fun(parx)
+    fy=_rpw_fun(pary)
+    dfx=_drpw_fun(parx)
+    dfy=_drpw_fun(pary)
+    M=length(pts)
+    dx=Vector{T}(undef,M)
+    dy=Vector{T}(undef,M)
+    @inbounds @simd for j=1:M
+        x=pts[j][1]
+        y=pts[j][2]
+        ax=k*vx*x
+        ay=k*vy*y
+        bx=fx(ax)
+        by=fy(ay)
+        dx[j]=k*vx*dfx(ax)*by
+        dy[j]=bx*k*vy*dfy(ay)
     end
+    return dx,dy
 end
 
 """
@@ -250,25 +232,33 @@ Constructs the gradient basis function matrices of the Real plane wave basis.
 - `(dB_dx,dB_dy)::Tuple{Matrix{T},Matrix{T}}`: The full gradient matrices for x and y directions.
 """
 function gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let par_x=basis.parity_x, par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        M=length(pts)
-        N=length(indices)
-        dB_dx=zeros(T,M,N)
-        dB_dy=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            vx=cos(basis.angles[i])
-            vy=sin(basis.angles[i])
-            arg_x=k*vx.*x
-            arg_y=k*vy.*y
-            bx=rpw(arg_x,par_x[i])
-            by=rpw(arg_y,par_y[i])
-            dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
-            dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
+    M=length(pts); N=length(indices)
+    dBdx=Matrix{T}(undef,M,N)
+    dBdy=Matrix{T}(undef,M,N)
+    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+        idx=indices[c]
+        parx=basis.parity_x[idx]
+        pary=basis.parity_y[idx]
+        vx=cos(basis.angles[idx])
+        vy=sin(basis.angles[idx])
+        fx=_rpw_fun(parx)
+        fy=_rpw_fun(pary)
+        dfx=_drpw_fun(parx)
+        dfy=_drpw_fun(pary)
+        cx=@view dBdx[:,c]
+        cy=@view dBdy[:,c]
+        @inbounds @simd for j=1:M
+            x=pts[j][1]
+            y=pts[j][2]
+            ax=k*vx*x
+            ay=k*vy*y
+            bx=fx(ax)
+            by=fy(ay)
+            cx[j]=k*vx*dfx(ax)*by
+            cy[j]=bx*k*vy*dfy(ay)
         end
-        return dB_dx,dB_dy
     end
+    return dBdx,dBdy
 end
 
 """
@@ -287,20 +277,30 @@ Constructs the gradient basis function vectors of the Real plane wave basis for 
 - `(bf,dx,dy)::Tuple{Vector{T},Vector{T},Vector{T}}`: The full gradient vectors for x and y directions and basis function vector for the index i.
 """
 function basis_and_gradient(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let par_x=basis.parity_x, par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        vx=cos(basis.angles[i])
-        vy=sin(basis.angles[i])
-        arg_x=k*vx.*x
-        arg_y=k*vy.*y
-        bx=rpw(arg_x,par_x[i])
-        by=rpw(arg_y,par_y[i])
-        bf=bx.*by
-        dx=k*vx.*d_rpw(arg_x,par_x[i]).*by
-        dy=bx.*k*vy.*d_rpw(arg_y,par_y[i])
-        return bf,dx,dy
+    parx=basis.parity_x[i]
+    pary=basis.parity_y[i]
+    vx=cos(basis.angles[i])
+    vy=sin(basis.angles[i])
+    fx=_rpw_fun(parx)
+    fy=_rpw_fun(pary)
+    dfx=_drpw_fun(parx)
+    dfy=_drpw_fun(pary)
+    M=length(pts)
+    bf=Vector{T}(undef,M)
+    dx=Vector{T}(undef,M)
+    dy=Vector{T}(undef,M)
+    @inbounds @simd for j=1:M
+        x=pts[j][1]
+        y=pts[j][2]
+        ax=k*vx*x
+        ay=k*vy*y
+        bx=fx(ax)
+        by=fy(ay)
+        bf[j]=bx*by
+        dx[j]=k*vx*dfx(ax)*by
+        dy[j]=bx*k*vy*dfy(ay)
     end
+    return bf,dx,dy
 end
 
 """
@@ -319,27 +319,36 @@ Constructs the gradient basis function matrices and the gradient matrices of the
 - `(B,dB_dx,dB_dy)::Tuple{Matrix{T},Matrix{T}}`: The full gradient matrices for x and y directionsand the basis matrix.
 """
 function basis_and_gradient(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let par_x=basis.parity_x,par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        M=length(pts)
-        N=length(indices)
-        B=zeros(T,M,N)
-        dB_dx=zeros(T,M,N)
-        dB_dy=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            vx=cos(basis.angles[i])
-            vy=sin(basis.angles[i])
-            arg_x=k*vx.*x
-            arg_y=k*vy.*y
-            bx=rpw(arg_x,par_x[i])
-            by=rpw(arg_y,par_y[i])
-            B[:,i] .= bx.*by
-            dB_dx[:,i] .= k*vx.*d_rpw(arg_x, par_x[i]).*by
-            dB_dy[:,i] .= bx.*k*vy.*d_rpw(arg_y, par_y[i])
+    M=length(pts); N=length(indices)
+    B=Matrix{T}(undef,M,N)
+    dBdx=Matrix{T}(undef,M,N)
+    dBdy=Matrix{T}(undef,M,N)
+    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+        idx=indices[c]
+        parx=basis.parity_x[idx]
+        pary=basis.parity_y[idx]
+        vx=cos(basis.angles[idx])
+        vy=sin(basis.angles[idx])
+        fx=_rpw_fun(parx)
+        fy=_rpw_fun(pary)
+        dfx=_drpw_fun(parx)
+        dfy=_drpw_fun(pary)
+        col=@view B[:,c]
+        cx=@view dBdx[:,c]
+        cy=@view dBdy[:,c]
+        @inbounds @simd for j=1:M
+            x=pts[j][1]
+            y=pts[j][2]
+            ax=k*vx*x
+            ay=k*vy*y
+            bx=fx(ax)
+            by=fy(ay)
+            col[j]=bx*by
+            cx[j]=k*vx*dfx(ax)*by
+            cy[j]=bx*k*vy*dfy(ay)
         end
-        return B,dB_dx,dB_dy
     end
+    return B,dBdx,dBdy
 end
 
 """
@@ -358,20 +367,26 @@ Constructs the k-gradient of the basis matrix wrt k for column i.
 - `dk::Vector{T}`: Vector representing the column of dB/dk for the index i.
 """
 @inline function dk_fun(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T<:Real}
-    let par_x=basis.parity_x, par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        vx=cos(basis.angles[i])
-        vy=sin(basis.angles[i])
-        arg_x=k*vx.*x
-        arg_y=k*vy.*y
-        bx=rpw(arg_x,par_x[i])
-        by=rpw(arg_y,par_y[i])
-        d_bx=d_rpw(arg_x,par_x[i])
-        d_by=d_rpw(arg_y,par_y[i])
-        dk=@. vx*x*d_bx*by + bx*vy*y*d_by
-        return dk
+    parx=basis.parity_x[i]
+    pary=basis.parity_y[i]
+    vx=cos(basis.angles[i])
+    vy=sin(basis.angles[i])
+    fx=_rpw_fun(parx)
+    fy=_rpw_fun(pary)
+    dfx=_drpw_fun(parx)
+    dfy=_drpw_fun(pary)
+    M=length(pts)
+    dk=Vector{T}(undef,M)
+    @inbounds @simd for j=1:M
+        x=pts[j][1]
+        y=pts[j][2]
+        ax=k*vx*x
+        ay=k*vy*y
+        bx=fx(ax)
+        by=fy(ay)
+        dk[j]=vx*x*dfx(ax)*by + bx*vy*y*dfy(ay)
     end
+    return dk
 end
     
 """
@@ -390,23 +405,29 @@ Constructs the k-gradient of the basis matrix.
 - `dB_dk::Matrix{T}`: matrix representing dB/dk.
 """
 @inline function dk_fun(basis::RealPlaneWaves,indices::AbstractArray,k::T,pts::AbstractArray;multithreaded::Bool=true) where {T<:Real}
-    let par_x=basis.parity_x, par_y=basis.parity_y
-        x=getindex.(pts,1)
-        y=getindex.(pts,2)
-        M=length(pts)
-        N=length(indices)
-        dB_dk=zeros(T,M,N)
-        @use_threads multithreading=multithreaded for i in eachindex(indices)
-            vx=cos(basis.angles[i])
-            vy=sin(basis.angles[i])
-            arg_x=k*vx.*x
-            arg_y=k*vy.*y
-            bx=rpw(arg_x,par_x[i])
-            by=rpw(arg_y,par_y[i])
-            d_bx=d_rpw(arg_x,par_x[i])
-            d_by=d_rpw(arg_y,par_y[i])
-            dB_dk[:,i] .=  @. vx*x*d_bx*by + bx*vy*y*d_by
+    M=length(pts)
+    N=length(indices)
+    dBdk=Matrix{T}(undef,M,N)
+    QuantumBilliards.@use_threads multithreading=multithreaded for c in 1:N
+        idx=indices[c]
+        parx=basis.parity_x[idx]
+        pary=basis.parity_y[idx]
+        vx=cos(basis.angles[idx])
+        vy=sin(basis.angles[idx])
+        fx=_rpw_fun(parx)
+        fy=_rpw_fun(pary)
+        dfx=_drpw_fun(parx)
+        dfy=_drpw_fun(pary)
+        col=@view dBdk[:,c]
+        @inbounds @simd for j=1:M
+            x=pts[j][1]
+            y=pts[j][2]
+            ax=k*vx*x
+            ay=k*vy*y
+            bx=fx(ax)
+            by=fy(ay)
+            col[j]=vx*x*dfx(ax)*by + bx*vy*y*dfy(ay)
         end
-        return dB_dk
     end
+    return dBdk
 end
