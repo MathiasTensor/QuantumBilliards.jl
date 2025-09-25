@@ -3,7 +3,7 @@
     filter_matrix!(M::AbstractMatrix; ϵ::Real = eps(eltype(M)))
 
 Filters a matrix `M` by setting all elements with an absolute value less than or equal to `ϵ` to zero.
-The reason we do this is to get rid of numerical artifacts that would make the final wavefunction have anomalues Matrix.
+The reason we do this is to get rid of numerical artifacts that would make the final wavefunction have anomalies.
 
 # Arguments
 - `M::Matrix`: The matrix to filter.
