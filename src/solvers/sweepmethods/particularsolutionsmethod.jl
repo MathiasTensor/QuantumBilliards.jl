@@ -207,6 +207,39 @@ function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::Poi
     return B,B_int  
 end
 
+function solve_full(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
+    solution=svdvals(B,B_int)
+    return minimum(solution)
+end
+
+#### INTERNAL - FIND NUMERICAL RANK FROM FACTORIZED MATRIX ####
+@inline function numerical_rank_from_F(F,tol::Real)
+    A=F.factors
+    n=min(size(A,1),size(A,2))
+    n==0 && return 0
+    t=tol*abs(@inbounds A[1,1])
+    @inbounds for i=n:-1:1
+        if abs(A[i,i])>t
+            return i
+        end
+    end
+    return 0
+end
+
+function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::QuantumBilliards.PointsPSM,k;multithreaded::Bool=true,tol=1e-14) where {Ba<:QuantumBilliards.AbsBasis}
+    # tol is adjustable, based on how the R[1,1] scales below with k. Tested up to k=500 it seems fine with 1e-14
+    B,C=construct_matrices(solver,basis,pts,k;multithreaded)
+    T=eltype(B)
+    F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. Overwrite C since we do not need it anymore
+    r=numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
+    r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+    Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # triangular view onto R (no copy)
+    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+    B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
+    return sqrt(real(eigmin(B'*B))) # smallest singular value via eigmin(B'B)
+end
+
 """
     solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
@@ -215,7 +248,7 @@ Solve the Particular Solutions Method by constructing `(B, B_int)` and computing
 are satisfied via the `GeneralizedSVD` object. For mode reading it is based on the paper:
 https://people.maths.ox.ac.uk/trefethen/publication/PDF/2005_112.pdf.
 
-The idea is to represent the minimization of the boundary tension of the wavefunctions as a generalized eigenvalue problem `F * x = λ * G * x` as per the afformentioned paper.
+The idea is to represent the minimization of the boundary tension of the wavefunctions as a generalized eigenvalue problem `F * x = λ * G * x` as per the afformentioned paper. There are 2 approaches implemented here: the full SVD approach and a rank-reduced approach that offers more performance compared with the full SVD approach. If very high basis dimensions are used, this is recommended, but sometimes tolerance needs adjustement.
 
 # Arguments
 - `solver::ParticularSolutionsMethod`: PSM solver config.
@@ -223,38 +256,35 @@ The idea is to represent the minimization of the boundary tension of the wavefun
 - `pts::PointsPSM`: Boundary and interior points for evaluation.
 - `k::Real`: Wavenumber or frequency-like parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `use_rank_reduction::Bool=true`: If true, uses a rank-reduced solver variant that is more stable for large bases & offers unparalleled performance compared with the full SVD approach. If very high basis dimensions are used, this is recommended, but sometimes tolerance needs adjustement.
+- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary.
 
 # Returns
 - `::Real`: The minimum generalized singular value (or similar measure). Lower values can
   indicate a better "fit" to the PDE boundary conditions.
 """
-function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    solution=svdvals(B,B_int)
-    return minimum(solution)
+function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-14) where {Ba<:AbsBasis}
+    if use_rank_reduction
+        return solve_with_rank_reduction(solver,basis,pts,k;multithreaded=multithreaded,tol=tol)
+    else
+        return solve_full(solver,basis,pts,k;multithreaded=multithreaded)
+    end
 end
 
 # INTERNAL
-function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    s=time()
-    s_constr=time()
-    @info "Constructing matrices"
-    @time B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    @info "Conditioning cond(B) = $(cond(B)), cond(B_int) = $(cond(B_int))"
-    e_constr=time()
-    s_svd=time()
-    @info "SVD values"
-    @time solution=svdvals(B,B_int)
-    e_svd=time()
-    e=time()
-    total_time=e-s
-    @info "Final computation time without extrema of SVD for cond calculation: $(total_time) s"
-    println("%%%%% SUMMARY %%%%%")
-    println("Percentage of total time (most relevant ones): ")
-    println("B & B_int construction: $(100*(e_constr-s_constr)/total_time) %")
-    println("SVD: $(100*(e_svd-s_svd)/total_time) %")
-    println("%%%%%%%%%%%%%%%%%%%")
-    return minimum(solution)
+function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-14) where {Ba<:AbsBasis}
+    @time "Matrix construction" B,C=construct_matrices(solver,basis,pts,k;multithreaded)
+    T=eltype(B)
+    @time "QR" F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick. Overwrite C since we do not need it anymore
+    @time "Finding r" r=numerical_rank_from_F(F,tol) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
+    r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+    @time "Triangular view" Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # well-determined r×r block of R as a view (no copy)
+    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+    println("rank: ",r)
+    println("size decrease: ",size(B,2)-r)
+    @time "/ solve" B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
+    @time "eigmin solve" v=sqrt(real(eigmin(B'*B))) # smallest singular value via eigmin(B'B)
+    return v
 end
 
 """
