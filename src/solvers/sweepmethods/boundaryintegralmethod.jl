@@ -480,7 +480,7 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
 end
 
 # INTERNAL BENCHMARKS
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     s_constr=time()
     @info "constructing Fredholm matrix A..."
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
@@ -498,6 +498,14 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     println("SVD: $(100*(e_svd-s_svd)/total_time) %")
     println("%%%%%%%%%%%%%%%%%%%")
     return mu[end]
+end
+
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
+    if use_krylov
+        return solve_krylov_INFO(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+    else
+        return solve_full_INFO(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+    end
 end
 
 function solve_vect_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,) where {Ba<:AbstractHankelBasis}
