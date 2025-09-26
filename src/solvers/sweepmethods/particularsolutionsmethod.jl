@@ -214,7 +214,7 @@ function solve_full(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
 end
 
 #### INTERNAL - FIND NUMERICAL RANK FROM FACTORIZED MATRIX ####
-@inline function numerical_rank_from_F(F,tol::Real)
+@inline function _numerical_rank_from_F(F,tol::Real)
     A=F.factors
     n=min(size(A,1),size(A,2))
     n==0 && return 0
@@ -232,7 +232,7 @@ function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,p
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. Overwrite C since we do not need it anymore
-    r=numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
+    r=_numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
     r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
     Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # triangular view onto R (no copy)
     piv=F.p # permutation vector piv such that C[:,piv] = Q*R
@@ -287,6 +287,7 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     return v
 end
 
+#=
 """
     solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:AbstractMatrix}
 
@@ -305,6 +306,7 @@ function solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:Abstra
     solution=svdvals(B,B_int)
     return minimum(solution)
 end
+=#
 
 """
     solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
@@ -329,7 +331,7 @@ function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
     R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
     piv=F.p # permutation vector piv such that C[:,piv] = Q*R
-    r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
+    r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima. #TODO could use _numerical_rank_from_F here which was implemented later, but this function is not in the hot loop
     isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
     Rr=R[1:r,1:r] # well-determined r×r block on Q
     Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)

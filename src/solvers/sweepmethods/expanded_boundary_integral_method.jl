@@ -478,41 +478,8 @@ function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts
     return fredholm_matrix_with_derivatives(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
 end
 
-"""
-    solve(
-        solver::ExpandedBoundaryIntegralMethod, 
-        basis::Ba, 
-        pts::BoundaryPointsBIM{T}, 
-        k::T, 
-        dk::T;
-        use_lapack_raw::Bool=false,
-        kernel_fun::Union{Tuple,Function} = (:default, :first, :second)
-    ) -> (Vector{T}, Vector{T})
-
-TRADITIONAL FUNTION
-Compute approximate "corrected" eigenvalues near the wavenumber `k`, using the expanded boundary integral
-method. The routine builds `(A, dA, ddA)` via `construct_matrices`, then solves the generalized eigenvalue
-problem `A*x = λ * dA * x`. It filters those eigenvalues whose real part lies in `(-dk, dk)`, then applies
-a second-order correction with `ddA`.
-
-# Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: EBIM configuration.
-- `basis::Ba`: The basis type (unused directly here, but part of the solver pipeline).
-- `pts::BoundaryPointsBIM{T}`: Boundary points.
-- `k::T`: Central wavenumber.
-- `dk::T`: Half-width of the search interval in real and imaginary parts of `λ`.
-- `use_lapack_raw::Bool=false`: If true, call a direct LAPACK routine for `A,dA` eigen solves.
-- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: The base kernel and its derivatives.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `(λ_corrected::Vector{T}, tension::Vector{T})`: The "corrected" wavenumbers (`k + corrections`)
-  for the valid solutions, and a tension measure (`abs(corrections)`).
-
-**Note**: The corrections are computed from the first- and second-order expansions in terms of `λ[i]`,
-with final `k_corrected = k + corr₁ + corr₂`.
-"""
-function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+# Fallback to full ggev if krylov, but this has not been found in testing
+function solve_full(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     if use_lapack_raw
         λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
@@ -543,7 +510,50 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
     return λ_corrected,tens
 end
 
-# HELPS PROFILE THE solve FUNCTION AND DETERMINE THE CRITICAL PARAMETERS OF A CALCULATION
+"""
+    solve(
+        solver::ExpandedBoundaryIntegralMethod, 
+        basis::Ba, 
+        pts::BoundaryPointsBIM{T}, 
+        k::T, 
+        dk::T;
+        use_lapack_raw::Bool=false,
+        kernel_fun::Union{Tuple,Function} = (:default, :first, :second)
+    ) -> (Vector{T}, Vector{T})
+
+TRADITIONAL FUNTION
+Compute approximate "corrected" eigenvalues near the wavenumber `k`, using the expanded boundary integral
+method. The routine builds `(A, dA, ddA)` via `construct_matrices`, then solves the generalized eigenvalue
+problem `A*x = λ * dA * x`. It filters those eigenvalues whose real part lies in `(-dk, dk)`, then applies
+a second-order correction with `ddA`.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: EBIM configuration.
+- `basis::Ba`: The basis type (unused directly here, but part of the solver pipeline).
+- `pts::BoundaryPointsBIM{T}`: Boundary points.
+- `k::T`: Central wavenumber.
+- `dk::T`: Half-width of the search interval in real and imaginary parts of `λ`.
+- `use_lapack_raw::Bool=false`: If true, call a direct LAPACK routine for `A,dA` eigen solves.
+- `kernel_functions::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second)`: The base kernel and its derivatives.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `use_krylov::Bool=true`: Large speedups in EPV calculation. If anomalies in result are present set this flag to `False`.
+
+# Returns
+- `(λ_corrected::Vector{T}, tension::Vector{T})`: The "corrected" wavenumbers (`k + corrections`)
+  for the valid solutions, and a tension measure (`abs(corrections)`).
+
+**Note**: The corrections are computed from the first- and second-order expansions in terms of `λ[i]`,
+with final `k_corrected = k + corr₁ + corr₂`.
+"""
+function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
+    if use_krylov
+        return solve_krylov(solver,basis,pts,k,dk;kernel_fun=kernel_fun,multithreaded=multithreaded)
+    else
+        return solve_full(solver,basis,pts,k,dk;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
+    end
+end
+
+# HELPS PROFILE THE solve FUNCTION AND DETERMINE THE CRITICAL PARAMETERS OF A CALCULATION. THIS USES THE FULL GEPV SOLVE
 function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     s=time()
     s_constr=time()
@@ -642,4 +652,12 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
     println("2nd order corrections: $(100*(e_corr-s_corr)/total_time) %")
     println("%%%%%%%%%%%%%%%%%%%")
     return λ_corrected,tens
+end
+
+function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
+    if use_krylov
+        return solve_krylov_INFO(solver,basis,pts,k,dk,kernel_fun=kernel_fun,multithreaded=multithreaded)
+    else
+        return solve_INFO(solver,basis,pts,k,dk;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
+    end
 end
