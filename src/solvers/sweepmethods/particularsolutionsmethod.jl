@@ -227,7 +227,7 @@ end
     return 0
 end
 
-function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::QuantumBilliards.PointsPSM,k;multithreaded::Bool=true,tol=1e-14) where {Ba<:QuantumBilliards.AbsBasis}
+function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::QuantumBilliards.PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:QuantumBilliards.AbsBasis}
     # tol is adjustable, based on how the R[1,1] scales below with k. Tested up to k=500 it seems fine with 1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
@@ -241,7 +241,7 @@ function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,p
 end
 
 """
-    solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-10)
 
 Solve the Particular Solutions Method by constructing `(B, B_int)` and computing a measure
 (e.g. minimum singular value) that indicates how well the interior and boundary constraints
@@ -257,13 +257,13 @@ The idea is to represent the minimization of the boundary tension of the wavefun
 - `k::Real`: Wavenumber or frequency-like parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_rank_reduction::Bool=true`: If true, uses a rank-reduced solver variant that is more stable for large bases & offers unparalleled performance compared with the full SVD approach. If very high basis dimensions are used, this is recommended, but sometimes tolerance needs adjustement.
-- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary (you see too much spiking in the tension plot).
+- `tol::Real=1e-10`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary (you see too much spiking in the tension plot). A good choice is to start with 1e-10 and lower it if necessary. Rule of thumb here is that tol should increase with k since R[1,1] decreases with k.
 
 # Returns
 - `::Real`: The minimum generalized singular value (or similar measure). Lower values can
   indicate a better "fit" to the PDE boundary conditions.
 """
-function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-14) where {Ba<:AbsBasis}
+function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-10) where {Ba<:AbsBasis}
     if use_rank_reduction
         return solve_with_rank_reduction(solver,basis,pts,k;multithreaded=multithreaded,tol=tol)
     else
@@ -272,7 +272,7 @@ function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;mult
 end
 
 # INTERNAL
-function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-14) where {Ba<:AbsBasis}
+function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     @time "Matrix construction" B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     @time "QR" F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick. Overwrite C since we do not need it anymore
@@ -288,7 +288,7 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
 end
 
 """
-    solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
 
 Returns the smallest singular value and the basis expansion coefficient vector for use in `boundary_function`.
 
@@ -298,13 +298,13 @@ Returns the smallest singular value and the basis expansion coefficient vector f
 - `pts::PointsPSM`: Collocation points (boundary + interior).
 - `k::Real`: Wavenumber.
 - `multithreaded::Bool=true`: Pass-through for matrix construction.
+- `tol::Real=1e-10`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary (you see too much spiking in the tension plot). A good choice is to start with 1e-10 and lower it if necessary. Rule of thumb here is that tol should increase with k since R[1,1] decreases with k.
 
 # Returns
 - `μ::Real`: the stabilized analogue of the smallest generalized singular value.
 - `chat::Vector`: Coefficient vector in the given `basis`.
 """
-function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    tol=1e-14 # this can in principle be adjustable, based on how the R[1,1] scales below with k
+function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick

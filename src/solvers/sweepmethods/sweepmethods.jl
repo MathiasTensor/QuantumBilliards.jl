@@ -44,7 +44,7 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `multithreaded_ks::Bool=false`: If the k loop is multithreaded.
 - `use_combined::Bool=false`: Whether to use Single and Double Layer potential in CFIE methods. Defaults to `false` corresponding to just the Double Layer potential.
 - `use_krylov::Bool=true`: Large speedups in BIM/EBIM. For specific implementations please check source code in krylovsolvers.jl.
-- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver for ParticularSolutionsMethod. Adjust if necessary (you see too much spiking in the tension plot).
+- `tol::Real=1e-10`: Tolerance for numerical rank determination in the rank-reduced solver (ParticularSolutionsMethod). Adjust if necessary (you see too much spiking in the tension plot). A good choice is to start with 1e-10 and lower it if necessary. Rule of thumb here is that tol should increase with k since R[1,1] decreases with k.
 
 # NOTE
 When using the Sweep solvers it is advised to parallelize the matrix construction instead of the ks loop since the matrix construction uses the same or more resources as the SVD.
@@ -52,7 +52,7 @@ When using the Sweep solvers it is advised to parallelize the matrix constructio
 # Returns
 - `Vector{Real}`: Tensions of the `solve` function for each wavenumber in `ks`.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false,use_krylov::Bool=true,tol=1e-14) 
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;kernel_fun::Union{Symbol,Function}=:default,multithreaded_matrices::Bool=true,multithreaded_ks=false,use_combined::Bool=false,use_krylov::Bool=true,tol=1e-10) 
     k=maximum(ks)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
