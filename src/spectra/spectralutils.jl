@@ -542,10 +542,10 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     println("min/max dk: ",extrema(dk_vals))
     println("Total intervals: ",length(k_vals))
     all_states=Vector{StateData{T,T}}(undef,length(k_vals))
-    all_states[1]=solve_state_data_bundle_with_INFO(solver,basis,billiard,k_vals[1],dk_vals[1]+tol;multithreaded=multithreaded_matrices)
+    all_states[end]=solve_state_data_bundle_with_INFO(solver,basis,billiard,k_vals[end],dk_vals[end]+tol;multithreaded=multithreaded_matrices)
     @info "Multithreading loop? $(multithreaded_ks), multithreading matrix construction? $(multithreaded_matrices)"
     p=Progress(length(k_vals),1)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[2:end]
+    @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[1:end-1]
         ki=k_vals[i]
         dki=dk_vals[i]
         all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dki+tol;multithreaded=multithreaded_matrices)
@@ -895,12 +895,12 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
         all_pts[i]=evaluate_points(deepcopy(bim_solver),billiard,ks[i])
     end
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
-    dd=dks[1]
-    λs,tensions=solve_INFO(solver,basis,all_pts[1],ks[1],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
-    results[1]=(λs,tensions)
+    dd=dks[end]
+    λs,tensions=solve_INFO(solver,basis,all_pts[end],ks[end],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
+    results[end]=(λs,tensions)
     p=Progress(length(ks)-1,1) # first one finished
     println("Solving EBIM...")
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         dd=dks[i]
         λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
         results[i]=(λs, tensions)
