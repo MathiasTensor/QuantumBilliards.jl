@@ -95,7 +95,7 @@ function solve_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::Boundar
     @info "A size: $(size(A)) eltype=$(eltype(A)) nnz≈$(count(!iszero,A))"
     t1=time(); @info "Krylov σmin(A)…"
     @time S,U,V,info=svdsolve(A,1,:SR)
-    σ=S[1]; @info "converged=$(info.converged) iters=$(info.mvproducts) normres=$(info.normres)"
+    σ=S[1]; @info "converged=$(info.converged) iters=$(info.numiter) normres=$(info.normres)"
     if !isempty(U) && !isempty(V)
         r=norm(A*V[1]-σ*U[1]); @info "triplet residual ‖A*v-σ*u‖=$r"
     end
@@ -110,7 +110,7 @@ function solve_vect_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::Bo
     t1=time(); @info "Krylov σmin(A) + right vector…"
     @time S,U,V,info=svdsolve(A,1,:SR)
     σ=S[1]; v=V[1]
-    @info "converged=$(info.converged) iters=$(info.mvproducts) normres=$(info.normres)"
+    @info "converged=$(info.converged) iters=$(info.numiter) normres=$(info.normres)"
     if !isempty(U)
         r=norm(A*v-σ*U[1]); @info "triplet residual ‖A*v-σ*u‖=$r"
     else
@@ -133,13 +133,13 @@ function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts:
     @info "Right eigsolve on A^{-1} dA (nev=$nev tol=$tol krylovdim=$krylovdim)…"
     @time μr,VR,infoR=eigsolve(C,n,nev,:LM;tol,maxiter,krylovdim)
     λ=inv.(μr); ord=sortperm(abs.(λ)); λ=λ[ord]; μr=μr[ord]; VR=VR[ord]
-    @info "Right eigsolve: converged=$(infoR.converged) iters=$(infoR.mvproducts)"
+    @info "Right eigsolve: converged=$(infoR.converged) iters=$(infoR.numiter)"
     # left op y = (A')^{-1} (dA') x
     function op_l!(y,x); copyto!(tmp,x); ldiv!(Ft,tmp); mul!(y,dAt,tmp); y; end
     Cl=LinearMaps.LinearMap{T}(op_l!,n,n;ismutating=true)
     @info "Left eigsolve on (A')^{-1} (dA')…"
     @time μl,UL,infoL=eigsolve(Cl,n,nev,:LM;tol,maxiter,krylovdim)
-    @info "Left eigsolve: converged=$(infoL.converged) iters=$(infoL.mvproducts)"
+    @info "Left eigsolve: converged=$(infoL.converged) iters=$(infoL.numiter)"
     # pair left/right
     perm=@inbounds [argmin(abs.(μl.-conj(μrj))) for μrj in μr]; UL=UL[perm]
     # accept window
