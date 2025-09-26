@@ -157,25 +157,6 @@ function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsSM{T}) where 
     BoundaryPoints{T}(xy,normal,s,ds)
 end
 
-#### INTERNAL FUNCTIONS FOR THE SCALING METHOD ####
-# scale rows of A by weights w (in-place)
-@inline function _scale_rows!(A::AbstractMatrix,w)
-    @inbounds for i in axes(A,1)
-        @views A[i,:].*=w[i]
-    end
-    return A
-end
-
-# mirror upper triangle into lower (in-place)
-@inline function _symmetrize_from_upper!(S::StridedMatrix)
-    @inbounds for j in axes(S,2)
-        for i in 1:j-1
-            S[j,i]=S[i,j]
-        end
-    end
-    return S
-end
-
 """
     construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;
                                  multithreaded::Bool=true) where {Ba<:AbsBasis}

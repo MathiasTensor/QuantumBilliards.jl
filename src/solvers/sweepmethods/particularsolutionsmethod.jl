@@ -287,27 +287,6 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     return v
 end
 
-#=
-"""
-    solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:AbstractMatrix}
-
-A lower-level solver method that accepts already-constructed matrices `B` and `B_int` rather
-than building them anew. Returns the minimum of `svdvals(B, B_int)`.
-
-# Arguments
-- `solver::ParticularSolutionsMethod`: PSM solver config (though this might be unused except for clarity).
-- `B::AbstractMatrix{<:Complex}`: Basis matrix for boundary points.
-- `B_int::AbstractMatrix{<:Complex}`: Basis matrix for interior points.
-
-# Returns
-- `::Real`: The minimum singular value from `svdvals(B, B_int)`.
-"""
-function solve(solver::ParticularSolutionsMethod,B::M,B_int::M) where {M<:AbstractMatrix}
-    solution=svdvals(B,B_int)
-    return minimum(solution)
-end
-=#
-
 """
     solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 

@@ -32,7 +32,7 @@ end
 """
     k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::Vector{Real}) -> Vector{Real}
 
-Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res` each. If one wants to use different kernels in the BoundaryIntegralMethod one needs to change the kernel_fun which is the Second Layer potential of the original differential equation. By default the SL potential of the Helmholtz equation is used.
+Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res` each. If one wants to use different kernels in the BoundaryIntegralMethod one needs to change the kernel_fun which is the Second Layer potential of the original differential equation. By default the SL potential of the Helmholtz equation is used. Also gives information on the most expensive solve (at highest k).
 
 # Arguments
 - `solver::SweepSolver`: The solver configuration for performing the sweep.
@@ -61,8 +61,8 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(num_intervals,1)
     if solver isa BoundaryIntegralMethod
-        res[1]=solve_INFO(solver,new_basis,pts,ks[1],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
-        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+        res[end]=solve_INFO(solver,new_basis,pts,ks[end],kernel_fun=kernel_fun,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
             is_calculating=true
             while is_calculating
                 try
@@ -74,12 +74,12 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
             next!(p)
         end
     elseif (solver isa CFIE_polar_nocorners) || (solver isa CFIE_polar_corner_correction)
-        res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices,use_combined=use_combined)
+        res[end]=solve_INFO(solver,new_basis,pts,ks[end],multithreaded=multithreaded_matrices,use_combined=use_combined)
         pts=evaluate_points(solver,billiard,k)
         N=length(pts.xy)
         Rmat=zeros(eltype(res[1]),N,N)
         solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts) # external R since quite costly
-        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
             is_calculating=true
             pts=evaluate_points(solver,billiard,ks[i])
             new_basis=resize_basis(basis,billiard,dim,ks[i])
@@ -92,8 +92,8 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
             next!(p)
         end
     else
-        res[1]=solve_INFO(solver,new_basis,pts,ks[1],multithreaded=multithreaded_matrices)
-        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[2:end]
+        res[end]=solve_INFO(solver,new_basis,pts,ks[end],multithreaded=multithreaded_matrices)
+        @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
             is_calculating=true
             pts=evaluate_points(solver,billiard,ks[i])
             new_basis=resize_basis(basis,billiard,dim,ks[i])

@@ -99,3 +99,51 @@ function dk_matrix(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=tru
     dB_dk=dk_fun(basis,1:dim,k,pts;multithreaded=multithreaded)
     return filter_matrix!(dB_dk)
 end
+
+# INTERNAL FUNCTIONS
+###################################################
+#### INPLACE FUNCTIONS FOR MATRIX CONSTRUCTION ####
+###################################################
+
+
+# scale rows of A by weights w (inplace)
+@inline function _scale_rows!(A::AbstractMatrix,w)
+    @inbounds for i in axes(A,1)
+        @views A[i,:].*=w[i]
+    end
+    return A
+end
+
+# sqrt(W) scaling for syrk type problems of the form A'*W*A -> (A'*sqrt(W))*(sqrt(W)*A) -> BLAS.syrk!
+@inline function _scale_rows_sqrtw!(A::AbstractMatrix,w,nsym)
+    α=sqrt(one(eltype(w))*nsym)
+    @inbounds for i in axes(A,1)
+        fi=α*sqrt(w[i])
+        for j in axes(A,2)
+            A[i,j]*=fi
+        end
+    end
+    return A
+end
+
+# mirror upper triangle into lower (inplace)
+@inline function _symmetrize_from_upper!(S::StridedMatrix)
+    @inbounds for j in axes(S,2)
+        for i in 1:j-1
+            S[j,i]=S[i,j]
+        end
+    end
+    return S
+end
+
+# dX <- nx*dX + ny*dY (done inplace on dX)
+@inline function _build_Bn_inplace!(dX::AbstractMatrix,dY::AbstractMatrix,normals)
+    @inbounds for i in axes(dX,1)
+        nx=normals[i][1]
+        ny=normals[i][2]
+        for j in axes(dX, 2)
+            dX[i,j]=nx*dX[i,j]+ny*dY[i,j]
+        end
+    end
+    return dX
+end
