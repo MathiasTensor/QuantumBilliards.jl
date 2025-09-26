@@ -129,14 +129,14 @@ function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts:
     tmp=zeros(T,n); buf=zeros(T,n)
     # right op y = A^{-1} dA x
     function op_r!(y,x); mul!(y,dA,x); ldiv!(F,y); y; end
-    C=LinearMap{T}(op_r!,n,n;ismutating=true)
+    C=LinearMaps.LinearMap{T}(op_r!,n,n;ismutating=true)
     @info "Right eigsolve on A^{-1} dA (nev=$nev tol=$tol krylovdim=$krylovdim)…"
     @time μr,VR,infoR=eigsolve(C,n,nev,:LM;tol,maxiter,krylovdim)
     λ=inv.(μr); ord=sortperm(abs.(λ)); λ=λ[ord]; μr=μr[ord]; VR=VR[ord]
     @info "Right eigsolve: converged=$(infoR.converged) iters=$(infoR.mvproducts)"
     # left op y = (A')^{-1} (dA') x
     function op_l!(y,x); copyto!(tmp,x); ldiv!(Ft,tmp); mul!(y,dAt,tmp); y; end
-    Cl=LinearMap{T}(op_l!,n,n;ismutating=true)
+    Cl=LinearMaps.LinearMap{T}(op_l!,n,n;ismutating=true)
     @info "Left eigsolve on (A')^{-1} (dA')…"
     @time μl,UL,infoL=eigsolve(Cl,n,nev,:LM;tol,maxiter,krylovdim)
     @info "Left eigsolve: converged=$(infoL.converged) iters=$(infoL.mvproducts)"
