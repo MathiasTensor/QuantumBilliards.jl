@@ -595,10 +595,10 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     @info "Scaling Method w/ StateData..."
     println("Total intervals: ",length(k_vals))
     all_states=Vector{StateData{T,T}}(undef,length(k_vals))
-    all_states[1]=solve_state_data_bundle_with_INFO(solver,basis,billiard,k_vals[1],dk+tol;multithreaded=multithreaded_matrices)
+    all_states[end]=solve_state_data_bundle_with_INFO(solver,basis,billiard,k_vals[end],dk+tol;multithreaded=multithreaded_matrices)
     @info "Multithreading loop? $(multithreaded_ks), multithreading matrix construction? $(multithreaded_matrices)"
     p=Progress(length(k_vals),1)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[2:end]
+    @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[1:end-1]
         ki=k_vals[i]
         all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dk+tol;multithreaded=multithreaded_matrices)
         next!(p)
