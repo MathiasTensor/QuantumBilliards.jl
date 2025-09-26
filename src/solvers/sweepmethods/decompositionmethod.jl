@@ -202,40 +202,26 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 **Note**: Prints out timing results of each sub-step via `print_timer(to)`.
 """
 function construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    to=TimerOutput()
-    w=pts.w
-    w_n=pts.w_n
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        norm=(length(symmetries)+1.0)
-        w=w.*norm
-        w_n=w_n.*norm
-    end
-    #basis and gradient matrices
-    @timeit to "basis_and_gradient_matrices" B,dX,dY=basis_and_gradient_matrices(basis,k,pts.xy;multithreaded=multithreaded)
-    N=basis.dim
-    type=eltype(B)
-    F=zeros(type,(N,N))
-    G=similar(F)
-    @timeit to "F construction" begin 
-        @timeit to "weights" T=(w.*B) #reused later
-        @timeit to "product" mul!(F,B',T) #boundary norm matrix
-    end
-
-    @timeit to "G construction" begin 
-        @timeit to "normal derivative" nx=getindex.(pts.normal,1)
-        @timeit to "normal derivative" ny=getindex.(pts.normal,2)
-        #inplace modifications
-        @timeit to "normal derivative" dX=nx.*dX 
-        @timeit to "normal derivative" dY=ny.*dY
-        #reuse B
-        @timeit to "normal derivative" B=dX.+dY
-        #B is now normal derivative matrix (u function)
-        @timeit to "weights" T=(w_n.*B) #apply integration weights
-        @timeit to "product" mul!(G,B',T)#norm matrix
-    end
-    print_timer(to)
-    return F,G    
+    t0=time()
+    xy=pts.xy;w=pts.w;wn=pts.w_n;N=basis.dim
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
+    t=time();B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
+    @info "basis_and_gradient_matrices" elapsed=(time()-t) sizeB=size(B) sizeDX=size(dX) sizeDY=size(dY)
+    t=time()
+    _scale_rows_sqrtw!(B,w,nsym)
+    F=Matrix{eltype(B)}(undef,N,N)
+    BLAS.syrk!('U','T',one(eltype(B)),B,zero(eltype(B)),F)
+    _symmetrize_from_upper!(F)
+    @info "F build (syrk)" elapsed=(time()-t)
+    t=time()
+    _build_Bn_inplace!(dX,dY,pts.normal)
+    _scale_rows_sqrtw!(dX,wn,nsym)
+    G=Matrix{eltype(B)}(undef,N,N)
+    BLAS.syrk!('U','T',one(eltype(B)),dX,zero(eltype(B)),G)
+    _symmetrize_from_upper!(G)
+    @info "G build (normal+syrk)" elapsed=(time()-t)
+    @info "construct_matrices_new_INFO total" elapsed=(time()-t0)
+    return F,G  
 end
 
 """
@@ -261,34 +247,26 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 **Note**: After this step, `(F, G)` can be used in a generalized eigenvalue problem.
 """
 function construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    #basis and gradient matrices
+    xy=pts.xy
     w=pts.w
-    w_n=pts.w_n
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        norm=(length(symmetries)+1.0)
-        w=w.*norm
-        w_n=w_n.*norm
-    end
-    B,dX,dY=basis_and_gradient_matrices(basis,k,pts.xy;multithreaded=multithreaded)
-    type=eltype(B)
+    wn=pts.w_n
     N=basis.dim
-    F=zeros(type,(N,N))
-    G=similar(F)
-    #apply weights
-    T=(w.*B) #reused later
-    mul!(F,B',T) #boundary norm matrix
-    nx=getindex.(pts.normal,1)
-    ny=getindex.(pts.normal,2)
-    #inplace modifications
-    dX=nx.*dX 
-    dY=ny.*dY
-    #reuse B
-    B=dX.+dY
-    #B is now normal derivative matrix (u function)
-    T=(w_n.*B) #apply integration weights
-    mul!(G,B',T)#norm matrix
-    return F,G      
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
+    # the alogrithm consctructs B and the normal derivative Bn with syrk to minimize the allocation cost. It does this with the trick of putting sqrt(w_n) into both the rows of B and the rows of B' so that we can use syrk on sqrt(W)*B to get B'*(W*B) without forming W*B as a temporary matrix (posible b/c W is diagonal)
+    B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
+    # Form F = B'*(W*B) by inplace scaling the rows of B by sqrt(w) (inplace to B) and use syrk to perform the Rank-k update of a symmetric matrix
+    _scale_rows_sqrtw!(B,w,nsym) #  trick of putting sqrt(w_n) into the rows of the transposed and original B to get (sqrt(W)*B)' * (sqrt(W)*B) so we can use syrk on sqrt(W)*B
+    F=Matrix{eltype(B)}(undef,N,N) # preallocate F
+    BLAS.syrk!('U','T',one(eltype(B)),B,zero(eltype(B)),F) # F[u ∈ upper]+=1.0*B'*B, no need to fill(F,0) since the additive constant in C is 0
+    _symmetrize_from_upper!(F) # since we chose "U" in syrk, we need to mirror upper -> lower
+    # Build Bn into dX: dX <- nx*dX + ny*dY 
+    _build_Bn_inplace!(dX,dY,pts.normal)
+    # Form G = Bn'*(Wn*Bn) by first scaling the rows of Bn (dX) by sqrt(w_n) (inplace to dX) and use syrk to perform the Rank-k update of a symmetric matrix
+    _scale_rows_sqrtw!(dX,wn,nsym) # like for F form sqrt(Wn*Bn) with row scaling with the same trick of putting sqrt(w_n) into the rows of the transposed and original dX to get (sqrt(Wn)*Bn)' * (sqrt(Wn)*Bn) so we can use syrk on dX
+    G=Matrix{eltype(B)}(undef,N,N) # preallocate G, no need to fill with zeros since we use zero(eltype(B)) for the additive constant in syrk
+    BLAS.syrk!('U','T',one(eltype(B)),dX,zero(eltype(B)),G) # G[u ∈ upper]+=1.0*dX'*dX where dX is now sqrt(Wn)*Bn due to inplace scalings above
+    _symmetrize_from_upper!(G) # since we chose "U" in syrk, we need to mirror upper -> lower
+    return F,G    
 end
 
 """
