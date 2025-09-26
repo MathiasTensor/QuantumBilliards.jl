@@ -44,7 +44,7 @@ Performs a sweep over a range of wavenumbers `ks` and computes tensions for `res
 - `multithreaded_ks::Bool=false`: If the k loop is multithreaded.
 - `use_combined::Bool=false`: Whether to use Single and Double Layer potential in CFIE methods. Defaults to `false` corresponding to just the Double Layer potential.
 - `use_krylov::Bool=true`: Large speedups in BIM/EBIM. For specific implementations please check source code in krylovsolvers.jl.
-- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver in the case of ParticularSolutionsMethod. Adjust if necessary.
+- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver for ParticularSolutionsMethod. Adjust if necessary (you see too much spiking in the tension plot).
 
 # NOTE
 When using the Sweep solvers it is advised to parallelize the matrix construction instead of the ks loop since the matrix construction uses the same or more resources as the SVD.

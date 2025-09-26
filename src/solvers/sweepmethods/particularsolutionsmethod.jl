@@ -257,7 +257,7 @@ The idea is to represent the minimization of the boundary tension of the wavefun
 - `k::Real`: Wavenumber or frequency-like parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_rank_reduction::Bool=true`: If true, uses a rank-reduced solver variant that is more stable for large bases & offers unparalleled performance compared with the full SVD approach. If very high basis dimensions are used, this is recommended, but sometimes tolerance needs adjustement.
-- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary.
+- `tol::Real=1e-14`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary (you see too much spiking in the tension plot).
 
 # Returns
 - `::Real`: The minimum generalized singular value (or similar measure). Lower values can
