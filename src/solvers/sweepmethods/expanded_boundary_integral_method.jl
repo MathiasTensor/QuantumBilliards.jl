@@ -554,7 +554,7 @@ function solve(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoi
 end
 
 # HELPS PROFILE THE solve FUNCTION AND DETERMINE THE CRITICAL PARAMETERS OF A CALCULATION. THIS USES THE FULL GEPV SOLVE
-function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     s=time()
     s_constr=time()
     @info "Constructing A,dA,ddA Fredholm matrix and it's derivatives..."
@@ -658,6 +658,6 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
     if use_krylov
         return solve_krylov_INFO(solver,basis,pts,k,dk,kernel_fun=kernel_fun,multithreaded=multithreaded)
     else
-        return solve_INFO(solver,basis,pts,k,dk;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_full_INFO(solver,basis,pts,k,dk;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
     end
 end
