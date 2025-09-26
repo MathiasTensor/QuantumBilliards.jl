@@ -230,6 +230,7 @@ function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints
     dG=dk_matrix(basis,k,xy;multithreaded=multithreaded)
     # Need to make F = G' * (W * G) without forming W*G as temp matrix, so we make F = Σ_i (nsym*w[i]) * g_i * g_i'  (g_i = row i of G, as a vector)
     F=Matrix{eltype(G)}(undef,N,N)
+    fill!(F,0)
     @inbounds for i in axes(G,1)
         wi=nsym*w[i]
         gi=@view G[i,:] # use view for no new allocation
