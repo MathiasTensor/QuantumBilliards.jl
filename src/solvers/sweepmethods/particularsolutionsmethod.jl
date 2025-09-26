@@ -276,7 +276,7 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
     @time "Matrix construction" B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     @time "QR" F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick. Overwrite C since we do not need it anymore
-    @time "Finding r" r=numerical_rank_from_F(F,tol) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
+    @time "Finding r" r=_numerical_rank_from_F(F,tol) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
     r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
     @time "Triangular view" Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # well-determined r×r block of R as a view (no copy)
     piv=F.p # permutation vector piv such that C[:,piv] = Q*R
