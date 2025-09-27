@@ -72,7 +72,10 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
         # first-order: ε1 = -λ  (since A v = λ dA v with λ = -ε to first order)
         # second-order: ε2 = -0.5 ε1^2 * (u' ddA v)/(u' dA v)
         c1=-real(λj)
-        c2=-0.5*c1^2*real(num/den) # second-order correction (scale-invariant thanks to the ratio)
+        c2=zero(RT)
+        if den>1e-15 # soft guard
+            c2-=0.5*c1^2*real(num/den) # second-order correction (scale-invariant thanks to the ratio)
+        end
         t=c1+c2
         abst=abs(t)
         if abst<dk && abst<dk # rectangular acceptance window in the (Re λ, Im λ) plane
