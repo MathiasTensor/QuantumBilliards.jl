@@ -167,41 +167,19 @@ using the same algorithm as `construct_matrices` (BLAS syr!/syr2k style; no W*G 
 Returns (F, Fk) and prints a detailed TimerOutput.
 """
 function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    to=TimerOutput()
-    xy=pts.xy
-    w=pts.w
-    N=basis.dim
+    t0=time()
+    xy=pts.xy; w=pts.w; N=basis.dim
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
-    @timeit to "basis_matrix G" G=basis_matrix(basis,k,xy;multithreaded=multithreaded)
-    @timeit to "dk_matrix dG" dG=dk_matrix(basis,k,xy;multithreaded=multithreaded)
-    T=eltype(G)
-    F=Matrix{T}(undef,N,N)
-    fill!(F,0)
-    # Need to make F = G' * (W * G) without forming W*G as temp matrix, so we make F = Σ_i (nsym*w[i]) * g_i * g_i'  (g_i = row i of G, as a vector)
-    @timeit to "F via BLAS.syr!" begin
-        α=nsym
-        @inbounds for i in axes(G,1)
-            wi=α*w[i]
-            gi=@view G[i,:]
-            BLAS.syr!('U',wi,gi,F) # F[U] += wi * gi * gi'
-        end
-        _symmetrize_from_upper!(F)
-    end
-    # Need to form Fk = (dG'*(W*G)) + (G'*(W*dG)), first calculate S = (G'*(W*dG)) and use symmetry: dG'*(W*G) == S'
-    Fk = Matrix{T}(undef,N,N)
-    @timeit to "Fk: scale rows dG by nsym*w" _scale_rows!(dG,nsym.*w)
-    @timeit to "Fk: mul! G'*(W*dG)" mul!(Fk,transpose(G),dG)
-    @timeit to "Fk: symmetrize S + S'" begin
-        @inbounds for j in 1:N
-            for i in 1:j-1
-                s=Fk[i,j]+Fk[j,i]
-                Fk[i,j]=s
-                Fk[j,i]=s
-            end
-            Fk[j,j]*=2
-        end
-    end
-    print_timer(to)
+    @info "construct_matrices_new" k=k N=N M=length(xy) nsym=nsym blas_threads=BLAS.get_num_threads()
+    t=time(); G=basis_matrix(basis,k,xy;multithreaded); dG=dk_matrix(basis,k,xy;multithreaded)
+    @info "basis_matrix & dk_matrix" elapsed=(time()-t) sizeG=size(G) sizedG=size(dG)
+    t=time(); _scale_rows_sqrtw!(G,w,nsym)
+    F=Matrix{eltype(G)}(undef,N,N); BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F); _symmetrize_from_upper!(F)
+    @info "F build (√W + SYRK)" elapsed=(time()-t) issym=issymmetric(F)
+    t=time(); _scale_rows_sqrtw!(dG,w,nsym)
+    Fk=Matrix{eltype(G)}(undef,N,N); BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk); _symmetrize_from_upper!(Fk)
+    @info "Fk build (√W + SYR2K)" elapsed=(time()-t) issym=issymmetric(Fk)
+    @info "total construct_matrices_new" elapsed=(time()-t0)
     return F,Fk
 end
 
@@ -223,33 +201,19 @@ Constructs all the matrices needeed for the Scaling Method for a given reference
 function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w
-    N=basis.dim
-    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
-    # G and dG (unweighted)
-    G=basis_matrix(basis,k,xy;multithreaded=multithreaded)
-    dG=dk_matrix(basis,k,xy;multithreaded=multithreaded)
-    # Need to make F = G' * (W * G) without forming W*G as temp matrix, so we make F = Σ_i (nsym*w[i]) * g_i * g_i'  (g_i = row i of G, as a vector)
-    F=Matrix{eltype(G)}(undef,N,N)
-    fill!(F,0)
-    @inbounds for i in axes(G,1)
-        wi=nsym*w[i]
-        gi=@view G[i,:] # use view for no new allocation
-        BLAS.syr!('U',wi,gi,F) # F[U] += wi * gi * gi'
-    end
-    _symmetrize_from_upper!(F)
-    # Need to form Fk = (dG'*(W*G)) + (G'*(W*dG)), first calculate S = (G'*(W*dG)) and use symmetry: dG'*(W*G) == S'
-    _scale_rows!(dG,nsym.*w) # in-place W*dG
-    Fk=Matrix{eltype(G)}(undef,N,N)
-    mul!(Fk,transpose(G),dG) # Fk <- G' * (W*dG)
-    @inbounds for j in 1:N # Fk <- Fk + Fk'
-        for i in 1:j-1
-            s=Fk[i,j]+Fk[j,i]
-            Fk[i,j]=s
-            Fk[j,i]=s
-        end
-        Fk[j,j]*=2
-    end
-    return F,Fk # unlike doing Fk=Fk+Fk', this is exact and preserves symmetry and can be checked with issymmetric(F) && issymmetric(Fk)   
+    N=basis.dim                                 
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)  # symmetry multiplier
+    G=basis_matrix(basis,k,xy;multithreaded) # G is the unweighted basis matrix (M×N)
+    dG=dk_matrix(basis,k,xy;multithreaded) # dG si the unweighted k derivative ∂G/∂k (M×N)
+    _scale_rows_sqrtw!(G,w,nsym) # G <- sqrt(nsym*w) .* G  , inplace row scaling, this is to use BLAS.syrk! trick because W is Diagonal: F = G'*(W*G) = (sqrt(W)*G)'*(sqrt(W)*G)
+    F=Matrix{eltype(G)}(undef,N,N) # F: need to allocate N×N real matrix
+    BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F) # F[u ∈ UpperTriangular] = G' * G SYRK, where G is now sqrt(nsym*w).*G
+    _symmetrize_from_upper!(F) # fill the bottom part of F by mirroring the upper part
+    _scale_rows_sqrtw!(dG,w,nsym) # same trick as with F: dG <. sqrt(nsym*w) .* dG
+    Fk=Matrix{eltype(G)}(undef,N,N) # again need to allocate N×N real matrix
+    BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk) # Fk[U] = G'*dG + dG'*G  (SYR2K), this is Fk = (dG'*(W*G)) + (G'*(W*dG)) looking at original variable names
+    _symmetrize_from_upper!(Fk) # again mirror the upper part to the bottom part
+    return F,Fk   
 end
 
 """
