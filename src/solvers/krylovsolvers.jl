@@ -64,19 +64,21 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
     buf=zeros(CT,n) # reusable temp array used with mul! to always overwrite previous result
     @inbounds for j in 1:nev
         λj=λ[j]
-        if abs(real(λj))<dk && abs(imag(λj))<dk # rectangular acceptance window in the (Re λ, Im λ) plane
-            v=VRlist[j];u=ULlist[j]
-            mul!(buf,ddA,v) # buf <- ddA * v
-            num=dot(u,buf)  # numerator = u' * ddA * v
-            mul!(buf,dA,v)  # buf <- dA * v, overwrites previous buf
-            den=dot(u,buf)   # denominator = u' * dA * v  (bi-orthogonal pairing; scaling cancels in the ratio)
-            # first-order: ε1 = -λ  (since A v = λ dA v with λ = -ε to first order)
-            # second-order: ε2 = -0.5 ε1^2 * (u' ddA v)/(u' dA v)
-            c1=-real(λj)
-            c2=-0.5*c1^2*real(num/den) # second-order correction (scale-invariant thanks to the ratio)
+        v=VRlist[j];u=ULlist[j]
+        mul!(buf,ddA,v) # buf <- ddA * v
+        num=dot(u,buf)  # numerator = u' * ddA * v
+        mul!(buf,dA,v)  # buf <- dA * v, overwrites previous buf
+        den=dot(u,buf)   # denominator = u' * dA * v  (bi-orthogonal pairing; scaling cancels in the ratio)
+        # first-order: ε1 = -λ  (since A v = λ dA v with λ = -ε to first order)
+        # second-order: ε2 = -0.5 ε1^2 * (u' ddA v)/(u' dA v)
+        c1=-real(λj)
+        c2=-0.5*c1^2*real(num/den) # second-order correction (scale-invariant thanks to the ratio)
+        t=c1+c2
+        abst=abs(t)
+        if abst<dk && abst<dk # rectangular acceptance window in the (Re λ, Im λ) plane
             m+=1
-            λ_out[m]=k+c1+c2 # corrected k = k + ε1 + ε2 
-            tens_out[m]=abs(c1+c2) # tension ≈ |ε1 + ε2|
+            λ_out[m]=k+t # corrected k = k + ε1 + ε2 
+            tens_out[m]=abst # tension ≈ |ε1 + ε2|
         end
     end
     if m==0;return RT[],RT[];end # if it happens to be empty solve in dk, return empty
