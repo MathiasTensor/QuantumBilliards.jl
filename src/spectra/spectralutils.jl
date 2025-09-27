@@ -871,13 +871,14 @@ Computes the spectrum of the expanded BIM and their corresponding tensions for a
 - `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}`: Custom kernel functions for the boundary integral method. The default implementation is given by (:default,:first,:second) for the default hemlhholtz kernel and it's first and second derivative.
 - `multithreaded_matrices::Bool=false`: If the Fredholm matrix construction and it's derivatives should be done in parallel.
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
+- `use_krylov::Bool=true`: Large speedups in EPV calculation. If anomalies in result are present set this flag to `False`.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`: 
   - First element is a vector of corrected eigenvalues (`λ`).
   - Second element is a vector of corresponding tensions.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k)->(0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k)->(0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,use_krylov::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.symmetry)
     ks=T[]
@@ -896,13 +897,13 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
     end
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     dd=dks[end]
-    λs,tensions=solve_INFO(solver,basis,all_pts[end],ks[end],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
+    λs,tensions=solve_INFO(solver,basis,all_pts[end],ks[end],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
     results[end]=(λs,tensions)
     p=Progress(length(ks)-1,1) # first one finished
     println("Solving EBIM...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         dd=dks[i]
-        λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices)
+        λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
         results[i]=(λs, tensions)
         next!(p)
     end

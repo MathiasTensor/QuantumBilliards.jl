@@ -78,7 +78,7 @@ function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Boun
         end
         t=c1+c2
         abst=abs(t)
-        if abst<dk && abst<dk # rectangular acceptance window in the (Re λ, Im λ) plane
+        if abst<dk # acceptance window in the (Re λ, Im λ) plane
             m+=1
             λ_out[m]=k+t # corrected k = k + ε1 + ε2 
             tens_out[m]=abst # tension ≈ |ε1 + ε2|
