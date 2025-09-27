@@ -19,7 +19,7 @@ function solve_vect_krylov(solver::BoundaryIntegralMethod,basis::Ba,pts::Boundar
     return vals[1],rvect[1]
 end
 
-function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=25,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
+function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     CT=eltype(A)
     n=size(A,1)
