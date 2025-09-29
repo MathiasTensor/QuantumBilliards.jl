@@ -227,17 +227,21 @@ end
     return 0
 end
 
-function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::QuantumBilliards.PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:QuantumBilliards.AbsBasis}
+function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     # tol is adjustable, based on how the R[1,1] scales below with k. Tested up to k=500 it seems fine with 1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. Overwrite C since we do not need it anymore
-    r=_numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
+    r=QuantumBilliards._numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
     r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
     Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # triangular view onto R (no copy)
     piv=F.p # permutation vector piv such that C[:,piv] = Q*R
     B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
-    return sqrt(real(eigmin(B'*B))) # smallest singular value via eigmin(B'B)
+    r=size(B,2) # number of columns after reduction
+    B_sq=Matrix{T}(undef,r,r) # small matrix B'B preallocate
+    BLAS.syrk!('U','T',one(T),B,zero(T),B_sq) # real matrix so transpose is ok
+    _symmetrize_from_upper!(B_sq) # fill the lower triangle inplace
+    return sqrt(eigmin(Symmetric(B_sq))) # smallest singular value via eigmin(B'B). This is usually faster than using Krylov'S smallest svd since the matrix rank reduction is significant
 end
 
 """
