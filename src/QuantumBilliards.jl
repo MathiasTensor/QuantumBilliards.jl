@@ -97,6 +97,7 @@ include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
 include("solvers/sweepmethods/cfie.jl")
 include("solvers/krylovsolvers.jl")
+include("solvers/acceleratedmethods/beyn.jl")
 export ScalingMethodA 
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
