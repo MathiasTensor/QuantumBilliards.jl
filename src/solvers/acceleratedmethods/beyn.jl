@@ -26,9 +26,6 @@ end
     return true
 end
 
-@inline _x_reflect(x::T,sx::T) where {T<:Real}=(2*sx-x)
-@inline _y_reflect(y::T,sy::T) where {T<:Real}=(2*sy-y)
-
 function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     xy=bp.xy;nrm=bp.normal;κ=bp.curvature;N=length(xy)
     K=Matrix{Complex{T}}(undef,N,N)
@@ -285,7 +282,11 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
             keep[j]=false
             if ybuf_norm>1e-8
-                @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                else # gray zone
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                end
             else
                 @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
             end
@@ -318,8 +319,12 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
         ybuf_norm=norm(ybuf)
         if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
             keep[j]=false
-            if ybuf_norm>1e-8 # heuristic for when usually it is spurious sqrt(eps())
-                @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+            if ybuf_norm>1e-8
+                if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                else # gray zone
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                end
             else
                 @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
             end
@@ -385,8 +390,12 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         if ybuf_norm≥res_tol
             keep[j]=false
             dropped_res+=1
-            if ybuf_norm>1e-8 # heuristic for when usually it is spurious sqrt(eps())
-                @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+            if ybuf_norm>1e-8
+                if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                else # gray zone
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                end
             else
                 @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
             end
@@ -402,4 +411,63 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         @info "STATUS: " kept=0 dropped_outside=dropped_out dropped_residual=dropped_res
     end
     return λ[keep],Phi[:,keep],tens
+end
+
+####################
+#### HIGH LEVEL ####
+####################
+
+# computes tensions based on the one or two norm of the matrix operators and scaled to prevent really small norms of ||A(λ)v(λ)||_{1/2}. So it computes it as:
+# t_{i} = ||A(λ_i)v(λ_i)||_{1/2} / (||A(λ_i)||_{1/2} * ||v(λ_i)||_{1/2}) with some padding epss in denominator to prevent near zero norms
+function compute_tensions(solver::BoundaryIntegralMethod,pts_all::Vector{BoundaryPointsBIM{T}},ks_all::AbstractVector{T},us_all::Vector{Vector{T}};kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,matnorm::Symbol=:one,epss::Real=1e-15) where {T<:Real}
+    @assert length(ks_all)==length(us_all)==length(pts_all)
+    tens=Vector{T}(undef,length(ks_all))
+    Threads.@threads for i in eachindex(ks_all)
+        k=complex(ks_all[i]) # λ_i
+        φ=Complex{T}.(us_all[i]) # v_i
+        pts=pts_all[i]
+        A=fredholm_matrix_complex_k(pts,solver.symmetry,k;multithreaded=multithreaded,kernel_fun=kernel_fun) # get the A(λ_i)
+        y=A*φ # A(λ_i)*v(λ_i)
+        # there is a choice of operator 1 or 2 norm for the num and denom
+        nA=(matnorm==:one ? opnorm(A,1) : matnorm==:two ? opnorm(A,2) : opnorm(A,Inf))
+        tens[i]=norm(y,1)/(nA*(norm(φ,1)+epss)+epss) # the tension
+    end
+    return tens
+end
+
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,fundamental=true,svd_tol=1e-14,res_tol=1e-9) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+    # Plan how many intervals we will have with the radii and the centers of the radii
+    intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
+    k0,R=beyn_disks_from_windows(intervals)
+    println("Number of intervals: ",length(intervals))
+    println("Final R: ",R[end])
+    println("Starting R: ",R[1])
+    all_pts_bim = Vector{BoundaryPointsBIM{Float64}}(undef,length(k0))
+    for i in eachindex(k0) # calculating collocation points
+        all_pts_bim[i]=evaluate_points(solver,billiard,real(k0[i]))
+    end
+    ks_list=Vector{Vector{T}}(undef,length(k0)) # preallocate ks
+    phi_list=Vector{Matrix{T}}(undef,length(k0)) # preallocate columns of DLPs for each k in ks
+    # do a test solve to see if nq is large enough and inspect the desired tolerances. Also do +/- 10 in nq to see how it varies. If any warnings about solutions that say that it could be a true eigenvalue then that one could be lost and q higher nq might solve it.
+    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
+    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
+    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq+10,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
+    @showprogress desc="Beyn solve..." Threads.@threads for i in eachindex(k0)[1:end]
+        ks,Phi,_=solve_vect(bim,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol) # we do not need radii in this computation
+        ks_list[i]=real.(ks) 
+        phi_list[i]=Matrix(real.(Phi))
+    end
+    # Now do merging so to get correct types. There are no overlaps here so no need to call overlap_and_merge!
+    ks_all=T[];us_all=Vector{T}[];pts_all=BoundaryPointsBIM{T}[]
+    for i in eachindex(k0)
+        ks_i=ks_list[i];Phi_i=phi_list[i] 
+        n_i=isnothing(Phi_i) ? 0 : size(Phi_i,2) # in case nothing is found so it does not throw error
+        for j in 1:n_i
+            push!(ks_all,ks_i[j])
+            push!(us_all,vec(@view Phi_i[:,j]))
+            push!(pts_all,all_pts_bim[i]) # repeat same pts for each eigvals in this window
+        end
+    end
+    tens_all=compute_tensions(bim,pts_all,ks_all,us_all;matnorm=:one) # use the 1-norm but arbitrary
+    return ks_all,tens_all,us_all,pts_all # for wavefunction construction we need ks, us_all, pts_all. The us_all are DLP densities and can be used in boundary_function_BIM function to correctly symmetrize it!
 end
