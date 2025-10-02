@@ -1,3 +1,61 @@
+#=
+#############################################
+########### BEYN CONTOUR METHOD #############
+#############################################
+
+- A Beyn-type contour-integral method for nonlinear eigenproblems T(k)φ=0 arising from BIM.
+- On each disk Γ: center k0, radius R, we build
+A0 = (1/2πi)∮ T(z)^{-1}V dz,  A1 = (1/2πi)∮ z T(z)^{-1}V dz
+then project with the rank-revealing SVD of A0 to a small dense B, and solve eigen!(B).
+- Returned eigenpairs are filtered: (i) |k−k0|≤R and (ii) residual ‖T(k)φ‖ below a tolerance.
+
+Workflow - short
+
+- Call compute_spectrum with the BIM solver and try first with default kwargs. If a lot of warnings about a potential eigenvalue with tension just a bit below tolerance is printed then increase nq until they disappear.
+
+Workflow - long:
+
+1) Choose geometry, basis, and symmetry:
+- Build billiard, basis, and (optional) symmetry for your problem.
+- Construct the BIM solver: solver=BoundaryIntegralMethod(…, billiard, symmetry=…).
+
+2) Plan windows (disks) that each contain ≈m levels:
+- Call intervals=plan_weyl_windows(billiard,k1,k2; m, Rmax, fundamental).
+- Convert to disks: (k0,R)=beyn_disks_from_windows(intervals).
+- R is automatically ≤Rmax, so each disk’s radius is controlled.
+
+3) Collocate once per window:
+- For each k0[i], call pts[i]=evaluate_points(solver,billiard,real(k0[i])).
+
+4) Pick numerical contour nodes (geometry dependent):
+- nq : number of contour nodes (trapezoid on circle). Start at 30–60; increase if residuals are large.
+- r : probe rank (≥ expected #levels per disk). Start at m+10…m+20.
+- svd_tol: SVD cutoff on Σ(A0). 1e-12…1e-14 is safe; inspect Σ tail in solve_INFO.
+- res_tol: residual tolerance. 1e-10…1e-12 typical; tighten if needed.
+
+5) Sanity-check one disk before the sweep:
+- Run solve_INFO on the last (or a representative) disk with nq-10, nq, nq+10.
+- Inspect:
+* singular values Σ(A0) and detected rank,
+* kept/dropped counts and residuals,
+* whether increasing nq reduces residuals by orders of magnitude.
+- If residuals are too big or spurious roots appear, increase nq (and, if m is larger, also r).
+
+6) Solve all disks:
+- Use solve_vect or the high-level compute_spectrum to get ks and densities Φ.
+
+7) Compute “tensions” (post-process, scale-invariant):
+- Use compute_tensions to get  t_i = ‖T(k_i)φ_i‖ / (‖T(k_i)‖ · ‖φ_i‖)  (default 1-norm).
+
+Practical guidance
+
+- If you increase m (more levels per disk), increase both r (≥ m by a margin) and usually nq.
+- Non-analytic boundaries converge slower with nq; expect to use higher nq and/or smaller R.
+- Use solve_INFO logs to diagnose: Σ(A0) gaps, rank rk, counts kept/dropped, and residual histogram.
+- Typical robust defaults: m≈8–12, Rmax≈0.5, nq≈64–96, r≈m+15, svd_tol≈1e-13, res_tol≈1e-10.
+- For very high k or intricate geometries, start conservative (smaller R, larger nq) and relax if safe.
+
+=#
 
 #####################################
 #### CONSTRUCTORS FOR COMPLEX ks ####
