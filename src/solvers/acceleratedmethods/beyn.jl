@@ -448,6 +448,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     end
     ks_list=Vector{Vector{T}}(undef,length(k0)) # preallocate ks
     phi_list=Vector{Matrix{T}}(undef,length(k0)) # preallocate columns of DLPs for each k in ks
+    @error nq≤10 "Do not use less than 11 contour nodes"
     # do a test solve to see if nq is large enough and inspect the desired tolerances. Also do +/- 10 in nq to see how it varies. If any warnings about solutions that say that it could be a true eigenvalue then that one could be lost and q higher nq might solve it.
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
