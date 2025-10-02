@@ -3,6 +3,8 @@
 ########### BEYN CONTOUR METHOD #############
 #############################################
 
+MAIN REFERENCE: Beyn, Wolf-Jurgen, An integral method for solving nonlinear eigenvalue problems, 2018
+
 - A Beyn-type contour-integral method for nonlinear eigenproblems T(k)φ=0 arising from BIM.
 - On each disk Γ: center k0, radius R, we build
 A0 = (1/2πi)∮ T(z)^{-1}V dz,  A1 = (1/2πi)∮ z T(z)^{-1}V dz
@@ -61,6 +63,31 @@ Practical guidance
 #### CONSTRUCTORS FOR COMPLEX ks ####
 #####################################
 
+# Add the 2D Helmholtz double-layer kernel contribution to M[i,j].
+# Discrete collocation (row = target i, column = source j).
+#
+# Indices / geometry:
+#   i     – target (row / collocation) index
+#   j     – source (column / integration) index
+#   xi,yi – target coordinates (point i)
+#   xj,yj – source  coordinates (point j)
+#   nxi,nyi – unit outward normal at the target point i
+#   nxj,nyj – unit outward normal at the source point j (unused in this kernel)
+#
+# Physics:
+#   k     – complex wavenumber on the contour
+#   pref  – prefactor for the DLP kernel; for 2D Helmholtz with G = (i/4)H0^(1)(kr),
+#           ∂G/∂n = (ik/4) ( (x−y)·n / r ) H1^(1)(kr). Here we use pref = -im*k/2 to match
+#           the BIM’s normalization.
+#
+# Numerics:
+#   tol2  – distance^2 threshold; if |x_i - x_j|^2 ≤ tol2 treat as near-self and
+#           return false so the caller can handle the diagonal/near-singular term.
+#   scale – optional symmetry/sign scaling (default 1).
+#
+# Returns:
+#   true  – contribution added to M[i,j]
+#   false – skipped (caller should add diagonal correction, e.g. κ/(2π), outside)
 @inline function _add_pair_default_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},tol2::T,pref::Complex{T};scale::T=one(T)) where {T<:Real}
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
@@ -76,6 +103,25 @@ Practical guidance
     return true
 end
 
+# Add a custom kernel contribution to M[i,j] using a user supplied callback.
+#
+# Indices / geometry:
+#   i,j       – target (row) and source (column) indices, respectively
+#   xi,yi     – target coordinates (point i)
+#   xj,yj     – source  coordinates (point j)
+#   nxi,nyi   – unit outward normal at the target i
+#   nxj,nyj   – unit outward normal at the source j
+#
+# Kernel:
+#   kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k) must return the complex-valued
+#   kernel entry K_ij for the chosen BIE at complex k.
+#
+# Scaling:
+#   scale – optional multiplicative factor (used by symmetry images/signs). This is handled internally by compute_kernel_matrix_complex_k functions.
+#
+# Effect:
+#   M[i,j] += scale * kernel_fun(...)
+#   Returns true unconditionally (no near-singular short-circuit here).
 @inline function _add_pair_custom_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},kernel_fun;scale::T=one(T)) where {T<:Real}
     val_ij=kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
     @inbounds begin
@@ -84,11 +130,36 @@ end
     return true
 end
 
+# Build the complex-k boundary integral operator matrix K for a *single* boundary
+# (no explicit symmetry images). Supports either:
+#   - default double-layer kernel (fast path, triangular fill + mirror),
+#   - or a user-provided `kernel_fun` (full N×N fill).
+#
+# Inputs:
+#   bp         – BoundaryPointsBIM: holds xy, normals, curvature κ, and panel ds
+#   k          – complex wavenumber on the Beyn contour
+#   multithreaded – toggle threaded loops (via @use_threads)
+#   kernel_fun – :default for built-in DLP; or a Function callback for custom kernels
+#
+# Numerics/constants:
+#   tol2 = (eps(T))^2 – near-self threshold on squared distance
+#   pref = -im*k/2    – prefactor matching the chosen DLP normalization
+#
+# Strategy (default):
+#   * Upper-triangular loop j=1:i, then mirror to (j,i) to fill the matrix.
+#   * Off-diagonal: add DLP using target normal at i and H1^(1)(k r).
+#   * Diagonal  : when r≈0 (d2≤tol2), insert κ[i]/(2π).
+#
+# Strategy (custom):
+#   * Full N×N loop, each entry via `_add_pair_custom_complex!`.
+#
+# Output:
+#   K::Matrix{Complex{T}} – the assembled kernel (before ds-weighting / identity).
 function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     xy=bp.xy;nrm=bp.normal;κ=bp.curvature;N=length(xy)
     K=Matrix{Complex{T}}(undef,N,N)
     xs=getindex.(xy,1);ys=getindex.(xy,2);nx=getindex.(nrm,1);ny=getindex.(nrm,2)
-    tol2=(eps(T))^2;pref=-im*k/2;TW= T(2π)
+    tol2=(eps(T))^2;pref=-im*k/2;TW=T(2π)
     if kernel_fun===:default
         QuantumBilliards.@use_threads multithreading=multithreaded for i in 1:N
             xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
@@ -117,6 +188,33 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};
     return K
 end
 
+# Build the complex-k boundary integral operator matrix K with symmetry images.
+# This augments the direct kernel with reflected source contributions according to
+# the provided symmetry list (x-axis, y-axis, or origin reflections), including the
+# correct parity signs per symmetry.
+#
+# Inputs:
+#   bp        – BoundaryPointsBIM (xy, normals, curvature κ, shifts of symmetry axes)
+#   symmetry  – Vector of symmetry descriptors (e.g., X/Y/XYReflection with parity)
+#   k         – complex wavenumber
+#   multithreaded – threading toggle
+#   kernel_fun – :default DLP, or custom kernel callback
+#
+# Reflection controls:
+#   add_x,add_y,add_xy – which images to add (x-reflect, y-reflect, both)
+#   sxgn, sygn, sxy    – corresponding parity factors ±1 (from `parity`)
+#   shift_x, shift_y   – axis shifts of the geometry for correct mirror positions
+#
+# Strategy:
+#   For each target i and source j:
+#     - Add direct pair (default/custom).
+#     - If add_x:   add source reflected across y-axis:  x -> 2*shift_x - x, y→y, scaled by sxgn.
+#     - If add_y:   add source reflected across x-axis:  x -> x, y→2*shift_y - y, scaled by sygn.
+#     - If add_xy:  add source reflected across both axes, scaled by sxy.
+#   Near-diagonal handling (default only): if the *direct* pair is near, caller adds κ/(2π).
+#
+# Output:
+#   K::Matrix{Complex{T}} fully populated with symmetry images included.
 function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     xy=bp.xy
     nrm=bp.normal
@@ -169,6 +267,23 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vect
     return K
 end
 
+# Assemble the full Fredholm operator A(k) for the DLP formulation at complex k:
+#   A(k) = I - K(k) D,   where D = diag(ds) applies panel quadrature weights (right scaling).
+#
+# Inputs:
+#   bp        – BoundaryPointsBIM (xy, normals, curvature, panel lengths ds, symmetry shifts)
+#   symmetry  – nothing -> no images; Vector -> include symmetry images in K(k)
+#   k         – complex wavenumber
+#   multithreaded, kernel_fun – passed to compute_kernel_matrix_complex_k(...)
+#
+# Steps:
+#   1) Build kernel matrix K (with/without symmetry) at k.
+#   2) Right-scale by panel lengths: for each column j, K[:,j] *= ds[j].
+#   3) Form A := -K  and add identity on the diagonal -> A = I - K.
+#   4) Change numerical zeros to 0 via filter_matrix!.
+#
+# Output:
+#   A::Matrix{Complex{T}} ready for use in Beyn contour solves (T(z) ≡ A(z)).
 function fredholm_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     K=isnothing(symmetry) ?
         compute_kernel_matrix_complex_k(bp,k;multithreaded=multithreaded,kernel_fun=kernel_fun) :
@@ -188,19 +303,27 @@ end
 #### HELPERS ####
 #################
 
-# ΔN(k,Δk)=N(k+Δk)-N(k)
+# ΔN(k,Δk) = N(k+Δk) - N(k)
+# Uses Weyl’s law as a fast estimator of eigenvalue count N(k).
+# Returns the estimated number of levels in the interval [k, k+Δk].
 function delta_weyl(billiard::Bi,k::T,Δk::T;fundamental::Bool=true) where {T<:Real,Bi<:QuantumBilliards.AbsBilliard}
     # Use Weyl’s law as a fast estimator of counting function N(k); difference gives # levels in [k,k+Δk]
     weyl_law(k+Δk,billiard;fundamental=fundamental)-weyl_law(k,billiard;fundamental=fundamental)
 end
 
-# Δk₀≈m/ρ(k); floor to avoid zero
+# initial_step_from_dos
+# Compute an initial guess for Δk from the density of states ρ(k).
+# Formula: Δk₀ ≈ m / ρ(k). 
+# Ensures Δk₀ is not too small by flooring with min_step.
 function initial_step_from_dos(billiard::Bi,k::T,m::Int;fundamental::Bool=true,min_step::Real=1e-6) where {T<:Real,Bi<:QuantumBilliards.AbsBilliard}
     ρ=max(dos_weyl(k,billiard;fundamental=fundamental),1e-12) # estimate DOS ρ(k); clamp to avoid division by tiny numbers
     max(m/ρ,min_step) # target m levels -> Δk≈m/ρ; enforce a minimum to avoid Δk≈0 in sparse regions
 end
 
-# grow Δk until ΔN(k,Δk)≥m or we hit remaining; here 'remaining' is already clamped
+# grow_upper_bound
+# Start from Δk₀ and geometrically increase Δk until ΔN(k,Δk) ≥ m.
+# Capped by the remaining interval length. 
+# Returns (Δk, success_flag), where success_flag -> true if m levels reached.
 function grow_upper_bound(billiard::Bi,k::T,m,Δk0::T,remaining::T;fundamental::Bool=true,max_grows::Int=60) where {T<:Real,Bi<:QuantumBilliards.AbsBilliard}
     Δk=min(remaining,max(Δk0,eps(k))) # start from Δk0 but: (i) not below machine eps, (ii) not above remaining span
     for _ in 1:max_grows
@@ -211,7 +334,10 @@ function grow_upper_bound(billiard::Bi,k::T,m,Δk0::T,remaining::T;fundamental::
     return Δk,delta_weyl(billiard,k,Δk;fundamental=fundamental)≥m
 end
 
-# bisection over Δk∈[lo,hi] to solve ΔN(k,Δk)≈m
+# bisect_for_delta_k
+# Given bracket [lo,hi] where ΔN(lo) < m ≤ ΔN(hi), perform bisection to find Δk ≈ m levels.
+# Stops when tolerance in level count is satisfied or bracket is sufficiently small.
+# Returns the Δk that yields ΔN(k,Δk) ≈ m.
 function bisect_for_delta_k(billiard::Bi,k::T,m,lo::T,hi::T;fundamental::Bool=true,tol_levels=0.1,maxit::Int=50) where {T<:Real,Bi<:QuantumBilliards.AbsBilliard}
     @assert hi>lo
     Nlo=delta_weyl(billiard,k,lo;fundamental=fundamental) # evaluate count at lo
@@ -229,7 +355,11 @@ function bisect_for_delta_k(billiard::Bi,k::T,m,lo::T,hi::T;fundamental::Bool=tr
     return 0.5*(lo+hi) # fallback: return midpoint of final bracket
 end
 
-# cover [k1,k2] with windows of ≈m levels, AND enforce |window|≤2Rmax (so R≤Rmax)
+# plan_weyl_windows
+# Cover interval [k1,k2] with windows each containing ≈ m eigenvalues by Weyl estimate.
+# Each window length is capped at ≤ 2*Rmax (so that disk radius R ≤ Rmax).
+# Uses: initial_step_from_dos, grow_upper_bound, bisect_for_delta_k.
+# Returns a list of (kL,kR) windows.
 function plan_weyl_windows(billiard::Bi,k1::T,k2::T; m::Int=10, Rmax::Real=1.0,
                            fundamental::Bool=true, tol_levels=0.1, maxit::Int=50) where {T<:Real,Bi<:QuantumBilliards.AbsBilliard}
     iv=Vector{Tuple{T,T}}() # accumulator of (kL,kR) windows
@@ -252,7 +382,11 @@ function plan_weyl_windows(billiard::Bi,k1::T,k2::T; m::Int=10, Rmax::Real=1.0,
     return iv # list of windows covering [k1,k2]
 end
 
-# Beyn disks (centers/radii) from windows; lengths already ≤2Rmax
+# beyn_disks_from_windows
+# Convert a list of windows [kL,kR] into Beyn method disks:
+# center k0 -> midpoint of window, radius R -> half the window length.
+# Guarantees R ≤ Rmax because windows were capped.
+# Returns (k0,R) arrays for use in contour integration.
 function beyn_disks_from_windows(iv::Vector{Tuple{T,T}}) where {T<:Real}
     k0=Vector{Complex{T}}(undef,length(iv)); R=Vector{T}(undef,length(iv)) # disk centers (complex, imag=0) and radii
     @inbounds for (i,(kL,kR)) in pairs(iv) # center = midpoint of window -> matches Beyn circle center
@@ -265,6 +399,22 @@ end
 #### SOLVERS FOR BEYN METHOD ####
 #################################
 
+# construct_B_matrix
+# Build Beyn projected pencil B and left basis Uk from contour integrals.
+# Inputs:
+#   fun -> z -> T(z) boundary integral matrix (square N×N)
+#   k0  -> disk center (complex, imag≈0)
+#   R   -> disk radius
+#   nq  -> # trapezoid nodes on Γ
+#   r   -> # random probe columns V (≥ expected eigenvalues inside Γ)
+#   svd_tol -> absolute SVD cutoff on A0 singular values
+# Output:
+#   B  -> small rk×rk dense matrix U* A1 * W * Σ^{-1}
+#   Uk -> N×rk basis spanning Ran(A0) for retained singular directions
+# Notes:
+#   1) Forms A0 = (1/2πi)∮ T(z)^{-1} V dz and A1 = (1/2πi)∮ z T(z)^{-1} V dz via LU solves.
+#   2) Rank rk determined by Σ[i] ≥ svd_tol (strict absolute threshold).
+#   3) If rk == 0, return empty matrices to signal “no roots in window”.
 function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0)) where {T<:Real,Fu<:Function}
     # Reference: Beyn, Wolf-Jurgen, An integral method for solving nonlinear eigenvalue problems, 2018, especially Integral algorithm 1 on p14
     # quadrature nodes/weights on contor Γ 
@@ -317,6 +467,27 @@ function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd
     return B,Uk
 end
 
+# solve_vect
+# Beyn solve that also returns boundary densities (columns of Φ).
+# Inputs:
+#   solver,basis,pts -> geometry/collocation for building T(k)
+#   k      -> disk center
+#   dk     -> disk radius
+#   nq,r   -> contour quadrature and probe size
+#   svd_tol -> absolute SVD threshold for rank reveal
+#   res_tol -> residual filter threshold
+# Output:
+#   λ_keep -> eigenvalue estimates inside disk passing residual check
+#   Φ_keep -> corresponding boundary densities (N×nkeep)
+#   tens - radii   -> “tension” proxy |λ - k| for kept roots
+# Steps:
+#   1) construct_B_matrix -> B,Uk
+#   2) eigen!(B) -> (λ,Y)
+#   3) Φ = Uk * Y
+#   4) Filter:
+#        geometry -> |λ - k| ≤ dk
+#        residual -> ||T(λ) Φ_j|| < res_tol
+#   5) tens[j] = |λ_j - k|
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0)) where {Ba<:AbstractHankelBasis} where {T<:Real}
     fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
     B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
@@ -355,6 +526,9 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     return λ[keep],Phi[:,keep],tens # eigenvalues, DLP density operator, "tension - difference from k0, determines badness since for analytic domain it has exponential convergence with exponent nq * N where N is the Fredholm matrix dimension (check ref Abstract)"
 end
 
+# Same as solve_vect but returns only eigenvalues and tensions (no Φ).
+# Inputs/outputs and filters mirror solve_vect.
+# Use when densities are not needed to reduce memory/IO.
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0)) where {Ba<:AbstractHankelBasis} where {T<:Real}
     fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
     B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
@@ -393,6 +567,18 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
     return λ[keep],tens # eigenvalues, DLP density operator, "tension - difference from k0, determines badness since for analytic domain it has exponential convergence with exponent nq * N where N is the Fredholm matrix dimension (check ref Abstract)"
 end
 
+# solve_INFO
+# Diagnostic Beyn solve with @info instrumentation.
+# Emits:
+#   beyn:start -> k0, R, nq, N, r
+#   SVD        -> singular values (inspect tail around svd_tol)
+#   eigen      -> dense eigentime
+#   per-root   -> k, ||T(k)v|| and status vs res_tol
+#   STATUS     -> kept, dropped_outside, dropped_residual, max_residual
+# Returns:
+#   λ_keep, Φ_keep, tens (same as solve_vect)
+# Notes:
+#   Use to decide nq, r, and svd_tol per geometry/k-band before serious runs.
 function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0)) where {Ba<:AbstractHankelBasis,T<:Real}
     fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
@@ -493,6 +679,22 @@ function compute_tensions(solver::BoundaryIntegralMethod,pts_all::Vector{Boundar
     return tens
 end
 
+# compute_spectrum
+# High-level driver for Beyn over [k1,k2] using Weyl-guided disks.
+# Steps:
+#   1) plan_weyl_windows -> windows of ≈ m levels, with length ≤ 2*Rmax
+#   2) beyn_disks_from_windows -> (k0,R) per window
+#   3) evaluate_points at each center to freeze collocation
+#   4) sanity-check nq via three INFO runs at nq-10, nq, nq+10
+#   5) Threads.@threads over windows:
+#        solve_vect -> (λ, Φ) per disk
+#   6) flatten -> ks_all, us_all, pts_all (no overlap merging needed)
+#   7) compute_tensions -> tens_all (default 1-norm scaling)
+# Returns:
+#   ks_all, tens_all, us_all, pts_all (ready for boundary/wavefunction use)
+# Notes:
+#   - @error if nq ≤ 10 (insufficient contour resolution).
+#   - r typically set to m+15 for headroom; increase nq with m if needed.
 function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,fundamental=true,svd_tol=1e-14,res_tol=1e-9) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     # Plan how many intervals we will have with the radii and the centers of the radii
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
