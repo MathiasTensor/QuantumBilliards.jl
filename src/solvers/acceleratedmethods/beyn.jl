@@ -453,7 +453,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq+10,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
     @showprogress desc="Beyn solve..." Threads.@threads for i in eachindex(k0)[1:end]
-        ks,Phi,_=solve_vect(bim,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol) # we do not need radii in this computation
+        ks,Phi,_=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol) # we do not need radii in this computation
         ks_list[i]=real.(ks) 
         phi_list[i]=Matrix(real.(Phi))
     end
@@ -468,6 +468,6 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
             push!(pts_all,all_pts_bim[i]) # repeat same pts for each eigvals in this window
         end
     end
-    tens_all=compute_tensions(bim,pts_all,ks_all,us_all;matnorm=:one) # use the 1-norm but arbitrary
+    tens_all=compute_tensions(solver,pts_all,ks_all,us_all;matnorm=:one) # use the 1-norm but arbitrary
     return ks_all,tens_all,us_all,pts_all # for wavefunction construction we need ks, us_all, pts_all. The us_all are DLP densities and can be used in boundary_function_BIM function to correctly symmetrize it!
 end
