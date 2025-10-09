@@ -56,6 +56,7 @@ end
 
 # rotate (nx,ny) by angle with cos=c, sin=s
 @inline _rot_vec(nx::T,ny::T,c::T,s::T) where {T<:Real}=(c*nx-s*ny,s*nx+c*ny)
+@inline _rotation_matrix(ang::T) where {T<:Real}=SMatrix{2,2,T}((cos(ang),-sin(ang),sin(ang),cos(ang)))
 
 # tables for cos(lθ), sin(lθ), and characters χ_m(l)=e^{i2π ml/n}. Best place to do it here since it should not be called by user
 @inline function _rotation_tables(::Type{T},n::Int,m::Int) where {T<:Real}
@@ -194,12 +195,4 @@ function reflect_wavefunction(Psi,x_grid,y_grid,symmetries;x_axis=0.0,y_axis=0.0
     x_grid=x_grid.+x_axis
     y_grid=y_grid.+y_axis
     return Psi,x_grid,y_grid
-end
-
-# INTERNAL 
-function rotate_wavefunction(Psi_grid::Matrix, x_grid::Vector{T}, y_grid::Vector{T}, rotation::Rotation, billiard::Bi; center::SVector{2, Float64}=SVector{2, Float64}(0.0, 0.0),grid_size::Int = ceil(Int, 0.7*length(x_grid))) where {T<:Real, Bi<:AbsBilliard}
-    let n=rotation.n,m=rotation.parity
-        new_x_grid,new_y_grid,new_Psi_grid=get_full_area_with_manual_binning(x_grid,y_grid,Psi_grid,billiard,n,m;center=center,grid_size=grid_size)
-        return new_Psi_grid,new_x_grid,new_y_grid 
-    end
 end

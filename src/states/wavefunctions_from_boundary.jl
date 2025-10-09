@@ -1,71 +1,80 @@
 using Bessels, LinearAlgebra, ProgressMeter
 
-"""
-    ϕ(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
-
-Computes the wavefunction via the boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds. For a specific `k` it needs the boundary discretization information encoded into the `BoundaryPoints` struct:
-
-```julia
-struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
-xy::Vector{SVector{2, T}} # boundary (x,y) pts
-normal::Vector{SVector{2, T}} # Normals at for those (x,y) pts
-s::Vector{T} # Arclengths for those (x,y) pts
-ds::Vector{T} # Differences between the arclengths of pts.
-end
-```
-
-# Arguments
-- `x::T`: x-coordinate of the point to compute the wavefunction.
-- `y::T`: y-coordinate of the point to compute the wavefunction.
-- `k::T`: The eigenvalue for which the wavefunction is to be computed.
-- `bdPoints::BoundaryPoints`: Boundary discretization information.
-- `us::Vector`: Vector of boundary functions.
-
-# Returns
-- `ϕ::T`: The value of the wavefunction at the given point (x,y).
-"""
-@inline function ϕ(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
-    target_point=SVector(x,y)
-    distances=norm.(Ref(target_point).-bdPoints.xy)
-    weighted_bessel_values=Bessels.bessely0.(k*distances).*us.*bdPoints.ds
-    return T(sum(weighted_bessel_values)*0.25)
-end
 
 """
-    ϕ_float_bessel(x::T, y::T, k::T, bdPoints::BoundaryPoints, us::Vector)
+    ϕ(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
 
-Computes the wavefunction via the boundary integral Ψ = 1/4∮Yₒ(k|q-qₛ|)u(s)ds with Float32 input tipe to bessely0 for any T<:Real in arguments and returns the value in type T. It is useful whenever high precision for the wavefunctions is not neccesery (like in wavepacket evolution). For a specific `k` it needs the boundary discretization information encoded into the `BoundaryPoints` struct:
+Wavefunction via the boundary integral:
+    Ψ(x,y) = (1/4) ∮ Y₀(k|q-q_s|) u(s) ds
 
-```julia
-struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
-xy::Vector{SVector{2, T}} # boundary (x,y) pts
-normal::Vector{SVector{2, T}} # Normals at for those (x,y) pts
-s::Vector{T} # Arclengths for those (x,y) pts
-ds::Vector{T} # Differences between the arclengths of pts.
-end
-```
-
-# Arguments
-- `x::T`: x-coordinate of the point to compute the wavefunction.
-- `y::T`: y-coordinate of the point to compute the wavefunction.
-- `k::T`: The eigenvalue for which the wavefunction is to be computed.
-- `bdPoints::BoundaryPoints`: Boundary discretization information.
-- `us::Vector`: Vector of boundary functions.
-
-# Returns
-- `ϕ::T`: The value of the wavefunction at the given point (x,y).
+Specialized for real `u` to keep everything in real arithmetic.
 """
-@inline function ϕ_float_bessel(x::T,y::T,k::T,bdPoints::BoundaryPoints,us::Vector) where {T<:Real}
-    xy=bdPoints.xy 
-    ds=bdPoints.ds 
+@inline function ϕ(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{T}) where {T<:Real}
+    xy=bd.xy; ds=bd.ds
     s=zero(T)
-    @inbounds @simd for j in eachindex(us)
+    @inbounds @simd for j in eachindex(u)
         p=xy[j]
-        r=hypot(x-p[1],y-p[2]) # stays in T
-        yj=T(Bessels.bessely0(T(k*r))) # guard against type T return
-        s=muladd(yj,us[j]*ds[j],s) # s += yj * us[j] * ds[j] efficiently
+        r=hypot(x-p[1],y-p[2])        # stays in T
+        y0=Bessels.bessely0(k*r)      # real kernel
+        s=muladd(y0*u[j],ds[j],s)     # FMA: s += (y0*u_j)*ds_j
     end
     return s*T(0.25)
+end
+
+"""
+    ϕ(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
+
+Same integral, but with complex boundary data `u`. Uses real kernel and
+accumulates real/imag parts separately to avoid unnecessary complex multiplies.
+"""
+@inline function ϕ(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{Complex{T}}) where {T<:Real}
+    xy=bd.xy; ds=bd.ds
+    sr=zero(T); si=zero(T)
+    @inbounds @simd for j in eachindex(u)
+        p=xy[j]
+        r=hypot(x-p[1],y-p[2])
+        w=Bessels.bessely0(k*r)*ds[j] # real weight
+        uj=u[j]
+        sr=muladd(w,real(uj),sr)
+        si=muladd(w,imag(uj),si)
+    end
+    return Complex(sr,si)*T(0.25)
+end
+
+"""
+    ϕ_float_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
+
+As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
+"""
+@inline function ϕ_float_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{T}) where {T<:Real}
+    xy=bd.xy; ds=bd.ds
+    s=zero(T)
+    @inbounds @simd for j in eachindex(u)
+        p=xy[j]
+        r=hypot(x-p[1],y-p[2])
+        y0=T(Bessels.bessely0(Float32(k*r))) # compute in Float32, cast back
+        s=muladd(y0*u[j],ds[j],s)
+    end
+    return s*T(0.25)
+end
+
+"""
+    ϕ_float_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
+
+Float32-Bessel variant for complex `u`. Accumulates real/imag parts separately.
+"""
+@inline function ϕ_float_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{Complex{T}}) where {T<:Real}
+    xy=bd.xy; ds=bd.ds
+    sr=zero(T); si=zero(T)
+    @inbounds @simd for j in eachindex(u)
+        p=xy[j]
+        r=hypot(x-p[1],y-p[2])
+        w=T(Bessels.bessely0(Float32(k*r)))*ds[j]
+        uj=u[j]
+        sr=muladd(w,real(uj),sr)
+        si=muladd(w,imag(uj),si)
+    end
+    return Complex(sr,si)*T(0.25)
 end
 
 """
@@ -77,7 +86,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ks`: Vector of eigenvalues.
 - `vec_bdPoints`: Vector of `BoundaryPoints` objects, one for each eigenvalues.
 - `billiard`: The billiard geometry.
-- `vec_us::Vector{Vector}`: Vector of the boundary functions
+- `vec_us::Vector{Vector}`: Vector of the boundary functions. Can be either complex or real, this determines whether the wavefunction is real or not.
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
@@ -88,7 +97,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -107,9 +116,10 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints
     pts_masked_indices=findall(pts_mask)
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
-    Psi_flat=zeros(T,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    S=eltype(vec_us[1])<:Real ? type : Complex{type}
+    Psi_flat=zeros(S,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
-    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+    Psi2ds=Vector{Matrix{S}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
     @inbounds for i in eachindex(ks)
@@ -141,7 +151,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ks`: Vector of eigenvalues.
 - `vec_bdPoints`: Vector of `BoundaryPoints` objects, one for each eigenvalues.
 - `billiard`: The billiard geometry.
-- `vec_us::Vector{Vector}`: Vector of the boundary functions
+- `vec_us::Vector{Vector}`: Vector of the boundary functions. Can be either complex or real, this determines whether the wavefunction is real or not.
 - `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
@@ -158,7 +168,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -177,9 +187,10 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
     pts_masked_indices=findall(pts_mask)
     NT=Threads.nthreads()
     nmask=length(pts_masked_indices)
-    Psi_flat=zeros(T,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
+    S=eltype(vec_us[1])<:Real ? type : Complex{type}
+    Psi_flat=zeros(S,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
-    Psi2ds=Vector{Matrix{type}}(undef,length(ks))
+    Psi2ds=Vector{Matrix{S}}(undef,length(ks))
     progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
     for i in eachindex(ks)
@@ -199,8 +210,8 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},
         Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
         next!(progress)
     end
+    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
     if use_fixed_grid
-        vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
         Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
         ps_list=fill(ps,length(Hs_list))
         qs_list=fill(qs,length(Hs_list))
