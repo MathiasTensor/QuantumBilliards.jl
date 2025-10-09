@@ -30,14 +30,14 @@ When constructing the boundary function u we need to sometimes shift the startin
 
 # Arguments
 - `billiard::Bi<:AbsBilliard`: the billiard object.
-- `u::Vector`: the boundary function vector obtained from the ull_boundary.
+- `u::AbstractVector{U<:Real}`: the boundary function vector obtained from the full_boundary. Can be either complex or real
 - `pts::BoundaryPoints`: the struct containing the boundary points on the full_boundary.
 
 # Returns
 - `BoundaryPoints`: the struct containing the boundary points on the full_boundary with the starting point shifted.
 - `u::Vector`: the boundary function vector that is correctly shifted.
 """
-function shift_starting_arclength(billiard::Bi,u::Vector{T},pts::BoundaryPoints{T}) where {Bi<:AbsBilliard, T<:Real}
+function shift_starting_arclength(billiard::Bi,u::AbstractVector{U},pts::BoundaryPoints{T}) where {Bi<:AbsBilliard,T<:Real,U<:Number}
     if hasproperty(billiard,:shift_s)
         shift_s=billiard.shift_s
         L_effective=maximum(pts.s)
@@ -67,14 +67,14 @@ Wrapper for the arclength shift when we have a StateBundle as the input to the b
 
 # Arguments
 - `billiard::Bi<:AbsBilliard`: the billiard object.
-- `u_bundle::Matrix`: the boundary function matrix obtained from the StateBundle input.
+- `u_bundle::AbstractMatrix{U}`: the boundary function matrix obtained from the StateBundle input. Can be either real or complex.
 - `pts::BoundaryPoints`: the struct containing the boundary points on the full_boundary.
 
 # Returns
 - `BoundaryPoints`: the struct containing the boundary points on the full_boundary with the starting point shifted.
 - `u_bundle::Matrix`: the boundary function matrix that is shifted.
 """
-function shift_starting_arclength(billiard::Bi,u_bundle::Matrix,pts::BoundaryPoints) where {Bi<:AbsBilliard}
+function shift_starting_arclength(billiard::Bi,u_bundle::AbstractMatrix{U},pts::BoundaryPoints) where {Bi<:AbsBilliard,U<:Number}
     if hasproperty(billiard,:shift_s)
         shift_s=billiard.shift_s
         L_effective=maximum(pts.s)
@@ -87,7 +87,7 @@ function shift_starting_arclength(billiard::Bi,u_bundle::Matrix,pts::BoundaryPoi
         shifted_s.=shifted_s.-s_offset
         shifted_s.=mod.(shifted_s,L_effective)
         shifted_u_bundle=similar(u_bundle)
-        for i in 1:size(u_bundle, 2)
+        for i in axes(u_bundle,2)
             shifted_u_bundle[:,i].=circshift(u_bundle[:,i],-start_index+1)
         end
         pts=BoundaryPoints(shifted_xy,shifted_normal,shifted_s,shifted_ds)
@@ -326,54 +326,62 @@ end
 ### BIM ###
 
 """
-    boundary_function_BIM(solver::BoundaryIntegralMethod, u::Vector{T}, pts::BoundaryPointsBIM{T}, billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{T}} where {T<:Real, Bi<:AbsBilliard}
+    boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPointsBIM{T},billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{U}} where {T<:Real, Bi<:AbsBilliard, U<:Number}
 
-Processes the boundary function and associated boundary points by applying symmetries and shifting the starting point of the arclengths if necessary.
+Process a boundary function and its points: convert BIM points, regularize `u` (NaNs filled),
+apply symmetries (which may promote `u` to complex if a non-trivial rotational irrep is present),
+and shift the arclength origin if the billiard requests it.
 
 # Arguments
-- `solver::BoundaryIntegralMethod`: The solver that holds the symmetry information.
-- `u::Vector{T}`: The boundary function values.
-- `pts::BoundaryPointsBIM{T}`: The boundary points in BIM representation.
-- `billiard::Bi`: The billiard object defining the geometry.
+- `solver::BoundaryIntegralMethod{T}`: Holds symmetry info.
+- `u::AbstractVector{U}`: Boundary data on the desymmetrized boundary (real or complex).
+- `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
+- `billiard::Bi`: Geometry (may carry `shift_s` for arclength origin).
 
 # Returns
-- `BoundaryPoints{T}`: The processed boundary points after applying symmetries and shifting the arclengths.
-- `Vector{T}`: The processed boundary function.
+- `BoundaryPoints{T}`: Symmetry-extended (and possibly shifted) boundary points.
+- `Vector{U}`: Symmetry-extended (and shifted) boundary function; element type matches input
+  unless a non-trivial rotation forces complex characters.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::Vector{T},pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard,U<:Number}
     symmetries=solver.symmetry
     pts=BoundaryPointsMethod_to_BoundaryPoints(pts)
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(Vector{T}(u),symmetries)
-    pts,u=shift_starting_arclength(billiard,Vector{T}(u),pts)
-    return pts,u::Vector{T}
+    u_full=apply_symmetries_to_boundary_function(u,symmetries)
+    pts,u_full=shift_starting_arclength(billiard,u_full,pts)
+    return pts,u_full
 end
 
 """
-    boundary_function_BIM(solver::BoundaryIntegralMethod, us_all::Vector{Vector{T}}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) 
-        -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{T}}} where {T<:Real, Bi<:AbsBilliard}
+    boundary_function_BIM(solver::BoundaryIntegralMethod{T},us_all::Vector{<:AbstractVector},pts_all::Vector{BoundaryPointsBIM{T}},billiard::Bi) -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{<:Number}}}
+       where {T<:Real, Bi<:AbsBilliard}
 
-Processes multiple boundary functions and their associated boundary points by applying symmetries and shifting the starting point of the arclengths if necessary.
+Batch version of `boundary_function_BIM`. Each `u` may be real or complex; if any rotation
+has `m % n ≠ 0`, the corresponding symmetry application produces complex boundary data.
 
 # Arguments
-- `solver::BoundaryIntegralMethod`: The solver that holds the symmetry information.
-- `us_all::Vector{Vector{T}}`: A vector of boundary function values, where each element corresponds to a set of points in `pts_all`.
-- `pts_all::Vector{BoundaryPointsBIM{T}}`: A vector of boundary points in BIM representation.
-- `billiard::Bi`: The billiard object defining the geometry.
+- `solver::BoundaryIntegralMethod{T}`: Holds symmetry info.
+- `us_all::Vector{<:AbstractVector}`: Boundary data (each real or complex).
+- `pts_all::Vector{BoundaryPointsBIM{T}}`: Matching BIM boundary points.
+- `billiard::Bi`: Geometry.
 
 # Returns
-- `Vector{BoundaryPoints{T}}`: A vector of processed boundary points after applying symmetries and shifting the arclengths.
-- `Vector{Vector{T}}`: A vector of processed boundary functions corresponding to the processed boundary points.
+- `Vector{BoundaryPoints{T}}`: Processed boundary points for each input.
+- `Vector{Vector{<:Number}}`: Processed boundary functions; element types match per case.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T}, us_all::Vector{Vector{T}}, pts_all::Vector{BoundaryPointsBIM{T}}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
-    pts_ret=Vector{BoundaryPoints{T}}(undef,length(us_all))
-    us_ret=Vector{Vector{T}}(undef,length(us_all))
-    @showprogress for i in eachindex(us_all) 
-        pts,u=boundary_function_BIM(solver,us_all[i],pts_all[i],billiard)
-        pts_ret[i]=pts
-        us_ret[i]=u
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T},us_all::Vector{<:AbstractVector},pts_all::Vector{BoundaryPointsBIM{T}},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+    sym=solver.symmetry
+    needs_complex=!isnothing(sym) && any(s->(s isa Rotation) && mod(s.m,s.n)!=0,sym)
+    n=length(us_all)
+    pts_ret=Vector{BoundaryPoints{T}}(undef,n)
+    us_tmp=Vector{Vector}(undef,n) # type-erased
+    @showprogress for i in 1:n
+        pts_i,u_i=boundary_function_BIM(solver,us_all[i],pts_all[i],billiard)
+        pts_ret[i]=pts_i
+        us_tmp[i]=u_i
     end
+    us_ret=needs_complex ? [u isa AbstractVector{<:Complex} ? u : complex.(u) for u in us_tmp] : us_tmp
     return pts_ret,us_ret
 end
 
