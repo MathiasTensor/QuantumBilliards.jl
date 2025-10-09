@@ -65,6 +65,7 @@ include("billiards/generalized_sinai.jl")
 include("billiards/teardrop.jl")
 include("billiards/star.jl")
 include("billiards/ellipse_mushroom.jl")
+include("billiards/c3.jl")
 export adapt_basis
 export Stadium, Lemon, Triangle, Sinai
 export curve, tangent, arc_length
@@ -106,7 +107,7 @@ export solve, solve_vect
 export solve_wavenumber, solve_spectrum
 export k_sweep, refine_minima
 export BoundaryIntegralMethod, compute_kernel_matrix, fredholm_matrix, solve_timed, AbstractHankelBasis, BoundaryPointsBIM
-export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matrix, default_helmholtz_kernel_second_derivative_matrix, compute_kernel_der_matrix, fredholm_matrix_der
+export ExpandedBoundaryIntegralMethod, default_helmholtz_kernel_derivative_matrix, default_helmholtz_kernel_second_derivative_matrix
 
 #spectra
 include("states/eigenstates.jl")

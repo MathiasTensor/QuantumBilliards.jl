@@ -88,7 +88,7 @@ Practical guidance
 # Returns:
 #   true  – contribution added to M[i,j]
 #   false – skipped (caller should add diagonal correction, e.g. κ/(2π), outside)
-@inline function _add_pair_default_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},tol2::T,pref::Complex{T};scale::T=one(T)) where {T<:Real}
+@inline function _add_pair_default_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},tol2::T,pref::Complex{T};scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real}
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
     if d2<=tol2
@@ -122,7 +122,7 @@ end
 # Effect:
 #   M[i,j] += scale * kernel_fun(...)
 #   Returns true unconditionally (no near-singular short-circuit here).
-@inline function _add_pair_custom_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},kernel_fun;scale::T=one(T)) where {T<:Real}
+@inline function _add_pair_custom_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},kernel_fun;scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real}
     val_ij=kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
     @inbounds begin
         M[i,j]+=val_ij
@@ -226,19 +226,32 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vect
     add_x=false;add_y=false;add_xy=false # true if the symmetry is present
     sxgn=one(T);sygn=one(T);sxy=one(T) # the scalings +/- depending on the symmetry considerations
     shift_x=bp.shift_x;shift_y=bp.shift_y # the reflection axes shifts from billiard geometry
+    have_rot=false
+    nrot=1;mrot=0
+    cx=zero(T);cy=zero(T)
     @inbounds for s in symmetry # symmetry here is always != nothing
-        if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
-        if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
-        if s.axis==:origin
-            add_x=true;add_y=true;add_xy=true
-            sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
-            sygn=(s.parity[2]==-1 ? -one(T) : one(T))
-            sxy=sxgn*sygn
+        if hasproperty(s,:axis)
+            if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
+            if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+            if s.axis==:origin
+                add_x=true;add_y=true;add_xy=true
+                sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+                sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+                sxy=sxgn*sygn
+            end
+        elseif s isa Rotation
+            have_rot=true
+            nrot=s.n
+            mrot=mod(s.m,nrot)
+            cx,cy=s.center
         end
     end
+    if have_rot
+        ctab,stab,χ=_rotation_tables(T,nrot,mrot)
+    end
     isdef=(kernel_fun===:default)
-    QuantumBilliards.@use_threads multithreading=multithreaded for i in 1:N
-        xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2]
+    QuantumBilliards.@use_threads multithreading=multithreaded for i in 1:N # make if instead of elseif since can have >1 symmetry
+        xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2] # i is the target, j is the source
         @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
             xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
             if isdef
@@ -249,18 +262,43 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vect
             end
             if add_x # reflect only over the x axis
                 xr=_x_reflect(xj,shift_x);yr=yj
-                isdef ? _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn) :
-                        _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sxgn)
+                if isdef 
+                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
+                else
+                    nxjr,nyjr=_x_reflect_normal(nxj,nyj) # the custom kernels might be functions of source normals which actually change under symmetries!
+                    _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=sxgn)
+                end
             end
             if add_y # reflect only over the y axis
                 xr=xj;yr=_y_reflect(yj,shift_y)
-                isdef ? _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn) :
-                        _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sygn)
+                if isdef
+                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
+                else
+                    nxjr,nyjr=_y_reflect_normal(nxj,nyj)
+                    _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=sygn)
+                end
             end
             if add_xy # reflect over both the axes
                 xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
-                isdef ? _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy) :
-                        _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,kernel_fun;scale=sxy)
+                if isdef 
+                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
+                else
+                    nxjr,nyjr=_xy_reflect_normal(nxj,nyj)
+                    _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=sxy)
+                end
+            end
+            if have_rot
+                @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
+                    cl=ctab[l+1];sl=stab[l+1]
+                    xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
+                    phase=χ[l+1]  # e^{i 2π m l / n}, rotations due to being 1d-irreps have real characters
+                    if isdef
+                        _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
+                    else
+                        nxjr,nyjr=_rot_vec(nxj,nyj,cl,sl) # rotate the normals if custom kernel due to potential source normal dependance
+                        _add_pair_custom_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=phase)
+                    end
+                end
             end
         end
     end
@@ -680,7 +718,7 @@ function compute_tensions(solver::BoundaryIntegralMethod,pts_all::Vector{Boundar
 end
 
 # compute_spectrum
-# High-level driver for Beyn over [k1,k2] using Weyl-guided disks.
+# High-level driver for Beyn over [k1,k2] using Weyl-guided disks. It has no kwargs for custom potentials as it uses weyl's law for the helmholtz kernel under the hood. The user can create his own version of compute_spectrum with the expected number of eigenvalues.
 # Steps:
 #   1) plan_weyl_windows -> windows of ≈ m levels, with length ≤ 2*Rmax
 #   2) beyn_disks_from_windows -> (k0,R) per window

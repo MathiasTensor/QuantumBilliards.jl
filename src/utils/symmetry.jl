@@ -21,18 +21,61 @@ struct Reflection <: AbsSymmetry
     axis::Symbol
 end
 
+# X,Y Reflections over potentially shifted axis (depeneding of the shift_x/shift_y of the billiard geometry), where only the coordiante reflection is dependant on the shifts of the reflection axes since the normals are just direction vectors
+@inline _x_reflect(x::T,sx::T) where {T<:Real}=(2*sx-x)
+@inline _y_reflect(y::T,sy::T) where {T<:Real}=(2*sy-y)
+@inline _x_reflect_normal(nx::T,ny::T) where {T<:Real}=(-nx,ny)
+@inline _y_reflect_normal(nx::T,ny::T) where {T<:Real}=(nx,-ny)
+@inline _xy_reflect_normal(nx::T,ny::T) where {T<:Real}=(-nx,-ny)
+
 """
     Rotation
 
-Represents a geometric rotation symmetry.
+Cₙ rotation symmetry specification.
 
-# Fields
-- `n::Int`: The order of the rotation (e.g., 2 for 180° rotation, 4 for 90° rotation).
-- `parity::Int`: The parity of the wavefunction under rotation.
+Fields
+- n::Int                      # rotation order (e.g. 3,4,…)
+- m::Int                      # irrep index in 0:(n-1)
+- center::NTuple{2,Float64}   # rotation center (default (0,0))
 """
 struct Rotation <: AbsSymmetry
     n::Int
-    parity::Int
+    m::Int
+    center::NTuple{2,Float64}
+end
+
+# use mod(m,n) so we can wrap m around in case needed
+Rotation(n::Int,m::Int;center::Tuple{Real,Real}=(0.0,0.0))=Rotation(n,mod(m,n),(Float64(center[1]),Float64(center[2])))
+
+# rotation of a point (x,y) by an angle α already wrapped in s,c=sincos(α) around a center of rotation (cx,cy). Added a separate K for type of center float.
+@inline function _rot_point(x::T,y::T,cx::K,cy::K,c::T,s::T) where {T<:Real,K<:Real}
+    xr=cx+c*(x-cx)-s*(y-cy)
+    yr=cy+s*(x-cx)+c*(y-cy)
+    return xr,yr
+end
+
+# rotate (nx,ny) by angle with cos=c, sin=s
+@inline _rot_vec(nx::T,ny::T,c::T,s::T) where {T<:Real}=(c*nx-s*ny,s*nx+c*ny)
+
+# tables for cos(lθ), sin(lθ), and characters χ_m(l)=e^{i2π ml/n}. Best place to do it here since it should not be called by user
+@inline function _rotation_tables(::Type{T},n::Int,m::Int) where {T<:Real}
+    θ=T(TWO_PI)/T(n)
+    c1,s1=cos(θ),sin(θ)
+    cos_tabulated=Vector{T}(undef,n);sin_tabulated=Vector{T}(undef,n)
+    χ=Vector{Complex{T}}(undef,n)
+    # for l=0 cos(0)=1 & sin(0)=0, therefore χ(l=0)=1.0
+    cos_tabulated[1]=one(T)
+    sin_tabulated[1]=zero(T)
+    χ[1]=one(Complex{T})
+    for l in 2:n
+        cl,sl=cos_tabulated[l-1],sin_tabulated[l-1]
+        cos_tabulated[l]=cl*c1-sl*s1
+        sin_tabulated[l]=sl*c1+cl*s1
+    end
+    for l in 0:n-1
+        χ[l+1]=cis(T(TWO_PI)*T(mod(m,n)*l)/T(n))
+    end
+    return cos_tabulated,sin_tabulated,χ
 end
 
 """
