@@ -109,7 +109,7 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries::
     has_complex=any(s->(s isa Rotation)&&mod(s.m,s.n)!=0,symmetries)
     S=(U<:Real && has_complex) ? Complex{T} : U
     full_u=S.(u)
-    base_u=full_u
+    base_u=copy(full_u) # not alias for rotations
     for sym in symmetries
         if sym isa Reflection
             if sym.axis==:y_axis
