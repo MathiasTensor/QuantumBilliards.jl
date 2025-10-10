@@ -41,7 +41,6 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::
         else
             error("unknown reflection kind $which")
         end
-        # reverse only for single reflections; NOT for :xy
         do_reverse=same_direction && (which!=:xy)
         rds=do_reverse ? reverse(bds) : bds
         rxy=do_reverse ? reverse(rxy) : rxy
