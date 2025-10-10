@@ -52,7 +52,7 @@ As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
         r=hypot(x-p[1],y-p[2])
-        y0=r<10^2*eps(Float32) ? zero(T) : T(Bessels.bessely0((k*r))) # compute in Float32, cast back
+        y0=r<10^2*eps(Float32) ? zero(T) : T(Bessels.bessely0(Float32(k*r))) # compute in Float32, cast back
         s=muladd(y0*u[j],ds[j],s)
     end
     return s*T(0.25)
@@ -69,7 +69,7 @@ Float32-Bessel variant for complex `u`. Accumulates real/imag parts separately.
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
         r=hypot(x-p[1],y-p[2])
-        w=r<10^2*eps(Float32) ? zero(T) : T(Bessels.bessely0((k*r)))*ds[j]
+        w=r<10^2*eps(Float32) ? zero(T) : T(Bessels.bessely0(Float32(k*r)))*ds[j]
         uj=u[j]
         sr=muladd(w,real(uj),sr)
         si=muladd(w,imag(uj),si)
