@@ -701,7 +701,7 @@ end
 
 # computes tensions based on the one or two norm of the matrix operators and scaled to prevent really small norms of ||A(λ)v(λ)||_{1/2}. So it computes it as:
 # t_{i} = ||A(λ_i)v(λ_i)||_{1/2} / (||A(λ_i)||_{1/2} * ||v(λ_i)||_{1/2}) with some padding epss in denominator to prevent near zero norms
-function compute_tensions(solver::BoundaryIntegralMethod,pts_all::Vector{BoundaryPointsBIM{T}},ks_all::AbstractVector{T},us_all::Vector{Vector{T}};kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,matnorm::Symbol=:one,epss::Real=1e-15) where {T<:Real}
+function compute_tensions(solver::BoundaryIntegralMethod,pts_all::Vector{BoundaryPointsBIM{T}},ks_all::AbstractVector{T},us_all::Vector{Vector{Complex{T}}};kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,matnorm::Symbol=:one,epss::Real=1e-15) where {T<:Real}
     @assert length(ks_all)==length(us_all)==length(pts_all)
     tens=Vector{T}(undef,length(ks_all))
     Threads.@threads for i in eachindex(ks_all)
@@ -745,7 +745,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
         all_pts_bim[i]=evaluate_points(solver,billiard,real(k0[i]))
     end
     ks_list=Vector{Vector{T}}(undef,length(k0)) # preallocate ks
-    phi_list=Vector{Matrix{T}}(undef,length(k0)) # preallocate columns of DLPs for each k in ks
+    phi_list=Vector{Matrix{Complex{T}}}(undef,length(k0)) # preallocate columns of DLPs for each k in ks
     nq≤10 && @error "Do not use less than 11 contour nodes"
     # do a test solve to see if nq is large enough and inspect the desired tolerances. Also do +/- 10 in nq to see how it varies. If any warnings about solutions that say that it could be a true eigenvalue then that one could be lost and q higher nq might solve it.
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=m+15,svd_tol=svd_tol,res_tol=res_tol)
@@ -754,10 +754,10 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     @showprogress desc="Beyn solve..." Threads.@threads for i in eachindex(k0)[1:end]
         ks,Phi,_=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=m+15,svd_tol=svd_tol,res_tol=res_tol) # we do not need radii in this computation
         ks_list[i]=real.(ks) 
-        phi_list[i]=Matrix(real.(Phi))
+        phi_list[i]=Matrix(Phi)
     end
     # Now do merging so to get correct types. There are no overlaps here so no need to call overlap_and_merge!
-    ks_all=T[];us_all=Vector{T}[];pts_all=BoundaryPointsBIM{T}[]
+    ks_all=T[];us_all=Vector{Complex{T}}[];pts_all=BoundaryPointsBIM{T}[]
     for i in eachindex(k0)
         ks_i=ks_list[i];Phi_i=phi_list[i] 
         n_i=isnothing(Phi_i) ? 0 : size(Phi_i,2) # in case nothing is found so it does not throw error
