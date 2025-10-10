@@ -15,6 +15,7 @@ Specialized for real `u` to keep everything in real arithmetic.
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
         r=hypot(x-p[1],y-p[2])        # stays in T
+        if r<10^2*eps(T);continue;end
         y0=Bessels.bessely0(k*r)      # real kernel
         s=muladd(y0*u[j],ds[j],s)     # FMA: s += (y0*u_j)*ds_j
     end
@@ -33,6 +34,7 @@ accumulates real/imag parts separately to avoid unnecessary complex multiplies.
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
         r=hypot(x-p[1],y-p[2])
+        if r<10^2*eps(T);continue;end
         w=Bessels.bessely0(k*r)*ds[j] # real weight
         uj=u[j]
         sr=muladd(w,real(uj),sr)
@@ -52,6 +54,7 @@ As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
         r=hypot(x-p[1],y-p[2])
+        if r<10^2*eps(Float32);continue;end
         y0=T(Bessels.bessely0(Float32(k*r))) # compute in Float32, cast back
         s=muladd(y0*u[j],ds[j],s)
     end
@@ -69,6 +72,7 @@ Float32-Bessel variant for complex `u`. Accumulates real/imag parts separately.
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
         r=hypot(x-p[1],y-p[2])
+        if r<10^2*eps(Float32);continue;end
         w=T(Bessels.bessely0(Float32(k*r)))*ds[j]
         uj=u[j]
         sr=muladd(w,real(uj),sr)
