@@ -31,25 +31,26 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::
     @inline function push_reflection!(which::Symbol)
         if which===:x
             rxy=[SVector(_x_reflect(p[1],sx),p[2]) for p in bxy]
-            rn =[_x_reflect_normal(nv[1],nv[2]) for nv in bn]
-        elseif which===:y
-            rxy=[SVector(p[1],_y_reflect(p[2],sy)) for p in bxy]
-            rn =[_y_reflect_normal(nv[1],nv[2]) for nv in bn]
-        elseif which===:xy
-            rxy=[SVector(_x_reflect(p[1],sx),_y_reflect(p[2],sy)) for p in bxy]
-            rn =[_xy_reflect_normal(nv[1],nv[2]) for nv in bn]
+            rn=[_x_reflect_normal(nv[1],nv[2]) for nv in bn]
+        elseif which === :y
+            rxy=[SVector(p[1], _y_reflect(p[2],sy)) for p in bxy]
+            rn=[_y_reflect_normal(nv[1], nv[2]) for nv in bn]
+        elseif which === :xy
+            rxy=[SVector(_x_reflect(p[1],sx),_y_reflect(p[2], sy)) for p in bxy]
+            rn=[_xy_reflect_normal(nv[1],nv[2]) for nv in bn]
         else
             error("unknown reflection kind $which")
         end
-        rds=same_direction ? reverse(bds) : bds
-        rxy=same_direction ? reverse(rxy) : rxy
-        rn=same_direction ? reverse(rn)  : rn
+        # reverse only for single reflections; NOT for :xy
+        do_reverse=same_direction && (which!=:xy)
+        rds=do_reverse ? reverse(bds) : bds
+        rxy=do_reverse ? reverse(rxy) : rxy
+        rn=do_reverse ? reverse(rn)  : rn
         append!(full_xy,rxy)
         append!(full_normal,rn)
         append!(full_ds,rds)
         return nothing
     end
-
     for s in symmetries
         if s isa Reflection
             if s.axis===:y_axis
@@ -109,22 +110,24 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries::
     base_u=full_u
     for sym in symmetries
         if sym isa Reflection
-            if sym.axis == :y_axis
-                p=S(sym.parity)
-                append!(full_u,p.*reverse(base_u))
-            elseif sym.axis==:x_axis
-                p=S(sym.parity)
-                append!(full_u,p.*reverse(base_u)) 
-            elseif sym.axis==:origin
-                p1=S(sym.parity[1]) 
-                p2=S(sym.parity[2])
-                u_vert=p1.*reverse(base_u)
-                append!(full_u,u_vert)
-                append!(full_u,p2.*reverse(base_u)) 
-                append!(full_u,p2.*reverse(u_vert)) 
-            else
-                error("Unknown reflection axis $(sym.axis)")
-            end
+            if sym.axis==:y_axis
+            p=S(sym.parity)
+            append!(full_u,p.*reverse(base_u))     # matches :x block in points
+        elseif sym.axis==:x_axis
+            p=S(sym.parity)
+            append!(full_u,p.*reverse(base_u))     # matches :y block in points
+        elseif sym.axis==:origin
+            pY=S(sym.parity[1])  # parity for y-axis reflection (vertical)
+            pX=S(sym.parity[2])  # parity for x-axis reflection (horizontal)
+            uY=pY.*reverse(base_u)               #  :x block in points (y-axis reflection)
+            uX=pX.*reverse(base_u)               #  :y block in points (x-axis reflection)
+            uXY=(pX*pY).*base_u                   #  :xy block (no reverse!)
+            append!(full_u,uY)
+            append!(full_u,uX)
+            append!(full_u,uXY)
+        else
+            error("Unknown reflection axis $(sym.axis)")
+        end
         elseif sym isa Rotation
             n=sym.n; m=mod(sym.m,n)
             if m==0
