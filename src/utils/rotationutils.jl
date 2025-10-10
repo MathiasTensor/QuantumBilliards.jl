@@ -124,12 +124,12 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries::
         elseif sym isa Rotation
             n=sym.n; m=mod(sym.m,n)
             if m==0
-                for l in 1:(n-1); append!(full_u,base_u); end
+                for l in 1:(n-1); append!(full_u,base_u); end # χ(m=0) = 1
             else
                 for l in 1:(n-1)
                     θ=T(2π)*T(m*l)/T(n)
-                    χ=Complex{T}(cos(θ),sin(θ))
-                    append!(full_u,χ.*base_u)
+                    χc=Complex{T}(cos(θ),-sin(θ))
+                    append!(full_u,χc.*base_u)
                 end
             end
         else
