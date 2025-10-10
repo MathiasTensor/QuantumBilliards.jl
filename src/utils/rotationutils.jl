@@ -58,7 +58,9 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::
             elseif s.axis===:x_axis
                 push_reflection!(:y)
             elseif s.axis===:origin
-                push_reflection!(:x); push_reflection!(:y); push_reflection!(:xy)
+                #push_reflection!(:x)
+                #push_reflection!(:y)
+                push_reflection!(:xy)
             else
                 error("Unknown reflection axis $(s.axis)")
             end
