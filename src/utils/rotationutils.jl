@@ -109,15 +109,19 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries::
     base_u=full_u
     for sym in symmetries
         if sym isa Reflection
-            if sym.axis==:y_axis
-                p=S(sym.parity);append!(full_u,p.*reverse(base_u))
+            if sym.axis == :y_axis
+                p=S(sym.parity)
+                append!(full_u,p.*reverse(base_u))
             elseif sym.axis==:x_axis
-                p=S(sym.parity);append!(full_u,p.*reverse(base_u))
+                p=S(sym.parity)
+                append!(full_u,p.*reverse(base_u)) 
             elseif sym.axis==:origin
-                p1=S(sym.parity[1]);p2=S(sym.parity[2])
-                u_y=p1.*reverse(base_u)
-                append!(full_u,u_y)
-                append!(full_u,p2.*reverse(vcat(base_u,u_y)))
+                p1=S(sym.parity[1]) 
+                p2=S(sym.parity[2])
+                u_vert=p1.*reverse(base_u)
+                append!(full_u,u_vert)
+                append!(full_u,p2.*reverse(base_u)) 
+                append!(full_u,p2.*reverse(u_vert)) 
             else
                 error("Unknown reflection axis $(sym.axis)")
             end
