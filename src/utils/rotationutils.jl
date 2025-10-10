@@ -128,8 +128,8 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries::
             else
                 for l in 1:(n-1)
                     θ=T(2π)*T(m*l)/T(n)
-                    χc=Complex{T}(cos(θ),-sin(θ))
-                    append!(full_u,χc.*base_u)
+                    χ=Complex{T}(cos(θ),sin(θ))
+                    append!(full_u,χ.*base_u)
                 end
             end
         else
