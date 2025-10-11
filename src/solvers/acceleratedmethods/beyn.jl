@@ -161,7 +161,7 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};
     xs=getindex.(xy,1);ys=getindex.(xy,2);nx=getindex.(nrm,1);ny=getindex.(nrm,2)
     tol2=(eps(T))^2;pref=-im*k/2;TW=T(2π)
     if kernel_fun===:default
-        QuantumBilliards.@use_threads multithreading=multithreaded for i in 1:N
+        @use_threads multithreading=multithreaded for i in 1:N
             xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
             @inbounds for j in 1:i
                 dx=xi-xs[j];dy=yi-ys[j];d2=muladd(dx,dx,dy*dy)
@@ -177,7 +177,7 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};
             end
         end
     else
-        QuantumBilliards.@use_threads multithreading=multithreaded for i in 1:N
+        @use_threads multithreading=multithreaded for i in 1:N
             xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
             @inbounds for j in 1:N
                 xj=xs[j];yj=ys[j];nxj=nx[j];nyj=ny[j]
@@ -250,7 +250,7 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vect
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
     end
     isdef=(kernel_fun===:default)
-    QuantumBilliards.@use_threads multithreading=multithreaded for i in 1:N # make if instead of elseif since can have >1 symmetry
+    @use_threads multithreading=multithreaded for i in 1:N # make if instead of elseif since can have >1 symmetry
         xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2] # i is the target, j is the source
         @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
             xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
@@ -742,7 +742,7 @@ end
 # Notes:
 #   - @error if nq ≤ 10 (insufficient contour resolution).
 #   - r typically set to m+15 for headroom; increase nq with m if needed.
-function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true,multithreaded_matrix=true,multithreaded_ks=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     # Plan how many intervals we will have with the radii and the centers of the radii
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     k0,R=beyn_disks_from_windows(intervals)
@@ -761,8 +761,8 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=r,svd_tol=svd_tol,res_tol=res_tol)
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol)
     _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq+10,r=r,svd_tol=svd_tol,res_tol=res_tol)
-    @showprogress desc="Beyn solve..." Threads.@threads for i in eachindex(k0)[1:end]
-        ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious) # we do not need radii in this computation
+    @showprogress desc="Beyn solve..." @use_threads multithreading=multithreaded_ks for i in eachindex(k0)[1:end]
+        ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix) # we do not need radii in this computation
         ks_list[i]=real.(ks) 
         tens_list[i]=tens # already real
         phi_list[i]=Matrix(Phi)
