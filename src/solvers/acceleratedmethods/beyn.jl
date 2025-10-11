@@ -334,7 +334,7 @@ function fredholm_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Union{Vect
     @inbounds for i in axes(K,1)
         K[i,i]+=one(T)
     end
-    return QuantumBilliards.filter_matrix!(K)
+    return filter_matrix!(K)
 end
 
 #################
