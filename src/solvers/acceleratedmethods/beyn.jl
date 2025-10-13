@@ -546,7 +546,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     keep=trues(length(λ))
     tens=Vector{T}()
     ybuf=Vector{Complex{T}}(undef,length(Phi[:,1])) # all DLP density operators the have same length
-    #=@inbounds=# @showprogress "Residuals computation" for j in eachindex(λ)
+    #=@inbounds=# @showprogress desc="Residuals computation" for j in eachindex(λ)
         d=abs(λ[j]-k) # take only those found in the radius R where we have the expected eigenvalues for which r was used
         if d>dk
             keep[j]=false
