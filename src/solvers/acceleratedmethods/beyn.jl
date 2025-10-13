@@ -734,7 +734,9 @@ function compute_normalized_tensions(solver::BoundaryIntegralMethod,pts_all::Vec
         k=complex(ks_all[i]) # λ_i
         φ=Complex{T}.(us_all[i]) # v_i
         pts=pts_all[i]
-        A=fredholm_matrix_complex_k(pts,solver.symmetry,k;multithreaded=multithreaded,kernel_fun=kernel_fun) # get the A(λ_i)
+        N=length(pts.xy)
+        A=zeros(Complex{T},N,N)
+        fredholm_matrix_complex_k!(A,pts,solver.symmetry,k;multithreaded=multithreaded,kernel_fun=kernel_fun) # get the A(λ_i)
         y=A*φ # A(λ_i)*v(λ_i)
         # there is a choice of operator 1 or 2 norm for the num and denom
         nA=(matnorm==:one ? opnorm(A,1) : matnorm==:two ? opnorm(A,2) : opnorm(A,Inf))
