@@ -784,14 +784,33 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     ks_list[end]=real.(ks)
     tens_list[end]=tens
     phi_list[end]=Matrix(Phi)
-    p=Progress(length(k0),1)
+    total=length(k0)-1
+    ctr=Threads.Atomic{Int}(0)
+    done=Threads.Atomic{Bool}(false)
+    # background printer task
+    reporter=@async begin
+        lastpct=-1
+        while !done[]
+            v=ctr[]
+            pct=Int(round(100*v/total))
+            if pct!=lastpct
+                print("\rProgress: $(pct)%")
+                flush(stdout)
+                lastpct=pct
+            end
+            sleep(0.2) # refresh every 0.2s
+        end
+        println("\rProgress: 100% ✅")
+    end
     @use_threads multithreading=multithreaded_ks for i in eachindex(k0)[1:end-1]
         ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_adaptive_svd_tol=use_adaptive_svd_tol) # we do not need radii in this computation
         ks_list[i]=real.(ks) 
         tens_list[i]=tens # already real
         phi_list[i]=Matrix(Phi)
-        next!(p)
+        Threads.atomic_add!(ctr,1)
     end
+    done[]=true
+    wait(reporter)
     # Now do merging so to get correct types. There are no overlaps here so no need to call overlap_and_merge!
     ks_all=T[];tens_all=T[];us_all=Vector{Complex{T}}[];pts_all=BoundaryPointsBIM{T}[]
     for i in eachindex(k0)
