@@ -746,7 +746,7 @@ end
 # Notes:
 #   - @error if nq ≤ 10 (insufficient contour resolution).
 #   - r typically set to m+15 for headroom; increase nq with m if needed.
-function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true,multithreaded_matrix=true,multithreaded_ks=true,use_adaptive_svd_tol=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true,multithreaded_matrix=false,multithreaded_ks=true,use_adaptive_svd_tol=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     # Plan how many intervals we will have with the radii and the centers of the radii
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     k0,R=beyn_disks_from_windows(intervals)
