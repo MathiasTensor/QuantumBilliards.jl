@@ -635,7 +635,7 @@ end
 #   λ_keep, Φ_keep, tens (same as solve_vect)
 # Notes:
 #   Use to decide nq, r, and svd_tol per geometry/k-band before serious runs.
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     Tbuf=zeros(Complex{T},N,N)  # workspace allocation for contour additions
     fun=(A,z)->fredholm_matrix_complex_k!(A,pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
@@ -695,19 +695,21 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         mul!(ybuf,Tbuf,@view(Phi[:,j]))
         @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(norm(ybuf)) < $res_tol"
         ybuf_norm=norm(ybuf)
-        if ybuf_norm≥res_tol
-            keep[j]=false
-            dropped_res+=1
-            if ybuf_norm>1e-8
-                if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
-                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
-                else # gray zone
-                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+        if auto_discard_spurious
+            if ybuf_norm≥res_tol
+                keep[j]=false
+                dropped_res+=1
+                if ybuf_norm>1e-8
+                    if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                    else # gray zone
+                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                    end
+                else
+                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
                 end
-            else
-                @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
+                continue
             end
-            continue
         end
         push!(tens,ybuf_norm)
         push!(res_keep,norm(ybuf))
