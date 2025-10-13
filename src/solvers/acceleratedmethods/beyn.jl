@@ -766,15 +766,15 @@ end
 function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true,multithreaded_matrix=false,multithreaded_ks=true,use_adaptive_svd_tol=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     # Plan how many intervals we will have with the radii and the centers of the radii
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
-    kL2,kR2=iv[end-1]
-    kL3,kR3=iv[end]
+    kL2,kR2=intervals[end-1]
+    kL3,kR3=intervals[end]
     len3=kR3-kL3
     if len3≤max(100*eps(k2),1e-9*max(k2,1.0))
         if (kR3-kL2)≤2*Rmax+10*eps(k2) # try merge if it won’t violate the radius cap:
-            iv[end-1]=(kL2,kR3)
-            pop!(iv)
+            intervals[end-1]=(kL2,kR3)
+            pop!(intervals)
         else
-            pop!(iv) # otherwise just drop the micro-tail
+            pop!(intervals) # otherwise just drop the micro-tail
         end
     end
     k0,R=beyn_disks_from_windows(intervals)
