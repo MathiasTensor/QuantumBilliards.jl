@@ -136,6 +136,7 @@ end
 #   - or a user-provided `kernel_fun` (full N×N fill).
 #
 # Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm kernel for reuse
 #   bp         – BoundaryPointsBIM: holds xy, normals, curvature κ, and panel ds
 #   k          – complex wavenumber on the Beyn contour
 #   multithreaded – toggle threaded loops (via @use_threads)
@@ -155,18 +156,17 @@ end
 #
 # Output:
 #   K::Matrix{Complex{T}} – the assembled kernel (before ds-weighting / identity).
-function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     xy=bp.xy;nrm=bp.normal;κ=bp.curvature;N=length(xy)
-    K=Matrix{Complex{T}}(undef,N,N)
     xs=getindex.(xy,1);ys=getindex.(xy,2);nx=getindex.(nrm,1);ny=getindex.(nrm,2)
-    tol2=(eps(T))^2;pref=-im*k/2;TW=T(2π)
+    tol2=(eps(T))^2;pref=-im*k/2
     if kernel_fun===:default
         @use_threads multithreading=multithreaded for i in 1:N
             xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
             @inbounds for j in 1:i
                 dx=xi-xs[j];dy=yi-ys[j];d2=muladd(dx,dx,dy*dy)
                 if d2≤tol2
-                    K[i,j]=Complex{T}(κ[i]/TW)
+                    K[i,j]=Complex{T}(κ[i]/TWO_PI)
                 else
                     d=sqrt(d2);invd=inv(d);h=pref*SpecialFunctions.hankelh1(1,k*d)
                     K[i,j]=(nxi*dx+nyi*dy)*invd*h
@@ -185,7 +185,7 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},k::Complex{T};
             end
         end
     end
-    return K
+    return nothing
 end
 
 # Build the complex-k boundary integral operator matrix K with symmetry images.
@@ -194,6 +194,7 @@ end
 # correct parity signs per symmetry.
 #
 # Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm kernel for reuse
 #   bp        – BoundaryPointsBIM (xy, normals, curvature κ, shifts of symmetry axes)
 #   symmetry  – Vector of symmetry descriptors (e.g., X/Y/XYReflection with parity)
 #   k         – complex wavenumber
@@ -215,12 +216,11 @@ end
 #
 # Output:
 #   K::Matrix{Complex{T}} fully populated with symmetry images included.
-function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     xy=bp.xy
     nrm=bp.normal
     κ=bp.curvature 
     N=length(xy)
-    K=zeros(Complex{T},N,N)
     tol2=(eps(T))^2
     pref=-im*k/2
     add_x=false;add_y=false;add_xy=false # true if the symmetry is present
@@ -302,13 +302,14 @@ function compute_kernel_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Vect
             end
         end
     end
-    return K
+    return nothing
 end
 
 # Assemble the full Fredholm operator A(k) for the DLP formulation at complex k:
 #   A(k) = I - K(k) D,   where D = diag(ds) applies panel quadrature weights (right scaling).
 #
 # Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm matrix for reuse, constructed from the kernel
 #   bp        – BoundaryPointsBIM (xy, normals, curvature, panel lengths ds, symmetry shifts)
 #   symmetry  – nothing -> no images; Vector -> include symmetry images in K(k)
 #   k         – complex wavenumber
@@ -322,19 +323,20 @@ end
 #
 # Output:
 #   A::Matrix{Complex{T}} ready for use in Beyn contour solves (T(z) ≡ A(z)).
-function fredholm_matrix_complex_k(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    K=isnothing(symmetry) ?
-        compute_kernel_matrix_complex_k(bp,k;multithreaded=multithreaded,kernel_fun=kernel_fun) :
-        compute_kernel_matrix_complex_k(bp,symmetry,k,multithreaded=multithreaded,kernel_fun=kernel_fun)
+function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::Complex{T};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
+    if isnothing(symmetry)
+        compute_kernel_matrix_complex_k!(K,bp,k;multithreaded=multithreaded,kernel_fun=kernel_fun)
+    else
+        compute_kernel_matrix_complex_k!(K,bp,symmetry,k,multithreaded=multithreaded,kernel_fun=kernel_fun)
+    end
+    filter_matrix!(K)
     ds=bp.ds
-    @inbounds for j in eachindex(ds)
-        @views K[:,j].*=ds[j]
+    oneK=one(eltype(K)) 
+    @inbounds for j in axes(K,2) 
+        @views K[:,j].*=-ds[j] 
+        K[j,j]+=oneK
     end
-    K.*=-one(T)
-    @inbounds for i in axes(K,1)
-        K[i,i]+=one(T)
-    end
-    return filter_matrix!(K)
+    return nothing
 end
 
 #################
@@ -440,7 +442,8 @@ end
 # construct_B_matrix
 # Build Beyn projected pencil B and left basis Uk from contour integrals.
 # Inputs:
-#   fun -> z -> T(z) boundary integral matrix (square N×N)
+#   f   -> ::Fu Function that inplace constructs Fredholm matrix and writes into a matrix buffer
+#   Tbuf -> Matrix{Complex} working buffer for contour additions
 #   k0  -> disk center (complex, imag≈0)
 #   R   -> disk radius
 #   nq  -> # trapezoid nodes on Γ
@@ -453,7 +456,7 @@ end
 #   1) Forms A0 = (1/2πi)∮ T(z)^{-1} V dz and A1 = (1/2πi)∮ z T(z)^{-1} V dz via LU solves.
 #   2) Rank rk determined by Σ[i] ≥ svd_tol (strict absolute threshold).
 #   3) If rk == 0, return empty matrices to signal “no roots in window”.
-function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_adaptive_svd_tol=false) where {T<:Real,Fu<:Function}
+function construct_B_matrix(f::Fu,Tbuf::Matrix{Complex{T}},k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_adaptive_svd_tol=false) where {T<:Real,Fu<:Function}
     # Reference: Beyn, Wolf-Jurgen, An integral method for solving nonlinear eigenvalue problems, 2018, especially Integral algorithm 1 on p14
     # quadrature nodes/weights on contor Γ 
     θ=range(zero(T),TWO_PI;length=nq+1) # the angles that form the complex circle, equally spaced since curvature zero for trapezoidal rule
@@ -461,10 +464,7 @@ function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd
     ej=cis.(θ) # e^{iθ} via cis, infinitesimal contribution to speed
     zj=k0.+R.*ej # the actual complex nodes where to take the ks, we choose center around k0
     wj=(R/nq).*ej # Δz/(2π*i) absorbed in weighting as per eq 30/31 in Section 3 in ref.
-    T0=fun(zj[1]) # initial on real axis calculation
-    Tbuf=similar(T0) # workspace allocation for contour additions
-    copyto!(Tbuf,T0) # populate working buffer with starting value
-    N=size(T0,1) # as per integral alogorithm 1 in refe
+    N=size(Tbuf,1) # as per integral alogorithm 1 in refe
     V=randn(rng,Complex{T},N,r) # random matrix reused in inner accumulator loop. It is needed not to miss instances of eigenvectors by the operator being orthogonal to them
     A0=zeros(Complex{T},N,r) # the spectral operator A0 = 1 / (2*π*i) * ∮ T^{-1}(z) * V dz
     A1=zeros(Complex{T},N,r) # the spectral operator A1 = 1 / (2*π*i) * ∮ T^{-1}(z) * V * z dz
@@ -472,7 +472,8 @@ function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd
     # contour accumulation: A0 += wj * (T(zj) \ V), A1 += (wj*zj) * (T(zj) \ V), instead of forming the inverse directly we create a LU factorization object and use ldiv! on it to get the same algebraic operation
     @fastmath begin # cond(Tz) # actually of the real axis the condition numbers of Fredholm A matrix improve greatly!
         @inbounds for j in eachindex(zj)
-            if j>1;copyto!(Tbuf,fun(zj[j]));end # first one already in buffer
+            fill!(Tbuf,zero(eltype(Tbuf))) # reset the buffer vals
+            f(Tbuf,zj[j]) # construct fredholm matrix
             F=lu!(Tbuf,check=false) # LU for the ldiv!
             ldiv!(X,F,V) # make efficient inverse
             α0=wj[j] # 1 / (2*π*i) weight for A0
@@ -493,7 +494,7 @@ function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd
     end
     if rk==r # increase the eigvals dimension for A0. This should never happen but due to larger oscilations in Weyl's law at higher k this might happen. Has not been found to happen in testing at k=1500.0
         r+r>N && throw(ArgumentError("r > N is impossible: requested r=$(r+r), N=$(N)"))
-        return construct_B_matrix(fun,k0,R,nq=nq,r=r+r,svd_tol=svd_tol,rng=rng)
+        return construct_B_matrix(f,Tbuf,k0,R,nq=nq,r=r+r,svd_tol=svd_tol,rng=rng)
     end
     rk==0 && return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0) # if nothing found early return
     Uk=@view U[:,1:rk] # take the relevant ones corresponding to eigenvalues as in Integral algorithm 1 on p14 of ref
@@ -532,8 +533,10 @@ end
 #        residual -> ||T(λ) Φ_j|| < res_tol
 #   5) tens[j] = ||A(k)v(k)||
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0),auto_discard_spurious=true,use_adaptive_svd_tol=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
-    fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
-    B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_adaptive_svd_tol=use_adaptive_svd_tol) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
+    N=length(pts.xy)
+    Tbuf=zeros(Complex{T},N,N)  # workspace allocation for contour additions
+    fun=(A,z)->fredholm_matrix_complex_k!(A,pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
+    B,Uk=construct_B_matrix(fun,Tbuf,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_adaptive_svd_tol=use_adaptive_svd_tol) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Matrix{Complex{T}}(undef,size(Uk,1),0),T[]
@@ -549,7 +552,9 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
             keep[j]=false
             continue
         end
-        mul!(ybuf,fun(λ[j]),@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
+        fill!(Tbuf,zero(eltype(Tbuf))) # zero because K is accumulated in symmetry path, reuse from B matrix construction
+        fun(Tbuf,λ[j]) # build A(λ[j]) into Tbuf
+        mul!(ybuf,Tbuf,@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
         ybuf_norm=norm(ybuf)
         if auto_discard_spurious
             if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
@@ -575,8 +580,10 @@ end
 # Inputs/outputs and filters mirror solve_vect.
 # Use when densities are not needed to reduce memory/IO.
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0),auto_discard_spurious=true,use_adaptive_svd_tol=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
-    fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
-    B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_adaptive_svd_tol=use_adaptive_svd_tol) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
+    N=length(pts.xy)
+    Tbuf=zeros(Complex{T},N,N)  # workspace allocation for contour additions
+    fun=(A,z)->fredholm_matrix_complex_k!(A,pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
+    B,Uk=construct_B_matrix(fun,Tbuf,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_adaptive_svd_tol=use_adaptive_svd_tol) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Matrix{Complex{T}}(undef,size(Uk,1),0),T[]
@@ -592,7 +599,9 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
             keep[j]=false
             continue
         end
-        mul!(ybuf,fun(λ[j]),@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
+        fill!(Tbuf,zero(eltype(Tbuf))) # zero because K is accumulated in symmetry path, reuse from B matrix construction
+        fun(Tbuf,λ[j]) # build A(λ[j]) into Tbuf
+        mul!(ybuf,Tbuf,@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
         ybuf_norm=norm(ybuf)
         if auto_discard_spurious
             if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
@@ -627,14 +636,16 @@ end
 # Notes:
 #   Use to decide nq, r, and svd_tol per geometry/k-band before serious runs.
 function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false) where {Ba<:AbstractHankelBasis,T<:Real}
-    fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
+    N=length(pts.xy)
+    Tbuf=zeros(Complex{T},N,N)  # workspace allocation for contour additions
+    fun=(A,z)->fredholm_matrix_complex_k!(A,pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
-    T0=fun(zj[1]);Tbuf=similar(T0);copyto!(Tbuf,T0)
-    N=size(T0,1);V=randn(rng,Complex{T},N,r);A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r);X=similar(V)
+    N=size(Tbuf,1);V=randn(rng,Complex{T},N,r);A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r);X=similar(V)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
     p=Progress(length(zj),1)
     @inbounds for j in eachindex(zj)
-        if j>1;copyto!(Tbuf,fun(zj[j]));end
+        fill!(Tbuf,zero(eltype(Tbuf)))
+        fun(Tbuf,zj[j]) 
         F=lu!(Tbuf,check=false)
         ldiv!(X,F,V)
         α0=wj[j];α1=wj[j]*zj[j]
@@ -679,7 +690,9 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
             dropped_out+=1
             continue
         end
-        mul!(ybuf,fun(λ[j]),@view(Phi[:,j]))
+        fill!(Tbuf,zero(eltype(Tbuf))) 
+        fun(Tbuf,λ[j])
+        mul!(ybuf,Tbuf,@view(Phi[:,j]))
         @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(norm(ybuf)) < $res_tol"
         ybuf_norm=norm(ybuf)
         if ybuf_norm≥res_tol
@@ -761,13 +774,11 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     tens_list=Vector{Vector{T}}(undef,length(k0)) # preallocate unnormalized tensions
     phi_list=Vector{Matrix{Complex{T}}}(undef,length(k0)) # preallocate columns of DLPs for each k in ks
     nq≤15 && @error "Do not use less than 15 contour nodes"
-    # do a test solve to see if nq is large enough and inspect the desired tolerances. Also do +/- 10 in nq to see how it varies. If any warnings about solutions that say that it could be a true eigenvalue then that one could be lost and q higher nq might solve it.
-    #_,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
-    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
-    ks,Phi,tens=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq+10,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
-    ks_list[end]=ks
+    # (LEGACY) do a test solve to see if nq is large enough and inspect the desired tolerances. Also do +/- 10 in nq to see how it varies. If any warnings about solutions that say that it could be a true eigenvalue then that one could be lost and q higher nq might solve it.
+    ks,Phi,tens=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
+    ks_list[end]=real.(ks)
     tens_list[end]=tens
-    phi_list[end]=Phi
+    phi_list[end]=Matrix(Phi)
     p=Progress(length(k0),1)
     @use_threads multithreading=multithreaded_ks for i in eachindex(k0)[1:end-1]
         ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_adaptive_svd_tol=use_adaptive_svd_tol) # we do not need radii in this computation
