@@ -471,7 +471,7 @@ function construct_B_matrix(f::Fu,Tbuf::Matrix{Complex{T}},k0::Complex{T},R::T;n
     X=similar(V) # RHS workspace for sequential LU decomposition at every zj
     # contour accumulation: A0 += wj * (T(zj) \ V), A1 += (wj*zj) * (T(zj) \ V), instead of forming the inverse directly we create a LU factorization object and use ldiv! on it to get the same algebraic operation
     @fastmath begin # cond(Tz) # actually of the real axis the condition numbers of Fredholm A matrix improve greatly!
-        #=@inbounds=# @showprogress for j in eachindex(zj)
+        #=@inbounds=# @showprogress desc="LU loop" for j in eachindex(zj)
             fill!(Tbuf,zero(eltype(Tbuf))) # reset the buffer vals
             f(Tbuf,zj[j]) # construct fredholm matrix
             F=lu!(Tbuf,check=false) # LU for the ldiv!
@@ -546,7 +546,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     keep=trues(length(λ))
     tens=Vector{T}()
     ybuf=Vector{Complex{T}}(undef,length(Phi[:,1])) # all DLP density operators the have same length
-    @inbounds for j in eachindex(λ)
+    #=@inbounds=# @showprogress "Residuals computation" for j in eachindex(λ)
         d=abs(λ[j]-k) # take only those found in the radius R where we have the expected eigenvalues for which r was used
         if d>dk
             keep[j]=false
