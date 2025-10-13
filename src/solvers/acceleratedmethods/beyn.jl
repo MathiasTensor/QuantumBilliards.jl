@@ -471,7 +471,7 @@ function construct_B_matrix(f::Fu,Tbuf::Matrix{Complex{T}},k0::Complex{T},R::T;n
     X=similar(V) # RHS workspace for sequential LU decomposition at every zj
     # contour accumulation: A0 += wj * (T(zj) \ V), A1 += (wj*zj) * (T(zj) \ V), instead of forming the inverse directly we create a LU factorization object and use ldiv! on it to get the same algebraic operation
     @fastmath begin # cond(Tz) # actually of the real axis the condition numbers of Fredholm A matrix improve greatly!
-        @inbounds for j in eachindex(zj)
+        #=@inbounds=# @showprogress for j in eachindex(zj)
             fill!(Tbuf,zero(eltype(Tbuf))) # reset the buffer vals
             f(Tbuf,zj[j]) # construct fredholm matrix
             F=lu!(Tbuf,check=false) # LU for the ldiv!
