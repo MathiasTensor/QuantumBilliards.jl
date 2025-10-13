@@ -453,7 +453,7 @@ end
 #   1) Forms A0 = (1/2πi)∮ T(z)^{-1} V dz and A1 = (1/2πi)∮ z T(z)^{-1} V dz via LU solves.
 #   2) Rank rk determined by Σ[i] ≥ svd_tol (strict absolute threshold).
 #   3) If rk == 0, return empty matrices to signal “no roots in window”.
-function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0)) where {T<:Real,Fu<:Function}
+function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_adaptive_svd_tol=true) where {T<:Real,Fu<:Function}
     # Reference: Beyn, Wolf-Jurgen, An integral method for solving nonlinear eigenvalue problems, 2018, especially Integral algorithm 1 on p14
     # quadrature nodes/weights on contor Γ 
     θ=range(zero(T),TWO_PI;length=nq+1) # the angles that form the complex circle, equally spaced since curvature zero for trapezoidal rule
@@ -483,6 +483,7 @@ function construct_B_matrix(fun::Fu,k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd
     end
     U,Σ,W=svd!(A0;full=false) # thin SVD of A0, revealing rank. The singular values > svd_tol correspond to eigenvalues. If all sv > svd_tol then maybe increase r (expected eigenvalue count) or reduce R (contour around k0), but if increasing r careful with nq. Check ref. section 3 eq. 22
     rk=0
+    svd_tol=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
     @inbounds for i in eachindex(Σ)
         if Σ[i]≥svd_tol # filter out those that correspond to actual eigenvalues
             rk+=1 # to determine how big we must construct the matrices below
@@ -530,9 +531,9 @@ end
 #        geometry -> |λ - k| ≤ dk
 #        residual -> ||T(λ) Φ_j|| < res_tol
 #   5) tens[j] = ||A(k)v(k)||
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0),auto_discard_spurious=true) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0),auto_discard_spurious=true,use_adaptive_svd_tol=true) where {Ba<:AbstractHankelBasis} where {T<:Real}
     fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
-    B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
+    B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_adaptive_svd_tol=use_adaptive_svd_tol) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Matrix{Complex{T}}(undef,size(Uk,1),0),T[]
@@ -573,9 +574,9 @@ end
 # Same as solve_vect but returns only eigenvalues and tensions (no Φ).
 # Inputs/outputs and filters mirror solve_vect.
 # Use when densities are not needed to reduce memory/IO.
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0),auto_discard_spurious=true) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol=1e-14,res_tol=1e-8,rng=MersenneTwister(0),auto_discard_spurious=true,use_adaptive_svd_tol=true) where {Ba<:AbstractHankelBasis} where {T<:Real}
     fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
-    B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
+    B,Uk=construct_B_matrix(fun,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_adaptive_svd_tol=use_adaptive_svd_tol) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Matrix{Complex{T}}(undef,size(Uk,1),0),T[]
@@ -625,7 +626,7 @@ end
 #   λ_keep, Φ_keep, tens (same as solve_vect)
 # Notes:
 #   Use to decide nq, r, and svd_tol per geometry/k-band before serious runs.
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0)) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=true) where {Ba<:AbstractHankelBasis,T<:Real}
     fun=z->fredholm_matrix_complex_k(pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun)
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
     T0=fun(zj[1]);Tbuf=similar(T0);copyto!(Tbuf,T0)
@@ -641,6 +642,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     @time "SVD" U,Σ,W=svd!(A0;full=false)
     println("Singular values (<1e-10 tail inspection): ",Σ)
     rk=0
+    svd_tol=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
     @inbounds for i in eachindex(Σ)
         if Σ[i]≥svd_tol
             rk+=1
@@ -742,7 +744,7 @@ end
 # Notes:
 #   - @error if nq ≤ 10 (insufficient contour resolution).
 #   - r typically set to m+15 for headroom; increase nq with m if needed.
-function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true,multithreaded_matrix=true,multithreaded_ks=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax=1.0,nq=48,r=m+15,fundamental=true,svd_tol=1e-14,res_tol=1e-9,auto_discard_spurious=true,multithreaded_matrix=true,multithreaded_ks=true,use_adaptive_svd_tol=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     # Plan how many intervals we will have with the radii and the centers of the radii
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     k0,R=beyn_disks_from_windows(intervals)
@@ -758,12 +760,12 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     phi_list=Vector{Matrix{Complex{T}}}(undef,length(k0)) # preallocate columns of DLPs for each k in ks
     nq≤15 && @error "Do not use less than 15 contour nodes"
     # do a test solve to see if nq is large enough and inspect the desired tolerances. Also do +/- 10 in nq to see how it varies. If any warnings about solutions that say that it could be a true eigenvalue then that one could be lost and q higher nq might solve it.
-    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=r,svd_tol=svd_tol,res_tol=res_tol)
-    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol)
-    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq+10,r=r,svd_tol=svd_tol,res_tol=res_tol)
+    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq-10,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
+    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
+    _,_,_=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq+10,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol)
     p=Progress(length(k0),1)
     @use_threads multithreading=multithreaded_ks for i in eachindex(k0)[1:end]
-        ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix) # we do not need radii in this computation
+        ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_adaptive_svd_tol=use_adaptive_svd_tol) # we do not need radii in this computation
         ks_list[i]=real.(ks) 
         tens_list[i]=tens # already real
         phi_list[i]=Matrix(Phi)
