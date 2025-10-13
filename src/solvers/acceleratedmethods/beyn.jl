@@ -709,7 +709,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
             end
             continue
         end
-        push!(tens,d)
+        push!(tens,ybuf_norm)
         push!(res_keep,norm(ybuf))
     end
     kept=count(keep)
