@@ -329,13 +329,13 @@ function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{
     else
         compute_kernel_matrix_complex_k!(K,bp,symmetry,k,multithreaded=multithreaded,kernel_fun=kernel_fun)
     end
-    filter_matrix!(K)
     ds=bp.ds
     oneK=one(eltype(K)) 
     @inbounds for j in axes(K,2) 
         @views K[:,j].*=-ds[j] 
         K[j,j]+=oneK
     end
+    filter_matrix!(K)
     return nothing
 end
 
