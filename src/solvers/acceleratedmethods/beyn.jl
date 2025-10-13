@@ -800,14 +800,26 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
             end
             sleep(0.2) # refresh every 0.2s
         end
-        println("\rProgress: 100% ✅")
+        println("\rProgress: 100%")
     end
-    @use_threads multithreading=multithreaded_ks for i in eachindex(k0)[1:end-1]
-        ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i],nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_adaptive_svd_tol=use_adaptive_svd_tol) # we do not need radii in this computation
-        ks_list[i]=real.(ks) 
-        tens_list[i]=tens # already real
-        phi_list[i]=Matrix(Phi)
-        Threads.atomic_add!(ctr,1)
+    firsti=firstindex(k0);lasti=lastindex(k0)-1
+    nexti=Threads.Atomic{Int}(firsti)
+    @sync for _ in 1:Threads.nthreads()
+        Threads.@spawn begin
+            while true
+                i=Threads.atomic_add!(nexti,1)
+                i>lasti && break
+                ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i];
+                    nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,
+                    auto_discard_spurious=auto_discard_spurious,
+                    multithreaded=multithreaded_matrix,
+                    use_adaptive_svd_tol=use_adaptive_svd_tol)
+                ks_list[i]=real.(ks)
+                tens_list[i]=tens
+                phi_list[i]=Matrix(Phi)
+                Threads.atomic_add!(ctr,1)
+            end
+        end
     end
     done[]=true
     wait(reporter)
