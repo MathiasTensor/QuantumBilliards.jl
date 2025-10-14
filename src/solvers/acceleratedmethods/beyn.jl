@@ -731,6 +731,51 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     return λ[keep],Phi[:,keep],tens
 end
 
+#####################################
+#### RESIDUAL CALCULATION HELPER ####
+#####################################
+
+#TODO maybe implement the multithreading of residuals into the solve functions, not big performance increase
+function residual_filter(λ::AbstractVector{Complex{T}},Phi::AbstractMatrix{Complex{T}},
+    k0::Complex{T},R::T,fun::Function,Tbuf_template::AbstractMatrix{Complex{T}};
+    res_tol::T,auto_discard_spurious::Bool=true,collect_logs::Bool=false,threaded::Bool=false) where {T<:Real}
+    n=length(λ)
+    N=size(Phi,1)
+    keep=falses(n)
+    tens_all=Vector{T}(undef,n)
+    nT=nthreads()
+    Tbufs=[similar(Tbuf_template) for _ in 1:nT]
+    ybufs=[Vector{Complex{T}}(undef,N) for _ in 1:nT]
+    d_out=zeros(Int,nT)
+    d_res=zeros(Int,nT)
+    logs=collect_logs ? [String[] for _ in 1:nT] : nothing
+    @use_threads multithreading=threaded for j in eachindex(λ)
+        tid=Threads.threadid()
+        λj=λ[j]
+        if abs(λj-k0)>R
+            tens_all[j]=NaN
+            d_out[tid]+=1
+            continue
+        end
+        Tloc=Tbufs[tid]
+        fill!(Tloc,zero(eltype(Tloc)))
+        fun(Tloc,λj)
+        yloc=ybufs[tid]
+        mul!(yloc,Tloc,@view Phi[:,j])
+        yn=norm(yloc)
+        tens_all[j]=yn
+        if auto_discard_spurious && yn≥res_tol
+            d_res[tid]+=1
+            collect_logs && push!(logs[tid],"k=$(real(λj)) ||A(k)v||=$(yn) > $res_tol")
+        else
+            keep[j]=true
+            collect_logs && push!(logs[tid],"k=$(real(λj)) ||A(k)v||=$(yn) < $res_tol")
+        end
+    end
+    tens=tens_all[keep]
+    return keep,tens,sum(d_out),sum(d_res),(collect_logs ? vcat(logs...) : String[])
+end
+
 ####################
 #### HIGH LEVEL ####
 ####################
