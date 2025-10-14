@@ -647,14 +647,16 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     N=size(Tbuf,1);V=randn(rng,Complex{T},N,r);A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r);X=similar(V)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
     p=Progress(length(zj),1)
-    @inbounds for j in eachindex(zj)
-        fill!(Tbuf,zero(eltype(Tbuf)))
-        fun(Tbuf,zj[j]) 
-        F=lu!(Tbuf,check=false)
-        ldiv!(X,F,V)
-        α0=wj[j];α1=wj[j]*zj[j]
-        BLAS.axpy!(α0,vec(X),vec(A0));BLAS.axpy!(α1,vec(X),vec(A1))
-        next!(p)
+    @fastmath begin
+        @inbounds for j in eachindex(zj)
+            fill!(Tbuf,zero(eltype(Tbuf)))
+            fun(Tbuf,zj[j]) 
+            F=lu!(Tbuf,check=false)
+            ldiv!(X,F,V)
+            α0=wj[j];α1=wj[j]*zj[j]
+            BLAS.axpy!(α0,vec(X),vec(A0));BLAS.axpy!(α1,vec(X),vec(A1))
+            next!(p)
+        end
     end
     @time "SVD" U,Σ,W=svd!(A0;full=false)
     println("Singular values (<1e-10 tail inspection): ",Σ)
