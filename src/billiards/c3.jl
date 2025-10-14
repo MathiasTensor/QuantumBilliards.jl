@@ -165,10 +165,10 @@ function C3Billiard(a::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T),scale:
     desym_full_boundary,_=make_c3_desymmetrized_full_boundary(a;x0=x0,y0=y0,rot_angle=rot_angle,scale=scale)
     area_fundamental=area_full/T(3)
     length=sum(crv.length for crv in full_boundary)
-    #length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
+    #length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary) # this is wrong because no virtual segment usage 
     length_fundamental=length/3
     angles=Any[]
-    angles_fundamental=[T(2)*π/T(3)]
+    angles_fundamental=[]
     s_shift=zero(T)
     return C3Billiard(fundamental_boundary,full_boundary,desym_full_boundary,length,length_fundamental,a,corners,area_full,area_fundamental,angles,angles_fundamental,s_shift)
 end
