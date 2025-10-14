@@ -459,6 +459,7 @@ end
 function construct_B_matrix(f::Fu,Tbuf::Matrix{Complex{T}},k0::Complex{T},R::T;nq::Int=32,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_adaptive_svd_tol=false) where {T<:Real,Fu<:Function}
     # Reference: Beyn, Wolf-Jurgen, An integral method for solving nonlinear eigenvalue problems, 2018, especially Integral algorithm 1 on p14
     # quadrature nodes/weights on contor Γ 
+    #=
     θ=range(zero(T),TWO_PI;length=nq+1) # the angles that form the complex circle, equally spaced since curvature zero for trapezoidal rule
     θ=θ[1:end-1] # make sure we start at 0 -> 2*pi
     ej=cis.(θ) # e^{iθ} via cis, infinitesimal contribution to speed
@@ -482,6 +483,56 @@ function construct_B_matrix(f::Fu,Tbuf::Matrix{Complex{T}},k0::Complex{T},R::T;n
             BLAS.axpy!(α1,vec(X),vec(A1)) # A1 += α1 * X
         end
     end
+    =#
+    MAX_LU_WORKERS = 3  # tune per N & RAM
+    sem = Base.Semaphore(MAX_LU_WORKERS)
+    θ  = range(zero(T), TWO_PI; length=nq+1)[1:end-1]
+    ej = cis.(θ)
+    zj = k0 .+ R .* ej
+    wj = (R/nq) .* ej
+
+    N = size(Tbuf, 1)
+    V = randn(rng, Complex{T}, N, r)   # keep seed fixed for reproducibility
+
+    # one bin per worker slot (not per thread id → fewer big arrays)
+    nbins = MAX_LU_WORKERS
+    A0bins = [zeros(Complex{T}, N, r) for _ in 1:nbins]
+    A1bins = [zeros(Complex{T}, N, r) for _ in 1:nbins]
+
+    Threads.@threads for j in eachindex(zj)
+        Base.acquire(sem)
+        bin = try
+            # allocate heavy buffers only while holding a slot
+            Tloc = similar(Tbuf)
+            Xloc = similar(V)
+            # map this slot to a small bin index (0..nbins-1)
+            # (we don’t rely on threadid; we just take the next free semaphore slot)
+            # simplest: pick a bin by hashing j to spread load:
+            b = 1 + (j % nbins)
+
+            fill!(Tloc, zero(eltype(Tloc)))
+            f(Tloc, zj[j])
+            F = lu!(Tloc, check=false)
+            ldiv!(Xloc, F, V)
+
+            a0 = wj[j]
+            a1 = wj[j] * zj[j]
+            BLAS.axpy!(a0, vec(Xloc), vec(A0bins[b]))
+            BLAS.axpy!(a1, vec(Xloc), vec(A1bins[b]))
+            nothing
+        finally
+            Base.release(sem)
+        end
+    end
+
+    # final reduction (single-thread is fine; it’s BLAS-axpy over contiguous memory)
+    A0 = zeros(Complex{T}, N, r)
+    A1 = zeros(Complex{T}, N, r)
+    for b in 1:nbins
+        BLAS.axpy!(one(Complex{T}), vec(A0bins[b]), vec(A0))
+        BLAS.axpy!(one(Complex{T}), vec(A1bins[b]), vec(A1))
+    end
+
     U,Σ,W=svd!(A0;full=false) # thin SVD of A0, revealing rank. The singular values > svd_tol correspond to eigenvalues. If all sv > svd_tol then maybe increase r (expected eigenvalue count) or reduce R (contour around k0), but if increasing r careful with nq. Check ref. section 3 eq. 22
     rk=0
     svd_tol=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
@@ -861,16 +912,34 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
         next!(p)
     end
     @info "Finished calculating, now normalized tension calculation..."
-    # Now do merging so to get correct types. There are no overlaps here so no need to call overlap_and_merge!
-    ks_all=T[];tens_all=T[];us_all=Vector{Complex{T}}[];pts_all=BoundaryPointsBIM{T}[]
-    for i in eachindex(k0)
-        ks_i=ks_list[i];tens_i=tens_list[i];Phi_i=phi_list[i] 
-        n_i=isnothing(Phi_i) ? 0 : size(Phi_i,2) # in case nothing is found so it does not throw error
-        for j in 1:n_i
-            push!(ks_all,ks_i[j])
-            push!(tens_all,tens_i[j])
-            push!(us_all,vec(@view Phi_i[:,j]))
-            push!(pts_all,all_pts_bim[i]) # repeat same pts for each eigvals in this window
+    nw=length(phi_list) # counts & offsets
+    n_by_win=Vector{Int}(undef,nw)
+    @inbounds for i in 1:nw
+        Φ=phi_list[i]
+        n_by_win[i]=size(Φ,2)
+    end
+    offs=zeros(Int,nw)
+    @inbounds for i in 2:nw
+        offs[i]=offs[i-1]+n_by_win[i-1]
+    end
+    ntot=offs[end]+n_by_win[end]
+    ks_all=Vector{T}(undef,ntot)
+    tens_all=Vector{T}(undef,ntot)
+    us_all=Vector{Vector{Complex{T}}}(undef,ntot)
+    pts_all=Vector{BoundaryPointsBIM{T}}(undef,ntot)
+    Threads.@threads for i in 1:nw
+        n=n_by_win[i]
+        n==0 && continue
+        off=offs[i]
+        ksi=ks_list[i]
+        tensi=tens_list[i]
+        Φ=phi_list[i]
+        pts=all_pts_bim[i]
+        @inbounds for j in 1:n
+            ks_all[off+j]=ksi[j]
+            tens_all[off+j]=tensi[j]
+            us_all[off+j]=vec(@view Φ[:,j])
+            pts_all[off+j]=pts
         end
     end
     tens_normalized_all=compute_normalized_tensions(solver,pts_all,ks_all,us_all;matnorm=:one) # use the 1-norm but arbitrary
