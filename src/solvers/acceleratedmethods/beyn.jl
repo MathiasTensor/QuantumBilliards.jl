@@ -471,7 +471,7 @@ function construct_B_matrix(f::Fu,Tbuf::Matrix{Complex{T}},k0::Complex{T},R::T;n
     X=similar(V) # RHS workspace for sequential LU decomposition at every zj
     # contour accumulation: A0 += wj * (T(zj) \ V), A1 += (wj*zj) * (T(zj) \ V), instead of forming the inverse directly we create a LU factorization object and use ldiv! on it to get the same algebraic operation
     @fastmath begin # cond(Tz) # actually of the real axis the condition numbers of Fredholm A matrix improve greatly!
-        #=@inbounds=# @showprogress desc="LU loop" for j in eachindex(zj)
+        @inbounds for j in eachindex(zj)
             fill!(Tbuf,zero(eltype(Tbuf))) # reset the buffer vals
             f(Tbuf,zj[j]) # construct fredholm matrix
             F=lu!(Tbuf,check=false) # LU for the ldiv!
@@ -546,32 +546,34 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     keep=trues(length(λ))
     tens=Vector{T}()
     ybuf=Vector{Complex{T}}(undef,length(Phi[:,1])) # all DLP density operators the have same length
-    #=@inbounds=# @showprogress desc="Residuals computation" for j in eachindex(λ)
-        d=abs(λ[j]-k) # take only those found in the radius R where we have the expected eigenvalues for which r was used
-        if d>dk
-            keep[j]=false
-            continue
-        end
-        fill!(Tbuf,zero(eltype(Tbuf))) # zero because K is accumulated in symmetry path, reuse from B matrix construction
-        fun(Tbuf,λ[j]) # build A(λ[j]) into Tbuf
-        mul!(ybuf,Tbuf,@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
-        ybuf_norm=norm(ybuf)
-        if auto_discard_spurious
-            if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
+    @fastmath begin
+        @inbounds for j in eachindex(λ)
+            d=abs(λ[j]-k) # take only those found in the radius R where we have the expected eigenvalues for which r was used
+            if d>dk
                 keep[j]=false
-                if ybuf_norm>1e-8
-                    if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
-                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
-                    else # gray zone
-                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
-                    end
-                else
-                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
-                end
                 continue
             end
+            fill!(Tbuf,zero(eltype(Tbuf))) # zero because K is accumulated in symmetry path, reuse from B matrix construction
+            fun(Tbuf,λ[j]) # build A(λ[j]) into Tbuf
+            mul!(ybuf,Tbuf,@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
+            ybuf_norm=norm(ybuf)
+            if auto_discard_spurious
+                if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
+                    keep[j]=false
+                    if ybuf_norm>1e-8
+                        if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                            @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                        else # gray zone
+                            @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                        end
+                    else
+                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
+                    end
+                    continue
+                end
+            end
+            push!(tens,ybuf_norm)
         end
-        push!(tens,ybuf_norm)
     end
     return λ[keep],Phi[:,keep],tens # eigenvalues, DLP density function, "tension - difference from ||A(k)v(k)||, determines badness since for analytic domain it has exponential convergence with exponent nq * N where N is the Fredholm matrix dimension (check ref Abstract)"
 end
@@ -593,32 +595,34 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k
     keep=trues(length(λ))
     tens=Vector{T}()
     ybuf=Vector{Complex{T}}(undef,length(Phi[:,1])) # all DLP density operators the have same length
-    @inbounds for j in eachindex(λ)
-        d=abs(λ[j]-k) # take only those found in the radius R where we have the expected eigenvalues for which r was used
-        if d>dk
-            keep[j]=false
-            continue
-        end
-        fill!(Tbuf,zero(eltype(Tbuf))) # zero because K is accumulated in symmetry path, reuse from B matrix construction
-        fun(Tbuf,λ[j]) # build A(λ[j]) into Tbuf
-        mul!(ybuf,Tbuf,@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
-        ybuf_norm=norm(ybuf)
-        if auto_discard_spurious
-            if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
+    @fastmath begin
+        @inbounds for j in eachindex(λ)
+            d=abs(λ[j]-k) # take only those found in the radius R where we have the expected eigenvalues for which r was used
+            if d>dk
                 keep[j]=false
-                if ybuf_norm>1e-8
-                    if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
-                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
-                    else # gray zone
-                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
-                    end
-                else
-                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
-                end
                 continue
             end
+            fill!(Tbuf,zero(eltype(Tbuf))) # zero because K is accumulated in symmetry path, reuse from B matrix construction
+            fun(Tbuf,λ[j]) # build A(λ[j]) into Tbuf
+            mul!(ybuf,Tbuf,@view(Phi[:,j])) # ybuf = T(λ_j)*φ_j, this is a measure of how well we solve the original problem T(λ)v(λ) = 0
+            ybuf_norm=norm(ybuf)
+            if auto_discard_spurious
+                if ybuf_norm≥res_tol # residual criterion, ybuf should be on the order of 1e-13 - 1e-14 for both the imaginary and real part. If larger than that nq must be increased. Check for a small segment with sweep methods like psm/bim/dm at the end of the wanted spectrum to determime of nq is enough for the whole spectrum. If nq large enough use it for whole spectrum
+                    keep[j]=false
+                    if ybuf_norm>1e-8
+                        if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                            @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                        else # gray zone
+                            @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                        end
+                    else
+                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
+                    end
+                    continue
+                end
+            end
+            push!(tens,ybuf_norm)
         end
-        push!(tens,ybuf_norm)
     end
     return λ[keep],tens # eigenvalues, DLP density function, "tension - difference from ||A(k)v(k)||, determines badness since for analytic domain it has exponential convergence with exponent nq * N where N is the Fredholm matrix dimension (check ref Abstract)"
 end
@@ -683,42 +687,44 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     dropped_out=0
     dropped_res=0
     res_keep=T[]
-    @inbounds for j in eachindex(λ)
-        d=abs(λ[j]-k0)
-        if d>R
-            keep[j]=false
-            dropped_out+=1
-            continue
-        end
-        fill!(Tbuf,zero(eltype(Tbuf))) 
-        fun(Tbuf,λ[j])
-        mul!(ybuf,Tbuf,@view(Phi[:,j]))
-        @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(norm(ybuf)) < $res_tol"
-        ybuf_norm=norm(ybuf)
-        if auto_discard_spurious
-            if ybuf_norm≥res_tol
+    @fastmath begin 
+        @inbounds for j in eachindex(λ)
+            d=abs(λ[j]-k0)
+            if d>R
                 keep[j]=false
-                dropped_res+=1
-                if ybuf_norm>1e-8
-                    if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
-                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
-                    else # gray zone
-                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
-                    end
-                else
-                    @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
-                end
+                dropped_out+=1
                 continue
             end
+            fill!(Tbuf,zero(eltype(Tbuf))) 
+            fun(Tbuf,λ[j])
+            mul!(ybuf,Tbuf,@view(Phi[:,j]))
+            @info "k=$(real(λ[j])) ||A(k)v(k)|| = $(norm(ybuf)) < $res_tol"
+            ybuf_norm=norm(ybuf)
+            if auto_discard_spurious
+                if ybuf_norm≥res_tol
+                    keep[j]=false
+                    dropped_res+=1
+                    if ybuf_norm>1e-8
+                        if ybuf_norm>1e-6 # heuristic for when usually it is spurious sqrt(eps())
+                            @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , definitely spurious" 
+                        else # gray zone
+                            @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , most probably eigenvalue but too low nq" 
+                        end
+                    else
+                        @warn "k=$(real(λ[j])) ||A(k)v(k)|| = $(ybuf_norm) > $res_tol , could be spurious or try increasing nq (usually spurious) or lowering residual tolerance" 
+                    end
+                    continue
+                end
+            end
+            push!(tens,ybuf_norm)
+            push!(res_keep,norm(ybuf))
         end
-        push!(tens,ybuf_norm)
-        push!(res_keep,norm(ybuf))
-    end
-    kept=count(keep)
-    if kept>0
-        @info "STATUS: " kept=kept dropped_outside=dropped_out dropped_residual=dropped_res max_residual=maximum(res_keep)
-    else
-        @info "STATUS: " kept=0 dropped_outside=dropped_out dropped_residual=dropped_res
+        kept=count(keep)
+        if kept>0
+            @info "STATUS: " kept=kept dropped_outside=dropped_out dropped_residual=dropped_res max_residual=maximum(res_keep)
+        else
+            @info "STATUS: " kept=0 dropped_outside=dropped_out dropped_residual=dropped_res
+        end
     end
     return λ[keep],Phi[:,keep],tens
 end
