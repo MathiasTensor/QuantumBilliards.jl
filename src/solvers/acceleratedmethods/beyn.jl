@@ -803,6 +803,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     ks_list[end]=real.(ks)
     tens_list[end]=tens
     phi_list[end]=Matrix(Phi)
+    p=Progress(length(k0)-1,1)
     @use_threads multithreading=multithreaded_ks for i in eachindex(k0)[1:end-1]
         ks,Phi,tens=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i];
                 nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,
@@ -812,6 +813,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
         ks_list[i]=real.(ks)
         tens_list[i]=tens
         phi_list[i]=Matrix(Phi)
+        next!(p)
     end
     # Now do merging so to get correct types. There are no overlaps here so no need to call overlap_and_merge!
     ks_all=T[];tens_all=T[];us_all=Vector{Complex{T}}[];pts_all=BoundaryPointsBIM{T}[]
