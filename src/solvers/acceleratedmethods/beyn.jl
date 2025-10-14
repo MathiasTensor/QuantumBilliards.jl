@@ -860,6 +860,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
         phi_list[i]=Matrix(Phi)
         next!(p)
     end
+    @info "Finished calculating, now normalized tension calculation..."
     # Now do merging so to get correct types. There are no overlaps here so no need to call overlap_and_merge!
     ks_all=T[];tens_all=T[];us_all=Vector{Complex{T}}[];pts_all=BoundaryPointsBIM{T}[]
     for i in eachindex(k0)
