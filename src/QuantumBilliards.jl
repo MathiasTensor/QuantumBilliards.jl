@@ -1,4 +1,11 @@
 module QuantumBilliards
+using Bessels
+using CoordinateTransformations, Rotations
+using LinearAlgebra, StaticArrays, CircularArrays
+using Optim
+using FFTW
+using TimerOutputs
+using Random, Distributions
 #using Reexport
 
 #abstract types
@@ -15,12 +22,6 @@ export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
 
 
-#solvers
-#include("solvers/Solvers.jl")
-#@reexport using .Solvers
-include("solvers/samplers.jl")
-export GaussLegendreNodes, LinearNodes, FourierNodes
-export sample_points
 
 include("billiards/boundarypoints.jl")
 export BoundaryPoints
@@ -33,28 +34,6 @@ export RealPlaneWaves
 include("basis/fourierbessel/corneradapted.jl")
 export CornerAdaptedFourierBessel
 export resize_basis, basis_fun, dk_fun, gradient, basis_and_gradient 
-
-#billiards
-#include("billiards/Billiards.jl")
-#@reexport using .Billiards
-
-include("billiards/geometry/geometry.jl")
-export LineSegment, VirtualLineSegment
-export CircleSegment, VirtualCircleSegment
-export DispersingCircleSegment, VirtualDispersingCircleSegment
-export curve, arc_length, tangent, tangent_vec, normal_vec, curvature
-include("billiards/stadium.jl")
-include("billiards/lemon.jl")
-include("billiards/sinai.jl")
-include("billiards/triangle.jl")
-export adapt_basis
-#include("limacon.jl")
-#include("rectangle.jl")
-export Stadium, Lemon, Triangle, Sinai
-export curve, tangent, normal, arc_length
-export tangent_vec, normal_vec
-#convenience functions may be moved somewhere else
-#export make_stadium_and_basis, make_triangle_and_basis 
 
 
 include("solvers/decompositions.jl")
@@ -108,13 +87,5 @@ export plot_boundary_function!, plot_momentum_function!, plot_husimi_function!
 export plot_heatmap!, plot_heatmap_balaced!
 include("plotting/testplotting.jl")
 export  plot_geometry_test!, plot_basis_test!, plot_solver_test!, plot_state_test!, plot_matrix!
-
-include("utils/benchmarkutils.jl")
-export BenchmarkInfo
-export benchmark_solver, compute_benchmarks
-
-include("plotting/benchmarkplotting.jl")
-export plot_benchmarks!
-
 
 end

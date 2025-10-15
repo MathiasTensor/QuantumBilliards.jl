@@ -1,10 +1,3 @@
-#using LazyGrids
-#used for plotting etc.
-#include("../abstracttypes.jl")
-#include("billiardutils.jl")
-using StaticArrays
-
-
 
 struct GridPoint{T} <:AbsGrid where T <: Number
     xy::SVector{2,T} #point coords

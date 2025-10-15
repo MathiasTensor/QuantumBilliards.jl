@@ -1,10 +1,4 @@
-#include("../../abstracttypes.jl")
-#include("../decompositions.jl")
-#include("../matrixconstructors.jl")
-#include("../src/billiards/triangle.jl")
-#include("../../utils/benchmarkutils.jl")
-using LinearAlgebra, StaticArrays
-using TimerOutputs
+
 abstract type AbsScalingMethod <: AcceleratedSolver 
 end
 struct ScalingMethodA{T} <: AbsScalingMethod where {T<:Real}

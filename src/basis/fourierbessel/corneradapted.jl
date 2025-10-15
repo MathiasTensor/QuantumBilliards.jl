@@ -4,8 +4,6 @@
 #include("../../utils/gridutils.jl")
 #using BenchmarkTools
 #using SpecialFunctions
-using Bessels
-using CoordinateTransformations, Rotations, StaticArrays
 
 #Jv(nu, r) = SpecialFunctions.besselj(nu,r)
 Jv(nu, r) = Bessels.besselj(nu, r)

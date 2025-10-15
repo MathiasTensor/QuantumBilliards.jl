@@ -1,4 +1,4 @@
-using LinearAlgebra
+
 #=
 function GESVDVALS(A, B; eps=1e-14)
     M = reduce(vcat, [A, B]) #concatenate columns

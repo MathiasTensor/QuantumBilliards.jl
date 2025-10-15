@@ -1,10 +1,3 @@
-#include("../../abstracttypes.jl")
-#include("../decompositions.jl")
-#include("../matrixconstructors.jl")
-#include("../samplers.jl")
-#include("../src/billiards/triangle.jl")
-#include("../../utils/benchmarkutils.jl")
-using LinearAlgebra, StaticArrays, TimerOutputs
 
 struct DecompositionMethod{T} <: SweepSolver where {T<:Real}
     dim_scaling_factor::T

@@ -1,11 +1,8 @@
-#include("../../abstracttypes.jl")
-#include("../../utils/billiardutils.jl")
-#include("decompositions.jl")
-#include("../samplers.jl")
+
 include("particularsolutionsmethod.jl")
 include("decompositionmethod.jl")
 include("boundaryintegralmethod.jl")
-using LinearAlgebra, Optim
+
 
 function solve_wavenumber(solver::SweepSolver,basis::AbsBasis, billiard::AbsBilliard, k, dk; parallel_matrix=true)
     dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))

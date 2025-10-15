@@ -1,8 +1,3 @@
-#include("../abstracttypes.jl")
-#include("../utils/billiardutils.jl")
-#include("../utils/gridutils.jl")
-#include("../solvers/matrixconstructors.jl")
-using FFTW
 
 #this takes care of singular points
 function regularize!(u)
