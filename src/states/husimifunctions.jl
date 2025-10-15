@@ -218,7 +218,7 @@ Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we constru
 Arguments:
 - `k::T`: Wavenumber of the eigenstate.
 - `s::AbstractVector{T}`: Array of points on the boundary.
-- `u::AbstractVector{T}`: Array of boundary function values.
+- `u::AbstractVector{Num}`: Array of boundary function values. Can be complex.
 - `L::T`: Total length of the boundary (maximum(s)).
 - `nx::Integer`: Number of grid points in the position coordinate (q).
 - `ny::Integer`: Number of grid points in the momentum coordinate (p).
@@ -382,7 +382,7 @@ function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Vect
 end
 
 """
-    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+    function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
 
 Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
 
@@ -400,7 +400,7 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
     L=billiard.length
     valid_indices=fill(true,length(ks))
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
