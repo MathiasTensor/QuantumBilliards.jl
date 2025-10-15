@@ -27,18 +27,19 @@ Comment: Original algorithm by Črt Lozej
 
 # Arguments
 - `k<:Real`: Wavenumber of the eigenstate.
-- `u::Vector{<:Real}`: Array of boundary function values.
-- `s::Vector{<:Real}`: Array of boundary points.
+- `u::AbstractVector{<:Number}`: Array of boundary function values. Can be complex
+- `s::AbstractVector{<:Real}`: Array of boundary points.
 - `L<:Real`: Total length of the billiard boundary.
 - `c<:Real`: Density of points in the coherent state peak (default: `10.0`).
 - `w<:Real`: Width in units of `σ` (default: `7.0`).
+- `full_p::Bool=false`: Whether the boundary function is such that p -> -p symmetry is guaranteed. If so it halves the effort.
 
 # Returns
-- `H::Matrix`: Husimi function matrix.
-- `qs::Vector`: Array of position coordinates on the grid.
-- `ps::Vector`: Array of momentum coordinates on the grid.
+- `H::Matrix{<:Real}`: Husimi function matrix.
+- `qs::Vector{<:Real}`: Array of position coordinates on the grid.
+- `ps::Vector{<:Real}`: Array of momentum coordinates on the grid.
 """
-function husimi_function(k::T,u::Vector{T},s::Vector{T},L::T;c=10.0,w=7.0) where {T<:Real}
+function husimi_function(k::T,u::AbstractVector{Num},s::AbstractVector{T},L::T;c=10.0,w=7.0,full_p::Bool=false) where {T<:Real,Num<:Number}
     #c density of points in coherent state peak, w width in units of sigma
     #L is the boundary length for periodization
     #compute coherrent state weights
@@ -53,23 +54,29 @@ function husimi_function(k::T,u::Vector{T},s::Vector{T},L::T;c=10.0,w=7.0) where
     gauss=@. exp(-k/2*x^2)*ds
     gauss_l=@. exp(-k/2*(x+L)^2)*ds
     gauss_r=@. exp(-k/2*(x-L)^2)*ds
-    ps=collect(range(0.0,1.0,step=sig/c)) # evaluation points in p coordinate
+    if full_p
+        ps=collect(range(-1.0,1.0,step=sig/c)) # evaluation points in p coordinate if p -> -p cannot be guaranteed
+    else
+        ps=collect(range(0.0,1.0,step=sig/c)) # evaluation points in p coordinate if p -> -p no >1d irreps
+    end
     q_stride=length(s[s.<=sig/c])
     q_idx=collect(1:q_stride:N)
     push!(q_idx,N) # add last point
     qs=s[q_idx] # evaluation points in q coordinate
     H=zeros(typeof(k),length(qs),length(ps))
     @fastmath for i in eachindex(ps)
-        cs=@. exp(im*ps[i]*k*x)*gauss + exp(im*ps[i]*k*(x+L))*gauss_l + exp(im*ps[i]*k*(x-L))*gauss_r
-        for j in eachindex(q_idx)
+        cs=@. exp(-im*ps[i]*k*x)*gauss + exp(-im*ps[i]*k*(x+L))*gauss_l + exp(-im*ps[i]*k*(x-L))*gauss_r # exp(-im) is the convention since we take the complex conjugate of the wavepacket in the construction of PH functions
+        for j in eachindex(q_idx) # innermost loop cant have @simd due to sum
             u_w=uc[q_idx[j]-idx+1:q_idx[j]+idx-1] # window with relevant values of u
             h=sum(cs.*u_w)
             H[j,i]=a*abs2(h)
         end
     end
-    ps=antisym_vec(ps)
-    H_ref=reverse(H[:,2:end];dims=2)
-    H=hcat(H_ref,H)
+    if !full_p
+        ps=antisym_vec(ps) # make [-1,1] grid
+        H_ref=reverse(H[:,2:end];dims=2)   # reflect columns dropping the p=0 duplicate
+        H=hcat(H_ref,H)
+    end
     return H,qs,ps
 end
 
@@ -85,9 +92,9 @@ Calculates the Husimi function for a billiard eigenstate. Wrapper for lower leve
 - `w`: Width in units of `σ` (default: `7.0`).
 
 # Returns
-- `H::Matrix`: Husimi function matrix.
-- `qs::Vector`: Array of position coordinates on the grid.
-- `ps::Vector`: Array of momentum coordinates on the grid.
+- `H::Matrix{<Real}`: Husimi function matrix.
+- `qs::Vector{<:Real}`: Array of position coordinates on the grid.
+- `ps::Vector{<:Real}`: Array of momentum coordinates on the grid.
 """
 function husimi_function(state::S;b=5.0,c=10.0,w=7.0) where {S<:AbsState}
     L=state.billiard.length
@@ -108,9 +115,9 @@ Calculates the Husimi function for a batch of billiard eigenstates that came fro
 - `w`: Width in units of `σ` (default: `7.0`).
 
 # Returns
-- `H::Matrix`: Husimi function matrix.
-- `qs::Vector`: Array of position coordinates on the grid.
-- `ps::Vector`: Array of momentum coordinates on the grid.
+- `H::Vector{Matrix{<:Real}}`: Husimi function matrices for that state bundle with same grids.
+- `qs::Vector{<:Real}`: Array of position coordinates on the grid.
+- `ps::Vector{<:Real}`: Array of momentum coordinates on the grid.
 """
 function husimi_function(state_bundle::S;b=5.0,c=10.0,w=7.0) where {S<:EigenstateBundle}
     L=state_bundle.billiard.length
@@ -143,8 +150,8 @@ Calculates the Poincaré-Husimi function at point (q, p) in the quantum phase sp
 
 Arguments:
 - `k::T`: Wavenumber of the eigenstate.
-- `s::Vector{T}`: Array of points on the boundary.
-- `u::Vector{T}`: Array of boundary function values.
+- `s::AbstractVector{T}`: Array of points on the boundary.
+- `u::AbstractVector{<:Number}`: Array of boundary function values.
 - `L::T`: Total length of the boundary (maximum(s)).
 - `q::T`: Position coordinate in phase space.
 - `p::T`: Momentum coordinate in phase space.
@@ -152,7 +159,7 @@ Arguments:
 Returns:
 - `T`: Husimi function value at (q, p).
 """
-function husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
+function husimiAtPoint_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,q::T,p::T) where {T<:Real,Num<:Number}
     # original algorithm by Benjamin Batistić in python (https://github.com/clozej/quantum_billiards/blob/crt_public/src/CoreModules/HusimiFunctionsOld.py)
     ss=s.-q
     width=4/sqrt(k)
@@ -170,14 +177,14 @@ function husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) whe
 end
 
 """
-    husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+    husimiOnGrid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
 
 Evaluates the Poincaré-Husimi function on a grid defined by the sizes nx for q and ny for p. The grids are then automatically generated from 0 -> L and -1 -> 1.
 
 Arguments:
 - `k::T`: Wavenumber of the eigenstate.
-- `s::Vector{T}`: Array of points on the boundary.
-- `u::Vector{T}`: Array of boundary function values.
+- `s::AbstractVector{T}`: Array of points on the boundary.
+- `u::AbstractVector{<:Number}`: Array of boundary function values. Can take complex values.
 - `L::T`: Total length of the boundary (maximum(s)).
 - `nx::Integer`: Number of grid points in the position coordinate (q).
 - `ny::Integer`: Number of grid points in the momentum coordinate (p).
@@ -187,7 +194,7 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+function husimiOnGrid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
     qs=range(0.0,stop=L,length=nx)
     ps=range(-1.0,stop=1.0,length=ny)
     H=zeros(T,nx,ny)
@@ -207,21 +214,25 @@ Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we constru
 
 Arguments:
 - `k::T`: Wavenumber of the eigenstate.
-- `s::Vector{T}`: Array of points on the boundary.
-- `u::Vector{T}`: Array of boundary function values.
+- `s::AbstractVector{T}`: Array of points on the boundary.
+- `u::AbstractVector{T}`: Array of boundary function values.
 - `L::T`: Total length of the boundary (maximum(s)).
 - `nx::Integer`: Number of grid points in the position coordinate (q).
 - `ny::Integer`: Number of grid points in the momentum coordinate (p).
+- `full_p::Bool=false`: Whether the boundary function is such that p -> -p symmetry is guaranteed. If so it halves the effort.
 
 Returns:
 - `H::Matrix{T}`: Husimi function matrix of size (ny, nx).
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Integer) where {T<:Real}
+function husimiOnGrid(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer,full_p::Bool=false) where {T<:Real,Num<:Number}
     qs=range(0.0,stop=L,length=nx)
-    ps_pos=range(0.0,stop=1.0,length=ceil(Int,ny/2))
-    ps_full=vcat(-reverse(ps_pos[2:end]),ps_pos)
+    if full_p
+        ps=range(-1.0,1.0,length=ny)
+    else
+        ps=range(0.0,1.0,length=cld(ny,2))
+    end
     ds=vcat(diff(s),L+s[1]-s[end])
     nf=sqrt(sqrt(k/pi))
     width=4/sqrt(k)
@@ -229,7 +240,7 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
     s_ext=vcat(s.-L,s,s.+L)
     u=CircularVector(u)
     ds=CircularVector(ds)
-    Hp=zeros(T,length(ps_pos),nx)
+    Hp=zeros(T,length(ps),nx)
     @fastmath Threads.@threads for iq in 1:nx
         q=qs[iq]+L
         lo=searchsortedfirst(s_ext,q-width)
@@ -240,19 +251,24 @@ function husimiOnGrid(k::T,s::Vector{T},u::Vector{T},L::T,nx::Integer,ny::Intege
         si_win=@. s_win-q
         @inbounds begin
             w=@. nf*exp(-0.5*k*si_win^2)*ds_win
-            for (ip,p) in enumerate(ps_pos)
-                kp=k*p
+            for ip in eachindex(ps) # innermost loop cant have @simd due to sum
+                kp=k*ps[ip]
                 V=kp.*si_win
-                sinbuf=sin.(V)
-                cosbuf=cos.(V)
-                hr=sum(w.*cosbuf.*u_win)
-                hi=-sum(w.*sinbuf.*u_win)
-                Hp[ip,iq]=(hr^2+hi^2)/(two_pi_k)
+                phase=cis.(-V)
+                h=sum(w.*phase.*u_win) # works for real or complex u
+                Hp[ip,iq]=abs2(h)/two_pi_k
             end
         end
     end
-    H=vcat(reverse(Hp;dims=1),Hp[2:end,:])'
-    return H./sum(H),qs,ps_full
+    if full_p
+        H=transpose(Hp)
+        ps=collect(ps)
+    else  # mirror across p=0
+        H=vcat(reverse(Hp;dims=1),Hp[2:end,:])
+        H=transpose(H) 
+        ps=vcat(-reverse(ps)[1:end-1],ps)
+    end
+    return H./sum(H),qs,ps
 end
 
 """
@@ -313,7 +329,7 @@ An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals`
 - `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; c = 10.0, w = 7.0) where {Bi<:AbsBilliard}
+function husimi_functions_from_boundary_functions(ks,us,s_vals,billiard::Bi;c=10.0,w=7.0) where {Bi<:AbsBilliard}
     L=billiard.length
     valid_indices=fill(true,length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
@@ -339,13 +355,13 @@ function husimi_functions_from_boundary_functions(ks, us, s_vals, billiard::Bi; 
 end
 
 """
-    husimi_functions_from_us_and_boundary_points(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi) where {Bi<:AbsBilliard,T<:Real}
+    husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
 
 Efficient way to construct the husimi functions (`Vector{Matrix}`) and their grids from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
 
 # Arguments
 - `ks::Vector{T}`: A vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
+- `vec_us::Vector{Vector{<:Number}}`: A vector of vectors representing the boundary function values. Can take complex values
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: A vector of `BoundaryPoints` objects.
 
 # Returns
@@ -353,7 +369,7 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) and their gri
 - `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_us_and_boundary_points(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_bdPoints::Vector{BoundaryPoints{T}}, billiard::Bi) where {Bi<:AbsBilliard,T<:Real}
+function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
     Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
     return Hs_list,ps_list,qs_list
@@ -366,7 +382,7 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 
 # Arguments
 - `ks::Vector{T}`: A vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
+- `vec_us::Vector{Vector{<:Number}}`: A vector of vectors representing the boundary function values. Cant take complex values
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: A vector of `BoundaryPoints` objects.
 - `billiard::Bi`: The billiard geometry for the total length. Faster than calling `maximum(s)`.
 - `nx::Interger`: The size of linearly spaced q grid.
@@ -402,14 +418,14 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T}, 
 end
 
 """
-    husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_of_s_vals::Vector{Vector{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+    husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_of_s_vals::Vector{Vector{T}},billiard::Bi,nx::Integer,ny::Integer) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
 
 Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the arclength values along with the the boundary functions that corresponds to them.
 
 # Arguments
 - `ks::Vector{T}`: A vector of eigenvalues.
 - `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
-- `vec_of_s_vals::Vector{Vector{T}}`: A vector of arclength values that correspond to the boundary function values.
+- `vec_of_s_vals::Vector{Vector{<:Number}}`: A vector of arclength values that correspond to the boundary function values. Can take complex values.
 - `billiard::Bi`: The billiard geometry for the total length.
 - `nx::Interger`: The size of linearly spaced q grid.
 - `ny::Interger`: The size of linearly spaced p grid.
@@ -419,7 +435,7 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
-function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T}, vec_us::Vector{Vector{T}}, vec_of_s_vals::Vector{Vector{T}}, billiard::Bi, nx::Integer, ny::Integer) where {Bi<:AbsBilliard,T<:Real}
+function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_of_s_vals::Vector{Vector{T}},billiard::Bi,nx::Integer,ny::Integer) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
     L=billiard.length
     valid_indices=fill(true,length(ks))
     Hs_list=Vector{Matrix{T}}(undef,length(ks))
@@ -456,7 +472,7 @@ Saves the husimi functions (the matrices and the qs and ps vector that accompany
 # Returns
 - `Nothing`
 """
-function save_husimi_functions!(Hs::Vector, ps::Vector, qs::Vector; filename::String="husimi.jld2")
+function save_husimi_functions!(Hs::Vector,ps::Vector,qs::Vector;filename::String="husimi.jld2")
     @save filename Hs ps qs
 end
 
