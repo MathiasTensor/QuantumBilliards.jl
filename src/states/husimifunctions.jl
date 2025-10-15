@@ -59,9 +59,11 @@ function husimi_function(k::T,u::AbstractVector{Num},s::AbstractVector{T},L::T;c
     else
         ps=collect(range(0.0,1.0,step=sig/c)) # evaluation points in p coordinate if p -> -p no >1d irreps
     end
-    q_stride=length(s[s.<=sig/c])
+    q_stride=length(s[s.<=sig/c])==0 ? 1 : length(s[s.<=sig/c])
     q_idx=collect(1:q_stride:N)
-    push!(q_idx,N) # add last point
+    if isempty(q_idx) || last(q_idx)!=N
+        push!(q_idx,N) # add last point carefully
+    end
     qs=s[q_idx] # evaluation points in q coordinate
     H=zeros(typeof(k),length(qs),length(ps))
     @fastmath for i in eachindex(ps)
