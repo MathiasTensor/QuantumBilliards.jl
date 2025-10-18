@@ -1,4 +1,3 @@
-using LinearAlgebra, StaticArrays, TimerOutputs
 
 struct BoundaryIntegralMethod{T} <: SweepSolver where {T<:Real}
     dim_scaling_factor::T
