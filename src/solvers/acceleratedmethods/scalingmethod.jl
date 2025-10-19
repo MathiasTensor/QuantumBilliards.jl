@@ -24,27 +24,6 @@ function ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vecto
     return ScalingMethodA(d, bs, samplers, eps(T), min_dim, min_pts)
 end
 
-struct ScalingMethodB{T} <: AbsScalingMethod where {T<:Real}
-    dim_scaling_factor::T
-    pts_scaling_factor::Vector{T}
-    sampler::Vector
-    eps::T
-    min_dim::Int64
-    min_pts::Int64
-end
-
-function ScalingMethodB(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
-    d = dim_scaling_factor
-    bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler = [GaussLegendreNodes()]
-return ScalingMethodB(d, bs, sampler, eps(T), min_dim, min_pts)
-end
-
-function ScalingMethodB(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
-    d = dim_scaling_factor
-    bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    return ScalingMethodB(d, bs, samplers, eps(T), min_dim, min_pts)
-end
 struct BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}}
     w::Vector{T}
@@ -52,7 +31,7 @@ end
 
 function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
     bs, samplers = adjust_scaling_and_samplers(solver, billiard)
-    curves = billiard.fundamental_boundary
+    curves = get_boundary_curves(billiard)
     type = eltype(solver.pts_scaling_factor)
     xy_all = Vector{SVector{2,type}}()
     w_all = Vector{type}()
@@ -67,7 +46,8 @@ function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:A
             
             ds = L*dt #this needs modification!!!
             xy = curve(crv,t)
-            normal = normal_vec(crv,t)
+            g = domain_gradient_vector(curve, xy)
+            normal =  g./norm(g)
             rn = dot.(xy, normal)
             w = ds ./ rn
             append!(xy_all, xy)
@@ -75,40 +55,6 @@ function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:A
         end
     end
     return BoundaryPointsSM{type}(xy_all, w_all)
-end
-
-#generalize for other types
-function construct_matrices_benchmark(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k; parallel_matrix = true) where {Ba<:AbsBasis}
-    to = TimerOutput()
-    symmetries = basis.symmetries 
-    #type = eltype(pts.w)
-    xy, w = pts.xy, pts.w
-    symmetries = basis.symmetries 
-    if ~isnothing(symmetries)
-        n = (length(symmetries)+1.0)
-        w = w.*n
-    end
-    #M =  length(xy)
-    N = basis.dim
-    #basis matrix
-    @timeit to "basis_matrix" B = basis_matrix(basis, k, xy; parallel_matrix)
-    type = eltype(B)
-    F = zeros(type,(N,N))
-    Fk = similar(F)
-    @timeit to "F construction" begin 
-        @timeit to "weights" T = (w.*B) #reused later
-        #@timeit to "copy" Bt = copy(B')
-        @timeit to "product" mul!(F,B',T) #boundary norm matrix
-    end
-    #reuse B
-    @timeit to "dk_matrix" B = dk_matrix(basis,k, xy; parallel_matrix)
-    @timeit to "Fk construction" begin 
-        @timeit to "product" mul!(Fk,B',T) #B is now derivative matrix
-        #symmetrize matrix
-        @timeit to "addition" Fk = Fk+Fk'
-    end
-    print_timer(to)    
-    return F, Fk        
 end
 
 function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k; parallel_matrix = true) where {Ba<:AbsBasis}
@@ -135,43 +81,6 @@ function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPoin
     return F, Fk    
 end
 
-function construct_matrices_benchmark(solver::ScalingMethodB, basis::Ba, pts::BoundaryPointsSM, k; parallel_matrix = true) where {Ba<:AbsBasis}
-    to = TimerOutput()
-    #type = eltype(pts.w)
-    xy, w = pts.xy, pts.w
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        n = (length(symmetries)+1.0)
-        w = w.*n
-    end
-    #M =  length(xy)
-    #basis and gradient matrices
-    @timeit to "basis_and_gradient_matrices" B, dX, dY = basis_and_gradient_matrices(basis, k, xy; parallel_matrix)
-    N = basis.dim
-    type = eltype(B)
-    F = zeros(type,(N,N))
-    Fk = similar(F)
-    @timeit to "F construction" begin 
-        @timeit to "weights" T = (w.*B) #reused later
-        #@timeit to "copy" Bt = copy(B')
-        @timeit to "product" mul!(F,B',T) #boundary norm matrix
-    end
-    #reuse B
-    @timeit to "Fk construction" begin 
-        @timeit to "dilation derivative" x = getindex.(xy,1)
-        @timeit to "dilation derivative" y = getindex.(xy,2)
-        #inplace modifications
-        @timeit to "dilation derivative" dX = x .* dX 
-        @timeit to "dilation derivative" dY = y .* dY
-        #reuse B
-        @timeit to "dilation derivative" B = dX .+ dY
-        @timeit to "product" mul!(Fk,B',T) #B is now derivative matrix
-        #symmetrize matrix
-        @timeit to "addition" Fk = (Fk+Fk') ./ k
-    end
-    print_timer(to)    
-    return F, Fk        
-end
 
 function construct_matrices(solver::ScalingMethodB, basis::Ba, pts::BoundaryPointsSM, k; parallel_matrix = true) where {Ba<:AbsBasis}
     xy = pts.xy
