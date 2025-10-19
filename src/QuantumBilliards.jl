@@ -15,7 +15,6 @@ include("abstracttypes.jl")
 #export AbsBasis
 include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
-include("utils/billiardutils.jl")
 include("utils/typeutils.jl")
 include("utils/gridutils.jl")
 include("utils/symmetry.jl")
