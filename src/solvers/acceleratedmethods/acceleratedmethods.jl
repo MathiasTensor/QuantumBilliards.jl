@@ -5,7 +5,8 @@
 include("scalingmethod.jl")
 
 function solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis, billiard::AbsBilliard, k, dk; parallel_matrix = true)
-    dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+    L = CompositeCurve(get_boundary_curves(billiard)).length
+    dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
     new_basis = resize_basis(basis,billiard,dim,k)
     pts = evaluate_points(solver, billiard, k)
     ks, ts = solve(solver,new_basis,pts,k,dk; parallel_matrix)

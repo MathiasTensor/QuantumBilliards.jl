@@ -1,11 +1,8 @@
-
-include("particularsolutionsmethod.jl")
 include("decompositionmethod.jl")
-include("boundaryintegralmethod.jl")
-
 
 function solve_wavenumber(solver::SweepSolver,basis::AbsBasis, billiard::AbsBilliard, k, dk; parallel_matrix=true)
-    dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+    L = CompositeCurve(get_boundary_curves(billiard)).length
+    dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
     new_basis = resize_basis(basis,billiard,dim,k)
     pts = evaluate_points(solver, billiard, k)
     function f(k)
@@ -18,7 +15,8 @@ end
 
 function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks; parallel_matrix=true)
     k = maximum(ks)
-    dim = max(solver.min_dim,round(Int, billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+    L = CompositeCurve(get_boundary_curves(billiard)).length
+    dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
     new_basis = resize_basis(basis,billiard,dim,k)
     pts = evaluate_points(solver, billiard, k)
     res = similar(ks)

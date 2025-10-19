@@ -31,7 +31,7 @@ end
 
 function evaluate_points(solver::DecompositionMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
     bs, samplers = adjust_scaling_and_samplers(solver, billiard)
-    curves = billiard.fundamental_boundary
+    curves = get_boundary_curves(billiard)
     type = eltype(solver.pts_scaling_factor)
     xy_all = Vector{SVector{2,type}}()
     normal_all = Vector{SVector{2,type}}()
@@ -40,22 +40,23 @@ function evaluate_points(solver::DecompositionMethod, billiard::Bi, k) where {Bi
 
     for i in eachindex(curves)
         crv = curves[i]
-        if typeof(crv) <: AbsRealCurve
-            L = crv.length
-            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
-            sampler = samplers[i]
-            t, dt = sample_points(sampler,N)
-            ds = L*dt #modify this
-            xy = curve(crv,t)
-            normal = normal_vec(crv,t)
-            rn = dot.(xy, normal)
-            w = ds
-            w_n = (w.*rn)./(2.0*k.^2) 
-            append!(xy_all, xy)
-            append!(normal_all, normal)
-            append!(w_all, w)
-            append!(w_n_all, w_n)
-        end
+        
+        L = crv.length
+        N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
+        sampler = samplers[i]
+        t, dt = sample_points(sampler,N)
+        ds = L*dt #modify this
+        xy = curve(crv,t)
+        g = domain_gradient_vector(crv, xy)
+        normal =  g./norm(g)
+        rn = dot.(xy, normal)
+        w = ds
+        w_n = (w.*rn)./(2.0*k.^2) 
+        append!(xy_all, xy)
+        append!(normal_all, normal)
+        append!(w_all, w)
+        append!(w_n_all, w_n)
+        
     end
     return BoundaryPointsDM{type}(xy_all,normal_all, w_all, w_n_all)
 end
