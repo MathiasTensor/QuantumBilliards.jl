@@ -38,21 +38,20 @@ function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:A
     
     for i in eachindex(curves)
         crv = curves[i]
-        if typeof(crv) <: AbsRealCurve
-            L = crv.length
-            N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
-            sampler = samplers[i]
-            t, dt = sample_points(sampler, N)
-            
-            ds = L*dt #this needs modification!!!
-            xy = curve(crv,t)
-            g = domain_gradient_vector(curve, xy)
-            normal =  g./norm(g)
-            rn = dot.(xy, normal)
-            w = ds ./ rn
-            append!(xy_all, xy)
-            append!(w_all, w)
-        end
+        L = crv.length
+        N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
+        sampler = samplers[i]
+        t, dt = sample_points(sampler, N)
+        
+        ds = L*dt #this needs modification!!!
+        xy = curve(crv,t)
+        g = domain_gradient_vector(crv, xy)
+        normal =  g./norm(g)
+        rn = dot.(xy, normal)
+        w = ds ./ rn
+        append!(xy_all, xy)
+        append!(w_all, w)
+        
     end
     return BoundaryPointsSM{type}(xy_all, w_all)
 end
@@ -80,37 +79,6 @@ function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPoin
     Fk = Fk + Fk' 
     return F, Fk    
 end
-
-
-function construct_matrices(solver::ScalingMethodB, basis::Ba, pts::BoundaryPointsSM, k; parallel_matrix = true) where {Ba<:AbsBasis}
-    xy = pts.xy
-    w = pts.w
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        n = (length(symmetries)+1.0)
-        w = w.*n
-    end
-    N = basis.dim
-    #basis matrix
-    B, dX, dY = basis_and_gradient_matrices(basis, k, pts.xy; parallel_matrix)
-    type = eltype(B)
-    F = zeros(type,(N,N))
-    Fk = similar(F)
-    T = (w .* B) #reused later
-    mul!(F,B',T) #boundary norm matrix
-    x = getindex.(xy,1)
-    y = getindex.(xy,2)
-    #inplace modifications
-    dX = x .* dX 
-    dY = y .* dY
-    #reuse B
-    B = dX .+ dY
-    mul!(Fk,B',T) #B is now derivative matrix
-    #symmetrize matrix
-    Fk = (Fk+Fk') ./ k
-    return F, Fk    
-end
-
 
 function sm_results(mu,k)
     ks = k .- 2 ./mu .+ 2/k ./(mu.^2) 

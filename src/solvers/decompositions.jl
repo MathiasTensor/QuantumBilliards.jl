@@ -47,14 +47,8 @@ function adjust_scaling_and_samplers(solver::AbsSolver, billiard::AbsBilliard)
     bs = solver.pts_scaling_factor
     samplers = solver.sampler
     default = samplers[1]
-    n_curves = length(billiard.fundamental_boundary)
-    #=
-    for crv in billiard.fundamental_boundary
-        if typeof(crv) <: AbsRealCurve
-            n_curves += 1
-        end
-    end
-    =#
+    n_curves = length(get_boundary_curves(billiard))
+
     b_min = minimum(bs)
     while length(bs)<n_curves
         push!(bs, b_min)
