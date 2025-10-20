@@ -40,3 +40,42 @@ macro use_threads(args...)
         error("Usage: @use_threads [multithreading=[true|false]] for ...")
     end
 end
+
+"""
+    @blas_threads n expr
+
+Temporarily set BLAS threads to `n` for `expr`, then restore the previous value.
+"""
+macro blas_multi(n,expr)
+    quote
+        _old_blas_threads=LinearAlgebra.BLAS.get_num_threads()
+        LinearAlgebra.BLAS.set_num_threads($(esc(n)))
+        $(esc(expr))
+        LinearAlgebra.BLAS.set_num_threads(_old_blas_threads)    
+    end
+end
+
+"""
+    @blas_1 expr
+
+Temporarily set BLAS threads to `1` for `expr`.
+"""
+macro blas_1(expr)
+    quote
+        LinearAlgebra.BLAS.set_num_threads(1)
+        $(esc(expr))
+    end
+end
+
+"""
+    @blas_multi_then_1 n expr
+
+Set BLAS threads to `n` for `expr`, then set it to 1 afterward.
+"""
+macro blas_multi_then_1(n,expr)
+    quote
+        LinearAlgebra.BLAS.set_num_threads($(esc(n)))
+        $(esc(expr))
+        LinearAlgebra.BLAS.set_num_threads(1)
+    end
+end
