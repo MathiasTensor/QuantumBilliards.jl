@@ -261,53 +261,55 @@ function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,
     e_con=time()
     @info "F & dF/dk dims: $(size(F))"
     start1=time()
-    @warn "Initial condition num. F before regularization: $(cond(F))"
-    @warn "Initial condition num. dF/dk before regularization: $(cond(Fk))"
+    @blas_multi_then_1 MAX_BLAS_THREADS @warn "Initial condition num. F before regularization: $(cond(F))"
+    @blas_multi_then_1 MAX_BLAS_THREADS @warn "Initial condition num. dF/dk before regularization: $(cond(Fk))"
     end1=time()
     A=Symmetric(F)
     B=Symmetric(Fk)
     @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
     s_reg=time()
-    @time d,S=eigen(Symmetric(A))
+    @blas_multi_then_1 MAX_BLAS_THREADS @time d,S=eigen(Symmetric(A))
     e_reg=time()
     @info "Smallest & Largest eigval: $(extrema(d))"
     @info "Nullspace removal with criteria eigval > $(solver.eps*maximum(d))"
     idx=d.>solver.eps*maximum(d)
     @info "Dim of num Nullspace: $(count(!,idx))" # counts the number of falses = dim of nullspace
-    q=1.0./sqrt.(d[idx])
-    C=@view S[:,idx]
-    C_scaled=C.*q'
-    n=size(C_scaled,2)
-    tmp=Matrix{eltype(B)}(undef,size(B,1),n)
-    E=Matrix{eltype(B)}(undef,n,n)
-    mul!(tmp,B,C_scaled)
-    mul!(E,C_scaled',tmp)
-    start2=time()
-    @warn "Final eigenvalue problem with new condition number: $(cond(E)) and reduced dimension $(size(E))"
-    end2=time()
-    s_fin=time()
-    @time mu,Z=eigen(Symmetric(E))
-    e_fin=time()
-    ks,ten=sm_results(mu,k)
-    idx=abs.(ks.-k).<dk
-    ks=ks[idx]
-    ten=ten[idx]
-    Z=Z[:,idx]
-    X=C_scaled*Z #transform into original basis 
-    X=(sqrt.(ten))' .* X # Use the automatic normalization via tension values as described in Barnett's thesis. Maybe also use X = X .* reshape(sqrt.(ten), 1, :) ?
-    p=sortperm(ks)
-    ks,ten,X= ks[p],ten[p],X[:,p]
-    # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
-    X_vectors=[Vector(col) for col in eachcol(X)]
-    end_init=time()
-    total_time=end_init-start_init-(end2-start2)-(end1-start1)
-    @info "Final computation time: $(total_time) s"
-    println("%%%%% SUMMARY %%%%%")
-    println("Percentage of total time (most relevant ones): ")
-    println("Boundary Pts evaluation: $(100*(e_pts-s_pts)/total_time) %")
-    println("F & dF/dk construction: $(100*(e_con-s_con)/total_time) %")
-    println("Nullspace removal: $(100*(e_reg-s_reg)/total_time) %")
-    println("Final eigen problem: $(100*(e_fin-s_fin)/total_time) %")
-    println("%%%%%%%%%%%%%%%%%%%")
-    return StateData(ks,X_vectors,ten)
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        q=1.0./sqrt.(d[idx])
+        C=@view S[:,idx]
+        C_scaled=C.*q'
+        n=size(C_scaled,2)
+        tmp=Matrix{eltype(B)}(undef,size(B,1),n)
+        E=Matrix{eltype(B)}(undef,n,n)
+        mul!(tmp,B,C_scaled)
+        mul!(E,C_scaled',tmp)
+        start2=time()
+        @warn "Final eigenvalue problem with new condition number: $(cond(E)) and reduced dimension $(size(E))"
+        end2=time()
+        s_fin=time()
+        @time mu,Z=eigen(Symmetric(E))
+        e_fin=time()
+        ks,ten=sm_results(mu,k)
+        idx=abs.(ks.-k).<dk
+        ks=ks[idx]
+        ten=ten[idx]
+        Z=Z[:,idx]
+        X=C_scaled*Z #transform into original basis 
+        X=(sqrt.(ten))' .* X # Use the automatic normalization via tension values as described in Barnett's thesis. Maybe also use X = X .* reshape(sqrt.(ten), 1, :) ?
+        p=sortperm(ks)
+        ks,ten,X= ks[p],ten[p],X[:,p]
+        # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
+        X_vectors=[Vector(col) for col in eachcol(X)]
+        end_init=time()
+        total_time=end_init-start_init-(end2-start2)-(end1-start1)
+        @info "Final computation time: $(total_time) s"
+        println("%%%%% SUMMARY %%%%%")
+        println("Percentage of total time (most relevant ones): ")
+        println("Boundary Pts evaluation: $(100*(e_pts-s_pts)/total_time) %")
+        println("F & dF/dk construction: $(100*(e_con-s_con)/total_time) %")
+        println("Nullspace removal: $(100*(e_reg-s_reg)/total_time) %")
+        println("Final eigen problem: $(100*(e_fin-s_fin)/total_time) %")
+        println("%%%%%%%%%%%%%%%%%%%")
+        return StateData(ks,X_vectors,ten)
+    end
 end
