@@ -202,14 +202,16 @@ These represent the basis functions evaluated at the domain's boundary and inter
 function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     pts_bd=pts.xy_boundary
     pts_int=pts.xy_interior
-    B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
-    B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
+    @blas_1 begin
+        B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
+        B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
+    end
     return B,B_int  
 end
 
 function solve_full(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    solution=svdvals(B,B_int)
+    @blas_multi_then_1 MAX_BLAS_THREADS solution=svdvals(B,B_int)
     return minimum(solution)
 end
 
@@ -231,17 +233,19 @@ function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,p
     # tol is adjustable, based on how the R[1,1] scales below with k. Tested up to k=500 it seems fine with 1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
-    F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. Overwrite C since we do not need it anymore
-    r=QuantumBilliards._numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
-    r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
-    Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # triangular view onto R (no copy)
-    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
-    B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
-    r=size(B,2) # number of columns after reduction
-    B_sq=Matrix{T}(undef,r,r) # small matrix B'B preallocate
-    BLAS.syrk!('U','T',one(T),B,zero(T),B_sq) # real matrix so transpose is ok
-    _symmetrize_from_upper!(B_sq) # fill the lower triangle inplace
-    return sqrt(eigmin(Symmetric(B_sq))) # smallest singular value via eigmin(B'B). This is usually faster than using Krylov'S smallest svd since the matrix rank reduction is significant
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. Overwrite C since we do not need it anymore
+        r=QuantumBilliards._numerical_rank_from_F(F,tol) # numerical rank r from packed factors (no copy)
+        r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+        Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # triangular view onto R (no copy)
+        piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+        B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
+        r=size(B,2) # number of columns after reduction
+        B_sq=Matrix{T}(undef,r,r) # small matrix B'B preallocate
+        BLAS.syrk!('U','T',one(T),B,zero(T),B_sq) # real matrix so transpose is ok
+        _symmetrize_from_upper!(B_sq) # fill the lower triangle inplace
+        return sqrt(eigmin(Symmetric(B_sq))) # smallest singular value via eigmin(B'B). This is usually faster than using Krylov'S smallest svd since the matrix rank reduction is significant
+    end
 end
 
 """
@@ -279,16 +283,18 @@ end
 function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     @time "Matrix construction" B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
-    @time "QR" F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick. Overwrite C since we do not need it anymore
-    @time "Finding r" r=_numerical_rank_from_F(F,tol) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
-    r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
-    @time "Triangular view" Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # well-determined r×r block of R as a view (no copy)
-    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
-    println("rank: ",r)
-    println("size decrease: ",size(B,2)-r)
-    @time "/ solve" B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
-    @time "eigmin solve" v=sqrt(real(eigmin(B'*B))) # smallest singular value via eigmin(B'B)
-    return v
+    @blas_multi_then_1 MAX_BLAS_THREADS begin 
+        @time "QR" F=qr!(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick. Overwrite C since we do not need it anymore
+        @time "Finding r" r=_numerical_rank_from_F(F,tol) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima
+        r==0 && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+        @time "Triangular view" Rview=@views UpperTriangular(view(F.factors,1:r,1:r)) # well-determined r×r block of R as a view (no copy)
+        piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+        println("rank: ",r)
+        println("size decrease: ",size(B,2)-r)
+        @time "/ solve" B=@views B[:,piv[1:r]]/Rview # Br = B[:,piv[1:r]] * R^{-1} via triangular solve (stable, no inv) and overwrite B
+        @time "eigmin solve" v=sqrt(real(eigmin(B'*B))) # smallest singular value via eigmin(B'B)
+        return v
+    end
 end
 
 """
@@ -310,20 +316,22 @@ Returns the smallest singular value and the basis expansion coefficient vector f
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
-    T=eltype(B)
-    F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
-    R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
-    piv=F.p # permutation vector piv such that C[:,piv] = Q*R
-    r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima. #TODO could use _numerical_rank_from_F here which was implemented later, but this function is not in the hot loop
-    isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
-    Rr=R[1:r,1:r] # well-determined r×r block on Q
-    Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
-    _,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y. In principle could use Krylov with :SM but this is not called in the bottleneck eigenvalue search, and it actually also fails! The only way to use Krylov is to form Br'*Br and find its smallest eigenvalue (but for large k the smallest singular value could be below machine precision since we get the eigenvalue of Br'*Br and then take sqrt).
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=Vt[idx,:]
-    y=real.(u_mu)
-    chat=zeros(T,size(B,2))
-    chat[piv[1:r]]=Rr\y  # back-substitute: c[piv[1:r]]=Rr^{-1} y; rest are zeros
-    return mu,chat
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        T=eltype(B)
+        F=qr(C,ColumnNorm()) # rank-revealing QR with column pivoting: C*P = Q*R. This is the main trick
+        R=UpperTriangular(F.R) # for fast triangular solves, just in case API changes
+        piv=F.p # permutation vector piv such that C[:,piv] = Q*R
+        r=findlast(i->abs(R[i,i])>tol*abs(R[1,1]),1:min(size(R)...)) # numerical rank r: keep diagonal entries of R down to a relative threshold and discard near-null interior directions that cause spurious minima. #TODO could use _numerical_rank_from_F here which was implemented later, but this function is not in the hot loop
+        isnothing(r) && return (Inf,zeros(T,size(B,2))) # in case degenerate fail
+        Rr=R[1:r,1:r] # well-determined r×r block on Q
+        Br=B[:,piv[1:r]]/Rr # Br = B[:,piv[1:r]] * Rr^{-1} via triangular solve (stable, no inv)
+        _,S,Vt=LAPACK.gesvd!('A','A',Br) # SVD(Br) = U*Diag(S)*transpose(V); the smallest singular value gives the minimum of ‖Br y‖ subject to ‖y‖=1, and its right singular vector is the minimizer y. In principle could use Krylov with :SM but this is not called in the bottleneck eigenvalue search, and it actually also fails! The only way to use Krylov is to form Br'*Br and find its smallest eigenvalue (but for large k the smallest singular value could be below machine precision since we get the eigenvalue of Br'*Br and then take sqrt).
+        idx=findmin(S)[2]
+        mu=S[idx]
+        u_mu=Vt[idx,:]
+        y=real.(u_mu)
+        chat=zeros(T,size(B,2))
+        chat[piv[1:r]]=Rr\y  # back-substitute: c[piv[1:r]]=Rr^{-1} y; rest are zeros
+        return mu,chat
+    end
 end

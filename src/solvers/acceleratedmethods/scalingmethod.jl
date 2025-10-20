@@ -171,13 +171,21 @@ function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::Boun
     xy=pts.xy; w=pts.w; N=basis.dim
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
     @info "construct_matrices_new" k=k N=N M=length(xy) nsym=nsym blas_threads=BLAS.get_num_threads()
-    t=time(); G=basis_matrix(basis,k,xy;multithreaded); dG=dk_matrix(basis,k,xy;multithreaded)
+    t=time()
+    @blas_1 G=basis_matrix(basis,k,xy;multithreaded)
+    @blas_1 dG=dk_matrix(basis,k,xy;multithreaded)
     @info "basis_matrix & dk_matrix" elapsed=(time()-t) sizeG=size(G) sizedG=size(dG)
-    t=time(); _scale_rows_sqrtw!(G,w,nsym)
-    F=Matrix{eltype(G)}(undef,N,N); BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F); _symmetrize_from_upper!(F)
+    t=time()
+    _scale_rows_sqrtw!(G,w,nsym)
+    F=Matrix{eltype(G)}(undef,N,N)
+    @blas_multi MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F)
+    _symmetrize_from_upper!(F)
     @info "F build (√W + SYRK)" elapsed=(time()-t) issym=issymmetric(F)
-    t=time(); _scale_rows_sqrtw!(dG,w,nsym)
-    Fk=Matrix{eltype(G)}(undef,N,N); BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk); _symmetrize_from_upper!(Fk)
+    t=time()
+    _scale_rows_sqrtw!(dG,w,nsym)
+    Fk=Matrix{eltype(G)}(undef,N,N)
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk)
+    _symmetrize_from_upper!(Fk)
     @info "Fk build (√W + SYR2K)" elapsed=(time()-t) issym=issymmetric(Fk)
     @info "total construct_matrices_new" elapsed=(time()-t0)
     return F,Fk
@@ -203,15 +211,15 @@ function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints
     w=pts.w
     N=basis.dim                                 
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)  # symmetry multiplier
-    G=basis_matrix(basis,k,xy;multithreaded) # G is the unweighted basis matrix (M×N)
-    dG=dk_matrix(basis,k,xy;multithreaded) # dG si the unweighted k derivative ∂G/∂k (M×N)
+    @blas_1 G=basis_matrix(basis,k,xy;multithreaded) # G is the unweighted basis matrix (M×N)
+    @blas_1 dG=dk_matrix(basis,k,xy;multithreaded) # dG si the unweighted k derivative ∂G/∂k (M×N)
     _scale_rows_sqrtw!(G,w,nsym) # G <- sqrt(nsym*w) .* G  , inplace row scaling, this is to use BLAS.syrk! trick because W is Diagonal: F = G'*(W*G) = (sqrt(W)*G)'*(sqrt(W)*G)
     F=Matrix{eltype(G)}(undef,N,N) # F: need to allocate N×N real matrix
-    BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F) # F[u ∈ UpperTriangular] = G' * G SYRK, where G is now sqrt(nsym*w).*G
+    @blas_multi MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F) # F[u ∈ UpperTriangular] = G' * G SYRK, where G is now sqrt(nsym*w).*G
     _symmetrize_from_upper!(F) # fill the bottom part of F by mirroring the upper part
     _scale_rows_sqrtw!(dG,w,nsym) # same trick as with F: dG <. sqrt(nsym*w) .* dG
     Fk=Matrix{eltype(G)}(undef,N,N) # again need to allocate N×N real matrix
-    BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk) # Fk[U] = G'*dG + dG'*G  (SYR2K), this is Fk = (dG'*(W*G)) + (G'*(W*dG)) looking at original variable names
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk) # Fk[U] = G'*dG + dG'*G  (SYR2K), this is Fk = (dG'*(W*G)) + (G'*(W*dG)) looking at original variable names
     _symmetrize_from_upper!(Fk) # again mirror the upper part to the bottom part
     return F,Fk   
 end
@@ -250,7 +258,7 @@ For a given reference wavenumber k solves the generalized eigenproblem (internal
 """
 function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps) # the entire eigvals construction is pure BLAS
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
@@ -277,7 +285,7 @@ For a given reference wavenumber k solves the generalized eigenproblem (internal
 - `ten::Vector{<:Real}`: The corresponding tensions.
 """
 function solve(solver::AbsScalingMethod,F,Fk,k,dk)
-    mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
@@ -306,7 +314,7 @@ Solver in a given `dk` interval with reference wavenumber `k` the corresponding 
 """
 function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps) # pure BLAS
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
@@ -317,91 +325,3 @@ function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,
     p=sortperm(ks)
     return  ks[p],ten[p],X[:,p]
 end
-
-# UNUSED FOR NOW - HAS NO FUNCTION
-#=
-struct ScalingMethodB{T} <: AbsScalingMethod where {T<:Real}
-    dim_scaling_factor::T
-    pts_scaling_factor::Vector{T}
-    sampler::Vector
-    eps::T
-    min_dim::Int64
-    min_pts::Int64
-end
-
-function ScalingMethodB(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim=100,min_pts=500) where T<:Real 
-    d=dim_scaling_factor
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler=[GaussLegendreNodes()]
-return ScalingMethodB(d,bs,sampler,eps(T),min_dim,min_pts)
-end
-
-function ScalingMethodB(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{Sam};min_dim=100,min_pts=500) where {T<:Real,Sam<:AbsSampler} 
-    d=dim_scaling_factor
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    return ScalingMethodB(d,bs,samplers,eps(T),min_dim,min_pts)
-end
-
-function construct_matrices_benchmark(solver::ScalingMethodB,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    to=TimerOutput()
-    xy,w=pts.xy,pts.w
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        n=(length(symmetries)+1.0)
-        w=w.*n
-    end
-    #basis and gradient matrices
-    @timeit to "basis_and_gradient_matrices" B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded=multithreaded)
-    N=basis.dim
-    type=eltype(B)
-    F=zeros(type,(N,N))
-    Fk=similar(F)
-    @timeit to "F construction" begin 
-        @timeit to "weights" T=(w.*B) #reused later
-        @timeit to "product" mul!(F,B',T) #boundary norm matrix
-    end
-    @timeit to "Fk construction" begin 
-        @timeit to "dilation derivative" x=getindex.(xy,1)
-        @timeit to "dilation derivative" y=getindex.(xy,2)
-        #inplace modifications
-        @timeit to "dilation derivative" dX=x.*dX 
-        @timeit to "dilation derivative" dY=y.*dY
-        #reuse B
-        @timeit to "dilation derivative" B=dX.+dY #reuse B
-        @timeit to "product" mul!(Fk,B',T) #B is now derivative matrix
-        @timeit to "addition" Fk=(Fk+Fk')./k
-    end
-    print_timer(to)    
-    return F,Fk        
-end
-
-# UNUSED FOR NOW - HAS NO FUNCTION
-function construct_matrices(solver::ScalingMethodB,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    xy=pts.xy
-    w=pts.w
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        n=(length(symmetries)+1.0)
-        w=w.*n
-    end
-    N=basis.dim
-    #basis matrix
-    B,dX,dY=basis_and_gradient_matrices(basis,k,pts.xy;multithreaded=multithreaded)
-    type=eltype(B)
-    F=zeros(type,(N,N))
-    Fk=similar(F)
-    T=(w.*B) #reused later
-    mul!(F,B',T) #boundary norm matrix
-    x=getindex.(xy,1)
-    y=getindex.(xy,2)
-    #inplace modifications
-    dX=x.*dX 
-    dY=y.*dY
-    #reuse B
-    B=dX.+dY
-    mul!(Fk,B',T) #B is now derivative matrix
-    Fk=(Fk+Fk')./k
-    return F,Fk    
-end
-=#
-

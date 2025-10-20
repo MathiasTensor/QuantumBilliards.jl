@@ -538,16 +538,16 @@ This shows need for `QZ` algorithm for ggev3/ggev and filtering of βs.
   - `ddA`: The second derivative wrt `k`.
 """
 function construct_matrices(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::T;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    return fredholm_matrix_with_derivatives(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+    return @blas_1 fredholm_matrix_with_derivatives(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
 end
 
 # Fallback to full ggev if krylov, but this has not been found to happen in testing since krylov is quite stable
 function solve_full(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;use_lapack_raw::Bool=false,kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     if use_lapack_raw
-        λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
+        @blas_multi MAX_BLAS_THREADS λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
     else
-        λ,VR,VL=generalized_eigen_all(A,dA)
+        @blas_multi MAX_BLAS_THREADS λ,VR,VL=generalized_eigen_all(A,dA)
     end
     T=eltype(real.(λ))
     valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
@@ -628,13 +628,13 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
             s_gev=time()
             @info "Doing ggev!"
             @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA))"
-            @time α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(dA))
+            @blas_multi MAX_BLAS_THREADS α,β,VL,VR=LAPACK.ggev!('V','V',copy(A),copy(dA))
             e_gev=time()
         else
             s_gev=time()
             @info "Doing ggev3!"
             @info "Matrix condition numbers: cond(A) = $(cond(A)), cond(dA) = $(cond(dA))"
-            @time α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(dA))
+            @blas_multi MAX_BLAS_THREADS α,β,VL,VR=LAPACK.ggev3!('V','V',copy(A),copy(dA))
             e_gev=time()
         end
         λ=α./β
@@ -653,11 +653,11 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
     else
         @info "Solving Julia's ggev for A, dA"
         s_gev=time()
-        @time F=eigen(A,dA)
+        @blas_multi MAX_BLAS_THREADS F=eigen(A,dA)
         λ=F.values
         VR=F.vectors 
         @info "Solving Julia's ggev for A' and dA' for the left eigenvectors"
-        F_adj=eigen(A',dA') 
+        @blas_multi MAX_BLAS_THREADS F_adj=eigen(A',dA') 
         e_gev=time()
         VL=F_adj.vectors 
         valid_indices=.!isnan.(λ).&.!isinf.(λ)

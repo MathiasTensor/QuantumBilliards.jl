@@ -1,3 +1,6 @@
+
+const MAX_BLAS_THREADS=Sys.CPU_THREADS
+
 """
     use_threads(args...)
     

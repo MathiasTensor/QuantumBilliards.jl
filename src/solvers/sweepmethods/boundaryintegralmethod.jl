@@ -432,12 +432,12 @@ Constructs the Fredholm matrix using the solver, basis, and boundary points for 
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix.
 """
 function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    return fredholm_matrix(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+    return @blas_1 fredholm_matrix(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
 end
 
 function solve_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    mu=svdvals(A) # Arpack's version of svd for computing only the smallest singular value should be better but is non-reentrant
+    @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A) # Arpack's version of svd for computing only the smallest singular value should be better but is non-reentrant
     return mu[end]
 end
 
@@ -475,7 +475,7 @@ function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryP
     e_constr=time()
     @info "SVD..."
     s_svd=time()
-    mu=svdvals(A)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A)
     e_svd=time()
     total_time=(e_svd-s_svd)+(e_constr-s_constr)
     @info "Total solve time for test k: $(total_time)"
@@ -497,7 +497,7 @@ end
 
 function solve_vect_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=Vt[idx,:]

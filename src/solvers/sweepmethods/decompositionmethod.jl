@@ -205,19 +205,20 @@ function construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts:
     t0=time()
     xy=pts.xy;w=pts.w;wn=pts.w_n;N=basis.dim
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
-    t=time();B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
+    t=time()
+    @blas_1 B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
     @info "basis_and_gradient_matrices" elapsed=(time()-t) sizeB=size(B) sizeDX=size(dX) sizeDY=size(dY)
     t=time()
     _scale_rows_sqrtw!(B,w,nsym)
     F=Matrix{eltype(B)}(undef,N,N)
-    BLAS.syrk!('U','T',one(eltype(B)),B,zero(eltype(B)),F)
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(B)),B,zero(eltype(B)),F)
     _symmetrize_from_upper!(F)
     @info "F build (syrk)" elapsed=(time()-t)
     t=time()
     _build_Bn_inplace!(dX,dY,pts.normal)
     _scale_rows_sqrtw!(dX,wn,nsym)
     G=Matrix{eltype(B)}(undef,N,N)
-    BLAS.syrk!('U','T',one(eltype(B)),dX,zero(eltype(B)),G)
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(B)),dX,zero(eltype(B)),G)
     _symmetrize_from_upper!(G)
     @info "G build (normal+syrk)" elapsed=(time()-t)
     @info "construct_matrices_new_INFO total" elapsed=(time()-t0)
@@ -253,18 +254,18 @@ function construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryP
     N=basis.dim
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
     # the alogrithm consctructs B and the normal derivative Bn with syrk to minimize the allocation cost. It does this with the trick of putting sqrt(w_n) into both the rows of B and the rows of B' so that we can use syrk on sqrt(W)*B to get B'*(W*B) without forming W*B as a temporary matrix (posible b/c W is diagonal)
-    B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
+    @blas_1 B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
     # Form F = B'*(W*B) by inplace scaling the rows of B by sqrt(w) (inplace to B) and use syrk to perform the Rank-k update of a symmetric matrix
     _scale_rows_sqrtw!(B,w,nsym) #  trick of putting sqrt(w_n) into the rows of the transposed and original B to get (sqrt(W)*B)' * (sqrt(W)*B) so we can use syrk on sqrt(W)*B
     F=Matrix{eltype(B)}(undef,N,N) # preallocate F
-    BLAS.syrk!('U','T',one(eltype(B)),B,zero(eltype(B)),F) # F[u ∈ upper]+=1.0*B'*B, no need to fill(F,0) since the additive constant in C is 0
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(B)),B,zero(eltype(B)),F) # F[u ∈ upper]+=1.0*B'*B, no need to fill(F,0) since the additive constant in C is 0
     _symmetrize_from_upper!(F) # since we chose "U" in syrk, we need to mirror upper -> lower
     # Build Bn into dX: dX <- nx*dX + ny*dY 
     _build_Bn_inplace!(dX,dY,pts.normal)
     # Form G = Bn'*(Wn*Bn) by first scaling the rows of Bn (dX) by sqrt(w_n) (inplace to dX) and use syrk to perform the Rank-k update of a symmetric matrix
     _scale_rows_sqrtw!(dX,wn,nsym) # like for F form sqrt(Wn*Bn) with row scaling with the same trick of putting sqrt(w_n) into the rows of the transposed and original dX to get (sqrt(Wn)*Bn)' * (sqrt(Wn)*Bn) so we can use syrk on dX
     G=Matrix{eltype(B)}(undef,N,N) # preallocate G, no need to fill with zeros since we use zero(eltype(B)) for the additive constant in syrk
-    BLAS.syrk!('U','T',one(eltype(B)),dX,zero(eltype(B)),G) # G[u ∈ upper]+=1.0*dX'*dX where dX is now sqrt(Wn)*Bn due to inplace scalings above
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(B)),dX,zero(eltype(B)),G) # G[u ∈ upper]+=1.0*dX'*dX where dX is now sqrt(Wn)*Bn due to inplace scalings above
     _symmetrize_from_upper!(G) # since we chose "U" in syrk, we need to mirror upper -> lower
     return F,G    
 end
@@ -289,7 +290,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 """
 function solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
     lam0=mu[end]
     t=1.0/lam0
     return t
@@ -304,7 +305,7 @@ function solve_INFO(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,
     e_constr=time()
     @info "Removing numerical nullspace of ill conditioned F and eigenvalue problem..."
     s_reg=time()
-    @time d,S=eigen(Symmetric(F))
+    @time @blas_multi_then_1 MAX_BLAS_THREADS d,S=eigen(Symmetric(F))
     e_reg=time()
     @info "Smallest & Largest eigval: $(extrema(d))"
     @info "Nullspace removal with criteria eigval > $(solver.eps*maximum(d))"
@@ -316,11 +317,11 @@ function solve_INFO(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,
     n=size(C_scaled,2)
     tmp=Matrix{eltype(G)}(undef,size(G,1),n)
     E=Matrix{eltype(G)}(undef,n,n)
-    mul!(tmp,G,C_scaled)
-    mul!(E,C_scaled',tmp)
+    @blas_multi MAX_BLAS_THREADS mul!(tmp,G,C_scaled)
+    mul!(E,C_scaled',tmp) # still BLAS multy
     @warn "Final eigenvalue problem with new condition number: $(cond(E)) and reduced dimension $(size(E))"
     s_fin=time()
-    @time mu=eigvals(Symmetric(E))
+    @time @blas_multi_then_1 MAX_BLAS_THREADS mu=eigvals(Symmetric(E)) # still BLAS multy  
     e_fin=time()
     lam0=mu[end]
     t=1.0/lam0
@@ -352,7 +353,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 - `t::Float64`: The reciprocal of the largest eigenvalue from `generalized_eigvals(F, G)`, i.e. `1 / λ[end]`.
 """
 function solve(solver::DecompositionMethod,F,G)
-    mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
     lam0=mu[end]
     t=1.0/lam0
     return t
@@ -382,9 +383,9 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 """
 function solve_vect(solver::DecompositionMethod,basis::AbsBasis,pts::BoundaryPointsDM,k;multithreaded::Bool=true)
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(G);eps=solver.eps)
+    @blas_multi MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(G);eps=solver.eps)
     x=Z[:,end]
-    x=C*x #transform into original basis 
+    @blas_multi_then_1 MAX_BLAS_THREADS x=C*x #transform into original basis, BLAS mul
     lam0=mu[end]
     t=1.0/lam0
     return t,x./sqrt(lam0)

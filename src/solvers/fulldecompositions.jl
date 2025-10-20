@@ -32,13 +32,14 @@ function generalized_eigen(A,B;eps=1e-15)
     idx=d.>eps*maximum(d)
     q=1.0./sqrt.(d[idx])
     C=@view S[:,idx]
-    C_scaled=C.*q'
+    C_scaled=similar(C,size(C)...)
+    scale_cols!(C_scaled,C,q)
     n=size(C_scaled,2)
     tmp=Matrix{eltype(B)}(undef,size(B,1),n)
     E=Matrix{eltype(B)}(undef,n,n)
     mul!(tmp,B,C_scaled)
     mul!(E,C_scaled',tmp)
-    mu,Z=eigen(Symmetric(E))
+    mu,Z=eigen!(Symmetric(E))
     return mu,Z,C_scaled
 end
 
@@ -73,13 +74,14 @@ function generalized_eigvals(A,B;eps=1e-15)
     idx=d.>eps*maxd 
     q=1.0./sqrt.(d[idx])
     C=@view S[:,idx]
-    C_scaled=C.*q'
+    C_scaled=similar(C,size(C)...)
+    scale_cols!(C_scaled,C,q)
     n=size(C_scaled,2)
     tmp=Matrix{eltype(B)}(undef,size(B,1),n)  
     E=Matrix{eltype(B)}(undef,n,n) 
     mul!(tmp,B,C_scaled)
     mul!(E,C_scaled',tmp)
-    return eigvals(Symmetric(E))  
+    return eigvals!(Symmetric(E))  
 end
 
 """

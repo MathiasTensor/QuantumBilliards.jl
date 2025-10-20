@@ -114,6 +114,14 @@ end
     return A
 end
 
+@inline function scale_cols!(Y::AbstractMatrix, X::AbstractMatrix, s::AbstractVector)
+    @assert size(X,2)==length(s)
+    @inbounds for j in eachindex(s)
+        @views Y[:,j].=X[:,j].*s[j]
+    end
+    return Y
+end
+
 # sqrt(W) scaling for syrk type problems of the form A'*W*A -> (A'*sqrt(W))*(sqrt(W)*A) -> BLAS.syrk!
 @inline function _scale_rows_sqrtw!(A::AbstractMatrix,w,nsym)
     α=sqrt(one(eltype(w))*nsym)
