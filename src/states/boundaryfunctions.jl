@@ -151,35 +151,6 @@ Low-level function that constructs the boundary function and it's associated arc
 - `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
-    #=
-    vec=state.vec
-    k=state.k
-    k_basis=state.k_basis
-    new_basis=state.basis
-    billiard=state.billiard
-    type=eltype(vec)
-    boundary=billiard.desymmetrized_full_boundary
-    crv_lengths=[crv.length for crv in boundary]
-    sampler=FourierNodes([2,3,5],crv_lengths)
-    L=billiard.length
-    N=max(round(Int,k*L*b/(2*pi)),512)
-    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    dX,dY=gradient_matrices(new_basis,k_basis,pts.xy)
-    nx=getindex.(pts.normal,1)
-    ny=getindex.(pts.normal,2)
-    U=similar(dX)
-    U.=nx.*dX.+ny.*dY
-    u::Vector{type}=U*vec
-    regularize!(u)
-    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
-    pts,u=shift_starting_arclength(billiard,u,pts)
-    w=dot.(pts.normal,pts.xy).*pts.ds
-    integrand=abs2.(u).*w
-    norm=sum(integrand)/(2*k^2)
-    return u,pts.s::Vector{type},norm
-    =#
-
     vec=state.vec
     k=state.k
     k_basis=state.k_basis
@@ -605,32 +576,6 @@ The function internally calls `boundary_coords` to obtain the boundary coordinat
 - Ensure that the `state` object contains the necessary attributes (`vec`, `k`, `k_basis`, `basis`, `billiard`).
 """
 function setup_momentum_density(state::S;b::Float64=5.0) where {S<:AbsState}
-    #=
-    vec=state.vec
-    k=state.k
-    k_basis=state.k_basis
-    new_basis=state.basis
-    billiard=state.billiard
-    type=eltype(vec)
-    boundary=billiard.desymmetrized_full_boundary
-    crv_lengths=[crv.length for crv in boundary]
-    sampler=FourierNodes([2,3,5],crv_lengths)
-    L=billiard.length
-    N=max(round(Int,k*L*b/(2*pi)),512)
-    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    dX,dY=gradient_matrices(new_basis,k_basis,pts.xy)
-    nx=getindex.(pts.normal,1)
-    ny=getindex.(pts.normal,2)
-    dX=nx.*dX
-    dY=ny.*dY
-    U=dX.+dY
-    u=U*vec
-    regularize!(u)
-    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
-    pts,u=shift_starting_arclength(billiard,u,pts)
-    return u,pts,k
-    =#
     vec=state.vec
     k=state.k
     k_basis=state.k_basis
@@ -639,28 +584,28 @@ function setup_momentum_density(state::S;b::Float64=5.0) where {S<:AbsState}
     T=eltype(vec)
     boundary=billiard.desymmetrized_full_boundary
     crv_lengths=(crv.length for crv in boundary)
-    sampler=FourierNodes([2,3,5],collect(crv_lengths))
+    @time "Sampler" sampler=FourierNodes([2,3,5],collect(crv_lengths))
     L=billiard.length
     N=max(round(Int,k*L*b/(2π)),512)
-    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
+    @time "pts calculation" pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
+    @time "grad matrices" @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
     M=size(dX,1)
     tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
     tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
     u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
     # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
-    @blas_multi_then_1 MAX_BLAS_THREADS begin
+    @time "normal derivative" @blas_multi_then_1 MAX_BLAS_THREADS begin
         mul!(tX,dX,vec) # tX = dX*vec
         mul!(tY,dY,vec) # tY = dY*vec
     end
-    @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
+    @time "fusing via fma" @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
         n=pts.normal[i]
         u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
     end
     regularize!(u)
-    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
-    pts,u=shift_starting_arclength(billiard,u,pts)
+    @time "pts simmetrization" pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
+    @time "boundary simetriaztion" u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
+    @time "arclength shift" pts,u=shift_starting_arclength(billiard,u,pts)
     @blas_1 return u,pts,k
 end
 
