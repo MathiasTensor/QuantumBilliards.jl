@@ -142,7 +142,7 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
         crv=curves[i]
         if typeof(crv)<:AbsRealCurve
             L=crv.length
-            N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi)))
+            N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi))) #TODO preallocate cheap for loop for non-dynamic allocation
             sampler=samplers[i]
             if crv isa PolarSegment
                 if sampler isa PolarSampler

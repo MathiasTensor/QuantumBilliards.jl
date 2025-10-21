@@ -219,7 +219,8 @@ function arc_length(polar::L,ts::AbstractArray) where {T<:Real,L<:PolarSegments{
     return collect(arc_length(polar,t) for t in ts)
 end
 
-"""
+#TODO Change!!!
+""" 
     compute_arc_length_constructor(r_func::Function, affine_map::Function, t::T) :: T where T<:Real
 
 Helper to compute total arc length at construction time (from `0` to `t`), using numerical quadrature.
@@ -266,6 +267,7 @@ function compute_area(polar::L) where {T<:Real,L<:PolarSegments{T}}
     return abs(area)  # Take absolute value to ensure positive area
 end
 
+#TODO This is breaking for PSM
 """
     is_inside(polar::PolarSegment{T}, pts::AbstractVector{SVector{2,T}}) :: Vector{Bool} where T<:Real
 

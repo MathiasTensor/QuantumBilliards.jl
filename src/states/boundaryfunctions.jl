@@ -51,8 +51,8 @@ function shift_starting_arclength(billiard::Bi,u::AbstractVector{U},pts::Boundar
         shifted_ds=circshift(pts.ds,-start_index+1)
         # Wrap around the `s` values to maintain continuity
         s_offset=shifted_s[1]
-        shifted_s .= shifted_s .- s_offset  # Subtract the first value to make it zero
-        shifted_s .= mod.(shifted_s,L_effective)  # Wrap around to maintain continuity
+        shifted_s.=shifted_s.-s_offset  # Subtract the first value to make it zero
+        shifted_s.=mod.(shifted_s,L_effective)  # Wrap around to maintain continuity
         pts=BoundaryPoints(shifted_xy,shifted_normal,shifted_s,shifted_ds)
         u=shifted_u
     end
@@ -150,6 +150,7 @@ Low-level function that constructs the boundary function and it's associated arc
 - `pts.s::Vector{<:Real}`: the arclength s values along the boundary.
 - `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
+
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
     vec=state.vec
     k=state.k
@@ -178,6 +179,51 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     norm=sum(integrand)/(2*k^2)
     return u,pts.s::Vector{type},norm
 end
+
+
+#=
+function boundary_function(state::S;b=5.0) where {S<:AbsState}
+    vec=state.vec
+    k=state.k
+    k_basis=state.k_basis
+    new_basis=state.basis
+    billiard=state.billiard
+    T=eltype(vec)
+    boundary=billiard.desymmetrized_full_boundary
+    crv_lengths=(crv.length for crv in boundary)
+    sampler=FourierNodes([2,3,5],collect(crv_lengths))
+    L=billiard.length
+    N=max(round(Int,k*L*b/(2π)),512)
+    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
+    @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
+    M=size(dX,1)
+    tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
+    tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
+    u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
+    # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        mul!(tX,dX,vec) # tX = dX*vec
+        mul!(tY,dY,vec) # tY = dY*vec
+    end
+    @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
+        n=pts.normal[i]
+        u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
+    end
+    regularize!(u)
+    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
+    u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
+    pts,u=shift_starting_arclength(billiard,u,pts)
+    acc=zero(T)
+    @inbounds @simd for i in eachindex(u) # boundary norm: ∫ |u|^2 (n·x) ds / (2k^2) no temps
+        n=pts.normal[i]
+        xy=pts.xy[i]
+        w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i] # w_i = (n·x) ds
+        acc+=w*abs2(u[i]) # accumulate w_i*|u_i|^2
+    end
+    norm=acc/(2*k^2)
+    @blas_1 return u,pts.s::Vector{T},norm
+end
+=#
 
 """
     boundary_function(state::S; b=5.0) where {S<:AbsState}
@@ -300,7 +346,7 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
     pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
     valid_indices=fill(true,length(ks))
     progress=Progress(length(ks);desc="Constructing the u(s)...")
-    Threads.@threads for i in eachindex(ks) 
+    for i in eachindex(ks) 
         try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
             dim=length(vec)

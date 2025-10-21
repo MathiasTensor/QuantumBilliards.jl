@@ -100,7 +100,7 @@ Evaluate points on the boundary of the `billiard` at the given wavenumber `k` wh
 """
 function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
-    curves=billiard.fundamental_boundary
+    curves=billiard.fundamental_boundary #TODO get curves
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     w_all=Vector{type}()
@@ -126,7 +126,7 @@ function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:Abs
                 ds=L.*dt
             end
             xy=curve(crv,t)
-            normal=normal_vec(crv,t)
+            normal=normal_vec(crv,t) # TODO domain_gradient_vector
             rn=dot.(xy,normal)
             w=ds./rn
             append!(xy_all,xy)
