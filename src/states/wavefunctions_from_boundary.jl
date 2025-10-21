@@ -42,11 +42,11 @@ accumulates real/imag parts separately to avoid unnecessary complex multiplies.
 end
 
 """
-    ϕ_float_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
+    ϕ_float32_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
 
 As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
 """
-@inline function ϕ_float_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{T}) where {T<:Real}
+@inline function ϕ_float32_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{T}) where {T<:Real}
     xy=bd.xy; ds=bd.ds
     s=zero(T)
     @inbounds @simd for j in eachindex(u)
@@ -59,11 +59,11 @@ As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
 end
 
 """
-    ϕ_float_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
+    ϕ_float32_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
 
 Float32-Bessel variant for complex `u`. Accumulates real/imag parts separately.
 """
-@inline function ϕ_float_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{Complex{T}}) where {T<:Real}
+@inline function ϕ_float32_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{Complex{T}}) where {T<:Real}
     xy=bd.xy; ds=bd.ds
     sr=zero(T); si=zero(T)
     @inbounds @simd for j in eachindex(u)
@@ -132,7 +132,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_b
                 @inbounds for jj in lo:hi
                     idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
+                    Psi_flat[idx]=ϕ_float32_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
                 end
             end
         end
@@ -203,7 +203,7 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{<:AbstractV
                 @inbounds for jj in lo:hi
                     idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_float_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
+                    Psi_flat[idx]=ϕ_float32_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
                 end
             end
         end

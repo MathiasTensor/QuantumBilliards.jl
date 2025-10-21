@@ -150,7 +150,7 @@ Low-level function that constructs the boundary function and it's associated arc
 - `pts.s::Vector{<:Real}`: the arclength s values along the boundary.
 - `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
-
+#=
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
     vec=state.vec
     k=state.k
@@ -179,9 +179,9 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     norm=sum(integrand)/(2*k^2)
     return u,pts.s::Vector{type},norm
 end
+=#
 
 
-#=
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
     vec=state.vec
     k=state.k
@@ -223,7 +223,7 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     norm=acc/(2*k^2)
     @blas_1 return u,pts.s::Vector{T},norm
 end
-=#
+
 
 """
     boundary_function(state::S; b=5.0) where {S<:AbsState}
