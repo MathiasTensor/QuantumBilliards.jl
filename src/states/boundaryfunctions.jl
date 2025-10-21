@@ -254,7 +254,7 @@ function boundary_function(state_bundle::S;b=5.0) where {S<:EigenstateBundle}
     w=dot.(pts.normal,pts.xy).*pts.ds
     norms=[sum(abs2.(u_bundle[:,i]).* w)/(2*ks[i]^2) for i in eachindex(ks)]
     us::Vector{Vector{type}} = [u for u in eachcol(u_bundle)]
-    return us,pts.s,norms
+    @blas_1 return us,pts.s,norms
 end
 
 ### NEW ### -> for the saving of the boundary functions of StateData construct a StateData wrapper for the Eigenstate version of boundary_function
