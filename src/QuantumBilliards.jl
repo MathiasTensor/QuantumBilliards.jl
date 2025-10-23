@@ -20,7 +20,8 @@ include("utils/typeutils.jl")
 include("utils/gridutils.jl")
 include("utils/symmetry.jl")
 include("utils/macros.jl")
-export real_length, is_inside
+include("utils/billiardutils.jl")
+export make_triangle_and_basis, adapt_basis
 
 
 #basis
