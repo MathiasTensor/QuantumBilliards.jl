@@ -56,7 +56,7 @@ function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:A
     return BoundaryPointsSM{type}(xy_all, w_all)
 end
 
-function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k; parallel_matrix = true) where {Ba<:AbsBasis}
+function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k; multithreaded = true) where {Ba<:AbsBasis}
     xy = pts.xy
     w = pts.w
     symmetries=basis.symmetries
@@ -66,14 +66,14 @@ function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPoin
     end
     N = basis.dim
     #basis matrix
-    B = basis_matrix(basis, k, xy; parallel_matrix)
+    B = basis_matrix(basis, k, xy; multithreaded)
     type = eltype(B)
     F = zeros(type,(N,N))
     Fk = similar(F)
     T = (w .* B) #reused later
     mul!(F,B',T) #boundary norm matrix
     #reuse B
-    B = dk_matrix(basis,k, xy; parallel_matrix)
+    B = dk_matrix(basis,k, xy; multithreaded)
     mul!(Fk,B',T) #B is now derivative matrix
     #symmetrize matrix
     Fk = Fk + Fk' 
@@ -94,8 +94,8 @@ function sm_vects_results(mu,k)
     return ks, ten
 end
 =#
-function solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk; parallel_matrix = true) where {Ba<:AbsBasis}
-    F, Fk = construct_matrices(solver, basis, pts, k; parallel_matrix)
+function solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk; multithreaded = true) where {Ba<:AbsBasis}
+    F, Fk = construct_matrices(solver, basis, pts, k; multithreaded)
     mu = generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
     idx = abs.(ks.-k) .< dk
@@ -116,8 +116,8 @@ function solve(solver::AbsScalingMethod,F,Fk, k, dk)
     return ks[p], ten[p]
 end
 
-function solve_vectors(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk; parallel_matrix = true) where {Ba<:AbsBasis}
-    F, Fk = construct_matrices(solver, basis, pts, k; parallel_matrix)
+function solve_vectors(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk; multithreaded = true) where {Ba<:AbsBasis}
+    F, Fk = construct_matrices(solver, basis, pts, k; multithreaded)
     mu, Z, C = generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
     idx = abs.(ks.-k) .< dk

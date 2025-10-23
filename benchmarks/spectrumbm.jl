@@ -32,7 +32,7 @@ ks, tens =solve_spectrum(acc_solver,basis,billiard,k0, 5*dk)
 
 
 
-@time compute_spectrum(acc_solver,basis,billiard,1000,3100,50; parallel_matrix=true)
+@time compute_spectrum(acc_solver,basis,billiard,1000,3100,50; multithreaded=true)
 results = compute_spectrum(acc_solver,basis,billiard,1000,3100,50)
 
 f = Figure(resolution = (1000,500))

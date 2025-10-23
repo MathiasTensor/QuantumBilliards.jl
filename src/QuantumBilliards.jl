@@ -19,6 +19,7 @@ include("utils/geometryutils.jl")
 include("utils/typeutils.jl")
 include("utils/gridutils.jl")
 include("utils/symmetry.jl")
+include("utils/macros.jl")
 export real_length, is_inside
 
 
@@ -70,6 +71,7 @@ include("states/husimifunctions.jl")
 
 export wavefunction #wavefunction_norm 
 export boundary_function, momentum_function, husimi_function
+
 
 
 end
