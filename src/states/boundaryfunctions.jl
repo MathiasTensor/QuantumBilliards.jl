@@ -17,7 +17,7 @@ function boundary_function(state::S; b=5.0, parallel_matrix = true) where {S<:Ab
         boundary = billiard.full_boundary
         crv_lengths = [crv.length for crv in boundary]
         sampler = FourierNodes([2,3,5],crv_lengths)
-        L = billiard.length
+        L = CompositeCurve(get_boundary_curves(billiard)).length
         N = max(round(Int, k*L*b/(2*pi)), 512)
         pts = boundary_coords(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy; parallel_matrix)
@@ -43,7 +43,7 @@ function boundary_function(state_bundle::S; b=5.0, parallel_matrix = true) where
         boundary = billiard.full_boundary
         crv_lengths = [crv.length for crv in boundary]
         sampler = FourierNodes([2,3,5],crv_lengths)
-        L = billiard.length
+        L = CompositeCurve(get_boundary_curves(billiard)).length
         N = max(round(Int, k_basis*L*b/(2*pi)), 512)
         pts = boundary_coords(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy; parallel_matrix)

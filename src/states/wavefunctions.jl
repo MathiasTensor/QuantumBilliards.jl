@@ -1,5 +1,26 @@
 using StaticArrays
 
+function boundary_limits(curves; grd=1000) 
+    x_bnd = Vector{Any}()
+    y_bnd = Vector{Any}()
+    for crv in curves #names of variables not very nice
+        L = crv.length
+        N_bnd = max(512,round(Int, grd/L))
+        t = range(0.0,1.0, N_bnd)[1:end-1]
+        pts = curve(crv,t)
+        append!(x_bnd, getindex.(pts,1))
+        append!(y_bnd, getindex.(pts,2))
+    end
+    x_bnd[end] = x_bnd[1]
+    y_bnd[end] = y_bnd[1]
+    xlim = extrema(x_bnd)
+    #dx =  xlim[2] - xlim[1]
+    ylim = extrema(y_bnd)
+    #dy =  ylim[2] - ylim[1]
+    return xlim, ylim #,dx,dy
+end
+
+
 #try using strided to optimize this
 function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9, parallel_matrix = true) where {S<:AbsState}
     let vec = state.vec, k = state.k_basis, basis=state.basis, billiard=state.billiard, eps=state.eps #basis is correct size
@@ -31,6 +52,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
                         Psi[pts_mask] .+= vec[i].*basis_fun(basis,i,k,pts)
                     end
                 end
+                Psi[.~pts_mask] = NaN
             else
                 for i in eachindex(vec)
                     if abs(vec[i]) > eps 
@@ -49,9 +71,9 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         #println(new_basis.dim)
         type = eltype(state.vec)
         #try to find a lazy way to do this
-        L = billiard.length
+        L = CompositeCurve(get_boundary_curves(billiard)).length
         
-        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
+        xlim,ylim = boundary_limits(get_boundary_curves(billiard); grd=max(1000,round(Int, k*L*b/(2*pi))))
         dx = xlim[2] - xlim[1]
         dy = ylim[2] - ylim[1]
         nx = max(round(Int, k*dx*b/(2*pi)), 512)
@@ -136,8 +158,8 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
         #println(new_basis.dim)
         type = eltype(state_bundle.X)
         #try to find a lazy way to do this
-        L = billiard.length
-        xlim,ylim = boundary_limits(billiard.fundamental_boundary; grd=max(1000,round(Int, k*L*b/(2*pi))))
+        L = CompositeCurve(get_boundary_curves(billiard)).length
+        xlim,ylim = boundary_limits(get_all_curves(billiard); grd=max(1000,round(Int, k*L*b/(2*pi))))
         dx = xlim[2] - xlim[1]
         dy = ylim[2] - ylim[1]
         nx = max(round(Int, k*dx*b/(2*pi)), 512)

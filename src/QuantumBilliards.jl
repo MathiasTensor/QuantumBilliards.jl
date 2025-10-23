@@ -11,6 +11,7 @@ using BilliardGeometry
 
 #abstract types
 include("abstracttypes.jl")
+export AbsBasis, AbsSolver, AbsPoints
 #utils must be included here so modules work
 #export AbsBasis
 include("utils/coordinatesystems.jl")
