@@ -33,14 +33,15 @@ include("basis/fourierbessel/corneradapted.jl")
 export CornerAdaptedFourierBessel
 export resize_basis, basis_fun, dk_fun, gradient, basis_and_gradient 
 
-
+include("solvers/boundarypoints.jl")
+export BoundaryPoints
 include("solvers/decompositions.jl")
 include("solvers/matrixconstructors.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
-export ScalingMethodA
+export VerginiSaraceno
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
 export evaluate_points, construct_matrices, construct_matrices_benchmark

@@ -14,7 +14,7 @@ Construct a polar coordinate system centered at the `i`-th corner of a triangle 
 """
 function adapt_basis(triangle::T,i::Ti) where {T<:TriangleBilliard,Ti<:Integer}
     N=3
-    c=triangle.corners
+    c=triangle.fundamental_domain.corners
     i0=mod1(i,N)
     i1=mod1(i+1,N)
     a=c[i1]-c[i0]
@@ -41,8 +41,11 @@ Convenience function to create a triangle and construct a corner-adapted Fourier
 function make_triangle_and_basis(gamma,chi; edge_i=1)
     cor=TriangleBilliard(gamma,chi).fundamental_domain.corners
     x0,y0=cor[mod1(edge_i+2,3)]
-    bcs= [QuantumSolverIgnore(),QuantumSolverIgnore(),QuantumSolverIgnore()]
-    re[edge_i]= SpecularReflection() 
+    bcs = Vector{AbsBoundaryCondition}(undef,3)
+    for i in eachindex(bcs)
+        bcs[i] = QuantumSolverIgnore()
+    end
+    bcs[edge_i]= SpecularReflection() 
     tr=TriangleBilliard(gamma,chi;bcs,x0,y0)
     angle,cs,symmetry=adapt_basis(tr,edge_i+2)
     basis=CornerAdaptedFourierBessel(10,angle,cs,symmetry)

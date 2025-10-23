@@ -1,7 +1,5 @@
 
-abstract type AbsScalingMethod <: AcceleratedSolver 
-end
-struct ScalingMethodA{T} <: AbsScalingMethod where {T<:Real}
+struct VerginiSaraceno{T} <: AcceleratedSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
@@ -11,74 +9,64 @@ struct ScalingMethodA{T} <: AbsScalingMethod where {T<:Real}
 end
 
 
-function ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
+function VerginiSaraceno(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     sampler = [GaussLegendreNodes()]
-return ScalingMethodA(d, bs, sampler, eps(T), min_dim, min_pts)
+return VerginiSaraceno(d, bs, sampler, eps(T), min_dim, min_pts)
 end
 
-function ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
+function VerginiSaraceno(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    return ScalingMethodA(d, bs, samplers, eps(T), min_dim, min_pts)
+    return VerginiSaraceno(d, bs, samplers, eps(T), min_dim, min_pts)
 end
 
-struct BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
-    xy::Vector{SVector{2,T}}
-    w::Vector{T}
-end
-
-function evaluate_points(solver::AbsScalingMethod, billiard::Bi, k) where {Bi<:AbsBilliard}
-    bs, samplers = adjust_scaling_and_samplers(solver, billiard)
+function evaluate_points(solver::VerginiSaraceno,billiard::Bi,k) where {Bi<:AbsBilliard}
+    bs,samplers=adjust_scaling_and_samplers(solver,billiard)
     curves = get_boundary_curves(billiard)
     type = eltype(solver.pts_scaling_factor)
-    xy_all = Vector{SVector{2,type}}()
-    w_all = Vector{type}()
-    
+    Ns = _determine_bp_sizes(curves, bs, k)
+    M = length(Ns)
+    xy_all = Vector{Vector{SVector{2,type}}}(undef, M)
+    w_all = Vector{Vector{type}}(undef, M)
+
     for i in eachindex(curves)
         crv = curves[i]
         L = crv.length
-        N = max(solver.min_pts,round(Int, k*L*bs[i]/(2*pi)))
         sampler = samplers[i]
-        t, dt = sample_points(sampler, N)
-        
+        t, dt = sample_points(sampler, Ns[i])
         ds = L*dt #this needs modification!!!
         xy = curve(crv,t)
-        g = domain_gradient_vector(crv, xy)
-        normal =  g./norm(g)
+        normal = domain_gradient_vector(crv, xy)
+        normal .= normal./norm(normal)
         rn = dot.(xy, normal)
         w = ds ./ rn
-        append!(xy_all, xy)
-        append!(w_all, w)
-        
+        xy_all[i] = xy
+        w_all[i] = w       
     end
-    return BoundaryPointsSM{type}(xy_all, w_all)
+    return BoundaryPoints(; xy = vcat(xy_all...),w_vs = vcat(w_all...))
 end
 
-function construct_matrices(solver::ScalingMethodA, basis::Ba, pts::BoundaryPointsSM, k; multithreaded = true) where {Ba<:AbsBasis}
-    xy = pts.xy
-    w = pts.w
-    symmetries=basis.symmetries
-    if ~isnothing(symmetries)
-        n = (length(symmetries)+1.0)
-        w = w.*n
-    end
-    N = basis.dim
-    #basis matrix
-    B = basis_matrix(basis, k, xy; multithreaded)
-    type = eltype(B)
-    F = zeros(type,(N,N))
-    Fk = similar(F)
-    T = (w .* B) #reused later
-    mul!(F,B',T) #boundary norm matrix
-    #reuse B
-    B = dk_matrix(basis,k, xy; multithreaded)
-    mul!(Fk,B',T) #B is now derivative matrix
-    #symmetrize matrix
-    Fk = Fk + Fk' 
-    return F, Fk    
+
+function construct_matrices(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k; multithreaded = true) where {Ba<:AbsBasis}
+    xy=pts.xy
+    w=pts.w_vs
+    N=basis.dim                                 
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)  # symmetry multiplier
+    @blas_1 G=basis_matrix(basis,k,xy;multithreaded) # G is the unweighted basis matrix (M×N)
+    @blas_1 dG=dk_matrix(basis,k,xy;multithreaded) # dG si the unweighted k derivative ∂G/∂k (M×N)
+    _scale_rows_sqrtw!(G,w,nsym) # G <- sqrt(nsym*w) .* G  , inplace row scaling, this is to use BLAS.syrk! trick because W is Diagonal: F = G'*(W*G) = (sqrt(W)*G)'*(sqrt(W)*G)
+    F=Matrix{eltype(G)}(undef,N,N) # F: need to allocate N×N real matrix
+    @blas_multi MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F) # F[u ∈ UpperTriangular] = G' * G SYRK, where G is now sqrt(nsym*w).*G
+    _symmetrize_from_upper!(F) # fill the bottom part of F by mirroring the upper part
+    _scale_rows_sqrtw!(dG,w,nsym) # same trick as with F: dG <. sqrt(nsym*w) .* dG
+    Fk=Matrix{eltype(G)}(undef,N,N) # again need to allocate N×N real matrix
+    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk) # Fk[U] = G'*dG + dG'*G  (SYR2K), this is Fk = (dG'*(W*G)) + (G'*(W*dG)) looking at original variable names
+    _symmetrize_from_upper!(Fk) # again mirror the upper part to the bottom part
+    return F,Fk   
 end
+
 
 function sm_results(mu,k)
     ks = k .- 2 ./mu .+ 2/k ./(mu.^2) 
@@ -94,7 +82,7 @@ function sm_vects_results(mu,k)
     return ks, ten
 end
 =#
-function solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk; multithreaded = true) where {Ba<:AbsBasis}
+function solve(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded = true) where {Ba<:AbsBasis}
     F, Fk = construct_matrices(solver, basis, pts, k; multithreaded)
     mu = generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
@@ -105,9 +93,9 @@ function solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk
     return ks[p], ten[p]
 end
 
-function solve(solver::AbsScalingMethod,F,Fk, k, dk)
+function solve(solver::VerginiSaraceno,F,Fk, k, dk)
     #F, Fk = construct_matrices(solver, basis, pts, k)
-    mu = generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu = generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
     idx = abs.(ks.-k) .< dk
     ks = ks[idx]
@@ -116,9 +104,9 @@ function solve(solver::AbsScalingMethod,F,Fk, k, dk)
     return ks[p], ten[p]
 end
 
-function solve_vectors(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k, dk; multithreaded = true) where {Ba<:AbsBasis}
+function solve_vectors(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded = true) where {Ba<:AbsBasis}
     F, Fk = construct_matrices(solver, basis, pts, k; multithreaded)
-    mu, Z, C = generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    @blas_multi_then_1 MAX_BLAS_THREADS mu, Z, C = generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
     idx = abs.(ks.-k) .< dk
     ks = ks[idx]
