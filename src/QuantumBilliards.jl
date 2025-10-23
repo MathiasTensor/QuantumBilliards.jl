@@ -85,6 +85,7 @@ export GeneralizedSinai, make_quarter_generalized_sinai, make_full_boundary_gene
 
 include("solvers/fulldecompositions.jl")
 include("solvers/matrixconstructors.jl")
+include("states/gradients.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
 include("solvers/acceleratedmethods/scalingmethod.jl")

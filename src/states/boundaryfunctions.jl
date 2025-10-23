@@ -163,21 +163,19 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     L=billiard.length
     N=max(round(Int,k*L*b/(2π)),512)
     pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    @fastmath begin
-        @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
-        M=size(dX,1)
-        tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
-        tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
-        u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
-        # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
-        @blas_multi_then_1 MAX_BLAS_THREADS begin
-            mul!(tX,dX,vec) # tX = dX*vec
-            mul!(tY,dY,vec) # tY = dY*vec
-        end
-        @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
-            n=pts.normal[i]
-            u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
-        end
+    @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
+    M=size(dX,1)
+    tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
+    tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
+    u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
+    # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        mul!(tX,dX,vec) # tX = dX*vec
+        mul!(tY,dY,vec) # tY = dY*vec
+    end
+    @fastmath @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
+        n=pts.normal[i]
+        u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
     end
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
@@ -223,23 +221,21 @@ function boundary_function(state_bundle::S;b=5.0) where {S<:EigenstateBundle}
     L=billiard.length
     N=max(round(Int,k_basis*L*b/(2*pi)),512)
     pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    @fastmath begin
-        @blas_1 dX,dY=gradient_matrices(basis,k_basis,pts.xy)
-        Ne=size(X,2)
-        tX=similar(dX,Complex{T},size(dX,1),Ne)
-        tY=similar(dY,Complex{T},size(dY,1),Ne) 
-        @blas_multi_then_1 MAX_BLAS_THREADS begin
-            mul!(tX,dX,X)   # dX*X GEMM
-            mul!(tY,dY,X)   # dY*X GEMM
-        end
-        U=similar(tX)  # U .= nx .* (dX*X) + ny .* (dY*X) 
-        nx=getindex.(pts.normal,1)
-        ny=getindex.(pts.normal,2)
-        @inbounds for i in axes(U,1)
-            nxi=nx[i];nyi=ny[i]
-            @simd for j in axes(U,2)
-                U[i,j]=muladd(nyi,tY[i,j],nxi*tX[i,j])
-            end
+    @blas_1 dX,dY=gradient_matrices(basis,k_basis,pts.xy)
+    Ne=size(X,2)
+    tX=similar(dX,Complex{T},size(dX,1),Ne)
+    tY=similar(dY,Complex{T},size(dY,1),Ne) 
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        mul!(tX,dX,X)   # dX*X GEMM
+        mul!(tY,dY,X)   # dY*X GEMM
+    end
+    U=similar(tX)  # U .= nx .* (dX*X) + ny .* (dY*X) 
+    nx=getindex.(pts.normal,1)
+    ny=getindex.(pts.normal,2)
+    @fastmath @inbounds for i in axes(U,1)
+        nxi=nx[i];nyi=ny[i]
+        @simd for j in axes(U,2)
+            U[i,j]=muladd(nyi,tY[i,j],nxi*tX[i,j])
         end
     end
     @inbounds for j in 1:Ne
@@ -606,21 +602,19 @@ function setup_momentum_density(state::S;b::Float64=5.0) where {S<:AbsState}
     L=billiard.length
     N=max(round(Int,k*L*b/(2π)),512)
     pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    @fastmath begin
-        @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
-        M=size(dX,1)
-        tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
-        tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
-        u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
-        # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
-        @blas_multi_then_1 MAX_BLAS_THREADS begin
-            mul!(tX,dX,vec) # tX = dX*vec
-            mul!(tY,dY,vec) # tY = dY*vec
-        end
-        @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
-            n=pts.normal[i]
-            u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
-        end
+    @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
+    M=size(dX,1)
+    tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
+    tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
+    u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
+    # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        mul!(tX,dX,vec) # tX = dX*vec
+        mul!(tY,dY,vec) # tY = dY*vec
+    end
+    @fastmath @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
+        n=pts.normal[i]
+        u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
     end
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
