@@ -2,7 +2,7 @@
 #include("../../utils/billiardutils.jl")
 #include("decompositions.jl")
 #include("../samplers.jl")
-include("scalingmethod.jl")
+include("verginisaraceno.jl")
 
 function solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis, billiard::AbsBilliard, k, dk; multithreaded = true)
     L = CompositeCurve(get_boundary_curves(billiard)).length

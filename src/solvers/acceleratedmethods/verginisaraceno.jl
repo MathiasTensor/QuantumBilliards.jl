@@ -1,5 +1,5 @@
 
-struct VerginiSaraceno{T} <: AcceleratedSolver where {T<:Real}
+struct VerginiSaracenoSolver{T} <: AcceleratedSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
@@ -9,20 +9,20 @@ struct VerginiSaraceno{T} <: AcceleratedSolver where {T<:Real}
 end
 
 
-function VerginiSaraceno(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
+function VerginiSaracenoSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     sampler = [GaussLegendreNodes()]
-return VerginiSaraceno(d, bs, sampler, eps(T), min_dim, min_pts)
+return VerginiSaracenoSolver(d, bs, sampler, eps(T), min_dim, min_pts)
 end
 
-function VerginiSaraceno(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
+function VerginiSaracenoSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
-    return VerginiSaraceno(d, bs, samplers, eps(T), min_dim, min_pts)
+    return VerginiSaracenoSolver(d, bs, samplers, eps(T), min_dim, min_pts)
 end
 
-function evaluate_points(solver::VerginiSaraceno,billiard::Bi,k) where {Bi<:AbsBilliard}
+function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
     curves = get_boundary_curves(billiard)
     type = eltype(solver.pts_scaling_factor)
@@ -49,7 +49,7 @@ function evaluate_points(solver::VerginiSaraceno,billiard::Bi,k) where {Bi<:AbsB
 end
 
 
-function construct_matrices(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k; multithreaded = true) where {Ba<:AbsBasis}
+function construct_matrices(solver::VerginiSaracenoSolver, basis::Ba, pts::BoundaryPoints, k; multithreaded = true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w_vs
     N=basis.dim                                 
@@ -82,7 +82,7 @@ function sm_vects_results(mu,k)
     return ks, ten
 end
 =#
-function solve(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded = true) where {Ba<:AbsBasis}
+function solve(solver::VerginiSaracenoSolver, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded = true) where {Ba<:AbsBasis}
     F, Fk = construct_matrices(solver, basis, pts, k; multithreaded)
     mu = generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
@@ -93,7 +93,7 @@ function solve(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k, dk; m
     return ks[p], ten[p]
 end
 
-function solve(solver::VerginiSaraceno,F,Fk, k, dk)
+function solve(solver::VerginiSaracenoSolver,F,Fk, k, dk)
     #F, Fk = construct_matrices(solver, basis, pts, k)
     @blas_multi_then_1 MAX_BLAS_THREADS mu = generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)
@@ -104,7 +104,7 @@ function solve(solver::VerginiSaraceno,F,Fk, k, dk)
     return ks[p], ten[p]
 end
 
-function solve_vectors(solver::VerginiSaraceno, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded = true) where {Ba<:AbsBasis}
+function solve_vectors(solver::VerginiSaracenoSolver, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded = true) where {Ba<:AbsBasis}
     F, Fk = construct_matrices(solver, basis, pts, k; multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS mu, Z, C = generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps)
     ks, ten = sm_results(mu,k)

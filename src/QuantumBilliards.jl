@@ -4,7 +4,7 @@ using CoordinateTransformations, Rotations
 using LinearAlgebra, StaticArrays, CircularArrays
 using Optim
 using FFTW
-using TimerOutputs
+using Logging, TimerOutputs
 using Random, Distributions
 using BilliardGeometry
 #using Reexport
