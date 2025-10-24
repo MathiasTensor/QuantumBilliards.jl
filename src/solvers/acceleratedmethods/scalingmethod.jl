@@ -45,7 +45,7 @@ function evaluate_points(solver::VerginiSaraceno,billiard::Bi,k) where {Bi<:AbsB
         xy_all[i] = xy
         w_all[i] = w       
     end
-    return BoundaryPoints(; xy = vcat(xy_all...),w_vs = vcat(w_all...))
+    return BoundaryPoints(vcat(xy_all...);w_vs = vcat(w_all...))
 end
 
 
