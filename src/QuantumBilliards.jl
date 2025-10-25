@@ -41,7 +41,7 @@ export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
-export VerginiSaraceno
+export VerginiSaracenoSolver, print_benchmark_info
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
 export evaluate_points, construct_matrices, construct_matrices_benchmark

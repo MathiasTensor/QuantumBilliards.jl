@@ -1,5 +1,5 @@
 
-struct VerginiSaracenoSolver{T} <: AcceleratedSolver where {T<:Real}
+mutable struct VerginiSaracenoSolver{T} <: AcceleratedSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
@@ -8,17 +8,18 @@ struct VerginiSaracenoSolver{T} <: AcceleratedSolver where {T<:Real}
     min_pts::Int64
 end
 
-
 function VerginiSaracenoSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     sampler = [GaussLegendreNodes()]
+    timer = TimerOutput()
 return VerginiSaracenoSolver(d, bs, sampler, eps(T), min_dim, min_pts)
 end
 
 function VerginiSaracenoSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
+    timer = TimerOutput()
     return VerginiSaracenoSolver(d, bs, samplers, eps(T), min_dim, min_pts)
 end
 
@@ -49,24 +50,51 @@ function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k) where {Bi
 end
 
 
-function construct_matrices(solver::VerginiSaracenoSolver, basis::Ba, pts::BoundaryPoints, k; multithreaded = true) where {Ba<:AbsBasis}
-    xy=pts.xy
-    w=pts.w_vs
-    N=basis.dim                                 
-    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)  # symmetry multiplier
-    @blas_1 G=basis_matrix(basis,k,xy;multithreaded) # G is the unweighted basis matrix (M×N)
-    @blas_1 dG=dk_matrix(basis,k,xy;multithreaded) # dG si the unweighted k derivative ∂G/∂k (M×N)
-    _scale_rows_sqrtw!(G,w,nsym) # G <- sqrt(nsym*w) .* G  , inplace row scaling, this is to use BLAS.syrk! trick because W is Diagonal: F = G'*(W*G) = (sqrt(W)*G)'*(sqrt(W)*G)
-    F=Matrix{eltype(G)}(undef,N,N) # F: need to allocate N×N real matrix
-    @blas_multi MAX_BLAS_THREADS BLAS.syrk!('U','T',one(eltype(G)),G,zero(eltype(G)),F) # F[u ∈ UpperTriangular] = G' * G SYRK, where G is now sqrt(nsym*w).*G
-    _symmetrize_from_upper!(F) # fill the bottom part of F by mirroring the upper part
-    _scale_rows_sqrtw!(dG,w,nsym) # same trick as with F: dG <. sqrt(nsym*w) .* dG
-    Fk=Matrix{eltype(G)}(undef,N,N) # again need to allocate N×N real matrix
-    @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syr2k!('U','T',one(eltype(G)),G,dG,zero(eltype(G)),Fk) # Fk[U] = G'*dG + dG'*G  (SYR2K), this is Fk = (dG'*(W*G)) + (G'*(W*dG)) looking at original variable names
-    _symmetrize_from_upper!(Fk) # again mirror the upper part to the bottom part
-    return F,Fk   
+# Your function with timing and debug info
+function construct_matrices(solver::VerginiSaracenoSolver, basis::Ba, pts::BoundaryPoints, k; 
+                            multithreaded = true) where {Ba<:AbsBasis}    
+    @timeit_debug "construct_matrices" begin
+        xy = pts.xy
+        w = pts.w_vs
+        N = basis.dim
+        M = length(xy)
+        nsym = one(eltype(w)) * (isnothing(basis.symmetries) ? 1 : length(basis.symmetries) + 1)
+        
+        @debug "Matrix construction started" N M k nsym
+        
+        # Compute basis matrix G
+        @timeit_debug "basis_matrix" begin
+            G = basis_matrix(basis, k, xy; multithreaded)
+        end
+        @debug "Basis matrix computed" size=size(G) 
+        
+        # Compute derivative matrix dG
+        @timeit_debug "dk_matrix" begin
+            dG = dk_matrix(basis, k, xy; multithreaded)
+        end
+        @debug "Derivative matrix computed" size=size(dG)
+        
+        # Compute F = G' * W * G
+        @timeit_debug "compute_F" begin
+            _scale_rows_sqrtw!(G, w, nsym)
+            F = Matrix{eltype(G)}(undef, N, N)
+            @blas_multi MAX_BLAS_THREADS BLAS.syrk!('U', 'T', one(eltype(G)), G, zero(eltype(G)), F)
+            _symmetrize_from_upper!(F)
+        end
+        @debug "F computed" size=size(F)
+        
+        # Compute Fk = G' * W * dG + dG' * W * G
+        @timeit_debug "compute_Fk" begin
+            _scale_rows_sqrtw!(dG, w, nsym)
+            Fk = Matrix{eltype(G)}(undef, N, N)
+            @blas_multi_then_1 MAX_BLAS_THREADS BLAS.syr2k!('U', 'T', one(eltype(G)), G, dG, zero(eltype(G)), Fk)
+            _symmetrize_from_upper!(Fk)
+        end
+        @debug "Fk computed" size=size(Fk) 
+        
+        return F, Fk
+    end
 end
-
 
 function sm_results(mu,k)
     ks = k .- 2 ./mu .+ 2/k ./(mu.^2) 
