@@ -2,6 +2,7 @@ struct BoundaryPoints{T<:Real}
     xy::Vector{SVector{2,T}}
     normal::Vector{SVector{2,T}}
     kappa::Vector{T}
+    s::Vector{T}
     ds::Vector{T}
     rdotn::Vector{T}
     w_vs::Vector{T}
@@ -25,13 +26,14 @@ end
 # 2. Convenience constructor to infer T from xy
 function BoundaryPoints(xy::Vector{SVector{2,T}}; 
                         normal=SVector{2,T}[], 
-                        kappa=T[], 
+                        kappa=T[],
+                        s=T[], 
                         ds=T[], 
                         rdotn=T[], 
                         w_vs=T[], 
                         w_dm=T[], 
                         xy_int=SVector{2,T}[]) where T<:Real
-    return BoundaryPoints{T}(xy, normal, kappa, ds, rdotn, w_vs, w_dm, xy_int)
+    return BoundaryPoints{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int)
 end
 
 # 3. Add useful methods
