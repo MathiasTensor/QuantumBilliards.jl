@@ -14,6 +14,8 @@ include("utils/typeutils.jl")
 include("utils/gridutils.jl")
 include("utils/symmetry.jl")
 include("utils/boyd.jl")
+include("utils/chebyshev_hankel.jl")
+include("utils/chebyshev_DLP.jl")
 export companion_matrix, interval_roots_boyd, subdivide_intervals
 export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
@@ -99,8 +101,6 @@ include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
 include("solvers/sweepmethods/cfie.jl")
 include("solvers/krylovsolvers.jl")
-include("utils/chebyshev_hankel.jl")
-include("utils/chebyshev_DLP.jl")
 export assemble_fredholm_matrices!,compute_kernel_matrices_DLP_chebyshev!
 export _cheb_clenshaw,plan_h1x,panel_and_geom,precompute_geom,panel_indices,eval_h1x!,eval_h1x,eval_h1!,eval_h1
 include("solvers/acceleratedmethods/beyn.jl")
