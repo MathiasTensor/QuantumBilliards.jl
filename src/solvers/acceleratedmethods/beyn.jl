@@ -472,7 +472,6 @@ end
 #   - r::Int: number of expected eigenvalues inside + some padding to their number
 #   - svd_tol::Real: Tolerance for the SVD truncation
 #   - rng::AbstractRNG: Random number generator
-#   - bthreads::Int: Number of BLAS threads to use
 #   - use_chebyshev::Bool: Whether to use the Chebyshev Hankel evaluation or the standard one (for low k one can use no interpolations)
 #   - n_panels::Int: Number of Chebyshev panels to use (try 2000 for k≈3000 and rmax≈4.0)
 #   - M::Int: Degree of Chebyshev polynomials to use (try 200 for k≈3000 and rmax≈4.0)
@@ -484,7 +483,7 @@ end
 #   1) Forms A0 = (1/2πi)∮ T(z)^{-1} V dz and A1 = (1/2πi)∮ z T(z)^{-1} V dz via LU solves.
 #   2) Rank rk determined by Σ[i] ≥ svd_tol (strict absolute threshold).
 #   3) If rk == 0, return empty matrices to signal “no roots in window”.
-function construct_B_matrix_two_phase(solver::BoundaryIntegralMethod,pts::BoundaryPointsBIM,N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),bthreads::Int=Sys.CPU_THREADS,use_chebyshev=true,n_panels=2000,M=300,info::Bool=false,kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {T<:Real}
+function construct_B_matrix_two_phase(solver::BoundaryIntegralMethod,pts::BoundaryPointsBIM,N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_chebyshev=true,n_panels=2000,M=300,info::Bool=false,kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {T<:Real}
     θ=range(zero(T),TWO_PI;length=nq+1)[1:end-1] # remove last point
     ej=cis.(θ) # unit circle points
     zj=k0.+R.*ej # contour points
@@ -513,21 +512,21 @@ function construct_B_matrix_two_phase(solver::BoundaryIntegralMethod,pts::Bounda
         end
     end
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.
-    @blas_multi bthreads F1=lu!(Tbufs1[1];check=false) # just to get the type
+    @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
-    @blas_multi_then_1 bthreads @inbounds for j in 2:nq # LU factor all T(zj) matrices
+    @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq # LU factor all T(zj) matrices
         Fs[j]=lu!(Tbufs1[j];check=false)
     end
     xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:) # vector views for BLAS.axpy! operations, to avoid allocations in the loop via reshaping the matrices each time in the loop
     begin
-        @blas_multi_then_1 bthreads @inbounds for j in eachindex(zj)
+        @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)
             ldiv!(X,Fs[j],V) # make efficient inverse
             BLAS.axpy!(wj[j],xv,a0v) # A0 += wj[j] * X
             BLAS.axpy!(wj[j]*zj[j],xv,a1v) # A1 += wj[j] * zj[j] * X
         end
     end
-    @blas_multi_then_1 bthreads U,Σ,W=svd!(A0;full=false) # thin SVD of A0, revealing rank. The singular values > svd_tol correspond to eigenvalues. If all sv > svd_tol then maybe increase r (expected eigenvalue count) or reduce R (contour around k0), but if increasing r careful with nq. Check ref. section 3 eq. 22
+    @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false) # thin SVD of A0, revealing rank. The singular values > svd_tol correspond to eigenvalues. If all sv > svd_tol then maybe increase r (expected eigenvalue count) or reduce R (contour around k0), but if increasing r careful with nq. Check ref. section 3 eq. 22
     rk=count(>=(svd_tol),Σ) # filter out those that correspond to actual eigenvalues
     if rk==0 # if nothing found early return
         return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
@@ -537,7 +536,7 @@ function construct_B_matrix_two_phase(solver::BoundaryIntegralMethod,pts::Bounda
         while r_tmp<N # do again the ldiv + axpy accumulation with larger r until some sv < svd_tol. This does not require another Fredholm matrix construction since the same T(zj) can be used for larger r.
             V,X,A0,A1=beyn_buffer_matrices(T,N,r_tmp,rng)
             xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
-            @blas_multi_then_1 bthreads @inbounds for j in eachindex(zj)  
+            @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)  
                 ldiv!(X,Fs[j],V)
                 BLAS.axpy!(wj[j],xv,a0v)
                 BLAS.axpy!(wj[j]*zj[j],xv,a1v)
@@ -554,12 +553,12 @@ function construct_B_matrix_two_phase(solver::BoundaryIntegralMethod,pts::Bounda
     Σk=@view Σ[1:rk] # take the relevant ones corresponding to eigenvalues as in Integral algorithm 1 on p14 of ref
     # form B = adjoint(U) * A1 * W * Σ^{-1} as in the reference, p14, integral algorithm 1
     tmp=Matrix{Complex{T}}(undef,N,rk)
-    @blas_multi_then_1 bthreads mul!(tmp,A1,Wk)  # tmp := A1 * Wk, not weighted by inverse diagonal Σk
+    @blas_multi_then_1 MAX_BLAS_THREADS mul!(tmp,A1,Wk)  # tmp := A1 * Wk, not weighted by inverse diagonal Σk
     @inbounds @simd for j in 1:rk # right-divide by diagonal Σk
         @views tmp[:,j]./=Σk[j]
     end
     B=Matrix{Complex{T}}(undef,rk,rk)
-    @blas_multi_then_1 bthreads mul!(B,adjoint(Uk),tmp) # B := Uk'*tmp, the final step
+    @blas_multi_then_1 MAX_BLAS_THREADS mul!(B,adjoint(Uk),tmp) # B := Uk'*tmp, the final step
     return B,Uk
 end
 
@@ -585,7 +584,6 @@ end
 #   - rng              : random generator
 #   - use_chebyshev    : use Chebyshev Hankel evaluation (fast at large k)
 #   - n_panels, M      : Chebyshev grid parameters
-#   - bthreads::Int    : BLAS thread count
 #   - kernel_fun       : kernel function to use (:default for DLP)
 #   - multithreaded    : whether to use multithreading in kernel assembly
 #
@@ -600,14 +598,14 @@ end
 # Notes:
 #   - This function does not check residuals or remove spurious λ.
 #     Use `residual_and_norm_select` afterwards for filtering.
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels=2000,M=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels=2000,M=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=length(pts.xy)
     B,Uk=construct_B_matrix_two_phase(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,kernel_fun=kernel_fun) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k,dk,pts
     end
-    @blas_multi_then_1 bthreads λ,Y=eigen!(B) # small dense eigendecomposition to get eigenvalues λ are the eigenvalues and v(λ) are the eigenvectors
+    @blas_multi_then_1 MAX_BLAS_THREADS λ,Y=eigen!(B) # small dense eigendecomposition to get eigenvalues λ are the eigenvalues and v(λ) are the eigenvectors
     # Now form only relevant cols of Φ = U * Y since A0 = U Σ W*, we have A0 * W Σ^{-1} Y = U Y. Each column is now an eigenvector of of T(λ)v(λ) = 0. This is the second layer potential boundary operator now!
     #println("Eigenvalues found in window k0=$(k), R=$(dk): ",λ)
     return λ,Uk,Y,k,dk,pts
@@ -622,14 +620,14 @@ end
 #     them in statistics or physical interpretation.
 # -------------------------------------------------------------
 
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=length(pts.xy)
     B,Uk=construct_B_matrix_two_phase(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,kernel_fun=kernel_fun) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k,dk,pts
     end
-    @blas_multi_then_1 bthreads λ,Y=eigen!(B) # small dense eigendecomposition to get eigenvalues λ are the eigenvalues and v(λ) are the eigenvectors
+    @blas_multi_then_1 MAX_BLAS_THREADS λ,Y=eigen!(B) # small dense eigendecomposition to get eigenvalues λ are the eigenvalues and v(λ) are the eigenvectors
     # Now form only relevant cols of Φ = U * Y since A0 = U Σ W*, we have A0 * W Σ^{-1} Y = U Y. Each column is now an eigenvector of of T(λ)v(λ) = 0. This is the second layer potential boundary operator now!
     #println("Eigenvalues found in window k0=$(k), R=$(dk): ",λ)
     return λ
@@ -653,13 +651,12 @@ end
 #   - rng::AbstractRNG: Random number generator
 #   - use_adaptive_svd_tol::Bool: Whether to use adaptive svd tolerance based on maximum singular value
 #   - auto_discard_spurious::Bool: Whether to automatically discard spurious eigenvalues based on residuals
-#   - bthreads::Int: Number of BLAS threads to use
 #
 # Outputs:
 #   - λ::Vector{Complex{T}}: The eigenvalues found inside the contour
 #   - Phi::Matrix{Complex{T}}: The eigenvectors corresponding to the eigenvalues
 #   - tens::Vector{T}: The residuals ||A(k)v(k)||
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,bthreads::Int=Sys.CPU_THREADS) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     Tbuf=zeros(Complex{T},N,N)  # workspace allocation for contour additions
     fun=(A,z)->fredholm_matrix_complex_k!(A,pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun) # function to build fredholm matrix at complex k, this version does not use chebyshev hankel evaluations
@@ -671,7 +668,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
             @inbounds for j in eachindex(zj)
                 fill!(Tbuf,zero(eltype(Tbuf)))
                 @blas_1 fun(Tbuf,zj[j])
-                @blas_multi bthreads F=lu!(Tbuf,check=false)
+                @blas_multi MAX_BLAS_THREADS F=lu!(Tbuf,check=false)
                 ldiv!(X,F,V)
                 α0=wj[j];α1=wj[j]*zj[j]
                 BLAS.axpy!(α0,vec(X),vec(A0))
@@ -679,7 +676,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
             end
         end
     end
-    @time "SVD" @blas_multi_then_1 bthreads U,Σ,W=svd!(A0;full=false)
+    @time "SVD" @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     println("Singular values (<1e-10 tail inspection): ",Σ)
     rk=0
     svd_tol=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
@@ -696,13 +693,13 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     Wk=@view W[:,1:rk]
     Σk=@view Σ[1:rk]
     tmp=Matrix{Complex{T}}(undef,N,rk)
-    @blas_multi bthreads mul!(tmp,A1,Wk)
+    @blas_multi MAX_BLAS_THREADS mul!(tmp,A1,Wk)
     @inbounds for j in 1:rk
         @views tmp[:,j]./=Σk[j]
     end
     B=Matrix{Complex{T}}(undef,rk,rk)
-    @blas_multi bthreads mul!(B,adjoint(Uk),tmp)
-    @time "eigen" @blas_multi_then_1 bthreads ev=eigen!(B)
+    @blas_multi MAX_BLAS_THREADS mul!(B,adjoint(Uk),tmp)
+    @time "eigen" @blas_multi_then_1 MAX_BLAS_THREADS ev=eigen!(B)
     λ=ev.values;Y=ev.vectors;Phi=Uk*Y
     keep=trues(length(λ))
     tens=Vector{T}()
@@ -720,7 +717,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
             end
             fill!(Tbuf,zero(eltype(Tbuf))) 
             fun(Tbuf,λ[j])
-            @blas_multi_then_1 bthreads mul!(ybuf,Tbuf,@view(Phi[:,j]))
+            @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,Tbuf,@view(Phi[:,j]))
             @info "k=$((λ[j])) ||A(k)v(k)|| = $(norm(ybuf)) < $res_tol"
             ybuf_norm=norm(ybuf)
             if auto_discard_spurious
@@ -771,7 +768,6 @@ end
 #   - matnorm::Symbol=:one: Matrix norm to use for normalization (:one, :two, :inf)
 #   - epss::Real=1e-15: Small value to avoid division by zero
 #   - auto_discard_spurious::Bool=true: Whether to automatically discard spurious eigenvalues based on residuals
-#   - bthreads::Int=Sys.CPU_THREADS: Number of BLAS threads to use
 #   - collect_logs::Bool=false: Whether to collect logs of the selection process
 #   - use_chebyshev::Bool=true: Whether to use Chebyshev Hankel evaluations
 #   - n_panels::Int=2000: Number of Chebyshev panels
@@ -782,7 +778,7 @@ end
 #   - tens::Vector{T}: Residual norms ||Aφ||
 #   - tensN::Vector{T}: Normalized residuals
 #   - logs::Vector{String}: Logs of the selection process (if collect_logs is true)
-function residual_and_norm_select(solver::BoundaryIntegralMethod,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing};kernel_fun::Union{Symbol,Function}=:default,res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels=2000,M=300,multithreaded::Bool=true) where {T<:Real}
+function residual_and_norm_select(solver::BoundaryIntegralMethod,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing};kernel_fun::Union{Symbol,Function}=:default,res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels=2000,M=300,multithreaded::Bool=true) where {T<:Real}
     N,rk=size(Uk) # N: size of Fredholm matrices, rk: number of eigenpairs
     Φtmp=Matrix{Complex{T}}(undef,N,rk)  # buffer for Φ_j = Uk*Y[:,j]
     y=Vector{Complex{T}}(undef,N) # temporary vector for Aφ
@@ -804,13 +800,13 @@ function residual_and_norm_select(solver::BoundaryIntegralMethod,λ::AbstractVec
     @inbounds for j in 1:rk
         λj=λ[j]
         abs(λj-k0)>R && (tens[j]=NaN;tensN[j]=NaN;continue)  # skip out-of-contour eigenvalues
-        @blas_multi_then_1 bthreads mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j])) # Φ_j = Uk * Y[:,j]
+        @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j])) # Φ_j = Uk * Y[:,j]
         if !use_chebyshev
             fill!(A_buf, zero(eltype(A_buf))) # reset buffer
             fredholm_matrix_complex_k!(A_buf,pts,symmetry,complex(λj);multithreaded=multithreaded,kernel_fun=kernel_fun) # construct fredholm matrix at λj without chebyshev
-            @blas_multi_then_1 bthreads mul!(y,A_buf,@view(Φtmp[:,j]))  # y = A(k)Φ
+            @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))  # y = A(k)Φ
         else
-            @blas_multi_then_1 bthreads mul!(y,Tbufs[j],@view(Φtmp[:,j]))  # y = A(k)Φ with chebyshev, same as above but using precomputed Tbufs
+            @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,Tbufs[j],@view(Φtmp[:,j]))  # y = A(k)Φ with chebyshev, same as above but using precomputed Tbufs
         end
         rj=norm(y) # residual norm ||Aφ||
         tens[j]=rj # store residual norm
@@ -861,7 +857,6 @@ end
 #   - spurious::Bool=true: Whether to discard spurious eigenvalues
 #   - multithreaded_matrix::Bool=false: Whether to use multithreading in matrix assembly
 #   - use_adaptive_svd_tol::Bool=false: Whether to use adaptive svd tolerance based on maximum singular value
-#   - bthreads::Int=Sys.CPU_THREADS: Number of BLAS threads to use
 #   - use_chebyshev::Bool=true: Whether to use Chebyshev Hankel evaluations
 #   - n_panels::Int=2000: Number of Chebyshev panels, does not affect performance much
 #   - M::Int=300: Degree of Chebyshev polynomials, does not affect performance much
@@ -878,7 +873,7 @@ end
 #   • nq should not be tiny (spectral conv. on analytic boundaries, but use ≥15).
 #   • r is the probe rank for Beyn (auto-bumped internally if saturated).
 #   • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
-function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,fundamental::Bool=true,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels=2000,M=300,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,fundamental::Bool=true,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels=2000,M=300,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "weyl windows" intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     kL2,kR2=intervals[end-1]
     kL3,kR3=intervals[end]
@@ -907,12 +902,12 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     end
     nq≤15 && @error "Do not use less than 15 contour nodes"
     @time "solve_INFO last disk" begin # solve last window to check the residuals and imaginary parts of the eigenvalues. They should be around 1e-5 to get all valid statistics, so b might need to increase to achieve it
-        _=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,bthreads=bthreads,kernel_fun=kernel_fun)
+        _=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,kernel_fun=kernel_fun)
     end
     p=Progress(length(k0),1)
     @time "Beyn pass (all disks)" begin
         @inbounds for i in eachindex(k0)
-            λ,Uk,Y,κ,δ,pts=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,bthreads=bthreads,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,kernel_fun=kernel_fun)
+            λ,Uk,Y,κ,δ,pts=solve_vect(solver,basis,all_pts_bim[i],complex(k0[i]),R[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,kernel_fun=kernel_fun)
             λs[i]=λ;Uks[i]=Uk;Ys[i]=Y;k0s[i]=κ;Rs[i]=δ
             all_pts_bim[i]=pts 
             next!(p)
@@ -928,7 +923,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     @time "Residuals/tensions pass" begin
         @inbounds @showprogress desc="Computing residuals and tensions" for i in eachindex(k0)
             isempty(λs[i]) && (ks_list[i]=T[];tens_list[i]=T[];tensN_list[i]=T[];phi_list[i]=Matrix{Complex{T}}(undef,length(all_pts_bim[i].xy),0); continue)
-            idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts_bim[i],solver.symmetry;kernel_fun=:default,res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,bthreads=bthreads,collect_logs=false,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M)
+            idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts_bim[i],solver.symmetry;kernel_fun=:default,res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M)
             ks_list[i]=real.(λs[i][idx]) # selected real eigen-wavenumbers
             tens_list[i]=traw # raw residual norms
             tensN_list[i]=tnorm # normalized tensions
