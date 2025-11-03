@@ -840,7 +840,7 @@ end
 #
 # Inputs:
 #   - solver::BoundaryIntegralMethod: The BIM solver object
-#   - basis::Ba: The basis type
+#   - basis::Ba: The basis type ->  use AbstractHankelBasis(), exists for compatibility reasons
 #   - billiard::Bi: The billiard domain
 #   - k1::T: Lower bound of the wavenumber interval
 #   - k2::T: Upper bound of the wavenumber interval
