@@ -452,7 +452,7 @@ end
 #   - X::Matrix{Complex{T}}: Buffer matrix for the solution
 #   - A0::Matrix{Complex{T}}: Buffer matrix for the first moment
 #   - A1::Matrix{Complex{T}}: Buffer matrix for the second moment
-function beyn_buffer_matrices(::Type{T},N::Int64,r::Int64,rng::G) where {T<:Real,G<:AbstractRNG}
+function beyn_buffer_matrices(::Type{T},N::Int64,r::Int64,rng::G) where {T<:Real,G}
     V=randn(rng,Complex{T},N,r) # best leave as Complex even for Real problems to avoid issues in ldiv!
     X=similar(V)
     A0=zeros(Complex{T},N,r)
@@ -600,7 +600,7 @@ end
 # Notes:
 #   - This function does not check residuals or remove spurious λ.
 #     Use `residual_and_norm_select` afterwards for filtering.
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng::AbstractRNG=MersenneTwister(0),auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels=2000,M=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels=2000,M=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=length(pts.xy)
     B,Uk=construct_B_matrix_two_phase(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,kernel_fun=kernel_fun) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
@@ -622,7 +622,7 @@ end
 #     them in statistics or physical interpretation.
 # -------------------------------------------------------------
 
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng::AbstractRNG=MersenneTwister(0),auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k::Complex{T},dk::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=length(pts.xy)
     B,Uk=construct_B_matrix_two_phase(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,kernel_fun=kernel_fun) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
