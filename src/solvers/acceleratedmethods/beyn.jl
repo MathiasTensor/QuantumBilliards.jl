@@ -500,12 +500,12 @@ function construct_B_matrix(solver::BoundaryIntegralMethod,pts::BoundaryPointsBI
         V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     end
     if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
-        @blas_1 @time begin
+        @blas_1 @time "DLP chebyshev" begin
             compute_kernel_matrices_DLP_chebyshev!(Tbufs1,pts,solver.symmetry,plans;multithreaded=multithreaded,kernel_fun=kernel_fun)   
             assemble_fredholm_matrices!(Tbufs1,pts)
         end
     else
-        @blas_1 begin # use standard hankel evaluations for matrix construction. This is faster for small k values where chebyshev interpolation overhead is not worth it.
+        @blas_1 @time "DLP" begin # use standard hankel evaluations for matrix construction. This is faster for small k values where chebyshev interpolation overhead is not worth it.
             @inbounds for j in eachindex(zj)
                 fredholm_matrix_complex_k!(Tbufs1[j],pts,solver.symmetry,zj[j],multithreaded=multithreaded,kernel_fun=kernel_fun) 
             end
