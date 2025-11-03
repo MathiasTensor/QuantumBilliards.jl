@@ -452,7 +452,7 @@ end
 #   - X::Matrix{Complex{T}}: Buffer matrix for the solution
 #   - A0::Matrix{Complex{T}}: Buffer matrix for the first moment
 #   - A1::Matrix{Complex{T}}: Buffer matrix for the second moment
-function beyn_buffer_matrices(::Type{T},N::Int64,r::Int64,rng::G) where {T<:Real,G<:AbstractRNG}
+function beyn_buffer_matrices(::Type{T},N::Int64,r::Int64,rng::G) where {T<:Real,G}
     V=randn(rng,Complex{T},N,r) # best leave as Complex even for Real problems to avoid issues in ldiv!
     X=similar(V)
     A0=zeros(Complex{T},N,r)
