@@ -860,6 +860,8 @@ end
 #   - use_chebyshev::Bool=true: Whether to use Chebyshev Hankel evaluations
 #   - n_panels::Int=2000: Number of Chebyshev panels, does not affect performance much
 #   - M::Int=300: Degree of Chebyshev polynomials, does not affect performance much
+#   - kernel_fun::Union{Symbol,Function}=:default: Kernel function to use (:default for DLP)
+#   - do_INFO::Bool=true: Whether to run a diagnostic Beyn solve on the last window
 #
 # Returns:
 #   ks      :: Vector{T}                   – kept real wavenumbers Re(λ)
@@ -873,7 +875,7 @@ end
 #   • nq should not be tiny (spectral conv. on analytic boundaries, but use ≥15).
 #   • r is the probe rank for Beyn (auto-bumped internally if saturated).
 #   • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
-function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,fundamental::Bool=true,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels=2000,M=300,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,fundamental::Bool=true,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels=2000,M=300,kernel_fun::Union{Symbol,Function}=:default,do_INFO::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "weyl windows" intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     kL2,kR2=intervals[end-1]
     kL3,kR3=intervals[end]
@@ -901,8 +903,10 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
         Rs=Vector{T}(undef,length(k0))
     end
     nq≤15 && @error "Do not use less than 15 contour nodes"
-    @time "solve_INFO last disk" begin # solve last window to check the residuals and imaginary parts of the eigenvalues. They should be around 1e-5 to get all valid statistics, so b might need to increase to achieve it
-        _=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,kernel_fun=kernel_fun)
+    if do_INFO
+            @time "solve_INFO last disk" begin # solve last window to check the residuals and imaginary parts of the eigenvalues. They should be around 1e-5 to get all valid statistics, so b might need to increase to achieve it
+            _=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,kernel_fun=kernel_fun)
+        end
     end
     p=Progress(length(k0),1)
     @time "Beyn pass (all disks)" begin
