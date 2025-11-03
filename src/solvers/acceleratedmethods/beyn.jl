@@ -515,12 +515,12 @@ function construct_B_matrix(solver::BoundaryIntegralMethod,pts::BoundaryPointsBI
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
-    @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq # LU factor all T(zj) matrices
+    @blas_multi_then_1 MAX_BLAS_THREADS @time "lu!" @inbounds for j in 2:nq # LU factor all T(zj) matrices
         Fs[j]=lu!(Tbufs1[j];check=false)
     end
     xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:) # vector views for BLAS.axpy! operations, to avoid allocations in the loop via reshaping the matrices each time in the loop
     begin
-        @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)
+        @blas_multi_then_1 MAX_BLAS_THREADS @time "ldiv! + axpy!" @inbounds for j in eachindex(zj)
             ldiv!(X,Fs[j],V) # make efficient inverse
             BLAS.axpy!(wj[j],xv,a0v) # A0 += wj[j] * X
             BLAS.axpy!(wj[j]*zj[j],xv,a1v) # A1 += wj[j] * zj[j] * X
