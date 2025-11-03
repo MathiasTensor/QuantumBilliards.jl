@@ -878,7 +878,7 @@ end
 #   • nq should not be tiny (spectral conv. on analytic boundaries, but use ≥15).
 #   • r is the probe rank for Beyn (auto-bumped internally if saturated).
 #   • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
-function compute_spectrum_two_phase(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,fundamental::Bool=true,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels=2000,M=300,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,fundamental::Bool=true,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,bthreads::Int=Sys.CPU_THREADS,use_chebyshev::Bool=true,n_panels=2000,M=300,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "weyl windows" intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     kL2,kR2=intervals[end-1]
     kL3,kR3=intervals[end]
