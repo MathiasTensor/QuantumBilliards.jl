@@ -48,3 +48,28 @@ function _determine_bp_sizes(curves, bs, k)
     end
     return Ns
 end
+
+function get_boundary_curves_with_ignored(domain::D) where D<:AbsSimpleDomain
+    is_outer(crv) = (typeof(crv.bc) <: SpecularReflection || typeof(crv.bc) <: QuantumSolverIgnore)
+    boundary = filter(is_outer, domain.boundary)
+    return connect_curves(boundary)
+end
+
+function get_boundary_curves_with_ignored(domain::D) where D<:AbsSimpleDomain
+    is_outer(crv) = (typeof(crv.bc) <: SpecularReflection || typeof(crv.bc) <: QuantumSolverIgnore)
+    boundary = filter(is_outer, domain.boundary)
+    return connect_curves(boundary)
+end
+
+function get_boundary_curves_with_ignored(composite_domain::D) where D<:AbsCompositeDomain
+    boundary = Vector{AbsCurve}()
+    for domain in composite_domain.subdomains
+        subboundary = get_boundary_curves(domain)
+        append!(boundary,subboundary)
+    end
+    return connect_curves(boundary)
+end
+
+function get_boundary_curves_with_ignored(billiard::B) where B<:AbsBilliard
+    return get_boundary_curves_with_ignored(billiard.fundamental_domain)
+end
