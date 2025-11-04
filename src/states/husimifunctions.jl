@@ -210,7 +210,7 @@ function husimiOnGrid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L:
 end
 
 """
-    husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, nx::Integer, ny::Integer) where {T<:Real}
+    husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, qs::AbstractVector{T}, ps::AbstractVector{T}; full_p::Bool=false) where {T<:Real}
 
 Evaluates the Poincaré-Husimi function on a grid using vectorized operations in a thread-safe manner since only a single thread work on a column of the Husimi matrix.
 Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we construct only the p=0 to p=1 matrix and then via symmetry automatically obtain the p=-1 to p=0 also.
@@ -220,8 +220,8 @@ Arguments:
 - `s::AbstractVector{T}`: Array of points on the boundary.
 - `u::AbstractVector{Num}`: Array of boundary function values. Can be complex.
 - `L::T`: Total length of the boundary (maximum(s)).
-- `nx::Integer`: Number of grid points in the position coordinate (q).
-- `ny::Integer`: Number of grid points in the momentum coordinate (p).
+- `qs::AbstractVector{T}`: Array of q values used in the grid.
+- `ps::AbstractVector{T}`: Array of p values used in the grid.
 - `full_p::Bool=false`: Whether the boundary function is such that p -> -p symmetry is guaranteed. If so it halves the effort.
 
 Returns:
@@ -229,49 +229,73 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real,Num<:Number}
-    qs=range(0.0,stop=L,length=nx)
-    if full_p
-        ps=range(-1.0,1.0,length=ny)
-    else
-        ps=range(0.0,1.0,length=cld(ny,2))
+function husimiOnGrid_fast(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,qs::AbstractVector{T},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+    n=length(s)
+    ds=similar(s)
+    @inbounds for j=1:n-1 # build piecewise boundary spacings
+        ds[j]=s[j+1]-s[j]
     end
-    ds=vcat(diff(s),L+s[1]-s[end])
-    nf=sqrt(sqrt(k/pi))
-    width=4/sqrt(k)
-    two_pi_k=2*pi*k
-    s_ext=vcat(s.-L,s,s.+L)
-    u=CircularVector(u)
-    ds=CircularVector(ds)
-    Hp=zeros(T,length(ps),nx)
-    @fastmath Threads.@threads for iq in 1:nx
-        q=qs[iq]+L
-        lo=searchsortedfirst(s_ext,q-width)
-        hi=searchsortedlast(s_ext,q+width)
-        @views s_win=s_ext[lo:hi]
-        @views u_win=u[lo:hi]
-        @views ds_win=ds[lo:hi]
-        si_win=@. s_win-q
-        @inbounds begin
-            w=@. nf*exp(-0.5*k*si_win^2)*ds_win
-            for ip in eachindex(ps) # innermost loop cant have @simd due to sum
-                kp=k*ps[ip]
-                V=kp.*si_win
-                phase=cis.(-V)
-                h=sum(w.*phase.*u_win) # works for real or complex u
-                Hp[ip,iq]=abs2(h)/two_pi_k
+    ds[n]=L+s[1]-s[end] # make sure the last segment wraps around
+    s_ext=vcat(s.-L,s,s.+L) # concatenate shifted copies so that any window centered at q can be sliced as a contiguous subarray without computing indices modulo L -> no CircularVector needed
+    u_ext=vcat(u,u,u) # same for u
+    ds_ext=vcat(ds,ds,ds) # same for ds
+    nx=length(qs) # number of q grid points
+    ny=length(ps) # number of p grid points
+    Hp=zeros(T,ny,nx) # preallocate Husimi matrix (for p x q)
+    nf=sqrt(sqrt(k/pi)) # normalization factor
+    width=4/sqrt(k) # Gaussian width (±4σ)
+    # temporary vectors that will grow to the current window size and be reused for each q
+    c_re=Vector{T}(undef,0) # buffer for real parts of coefficients
+    c_im=Vector{T}(undef,0) # buffer for imaginary parts of coefficients
+    si=Vector{T}(undef,0) # buffer for s differences (shifted arclengths (s−q))
+    @inbounds for iq in 1:nx
+        q=qs[iq]+L # Add +L so that the center q sits in the middle copy of s_ext for slicing
+        lo=searchsortedfirst(s_ext,q-width) # find left index of window
+        hi=searchsortedlast(s_ext,q+width) # find right index of window
+        W=max(0,hi-lo+1) # size of the window indexwise
+        if length(c_re)<W # binary-search the indices in s_ext that fall within [q−width, q+width] and resize buffers if needed (since they are reused for each iq)
+            resize!(c_re,W)
+            resize!(c_im,W)
+            resize!(si,W)
+        end
+        @inbounds for t=0:W-1 # for each point in the window calculate weights and shifted arclengths
+            j=lo+t # the index in the window (shifted)
+            sdiff=s_ext[j]-q # shifted arclength with the above index
+            si[t+1]=sdiff # store shifted arclength
+            w=nf*exp(-0.5*k*sdiff*sdiff)*ds_ext[j] # gaussian weight with quadrature 
+            uj=u_ext[j] # corresponding boundary function value in that window
+            if uj isa Real # hack to avoid complex multiplications when u is real-valued
+                c_re[t+1]=w*uj # real part of summand
+                c_im[t+1]=zero(T) 
+            else
+                c_re[t+1]=w*real(uj) # real & imag part of summand separately
+                c_im[t+1]=w*imag(uj)
+            end 
+        end
+        @inbounds for ip in 1:ny # for each p grid point compute Husimi value at (q,p) using the precomputed buffers for this iq index
+            kp=k*ps[ip] # k*p
+            sracc=zero(T);siacc=zero(T) # real & imag accumulators for the sum
+            @inbounds for t=1:W # sum over the window
+                θ=kp*si[t] 
+                s_,c_=sincos(θ) # s_=sin,c_=cos, the cheap way to compute these
+                # (a+ib)(cos-i*sin)=(a*c+b*s)+i(b*c-a*s) to avoid complex multiplications temporaries
+                a=c_re[t];b=c_im[t]
+                sracc+=a*c_+b*s_
+                siacc+=b*c_-a*s_
             end
+            # Final Husimi value at (q,p) is the squared modulus of the sum, scaled by 1/(2πk) (removed scaling and just normalize in the end)
+            Hp[ip,iq]=(sracc*sracc+siacc*siacc)
         end
     end
     if full_p
-        H=transpose(Hp)
-        ps=collect(ps)
-    else  # mirror across p=0
-        H=vcat(reverse(Hp;dims=1),Hp[2:end,:])
-        H=transpose(H) 
-        ps=vcat(-reverse(ps)[1:end-1],ps)
+        H=permutedims(Hp)
+        ps_out=collect(ps)
+    else
+        H=vcat(reverse(Hp;dims=1),Hp[2:end,:])|>permutedims
+        ps_out=vcat(-reverse(ps)[1:end-1],ps)
     end
-    return H./sum(H),qs,ps
+    H./=sum(H) # normalize it in the end since the 1/(2πk) normalization does not work well in practice with finite grids
+    return H,qs,ps_out
 end
 
 """
@@ -400,28 +424,26 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{AbstractVector{Num}}, vec_bdPoints::AbstractVector{BoundaryPoints{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
     L=billiard.length
-    valid_indices=fill(true,length(ks))
-    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list=Vector{Matrix{T}}(undef,length(ks))
-    H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny,full_p=full_p)
-    Hs_list[1]=H
-    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
-    for i in eachindex(ks)[2:end]
+    qs=range(zero(T),stop=L,length=nx)
+    ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
+    vec_s=[bd.s for bd in vec_bdPoints]
+    Hs=Vector{Matrix{T}}(undef,length(ks))
+    ok=trues(length(ks))
+    pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
+    Threads.@threads for i in eachindex(ks)
         try
-            H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny,full_p=full_p)
-            Hs_list[i]=H
+            H,_,_=husimiOnGrid_fast(ks[i],vec_s[i],vec_us[i],L,qs,ps;full_p=full_p)
+            Hs[i]=H
         catch e
-            println("Error while constructing Husimi for k = $(ks[i]): $e")
-            valid_indices[i]=false
+            @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
+            ok[i]=false
         end
-        next!(p)
+        next!(pbar)
     end
-    Hs_list=Hs_list[valid_indices]
-    ps=collect(ps)
-    qs=collect(qs)
-    return Hs_list,ps,qs
+    Hs=Hs[ok]
+    return Hs,collect(ps),collect(qs)
 end
 
 """
@@ -443,27 +465,27 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
-function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_of_s_vals::Vector{Vector{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{AbstractVector{Num}},vec_of_s_vals::AbstractVector{AbstractVector{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+    length(ks)==length(vec_us)==length(vec_of_s_vals) || error("Input vectors must have equal length")
     L=billiard.length
-    valid_indices=fill(true,length(ks))
-    Hs_list=Vector{Matrix{T}}(undef,length(ks))
-    H,qs,ps=husimiOnGrid(ks[1],vec_of_s_vals[1],vec_us[1],L,nx,ny,full_p=full_p)
-    Hs_list[1]=H
-    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
-    for i in eachindex(ks)[2:end]
-        try
-            H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,nx,ny,full_p=full_p)
-            Hs_list[i]=H
-        catch e
-            println("Error while constructing Husimi for k = $(ks[i]): $e")
-            valid_indices[i]=false
-        end
-        next!(p)
+    qs=range(zero(T),stop=L,length=nx)
+    ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
+    if full_p
+        minimum(ps)<0 && maximum(ps)>0 || error("full_p=true requires ps spanning negatives and positives")
     end
-    Hs_list=Hs_list[valid_indices]
-    ps=collect(ps)
-    qs=collect(qs)
-    return Hs_list,ps,qs
+    Hs=Vector{Matrix{T}}(undef,length(ks)); ok=trues(length(ks))
+    Threads.@threads for i in eachindex(ks)
+        try
+            H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,qs,ps;full_p=full_p)
+            Hs[i]=H
+        catch e
+            @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
+            ok[i]=false
+        end
+    end
+    Hs=Hs[ok]
+    ps_out=full_p ? collect(ps) : vcat(-reverse(ps)[1:end-1],ps)
+    return Hs,ps_out,collect(qs)
 end
 
 """
