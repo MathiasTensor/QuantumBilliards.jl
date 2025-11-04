@@ -44,12 +44,10 @@ function evaluate_points(solver::DecompositionMethodSolver, billiard::Bi, k) whe
         normal = domain_gradient_vector(crv, xy)
         normal .= normal./norm(normal)
         rn = dot.(xy, normal)
-
-        w_n = (ds.*rn)./(2.0*k.^2) 
         xy_all[i] = xy
         normal_all[i] = normal
         ds_all[i] = ds  
-        w_n_all[i] = w_n        
+        w_n_all[i] =(ds.*rn)./(2.0*k.^2)         
     end
     return BoundaryPoints(vcat(xy_all...);normal = vcat(normal_all...),  w_dm = vcat(w_n_all...), ds = vcat(ds_all...))
 end
