@@ -399,20 +399,20 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) and their gri
 - `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
     Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard,full_p=full_p)
     return Hs_list,ps_list,qs_list
 end
 
 """
-    function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+    function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
 Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
 
 # Arguments
 - `ks::Vector{T}`: A vector of eigenvalues.
-- `vec_us::Vector{Vector{<:Number}}`: A vector of vectors representing the boundary function values. Cant take complex values
+- `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: A vector of vectors representing the boundary function values. Cant take complex values
 - `vec_bdPoints::Vector{BoundaryPoints{T}}`: A vector of `BoundaryPoints` objects.
 - `billiard::Bi`: The billiard geometry for the total length. Faster than calling `maximum(s)`.
 - `nx::Interger`: The size of linearly spaced q grid.
@@ -424,7 +424,7 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{AbstractVector{Num}}, vec_bdPoints::AbstractVector{BoundaryPoints{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}}, vec_bdPoints::AbstractVector{BoundaryPoints{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     L=billiard.length
     qs=range(zero(T),stop=L,length=nx)
     ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
@@ -465,7 +465,7 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common g
 - `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
 - `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
 """
-function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{AbstractVector{Num}},vec_of_s_vals::AbstractVector{AbstractVector{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_of_s_vals::AbstractVector{AbstractVector{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     length(ks)==length(vec_us)==length(vec_of_s_vals) || error("Input vectors must have equal length")
     L=billiard.length
     qs=range(zero(T),stop=L,length=nx)
