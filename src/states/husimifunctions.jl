@@ -147,7 +147,7 @@ end
 ### NEW ###
 
 """
-    husimiAtPoint_LEGACY(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
+    husimi_at_point(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
 
 Calculates the Poincaré-Husimi function at point (q, p) in the quantum phase space.
 
@@ -162,7 +162,7 @@ Arguments:
 Returns:
 - `T`: Husimi function value at (q, p).
 """
-function husimiAtPoint_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,q::T,p::T) where {T<:Real,Num<:Number}
+function husimi_at_point(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,q::T,p::T) where {T<:Real,Num<:Number}
     # original algorithm by Benjamin Batistić in python (https://github.com/clozej/quantum_billiards/blob/crt_public/src/CoreModules/HusimiFunctionsOld.py)
     ss=s.-q
     width=4/sqrt(k)
@@ -180,7 +180,7 @@ function husimiAtPoint_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L
 end
 
 """
-    husimiOnGrid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
+    husimi_on_grid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
 
 Evaluates the Poincaré-Husimi function on a grid defined by the sizes nx for q and ny for p. The grids are then automatically generated from 0 -> L and -1 -> 1.
 
@@ -197,20 +197,20 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
+function husimi_on_grid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
     qs=range(0.0,stop=L,length=nx)
     ps=range(-1.0,stop=1.0,length=ny)
     H=zeros(T,nx,ny)
     Threads.@threads for idx_p in eachindex(ps)
         for idx_q in eachindex(qs)
-            H[idx_q,idx_p]=husimiAtPoint_LEGACY(k,s,u,L,qs[idx_q],ps[idx_p])
+            H[idx_q,idx_p]=husimi_at_point(k,s,u,L,qs[idx_q],ps[idx_p])
         end
     end
     return H./sum(H),qs,ps
 end
 
 """
-    husimiOnGrid(k::T, s::Vector{T}, u::Vector{T}, L::T, qs::AbstractVector{T}, ps::AbstractVector{T}; full_p::Bool=false) where {T<:Real}
+    husimi_on_grid(k::T, s::Vector{T}, u::Vector{T}, L::T, qs::AbstractVector{T}, ps::AbstractVector{T}; full_p::Bool=false) where {T<:Real}
 
 Evaluates the Poincaré-Husimi function on a grid using vectorized operations in a thread-safe manner since only a single thread work on a column of the Husimi matrix.
 Due to the Poincare map being an involution, i.e. (ξ,p) →(ξ,−p) we construct only the p=0 to p=1 matrix and then via symmetry automatically obtain the p=-1 to p=0 also.
@@ -229,7 +229,7 @@ Returns:
 - `qs::Vector{T}`: Array of q values used in the grid.
 - `ps::Vector{T}`: Array of p values used in the grid.
 """
-function husimiOnGrid_fast(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,qs::AbstractVector{T},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+function husimi_on_grid(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,qs::AbstractVector{T},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
     n=length(s)
     ds=similar(s)
     @inbounds for j=1:n-1 # build piecewise boundary spacings
@@ -434,7 +434,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVec
     pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)
         try
-            H,_,_=husimiOnGrid_fast(ks[i],vec_s[i],vec_us[i],L,qs,ps;full_p=full_p)
+            H,_,_=husimi_on_grid(ks[i],vec_s[i],vec_us[i],L,qs,ps;full_p=full_p)
             Hs[i]=H
         catch e
             @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
@@ -476,7 +476,7 @@ function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::AbstractVector{T
     Hs=Vector{Matrix{T}}(undef,length(ks)); ok=trues(length(ks))
     Threads.@threads for i in eachindex(ks)
         try
-            H,_,_=husimiOnGrid(ks[i],vec_of_s_vals[i],vec_us[i],L,qs,ps;full_p=full_p)
+            H,_,_=husimi_on_grid(ks[i],vec_of_s_vals[i],vec_us[i],L,qs,ps;full_p=full_p)
             Hs[i]=H
         catch e
             @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
