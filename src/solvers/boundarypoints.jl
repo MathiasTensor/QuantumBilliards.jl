@@ -10,7 +10,7 @@ struct BoundaryPoints{T<:Real}
     xy_int::Vector{SVector{2,T}}
     
     # Inner constructor with validation
-    function BoundaryPoints{T}(xy, normal, kappa, ds, rdotn, w_vs, w_dm, xy_int) where T<:Real
+    function BoundaryPoints{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int) where T<:Real
         n = length(xy)
         # Validate that non-empty vectors have consistent lengths
         for (name, vec) in [(:normal, normal), (:ds, ds), (:rdotn, rdotn), 
@@ -19,7 +19,7 @@ struct BoundaryPoints{T<:Real}
                 error("Length of $name ($(length(vec))) must match xy ($n)")
             end
         end
-        new{T}(xy, normal, kappa, ds, rdotn, w_vs, w_dm, xy_int)
+        new{T}(xy, normal, kappa, s, ds, rdotn, w_vs, w_dm, xy_int)
     end
 end
 
@@ -50,7 +50,7 @@ function _determine_bp_sizes(curves, bs, k)
 end
 
 
-function boundary_coords(billiard::Bi, samplers, Ns) where {Bi<:AbsBilliard}
+function boundary_coords(billiard::Bi, samplers::Vector{AbsSampler}, Ns::Vector{Int64}) where {Bi<:AbsBilliard}
     curves = get_boundary_curves_with_ignored(billiard)
     T = typeof(curves[1].length)
     M = length(Ns)
@@ -75,17 +75,42 @@ function boundary_coords(billiard::Bi, samplers, Ns) where {Bi<:AbsBilliard}
         s_all[i] = cumsum(ds) + L0 #arc_lengt(crv, xy)
         ds_all[i] = ds  
         w_n_all[i] = (ds.*rn)./(2.0*k.^2)
+        L0 += L
+    end
+
+    return BoundaryPoints(vcat(xy_all...);normal = vcat(normal_all...),  w_dm = vcat(w_n_all...),s=vcat(s_all...), ds = vcat(ds_all...))
+end
+
+function boundary_coords(billiard::Bi, fourier_samplers::Vector{FourierNodes}, Ns::Vector{Int64}) where {Bi<:AbsBilliard}
+    curves = get_boundary_curves_with_ignored(billiard)
+    T = typeof(curves[1].length)
+    M = length(Ns)
+    ts,dts = sample_points(fourier_samplers[1], M)
+    xy_all = Vector{Vector{SVector{2,T}}}(undef, M)
+    normal_all = Vector{Vector{SVector{2,T}}}(undef, M)
+    s_all = Vector{Vector{T}}(undef, M)
+    ds_all = Vector{Vector{T}}(undef, M)
+    w_n_all = Vector{Vector{T}}(undef, M)
+    L0 = zero(T)
+    for i in eachindex(curves)
+        crv = curves[i]
+        L = crv.length
+        t = ts[i]
+        dt = dts[i]
+        ds = L*dt #this needs modification!!!
+        xy = curve(crv,t)
+        normal = domain_gradient_vector(crv, xy)
+        normal .= normal./norm(normal)
+        rn = dot.(xy, normal)
+        xy_all[i] = xy
+        normal_all[i] = normal
+        s_all[i] = cumsum(ds) + L0 #arc_lengt(crv, xy)
+        ds_all[i] = ds  
+        w_n_all[i] = (ds.*rn)./(2.0*k.^2)
         L0 += L        
     end
 
-    return BoundaryPoints(vcat(xy_all...);normal = vcat(normal_all...),  w_dm = vcat(w_n_all...), ds = vcat(ds_all...))
-end
-
-
-function get_boundary_curves_with_ignored(domain::D) where D<:AbsSimpleDomain
-    is_outer(crv) = (typeof(crv.bc) <: SpecularReflection || typeof(crv.bc) <: QuantumSolverIgnore)
-    boundary = filter(is_outer, domain.boundary)
-    return connect_curves(boundary)
+    return BoundaryPoints(vcat(xy_all...);normal = vcat(normal_all...),  w_dm = vcat(w_n_all...),s=vcat(s_all...), ds = vcat(ds_all...))
 end
 
 function get_boundary_curves_with_ignored(domain::D) where D<:AbsSimpleDomain
@@ -93,6 +118,7 @@ function get_boundary_curves_with_ignored(domain::D) where D<:AbsSimpleDomain
     boundary = filter(is_outer, domain.boundary)
     return connect_curves(boundary)
 end
+
 
 function get_boundary_curves_with_ignored(composite_domain::D) where D<:AbsCompositeDomain
     boundary = Vector{AbsCurve}()

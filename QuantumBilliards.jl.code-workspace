@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../BilliardGeometry"
+		},
+		{
+			"path": "../BilliardGeometryPlotting"
+		},
+		{
+			"path": "../QBPlotting"
+		}
+	],
+	"settings": {}
+}
