@@ -634,7 +634,7 @@ Useful function to check the conditions numbers of the relevant Fredholm matrix 
 """
 function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     basis=AbstractHankelBasis()
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.rule)
+    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.symmetry)
     ks=T[]
     dks=T[]
     k=k1
