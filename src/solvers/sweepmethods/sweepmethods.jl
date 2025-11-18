@@ -95,14 +95,13 @@ function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;ke
     elseif solver isa ParticularSolutionsMethod
         res[end]=solve_INFO(solver,new_basis,pts,ks[end],multithreaded=multithreaded_matrices,tol=tol)
         @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-            is_calculating=true
             pts=evaluate_points(solver,billiard,ks[i])
             new_basis=resize_basis(basis,billiard,dim,ks[i])
-            while is_calculating
-                try
-                    res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices,tol=tol)
-                    is_calculating=false
-                catch e @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..." end
+            try
+                res[i]=solve(solver,new_basis,pts,ks[i],multithreaded=multithreaded_matrices,tol=tol)
+            catch e
+                @warn "Error in k_sweep for k=$(ks[i]): $(e), skipping this k"
+                continue
             end
             next!(p)
         end
