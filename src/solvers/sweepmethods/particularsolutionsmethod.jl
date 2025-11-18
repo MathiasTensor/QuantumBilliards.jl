@@ -244,7 +244,7 @@ function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,p
         B_sq=Matrix{T}(undef,r,r) # small matrix B'B preallocate
         BLAS.syrk!('U','T',one(T),B,zero(T),B_sq) # real matrix so transpose is ok
         _symmetrize_from_upper!(B_sq) # fill the lower triangle inplace
-        return sqrt(eigmin(Symmetric(B_sq))) # smallest singular value via eigmin(B'B). This is usually faster than using Krylov'S smallest svd since the matrix rank reduction is significant
+        return sqrt(abs(eigmin(Symmetric(B_sq)))) # smallest singular value via eigmin(B'B). This is usually faster than using Krylov'S smallest svd since the matrix rank reduction is significant
     end
 end
 
