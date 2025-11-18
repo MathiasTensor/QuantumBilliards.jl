@@ -14,10 +14,10 @@ end
 function boundary_function(state::S; b=5.0, multithreaded = true) where {S<:AbsState}
     let vec = state.vec, k = state.k, k_basis = state.k_basis, new_basis = state.basis, billiard=state.billiard
         type = eltype(vec)
-        boundary = billiard.full_boundary
+        boundary = get_boundary_curves_with_ignored(billiard)
         crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5],crv_lengths)
-        L = CompositeCurve(get_boundary_curves(billiard)).length
+        sampler = FourierNodes([2,3,5],crv_lengths) 
+        L = CompositeCurve(boundary).length
         N = max(round(Int, k*L*b/(2*pi)), 512)
         pts = boundary_coords(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy; multithreaded)
@@ -40,10 +40,10 @@ end
 function boundary_function(state_bundle::S; b=5.0, multithreaded = true) where {S<:EigenstateBundle}
     let X = state_bundle.X, k_basis = state_bundle.k_basis, ks = state_bundle.ks, new_basis = state_bundle.basis, billiard=state_bundle.billiard 
         type = eltype(X)
-        boundary = billiard.full_boundary
+        boundary = get_boundary_curves_with_ignored(billiard)
         crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5],crv_lengths)
-        L = CompositeCurve(get_boundary_curves(billiard)).length
+        sampler = FourierNodes([2,3,5],crv_lengths) 
+        L = CompositeCurve(boundary).length
         N = max(round(Int, k_basis*L*b/(2*pi)), 512)
         pts = boundary_coords(billiard, sampler, N)
         dX, dY = gradient_matrices(new_basis, k_basis, pts.xy; multithreaded)

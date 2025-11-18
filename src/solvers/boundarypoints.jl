@@ -58,7 +58,6 @@ function boundary_coords(billiard::Bi, samplers::Vector{AbsSampler}, Ns::Vector{
     normal_all = Vector{Vector{SVector{2,T}}}(undef, M)
     s_all = Vector{Vector{T}}(undef, M)
     ds_all = Vector{Vector{T}}(undef, M)
-    w_n_all = Vector{Vector{T}}(undef, M)
     L0 = zero(T)
     for i in eachindex(curves)
         crv = curves[i]
@@ -69,28 +68,29 @@ function boundary_coords(billiard::Bi, samplers::Vector{AbsSampler}, Ns::Vector{
         xy = curve(crv,t)
         normal = domain_gradient_vector(crv, xy)
         normal .= normal./norm(normal)
-        rn = dot.(xy, normal)
+        #rn = dot.(xy, normal)
         xy_all[i] = xy
         normal_all[i] = normal
-        s_all[i] = cumsum(ds) + L0 #arc_lengt(crv, xy)
+        s_all[i] = cumsum(ds) .+ L0 #arc_lengt(crv, xy)
         ds_all[i] = ds  
-        w_n_all[i] = (ds.*rn)./(2.0*k.^2)
+        #w_n_all[i] = (ds.*rn)./(2.0*k.^2)
         L0 += L
     end
 
-    return BoundaryPoints(vcat(xy_all...);normal = vcat(normal_all...),  w_dm = vcat(w_n_all...),s=vcat(s_all...), ds = vcat(ds_all...))
+    return BoundaryPoints(vcat(xy_all...); normal = vcat(normal_all...), s=vcat(s_all...), ds = vcat(ds_all...) )
 end
 
-function boundary_coords(billiard::Bi, fourier_samplers::Vector{FourierNodes}, Ns::Vector{Int64}) where {Bi<:AbsBilliard}
+function boundary_coords(billiard::Bi, fourier_sampler::FourierNodes, M) where {Bi<:AbsBilliard}
     curves = get_boundary_curves_with_ignored(billiard)
     T = typeof(curves[1].length)
-    M = length(Ns)
-    ts,dts = sample_points(fourier_samplers[1], M)
-    xy_all = Vector{Vector{SVector{2,T}}}(undef, M)
-    normal_all = Vector{Vector{SVector{2,T}}}(undef, M)
-    s_all = Vector{Vector{T}}(undef, M)
-    ds_all = Vector{Vector{T}}(undef, M)
-    w_n_all = Vector{Vector{T}}(undef, M)
+    n_curves = length(curves)
+
+    ts,dts = sample_points(fourier_sampler, M)
+    xy_all = Vector{Vector{SVector{2,T}}}(undef, n_curves)
+    normal_all = Vector{Vector{SVector{2,T}}}(undef, n_curves)
+    s_all = Vector{Vector{T}}(undef, n_curves)
+    ds_all = Vector{Vector{T}}(undef, n_curves)
+    #w_n_all = Vector{Vector{T}}(undef, M)
     L0 = zero(T)
     for i in eachindex(curves)
         crv = curves[i]
@@ -101,16 +101,16 @@ function boundary_coords(billiard::Bi, fourier_samplers::Vector{FourierNodes}, N
         xy = curve(crv,t)
         normal = domain_gradient_vector(crv, xy)
         normal .= normal./norm(normal)
-        rn = dot.(xy, normal)
+        #rn = dot.(xy, normal)
         xy_all[i] = xy
         normal_all[i] = normal
-        s_all[i] = cumsum(ds) + L0 #arc_lengt(crv, xy)
+        s_all[i] = cumsum(ds) .+ L0 #arc_lengt(crv, xy)
         ds_all[i] = ds  
-        w_n_all[i] = (ds.*rn)./(2.0*k.^2)
-        L0 += L        
+        #w_n_all[i] = (ds.*rn)./(2.0*k.^2)
+        L0 += L
     end
 
-    return BoundaryPoints(vcat(xy_all...);normal = vcat(normal_all...),  w_dm = vcat(w_n_all...),s=vcat(s_all...), ds = vcat(ds_all...))
+    return BoundaryPoints(vcat(xy_all...); normal = vcat(normal_all...), s=vcat(s_all...), ds = vcat(ds_all...))
 end
 
 function get_boundary_curves_with_ignored(domain::D) where D<:AbsSimpleDomain
