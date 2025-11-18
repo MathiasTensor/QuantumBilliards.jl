@@ -145,7 +145,7 @@ function evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where
     end
     L=billiard.length
     M=max(solver.min_int_pts,round(Int,k*L*b_int/(2*pi)))
-    xy_int_all=random_interior_points(billiard,M)
+    xy_int_all=random_interior_points_polygon(billiard,M)
     return PointsPSM{type}(xy_all,xy_int_all)
 end
 

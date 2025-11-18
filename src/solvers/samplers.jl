@@ -188,6 +188,59 @@ function random_interior_points(billiard::AbsBilliard,N::Int;grd::Int=1000)
     return pts
 end
 
+"""
+    random_interior_points_polygon(billiard::Bi, M::Int; N_polygon_checks = round(Int, sqrt(M)), fundamental_domain = true, chunk_factor = 32) -> Vector{SVector{2,T}}
+
+Generate `M` uniformly distributed random interior points for an arbitrary
+(possibly non-convex) billiard by rejection sampling using a polygonal
+approximation of the boundary.
+
+# Arguments
+- `billiard::Bi` : An `AbsBilliard` object.
+- `M::Int`       : Number of interior points to generate.
+
+# Keyword Arguments
+- `N_polygon_checks::Int = round(Int, sqrt(M))`  
+    Number of points used to construct the polygonal approximation of the boundary.
+    Larger values → more accurate polygon, slightly slower.
+- `fundamental_domain::Bool = true`  
+    If true, polygon is built from the fundamental domain.
+- `chunk_factor::Int = 32`  
+    Minimum batch size for candidate points in rejection sampling. Controls performance via vectorization batch size
+
+# Returns
+- `Vector{SVector{2,T}}` : A vector of exactly `M` uniformly distributed
+  interior points.
+"""
+function random_interior_points_polygon(billiard::Bi,M::Int;N_polygon_checks::Int=round(Int,sqrt(M)),fundamental_domain::Bool=true,chunk_factor::Int=32) where {Bi<:AbsBilliard}
+    polygon_xy_vectors=billiard_polygon(billiard,N_polygon_checks;fundamental_domain=fundamental_domain)
+    polygon_points=vcat(polygon_xy_vectors...)
+    T=eltype(first(polygon_points))
+    xs=map(p->p[1],polygon_points)
+    ys=map(p->p[2],polygon_points)
+    xmin,xmax=extrema(xs)
+    ymin,ymax=extrema(ys)
+    dx=xmax-xmin;dy=ymax-ymin
+    pts=Vector{SVector{2,T}}(undef,M)
+    rng=Random.default_rng()
+    i=0
+    while i<M
+        needed=M-i
+        batch=max(needed,chunk_factor)
+        xsr=rand(rng,T,batch).*dx.+xmin
+        ysr=rand(rng,T,batch).*dy.+ymin
+        @inbounds for j in 1:batch
+            p=SVector{2,T}(xsr[j],ysr[j])
+            if is_point_in_polygon(polygon_points,p)
+                i+=1
+                pts[i]=p
+                i==M && break
+            end
+        end
+    end
+    return pts
+end
+
 #=
 #needs some work
 function fourier_nodes(N::Int; primes=(2,3,5)) #starts at 0 ends at 
