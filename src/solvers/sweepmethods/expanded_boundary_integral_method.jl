@@ -650,6 +650,9 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
         VL=VL[:,sort_order]
         normalize!(VR)
         normalize!(VL)
+        κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
+        @info "Median eigenvalue condition number: $(median(κ_all))"
+        @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
     else
         @info "Solving Julia's ggev for A, dA"
         s_gev=time()
@@ -672,6 +675,9 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
         VL=VL[:,sort_order]
         normalize!(VR)
         normalize!(VL)
+        κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
+        @info "Median eigenvalue condition number: $(median(κ_all))"
+        @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
     end
     T=eltype(real.(λ))
     valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
@@ -723,4 +729,39 @@ function solve_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::Bounda
     else
         return solve_full_INFO(solver,basis,pts,k,dk;use_lapack_raw=use_lapack_raw,kernel_fun=kernel_fun,multithreaded=multithreaded)
     end
+end
+
+"""
+    gev_eigconds(A, B, λ, VR, VL; p = 2)
+
+Compute eigenvalue condition numbers κ(λ_j) for the generalized eigenproblem A x = λ B x.
+
+Arguments:
+- A, B  :: AbstractMatrix{<:Complex}
+- λ     :: AbstractVector{<:Complex}  (eigenvalues)
+- VR    :: AbstractMatrix{<:Complex}  (right eigenvectors, columns)
+- VL    :: AbstractMatrix{<:Complex}  (left  eigenvectors, columns)
+- p     :: Int  (norm type: 2 for spectral norm, 1 or Inf as cheaper alternatives)
+
+Returns:
+- κ     :: Vector{Float64} of length(λ) with condition numbers κ(λ_j)
+"""
+function gev_eigconds(A,B,λ,VR,VL;p::Int=2)
+    nA=opnorm(A,p)
+    nB=opnorm(B,p)
+    n=length(λ)
+    κ=Vector{Float64}(undef,n)
+    for j in 1:n
+        x=VR[:,j]
+        y=VL[:,j]
+        num_vec=norm(x)*norm(y)
+        denom=abs(dot(conj(y),B*x)) # | conj(y)* B x |
+        if denom==0 || λ[j]==0
+            κ[j]=Inf
+        else
+            num=num_vec*(nA+abs(λ[j])*nB)
+            κ[j]=num/(abs(λ[j])*denom)
+        end
+    end
+    return κ
 end
