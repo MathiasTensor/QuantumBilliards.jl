@@ -161,7 +161,10 @@ function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts:
             t2=time(); @info "Timings: construct=$(t1-t0)s, factor+eigs=$(t2-t1)s, total=$(t2-t0)s"
             return real(T)[],real(T)[]
         end
-        λ=λ[acc]; VR=VR[acc]; UL=UL[acc]
+        λ=λ[acc];VR=VR[acc];UL=UL[acc]
+        κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
+        @info "Median eigenvalue condition number: $(median(κ_all))"
+        @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
         # 2nd-order corrections
         λ_out=Vector{real(T)}(undef,nacc); tens=similar(λ_out); m=0
         @info "Second-order corrections…"
