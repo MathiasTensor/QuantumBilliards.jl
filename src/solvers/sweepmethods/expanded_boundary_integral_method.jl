@@ -746,22 +746,26 @@ Arguments:
 Returns:
 - κ     :: Vector{Float64} of length(λ) with condition numbers κ(λ_j)
 """
-function gev_eigconds(A,B,λ,VR,VL;p::Int=2)
-    nA=opnorm(A,p)
-    nB=opnorm(B,p)
-    n=length(λ)
-    κ=Vector{Float64}(undef,n)
-    for j in 1:n
-        x=VR[:,j]
-        y=VL[:,j]
-        num_vec=norm(x)*norm(y)
-        denom=abs(dot(conj(y),B*x)) # | conj(y)* B x |
-        if denom==0 || λ[j]==0
-            κ[j]=Inf
-        else
-            num=num_vec*(nA+abs(λ[j])*nB)
-            κ[j]=num/(abs(λ[j])*denom)
-        end
+function gev_eigconds(A,B,λ,VR::AbstractMatrix,VL::AbstractMatrix;p=2)
+    nA=opnorm(A,p);nB=opnorm(B,p)
+    n=length(λ);κ=Vector{Float64}(undef,n)
+    for j=1:n
+        x=VR[:,j];y=VL[:,j]
+        v=norm(x)*norm(y)
+        d=abs(dot(conj(y),B*x))
+        κ[j]=(d==0||λ[j]==0) ? Inf : (v*(nA+abs(λ[j])*nB)/(abs(λ[j])*d))
+    end
+    return κ
+end
+
+function gev_eigconds(A,B,λ,VR::Vector{<:AbstractVector},VL::Vector{<:AbstractVector};p=2)
+    nA=opnorm(A,p);nB=opnorm(B,p)
+    n=length(λ);κ=Vector{Float64}(undef,n)
+    for j=1:n
+        x=VR[j];y=VL[j]
+        v=norm(x)*norm(y)
+        d=abs(dot(conj(y),B*x))
+        κ[j]=(d==0||λ[j]==0) ? Inf : (v*(nA+abs(λ[j])*nB)/(abs(λ[j])*d))
     end
     return κ
 end
