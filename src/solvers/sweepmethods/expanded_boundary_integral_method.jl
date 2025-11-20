@@ -705,6 +705,7 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
         t_v_left=transpose(v_left)
         numerator=t_v_left*ddA*v_right
         denominator=t_v_left*dA*v_right
+        @info "Denominator for index $i : $denominator"
         corr_1[i]=-λ[i]
         corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
     end
