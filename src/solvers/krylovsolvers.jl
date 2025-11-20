@@ -162,7 +162,7 @@ function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts:
             return real(T)[],real(T)[]
         end
         λ=λ[acc];VR=VR[acc];UL=UL[acc]
-        κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
+        κ_all=gev_eigconds(A,dA,λ,VR,UL;p=2)
         @info "Median eigenvalue condition number: $(median(κ_all))"
         @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
         # 2nd-order corrections
