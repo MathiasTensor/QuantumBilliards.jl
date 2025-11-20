@@ -173,6 +173,7 @@ function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts:
             v=VR[j]; u=UL[j]; λj=λ[j]
             mul!(buf,ddA,v); num=dot(u,buf)
             mul!(buf,dA,v);  den=dot(u,buf)
+            @info "Denominator for index $j : $den"
             c1=-real(λj); c2=-0.5*c1^2*real(num/den)
             m+=1; λ_out[m]=k+c1+c2; tens[m]=abs(c1+c2)
         end
