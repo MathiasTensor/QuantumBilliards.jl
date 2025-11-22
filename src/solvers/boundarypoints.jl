@@ -71,7 +71,7 @@ function boundary_coords(billiard::Bi, samplers::Vector{AbsSampler}, Ns::Vector{
         #rn = dot.(xy, normal)
         xy_all[i] = xy
         normal_all[i] = normal
-        s_all[i] = cumsum(ds) .+ L0 #arc_lengt(crv, xy)
+        s_all[i] = arc_length(crv,t) .+ L0 #arc_lengt(crv, xy)
         ds_all[i] = ds  
         #w_n_all[i] = (ds.*rn)./(2.0*k.^2)
         L0 += L
@@ -104,7 +104,7 @@ function boundary_coords(billiard::Bi, fourier_sampler::FourierNodes, M) where {
         #rn = dot.(xy, normal)
         xy_all[i] = xy
         normal_all[i] = normal
-        s_all[i] = cumsum(ds) .+ L0 #arc_lengt(crv, xy)
+        s_all[i] = arc_length(crv,t) .+ L0 #arc_lengt(crv, xy)
         ds_all[i] = ds  
         #w_n_all[i] = (ds.*rn)./(2.0*k.^2)
         L0 += L

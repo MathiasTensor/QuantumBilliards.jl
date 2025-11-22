@@ -52,7 +52,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
                         Psi[pts_mask] .+= vec[i].*basis_fun(basis,i,k,pts)
                     end
                 end
-                Psi[.~pts_mask] = NaN
+                #Psi[.~pts_mask] .= NaN
             else
                 for i in eachindex(vec)
                     if abs(vec[i]) > eps 
