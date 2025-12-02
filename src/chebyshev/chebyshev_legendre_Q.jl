@@ -153,7 +153,7 @@ end
 # Output
 #   QInfPlan{Float64,ComplexF64}
 # =============================================================================
-function plan_Q(kmax::Complex{T};tol_bottom::Real=1e-18,scaling::Real=3.0,verbose::Bool=false) where{T<:Real}
+function plan_Q(kmax::Complex{T};tol_bottom::Real=1e-18,scaling::Real=3.0,verbose::Bool=false) where {T<:Real}
     T_cutoff=-log(tol_bottom)/(0.5-imag(kmax))
     N=round(Int,scaling*(T_cutoff/π)*abs(kmax))
     verbose && @info "Q-plan" kmax=kmax T_cutoff=T_cutoff N=N
@@ -165,7 +165,7 @@ end
 # ν(k):
 #   Helper function returning ν = -1/2 + i k from k.
 # =============================================================================
-@inline ν(k::T)::T where{T<:Complex}=-0.5+im*k
+@inline ν(k::T)::T where {T<:Complex}=-0.5+im*k
 
 #############################################################################
 # Small-d expansion of G_k(d) = (1/(2π)) Q_{-1/2 + i k}(cosh d):
@@ -180,7 +180,7 @@ end
 #   - This routine returns Q_{-1/2 + i k}(cosh d), NOT the Green's function
 #     G_k(d); hence the final factor 2π in the return value below.
 #############################################################################
-@inline function _small_z_Q(k::C,d::T)::C where{C<:Complex,T<:Real}
+@inline function _small_z_Q(k::C,d::T)::C where {C<:Complex,T<:Real}
     H=MathConstants.eulergamma+digamma(0.5+im*k)  # H(-1/2+ik) Harmonic number
     Ld=log(d)
     L2=log(2.0)
@@ -195,7 +195,7 @@ end
 end
 
 # Real-k convenience wrapper for _small_z_Q
-@inline function _small_z_Q(k::T,d::T) where{T<:Real}
+@inline function _small_z_Q(k::T,d::T) where {T<:Real}
     return _small_z_Q(complex(k,0.0),d)
 end
 
@@ -217,7 +217,7 @@ end
 #   - Uses Kahan summation to reduce roundoff in the GL sum.
 #   - t ∈ [0,T] is obtained from x∈[-1,1] via t = (T/2)(x+1).
 # =============================================================================
-@inline function legendre_Q(plan::QInfPlan,ν::C,z::T)::C where{C<:Complex,T<:Real}
+@inline function legendre_Q(plan::QInfPlan,ν::C,z::T)::C where {C<:Complex,T<:Real}
     z<Z_threshold && return _small_z_Q(imag(ν+0.5),acosh(z))
     x=plan.rule.x
     w=plan.rule.w
