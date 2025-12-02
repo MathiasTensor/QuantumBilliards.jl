@@ -651,28 +651,60 @@ end
 #   - rng::AbstractRNG: Random number generator
 #   - use_adaptive_svd_tol::Bool: Whether to use adaptive svd tolerance based on maximum singular value
 #   - auto_discard_spurious::Bool: Whether to automatically discard spurious eigenvalues based on residuals
+#   - use_chebyshev::Bool: Whether to use chebyshev hankel evaluations 
+#   - n_panels::Int: Number of chebyshev panels to use
+#   - M::Int: Degree of chebyshev polynomials to use
 #
 # Outputs:
 #   - λ::Vector{Complex{T}}: The eigenvalues found inside the contour
 #   - Phi::Matrix{Complex{T}}: The eigenvectors corresponding to the eigenvalues
 #   - tens::Vector{T}: The residuals ||A(k)v(k)||
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k0::Complex{T},R::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels=2000,M=300) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     Tbuf=zeros(Complex{T},N,N)  # workspace allocation for contour additions
     fun=(A,z)->fredholm_matrix_complex_k!(A,pts,solver.symmetry,z;multithreaded=multithreaded,kernel_fun=kernel_fun) # function to build fredholm matrix at complex k, this version does not use chebyshev hankel evaluations
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
-    N=size(Tbuf,1);V=randn(rng,Complex{T},N,r);A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r);X=similar(V) # buffer matrices for Beyn
+    N=size(Tbuf,1)
+    V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
-    @time "Fredholm + lu! + ldiv! + 2*axpy!" begin
+    if use_chebyshev
+        Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
+        rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
+        info && println("Estimated rmin=$(rmin), rmax=$(rmax) for Chebyshev basis setup")
+        plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
+        Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
+            plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:geometric,geo_ratio=1.013)
+        end
+        @blas_1 @time "DLP chebyshev" begin
+            compute_kernel_matrices_DLP_chebyshev!(Tbufs1,pts,solver.symmetry,plans;multithreaded=multithreaded,kernel_fun=kernel_fun)   
+            assemble_fredholm_matrices!(Tbufs1,pts)
+        end
+        @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
+        Fs=Vector{typeof(F1)}(undef,nq)
+        Fs[1]=F1
+        @blas_multi_then_1 MAX_BLAS_THREADS @time "lu!" @inbounds for j in 2:nq # LU factor all T(zj) matrices
+            Fs[j]=lu!(Tbufs1[j];check=false)
+        end
+        xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:) # vector views for BLAS.axpy! operations, to avoid allocations in the loop via reshaping the matrices each time in the loop
         begin
-            @inbounds for j in eachindex(zj)
-                fill!(Tbuf,zero(eltype(Tbuf)))
-                @blas_1 fun(Tbuf,zj[j])
-                @blas_multi MAX_BLAS_THREADS F=lu!(Tbuf,check=false)
-                ldiv!(X,F,V)
-                α0=wj[j];α1=wj[j]*zj[j]
-                BLAS.axpy!(α0,vec(X),vec(A0))
-                BLAS.axpy!(α1,vec(X),vec(A1)) # blas multi up to here
+            @blas_multi_then_1 MAX_BLAS_THREADS @time "ldiv! + axpy!" @inbounds for j in eachindex(zj)
+                ldiv!(X,Fs[j],V) # make efficient inverse
+                BLAS.axpy!(wj[j],xv,a0v) # A0 += wj[j] * X
+                BLAS.axpy!(wj[j]*zj[j],xv,a1v) # A1 += wj[j] * zj[j] * X
+            end
+        end
+    else
+        @time "Fredholm + lu! + ldiv! + 2*axpy!" begin
+            begin
+                @inbounds for j in eachindex(zj)
+                    fill!(Tbuf,zero(eltype(Tbuf)))
+                    @blas_1 fun(Tbuf,zj[j])
+                    @blas_multi MAX_BLAS_THREADS F=lu!(Tbuf,check=false)
+                    ldiv!(X,F,V)
+                    α0=wj[j];α1=wj[j]*zj[j]
+                    BLAS.axpy!(α0,vec(X),vec(A0))
+                    BLAS.axpy!(α1,vec(X),vec(A1)) # blas multi up to here
+                end
             end
         end
     end
@@ -905,7 +937,7 @@ function compute_spectrum(solver::BoundaryIntegralMethod,basis::Ba,billiard::Bi,
     nq≤15 && @error "Do not use less than 15 contour nodes"
     if do_INFO
             @time "solve_INFO last disk" begin # solve last window to check the residuals and imaginary parts of the eigenvalues. They should be around 1e-5 to get all valid statistics, so b might need to increase to achieve it
-            _=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,kernel_fun=kernel_fun)
+            _=solve_INFO(solver,basis,all_pts_bim[end],complex(k0[end]),R[end];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,kernel_fun=kernel_fun,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M)
         end
     end
     p=Progress(length(k0),1)

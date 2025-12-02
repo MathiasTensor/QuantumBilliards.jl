@@ -1,4 +1,4 @@
-#############################################################################
+# =============================================================================
 # Chebyshev piecewise approximation of the Legendre function Q_ν(z),
 # with ν = -1/2 + i k (k real or complex) and z = cosh(d), d>0.
 #
@@ -8,6 +8,11 @@
 #   and we need to evaluate this for many distances d and a fixed (or few)
 #   complex wavenumbers k, repeatedly inside BIM/Beyn contour integrals. This
 #   is expensive if we do the integral representation of Q_ν(z) every time.
+#   It is better to do this computation and then use the analytic recurrence 
+#   relations:
+#       ∂/∂z Q_ν(z) = (z^2-1)^-1 * (Q_(ν+1) - Q_ν) 
+#   to get derivatives as needed. Otherwise the it's integrand is even more 
+#   oscillatory and expensive to compute.
 #
 # Strategy:
 #   1. For each k (fixed ν = -1/2 + i k), build a Gauss–Legendre quadrature
@@ -46,7 +51,7 @@
 #     _breaks_geometric) live in chebyshev_core.jl and are not duplicated here.
 #
 # MO / 02-12-25
-#############################################################################
+# =============================================================================
 
 #############################
 #   Q_ν INTEGRAL QUADRATURE #
@@ -417,12 +422,12 @@ function eval_Q!(out::AbstractVector{Complex{T}},plan::ChebQPlan{T},dvec::Abstra
     return nothing
 end
 
-#############################################################################
+# =============================================================================
 # Convenience wrapper: ChebPlanQ_GL
 #
 #   Small wrapper to keep the same external API as before, but with the
 #   function F(d) now hard-wired to legendre_Q(Qplan,ν,cosh d).
-#############################################################################
+# =============================================================================
 struct ChebPlanQ_GL{T<:Real}
     plan::ChebQPlan{T}
 end
@@ -439,10 +444,29 @@ function build_Q_cheb_from_GL(Qplan::QInfPlan,ν::Complex{T},dmin::T,dmax::T;npa
     return ChebPlanQ_GL(cp)
 end
 
+# =============================================================================
+# eval_Q(pl_GL, d):
+#   Scalar evaluation of F(d) = Q_ν(cosh d) from ChebPlanQ_GL.
+# Inputs:
+#   pl_GL :: ChebPlanQ_GL
+#   d     :: Real
+# Output:
+#   Complex{Real}
+# =============================================================================
 @inline function eval_Q(pl_GL::ChebPlanQ_GL,d::T)::Complex{T} where {T<:Real}
     return eval_Q(pl_GL.plan,d)
 end
 
+# =============================================================================
+# eval_Q!(out, pl_GL, dvec):
+#   Vectorized/threaded evaluation of F(d_i) = Q_ν(cosh d_i) into out[i].
+# Inputs:
+#   out   :: AbstractVector{Complex{T}}   # output (length = length(dvec))
+#   pl_GL :: ChebPlanQ_GL{T}              # Chebyshev plan in d
+#   dvec  :: AbstractVector{T}            # input d values
+# Output:
+#   Fills out[i] = F(dvec[i]) in place.
+# =============================================================================
 function eval_Q!(out::AbstractVector{Complex{T}},pl_GL::ChebPlanQ_GL,dvec::AbstractVector{T}) where {T<:Real}
     eval_Q!(out,pl_GL.plan,dvec)
     return nothing
