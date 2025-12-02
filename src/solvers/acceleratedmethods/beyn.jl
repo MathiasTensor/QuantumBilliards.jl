@@ -675,19 +675,23 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
             plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:geometric,geo_ratio=1.013)
         end
-        @blas_1 @time "DLP chebyshev" begin
-            compute_kernel_matrices_DLP_chebyshev!(Tbufs1,pts,solver.symmetry,plans;multithreaded=multithreaded,kernel_fun=kernel_fun)   
-            assemble_fredholm_matrices!(Tbufs1,pts)
+        @showprogress desc="DLP chebyshev" begin
+            @blas_1 begin
+                compute_kernel_matrices_DLP_chebyshev!(Tbufs1,pts,solver.symmetry,plans;multithreaded=multithreaded,kernel_fun=kernel_fun)   
+                assemble_fredholm_matrices!(Tbufs1,pts)
+            end
         end
         @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
         Fs=Vector{typeof(F1)}(undef,nq)
         Fs[1]=F1
-        @blas_multi_then_1 MAX_BLAS_THREADS @time "lu!" @inbounds for j in 2:nq # LU factor all T(zj) matrices
-            Fs[j]=lu!(Tbufs1[j];check=false)
+        @showprogress desc="lu!" begin
+            @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq # LU factor all T(zj) matrices
+                Fs[j]=lu!(Tbufs1[j];check=false)
+            end
         end
         xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:) # vector views for BLAS.axpy! operations, to avoid allocations in the loop via reshaping the matrices each time in the loop
-        begin
-            @blas_multi_then_1 MAX_BLAS_THREADS @time "ldiv! + axpy!" @inbounds for j in eachindex(zj)
+        @showprogress desc="ldiv! + axpy!" begin
+            @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)
                 ldiv!(X,Fs[j],V) # make efficient inverse
                 BLAS.axpy!(wj[j],xv,a0v) # A0 += wj[j] * X
                 BLAS.axpy!(wj[j]*zj[j],xv,a1v) # A1 += wj[j] * zj[j] * X
