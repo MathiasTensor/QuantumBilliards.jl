@@ -675,7 +675,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
             plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:geometric,geo_ratio=1.013)
         end
-        @showprogress desc="DLP chebyshev" begin
+        @time "DLP chebyshev" begin
             @blas_1 begin
                 compute_kernel_matrices_DLP_chebyshev!(Tbufs1,pts,solver.symmetry,plans;multithreaded=multithreaded,kernel_fun=kernel_fun)   
                 assemble_fredholm_matrices!(Tbufs1,pts)
@@ -684,14 +684,14 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
         Fs=Vector{typeof(F1)}(undef,nq)
         Fs[1]=F1
-        @showprogress desc="lu!" begin
-            @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq # LU factor all T(zj) matrices
+        @blas_multi_then_1 MAX_BLAS_THREADS @inbounds begin
+            @showprogress desc="lu!" for j in 2:nq # LU factor all T(zj) matrices
                 Fs[j]=lu!(Tbufs1[j];check=false)
             end
         end
         xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:) # vector views for BLAS.axpy! operations, to avoid allocations in the loop via reshaping the matrices each time in the loop
-        @showprogress desc="ldiv! + axpy!" begin
-            @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)
+        @blas_multi_then_1 MAX_BLAS_THREADS @inbounds begin
+            @showprogress desc="ldiv! + axpy!" for j in eachindex(zj)
                 ldiv!(X,Fs[j],V) # make efficient inverse
                 BLAS.axpy!(wj[j],xv,a0v) # A0 += wj[j] * X
                 BLAS.axpy!(wj[j]*zj[j],xv,a1v) # A1 += wj[j] * zj[j] * X
@@ -699,8 +699,8 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
         end
     else
         @time "Fredholm + lu! + ldiv! + 2*axpy!" begin
-            begin
-                @inbounds for j in eachindex(zj)
+            @inbounds begin
+                @showprogress desc="Fredholm + lu! + ldiv! + 2*axpy!" for j in eachindex(zj)
                     fill!(Tbuf,zero(eltype(Tbuf)))
                     @blas_1 fun(Tbuf,zj[j])
                     @blas_multi MAX_BLAS_THREADS F=lu!(Tbuf,check=false)
