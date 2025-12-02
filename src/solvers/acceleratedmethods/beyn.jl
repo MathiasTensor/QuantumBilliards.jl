@@ -670,7 +670,7 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     if use_chebyshev
         Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
         rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
-        info && println("Estimated rmin=$(rmin), rmax=$(rmax) for Chebyshev basis setup")
+        println("Estimated rmin=$(rmin), rmax=$(rmax) for Chebyshev basis setup")
         plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
         Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
             plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:geometric,geo_ratio=1.013)
