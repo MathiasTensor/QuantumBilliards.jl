@@ -190,7 +190,7 @@ function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsB
     @assert size(K,1)==N && size(K,2)==N
     fill!(K,zero(eltype(K)))
     tol2=(eps(T))^2
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         κi=bp.curvature[i]
@@ -219,7 +219,7 @@ function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bounda
     Mk=length(ks)
     N=length(bp.xy)
     @assert length(Ks)==Mk
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         @inbounds for j in 1:N
@@ -236,7 +236,7 @@ end
 function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},k::Complex{T},kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
     fill!(K,zero(eltype(K)))
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
          xi,yi=bp.xy[i]
          nxi,nyi=bp.normal[i]
          @inbounds for j in 1:N
@@ -263,7 +263,7 @@ function _all_k_reflection_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bo
     nth=Threads.nthreads()
     pt_tls=[zeros(T,2) for _ in 1:nth]
     nn_tls=[zeros(T,2) for _ in 1:nth]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         tid=Threads.threadid()
@@ -307,7 +307,7 @@ function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoi
     ops=_reflect_ops_and_scales(T,sym)
     pt=[zero(T),zero(T)]
     nn=[zero(T),zero(T)]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         @inbounds for j in 1:N
@@ -349,7 +349,7 @@ function _all_k_reflection_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bo
     nth=Threads.nthreads()
     pt_tls=[zeros(T,2) for _ in 1:nth]
     nn_tls=[zeros(T,2) for _ in 1:nth]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         tid=Threads.threadid()
@@ -387,7 +387,7 @@ function _one_k_reflection_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bou
     ops=_reflect_ops_and_scales(T,sym)
     pt=[zero(T),zero(T)]
     nn=[zero(T),zero(T)]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         @inbounds for j in 1:N
@@ -422,7 +422,7 @@ function _all_k_rotation_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Boun
     nth=Threads.nthreads()
     pt_tls=[zeros(T,2) for _ in 1:nth]
     nn_tls=[zeros(T,2) for _ in 1:nth]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         tid=Threads.threadid()
@@ -459,7 +459,7 @@ function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bound
     ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
     pt=[zero(T),zero(T)]
     nn=[zero(T),zero(T)]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         @inbounds for j in 1:N
@@ -494,7 +494,7 @@ function _all_k_rotation_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Boun
     nth=Threads.nthreads()
     pt_tls=[zeros(T,2) for _ in 1:nth]
     nn_tls=[zeros(T,2) for _ in 1:nth]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         tid=Threads.threadid()
@@ -522,7 +522,7 @@ function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bound
     ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
     pt=[zero(T),zero(T)]
     nn=[zero(T),zero(T)]
-    @use_threads multithreaded=multithreaded for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
         @inbounds for j in 1:N
