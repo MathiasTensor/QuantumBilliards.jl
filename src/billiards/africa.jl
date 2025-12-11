@@ -62,6 +62,6 @@ end
 
 function make_africa_and_basis(a::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T),scale::T=one(T),nbasis::Int=14) where {T<:Real}
     billiard=AfricaBilliard(a;x0=x0,y0=y0,rot_angle=rot_angle,scale=scale)
-    basis=FourierBessel(nbasis,SVector(x0,y0),rot_angle)
+    basis=CornerAdaptedFourierBessel(nbasis,Float64(2*pi/3),SVector(x0,y0),rot_angle)
     return billiard,basis
 end
