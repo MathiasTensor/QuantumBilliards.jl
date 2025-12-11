@@ -61,6 +61,7 @@
 # In terms of d we have z = cosh(d), and z = 1 + O(d²); for z < Z_threshold
 # we fall back to a series expansion in d.
 Z_threshold=1.0+1e-14
+d_threshold=1e-3 # this is for the dQ evaluation which has worse accuracy close to d=0
 
 # =============================================================================
 # _reference_legendre_Q:
@@ -204,6 +205,30 @@ end
     return _small_z_Q(complex(k,0.0),d)
 end
 
+@inline Power(x,y)=x^y
+@inline Log(x)=log(x)
+@inline HarmonicNumber(ν)=MathConstants.eulergamma+SpecialFunctions.digamma(ν+1)
+
+##################################################################################
+# Small-d expansion for d/dd Q_ν(cosh d), ν = -1/2 + i k obtained from Mathematica up to d^27:
+#
+#   d/dd Q_ν(cosh d) = 1/d
+#     + (1/12) d (2 + 3 ν(1+ν))
+#     + ...
+#     - (1/40874803200) d ν(1+ν) P(d, ν) (HarmonicNumber[ν] + log(d/2))
+#
+# NOTE:
+#   - This returns d/dd Q_ν(cosh d), WITHOUT the (1/(2π)) factor.
+#   - Use only for very small d (e.g. d ≲ 1e-3) inside the Z_threshold branch chosen such that accuracy ≈ 1e-14.
+##################################################################################
+@inline function _small_z_dQ(k::C,d::T)::C where {C<:Complex,T<:Real}
+
+end
+
+@inline function _small_z_dQ(k::T,d::T) where {T<:Real}
+    return _small_z_dQ(complex(k,0.0),d)
+end
+
 # =============================================================================
 # legendre_Q(plan, ν, z):
 #   Evaluate Q_ν(z) using the precomputed Gauss–Legendre rule stored in
@@ -240,6 +265,59 @@ end
         s=tmp
     end
     return jac*s
+end
+
+##################################################################################
+# legendre_dQ_dd(plan, ν, d):
+#   Evaluate d/dd Q_ν(cosh d) using the same fixed Gauss–Legendre rule used
+#   for Q_ν, but with the *differentiated integrand* (Mathematica-verified):
+#
+#       d/dd Q_ν(cosh d)
+#       = - (ν+1) ∫₀^T (sinh d + cosh d cosh t)
+#                        (cosh d + sinh d cosh t)^(-(ν+2)) dt
+#
+#   where T = plan.rule.Ttrunc and the integral on [0,T] is approximated by
+#   the GL rule on [-1,1] via t = (T/2)(x+1).
+#
+# Inputs
+#   plan :: QInfPlan     # quadrature plan (same as for legendre_Q)
+#   ν    :: Complex      # index ν (typically ν = -1/2 + i k)
+#   d    :: Real         # distance d>0, with z = cosh(d)
+#
+# Output
+#   Complex              # d/dd Q_ν(cosh d)
+#
+# Notes
+#   - For now we do not switch to _small_z_dQ; we will plug that in later
+#     for very small d (e.g. d < 1e-3).
+##################################################################################
+@inline function legendre_dQ_dd(plan::QInfPlan,ν::C,d::T)::C where {C<:Complex,T<:Real}
+    d<d_threshold && return _small_z_dQ(imag(ν+0.5),d)
+    x=plan.rule.x
+    w=plan.rule.w
+    Tt=plan.rule.Ttrunc
+    jac=Tt/2
+    sh,ch=sinhcosh(d)
+    νp1=ν+one(C)
+    νp2=ν+2  # ν + 2
+    s=zero(C)
+    cacc=zero(C)
+    @inbounds for i in eachindex(x)
+        t=(Tt/2)*(x[i]+1)
+        ct=cosh(t)
+        base=ch+sh*ct
+        num=sh+ch*ct
+        integrand=-(νp1)*num*base^(-νp2)
+        y=w[i]*integrand-cacc # Kahan summation
+        tmp=s+y
+        cacc=(tmp-s)-y
+        s=tmp
+    end
+    return jac*s
+end
+
+@inline function legendre_dQ_dd(plan::QInfPlan,k::Ck,d::T) where {Ck<:Complex,T<:Real}
+    return legendre_dQ_dd(plan,ν(k),d)
 end
 
 # =============================================================================
@@ -282,6 +360,34 @@ function _build_table_Q!(Qplan::QInfPlan,ν::Complex,a::T,b::T;M::Int=300)::Cheb
         d=((b+a)+(b-a)*t)/2       # affine map to [a,b]
         z=cosh(d)
         f[j+1]=legendre_Q(Qplan,ν,z)
+    end
+    c=Vector{Complex{T}}(undef,M+1)
+    _chebfit!(c,f)
+    return ChebQTable(a,b,M,c)
+end
+
+##################################################################################
+# _build_table_dQ!(Qplan, ν, a, b; M):
+#   Construct a Chebyshev table for
+#       F(d) = d/dd Q_ν(cosh d)
+#   on the panel [a,b], using Chebyshev–Lobatto nodes t_j = cos(π j / M).
+#
+# Inputs
+#   Qplan  :: QInfPlan          # Gauss–Legendre plan for Q_ν / dQ/dd
+#   ν      :: Complex           # ν = -1/2 + i k
+#   a,b    :: Float64           # panel endpoints, 0 < a < b
+#   M      :: Int               # Chebyshev degree
+#
+# Output
+#   ChebQTable(a,b,M,c)         # with c the Chebyshev coefficients of dQ/dd
+##################################################################################
+function _build_table_dQ!(Qplan::QInfPlan,ν::Complex,a::T,b::T;M::Int=300)::ChebQTable{T} where {T<:Real}
+    @assert a>0 && b>a "invalid panel [a,b] = [$a,$b]"
+    f=Vector{Complex{T}}(undef,M+1)
+    @inbounds for j in 0:M
+        t=cospi(j/M) # Chebyshev node in [-1,1]
+        d=((b+a)+(b-a)*t)/2 # affine map to [a,b]
+        f[j+1]=legendre_dQ_dd(Qplan,ν,d)
     end
     c=Vector{Complex{T}}(undef,M+1)
     _chebfit!(c,f)
@@ -332,6 +438,35 @@ function plan_Q_cheb(Qplan::QInfPlan,ν::Complex{T},dmin::T,dmax::T;npanels::Int
     panels=Vector{ChebQTable{T}}(undef,npanels)
     @inbounds Threads.@threads for i in 1:npanels
         panels[i]=_build_table_Q!(Qplan,ν,br[i],br[i+1];M=M)
+    end
+    return ChebQPlan(panels,dmin,dmax)
+end
+
+##################################################################################
+# plan_dQ_cheb(Qplan, ν, dmin, dmax; npanels, M, grading, geo_ratio):
+#   Build a piecewise-Chebyshev plan for
+#       F(d) = d/dd Q_ν(cosh d)
+#   on [dmin,dmax].
+#
+# Inputs
+#   Qplan    :: QInfPlan            # GL quadrature plan
+#   ν        :: Complex             # ν = -1/2 + i k
+#   dmin     :: T                   # lower bound, dmin>0
+#   dmax     :: T                   # upper bound, dmax>dmin
+#   npanels  :: Int=2500            # number of panels
+#   M        :: Int=300             # Chebyshev degree per panel
+#   grading  :: Symbol=:geometric   # :uniform or :geometric
+#   geo_ratio:: Real=1.03           # geometric panel-size ratio
+#
+# Output
+#   ChebQPlan(panels,dmin,dmax)     # tables for d/dd Q_ν(cosh d)
+##################################################################################
+function plan_dQ_cheb(Qplan::QInfPlan,ν::Complex{T},dmin::T,dmax::T;npanels::Int=2500,M::Int=300,grading::Symbol=:geometric,geo_ratio::Real=1.03)::ChebQPlan{T} where {T<:Real}
+    @assert dmin>0 && dmax>dmin
+    br=grading===:uniform ? _breaks_uniform(dmin,dmax,npanels) : _breaks_geometric(dmin,dmax,npanels;ratio=geo_ratio)
+    panels=Vector{ChebQTable{T}}(undef,npanels)
+    @inbounds Threads.@threads for i in 1:npanels
+        panels[i]=_build_table_dQ!(Qplan,ν,br[i],br[i+1];M=M)
     end
     return ChebQPlan(panels,dmin,dmax)
 end
@@ -411,6 +546,51 @@ end
 #       * call _cheb_clenshaw on P.c, t
 # =============================================================================
 function eval_Q!(out::AbstractVector{Complex{T}},plan::ChebQPlan{T},dvec::AbstractVector{T}) where {T<:Real}
+    panels=plan.panels
+    @inbounds Threads.@threads for i in eachindex(dvec)
+        d=dvec[i]
+        p=_find_panel_Q(panels,d)
+        P=panels[p]
+        t=(2*d-(P.b+P.a))/(P.b-P.a)
+        out[i]=_cheb_clenshaw(P.c,t)
+    end
+    return nothing
+end
+
+# ===============================================================================
+#   Scalar evaluation of
+#       F(d) = d/dd Q_ν(cosh d)
+#   from a ChebQPlan built by plan_dQ_cheb / build_dQ_cheb_from_GL.
+#
+# Inputs
+#   plan :: ChebQPlan{T}
+#   d    :: T
+#
+# Output
+#   Complex{T}  value of d/dd Q_ν(cosh d) at d
+# ===============================================================================
+@inline function eval_dQ(plan::ChebQPlan{T},d::T)::Complex{T} where {T<:Real}
+    p=_find_panel_Q(plan.panels,d)
+    P=plan.panels[p]
+    t=(2*d-(P.b+P.a))/(P.b-P.a)
+    return _cheb_clenshaw(P.c,t)
+end
+
+# ===============================================================================
+# eval_dQ!(out, plan, dvec):
+#   Vectorized/threaded evaluation of
+#       F(d_i) = d/dd Q_ν(cosh d_i)
+#   for all elements of dvec.
+#
+# Inputs
+#   out   :: AbstractVector{Complex{T}}   (preallocated)
+#   plan  :: ChebQPlan{T}
+#   dvec  :: AbstractVector{T}
+#
+# Output
+#   out[i] = d/dd Q_ν(cosh(dvec[i]))  in place
+# ===============================================================================
+function eval_dQ!(out::AbstractVector{Complex{T}},plan::ChebQPlan{T},dvec::AbstractVector{T}) where {T<:Real}
     panels=plan.panels
     @inbounds Threads.@threads for i in eachindex(dvec)
         d=dvec[i]

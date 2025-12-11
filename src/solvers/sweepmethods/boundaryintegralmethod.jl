@@ -389,7 +389,7 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k:
                     end
                 end
             end
-        end
+        end 
     end
     return K
 end
