@@ -113,3 +113,26 @@ end
     nx_ny[2]=sl*nx+cl*ny
     return nothing
 end
+
+#################################################################################
+# Given a reflection symmetry, return the operations and scales needed to generate all image contributions
+# Inputs:
+#   T: real type
+#   sym: Reflection symmetry object
+# Outputs:
+#   ops: tuple of tuples where each inner tuple is (operation_index,scale)
+#       operation_index: 1 for x-axis reflection, 2 for y-axis reflection, 3 for origin reflection
+#       scale: +1 or -1 depending on parity
+#################################################################################
+@inline function _reflect_ops_and_scales(::Type{T},sym::Reflection) where {T<:Real}
+    if sym.axis===:y_axis
+        return ((1,T(sym.parity<0 ? -1 : 1)),)
+    elseif sym.axis===:x_axis
+        return ((2,T(sym.parity<0 ? -1 : 1)),)
+    elseif sym.axis===:origin
+        px,py=sym.parity;sx=T(px<0 ? -1 : 1);sy=T(py<0 ? -1 : 1);sxy=sx*sy
+        return ((1,sx),(2,sy),(3,sxy))
+    else
+        error("Unknown reflection axis: $(sym.axis)")
+    end
+end

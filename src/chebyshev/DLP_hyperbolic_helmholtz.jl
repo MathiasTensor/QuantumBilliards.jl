@@ -102,22 +102,6 @@ end
     return eval_Q(tab, d)/TWO_PI
 end
 
-@inline function _reflect_ops_and_scales(::Type{T},sym::Reflection) where {T<:Real}
-    if sym.axis===:y_axis
-        return ((1,T(sym.parity<0 ? -1 : 1)),)
-    elseif sym.axis===:x_axis
-        return ((2,T(sym.parity<0 ? -1 : 1)),)
-    elseif sym.axis===:origin
-        px,py=sym.parity
-        sx=T(px<0 ? -1 : 1)
-        sy=T(py<0 ? -1 : 1)
-        sxy=sx*sy
-        return ((1,sx),(2,sy),(3,sxy))
-    else
-        error("Unknown reflection axis: $(sym.axis)")
-    end
-end
-
 function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     Mk=length(tabs)
     N=length(bp.xy)
