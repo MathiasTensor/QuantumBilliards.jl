@@ -314,7 +314,7 @@ function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bound
     return K
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable{T}};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
     if symmetry===nothing
         return compute_kernel_matrices_DLP_hyperbolic!(Ks,bp,tabs;multithreaded,kernel_fun)
     else
@@ -326,7 +326,7 @@ function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},
     end
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable{T}};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
 end
 
@@ -334,7 +334,7 @@ function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::Bound
     return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,ks::Vector{QTaylorTable{T}};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,ks::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_reflection_DLP_hyperbolic!(Ks,bp,sym,ks;multithreaded)
 end
 
@@ -342,7 +342,7 @@ function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::Bound
     return _one_k_reflection_DLP_hyperbolic!(K,bp,sym,tab;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Rotation,ks::Vector{QTaylorTable{T}};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Rotation,ks::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_rotation_DLP_hyperbolic!(Ks,bp,sym,ks;multithreaded)
 end
 
