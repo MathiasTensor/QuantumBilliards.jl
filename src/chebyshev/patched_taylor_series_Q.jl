@@ -518,7 +518,120 @@ function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-6,dmax::Float64=5.0,h
 end
 
 # =============================================================================
-# Construction of hyperbolic disrtances 
+# build_QTaylorTable (vector-ks overload)
+#
+# Build QTaylorTable objects for many complex wavenumbers ks.
+#
+# Parameters
+#   ν_i=-1/2+i ks[i].
+#
+# Algorithm
+#   0) Precompute geometry-independent data once:
+#        - patch centers d_p = dmin+(p-1)h,  p=1..Npatch
+#        - Taylor coefficients of coth(d_p+δ) up to order P for every patch p
+#          (stored in coth_coeffs[:,p]).
+#   1) Seed each ν_i at dmin using mpmath (2 calls to legenq per k):
+#        u_i(dmin)=Q_{ν_i}(cosh(dmin)),
+#        y_i(dmin)=d/dd Q_{ν_i}(cosh(dmin)).
+#   2) For each i (optionally threaded), build the full table by sweeping patches:
+#        For p=1..Npatch:
+#          - Generate Taylor coeffs (u_n,y_n) at center d_p via ODE recurrences
+#            using precomputed coth_coeffs[:,p].
+#          - Store as columns ucoeffs[:,p], ycoeffs[:,p].
+#          - Advance (u0,y0) to next center by Horner eval at δ=h.
+#
+# Complexity
+#   - Python: O(Nk) calls (seed only; 2 legenq calls per k).
+#   - Julia: O(Nk*Npatch*P^2) arithmetic.
+#   - Memory: O(Nk*(P+1)*Npatch) complex numbers for coeffs + shared real buffers.
+#
+# Threading / allocations
+#   - Seeding is done serially (PyCall/mpmath).
+#   - The per-k build phase may be threaded; each thread reuses its own
+#     (P+1)-length ComplexF64 scratch vectors (ucoef/ycoef) to avoid allocs.
+#   - The large ucoeffs/ycoeffs matrices are necessarily allocated per k
+#     because each QTaylorTable must own its coefficient storage.
+#
+# Inputs (keywords)
+#   ks::AbstractVector{ComplexF64}   - wavenumbers (may have small Im parts)
+#   dmin,dmax::Float64              - domain in d, dmin>0
+#   h::Float64                      - patch spacing
+#   P::Int                          - Taylor degree
+#   mp_dps::Int                     - mpmath precision for seeding
+#   leg_type::Int=3                 - mpmath LegendreQ definition selector
+#   threaded::Bool=true             - build tables in parallel (Julia only)
+#
+# Output
+#   Vector{QTaylorTable} length Nk, one table per ks[i]
+# =============================================================================
+
+function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-6,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
+    @assert dmax>dmin && h>0 && P≥1
+    Nk=length(ks)
+    Npatch=Int(ceil((dmax-dmin)/h))
+    centers=Vector{Float64}(undef,Npatch)
+    @inbounds for i in 1:Npatch
+        centers[i]=dmin+(i-1)*h
+    end
+    sδ=Vector{Float64}(undef,P+1);cδ=Vector{Float64}(undef,P+1)
+    series_sinh_cosh!(sδ,cδ)
+    coth_coeffs=Matrix{Float64}(undef,P+1,Npatch)
+    sinh_series=Vector{Float64}(undef,P+1);cosh_series=Vector{Float64}(undef,P+1)
+    coth=Vector{Float64}(undef,P+1)
+    sh0=sinh(dmin);ch0=cosh(dmin)
+    shh=sinh(h);chh=cosh(h)
+    @inbounds for p in 1:Npatch
+        coth_series_from_sinhcosh!(coth,sh0,ch0,sδ,cδ,sinh_series,cosh_series)
+        @views copyto!(coth_coeffs[:,p],coth)
+        if p<Npatch
+            sh1=sh0*chh+ch0*shh
+            ch1=ch0*chh+sh0*shh
+            sh0,ch0=sh1,ch1
+        end
+    end
+    nus=Vector{ComplexF64}(undef,Nk)
+    u0s=Vector{ComplexF64}(undef,Nk)
+    y0s=Vector{ComplexF64}(undef,Nk)
+    for i in 1:Nk
+        nu=ComplexF64(-0.5,0.0)+1im*ks[i]
+        nus[i]=nu
+        u0s[i],y0s[i]=seed_u_y_mpmath(nu,dmin;dps=mp_dps,leg_type=leg_type)
+    end
+    tabs=Vector{QTaylorTable}(undef,Nk)
+    NT=threaded ? Threads.nthreads() : 1
+    ucoef_tls=[Vector{ComplexF64}(undef,P+1) for _ in 1:NT]
+    ycoef_tls=[Vector{ComplexF64}(undef,P+1) for _ in 1:NT]
+    function build_one!(i,tid)
+        nu=nus[i];u0=u0s[i];y0=y0s[i]
+        ucoeffs=Matrix{ComplexF64}(undef,P+1,Npatch)
+        ycoeffs=Matrix{ComplexF64}(undef,P+1,Npatch)
+        ucoef=ucoef_tls[tid];ycoef=ycoef_tls[tid]
+        @inbounds for p in 1:Npatch
+            build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(coth_coeffs[:,p]))
+            @views copyto!(ucoeffs[:,p],ucoef)
+            @views copyto!(ycoeffs[:,p],ycoef)
+            if p<Npatch
+                u0=horner_eval(ucoef,h)
+                y0=horner_eval(ycoef,h)
+            end
+        end
+        tabs[i]=QTaylorTable(nu,dmin,dmax,h,P,centers,ucoeffs,ycoeffs)
+        return nothing
+    end
+    if threaded && Threads.nthreads()>1
+        Threads.@threads for i in 1:Nk
+            build_one!(i,Threads.threadid())
+        end
+    else
+        for i in 1:Nk
+            build_one!(i,1)
+        end
+    end
+    return tabs
+end
+
+# =============================================================================
+# Construction of hyperbolic distances 
 # =============================================================================
 
 # =============================================================================
