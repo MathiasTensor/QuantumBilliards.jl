@@ -121,7 +121,7 @@ function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bounda
                 dy=yi-yj
                 d2=muladd(dx,dx,dy*dy)
                 if d2≤tol2 && i==j
-                    K[i,i]=Complex{T}(κi/TWO_PI,zero(T))
+                    K[i,i]=Complex{T}(κi/(2*TWO_PI),zero(T))
                 else
                     K[i,j]=hyperbolic_dlp_kernel_scalar(tab,xi,yi,xj,yj,nxi,nyi)
                 end
@@ -145,7 +145,7 @@ function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsB
             dy=yi-yj
             d2=muladd(dx,dx,dy*dy)
             if d2≤tol2 && i==j
-                K[i,i]=Complex{T}(κi/TWO_PI,zero(T))
+                K[i,i]=Complex{T}(κi/(2*TWO_PI),zero(T))
             else
                 K[i,j]=hyperbolic_dlp_kernel_scalar(tab,xi,yi,xj,yj,nxi,nyi)
             end
