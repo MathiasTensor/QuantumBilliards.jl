@@ -10,8 +10,7 @@
 #    G_k(z,z0) = (1 / (2π)) * Q_ν(χ(z,z0)),   ν = -1/2 + i k
 #
 # where
-#    χ(z,z0) = cosh d_H(z,z0)
-#             = 1 + 2|z - z0|^2 / ((1 - |z|^2) (1 - |z0|^2)).
+#    χ(z,z0) = cosh d_H(z,z0) = 1 + 2|z - z0|^2 / ((1 - |z|^2) (1 - |z0|^2)).
 #
 #
 # The DLP kernel we discretize is
@@ -31,22 +30,10 @@
 #   - The boundary geometry (bp.xy, bp.normal, bp.curvature) is Euclidean.
 #
 # API
-# ----
-# hyperbolic_d_poincare(xi, yi, xj, yj) -> χ
-# hyperbolic_dchi_dn_target(xi, yi, nxi, nyi, xj, yj) -> ∂χ/∂n_E(z_i)
-#
-# hyperbolic_Qprime(nu, χ) -> ∂Q_ν/∂χ (user must implement or overload)
-#
+# -----------------------------------------------------------------
 # _one_k_nosymm_DLP_hyperbolic!  - build one DLP matrix for a single complex k
 # _all_k_nosymm_DLP_hyperbolic!  - build DLP matrices for a vector of ks
-#
 # compute_kernel_matrices_DLP_hyperbolic! - public entry points (single / multiple k)
-#
-# assemble_fredholm_matrices_hyperbolic! - apply weights and add identity (as in Euclidean BIM)
-#
-# NOTE:
-#   This file can build matrices either via the legacy χ/Q' hook (target normal), or via fast Taylor tables for y(d) (preferred).
-#   Both χ-based helpers and new distance/source-normal helpers are present.
 #
 # M0/25/10/2025
 #################################################################################
