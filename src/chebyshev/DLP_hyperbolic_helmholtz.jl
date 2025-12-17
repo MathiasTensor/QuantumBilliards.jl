@@ -109,17 +109,18 @@ end
     return eval_Q(tab,d)/TWO_PI
 end
 
-# κ_g = (1/λ)(κ_E + ∂_n log λ) with λ=2/(1-r^2)
+# κ_g = (1/λ)(κ_E + ∂_n log λ), λ = 2/(1-r^2)
 # simplifies to: κ_g = (1-r^2)/2 * κ_E + (x nx + y ny)
 @inline function κ_geodesic_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
-    r2=muladd(x,x,y*y) # x^2 + y^2
+    r2=muladd(x,x,y*y)
     return ((one(T)-r2)*κE)/2+muladd(x,nx,y*ny)
 end
 
+# Diagonal PV limit for SOURCE-normal DLP kernel:
+# K_ii = -κ_g/(4π) = -κ_g/(2*TWO_PI)
 @inline function dlp_diag_source_normal_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
-    r2=muladd(x,x,y*y)
-    dnlogλ=(2*muladd(x,nx,y*ny))/(one(T)-r2) # ∂_n log λ
-    return -(κE+dnlogλ)/(2*TWO_PI) # = -(κE+dnlogλ)/(4π)
+    κg=κ_geodesic_poincare(x,y,nx,ny,κE)
+    return -κg/(2*TWO_PI)
 end
 
 #=
