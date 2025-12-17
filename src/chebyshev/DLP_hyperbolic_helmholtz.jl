@@ -117,8 +117,9 @@ end
 end
 
 @inline function dlp_diag_source_normal_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
-    κg=κ_geodesic_poincare(x,y,nx,ny,κE)
-    return -κg/(2*TWO_PI) # = -κg/(4π)
+    r2=muladd(x,x,y*y)
+    dnlogλ=(2*muladd(x,nx,y*ny))/(one(T)-r2) # ∂_n log λ
+    return -(κE+dnlogλ)/(2*TWO_PI) # = -(κE+dnlogλ)/(4π)
 end
 
 #=
