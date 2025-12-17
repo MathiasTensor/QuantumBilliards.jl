@@ -109,6 +109,18 @@ end
     return eval_Q(tab,d)/TWO_PI
 end
 
+# κ_g = (1/λ)(κ_E + ∂_n log λ) with λ=2/(1-r^2)
+# simplifies to: κ_g = (1-r^2)/2 * κ_E + (x nx + y ny)
+@inline function κ_geodesic_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
+    r2=muladd(x,x,y*y) # x^2 + y^2
+    return ((one(T)-r2)*κE)/2+muladd(x,nx,y*ny)
+end
+
+@inline function dlp_diag_source_normal_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
+    κg=κ_geodesic_poincare(x,y,nx,ny,κE)
+    return -κg/(2*TWO_PI) # = -κg/(4π)
+end
+
 #=
 function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     Mk=length(tabs)
@@ -166,7 +178,8 @@ function _all_k_nosymm_DLP_hyperbolic!(
                 d2 = muladd(dx, dx, dy*dy)
 
                 if d2 ≤ tol2 && i == j
-                    K[i,i] = Complex{T}(-κi/(2*TWO_PI), zero(T))
+                    nxj, nyj = bp.normal[j]  # <-- SOURCE normal
+                    K[i,i] = Complex{T}(dlp_diag_source_normal_poincare(xj, yj, nxj, nyj, κi), zero(T))
                 else
                     nxj, nyj = bp.normal[j]  # <-- SOURCE normal
                     K[i,j] = hyperbolic_dlp_kernel_scalar_source(tab, xi, yi, xj, yj, nxj, nyj)
@@ -223,7 +236,8 @@ function _one_k_nosymm_DLP_hyperbolic!(
             d2 = muladd(dx, dx, dy*dy)
 
             if d2 ≤ tol2 && i == j
-                K[i,i] = Complex{T}(-κi/(2*TWO_PI), zero(T))
+                nxj, nyj = bp.normal[j]  # <-- SOURCE normal
+                K[i,i] = Complex{T}(dlp_diag_source_normal_poincare(xj, yj, nxj, nyj, κi), zero(T))
             else
                 nxj, nyj = bp.normal[j]  # <-- SOURCE normal
                 K[i,j] = hyperbolic_dlp_kernel_scalar_source(tab, xi, yi, xj, yj, nxj, nyj)
