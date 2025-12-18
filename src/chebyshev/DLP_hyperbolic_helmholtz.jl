@@ -120,7 +120,7 @@ end
 # K_ii = -κ_g/(4π) = -κ_g/(2*TWO_PI)
 @inline function dlp_diag_source_normal_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
     κg=κ_geodesic_poincare(x,y,nx,ny,κE)
-    return -κg/(2*TWO_PI)
+    return κg/(2*TWO_PI)
 end
 
 #=
