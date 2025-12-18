@@ -106,7 +106,7 @@ end
 
 @inline function hyperbolic_slp_kernel_scalar_target(tab::QTaylorTable,xi::T,yi::T,xj::T,yj::T) where {T<:Real}
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
-    return eval_Q(tab,d)/TWO_PI
+    return _eval_Q(tab,d)/TWO_PI
 end
 
 # κ_g = (1/λ)(κ_E + ∂_n log λ), λ = 2/(1-r^2)
