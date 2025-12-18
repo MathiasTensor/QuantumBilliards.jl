@@ -50,6 +50,12 @@
 #     builders that see bp.curvature and handle the diagonal there.
 #   * This function uses the *target* normal (nxi, nyi) (Bäcker convention).
 ################################################################################
+# 1/λ^2 = (1-r^2)^2 / 4
+@inline function invlambda2_poincare(x::T,y::T) where {T<:Real}
+    a=one(T)-muladd(x,x,y*y) # a = 1 - r^2
+    return (a*a)/T(4)
+end
+
 @inline function hyperbolic_cosh_d_poincare(xi::T,yi::T,xj::T,yj::T) where {T<:Real}
     dx=xi-xj
     dy=yi-yj
@@ -101,7 +107,8 @@ end
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
     y=_eval_dQdd(tab,d)                    # d/dd Qν(cosh d)
     dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
-    return (y*dn)/TWO_PI
+    λj=lambda_poincare(xj,yj)
+    return (y*dn)/TWO_PI*invlambda2_poincare(xj,yj)
 end
 
 @inline function hyperbolic_slp_kernel_scalar_target(tab::QTaylorTable,xi::T,yi::T,xj::T,yj::T) where {T<:Real}
@@ -119,9 +126,8 @@ end
 # Diagonal PV limit for SOURCE-normal DLP kernel:
 # K_ii = -κ_g/(4π) = -κ_g/(2*TWO_PI)
 @inline function dlp_diag_source_normal_poincare(x::T,y::T,nx::T,ny::T,κE::T) where {T<:Real}
-    #κg=κ_geodesic_poincare(x,y,nx,ny,κE)
-    #return -κg/(2*TWO_PI)
-    return -κE/(2*TWO_PI)
+    κg=κ_geodesic_poincare(x,y,nx,ny,κE)
+    return -κg/(2*TWO_PI)*invlambda2_poincare(x,y)
 end
 
 #=
