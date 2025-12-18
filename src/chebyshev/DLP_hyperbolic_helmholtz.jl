@@ -107,7 +107,6 @@ end
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
     y=_eval_dQdd(tab,d)                    # d/dd Qν(cosh d)
     dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
-    λj=lambda_poincare(xj,yj)
     return (y*dn)/TWO_PI*invlambda2_poincare(xj,yj)
 end
 
