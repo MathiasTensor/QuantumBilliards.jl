@@ -715,15 +715,3 @@ function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},
         end
     end
 end
-
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
-    return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
-end
-
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
-    return _one_k_reflection_DLP_hyperbolic!(K,bp,sym,tab;multithreaded)
-end
-
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
-    return _one_k_rotation_DLP_hyperbolic!(K,bp,sym,tab;multithreaded)
-end
