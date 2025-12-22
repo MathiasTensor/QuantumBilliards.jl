@@ -26,8 +26,30 @@
 
 using PyCall
 using LinearAlgebra
-const _mp=pyimport("mpmath")
-const _pyfloat=pybuiltin("float")
+
+if !isdefined(@__MODULE__,:_mp)
+    const _mp=Ref{PyObject}()
+    const _mpctx=Ref{PyObject}()
+    const _mpf=Ref{PyObject}()
+    const _mpc=Ref{PyObject}()
+    const _cosh=Ref{PyObject}()
+    const _sinh=Ref{PyObject}()
+    const _legenq=Ref{PyObject}()
+    const _pyfloat=Ref{PyObject}()
+end
+
+function __init__()
+    m=pyimport("mpmath")
+    _mp[]=m
+    _mpctx[]=m.mp
+    _mpf[]=m.mpf
+    _mpc[]=m.mpc
+    _cosh[]=m.cosh
+    _sinh[]=m.sinh
+    _legenq[]=m.legenq
+    _pyfloat[]=pybuiltin("float")
+    return nothing
+end
 
 # -----------------------------
 # Small-d fallbacks
@@ -104,19 +126,19 @@ end
 #   (u0,y0)::Tuple{ComplexF64,ComplexF64}
 # =============================================================================
 function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
-    _mp.mp.dps=dps
-    nu_py=_mp.mpc(real(nu),imag(nu))
-    d_py=_mp.mpf(d0)
-    z=_mp.cosh(d_py)
-    sh=_mp.sinh(d_py)
-    Qnu=_mp.legenq(nu_py,0,z,type=leg_type)
-    Qnu1=_mp.legenq(nu_py+1,0,z,type=leg_type)
+    _mpctx[].dps=dps
+    nu_py=_mpc[](real(nu),imag(nu))
+    d_py=_mpf[](d0)
+    z=_cosh[](d_py)
+    sh=_sinh[](d_py)
+    Qnu=_legenq[](nu_py,0,z;type=leg_type)
+    Qnu1=_legenq[](nu_py+1,0,z;type=leg_type)
     y0=(nu_py+1)*(Qnu1-z*Qnu)/sh
-    u_re=pycall(_pyfloat,Float64,Qnu.real)
-    u_im=pycall(_pyfloat,Float64,Qnu.imag)
-    y_re=pycall(_pyfloat,Float64,y0.real)
-    y_im=pycall(_pyfloat,Float64,y0.imag)
-    return ComplexF64(u_re,u_im),ComplexF64(y_re,y_im)
+    u_re=pycall(_pyfloat[],Float64,Qnu.real)
+    u_im=pycall(_pyfloat[],Float64,Qnu.imag)
+    y_re=pycall(_pyfloat[],Float64,y0.real)
+    y_im=pycall(_pyfloat[],Float64,y0.imag)
+    ComplexF64(u_re,u_im),ComplexF64(y_re,y_im)
 end
 
 # =============================================================================
