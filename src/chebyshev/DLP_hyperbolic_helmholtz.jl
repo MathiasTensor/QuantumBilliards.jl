@@ -719,9 +719,7 @@ end
 #
 # Inputs
 #
-#   K  : N×N matrix with entries
-#            K[i,j] = ∂_{n_y} G_k^ℍ(x_i,x_j)
-#        evaluated off–diagonal (principal value not yet applied)
+#   K  : N×N matrix with entries K[i,j] = ∂_{n_y} G_k^ℍ(x_i,x_j)
 #
 #   bp : BoundaryPointsBIM containing quadrature weights ds_j
 #        (Euclidean arclength elements along Γ)
@@ -745,8 +743,7 @@ end
 ################################################################################
 function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T}) where {T<:Real}
     @inbounds for j in axes(K,2)
-        wj=bp.ds[j] 
-        @views K[:,j].*=wj
+        @views K[:,j].*=bp.ds[j]
     end
     @inbounds for i in axes(K,1)
         K[i,i]+= -0.5
