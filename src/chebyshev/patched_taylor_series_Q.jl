@@ -21,7 +21,7 @@
 #         ∂_{n'}Q_ν(cosh d)=(dQ/dd)(d)*∂_{n'}d
 #     Geometry-specific computation of ∂_{n'}d lives elsewhere.
 #
-# MO / 15-12-25
+# MO / 22/12/25
 # =============================================================================
 
 using PyCall

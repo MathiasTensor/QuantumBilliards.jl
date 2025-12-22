@@ -35,7 +35,7 @@
 # _all_k_nosymm_DLP_hyperbolic!  - build DLP matrices for a vector of ks
 # compute_kernel_matrices_DLP_hyperbolic! - public entry points (single / multiple k)
 #
-# M0/25/10/2025
+# M0 / 22/12/2025
 #################################################################################
 
 ################################################################################
@@ -706,4 +706,51 @@ function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},
             error("Error computing hyperbolic kernel matrices with symmetry $(symmetry): ")
         end
     end
+end
+
+################################################################################
+# assemble_DLP_hyperbolic!
+#
+#   Discretizes the hyperbolic double–layer boundary integral operator
+#
+#       (K μ)(x) = ∫_Γ ∂_{n_y} G_k^ℍ(x,y) μ(y) ds_y
+#
+#   acting on the Dirichlet density μ represented in the Poincaré disk model.
+#
+# Inputs
+#
+#   K  : N×N matrix with entries
+#            K[i,j] = ∂_{n_y} G_k^ℍ(x_i,x_j)
+#        evaluated off–diagonal (principal value not yet applied)
+#
+#   bp : BoundaryPointsBIM containing quadrature weights ds_j
+#        (Euclidean arclength elements along Γ)
+#
+# Discretization
+#
+#   1) Quadrature:
+#
+#        ∫_Γ f(y) ds_y  ≈  Σ_j f(y_j) ds_j
+#
+#      hence each column j is multiplied by ds_j.
+#
+#   2) Principal value limit (interior Dirichlet problem):
+#
+#        lim_{x→Γ^-} ∫_Γ ∂_{n_y} G_k^ℍ(x,y) μ(y) ds_y
+#          = -½ μ(x) + K μ(x)
+#
+#      implemented by adding −1/2 to the diagonal.
+#
+#   3) filter_matrix! removes noise-induced numerical artifacts.
+################################################################################
+function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T}) where {T<:Real}
+    @inbounds for j in axes(K,2)
+        wj=bp.ds[j] 
+        @views K[:,j].*=wj
+    end
+    @inbounds for i in axes(K,1)
+        K[i,i]+= -0.5
+    end
+    filter_matrix!(K)
+    return nothing
 end
