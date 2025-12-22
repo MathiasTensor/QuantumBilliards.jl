@@ -652,39 +652,6 @@ function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bound
     return nothing
 end
 
-################################################################################
-# compute_kernel_matrices_DLP_hyperbolic!  (dispatch wrapper)
-#
-# PURPOSE
-#   User-facing convenience wrapper that dispatches to the appropriate DLP
-#   hyperbolic assembly routine depending on the symmetry specification.
-#
-# INPUTS (MULTI-k)
-#   Ks::Vector{Matrix{Complex{T}}}
-#   bp::BoundaryPointsBIM{T}
-#   symmetry::Union{Vector{Any},Nothing}
-#       - nothing or Vector with one symmetry element (Reflection or Rotation)
-#   tabs::Vector{QTaylorTable}
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#   kernel_fun::Union{Symbol,Function} (currently unused; kept for API symmetry)
-#
-# OUTPUTS
-#   nothing (fills Ks)
-################################################################################
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    if symmetry===nothing
-        return compute_kernel_matrices_DLP_hyperbolic!(Ks,bp,tabs;multithreaded,kernel_fun)
-    else
-        try
-            compute_kernel_matrices_DLP_hyperbolic!(Ks,bp,symmetry[1],tabs;multithreaded,kernel_fun)
-        catch _
-            error("Error computing hyperbolic kernel matrices with symmetry $(symmetry): ")
-        end
-    end
-end
-
 function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
 end
@@ -709,6 +676,27 @@ function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::Bound
     return _one_k_rotation_DLP_hyperbolic!(K,bp,sym,tab;multithreaded)
 end
 
+################################################################################
+# compute_kernel_matrices_DLP_hyperbolic!  (dispatch wrapper)
+#
+# PURPOSE
+#   User-facing convenience wrapper that dispatches to the appropriate DLP
+#   hyperbolic assembly routine depending on the symmetry specification.
+#
+# INPUTS (MULTI-k)
+#   Ks::Vector{Matrix{Complex{T}}}
+#   bp::BoundaryPointsBIM{T}
+#   symmetry::Union{Vector{Any},Nothing}
+#       - nothing or Vector with one symmetry element (Reflection or Rotation)
+#   tabs::Vector{QTaylorTable}
+#
+# KEYWORD INPUTS
+#   multithreaded::Bool
+#   kernel_fun::Union{Symbol,Function} (currently unused; kept for API symmetry)
+#
+# OUTPUTS
+#   nothing (fills Ks)
+################################################################################
 function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
         return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
