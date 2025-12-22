@@ -206,7 +206,7 @@ end
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
     y=_eval_dQdd(tab,d)
     dn=hyperbolic_dn_d_target(xi,yi,xj,yj,nxi,nyi)
-    return (y*dn)/TWO_PI
+    return (y*dn)*inv2π
 end
 
 ################################################################################
@@ -230,7 +230,7 @@ end
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
     y=_eval_dQdd(tab,d)                    # d/dd Qν(cosh d)
     dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
-    return (y*dn)/TWO_PI
+    return (y*dn)*inv2π
 end
 
 ################################################################################
@@ -251,7 +251,7 @@ end
 ################################################################################
 @inline function hyperbolic_slp_kernel_scalar_target(tab::QTaylorTable,xi::T,yi::T,xj::T,yj::T) where {T<:Real}
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
-    return _eval_Q(tab,d)/TWO_PI
+    return _eval_Q(tab,d)*inv2π
 end
 
 ################################################################################
@@ -337,7 +337,6 @@ end
 function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     Mk=length(tabs)
     N=length(bp.xy)
-    tol2=(eps(T))^2
     @use_threads multithreading=multithreaded for m in 1:Mk
         K=Ks[m]
         tab=tabs[m]
@@ -347,10 +346,7 @@ function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bounda
             κi=bp.curvature[i]
             for j in 1:N
                 xj,yj=bp.xy[j]
-                dx=xi-xj
-                dy=yi-yj
-                d2=muladd(dx,dx,dy*dy)
-                if d2≤tol2 && i==j
+                if i==j
                     nxj,nyj=bp.normal[j] 
                     K[i,i]=Complex{T}(dlp_diag_source_normal_poincare(xj,yj,nxj,nyj,κi),zero(T))
                 else
@@ -384,16 +380,12 @@ end
 function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
     fill!(K,zero(eltype(K)))
-    tol2=(eps(T))^2
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         κi=bp.curvature[i]
         @inbounds for j in 1:N
             xj,yj=bp.xy[j]
-            dx=xi-xj
-            dy=yi-yj
-            d2=muladd(dx,dx,dy*dy)
-            if d2≤tol2 && i==j
+            if i==j
                 nxj,nyj=bp.normal[j]
                 K[i,i]=Complex{T}(dlp_diag_source_normal_poincare(xj,yj,nxj,nyj,κi),zero(T))
             else

@@ -33,6 +33,8 @@ const _pyfloat=pybuiltin("float")
 # Small-d fallbacks
 # -----------------------------
 
+const inv2π=1.0/TWO_PI
+
 const Z_threshold=1.0+1e-14
 const d_threshold=1e-3
 
@@ -367,7 +369,7 @@ end
 @inline function _eval_Q(tab::QTaylorTable,d::Float64)
     dd=Float64(d)
     if dd<d_threshold
-        k=imag(tab.nu+0.5)
+        k=-im*(tab.nu+0.5)
         return _small_z_Q(k,dd)
     end
     idx=_patch_index(tab,dd)
@@ -392,7 +394,7 @@ end
 @inline function _eval_dQdd(tab::QTaylorTable,d::Float64)
     dd=Float64(d)
     if dd<d_threshold
-        k=imag(tab.nu+0.5)
+        k=-im*(tab.nu+0.5)
         return _small_z_dQ(k,dd)
     end
     idx=_patch_index(tab,dd)
@@ -477,7 +479,7 @@ function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-6,dmax::Float64=5.0,h
     @assert dmax>dmin
     @assert h>0
     @assert P≥1
-    nu=ComplexF64(-0.5,0.0)+1im*k
+    nu=ComplexF64(-0.5,0.0)+im*k
     sδ=Vector{Float64}(undef,P+1)
     cδ=Vector{Float64}(undef,P+1)
     series_sinh_cosh!(sδ,cδ)
@@ -593,7 +595,7 @@ function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-6,dm
     u0s=Vector{ComplexF64}(undef,Nk)
     y0s=Vector{ComplexF64}(undef,Nk)
     for i in 1:Nk
-        nu=ComplexF64(-0.5,0.0)+1im*ks[i]
+        nu=ComplexF64(-0.5,0.0)+im*ks[i]
         nus[i]=nu
         u0s[i],y0s[i]=seed_u_y_mpmath(nu,dmin;dps=mp_dps,leg_type=leg_type)
     end
@@ -689,6 +691,7 @@ end
         dx1=xp1i-x1i;dx2=xp2i-x2i
         r2=dx1*dx1+dx2*dx2
         c=1.0+2.0*r2/(ax*bx)
+        c=max(c,1.0)
         dvec[i]=acosh(c)
     end
     return nothing
@@ -716,7 +719,7 @@ end
 end
 
 @inline function slp_hyperbolic_kernel(tab::QTaylorTable,x1::Float64,x2::Float64,xp1::Float64,xp2::Float64)
-    return 1.0/TWO_PI*_eval_Q(tab,acosh(1.0+2.0*((xp1-x1)^2+(xp2-x2)^2)/((1.0-(x1^2+x2^2))*(1.0-(xp1^2+xp2^2)))))
+    return inv2π*_eval_Q(tab,acosh(1.0+2.0*((xp1-x1)^2+(xp2-x2)^2)/((1.0-(x1^2+x2^2))*(1.0-(xp1^2+xp2^2)))))
 end
 
 # =============================================================================
@@ -745,10 +748,11 @@ end
     dx1=xp1-x1;dx2=xp2-x2
     r2=dx1*dx1+dx2*dx2
     c=1.0+2.0*r2/(ax*bx)
+    c=max(c,1.0)
     d=acosh(c)
     y=_eval_dQdd(tab,d)
     dn=_∂n_d(x1,x2,xp1,xp2,n1,n2)
-    return (y*dn)/(2*pi)
+    return (y*dn)*inv2π
 end
 
 # =============================================================================
@@ -763,7 +767,6 @@ end
 # =============================================================================
 @inline function slp_hyperbolic_kernel!(out::Vector{ComplexF64},tab::QTaylorTable,dvec::Vector{Float64})
     _eval_Q!(out,tab,dvec)
-    inv2π=1.0/TWO_PI
     @inbounds for i in eachindex(out)
         out[i]*=inv2π
     end
@@ -783,7 +786,6 @@ end
 # =============================================================================
 @inline function dlp_hyperbolic_kernel!(out::Vector{ComplexF64},tab::QTaylorTable,dvec::Vector{Float64},dnvec::Vector{Float64})
     _eval_dQdd!(out,tab,dvec)
-    inv2π=1.0/TWO_PI
     @inbounds for i in eachindex(out)
         out[i]*=(dnvec[i]*inv2π)
     end
