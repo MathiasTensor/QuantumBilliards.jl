@@ -682,7 +682,6 @@ end
 #   nothing (fills dvec)
 # =============================================================================
 @inline function build_dvec_disk!(dvec::Vector{Float64},x1::Vector{Float64},x2::Vector{Float64},xp1::Vector{Float64},xp2::Vector{Float64})
-    @assert length(dvec)==length(x1)==length(x2)==length(xp1)==length(xp2)
     @inbounds Threads.@threads for i in eachindex(dvec)
         x1i=x1[i];x2i=x2[i];xp1i=xp1[i];xp2i=xp2[i]
         ax=1.0-(x1i*x1i+x2i*x2i)
@@ -710,7 +709,6 @@ end
 #   nothing (fills dnvec)
 # =============================================================================
 @inline function build_dn_vec_disk!(dnvec::Vector{Float64},x1::Vector{Float64},x2::Vector{Float64},xp1::Vector{Float64},xp2::Vector{Float64},n1::Vector{Float64},n2::Vector{Float64})
-    @assert length(dnvec)==length(x1)==length(x2)==length(xp1)==length(xp2)==length(n1)==length(n2)
     @inbounds Threads.@threads for i in eachindex(dnvec)
         dnvec[i]=_∂n_d(x1[i],x2[i],xp1[i],xp2[i],n1[i],n2[i])
     end
@@ -764,7 +762,6 @@ end
 #   dvec::Vector{Float64}    precomputed distances
 # =============================================================================
 @inline function slp_hyperbolic_kernel!(out::Vector{ComplexF64},tab::QTaylorTable,dvec::Vector{Float64})
-    @assert length(out)==length(dvec)
     _eval_Q!(out,tab,dvec)
     inv2π=1.0/TWO_PI
     @inbounds for i in eachindex(out)
@@ -785,7 +782,6 @@ end
 #   dnvec::Vector{Float64}   precomputed ∂n d
 # =============================================================================
 @inline function dlp_hyperbolic_kernel!(out::Vector{ComplexF64},tab::QTaylorTable,dvec::Vector{Float64},dnvec::Vector{Float64})
-    @assert length(out)==length(dvec)==length(dnvec)
     _eval_dQdd!(out,tab,dvec)
     inv2π=1.0/TWO_PI
     @inbounds for i in eachindex(out)
