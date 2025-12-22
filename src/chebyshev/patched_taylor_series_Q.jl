@@ -717,9 +717,6 @@ end
 #   QTaylorPrecomp(dmin,dmax,h,P,Npatch,centers,coth_coeffs)
 # =============================================================================
 @inline function build_QTaylorPrecomp(;dmin::Float64=1e-6,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30)
-    @assert dmax>dmin
-    @assert h>0
-    @assert P≥1
     Npatch=Int(ceil((dmax-dmin)/h))
     centers=Vector{Float64}(undef,Npatch)
     @inbounds for p in 1:Npatch
@@ -815,10 +812,6 @@ end
 #   nothing (mutates tab)
 # =============================================================================
 function build_QTaylorTable!(tab::QTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWorkspace,k::ComplexF64;mp_dps::Int=60,leg_type::Int=3)
-    @assert pre.P==tab.P
-    @assert pre.Npatch==size(tab.ucoeffs,2)==size(tab.ycoeffs,2)==length(tab.centers)
-    @assert pre.dmin==tab.dmin && pre.dmax==tab.dmax && pre.h==tab.h
-    @assert pre.centers===tab.centers
     nu=ν(k)
     u0,y0=seed_u_y_mpmath(nu,pre.dmin;dps=mp_dps,leg_type=leg_type)
     P=pre.P;Npatch=pre.Npatch;h=pre.h
