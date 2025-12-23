@@ -417,6 +417,8 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     tab=alloc_QTaylorTable(preQ)
     K=Matrix{ComplexF64}(undef,N,N)
     σmins=Vector{T}(undef,length(ks))
+    num_intervals=length(ks)
+    p=Progress(num_intervals,1)
     @inbounds for i in eachindex(ks)
         k=ks[i]
         build_QTaylorTable!(tab,preQ,ws,complex(k);mp_dps=60,leg_type=3)
@@ -429,6 +431,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
             @blas_multi_then_1 MAX_BLAS_THREADS S=svdvals(K)
             σmins[i]=T(S[end])
         end
+        next!(p)
     end
     return σmins
 end
