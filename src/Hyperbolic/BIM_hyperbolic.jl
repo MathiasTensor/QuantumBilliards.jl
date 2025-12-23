@@ -270,7 +270,7 @@ function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m,h=h,P=P)
     K=Matrix{ComplexF64}(undef,N,N)
-    compute_kernel_matrices_DLP_hyperbolic!(K,pts,tab;multithreaded=multithreaded)
+    compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded)
     assemble_DLP_hyperbolic!(K,pts)
     if use_krylov
         σ,_,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
@@ -338,7 +338,7 @@ function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypB
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m,h=h,P=P)
     K=Matrix{ComplexF64}(undef,N,N)
-    compute_kernel_matrices_DLP_hyperbolic!(K,pts,tab;multithreaded=multithreaded)
+    compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded)
     assemble_DLP_hyperbolic!(K,pts)
     if use_krylov
         σ,u,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
@@ -422,7 +422,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     @inbounds for i in eachindex(ks)
         k=ks[i]
         build_QTaylorTable!(tab,preQ,ws,complex(k);mp_dps=60,leg_type=3)
-        compute_kernel_matrices_DLP_hyperbolic!(K,pts,tab;multithreaded=multithreaded_matrices)
+        compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded_matrices)
         assemble_DLP_hyperbolic!(K,pts)
         if use_krylov
             σ,_,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
