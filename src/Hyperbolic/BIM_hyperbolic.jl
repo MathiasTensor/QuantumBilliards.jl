@@ -107,6 +107,33 @@ struct BIM_hyperbolic{T} <: SweepSolver where {T<:Real}
     symmetry::Union{Vector{Any},Nothing}
 end
 
+#------------------------------------------------------------------------------
+# BIM_hyperbolic(pts_scaling_factor;min_pts=20,symmetry=nothing)->solver
+#
+# PURPOSE
+#   Convenience constructor. Accepts either a scalar b or a vector of b_i.
+#
+# INPUTS
+#   pts_scaling_factor
+#     Either:
+#       • b::T              -> stored as Vector{T}([b])
+#       • bs::Vector{T}     -> stored directly
+#
+# KEYWORDS
+#   min_pts::Int
+#     Minimum points per real curve.
+#   symmetry::Union{Vector{Any},Nothing}
+#     Symmetry specification forwarded into solver.symmetry.
+#
+# OUTPUTS
+#   solver::BIM_hyperbolic{T}
+#------------------------------------------------------------------------------
+function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real}
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[Hyperbolic()]
+    return BIM_hyperbolic{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
+end
+
 # ==============================================================================
 # BoundaryPointsHypBIM
 # ==============================================================================
@@ -134,64 +161,6 @@ struct BoundaryPointsHypBIM{T} <: AbsPoints where{T<:Real}
     dsH::Vector{T}
     ξ::Vector{T}
     LH::T
-end
-
-#------------------------------------------------------------------------------
-# _BoundaryPointsHypBIM_to_BoundaryPointsBIM(bph)->bp
-#
-# PURPOSE
-#   Convert a hyperbolic boundary-point container (BoundaryPointsHypBIM) into the
-#   standard Euclidean BIM container (BoundaryPointsBIM) expected by low-level
-#   Fredholm / layer-kernel matrix constructors.
-#
-#   PRESERVED (copied by reference, no allocation for vectors):
-#     • xy        : Euclidean boundary nodes
-#     • normal    : Euclidean unit normals
-#     • curvature : Euclidean curvature κ_E
-#     • ds        : Euclidean quadrature weights ds_E
-#
-#   DROPPED (ignored):
-#     • λ, dsH, ξ, LH (hyperbolic extras)
-#
-# INPUTS
-#   bph::BoundaryPointsHypBIM{T}
-#     Fields used:
-#       bph.xy, bph.normal, bph.curvature, bph.ds
-#
-# OUTPUTS
-#   bp::BoundaryPointsBIM{T}
-#     Uses the same vector objects for xy/normal/curvature/ds (zero-copy).
-#     shift_x and shift_y are set to 0 (no shifts in Poincaré disk workflow).
-#------------------------------------------------------------------------------
-@inline function _BoundaryPointsHypBIM_to_BoundaryPointsBIM(bph::BoundaryPointsHypBIM{T}) where{T<:Real}
-    return BoundaryPointsBIM{T}(bph.xy,bph.normal,bph.curvature,bph.ds,zero(T),zero(T))
-end
-
-#------------------------------------------------------------------------------
-# BIM_hyperbolic(pts_scaling_factor;min_pts=20,symmetry=nothing)->solver
-#
-# PURPOSE
-#   Convenience constructor. Accepts either a scalar b or a vector of b_i.
-#
-# INPUTS
-#   pts_scaling_factor
-#     Either:
-#       • b::T              -> stored as Vector{T}([b])
-#       • bs::Vector{T}     -> stored directly
-#
-# KEYWORDS
-#   min_pts::Int
-#     Minimum points per real curve.
-#   symmetry::Union{Vector{Any},Nothing}
-#     Symmetry specification forwarded into solver.symmetry.
-#
-# OUTPUTS
-#   solver::BIM_hyperbolic{T}
-#------------------------------------------------------------------------------
-function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real}
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler=[Hyperbolic()]
-    return BIM_hyperbolic{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
 end
 
 #------------------------------------------------------------------------------

@@ -10,6 +10,37 @@ function _boundary_curves_for_solver(billiard::Bi,solver::BIM_hyperbolic) where 
 end
 
 #------------------------------------------------------------------------------
+# _BoundaryPointsHypBIM_to_BoundaryPointsBIM(bph)->bp
+#
+# PURPOSE
+#   Convert a hyperbolic boundary-point container (BoundaryPointsHypBIM) into the
+#   standard Euclidean BIM container (BoundaryPointsBIM) expected by low-level
+#   Fredholm / layer-kernel matrix constructors.
+#
+#   PRESERVED (copied by reference, no allocation for vectors):
+#     • xy        : Euclidean boundary nodes
+#     • normal    : Euclidean unit normals
+#     • curvature : Euclidean curvature κ_E
+#     • ds        : Euclidean quadrature weights ds_E
+#
+#   DROPPED (ignored):
+#     • λ, dsH, ξ, LH (hyperbolic extras)
+#
+# INPUTS
+#   bph::BoundaryPointsHypBIM{T}
+#     Fields used:
+#       bph.xy, bph.normal, bph.curvature, bph.ds
+#
+# OUTPUTS
+#   bp::BoundaryPointsBIM{T}
+#     Uses the same vector objects for xy/normal/curvature/ds (zero-copy).
+#     shift_x and shift_y are set to 0 (no shifts in Poincaré disk workflow).
+#------------------------------------------------------------------------------
+@inline function _BoundaryPointsHypBIM_to_BoundaryPointsBIM(bph::BoundaryPointsHypBIM{T}) where{T<:Real}
+    return BoundaryPointsBIM{T}(bph.xy,bph.normal,bph.curvature,bph.ds,zero(T),zero(T))
+end
+
+#------------------------------------------------------------------------------
 # HyperArcCDFPrecomp{T,C}
 #
 # PURPOSE
@@ -200,7 +231,7 @@ end
 # OUTPUTS
 #   precomps::Vector{HyperArcCDFPrecomp{Float64}}
 #------------------------------------------------------------------------------
-function precompute_hyperbolic_boundary_cdfs(solver::BIM_hyperbolic,billiard::Bi;M_cdf_base::Int=4000,safety::Real=1e-14) where{Bi<:QuantumBilliards.AbsBilliard}
+function precompute_hyperbolic_boundary_cdfs(solver::BIM_hyperbolic,billiard::Bi;M_cdf_base::Int=4000,safety::Real=1e-14) where{Bi<:AbsBilliard}
     curves=_boundary_curves_for_solver(billiard,solver)
     pre=HyperArcCDFPrecomp{Float64}[]
     for crv in curves
@@ -249,7 +280,7 @@ end
 #   ξ[j]         : cumulative hyperbolic coordinate (T), ξ[1]=0
 #   LH           : total hyperbolic boundary length, LH≈sum(dsH)
 #------------------------------------------------------------------------------
-function evaluate_points_hyperbolic(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:QuantumBilliards.AbsBilliard}
+function evaluate_points_hyperbolic(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:AbsBilliard}
     bs,_=QuantumBilliards.adjust_scaling_and_samplers(solver,billiard)
     curves=QuantumBilliards._boundary_curves_for_solver(billiard,solver)
     T=eltype(solver.pts_scaling_factor)
