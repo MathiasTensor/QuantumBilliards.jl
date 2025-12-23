@@ -243,7 +243,7 @@ function precompute_hyperbolic_boundary_cdfs(solver::BIM_hyperbolic,billiard::Bi
 end
 
 #------------------------------------------------------------------------------
-# evaluate_points_hyperbolic(solver,billiard,k,precomps;...)->BoundaryPointsHypBIM
+# evaluate_points(solver,billiard,k,precomps;...)->BoundaryPointsHypBIM
 #
 # PURPOSE
 #   Construct boundary quadrature nodes distributed UNIFORMLY in HYPERBOLIC
@@ -280,7 +280,7 @@ end
 #   ξ[j]         : cumulative hyperbolic coordinate (T), ξ[1]=0
 #   LH           : total hyperbolic boundary length, LH≈sum(dsH)
 #------------------------------------------------------------------------------
-function evaluate_points_hyperbolic(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:AbsBilliard}
+function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:AbsBilliard}
     bs,_=QuantumBilliards.adjust_scaling_and_samplers(solver,billiard)
     curves=QuantumBilliards._boundary_curves_for_solver(billiard,solver)
     T=eltype(solver.pts_scaling_factor)

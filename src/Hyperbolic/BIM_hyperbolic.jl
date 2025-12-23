@@ -397,7 +397,7 @@ end
 #     once and reused; tab is rebuilt in-place for each k. Check solve function for more information.
 #
 #   M_cdf_base::Int, safety::Real
-#     Passed to precompute_hyperbolic_boundary_cdfs / evaluate_points_hyperbolic.
+#     Passed to precompute_hyperbolic_boundary_cdfs / evaluate_points.
 #     These control the dense CDF resolution and numerical safety near r→1.
 #
 # OUTPUTS
@@ -408,7 +408,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     symmetry=solver.symmetry
     kmax=maximum(ks)
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=M_cdf_base,safety=safety)
-    pts_hyp=evaluate_points_hyperbolic(solver,billiard,real(kmax),pre;safety=safety,threaded=multithreaded_matrices)
+    pts_hyp=evaluate_points(solver,billiard,real(kmax),pre;safety=safety,threaded=multithreaded_matrices)
     pts=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts_hyp)
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
