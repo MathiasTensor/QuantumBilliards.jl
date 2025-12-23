@@ -694,11 +694,30 @@ function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},
         return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     else
         try
-            s = symmetry[1]
+            s=symmetry[1]
             if s isa Reflection
                 return _all_k_reflection_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
             elseif s isa Rotation
                 return _all_k_rotation_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
+            else
+                error("Unsupported symmetry type: $(typeof(s))")
+            end
+        catch _
+            error("Error computing hyperbolic kernel matrices with symmetry $(symmetry): ")
+        end
+    end
+end
+
+function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    if symmetry===nothing
+        return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
+    else
+        try
+            s=symmetry[1]
+            if s isa Reflection
+                return _one_k_reflection_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
+            elseif s isa Rotation
+                return _one_k_rotation_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
             else
                 error("Unsupported symmetry type: $(typeof(s))")
             end
