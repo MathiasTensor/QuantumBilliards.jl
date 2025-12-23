@@ -94,7 +94,8 @@ end
     r2=muladd(xi,xi,yi*yi)
     r02=muladd(xj,xj,yj*yj)
     denom=(one(T)-r2)*(one(T)-r02)
-    return one(T)+2*Δ2/denom
+    χ=one(T)+2*Δ2/denom
+    return max(χ,one(T))
 end
 
 ################################################################################

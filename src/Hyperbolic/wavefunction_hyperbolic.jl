@@ -156,7 +156,7 @@ end
 #     Value of G(x,q)=(1/2π)Q_ν(cosh d(x,q)).
 #------------------------------------------------------------------------------
 @inline function slp_kernel_hyp(tab::QTaylorTable,x::T,y::T,xp::T,yp::T)where{T<:Real}
-    d=Float64(d_poincare(x,y,xp,yp))
+    d=Float64(hyperbolic_distance_poincare(x,y,xp,yp))
     return QuantumBilliards._eval_Q(tab,d)/TWO_PI
 end
 
