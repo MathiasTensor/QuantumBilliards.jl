@@ -1,5 +1,14 @@
 struct Hyperbolic<:AbsSampler end 
 
+function _boundary_curves_for_solver(billiard::Bi,solver::BIM_hyperbolic) where {Bi<:AbsBilliard}
+    if solver.symmetry === nothing
+        hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
+    end
+    hasproperty(billiard,:desymmetrized_full_boundary) && return getfield(billiard,:desymmetrized_full_boundary)
+    hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
+    error("No usable boundary field found in $(typeof(billiard))")
+end
+
 #------------------------------------------------------------------------------
 # HyperArcCDFPrecomp{T,C}
 #
@@ -191,7 +200,7 @@ end
 # OUTPUTS
 #   precomps::Vector{HyperArcCDFPrecomp{Float64}}
 #------------------------------------------------------------------------------
-function precompute_hyperbolic_boundary_cdfs(solver::BoundaryIntegralMethod,billiard::Bi;M_cdf_base::Int=4000,safety::Real=1e-14) where{Bi<:QuantumBilliards.AbsBilliard}
+function precompute_hyperbolic_boundary_cdfs(solver::BIM_hyperbolic,billiard::Bi;M_cdf_base::Int=4000,safety::Real=1e-14) where{Bi<:QuantumBilliards.AbsBilliard}
     curves=_boundary_curves_for_solver(billiard,solver)
     pre=HyperArcCDFPrecomp{Float64}[]
     for crv in curves
@@ -211,7 +220,7 @@ end
 #   (xy,normal,curvature) and Euclidean ds weights.
 #
 # INPUTS
-#   solver::BoundaryIntegralMethod
+#   solver::BIM_hyperbolic
 #     Uses:
 #       solver.min_pts  : minimum points per curve
 #       solver.pts_scaling_factor (eltype sets output floating type T)
@@ -240,7 +249,7 @@ end
 #   ξ[j]         : cumulative hyperbolic coordinate (T), ξ[1]=0
 #   LH           : total hyperbolic boundary length, LH≈sum(dsH)
 #------------------------------------------------------------------------------
-function evaluate_points_hyperbolic(solver::QuantumBilliards.BoundaryIntegralMethod,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:QuantumBilliards.AbsBilliard}
+function evaluate_points_hyperbolic(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:QuantumBilliards.AbsBilliard}
     bs,_=QuantumBilliards.adjust_scaling_and_samplers(solver,billiard)
     curves=QuantumBilliards._boundary_curves_for_solver(billiard,solver)
     T=eltype(solver.pts_scaling_factor)
