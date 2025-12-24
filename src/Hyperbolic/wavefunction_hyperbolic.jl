@@ -507,14 +507,14 @@ function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:Abstra
     ps_out=full_p ? pgrid : vcat(-reverse(pgrid)[1:end-1],pgrid)
     pbar=show_progress_husimi ? Progress(n;desc="Husimi N=$n") : nothing
     Threads.@threads for i in 1:n
-        try
+        #try
             bd=vec_bd[i]
             H=full_p ? Matrix{T}(undef,Nq,Np) : Matrix{T}(undef,Nq,2Np-1)
             _husimi_on_grid_hyp!(H,ks[i],bd.ξ,vec_u[i],bd.LH,bd.dsH,qgrid,pgrid;full_p=full_p)
             Hs[i]=H
-        catch
-            ok[i]=false
-        end
+        #catch
+        #    ok[i]=false
+        #end
         if show_progress_husimi
             next!(pbar)
         end
