@@ -499,7 +499,6 @@ function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:Abstra
     ps_out=Vector{AbstractVector{T}}(undef,n)
     ok=trues(n)
     pbar=show_progress_husimi ? Progress(n;desc="Husimi N=$n") : nothing
-    lk=ReentrantLock()
     Threads.@threads for i in 1:n
         try
             qgrid=qs[i];pgrid=ps[i]
@@ -514,7 +513,7 @@ function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:Abstra
             ok[i]=false
         end
         if show_progress_husimi
-            lock(lk) do next!(pbar) end
+            next!(pbar)
         end
     end
     return Psi2ds,xgrid,ygrid,Hs[ok],qs_out[ok],ps_out[ok]
