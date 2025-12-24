@@ -390,7 +390,6 @@ function husimi_on_grid_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPo
     Hs=Vector{Matrix{T}}(undef,n)
     ok=trues(n)
     pbar=show_progress ? Progress(n;desc="Husimi N=$n") : nothing
-    lk=ReentrantLock()
     Threads.@threads for i in 1:n
         try
             qgrid=qs[i];pgrid=ps[i]
@@ -403,7 +402,7 @@ function husimi_on_grid_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPo
             ok[i]=false
         end
         if show_progress
-            lock(lk) do next!(pbar) end
+            next!(pbar)
         end
     end
     return Hs[ok]
