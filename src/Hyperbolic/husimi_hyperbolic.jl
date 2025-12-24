@@ -190,7 +190,7 @@ const _HUSIMI_TLS=[Dict{DataType,Any}() for _ in 1:Threads.nthreads()]
 # ------------------------------------------------------------------------------
 @inline function _tls_husimi(::Type{T}) where {T<:Real}
     d=_HUSIMI_TLS[Threads.threadid()]
-    return get!(d,T) do _HusimiWorkspace(T) end::_HusimiWorkspace{T}
+    return get!(()->_HusimiWorkspace(T), d, T)::_HusimiWorkspace{T}
 end
 
 # ==============================================================================
