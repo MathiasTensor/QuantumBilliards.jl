@@ -220,7 +220,8 @@ mutable struct _HusimiWorkspace{T}
 end
 _HusimiWorkspace(::Type{T}) where {T<:Real}=_HusimiWorkspace{T}(T[],T[],T[],T[],T[])
 
-const _HUSIMI_TLS=[Dict{DataType,Any}() for _ in 1:Threads.nthreads()]
+const _HUSIMI_WS=Dict{Tuple{Int,DataType},Any}()
+const _HUSIMI_WS_LOCK=ReentrantLock()
 
 # ------------------------------------------------------------------------------
 # _tls_husimi(T) (internal)
@@ -229,8 +230,14 @@ const _HUSIMI_TLS=[Dict{DataType,Any}() for _ in 1:Threads.nthreads()]
 #   Return per-thread workspace for element type T. Allocates once per thread.
 # ------------------------------------------------------------------------------
 @inline function _tls_husimi(::Type{T}) where {T<:Real}
-    d=_HUSIMI_TLS[Threads.threadid()]
-    return get!(()->_HusimiWorkspace(T), d, T)::_HusimiWorkspace{T}
+    key=(Threads.threadid(),T)
+    ws=get(_HUSIMI_WS,key,nothing)
+    ws===nothing || return ws::_HusimiWorkspace{T}
+    lock(_HUSIMI_WS_LOCK) do
+        return get!(_HUSIMI_WS,key) do
+            _HusimiWorkspace(T)
+        end::_HusimiWorkspace{T}
+    end
 end
 
 # ==============================================================================
