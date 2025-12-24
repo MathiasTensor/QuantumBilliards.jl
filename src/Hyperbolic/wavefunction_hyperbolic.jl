@@ -491,24 +491,28 @@ end
 #   ps_out::Vector{<:AbstractVector{T}}
 #     The p grids actually used (ps or the reflected p_out), aligned with Hs.
 # ------------------------------------------------------------------------------
-function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHypBIM},tabs::Vector{QTaylorTable},billiard::Bi,qs::AbstractVector{<:AbstractVector{T}},ps::AbstractVector{<:AbstractVector{T}};b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHypBIM},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true,q_oversample::Float64=2.0,nq_min::Int=1000,np::Int=1000,pmax::T=one(T)) where {T<:Real,Bi<:AbsBilliard}
     Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;b=b,inside_only=inside_only,fundamental=fundamental,symmetry=symmetry,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk)
     n=length(ks)
     Hs=Vector{Matrix{T}}(undef,n)
-    qs_out=Vector{AbstractVector{T}}(undef,n)
-    ps_out=Vector{AbstractVector{T}}(undef,n)
+    qs_out=Vector{Vector{T}}(undef,n)
+    ps_out=Vector{Vector{T}}(undef,n)
     ok=trues(n)
     pbar=show_progress_husimi ? Progress(n;desc="Husimi N=$n") : nothing
     Threads.@threads for i in 1:n
         try
-            qgrid=qs[i];pgrid=ps[i]
-            nq=length(qgrid);np=length(pgrid)
-            H=full_p ? Matrix{T}(undef,nq,np) : Matrix{T}(undef,nq,2np-1)
+            k=ks[i]
             bd=vec_bd[i]
-            _husimi_on_grid_hyp!(H,ks[i],bd.ξ,vec_u[i],bd.LH,bd.dsH,qgrid,pgrid;full_p=full_p)
+            LH=bd.LH
+            Nq=max(nq_min,ceil(Int,q_oversample*k*LH/(2π)))
+            qgrid=collect(range(zero(T),LH;length=Nq+1))[1:end-1]  # periodic: drop endpoint
+            pgrid = full_p ? collect(range(-pmax,pmax;length=np)) : collect(range(zero(T),pmax;length=np))
+            Np=length(pgrid)
+            H=full_p ? Matrix{T}(undef,Nq,Np) : Matrix{T}(undef,Nq,2*Np-1)
+            _husimi_on_grid_hyp!(H,k,bd.ξ,vec_u[i],LH,bd.dsH,qgrid,pgrid;full_p=full_p)
             Hs[i]=H
             qs_out[i]=qgrid
-            ps_out[i]=full_p ? pgrid : vcat(-reverse(pgrid)[1:end-1],pgrid) # one allocation/state (intended)
+            ps_out[i]=full_p ? pgrid : vcat(-reverse(pgrid)[1:end-1],pgrid) 
         catch
             ok[i]=false
         end
@@ -516,6 +520,7 @@ function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:Abstra
             next!(pbar)
         end
     end
+
     return Psi2ds,xgrid,ygrid,Hs[ok],qs_out[ok],ps_out[ok]
 end
 

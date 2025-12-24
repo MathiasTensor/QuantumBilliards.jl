@@ -47,6 +47,46 @@
 #     (B) _husimi_on_grid_hyp!(...)          : allocation-minimal fast path
 # ==============================================================================
 
+# ==============================================================================
+#    make_qp_grids_hyp(ks,bps; q_oversample=2.0, nq_min=1000, np=1000, pmax=1.0, full_p=false)
+
+# Construct per-state (qs, ps) grids for boundary Poincaré–Husimi:
+#  - qs uniform in hyperbolic arclength ξ ∈ [0,LH)
+#  - ps uniform in p=sinχ ∈ [0,pmax] (or [-pmax,pmax] if full_p=true)
+# 
+# INPUTS
+#   ks::AbstractVector{T}
+#     Wavenumbers (one per state).
+#   bps::AbstractVector{BoundaryPointsHypBIM{T}}
+#     Boundary containers (one per state; used to get LH).
+# KEYWORDS
+#   q_oversample::Float64=2.0 : Oversampling factor for q grid relative to k*LH/(2π).
+#   nq_min::Int=1000 : Minimum number of q points.
+#   np::Int=1000 :Number of p points (per branch if full_p=false).
+#   pmax::T=one(T) : Maximum p value.
+#   full_p::Bool=false : If false, p grid is [0,pmax]; if true, p grid is [-pmax,pmax].
+# OUTPUTS
+#   qs::Vector{Vector{T}}; q grids (one per state).
+#   ps::Vector{Vector{T}}; p grids (one per state).
+# ==============================================================================
+function make_qp_grids_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPointsHypBIM{T}};q_oversample::Float64=2.0,nq_min::Int=1000,np::Int=1000,pmax::T=one(T),full_p::Bool=false) where {T<:Real}
+    n=length(ks)
+    qs=Vector{Vector{T}}(undef,n)
+    ps=Vector{Vector{T}}(undef,n)
+    @inbounds for i in 1:n
+        k=ks[i]
+        LH=bps[i].LH
+        nq=max(nq_min,ceil(Int,q_oversample*k*LH/(2π)))
+        qs[i]=collect(range(zero(T),LH;length=nq+1))[1:end-1]  # periodic, drop endpoint
+        if full_p
+            ps[i]=collect(range(-pmax,pmax;length=np))
+        else
+            ps[i]=collect(range(zero(T),pmax;length=np))
+        end
+    end
+    return qs,ps
+end
+
 # ------------------------------------------------------------------------------
 # husimi_on_grid_hyp (reference implementation)
 #
