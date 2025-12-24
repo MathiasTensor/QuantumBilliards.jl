@@ -429,6 +429,97 @@ function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},ve
     return Psi2ds,xgrid,ygrid
 end
 
+# ------------------------------------------------------------------------------
+# wavefunction_multi_with_husimi_hyp(ks,vec_u,vec_bd,tabs,billiard,qs,ps;...)
+#
+# PURPOSE
+#   Compute (i) hyperbolic SLP wavefunctions ψ_i(x,y) on a Cartesian grid and
+#   (ii) boundary Poincaré–Husimi densities H_i(q,p) for the same eigenstates.
+#
+# INPUTS
+#   ks::Vector{T}
+#     Eigen-wavenumbers (one per state).
+#
+#   vec_u::Vector{<:AbstractVector}
+#     Boundary densities u_i on ∂Ω (Dirichlet case: u_i=∂nψ_i at boundary nodes).
+#     Length(vec_u[i]) must match the boundary node count of vec_bd[i].
+#
+#   vec_bd::Vector{BoundaryPointsHypBIM}
+#     Boundary containers (one per state). Required fields:
+#       bd.xy  : Euclidean boundary nodes (for ψ reconstruction)
+#       bd.ds  : Euclidean ds weights (for ψ reconstruction, combined with λ)
+#       bd.ξ   : hyperbolic arclength coordinate (monotone) for Husimi
+#       bd.LH  : total hyperbolic boundary length
+#       bd.dsH : hyperbolic quadrature weights for Husimi (ds_H)
+#
+#   tabs::Vector{QTaylorTable}
+#     One QTaylorTable per state (must correspond to ks[i]).
+#
+#   billiard
+#     Used for grid construction / inside mask in wavefunction_multi_hyp.
+#
+#   qs,ps
+#     Boundary phase-space grids for Husimi:
+#       qs::AbstractVector{<:AbstractVector{T}}  (q grid per state)
+#       ps::AbstractVector{<:AbstractVector{T}}  (p grid per state)
+#
+# KEYWORDS
+#   b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,
+#   MIN_CHUNK::Int=4096,δdisk::T=T(1e-10)
+#     Passed to wavefunction_multi_hyp.
+#
+#   full_p::Bool=false
+#     Husimi construction based on time-reversal symmetry:
+#       full_p=true  -> H is (q×p) with pgrid=ps[i]
+#       full_p=false -> H is (q×p_out) with p_out=[-reverse(ps[i])[1:end-1]; ps[i]]
+#
+#   show_progress_husimi::Bool=true
+#     If true, show progress bar for Husimi computation (thread-safe).
+#
+# OUTPUTS
+#   Psi2ds::Vector{Matrix{Complex{T}}}
+#     Wavefunctions ψ_i on the (xgrid,ygrid) grid (nx×ny).
+#
+#   xgrid::Vector{T},ygrid::Vector{T}
+#
+#   Hs::Vector{Matrix{T}}
+#     Husimi matrices for successful states (failed states dropped).
+#
+#   qs_out::Vector{<:AbstractVector{T}}
+#     The q grids used (returned as-is, aligned with Hs).
+#
+#   ps_out::Vector{<:AbstractVector{T}}
+#     The p grids actually used (ps or the reflected p_out), aligned with Hs.
+# ------------------------------------------------------------------------------
+function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHypBIM},tabs::Vector{QTaylorTable},billiard::Bi,qs::AbstractVector{<:AbstractVector{T}},ps::AbstractVector{<:AbstractVector{T}};b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;b=b,inside_only=inside_only,fundamental=fundamental,symmetry=symmetry,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk)
+    n=length(ks)
+    Hs=Vector{Matrix{T}}(undef,n)
+    qs_out=Vector{AbstractVector{T}}(undef,n)
+    ps_out=Vector{AbstractVector{T}}(undef,n)
+    ok=trues(n)
+    pbar=show_progress_husimi ? Progress(n;desc="Husimi N=$n") : nothing
+    lk=ReentrantLock()
+    Threads.@threads for i in 1:n
+        try
+            qgrid=qs[i];pgrid=ps[i]
+            nq=length(qgrid);np=length(pgrid)
+            H=full_p ? Matrix{T}(undef,nq,np) : Matrix{T}(undef,nq,2np-1)
+            bd=vec_bd[i]
+            _husimi_on_grid_hyp!(H,ks[i],bd.ξ,vec_u[i],bd.LH,bd.dsH,qgrid,pgrid;full_p=full_p)
+            Hs[i]=H
+            qs_out[i]=qgrid
+            ps_out[i]=full_p ? pgrid : vcat(-reverse(pgrid)[1:end-1],pgrid) # one allocation/state (intended)
+        catch
+            ok[i]=false
+        end
+        if show_progress_husimi
+            lock(lk) do next!(pbar) end
+        end
+    end
+    return Psi2ds,xgrid,ygrid,Hs[ok],qs_out[ok],ps_out[ok]
+end
+
 #------------------------------------------------------------------------------
 # normalize_psi_hyperbolic!(ψ,xgrid,ygrid)->ψ
 #
