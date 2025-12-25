@@ -34,42 +34,40 @@
 #   centers::Vector{T}           k0 values
 #   radii::Vector{T}             corresponding R values
 ################################################################################
-function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::T,overlap::T=T(0.5),Rmax::T=T(0.8),Rmin::T=zero(T),pad_last::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard, T<:Real}
+function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::T,overlap::T=T(0.5),Rmax::T=T(0.8),Rmin::T=zero(T),Rfloor::T=T(1e-6),pad_last::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     @assert k2>=k1
     @assert overlap>=zero(T) && overlap<one(T)
     A,_,_,ok=hyperbolic_area(billiard;kref=kref)
     ok || return T[],T[]
-    centers=T[]
-    radii=T[]
-    left=k1
-    while left < k2
-        c=(T(pi)*M)/A # Solve (A/π) * R*(left+R) = M for R, then clamp.
+    centers=T[];radii=T[];left=k1
+    while left<k2
+        c=(T(pi)*M)/A
         disc=left*left+T(4)*c
         R=(sqrt(disc)-left)/T(2)
-        R=clamp(R, Rmin, Rmax)
-        # Window edges implied by a contour of radius R: [left, left+2R]
+        R=clamp(R,Rmin,Rmax)
         right=left+T(2)*R
         if right>k2
             if pad_last
-                R=clamp(min(R,(k2-left)/T(2)),Rmin,Rmax) # Keep R as large as allowed, but shift so right edge is exactly k2.
+                rem=k2-left
+                rem<=T(2)*max(Rmin,Rfloor) && break
+                R=clamp(min(R,rem/T(2)),Rmin,Rmax)
                 k0=k2-R
                 left=k0-R
                 right=k2
             else
-                # Shrink R so the window ends exactly at k2.
-                R=clamp((k2-left)/T(2), Rmin, Rmax)
+                R=clamp((k2-left)/T(2),Rmin,Rmax)
                 right=k2
             end
         end
-        R<=eps(one(T)) && break
+        R<=max(Rmin,Rfloor) && break
         k0=left+R
-        push!(centers,k0)
-        push!(radii,R)
+        push!(centers,k0);push!(radii,R)
         step=(one(T)-overlap)*(T(2)*R)
-        step<=eps(one(T)) && break
+        step<=T(2)*max(Rmin,Rfloor) && break
         left=right-step
     end
-    return centers, radii
+    (!isempty(radii) && radii[end]<=max(Rmin,Rfloor)) && (pop!(radii);pop!(centers))
+    return centers,radii
 end
 
 function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,h=1e-4,P=30,mp_dps::Int=60,leg_type::Int=3)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
@@ -269,16 +267,16 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     return λ[keep],Phi[:,keep],tens
 end
 
-function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=100,Rmax::T=T(0.8),overlap::T=T(0.5),nq::Int=64,r::Int=m+50,svd_tol::Real=1e-12,res_tol::Real=1e-8,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3,kref::T=T(1000.0),do_INFO::Bool=true,plan_windows::Bool=true,k0s_in::Union{Nothing,AbstractVector{T}}=nothing,Rs_in::Union{Nothing,AbstractVector{T}}=nothing
-) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
-    k0s=plan_windows ? (k0s_in===nothing ? (first(plan_k_windows_hyp(billiard,k1,k2;M=T(m),overlap=overlap,Rmax=Rmax,kref=kref)) ) : collect(k0s_in)) : collect(k0s_in)
-    Rs =plan_windows ? (Rs_in ===nothing ? (last( plan_k_windows_hyp(billiard,k1,k2;M=T(m),overlap=overlap,Rmax=Rmax,kref=kref)) ) : collect(Rs_in )) : collect(Rs_in)
+function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),overlap::T=T(0.5),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6)) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(billiard,k1,k2;M=T(m),overlap=overlap,Rmax=Rmax,Rfloor=Rfloor,kref=kref)
+    idx=findall(>(max(zero(T),Rfloor)),Rs)
+    k0s=isempty(idx) ? T[] : k0s[idx]
+    Rs =isempty(idx) ? T[] : Rs[idx]
     nw=length(k0s);nw==0 && return T[],T[],Vector{Vector{Complex{T}}}(),Vector{BoundaryPointsHypBIM{T}}(),T[]
     println("Number of windows: ",nw);println("Average R: ",sum(Rs)/T(nw))
     all_pts=Vector{BoundaryPointsHypBIM{T}}(undef,nw)
-    pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
     @time "Point evaluation" @inbounds for i in 1:nw
-        all_pts[i]=evaluate_points(solver,billiard,k0s[i],pre;safety=1e-14,threaded=multithreaded_matrix)
+        all_pts[i]=evaluate_points(solver,billiard,k0s[i])
     end
     if do_INFO
         @time "solve_INFO last disk (hyp)" begin
@@ -297,8 +295,8 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
         if isempty(λs[i])
             ks_list[i]=T[];tens_list[i]=T[];tensN_list[i]=T[];phi_list[i]=Matrix{Complex{T}}(undef,length(all_pts[i].xy),0);continue
         end
-        idx,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
-        ks_list[i]=real.(λs[i][idx]);tens_list[i]=traw;tensN_list[i]=tnorm;phi_list[i]=Matrix(Φ_kept)
+        idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        ks_list[i]=real.(λs[i][idx2]);tens_list[i]=traw;tensN_list[i]=tnorm;phi_list[i]=Matrix(Φ_kept)
     end
     n_by_win=Vector{Int}(undef,nw);@inbounds for i in 1:nw;n_by_win[i]=size(phi_list[i],2);end
     offs=zeros(Int,nw);@inbounds for i in 2:nw;offs[i]=offs[i-1]+n_by_win[i-1];end
