@@ -79,7 +79,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
-    pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=h,P=P)
+    pre=build_QTaylorPrecomp(dmin=0.1*dmin,dmax=dmax,h=h,P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
     ws=QTaylorWorkspace(P;threaded=multithreaded)
     build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
