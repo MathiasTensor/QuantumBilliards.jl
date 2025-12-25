@@ -33,7 +33,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
-    pre=build_QTaylorPrecomp(dmin=0.1*dmin,dmax=dmax,h=h,P=P)
+    pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=h,P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
     ws=QTaylorWorkspace(P;threaded=multithreaded)
     build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
@@ -43,6 +43,9 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
         Fs[j]=lu!(Tbufs[j];check=false)
+        an∞=opnorm(A,Inf)
+        rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an∞)
+        println("rcond=",inv(rc))
     end
     function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
         xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
