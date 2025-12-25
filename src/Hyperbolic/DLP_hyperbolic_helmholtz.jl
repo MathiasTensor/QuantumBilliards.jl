@@ -793,7 +793,7 @@ function assemble_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoi
             @views K[:,j].*=sj
         end
         for i in 1:N
-            K[i,i]+=Complex{T}(-T(1.0),zero(T))
+            K[i,i]+=Complex{T}(-T(0.5),zero(T))
         end
         filter_matrix!(K)
     end
