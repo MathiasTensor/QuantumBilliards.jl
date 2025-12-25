@@ -771,3 +771,31 @@ function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T}
     filter_matrix!(K)
     return nothing
 end
+
+#------------------------------------------------------------------------------
+# assemble_DLP_hyperbolic!(Ks,bp)::Nothing
+#
+# INPUTS:
+#   Ks::Vector{Matrix{Complex{T}}}   Mk matrices, each N×N (filled in-place)
+#   bp::BoundaryPointsBIM{T}         provides bp.ds (Euclidean quadrature weights)
+#
+# OUTPUTS:
+#   nothing
+#------------------------------------------------------------------------------
+function assemble_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T}) where {T<:Real}
+    ds=bp.ds
+    N=length(ds)
+    Mk=length(Ks)
+    @inbounds Threads.@threads for m in 1:Mk
+        K=Ks[m]
+        for j in 1:N
+            sj=ds[j]
+            @views K[:,j].*=sj
+        end
+        for i in 1:N
+            K[i,i]+=Complex{T}(-T(0.5),zero(T))
+        end
+        filter_matrix!(K)
+    end
+    return nothing
+end

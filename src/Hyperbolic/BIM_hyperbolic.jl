@@ -435,3 +435,156 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     end
     return σmins
 end
+
+# ==============================================================================
+# Helpers: periodic wrap + hyperbolic distance bounds (Poincaré disk)
+# ==============================================================================
+#
+# _wrap(i::Int, N::Int) -> Int
+#   Purpose
+#     Periodic index wrap into 1:N for boundary-neighbor access on a closed curve.
+#   Inputs
+#     i::Int    : candidate index (may be outside 1:N)
+#     N::Int    : number of boundary nodes
+#   Output
+#     j::Int in 1:N
+#   Logic
+#     If i<1 add N; if i>N subtract N; otherwise keep i.
+#
+#
+# _dmax_from_rho(ρ::T) where {T<:Real} -> T
+#   Purpose
+#     Convert a Euclidean radius bound ρ=max‖x‖ (points inside the unit disk)
+#     into a safe upper bound on hyperbolic distances d_H between any two points
+#     with ‖x‖≤ρ in the Poincaré disk.
+#   Inputs
+#     ρ::T : Euclidean radius bound (0 ≤ ρ < 1)
+#   Output
+#     dmax::T : hyperbolic distance upper bound
+#   Logic
+#     The maximum distance within radius ρ occurs for opposite points ±ρ:
+#         dmax = d_H(ρ, -ρ) = 4*atanh(ρ).
+#     Clamp ρ below 1 to avoid atanh(1) and overflow near the boundary.
+#
+#
+# d_bounds_hyp(bp::BoundaryPointsHypBIM{T}, symmetry; K=3, dmin_floor=1e-6, pad=1.1)
+#     where {T<:Real} -> (dmin::T, dmax::T)
+#
+#   Purpose
+#     Determine safe hyperbolic distance bounds for building/evaluating tables
+#     of Q_ν(cosh d) and y(d)=d/dd Q_ν(cosh d) in hyperbolic BIM on the Poincaré disk.
+#
+#   Inputs
+#     bp::BoundaryPointsHypBIM{T}
+#       Uses:
+#         bp.xy::Vector{SVector{2,T}}  boundary nodes in Euclidean disk coords.
+#     symmetry
+#       - nothing, or Vector{Any} with symmetry[1] being:
+#           * Reflection  (images via x↦-x and/or y↦-y; shift is assumed 0 in disk)
+#           * Rotation    (Cn images about center s.center)
+#
+#   Keyword inputs
+#     K::Int
+#       Neighbor stencil size for dmin estimation:
+#         compares each node i with i±1,...,i±K (and their symmetry images).
+#     dmin_floor::T
+#       Hard lower floor returned for dmin to avoid d≈0 issues in kernels/tables.
+#     pad::T
+#       Multiplicative safety padding applied to dmax.
+#
+#   Outputs
+#     dmin::T
+#       Smallest nonzero sampled hyperbolic distance between (nearby) boundary nodes,
+#       including symmetry images; lower-bounded by dmin_floor.
+#     dmax::T
+#       Safe upper bound on hyperbolic distances needed by the kernel, computed from
+#       a maximal radius bound ρ and padded by pad.
+# ==============================================================================
+
+@inline _wrap(i::Int,N::Int)=i<1 ? i+N : (i>N ? i-N : i)
+@inline function _dmax_from_rho(ρ::T) where {T<:Real}
+    δ=max(T(1e-12),sqrt(eps(one(T))))
+    ρc=min(ρ,one(T)-δ)
+    return T(4)*atanh(ρc)  # = acosh(1+8ρ^2/(1-ρ^2)^2) 
+end
+
+function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad::T=T(1.1)) where {T<:Real}
+    xy=bp.xy
+    N=length(xy)
+    tol2=(T(64)*eps(one(T)))^2
+    ρ=zero(T)
+    @inbounds for i in 1:N
+        x=xy[i][1];y=xy[i][2]
+        ρ=max(ρ,hypot(x,y))
+    end
+    if symmetry!==nothing
+        s=symmetry[1]
+        if s isa Rotation
+            cx=s.center[1];cy=s.center[2];n=s.n
+            ctab,stab,_=_rotation_tables(T,n,mod(s.m,n))
+            @inbounds for i in 1:N
+                x0=xy[i][1]-cx
+                y0=xy[i][2]-cy
+                @inbounds for l in 2:n
+                    ρ=max(ρ,hypot(ctab[l]*x0-stab[l]*y0+cx,stab[l]*x0+ctab[l]*y0+cy))
+                end
+            end
+        end
+    end
+    dmax=pad*_dmax_from_rho(ρ)
+    dmin=typemax(T)
+    @inline function upd!(xi,yi,xj,yj)
+        dx=xi-xj;dy=yi-yj
+        muladd(dx,dx,dy*dy)<=tol2 && return nothing
+        d=hyperbolic_distance_poincare(xi,yi,xj,yj)
+        (d>zero(T) && d<dmin) && (dmin=d)
+        return nothing
+    end
+    if symmetry===nothing
+        @inbounds for i in 1:N
+            xi=xy[i][1];yi=xy[i][2]
+            @inbounds for t in 1:K
+                j=_wrap(i+t,N);upd!(xi,yi,xy[j][1],xy[j][2])
+                j=_wrap(i-t,N);upd!(xi,yi,xy[j][1],xy[j][2])
+            end
+        end
+        return max(dmin_floor,dmin),dmax
+    end
+    s=symmetry[1]
+    if s isa Reflection
+        ops=_reflect_ops_and_scales(T,s)
+        @inbounds for i in 1:N
+            xi=xy[i][1];yi=xy[i][2]
+            @inbounds for t in 1:K
+                @inbounds for j in (_wrap(i+t,N),_wrap(i-t,N))
+                    x0=xy[j][1];y0=xy[j][2]
+                    upd!(xi,yi,x0,y0)
+                    @inbounds for (op,_) in ops
+                        x=(op==1||op==3) ? -x0 : x0
+                        y=(op==2||op==3) ? -y0 : y0
+                        upd!(xi,yi,x,y)
+                    end
+                end
+            end
+        end
+    elseif s isa Rotation
+        cx=s.center[1];cy=s.center[2];n=s.n
+        ctab,stab,_=_rotation_tables(T,n,mod(s.m,n))
+        @inbounds for i in 1:N
+            xi=xy[i][1];yi=xy[i][2]
+            @inbounds for t in 1:K
+                @inbounds for j in (_wrap(i+t,N),_wrap(i-t,N))
+                    x0=xy[j][1];y0=xy[j][2]
+                    upd!(xi,yi,x0,y0)
+                    x=x0-cx;y=y0-cy
+                    @inbounds for l in 2:n
+                        upd!(xi,yi,ctab[l]*x-stab[l]*y+cx,stab[l]*x+ctab[l]*y+cy)
+                    end
+                end
+            end
+        end
+    else
+        error("Unsupported symmetry type $(typeof(s))")
+    end
+    return max(dmin_floor,dmin),dmax
+end
