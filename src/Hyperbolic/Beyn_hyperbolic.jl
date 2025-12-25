@@ -71,6 +71,7 @@ function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::T,overlap::T=T(0.5),Rmax
 end
 
 function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,h=1e-4,P=30,mp_dps::Int=60,leg_type::Int=3)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
+    @info "Constructing B matrix (hyp) with N=$N, k0=$k0, R=$R, nq=$nq, r=$r"
     θ=range(zero(T),TWO_PI;length=nq+1)[1:end-1]
     ej=cis.(θ)
     zj=k0.+R.*ej
