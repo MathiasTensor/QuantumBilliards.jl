@@ -1,73 +1,26 @@
-################################################################################
-# plan_k_windows_hyp
-#
-# PURPOSE
-#   Choose contour centers k0 and radii R for Beyn windows in hyperbolic BIM,
-#   using a conservative (overestimating) Weyl count based on AREA ONLY.
-#
-# MODEL (area-only Weyl; Dirichlet; curvature -1; ν=-1/2+ik convention)
-#   N(k) ≈ (A/(4π)) * (k^2 + 1/4) + C
-#
-# Hence expected number of eigenvalues inside the *real* interval covered by a
-# circular contour (width ≈ 2R) starting at "left" is approximated by
-#   ΔN(left,R) ≈ (A/(4π)) * ( (left+2R)^2 - left^2 )
-#             = (A/π) * R * (left + R).
-#
-# We choose R to hit a target count M by solving:
-#   (A/π) * R * (left + R) = M
-#   => R^2 + left*R - (π/A)M = 0
-#   => R = ( -left + sqrt(left^2 + 4*(π/A)M) ) / 2
-#
-# INPUTS
-#   billiard::AbsBilliard
-#   k1::T, k2::T                 overall scan interval [k1,k2]
-#
-# KEYWORDS
-#   M::T                         target expected eigenvalue count per window
-#   overlap::T=T(0.5)            fractional overlap of the width 2R (0 ≤ overlap < 1)
-#   Rmax::T=T(0.8)               cap radius from above (useful at small k)
-#   Rmin::T=zero(T)              optional lower cap (usually 0)
-#   pad_last::Bool=true          if true, shifts last window so its right edge hits k2
-#   kref::T=T(1000)              reference sampling for hyperbolic_area()
-#
-# OUTPUTS
-#   centers::Vector{T}           k0 values
-#   radii::Vector{T}             corresponding R values
-################################################################################
-function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::T,overlap::T=T(0.5),Rmax::T=T(0.8),Rmin::T=zero(T),Rfloor::T=T(1e-6),pad_last::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
-    @assert k2>=k1
-    @assert overlap>=zero(T) && overlap<one(T)
-    A,_,_,ok=hyperbolic_area(billiard;kref=kref)
-    ok || return T[],T[]
-    centers=T[];radii=T[];left=k1
-    while left<k2
-        c=(T(pi)*M)/A
-        disc=left*left+T(4)*c
-        R=(sqrt(disc)-left)/T(2)
-        R=clamp(R,Rmin,Rmax)
-        right=left+T(2)*R
-        if right>k2
-            if pad_last
-                rem=k2-left
-                rem<=T(2)*max(Rmin,Rfloor) && break
-                R=clamp(min(R,rem/T(2)),Rmin,Rmax)
-                k0=k2-R
-                left=k0-R
-                right=k2
-            else
-                R=clamp((k2-left)/T(2),Rmin,Rmax)
-                right=k2
-            end
-        end
-        R<=max(Rmin,Rfloor) && break
-        k0=left+R
-        push!(centers,k0);push!(radii,R)
-        step=(one(T)-overlap)*(T(2)*R)
-        step<=T(2)*max(Rmin,Rfloor) && break
-        left=right-step
+function plan_k_windows_hyp(::Bi,k1::T,k2::T;M::T=T(10),overlap::T=T(0.5),Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000)) where {T<:Real,Bi}
+    L=k2-k1
+    (L<=zero(T) || Rmax<=zero(T)) && return T[],T[]
+    ov=clamp(overlap,zero(T),T(0.95))
+    if L<=2Rmax
+        R=max(Rfloor,min(Rmax,L/2))
+        return T[0.5*(k1+k2)],T[R]
     end
-    (!isempty(radii) && radii[end]<=max(Rmin,Rfloor)) && (pop!(radii);pop!(centers))
-    return centers,radii
+    step=max(T(2)*Rfloor,T(2)*Rmax*(one(T)-ov))
+    k0s=T[];Rs=T[]
+    k0=k1+Rmax
+    k0_end=k2-Rmax
+    while k0<=k0_end+T(10)*eps(k0_end)
+        push!(k0s,k0);push!(Rs,Rmax);k0+=step
+    end
+    if isempty(k0s) || abs(k0s[end]-k0_end)>T(10)*eps(k0_end)
+        push!(k0s,k0_end);push!(Rs,Rmax)
+    else
+        k0s[end]=k0_end
+    end
+    #safety: if last disk would start after k1 or end before k2 due to roundoff, nudge endpoints
+    k0s[1]=k1+Rmax;k0s[end]=k2-Rmax
+    return k0s,Rs
 end
 
 function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,h=1e-4,P=30,mp_dps::Int=60,leg_type::Int=3)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
