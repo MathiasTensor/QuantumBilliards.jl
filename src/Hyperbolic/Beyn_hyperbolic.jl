@@ -101,6 +101,9 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     end
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     accum_moments!(A0,A1,X,V)
+    @assert size(A0,1)>0 && size(A0,2)>0
+    @assert stride(A0,1)>=max(1,size(A0,1))
+    @assert all(isfinite,A0)
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
     rk==0 && return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
