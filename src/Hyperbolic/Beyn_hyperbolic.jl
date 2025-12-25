@@ -117,7 +117,7 @@ function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{
     tens=Vector{T}(undef,rk)
     tensN=Vector{T}(undef,rk)
     logs=collect_logs ? String[] : nothing
-    A_buf=Matrix{Complex{T}}(undef,N,N)
+    A_buf=fill(zero(Complex{T}),N,N)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=T(h),P=P)
