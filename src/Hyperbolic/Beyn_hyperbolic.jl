@@ -41,6 +41,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     assemble_DLP_hyperbolic!(Tbufs,pts_eucl)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
+    A=rand(ComplexF64,N,N)
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
         Fs[j]=lu!(Tbufs[j];check=false)
         an∞=opnorm(A,Inf)
