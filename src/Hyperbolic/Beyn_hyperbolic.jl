@@ -276,8 +276,9 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
     nw=length(k0s);nw==0 && return T[],T[],Vector{Vector{Complex{T}}}(),Vector{BoundaryPointsHypBIM{T}}(),T[]
     println("Number of windows: ",nw);println("Average R: ",sum(Rs)/T(nw))
     all_pts=Vector{BoundaryPointsHypBIM{T}}(undef,nw)
+    pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
     @time "Point evaluation" @inbounds for i in 1:nw
-        all_pts[i]=evaluate_points(solver,billiard,k0s[i])
+        all_pts[i]=evaluate_points(solver,billiard,k0s[i],pre;safety=1e-14,threaded=multithreaded_matrix)
     end
     if do_INFO
         @time "solve_INFO last disk (hyp)" begin
