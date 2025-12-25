@@ -14,7 +14,9 @@
 # OUTPUTS:
 #   c::T            scalar cross product a×b = ax*by - ay*bx
 #------------------------------------------------------------------------------
-@inline cross2(ax::T,ay::T,bx::T,by::T)::T where {T<:Real}=muladd(ax,by,-ay*bx)
+@inline function cross2(ax::T,ay::T,bx::T,by::T)::T where {T<:Real}
+    return muladd(ax,by,-ay*bx)
+end
 
 #------------------------------------------------------------------------------
 # ray_seg_intersect_t(ux,uy,ax,ay,bx,by)::T
