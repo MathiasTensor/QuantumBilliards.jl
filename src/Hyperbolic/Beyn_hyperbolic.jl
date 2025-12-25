@@ -280,8 +280,9 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
         all_pts[i]=evaluate_points(solver,billiard,k0s[i],pre;safety=1e-14,threaded=multithreaded_matrix)
     end
     if do_INFO
+        iinfo=cld(nw,2)
         @time "solve_INFO last disk (hyp)" begin
-            _=solve_INFO_hyp(solver,basis,all_pts[end],complex(k0s[end],zero(T)),Rs[end];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+            _=solve_INFO_hyp(solver,basis,all_pts[iinfo],complex(k0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
         end
     end
     λs=Vector{Vector{Complex{T}}}(undef,nw);Uks=Vector{Matrix{Complex{T}}}(undef,nw);Ys=Vector{Matrix{Complex{T}}}(undef,nw)
