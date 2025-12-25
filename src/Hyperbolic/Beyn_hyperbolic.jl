@@ -101,6 +101,9 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     end
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     accum_moments!(A0,A1,X,V)
+    @show typeof(A0) size(A0) strides(A0)
+    @show A0 isa StridedMatrix
+    @show stride(A0,1) stride(A0,2)
     @assert size(A0,1)>0 && size(A0,2)>0
     @assert stride(A0,1)>=max(1,size(A0,1))
     @assert all(isfinite,A0)
