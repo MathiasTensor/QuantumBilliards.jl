@@ -284,6 +284,8 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
     @time "Point evaluation" @inbounds for i in 1:nw
         all_pts[i]=evaluate_points(solver,billiard,k0s[i],pre;safety=1e-14,threaded=multithreaded_matrix)
+        dmin,dmax=d_bounds_hyp(all_pts[i],solver.symmetry)
+        @show i k0s[i] Rs[i] length(all_pts[i].xy) dmin dmax
     end
     if do_INFO
         iinfo=cld(nw,2)
