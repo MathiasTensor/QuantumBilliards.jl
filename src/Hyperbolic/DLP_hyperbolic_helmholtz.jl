@@ -766,7 +766,7 @@ function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T}
         @views K[:,j].*=bp.ds[j]
     end
     @inbounds for i in axes(K,1)
-        K[i,i]+= -0.5
+        K[i,i]+=Complex{T}(-T(0.5),zero(T))
     end
     filter_matrix!(K)
     return nothing

@@ -517,7 +517,7 @@ end
 # Output
 #   QTaylorTable
 # =============================================================================
-function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-6,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3)
+function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-3,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3)
     @assert dmax>dmin
     @assert h>0
     @assert P≥1
@@ -608,7 +608,7 @@ end
 # Output
 #   Vector{QTaylorTable} length Nk, one table per ks[i]
 # =============================================================================
-function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-6,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
+function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-3,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
     @assert dmax>dmin && h>0 && P≥1
     Nk=length(ks)
     Npatch=Int(ceil((dmax-dmin)/h))
@@ -716,7 +716,7 @@ end
 # Output
 #   QTaylorPrecomp(dmin,dmax,h,P,Npatch,centers,coth_coeffs)
 # =============================================================================
-@inline function build_QTaylorPrecomp(;dmin::Float64=1e-6,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30)
+@inline function build_QTaylorPrecomp(;dmin::Float64=1e-3,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30)
     Npatch=Int(ceil((dmax-dmin)/h))
     centers=Vector{Float64}(undef,Npatch)
     @inbounds for p in 1:Npatch
