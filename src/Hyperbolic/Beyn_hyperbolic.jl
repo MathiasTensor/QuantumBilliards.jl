@@ -44,7 +44,6 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     assemble_DLP_hyperbolic!(Tbufs,pts_eucl)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
-    A=rand(ComplexF64,N,N)
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
         an=opnorm(Tbufs[j],1)
         Fs[j]=lu!(Tbufs[j];check=false)
@@ -180,7 +179,10 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds @showprogress desc="lu!(hyp)" for j in 2:nq
+        an=opnorm(Tbufs[j],1)
         Fs[j]=lu!(Tbufs[j];check=false)
+        rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an)
+        println("rcond=",rc)
     end
     xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
     @time "ldiv!+axpy!(hyp)" begin
@@ -190,6 +192,13 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
             BLAS.axpy!(wj[j]*zj[j],xv,a1v)
         end
     end
+    accum_moments!(A0,A1,X,V)
+    @show typeof(A0) size(A0) strides(A0)
+    @show A0 isa StridedMatrix
+    @show stride(A0,1) stride(A0,2)
+    @assert size(A0,1)>0 && size(A0,2)>0
+    @assert stride(A0,2)>=max(1,size(A0,1))
+    @assert all(isfinite,A0)
     @time "SVD(hyp)" @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     println("Singular values (<1e-10 tail inspection): ",Σ)
     svd_tol_eff=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
