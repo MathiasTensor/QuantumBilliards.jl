@@ -35,7 +35,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     if norm(xy[1]-xy[end])<1e-14
         @warn "Duplicate endpoint in boundary points; drop last point!" N=length(xy)
     end
-    dmin=1e-3
+    dmin=max(dmin,1e-3)
     pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=h,P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
     ws=QTaylorWorkspace(P;threaded=multithreaded)
@@ -122,6 +122,7 @@ function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{
     logs=collect_logs ? String[] : nothing
     A_buf=fill(zero(Complex{T}),N,N)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
+    dmin=max(dmin,1e-3)
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=T(h),P=P)
     tab=alloc_QTaylorTable(pre;k=ComplexF64(k0))
@@ -167,7 +168,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     if norm(xy[1]-xy[end])<1e-14
         @warn "Duplicate endpoint in boundary points; drop last point!" N=length(xy)
     end
-    dmin=1e-3
+    dmin=max(dmin,1e-3)
     pre=build_QTaylorPrecomp(dmin=(dmin),dmax=(dmax),h=(h),P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
     ws=QTaylorWorkspace(P;threaded=multithreaded)
