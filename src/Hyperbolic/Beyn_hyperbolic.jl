@@ -162,6 +162,10 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
+    xy=pts_eucl.xy
+    if norm(xy[1]-xy[end])<1e-14
+        @warn "Duplicate endpoint in boundary points; drop last point!" N=length(xy)
+    end
     pre=build_QTaylorPrecomp(dmin=T(dmin),dmax=T(dmax),h=T(h),P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
     ws=QTaylorWorkspace(P;threaded=multithreaded)
