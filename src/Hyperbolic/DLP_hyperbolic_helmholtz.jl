@@ -146,12 +146,15 @@ end
     bx=one(T)-muladd(xj,xj,yj*yj)
     dx=xi-xj;dy=yi-yj
     r2=muladd(dx,dx,dy*dy)
-    c=one(T)+2*r2/(ax*bx)
-    sh=sqrt(max(c*c-one(T),zero(T)))
-    dotdxn=muladd(dx,nxi,dy*nyi)                 # (x-x')·n
-    dotxn=muladd(xi,nxi,yi*nyi)                  # x·n
-    return (4/(ax*bx))*dotdxn/sh+(4*r2/(bx*ax*ax))*dotxn/sh
+    invab=inv(ax*bx)
+    t=2*r2*invab
+    sh=sqrt(max(t*(t+2),zero(T)))
+    sh==zero(T) && return zero(T)
+    dotdxn=muladd(dx,nxi,dy*nyi)
+    dotxn=muladd(xi,nxi,yi*nyi)
+    return (4*invab)*dotdxn/sh+(4*r2/(bx*ax*ax))*dotxn/sh
 end
+
 
 ################################################################################
 # hyperbolic_dn_d_source
@@ -170,17 +173,18 @@ end
 # OUTPUTS
 #   ddn::T            (T<:Real) ddn = ∂d(x,y)/∂n_y
 ################################################################################
-@inline function hyperbolic_dn_d_source(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T) where {T<:Real}
+@inline function hyperbolic_dn_d_source(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T) where{T<:Real}
     ai=one(T)-muladd(xi,xi,yi*yi)
     aj=one(T)-muladd(xj,xj,yj*yj)
-    dx=xj-xi
-    dy=yj-yi
+    dx=xj-xi;dy=yj-yi
     r2=muladd(dx,dx,dy*dy)
-    c=one(T)+2*r2/(ai*aj) # cosh(d)
-    sh=sqrt(max(c*c-one(T),zero(T))) # sinh(d)
-    dotdxn=muladd(dx,nxj,dy*nyj) # (xj-xi)·n_j
-    dotxjn=muladd(xj,nxj,yj*nyj) # xj·n_j
-    return (4/(ai*aj))*dotdxn/sh+(4*r2/(ai*aj*aj))*dotxjn/sh
+    invij=inv(ai*aj)
+    t=2*r2*invij
+    sh=sqrt(max(t*(t+2),zero(T)))
+    sh==zero(T) && return zero(T)
+    dotdxn=muladd(dx,nxj,dy*nyj)
+    dotxjn=muladd(xj,nxj,yj*nyj)
+    return (4*invij)*dotdxn/sh+(4*r2/(ai*aj*aj))*dotxjn/sh
 end
 
 ################################################################################
