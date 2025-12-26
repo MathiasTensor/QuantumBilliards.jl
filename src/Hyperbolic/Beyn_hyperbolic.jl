@@ -25,10 +25,8 @@ end
 
 function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,h=1e-4,P=30,mp_dps::Int=60,leg_type::Int=3)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
     @info "Constructing B matrix (hyp) with N=$N, k0=$k0, R=$R, nq=$nq, r=$r"
-    θ=range(zero(T),TWO_PI;length=nq+1)[1:end-1]
-    ej=cis.(θ)
-    zj=k0.+R.*ej
-    wj=(R/nq).*ej
+    θ=(TWO_PI/nq).*(collect(0:nq-1).+0.5)
+    ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
     ks=ComplexF64.(zj)
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
@@ -152,7 +150,8 @@ end
 
 function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
-    θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
+    θ=(TWO_PI/nq).*(collect(0:nq-1).+0.5)
+    ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
     ks=ComplexF64.(zj)
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     @info "beyn:start(hyp)" k0=k0 R=R nq=nq N=N r=r
