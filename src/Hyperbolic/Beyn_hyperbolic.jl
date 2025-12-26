@@ -41,8 +41,8 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
     A=rand(ComplexF64,N,N)
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
+        an∞=opnorm(Tbufs[j],Inf)
         Fs[j]=lu!(Tbufs[j];check=false)
-        an∞=opnorm(A,Inf)
         rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an∞)
         println("rcond=",rc)
     end
