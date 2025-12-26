@@ -215,7 +215,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
         assemble_DLP_hyperbolic!(A_buf,pts_eucl)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,A_buf,@view(Phi[:,j]))
         ybn=norm(ybuf)
-        @info "k=$(λ[j]) ||A(k)v(k)|| = $(ybn) < $res_tol"
+        @info "k=$(λ[j]) ||A(k)v(k)|| = $(ybn) vs. res_tol $res_tol"
         if auto_discard_spurious && ybn≥res_tol
             keep[j]=false;dropped_res+=1
             if ybn>1e-8
