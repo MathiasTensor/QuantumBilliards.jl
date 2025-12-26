@@ -184,12 +184,15 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
         rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an)
         println("rcond=",rc)
     end
-    xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
-    @time "ldiv!+axpy!(hyp)" begin
-        @blas_multi_then_1 MAX_BLAS_THREADS @inbounds @showprogress desc="ldiv!+axpy!(hyp)" for j in 1:nq
-            ldiv!(X,Fs[j],V)
-            BLAS.axpy!(wj[j],xv,a0v)
-            BLAS.axpy!(wj[j]*zj[j],xv,a1v)
+    function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
+        xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
+        @time "ldiv!+axpy!(hyp)" begin
+            @blas_multi_then_1 MAX_BLAS_THREADS @inbounds @showprogress desc="ldiv!+axpy!(hyp)" for j in 1:nq
+                ldiv!(X,Fs[j],V)
+                BLAS.axpy!(wj[j],xv,a0v)
+                BLAS.axpy!(wj[j]*zj[j],xv,a1v)
+            end
+            return nothing
         end
     end
     accum_moments!(A0,A1,X,V)
