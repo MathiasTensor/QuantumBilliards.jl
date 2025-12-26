@@ -149,7 +149,7 @@ end
     invab=inv(ax*bx)
     t=2*r2*invab
     sh=sqrt(max(t*(t+2),zero(T)))
-    sh==zero(T) && return zero(T)
+    sh<eps(T) && return zero(T)
     dotdxn=muladd(dx,nxi,dy*nyi)
     dotxn=muladd(xi,nxi,yi*nyi)
     return (4*invab)*dotdxn/sh+(4*r2/(bx*ax*ax))*dotxn/sh
@@ -181,7 +181,7 @@ end
     invij=inv(ai*aj)
     t=2*r2*invij
     sh=sqrt(max(t*(t+2),zero(T)))
-    sh==zero(T) && return zero(T)
+    sh<eps(T) && return zero(T)
     dotdxn=muladd(dx,nxj,dy*nyj)
     dotxjn=muladd(xj,nxj,yj*nyj)
     return (4*invij)*dotdxn/sh+(4*r2/(ai*aj*aj))*dotxjn/sh
