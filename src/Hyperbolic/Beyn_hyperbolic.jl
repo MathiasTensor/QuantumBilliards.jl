@@ -44,7 +44,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
         Fs[j]=lu!(Tbufs[j];check=false)
         an∞=opnorm(A,Inf)
         rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an∞)
-        println("rcond=",inv(rc))
+        println("rcond=",rc)
     end
     function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
         xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
