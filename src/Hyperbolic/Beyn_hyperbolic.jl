@@ -31,10 +31,6 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
-    xy=pts_eucl.xy
-    if norm(xy[1]-xy[end])<1e-14
-        @warn "Duplicate endpoint in boundary points; drop last point!" N=length(xy)
-    end
     dmin=max(dmin,1e-3)
     pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=h,P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
@@ -45,10 +41,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
-        an=opnorm(Tbufs[j],1)
         Fs[j]=lu!(Tbufs[j];check=false)
-        rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an)
-        println("rcond=",rc)
     end
     function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
         xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
@@ -61,12 +54,6 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     end
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     accum_moments!(A0,A1,X,V)
-    @show typeof(A0) size(A0) strides(A0)
-    @show A0 isa StridedMatrix
-    @show stride(A0,1) stride(A0,2)
-    @assert size(A0,1)>0 && size(A0,2)>0
-    @assert stride(A0,2)>=max(1,size(A0,1))
-    @assert all(isfinite,A0)
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
     rk==0 && return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
