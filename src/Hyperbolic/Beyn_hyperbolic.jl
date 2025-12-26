@@ -45,9 +45,9 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
     A=rand(ComplexF64,N,N)
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
-        an∞=opnorm(Tbufs[j],Inf)
+        an=opnorm(Tbufs[j],1)
         Fs[j]=lu!(Tbufs[j];check=false)
-        rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an∞)
+        rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an)
         println("rcond=",rc)
     end
     function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
@@ -166,7 +166,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     if norm(xy[1]-xy[end])<1e-14
         @warn "Duplicate endpoint in boundary points; drop last point!" N=length(xy)
     end
-    pre=build_QTaylorPrecomp(dmin=T(dmin),dmax=T(dmax),h=T(h),P=P)
+    pre=build_QTaylorPrecomp(dmin=(dmin),dmax=(dmax),h=(h),P=P)
     tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
     ws=QTaylorWorkspace(P;threaded=multithreaded)
     build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
