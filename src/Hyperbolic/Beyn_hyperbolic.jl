@@ -209,7 +209,6 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     λ=ev.values;Y=ev.vectors;Phi=Uk*Y
     keep=trues(length(λ));tens=T[];res_keep=T[]
     ybuf=Vector{Complex{T}}(undef,N);A_buf=Matrix{Complex{T}}(undef,N,N)
-    tab=alloc_QTaylorTable(pre;k=ComplexF64(k0));ws1=QTaylorWorkspace(P;threaded=false)
     dropped_out=0
     dropped_res=0
     @inbounds for j in eachindex(λ)
