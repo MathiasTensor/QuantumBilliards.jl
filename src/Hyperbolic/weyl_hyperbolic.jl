@@ -86,7 +86,7 @@ end
 
 #------------------------------------------------------------------------------
 # hyperbolic_area(billiard;tol,Nθ0,maxit,check_star,check_inside,kref)
-#   ::Tuple{T,T,Int,Bool}
+#   ::Tuple{Real,Real,Int,Bool}
 #
 # INPUTS:
 #   billiard::Bi                   AbsBilliard inside Poincaré disk
@@ -95,11 +95,11 @@ end
 #   maxit::Int=12                  max doublings of Nθ (Nθ=Nθ0<<it)
 #   check_star::Bool=true          verify star-shaped wrt origin via rays
 #   check_inside::Bool=true        verify origin is inside sampled polygon
-#   kref::T=1000.0                 sampling reference for boundary points
+#   kref=1000.0                 sampling reference for boundary points
 #
 # OUTPUTS:
-#   A::T                           extrapolated hyperbolic area
-#   err::T                         last Richardson error estimate
+#   A::Real                          extrapolated hyperbolic area
+#   err::Real                         last Richardson error estimate
 #   Nθ::Int                        final angular resolution used
 #   ok::Bool                       false if checks fail (NaN/Inf outputs)
 #
@@ -108,52 +108,51 @@ end
 #     A = ∫₀^{2π} ( 2/(1-r(θ)^2) - 2 ) dθ
 #   Trapezoid in θ + Richardson extrapolation.
 #------------------------------------------------------------------------------
-function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0))::Tuple{T,T,Int,Bool} where {Bi<:AbsBilliard,T<:Real}
+function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref=(1000.0))::Tuple{Real,Real,Int,Bool} where {Bi<:AbsBilliard}
     solver=BIM_hyperbolic(10.0,symmetry=nothing)
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard)
     bd=evaluate_points(solver,billiard,kref,pre)
     xy=bd.xy;N=length(xy)
-    xs=Vector{T}(undef,N+1);ys=Vector{T}(undef,N+1)
+    xs=Vector{Real}(undef,N+1);ys=Vector{Real}(undef,N+1)
     @inbounds for i in 1:N
-        xs[i]=T(xy[i][1]);ys[i]=T(xy[i][2])
+        xs[i]=Real(xy[i][1]);ys[i]=Real(xy[i][2])
     end
     xs[N+1]=xs[1];ys[N+1]=ys[1]
-    check_inside && !point_in_poly(xs,ys) && return T(NaN),T(Inf),0,false
+    check_inside && !point_in_poly(xs,ys) && return Real(NaN),Real(Inf),0,false
     @inbounds for i in 1:N
-        muladd(xs[i],xs[i],ys[i]*ys[i])>=one(T) && return T(NaN),T(Inf),0,false
+        muladd(xs[i],xs[i],ys[i]*ys[i])>=one(Real) && return Real(NaN),Real(Inf),0,false
     end
-    twoπ=T(2)*T(pi)
-    function area_trap(Nθ::Int;only_check::Bool=false)::T
-        h=twoπ/T(Nθ);s=zero(T)
+    function area_trap(Nθ::Int;only_check::Bool=false)
+        h=TWO_PI/Nθ;s=0.0
         @inbounds for j in 0:Nθ-1
-            θ=h*T(j);ux=cos(θ);uy=sin(θ)
+            θ=h*j;ux=cos(θ);uy=sin(θ)
             tmin,nh=ray_hits_min_t(ux,uy,xs,ys)
-            (nh!=1 || !isfinite(tmin) || tmin>=one(T)) && return T(NaN)
+            (nh!=1 || !isfinite(tmin) || tmin>=one(Real)) && return Real(NaN)
             only_check && continue
             r2=tmin*tmin
-            r2>=one(T) && return T(NaN)
-            s+=T(2)/(one(T)-r2)-T(2)
+            r2>=1.0 && return Real(NaN)
+            s+=2.0/(1.0-r2)-2.0
         end
-        return only_check ? zero(T) : s*h
+        return only_check ? 0.0 : s*h
     end
     if check_star
-        isfinite(area_trap(max(2048,Nθ0);only_check=true)) || return T(NaN),T(Inf),0,false
+        isfinite(area_trap(max(2048,Nθ0);only_check=true)) || return Real(NaN),Real(Inf),0,false
     end
     Aprev=area_trap(Nθ0)
-    isfinite(Aprev) || return T(NaN),T(Inf),0,false
-    tolt=T(tol)
+    isfinite(Aprev) || return Real(NaN),Real(Inf),0,false
+    tolt=Real(tol)
     @inbounds for it in 1:maxit
         Nθ=Nθ0<<it
         A=area_trap(Nθ)
-        isfinite(A) || return T(NaN),T(Inf),0,false
-        Aext=(T(4)*A-Aprev)/T(3)
+        isfinite(A) || return Real(NaN),Real(Inf),0,false
+        Aext=(4*A-Aprev)/3
         err=abs(Aext-A)
         err<=tolt && return Aext,err,Nθ,true
         Aprev=A
     end
     Nθ=Nθ0<<maxit
     A=area_trap(Nθ)
-    Aext=(T(4)*A-Aprev)/T(3)
+    Aext=(4*A-Aprev)/3
     return Aext,abs(Aext-A),Nθ,true
 end
 
@@ -183,7 +182,7 @@ end
 #     Hyperbolic area of the fundamental domain implied by `solver.symmetry`.
 #
 #------------------------------------------------------------------------------
-function hyperbolic_area_fundamental(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function hyperbolic_area_fundamental(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref=(1000.0)) where {Bi<:AbsBilliard}
     A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
     !ok && return error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     symmetry=solver.symmetry
