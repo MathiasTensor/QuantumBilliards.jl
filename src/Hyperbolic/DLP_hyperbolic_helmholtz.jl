@@ -497,38 +497,33 @@ end
 # OUTPUTS
 #   nothing (fills Ks in-place)
 ################################################################################
-function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
     _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     N=length(bp.xy)
     tol2=(eps(T))^2
-    shift_x=bp.shift_x
-    shift_y=bp.shift_y
+    shift_x=bp.shift_x;shift_y=bp.shift_y
     ops=_reflect_ops_and_scales(T,sym)
-    pt=[zero(T),zero(T)]
+    pt_tls=[zeros(T,2) for _ in 1:Threads.nthreads()]
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
+        pt=pt_tls[Threads.threadid()]
         @inbounds for j in 1:N
             xj0,yj0=bp.xy[j]
-            nx0,ny0=bp.normal[j] 
+            nx0,ny0=bp.normal[j]
             @inbounds for (op,scale_r) in ops
                 if op==1
-                    x_reflect_point!(pt,xj0,yj0,shift_x)
-                    nxr=-nx0;nyr=ny0
+                    x_reflect_point!(pt,xj0,yj0,shift_x);nxr=-nx0;nyr=ny0
                 elseif op==2
-                    y_reflect_point!(pt,xj0,yj0,shift_y)
-                    nxr=nx0;nyr=-ny0
+                    y_reflect_point!(pt,xj0,yj0,shift_y);nxr=nx0;nyr=-ny0
                 else
-                    xy_reflect_point!(pt,xj0,yj0,shift_x,shift_y)
-                    nxr=-nx0;nyr=-ny0
+                    xy_reflect_point!(pt,xj0,yj0,shift_x,shift_y);nxr=-nx0;nyr=-ny0
                 end
                 xjr,yjr=pt[1],pt[2]
-                dx=xi-xjr
-                dy=yi-yjr
+                dx=xi-xjr;dy=yi-yjr
                 d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
                     sc=Complex{T}(scale_r,zero(T))
-                    val=hyperbolic_dlp_kernel_scalar_source(tab,xi,yi,xjr,yjr,nxr,nyr)*sc
-                    K[i,j]+=val
+                    K[i,j]+=hyperbolic_dlp_kernel_scalar_source(tab,xi,yi,xjr,yjr,nxr,nyr)*sc
                 end
             end
         end
@@ -618,30 +613,28 @@ end
 # OUTPUTS
 #   nothing
 ################################################################################
-function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
     _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     N=length(bp.xy)
     tol2=(eps(T))^2
     cx,cy=sym.center
     ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
-    pt=[zero(T),zero(T)]
+    pt_tls=[zeros(T,2) for _ in 1:Threads.nthreads()]
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
+        pt=pt_tls[Threads.threadid()]
         @inbounds for j in 1:N
             xj0,yj0=bp.xy[j]
-            nx0,ny0=bp.normal[j] 
+            nx0,ny0=bp.normal[j]
             @inbounds for l in 2:sym.n
                 rot_point!(pt,xj0,yj0,cx,cy,ctab[l],stab[l])
                 xjr,yjr=pt[1],pt[2]
                 nxr=ctab[l]*nx0-stab[l]*ny0
                 nyr=stab[l]*nx0+ctab[l]*ny0
-                dx=xi-xjr
-                dy=yi-yjr
+                dx=xi-xjr;dy=yi-yjr
                 d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
-                    phase=χ[l]
-                    val=hyperbolic_dlp_kernel_scalar_source(tab,xi,yi,xjr,yjr,nxr,nyr)*phase
-                    K[i,j]+=val
+                    K[i,j]+=hyperbolic_dlp_kernel_scalar_source(tab,xi,yi,xjr,yjr,nxr,nyr)*χ[l]
                 end
             end
         end
