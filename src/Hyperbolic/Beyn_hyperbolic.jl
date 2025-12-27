@@ -1,20 +1,24 @@
-function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::T=T(10),Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8) where {Bi<:AbsBilliard,T<:Real}
-    (k2<=k1 || Rmax<=0) && return T[],T[]
-    A,_,_,ok=hyperbolic_area(billiard;tol=tolA,kref=kref);ok||return T[],T[]
-    P=hyperbolic_arclength(billiard;kref=kref);isfinite(P)||return T[],T[]
-    s= -one(T) 
-    a=A/T(pi)
+function plan_k_windows_hyp_area_touching(billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
+    L=k2-k1
+    (L<=zero(T) || Rmax<=zero(T)) && return T[],T[]
+    A,_,_,ok=hyperbolic_area(billiard;tol=tolA,kref=kref)
+    ok || return T[],T[]
+    ρA(k)=max((A/TWO_PI)*k,T(1e-12))
+    Rof(k)=clamp(M/(2*ρA(k)),Rfloor,Rmax)
     k0s=T[];Rs=T[]
     left=k1
     while left<k2-T(10)*eps(k2)
         rem=k2-left
-        Rcap=min(Rmax,rem/2)
-        b=(A*left)/T(pi)+s*(P/(2*T(pi)))
-        disc=b*b+4*a*M
-        R=a==0 ? Rcap : (-b+sqrt(disc))/(2a)
-        R=clamp(R,Rfloor,Rcap)
-        push!(k0s,left+R);push!(Rs,R)
-        left+=2R
+        rem<=zero(T) && break
+        R=clamp(rem/2,Rfloor,Rmax)
+        @inbounds for _ in 1:iters
+            k0=left+R
+            R=min(Rof(k0),rem/2)
+            R=clamp(R,Rfloor,Rmax)
+        end
+        push!(k0s,left+R)
+        push!(Rs,R)
+        left+=2*R
     end
     return k0s,Rs
 end
