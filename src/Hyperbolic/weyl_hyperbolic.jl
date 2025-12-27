@@ -158,7 +158,7 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
 end
 
 #------------------------------------------------------------------------------
-# symmetry_adapted_hyperbolic_area(solver,billiard; ...) -> A_fd
+# hyperbolic_area_fundamental(solver,billiard; ...) -> A_fd
 #------------------------------------------------------------------------------
 # PURPOSE
 #   Return the hyperbolic area of the symmetry-reduced (fundamental) domain.
@@ -183,7 +183,7 @@ end
 #     Hyperbolic area of the fundamental domain implied by `solver.symmetry`.
 #
 #------------------------------------------------------------------------------
-function symmetry_adapted_hyperbolic_area(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function hyperbolic_area_fundamental(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
     !ok && return error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     symmetry=solver.symmetry
@@ -250,9 +250,8 @@ end
 # OUTPUTS:
 #   Nweyl::T                      Weyl count estimate (NaN if failure)
 #------------------------------------------------------------------------------
-function weyl_law_hyp(billiard::Bi,k::T;kref::T=T(1000.0),C::T=zero(T))::T where {Bi<:AbsBilliard,T<:Real}
-    A,_,_,ok=hyperbolic_area(billiard;kref=kref)
-    ok || return T(NaN)
+function weyl_law_hyp(solver::BIM_hyperbolic,billiard::Bi,k::T;kref::T=T(1000.0),C::T=zero(T))::T where {Bi<:AbsBilliard,T<:Real}
+    A=hyperbolic_area_fundamental(solver,billiard;kref=kref)
     L=hyperbolic_arclength(billiard;kref=kref)
     return weyl_law_hyp(k,A,L;C=C)
 end

@@ -1,7 +1,7 @@
 function plan_k_windows_hyp(solver::BIM_hyperbolic,billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
     L=k2-k1
     (L<=zero(T) || Rmax<=zero(T)) && return T[],T[]
-    A=symmetry_adapted_hyperbolic_area(solver,billiard;tol=tolA,kref=kref)
+    A=hyperbolic_area_fundamental(solver,billiard;tol=tolA,kref=kref)
     ρA(k)=max((A/TWO_PI)*k,T(1e-12))
     Rof(k)=clamp(M/(2*ρA(k)),Rfloor,Rmax)
     k0s=T[];Rs=T[]
