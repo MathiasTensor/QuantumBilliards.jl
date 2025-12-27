@@ -1,4 +1,4 @@
-function plan_k_windows_hyp_area_touching(billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
+function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
     L=k2-k1
     (L<=zero(T) || Rmax<=zero(T)) && return T[],T[]
     A,_,_,ok=hyperbolic_area(billiard;tol=tolA,kref=kref)
