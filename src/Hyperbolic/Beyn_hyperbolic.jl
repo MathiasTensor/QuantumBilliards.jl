@@ -1,25 +1,21 @@
-function plan_k_windows_hyp(::Bi,k1::T,k2::T;M::T=T(10),overlap::T=T(0.5),Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000)) where {T<:Real,Bi}
-    L=k2-k1
-    (L<=zero(T) || Rmax<=zero(T)) && return T[],T[]
-    ov=clamp(overlap,zero(T),T(0.95))
-    if L<=2Rmax
-        R=max(Rfloor,min(Rmax,L/2))
-        return T[0.5*(k1+k2)],T[R]
-    end
-    step=max(T(2)*Rfloor,T(2)*Rmax*(one(T)-ov))
+function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::T=T(10),Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8) where {Bi<:AbsBilliard,T<:Real}
+    (k2<=k1 || Rmax<=0) && return T[],T[]
+    A,_,_,ok=hyperbolic_area(billiard;tol=tolA,kref=kref);ok||return T[],T[]
+    P=hyperbolic_arclength(billiard;kref=kref);isfinite(P)||return T[],T[]
+    s= -one(T) 
+    a=A/T(pi)
     k0s=T[];Rs=T[]
-    k0=k1+Rmax
-    k0_end=k2-Rmax
-    while k0<=k0_end+T(10)*eps(k0_end)
-        push!(k0s,k0);push!(Rs,Rmax);k0+=step
+    left=k1
+    while left<k2-T(10)*eps(k2)
+        rem=k2-left
+        Rcap=min(Rmax,rem/2)
+        b=(A*left)/T(pi)+s*(P/(2*T(pi)))
+        disc=b*b+4*a*M
+        R=a==0 ? Rcap : (-b+sqrt(disc))/(2a)
+        R=clamp(R,Rfloor,Rcap)
+        push!(k0s,left+R);push!(Rs,R)
+        left+=2R
     end
-    if isempty(k0s) || abs(k0s[end]-k0_end)>T(10)*eps(k0_end)
-        push!(k0s,k0_end);push!(Rs,Rmax)
-    else
-        k0s[end]=k0_end
-    end
-    #safety: if last disk would start after k1 or end before k2 due to roundoff, nudge endpoints
-    k0s[1]=k1+Rmax;k0s[end]=k2-Rmax
     return k0s,Rs
 end
 
@@ -244,8 +240,8 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     return λ[keep],Phi[:,keep],tens
 end
 
-function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),overlap::T=zero(T),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6)) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
-    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(billiard,k1,k2;M=T(m),overlap=overlap,Rmax=Rmax,Rfloor=Rfloor,kref=kref)
+function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6)) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(billiard,k1,k2;M=T(m),Rmax=Rmax,Rfloor=Rfloor,kref=kref)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
     Rs =isempty(idx) ? T[] : Rs[idx]
