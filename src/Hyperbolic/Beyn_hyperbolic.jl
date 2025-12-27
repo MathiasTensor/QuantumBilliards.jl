@@ -156,7 +156,11 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     end
     dmin=max(dmin,1e-3)
     pre=build_QTaylorPrecomp(dmin=(dmin),dmax=(dmax),h=(h),P=P)
-    tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
+    #tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
+    tabs=Vector{QTaylorTable{ComplexF64}}(undef,nq)
+    for j in 1:nq
+        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+    end
     ws=QTaylorWorkspace(P;threaded=multithreaded)
     build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
     @time "DLP(hyp):kernel+assemble" begin
