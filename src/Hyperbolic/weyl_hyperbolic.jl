@@ -183,7 +183,7 @@ end
 #     Hyperbolic area of the fundamental domain implied by `solver.symmetry`.
 #
 #------------------------------------------------------------------------------
-function symmetry_adapted_hyperbolic_area(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0))
+function symmetry_adapted_hyperbolic_area(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
     !ok && return error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     symmetry=solver.symmetry
