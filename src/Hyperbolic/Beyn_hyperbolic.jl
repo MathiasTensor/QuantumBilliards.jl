@@ -169,7 +169,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
         an=opnorm(Tbufs[j],1)
         Fs[j]=lu!(Tbufs[j];check=false)
         rc=LinearAlgebra.LAPACK.gecon!('1',Fs[j].factors,an)
-        println("rcond=",rc)
+        println("LAPACK.gecon! = ",rc)
     end
     function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
         xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)

@@ -812,14 +812,20 @@ end
 #   nothing (mutates tab)
 # =============================================================================
 function build_QTaylorTable!(tab::QTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWorkspace,k::ComplexF64;mp_dps::Int=60,leg_type::Int=3)
+    @assert pre.P==tab.P
+    @assert pre.Npatch==size(tab.ucoeffs,2)==size(tab.ycoeffs,2)==length(tab.centers)
+    @assert pre.dmin==tab.dmin && pre.dmax==tab.dmax && pre.h==tab.h
+    @assert pre.centers===tab.centers
     nu=ν(k)
     u0,y0=seed_u_y_mpmath(nu,pre.dmin;dps=mp_dps,leg_type=leg_type)
     P=pre.P;Npatch=pre.Npatch;h=pre.h
-    ucoef=ws.ucoef;ycoef=ws.ycoef
+    ucoef=ws.ucoef;ycoef=ws.ycoef;ucoeffs=tab.ucoeffs;ycoeffs=tab.ycoeffs;coth=pre.coth_coeffs
     @inbounds for p in 1:Npatch
-        build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(pre.coth_coeffs[:,p]))
-        @views copyto!(tab.ucoeffs[:,p],ucoef)
-        @views copyto!(tab.ycoeffs[:,p],ycoef)
+        build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(coth[:,p]))
+        @inbounds for n in 1:(P+1)
+            ucoeffs[n,p]=ucoef[n]
+            ycoeffs[n,p]=ycoef[n]
+        end
         if p<Npatch
             u0=horner_eval(ucoef,h)
             y0=horner_eval(ycoef,h)
@@ -853,8 +859,7 @@ end
 #   nothing (mutates tabs)
 # =============================================================================
 function build_QTaylorTable!(tabs::Vector{QTaylorTable},pre::QTaylorPrecomp,ws::QTaylorWorkspace,ks::AbstractVector{ComplexF64};mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
-    Nk=length(ks)
-    @assert length(tabs)==Nk
+    Nk=length(ks);@assert length(tabs)==Nk
     @inbounds for i in 1:Nk
         t=tabs[i]
         @assert pre.P==t.P
@@ -862,25 +867,21 @@ function build_QTaylorTable!(tabs::Vector{QTaylorTable},pre::QTaylorPrecomp,ws::
         @assert pre.dmin==t.dmin && pre.dmax==t.dmax && pre.h==t.h
         @assert pre.centers===t.centers
     end
-    nus=Vector{ComplexF64}(undef,Nk)
-    u0s=Vector{ComplexF64}(undef,Nk)
-    y0s=Vector{ComplexF64}(undef,Nk)
+    nus=Vector{ComplexF64}(undef,Nk);u0s=Vector{ComplexF64}(undef,Nk);y0s=Vector{ComplexF64}(undef,Nk)
     @inbounds for i in 1:Nk
-        nu=ν(ks[i])
-        nus[i]=nu
+        nu=ν(ks[i]);nus[i]=nu
         u0s[i],y0s[i]=seed_u_y_mpmath(nu,pre.dmin;dps=mp_dps,leg_type=leg_type)
     end
     P=pre.P;Npatch=pre.Npatch;h=pre.h
     if threaded && Threads.nthreads()>1
         Threads.@threads for i in 1:Nk
-            tid=Threads.threadid()
-            ucoef=ws.ucoef_tls[tid];ycoef=ws.ycoef_tls[tid]
-            t=tabs[i]
-            nu=nus[i];u0=u0s[i];y0=y0s[i]
+            tid=Threads.threadid();ucoef=ws.ucoef_tls[tid];ycoef=ws.ycoef_tls[tid]
+            t=tabs[i];ucoeffs=t.ucoeffs;ycoeffs=t.ycoeffs;nu=nus[i];u0=u0s[i];y0=y0s[i]
             @inbounds for p in 1:Npatch
                 build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(pre.coth_coeffs[:,p]))
-                @views copyto!(t.ucoeffs[:,p],ucoef)
-                @views copyto!(t.ycoeffs[:,p],ycoef)
+                @inbounds for n in 1:(P+1)
+                    ucoeffs[n,p]=ucoef[n];ycoeffs[n,p]=ycoef[n]
+                end
                 if p<Npatch
                     u0=horner_eval(ucoef,h)
                     y0=horner_eval(ycoef,h)
@@ -891,12 +892,12 @@ function build_QTaylorTable!(tabs::Vector{QTaylorTable},pre::QTaylorPrecomp,ws::
     else
         ucoef=ws.ucoef;ycoef=ws.ycoef
         @inbounds for i in 1:Nk
-            t=tabs[i]
-            nu=nus[i];u0=u0s[i];y0=y0s[i]
+            t=tabs[i];ucoeffs=t.ucoeffs;ycoeffs=t.ycoeffs;nu=nus[i];u0=u0s[i];y0=y0s[i]
             @inbounds for p in 1:Npatch
                 build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(pre.coth_coeffs[:,p]))
-                @views copyto!(t.ucoeffs[:,p],ucoef)
-                @views copyto!(t.ycoeffs[:,p],ycoef)
+                @inbounds for n in 1:(P+1)
+                    ucoeffs[n,p]=ucoef[n];ycoeffs[n,p]=ycoef[n]
+                end
                 if p<Npatch
                     u0=horner_eval(ucoef,h)
                     y0=horner_eval(ycoef,h)
