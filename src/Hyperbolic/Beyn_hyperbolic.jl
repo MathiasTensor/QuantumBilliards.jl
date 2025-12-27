@@ -1,8 +1,7 @@
-function plan_k_windows_hyp(billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
+function plan_k_windows_hyp(solver::BIM_hyperbolic,billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
     L=k2-k1
     (L<=zero(T) || Rmax<=zero(T)) && return T[],T[]
-    A,_,_,ok=hyperbolic_area(billiard;tol=tolA,kref=kref)
-    ok || return T[],T[]
+    A=symmetry_adapted_hyperbolic_area(solver,billiard;tol=tolA,kref=kref)
     ρA(k)=max((A/TWO_PI)*k,T(1e-12))
     Rof(k)=clamp(M/(2*ρA(k)),Rfloor,Rmax)
     k0s=T[];Rs=T[]
@@ -245,7 +244,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
 end
 
 function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6)) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
-    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(billiard,k1,k2;M=T(m),Rmax=Rmax,Rfloor=Rfloor,kref=kref)
+    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=T(m),Rmax=Rmax,Rfloor=Rfloor,kref=kref)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
     Rs =isempty(idx) ? T[] : Rs[idx]

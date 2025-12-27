@@ -158,6 +158,49 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
 end
 
 #------------------------------------------------------------------------------
+# symmetry_adapted_hyperbolic_area(solver,billiard; ...) -> A_fd
+#------------------------------------------------------------------------------
+# PURPOSE
+#   Return the hyperbolic area of the symmetry-reduced (fundamental) domain.
+#
+# INPUTS
+#   solver :: BIM_hyperbolic
+#     - Uses solver.symmetry (either `nothing` or a Vector of length 1):
+#         * nothing                      -> no reduction
+#         * Reflection(parity=Int)        -> divide area by 2
+#         * Reflection(parity=Vector)     -> divide area by 2*length(parity)
+#         * Rotation(n, m, center)        -> divide area by n
+#
+#   billiard :: Bi where Bi<:AbsBilliard
+#     - Geometry inside the Poincaré disk; forwarded to `hyperbolic_area`.
+#
+# KEYWORDS  (forwarded to hyperbolic_area)
+#   tol::Real=1e-6, Nθ0::Int=2048, maxit::Int=12,
+#   check_star::Bool=true, check_inside::Bool=true, kref::T=T(1000.0)
+#
+# OUTPUT
+#   A_fd :: T
+#     Hyperbolic area of the fundamental domain implied by `solver.symmetry`.
+#
+#------------------------------------------------------------------------------
+function symmetry_adapted_hyperbolic_area(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0))
+    A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
+    !ok && return error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
+    symmetry=solver.symmetry
+    isnothing(symmetry) && return A
+    sym=symmetry[1]
+    if sym isa Reflection
+        l=sym.parity isa Integer ? 1 : length(sym.parity)
+        return A/(2*l)
+    elseif sym isa Rotation
+        n=sym.n
+        return A/n
+    else
+        @error("Unknown symmetry type for symmetry-adapted hyperbolic area.")
+    end
+end
+
+#------------------------------------------------------------------------------
 # hyperbolic_arclength(billiard;kref)::T
 #
 # INPUTS:
