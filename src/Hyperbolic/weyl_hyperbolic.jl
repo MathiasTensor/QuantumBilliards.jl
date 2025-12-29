@@ -106,7 +106,6 @@ end
 # NOTES:
 #   Star-shaped polar formula around origin with r(θ)=first ray hit:
 #     A = ∫₀^{2π} ( 2/(1-r(θ)^2) - 2 ) dθ
-#   Trapezoid in θ + Richardson extrapolation.
 #------------------------------------------------------------------------------
 function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000))::Tuple{T,T,Int,Bool} where {Bi<:AbsBilliard,T<:Real}
     solver=BIM_hyperbolic(T(10),symmetry=nothing)
