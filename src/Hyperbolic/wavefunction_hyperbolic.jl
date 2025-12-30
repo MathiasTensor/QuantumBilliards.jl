@@ -561,7 +561,7 @@ function normalize_psi_hyperbolic!(ψ::AbstractMatrix{Num},xgrid::AbstractVector
     s=0.0
     @inbounds for j in eachindex(ygrid), i in eachindex(xgrid)
         x=xgrid[i];y=ygrid[j]
-        val=ψ[j,i]
+        val=ψ[i,j]
         if !isnan(real(val)) && !isnan(imag(val))
             s+=abs2(val)*λ2_poincare(x,y)
         end
