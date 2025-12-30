@@ -873,7 +873,9 @@ end
 # =============================================================================
 function build_QTaylorTable!(tab::QTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWorkspace,k::ComplexF64;mp_dps::Int=60,leg_type::Int=3)
     @assert pre.P==tab.P
-    @assert pre.Npatch==size(tab.ucoeffs,2)==size(tab.ycoeffs,2)==length(tab.centers)
+    @assert pre.Npatch==size(tab.ucoeffs,2)
+    @assert pre.Npatch==size(tab.ycoeffs,2)
+    @assert pre.Npatch==length(tab.centers)
     @assert pre.dmin==tab.dmin && pre.dmax==tab.dmax && pre.h==tab.h
     @assert pre.centers===tab.centers
     nu=ν(k)
