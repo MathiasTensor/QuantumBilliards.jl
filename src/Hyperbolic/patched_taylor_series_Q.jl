@@ -939,9 +939,9 @@ function build_QTaylorTable!(tabs::Vector{QTaylorTable},pre::QTaylorPrecomp,ws::
         Threads.@threads :static for i in 1:Nk
             tid=Threads.threadid();ucoef=ws.ucoef_tls[tid];ycoef=ws.ycoef_tls[tid]
             t=tabs[i];ucoeffs=t.ucoeffs;ycoeffs=t.ycoeffs;nu=nus[i];u0=u0s[i];y0=y0s[i]
-            @inbounds for p in 1:Npatch
+            #=@inbounds=# for p in 1:Npatch
                 build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(pre.coth_coeffs[:,p]))
-                @inbounds for n in 1:(P+1)
+                #=@inbounds=# for n in 1:(P+1)
                     ucoeffs[n,p]=ucoef[n];ycoeffs[n,p]=ycoef[n]
                 end
                 if p<Npatch
