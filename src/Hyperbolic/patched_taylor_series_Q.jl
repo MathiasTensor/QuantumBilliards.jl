@@ -936,7 +936,7 @@ function build_QTaylorTable!(tabs::Vector{QTaylorTable},pre::QTaylorPrecomp,ws::
     end
     P=pre.P;Npatch=pre.Npatch;h=pre.h
     if threaded && Threads.nthreads()>1
-        Threads.@threads for i in 1:Nk
+        Threads.@threads :static for i in 1:Nk
             tid=Threads.threadid();ucoef=ws.ucoef_tls[tid];ycoef=ws.ycoef_tls[tid]
             t=tabs[i];ucoeffs=t.ucoeffs;ycoeffs=t.ycoeffs;nu=nus[i];u0=u0s[i];y0=y0s[i]
             @inbounds for p in 1:Npatch
