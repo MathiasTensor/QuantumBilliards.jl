@@ -11,14 +11,13 @@ using BilliardGeometry
 
 #abstract types
 include("abstracttypes.jl")
-export AbsBasis, AbsSolver, AbsPoints
+export AbsBasis, AbsSolver
 #utils must be included here so modules work
 #export AbsBasis
 include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/typeutils.jl")
 include("utils/gridutils.jl")
-include("utils/symmetry.jl")
 include("utils/macros.jl")
 include("utils/billiardutils.jl")
 export make_triangle_and_basis, adapt_basis
@@ -41,6 +40,7 @@ export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 include("solvers/sweepmethods/sweepmethods.jl")
+export SweepSolver, AcceleratedSolver
 export VerginiSaracenoSolver, print_benchmark_info
 export DecompositionMethodSolver, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
@@ -54,9 +54,9 @@ export k_sweep
 #@reexport using .Spectra
 
 include("spectra/spectralutils.jl")
+export SpectralData, compute_spectrum, merge_spectra, overlap_and_merge!
 include("spectra/unfolding.jl")
 export weyl_law
-export compute_spectrum
 #states
 #include("states/States.jl")
 #@reexport using .States

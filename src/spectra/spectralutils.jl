@@ -2,15 +2,14 @@
 #Needs total rework
 ######################################
 
-using IntervalArithmetic
-#using IntervalArithmetic.Symbols
-function is_equal(x,dx,y,dy)
-    #check if numbers are equal within tolerances
-    X = x ± dx
-    Y = y ± dy 
-    Z = IntervalArithmetic.intersect_interval(X, Y)
-    #return  ~(Z == ∅)
-    return  ~IntervalArithmetic.isempty_interval(Z)
+function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
+    # Define the intervals
+    x_lower=x-dx
+    x_upper=x+dx
+    y_lower=y-dy
+    y_upper=y+dy
+    # Check if the intervals overlap
+    return max(x_lower,y_lower) <= min(x_upper,y_upper)
 end
 
 

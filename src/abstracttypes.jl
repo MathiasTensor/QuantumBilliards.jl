@@ -8,5 +8,7 @@ abstract type AcceleratedSolver <: AbsSolver end
 
 abstract type AbsState end
 abstract type StationaryState <: AbsState end
+
 #grid iterators
 abstract type AbsGrid end
+ 

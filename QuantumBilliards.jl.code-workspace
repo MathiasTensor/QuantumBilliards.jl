@@ -11,7 +11,12 @@
 		},
 		{
 			"path": "../QBPlotting"
+		},
+		{
+			"path": "../QCPlotting"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"julia.environmentPath": "C:\\Users\\d93490\\.julia\\environments\\quantumchaos"
+	}
 }

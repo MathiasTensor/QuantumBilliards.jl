@@ -1,8 +1,37 @@
+"""
+Real plane wave basis with symmetry support.
 
-struct RealPlaneWaves{T,Sa} <: AbsBasis where  {T<:Real, Sa<:AbsSampler}
-    #cs::PolarCS{T} #not fully implemented
-    dim::Int64 #using concrete type
-    symmetries::Union{Vector{Any},Nothing}
+# Quadrant and Parity Pattern Logic
+
+The basis uses real plane waves of the form: f(x,y) = F_x(k·x) * F_y(k·y)
+where F_x and F_y are either cos or sin, determined by parity patterns.
+
+Quadrant ordering: (+x,+y), (+x,-y), (-x,+y), (-x,-y)
+Parity encoding: +1 = cos, -1 = sin
+
+# Symmetry Structure
+Each symmetry in the `symmetries` vector has a corresponding quantum number in `sym_qnumbers` at the same index.
+The order for multiple symmetries is: [YAxisReflection, XYAxisReflection, XAxisReflection]
+with corresponding quantum numbers: [sym_x, sym_x*sym_y, sym_y]
+
+# Symmetry Cases
+- No symmetries: All 4 quadrants → 4 patterns: (cos,cos), (cos,sin), (sin,cos), (sin,sin)
+- X-axis reflection (sym_y): 2 quadrants with fixed y-parity
+  - sym_y = +1: (cos,cos), (sin,cos) → upper half-plane (y>0)
+  - sym_y = -1: (cos,sin), (sin,sin) → lower half-plane (y<0)
+- Y-axis reflection (sym_x): 2 quadrants with fixed x-parity
+  - sym_x = +1: (cos,cos), (cos,sin) → right half-plane (x>0)
+  - sym_x = -1: (sin,cos), (sin,sin) → left half-plane (x<0)
+- XY-axis reflection (both sym_x and sym_y): 1 quadrant
+  - (sym_y, sym_x) = (+1, +1): (cos,cos) → quadrant I
+  - (sym_y, sym_x) = (+1, -1): (sin,cos) → quadrant II
+  - (sym_y, sym_x) = (-1, +1): (cos,sin) → quadrant IV
+  - (sym_y, sym_x) = (-1, -1): (sin,sin) → quadrant III
+"""
+struct RealPlaneWaves{T,Sa} <: AbsBasis where {T<:Real, Sa<:AbsSampler}
+    dim::Int64
+    symmetries::Union{Vector{BilliardGeometry.AbsReflection}, Nothing}
+    sym_qnumbers::Union{Vector{T}, Nothing}
     angle_arc::T
     angle_shift::T
     angles::Vector{T}
@@ -12,101 +41,240 @@ struct RealPlaneWaves{T,Sa} <: AbsBasis where  {T<:Real, Sa<:AbsSampler}
 end
 
 """
-     parity_pattern(symmetries::Vector{Any})
+     parity_pattern(symmetries, sym_qnumbers)
 
-Helper function to determine the parity in the x and y direction wrt symmetry. This is neccesery since it determines the sign of the wavefunction in each quadrant.
+Helper function to determine the parity pattern (cos/sin selection) from symmetries and quantum numbers.
+
+Each symmetry has a corresponding quantum number. The function processes these to determine
+which cos/sin combinations to use for plane waves.
 
 # Arguments
-- `symmetries::Vector{Any}`: Contains symmetry information to be transformed into quadrant rules.
+- `symmetries::Union{Vector{BilliardGeometry.AbsReflection}, Nothing}`: Reflection symmetries
+- `sym_qnumbers::Union{Vector{T}, Nothing}`: Quantum numbers for each symmetry (same length as symmetries)
 
 # Returns
-- `(parity_x,parity_y)::Tuple{Vector{Int},Vector{Int}}`: Quadrant rules in the x and y direction.
+- `(parity_x, parity_y)::Tuple{Vector{Int},Vector{Int}}`: Parity patterns where
+  1 means use cos, -1 means use sin for that direction
 """
-function parity_pattern(symmetries)
-    # Default parity vectors assuming no symmetries
-    parity_x=[1,1,-1,-1]
-    parity_y=[1,-1,1,-1]
-    # Flags to track whether the axes are reflected
-    x_reflected=false
-    y_reflected=false
-    xy_reflected=false
-    # Loop over the symmetries
-    if !isnothing(symmetries)
-        for sym in symmetries
-            if sym.axis==:y_axis
-                # X-axis reflection: constrain parity_x
-                parity_x=[sym.parity,sym.parity]
-                x_reflected=true
-            elseif sym.axis==:x_axis
-                # Y-axis reflection: constrain parity_y
-                parity_y=[sym.parity,sym.parity]
-                y_reflected=true
-            elseif sym.axis==:origin
-                # XYReflection: constrain both axes to the same parity
-                parity_x=[sym.parity[1]]
-                parity_y=[sym.parity[2]]
-                xy_reflected=true
-                break  # Once XYReflection is applied, we must exit as there is nothing more to be done
-            end
+@inline function parity_pattern(::Nothing, ::Nothing)
+    # No symmetries: use all four quadrants in order (+x,+y), (+x,-y), (-x,+y), (-x,-y)
+    return Int[1, 1, -1, -1], Int[1, -1, 1, -1]
+end
+
+@inline function parity_pattern(symmetries::Vector{BG}, 
+                                sym_qnumbers::Vector{T}) where {T<:Real, BG<:BilliardGeometry.AbsReflection}
+    # Check which symmetries are present
+    has_x = any(s -> s isa BilliardGeometry.XAxisReflection, symmetries)
+    has_y = any(s -> s isa BilliardGeometry.YAxisReflection, symmetries)
+    has_xy = any(s -> s isa BilliardGeometry.XYAxisReflection, symmetries)
+    
+    if has_xy
+        # XY-axis reflection: single quadrant
+        # Find the XY quantum number (should be the product sym_x * sym_y)
+        xy_idx = findfirst(s -> s isa BilliardGeometry.XYAxisReflection, symmetries)
+        x_idx = findfirst(s -> s isa BilliardGeometry.YAxisReflection, symmetries)
+        y_idx = findfirst(s -> s isa BilliardGeometry.XAxisReflection, symmetries)
+        
+        x_par = Int(sym_qnumbers[x_idx])
+        y_par = Int(sym_qnumbers[y_idx])
+        
+        return Int[x_par], Int[y_par]
+    elseif has_x && !has_y
+        # Only X-axis reflection: 2 quadrants with fixed y-parity
+        x_idx = findfirst(s -> s isa BilliardGeometry.XAxisReflection, symmetries)
+        y_par = Int(sym_qnumbers[x_idx])
+        return Int[1, -1], Int[y_par, y_par]
+    elseif has_y && !has_x
+        # Only Y-axis reflection: 2 quadrants with fixed x-parity
+        y_idx = findfirst(s -> s isa BilliardGeometry.YAxisReflection, symmetries)
+        x_par = Int(sym_qnumbers[y_idx])
+        return Int[x_par, x_par], Int[1, -1]
+    else
+        # Fallback to no symmetries
+        return parity_pattern(nothing, nothing)
+    end
+end
+
+"""
+    infer_quantum_numbers(symmetries)
+
+Infer quantum numbers from symmetry list. This is a helper for backward compatibility.
+Returns a vector with one quantum number per symmetry (all default to +1).
+
+# Arguments
+- `symmetries::Vector{BilliardGeometry.AbsReflection}`: List of reflection symmetries
+
+# Returns
+- Quantum numbers vector (same length as symmetries, all default to +1)
+"""
+function infer_quantum_numbers(symmetries::Vector{BG}) where {BG<:BilliardGeometry.AbsReflection}
+    isempty(symmetries) && return nothing
+    # Default all quantum numbers to +1 (even parity)
+    return ones(Float64, length(symmetries))
+end
+
+@inline infer_quantum_numbers(::Nothing) = nothing
+
+"""
+    RealPlaneWaves(dim, symmetries, sym_qnumbers; angle_arc=π, angle_shift=0.0, sampler=LinearNodes())
+
+Constructor for RealPlaneWaves with symmetries and quantum numbers.
+
+# Arguments
+- `dim::Int`: Number of distinct angles to sample
+- `symmetries::Union{Vector{<:BilliardGeometry.AbsReflection}, Nothing}`: Reflection symmetries
+- `sym_qnumbers::Union{Vector{T}, Nothing}`: Quantum numbers for each symmetry (must be same length)
+- `angle_arc::Real`: Angular range to sample (default π)
+- `angle_shift::Real`: Angular offset (default 0.0)
+- `sampler::AbsSampler`: Sampling strategy for angles
+"""
+function RealPlaneWaves(dim::Int, 
+                       symmetries::Union{Vector{BG}, Nothing}, 
+                       sym_qnumbers::Union{Vector{T}, Nothing}; 
+                       angle_arc=π, angle_shift=0.0, 
+                       sampler=LinearNodes()) where {T<:Real, BG<:BilliardGeometry.AbsReflection}
+    # Validate that symmetries and sym_qnumbers have matching lengths
+    if !isnothing(symmetries) && !isnothing(sym_qnumbers)
+        @assert length(symmetries) == length(sym_qnumbers) "symmetries and sym_qnumbers must have the same length"
+    end
+    
+    # Get parity pattern from symmetries and quantum numbers
+    par_x, par_y = parity_pattern(symmetries, sym_qnumbers)
+    pl = length(par_x)
+    eff_dim = dim * pl
+    
+    # Sample angles from the sampler
+    t, dt = sample_points(sampler, dim)
+    
+    # Preallocate and fill arrays more efficiently
+    angles = Vector{eltype(t)}(undef, eff_dim)
+    parity_x = Vector{Int}(undef, eff_dim)
+    parity_y = Vector{Int}(undef, eff_dim)
+    
+    # Fill arrays using vectorized operations
+    @inbounds for i in 1:dim
+        angle = t[i] * angle_arc + angle_shift
+        base_idx = (i-1) * pl
+        for j in 1:pl
+            idx = base_idx + j
+            angles[idx] = angle
+            parity_x[idx] = par_x[j]
+            parity_y[idx] = par_y[j]
         end
     end
-    if xy_reflected
-        # XYReflection overrides any previous reflections, so lengths are already correct and we can terminate early
-        return parity_x,parity_y
-    end
-    if x_reflected && !y_reflected # Ensure both parity_x and parity_y have the same length to avoid problems of taking lenght of them for effective dimension
-        # If only XReflection is applied, adjust parity_y to match parity_x
-        parity_y=[1,-1]
-    elseif y_reflected && !x_reflected
-        # If only YReflection is applied, adjust parity_x to match parity_y
-        parity_x=[1,-1]
-    end
-    return parity_x,parity_y
-end
-
-function RealPlaneWaves(dim,symmetries;angle_arc=pi,angle_shift=0.0,sampler=LinearNodes())
-    par_x,par_y=parity_pattern(symmetries)
-    pl=length(par_x)
-    eff_dim=dim*pl
-    t,dt=sample_points(sampler, dim)
-    angles=@. t*angle_arc + angle_shift
-    angles=repeat(angles,inner=pl)
-    par_x=repeat(par_x,outer=dim)
-    par_y=repeat(par_y,outer=dim)
-    return RealPlaneWaves(eff_dim,symmetries,angle_arc,angle_shift,angles,par_x,par_y,sampler)
-end
-
-function RealPlaneWaves(dim;angle_arc=pi,angle_shift=0.0,sampler=LinearNodes())
-    symmetries=nothing
-    par_x,par_y=parity_pattern(symmetries)
-    pl=length(par_x)
-    eff_dim=dim*pl
-    t,dt=sample_points(sampler, dim)
-    angles=@. t*angle_arc + angle_shift
-    angles=repeat(angles,inner=pl)
-    par_x=repeat(par_x,outer=dim)
-    par_y=repeat(par_y,outer=dim)
-    return RealPlaneWaves{eltype(angles),nothing,typeof(sampler)}(eff_dim,symmetries,angle_arc,angle_shift,angles,par_x,par_y,sampler)
+    
+    Sa = typeof(sampler)
+    
+    return RealPlaneWaves{eltype(angles), Sa}(eff_dim, symmetries, sym_qnumbers, 
+                                              angle_arc, angle_shift, angles, 
+                                              parity_x, parity_y, sampler)
 end
 
 """
-    resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:RealPlaneWaves,Bi<:AbsBilliard}
+    RealPlaneWaves(dim; sym_x=nothing, sym_y=nothing, angle_arc=nothing, angle_shift=nothing, sampler=LinearNodes())
 
-This function resizes the `RealPlaneWaves` basis to a new dimension, if necessary. It checks whether the current dimension matches the desired dimension and returns the resized basis if they differ.
-- If the dimensions match, the original basis is returned.
-- If the dimensions differ, a new `RealPlaneWaves` object is created with the new dimension and the existing corner angle and coordinate system.
+Main constructor for RealPlaneWaves using quantum number specification.
 
-# Returns
-- A `RealPlaneWaves` object with the updated dimension, or the original basis if no resizing is needed.
+# Arguments
+- `dim::Int`: Number of distinct angles to sample
+- `sym_x::Union{Int, Nothing}`: Quantum number for y-axis reflection (±1 for even/odd, nothing for no symmetry)
+- `sym_y::Union{Int, Nothing}`: Quantum number for x-axis reflection (±1 for even/odd, nothing for no symmetry)
+- `angle_arc::Union{Real, Nothing}`: Angular range to sample (default: auto-adjusted based on symmetries)
+- `angle_shift::Union{Real, Nothing}`: Angular offset (default: auto-adjusted based on symmetries)
+- `sampler::AbsSampler`: Sampling strategy for angles
+
+# Details
+The quantum numbers determine which quadrants and cos/sin patterns to use:
+- `sym_x = nothing, sym_y = nothing`: All 4 quadrants, 4 combinations (arc=π, shift=0)
+- `sym_x = nothing, sym_y = ±1`: 2 quadrants (x-axis reflection) (arc=π, shift=0)
+- `sym_x = ±1, sym_y = nothing`: 2 quadrants (y-axis reflection) (arc=π, shift=-π/2)
+- `sym_x = ±1, sym_y = ±1`: 1 quadrant (xy-axis reflection) (arc=π/2, shift=0)
+
+When both symmetries are present, the symmetry order is: [YAxisReflection, XYAxisReflection, XAxisReflection]
+with quantum numbers: [sym_x, sym_x*sym_y, sym_y]
 """
-function resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:RealPlaneWaves,Bi<:AbsBilliard}
-    return RealPlaneWaves(dim,basis.symmetries;angle_arc=basis.angle_arc,angle_shift=basis.angle_shift,sampler=basis.sampler)
+function RealPlaneWaves(dim::Int; sym_x::Union{Int,Nothing}=nothing, sym_y::Union{Int,Nothing}=nothing,
+                       angle_arc::Union{Real,Nothing}=nothing, angle_shift::Union{Real,Nothing}=nothing, 
+                       sampler=LinearNodes())
+    # Build symmetries vector and quantum numbers based on sym_x and sym_y
+    # Automatically adjust angle_arc and angle_shift based on symmetries if not provided
+    
+    if isnothing(sym_x) && isnothing(sym_y)
+        # No symmetries - fast path
+        symmetries = nothing
+        sym_qnumbers = nothing
+        arc = isnothing(angle_arc) ? π : angle_arc
+        shift = isnothing(angle_shift) ? 0.0 : angle_shift
+        
+    elseif !isnothing(sym_x) && !isnothing(sym_y)
+        # Both symmetries: YAxisReflection, XYAxisReflection, XAxisReflection (in that order)
+        # Single quadrant → arc = π/2
+        symmetries = BilliardGeometry.AbsReflection[
+            BilliardGeometry.YAxisReflection(),
+            BilliardGeometry.XYAxisReflection(),
+            BilliardGeometry.XAxisReflection()
+        ]
+        # Quantum numbers: [sym_x, sym_x*sym_y, sym_y]
+        sym_qnumbers = Float64[Float64(sym_x), Float64(sym_x * sym_y), Float64(sym_y)]
+        arc = isnothing(angle_arc) ? π/2 : angle_arc
+        shift = isnothing(angle_shift) ? 0.0 : angle_shift
+        
+    elseif !isnothing(sym_y)
+        # Only x-axis reflection (reflects about x-axis, constrains y-parity)
+        # 2 quadrants (upper or lower half-plane) → arc = π, shift = 0
+        symmetries = BilliardGeometry.AbsReflection[BilliardGeometry.XAxisReflection()]
+        sym_qnumbers = Float64[Float64(sym_y)]
+        arc = isnothing(angle_arc) ? π : angle_arc
+        shift = isnothing(angle_shift) ? 0.0 : angle_shift
+        
+    else  # !isnothing(sym_x)
+        # Only y-axis reflection (reflects about y-axis, constrains x-parity)
+        # 2 quadrants (right or left half-plane) → arc = π, shift = -π/2
+        symmetries = BilliardGeometry.AbsReflection[BilliardGeometry.YAxisReflection()]
+        sym_qnumbers = Float64[Float64(sym_x)]
+        arc = isnothing(angle_arc) ? π : angle_arc
+        shift = isnothing(angle_shift) ? -π/2 : angle_shift
+    end
+    
+    # Call the main constructor
+    return RealPlaneWaves(dim, symmetries, sym_qnumbers; 
+                         angle_arc=arc, angle_shift=shift, sampler=sampler)
 end
 
-@inline _cos(arg)=cos(arg)
-@inline _sin(arg)=sin(arg)
-@inline _rpw_fun(par::Int)=par==1 ? _cos : _sin
-@inline _drpw_fun(par::Int)=par==1 ? (x->-sin(x)) : _cos
+"""
+    RealPlaneWaves(dim, symmetries; angle_arc=π, angle_shift=0.0, sampler=LinearNodes())
+
+Constructor for RealPlaneWaves with symmetries but no explicit quantum numbers.
+Infers default quantum numbers from symmetry types (all +1).
+"""
+function RealPlaneWaves(dim::Int, 
+                       symmetries::Union{Vector{BG}, Nothing}; 
+                       angle_arc=π, angle_shift=0.0, 
+                       sampler=LinearNodes()) where {BG<:BilliardGeometry.AbsReflection}
+    sym_qnumbers = infer_quantum_numbers(symmetries)
+    return RealPlaneWaves(dim, symmetries, sym_qnumbers; 
+                         angle_arc=angle_arc, angle_shift=angle_shift, sampler=sampler)
+end
+
+"""
+    resize_basis(basis::RealPlaneWaves, billiard::AbsBilliard, dim::Int, k)
+
+Resize the basis to a new dimension while preserving symmetries, quantum numbers, and sampling parameters.
+"""
+@inline function resize_basis(basis::RealPlaneWaves, billiard::AbsBilliard, dim::Int, k)
+    return RealPlaneWaves(dim, basis.symmetries, basis.sym_qnumbers; 
+                         angle_arc=basis.angle_arc, 
+                         angle_shift=basis.angle_shift, 
+                         sampler=basis.sampler)
+end
+
+# Helper functions for cos/sin pattern
+# parity = 1 → cos, parity = -1 → sin
+@inline _cos(arg) = cos(arg)
+@inline _sin(arg) = sin(arg)
+@inline _rpw_fun(par::Int) = par == 1 ? _cos : _sin
+@inline _drpw_fun(par::Int) = par == 1 ? (x -> -sin(x)) : _cos
+
 
 """
     basis_fun(basis::RealPlaneWaves,i::Int,k::T,pts::AbstractArray) where {T<:Real}
