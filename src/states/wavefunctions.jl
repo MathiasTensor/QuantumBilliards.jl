@@ -1,5 +1,3 @@
-using StaticArrays
-
 function boundary_limits(curves; grd=1000) 
     x_bnd = Vector{Any}()
     y_bnd = Vector{Any}()
@@ -67,7 +65,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
 end
 
 function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9, multithreaded = true) where {S<:AbsState}
-    let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries       
+    let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries, sym_qnumbers=state.basis.sym_qnumbers       
         #println(new_basis.dim)
         type = eltype(state.vec)
         #try to find a lazy way to do this
@@ -85,7 +83,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
         if ~fundamental_domain 
             if ~isnothing(symmetries)
-                Psi2d, x_grid, y_grid = reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries)
+                Psi2d, x_grid, y_grid = symmetrize_wavefunction(Psi2d,x_grid,y_grid,symmetries,sym_qnumbers)
             end
         end
         return Psi2d, x_grid, y_grid
@@ -154,7 +152,7 @@ function compute_psi(state_bundle::S, x_grid, y_grid; inside_only=true, memory_l
 end
 
 function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9, multithreaded = true) where {S<:EigenstateBundle}
-    let k = state_bundle.k_basis, billiard=state_bundle.billiard, symmetries=state_bundle.basis.symmetries          
+    let k = state_bundle.k_basis, billiard=state_bundle.billiard, symmetries=state_bundle.basis.symmetries, sym_qnumbers=state_bundle.basis.sym_qnumbers          
         #println(new_basis.dim)
         type = eltype(state_bundle.X)
         #try to find a lazy way to do this
@@ -166,13 +164,13 @@ function wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_doma
         ny = max(round(Int, k*dy*b/(2*pi)), 512)
         x_grid::Vector{type} = collect(type,range(xlim... , nx))
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
-        Psi_bundle::Matrix{type} = compute_psi(state_bundle,x_grid,y_grid;inside_only=inside_only, memory_limit = memory_limit) 
+        Psi_bundle::Matrix{type} = compute_psi(state_bundle,x_grid,y_grid;inside_only=inside_only, memory_limit = memory_limit, multithreaded=multithreaded) 
         #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
         Psi2d::Vector{Array{type,2}} = [reshape(Psi, (nx,ny)) for Psi in eachcol(Psi_bundle)]
         if ~fundamental_domain 
             if ~isnothing(symmetries)
                 for i in eachindex(Psi2d)
-                    Psi_new, x_grid, y_grid = reflect_wavefunction(Psi2d[i],x_grid,y_grid,symmetries)
+                    Psi_new, x_grid, y_grid = symmetrize_wavefunction(Psi2d[i],x_grid,y_grid,symmetries,sym_qnumbers)
                     Psi2d[i] = Psi_new
                 end
             end

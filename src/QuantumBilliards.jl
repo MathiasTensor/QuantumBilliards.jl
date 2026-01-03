@@ -66,7 +66,7 @@ include("states/randomstates.jl")
 
 export Eigenstate, EigenstateBundle, BasisState, GaussianRandomState
 export compute_eigenstate, compute_eigenstate_bundle
-
+include("states/symmetryfunctions.jl")
 include("states/wavefunctions.jl")
 include("states/boundaryfunctions.jl")
 include("states/husimifunctions.jl")
