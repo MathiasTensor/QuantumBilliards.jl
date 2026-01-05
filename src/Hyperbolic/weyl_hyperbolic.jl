@@ -189,6 +189,8 @@ end
 
 #------------------------------------------------------------------------------
 # hyperbolic_arclength(billiard;kref)::T
+# This is the total hyperbolic arclength of the billiard boundary. For the symmetry-adapted one which takes
+# into account the fundamental domain, use `hyperbolic_arclength_fundamental`.
 #
 # INPUTS:
 #   billiard::Bi                   AbsBilliard inside Poincaré disk
@@ -202,6 +204,80 @@ function hyperbolic_arclength(billiard::Bi;kref::T=T(1000.0))::T where {Bi<:AbsB
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard)
     bd=evaluate_points(solver,billiard,kref,pre)
     return T(bd.LH)
+end
+
+#returns hyperbolic length along axis from 0 to a (a>0),axis x=0 or y=0
+@inline _L_axis0(a::T) where {T<:Real}=log((one(T)+a)/(one(T)-a))
+
+#find max positive intersection coordinate with x=0 or y=0 from a closed polyline
+function _axis_intersect_pos(xs::Vector{T},ys::Vector{T},which::Symbol;eps::T=T(1e-14)) where {T<:Real}
+    N=length(xs)
+    best=zero(T)
+    @inbounds for i in 1:(N-1)
+        x1=xs[i];y1=ys[i]
+        x2=xs[i+1];y2=ys[i+1]
+        if which===:x0
+            #segment crosses x=0
+            if abs(x1)<=eps && y1>best;best=y1;end
+            if (x1>eps && x2<-eps)||(x1<-eps && x2>eps)
+                t=x1/(x1-x2)
+                y=y1+t*(y2-y1)
+                if y>best;best=y;end
+            end
+        elseif which===:y0
+            if abs(y1)<=eps && x1>best;best=x1;end
+            if (y1>eps && y2<-eps)||(y1<-eps && y2>eps)
+                t=y1/(y1-y2)
+                x=x1+t*(x2-x1)
+                if x>best;best=x;end
+            end
+        else
+            error("which must be :x0 or :y0")
+        end
+    end
+    return best
+end
+
+#hyperbolic boundary length of the "physical" desymmetrized boundary you discretize
+function _physical_LH_fundamental(solver::BIM_hyperbolic,billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+    pre=QuantumBilliards.precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
+    bd=evaluate_points(solver,billiard,kref,pre;safety=1e-14,threaded=true)
+    return T(bd.LH)
+end
+
+#add missing Dirichlet cut edges for Reflection symmetries
+function symmetry_adapted_hyperbolic_arclength(solver::BIM_hyperbolic,billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+    Lphys=_physical_LH_fundamental(solver,billiard;kref=kref)
+    symm=solver.symmetry
+    isnothing(symm) && return Lphys
+    sym=symm[1]
+    par=symm[1].parity
+    !(sym isa Reflection) && return Lphys #TODO Rotation already has the correct wedge handling
+    #get a closed polyline of the FULL boundary (no symmetry),to locate axis intersections
+    solver0=BIM_hyperbolic(10.0,symmetry=nothing)
+    pre0=precompute_hyperbolic_boundary_cdfs(solver0,billiard;M_cdf_base=4000,safety=1e-14)
+    bd0=evaluate_points(solver0,billiard,kref,pre0;safety=1e-14,threaded=true)
+    xy=bd0.xy;N=length(xy)
+    xs=Vector{T}(undef,N+1);ys=Vector{T}(undef,N+1)
+    @inbounds for i in 1:N
+        xs[i]=T(xy[i][1]);ys[i]=T(xy[i][2])
+    end
+    xs[N+1]=xs[1];ys[N+1]=ys[1]
+    Lcut=zero(T)
+    if sym.axis===:y_axis
+        ymax=_axis_intersect_pos(xs,ys,:x0)
+        Lcut-=par*_L_axis0(ymax)
+    elseif sym.axis===:x_axis
+        xmax=_axis_intersect_pos(xs,ys,:y0)
+        Lcut-=par*_L_axis0(xmax)
+    elseif sym.axis===:origin
+        ymax=_axis_intersect_pos(xs,ys,:x0)
+        xmax=_axis_intersect_pos(xs,ys,:y0)
+        Lcut-=par[1]*_L_axis0(ymax)+par[2]*_L_axis0(xmax)
+    else
+        error("Incompatible reflection (not usable for rotations)")
+    end
+    return Lphys+Lcut
 end
 
 #------------------------------------------------------------------------------
