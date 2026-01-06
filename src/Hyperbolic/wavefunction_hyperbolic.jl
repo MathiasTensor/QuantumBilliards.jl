@@ -16,7 +16,7 @@
 # KERNEL CONVENTION
 #   • Hyperbolic Green kernel (fundamental solution):
 #       G(x,q)=(1/2π)Q_ν(cosh d(x,q)),
-#     with ν=-1/2+ik (or your internal convention in QTaylorTable).
+#     with ν=-1/2+ik 
 #   • We evaluate Q via QuantumBilliards._eval_Q(tab,d) with d=hyperbolic distance.
 #
 # DENSITY CONVENTION (DIRICHLET EIGENPROBLEM)
@@ -29,7 +29,6 @@
 #   • Only origin-based discrete symmetries are used (safe in Poincaré disk):
 #       - Rotations about origin
 #       - Reflections across x-axis, y-axis, or through origin
-#   • No shifted centers (cx,cy) appear.
 #
 # OUTPUT CONVENTION
 #   • Returns ψ(x,y) on a Cartesian grid (xgrid,ygrid) inside the disk (and optionally inside Ω).
@@ -38,13 +37,6 @@
 # NUMERICAL SAFETY
 #   • δdisk excludes points too close to unit circle to avoid λ blowup and d issues.
 #   • λ denominator is clamped at 1e-15.
-#
-# PERFORMANCE NOTES
-#   • Complexity per eigenfunction:
-#       O(Ngrid_eval * Nbd) kernel evaluations (dominant).
-#   • Uses Threads.@threads on grid points; each grid point loops over boundary nodes.
-#   • Pre-extract boundary coordinates qx,qy to avoid SVector indexing cost.
-#
 # ===============================================================================
 
 
@@ -229,9 +221,9 @@ function ψ_hyp_slp_sym(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHypBIM{T},
         @inbounds for j in eachindex(σ)
             qxj=qx[j];qyj=qy[j];σj=σ[j];dsj=ds[j]
             for ℓ in 1:n
-                θ=T(2π)*T(ℓ-1)/T(n);cθ=cos(θ);sθ=sin(θ)
+                θ=T(TWO_PI)*T(ℓ-1)/T(n);cθ=cos(θ);sθ=sin(θ)
                 qxr,qyr=rot_point(qxj,qyj,cθ,sθ)
-                phase=Complex{T}(cis(T(2π)*T(m)*T(ℓ-1)/T(n)))
+                phase=Complex{T}(cis(T(TWO_PI)*T(m)*T(ℓ-1)/T(n)))
                 w=slp_kernel_hyp(tab,x,y,qxr,qyr)*(dsj*λ_poincare(qxr,qyr))
                 acc+=phase*w*σj
             end
@@ -306,21 +298,17 @@ end
 #     Linear indices into an nx*ny flattened array (column-major with ix+(jy-1)*nx).
 #   nx::Int,ny::Int
 #     Grid sizes.
-#
-# NOTES
-#   • This function does not allocate pts for all nx*ny; it only constructs pts_disk
-#     for disk indices if inside_only=true (to test polygon membership).
 #------------------------------------------------------------------------------
 function _make_grid_and_idxs_for_billiard(ks::Vector{T},billiard::Bi;b::Float64=5.0,fundamental::Bool=true,inside_only::Bool=true,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
     kmax=maximum(ks);L=billiard.length
     if fundamental
-        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,kmax*L*b/(2π))))
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,kmax*L*b/(TWO_PI))))
     else
-        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2π))))
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(TWO_PI))))
     end
     dx=xlim[2]-xlim[1];dy=ylim[2]-ylim[1]
-    nx=max(round(Int,kmax*dx*b/(2π)),512)
-    ny=max(round(Int,kmax*dy*b/(2π)),512)
+    nx=max(round(Int,kmax*dx*b/(TWO_PI)),512)
+    ny=max(round(Int,kmax*dy*b/(TWO_PI)),512)
     xgrid=collect(T,range(xlim...,nx))
     ygrid=collect(T,range(ylim...,ny))
     r2max=one(T)-δdisk
@@ -567,6 +555,6 @@ function normalize_psi_hyperbolic!(ψ::AbstractMatrix{Num},xgrid::AbstractVector
         end
     end
     s*=dx*dy
-    ψ./=sqrt(s+eps())
+    ψ./=sqrt(s+eps()) # s should in principle not be this small
     return ψ
 end

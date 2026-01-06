@@ -206,10 +206,48 @@ function hyperbolic_arclength(billiard::Bi;kref::T=T(1000.0))::T where {Bi<:AbsB
     return T(bd.LH)
 end
 
-#returns hyperbolic length along axis from 0 to a (a>0),axis x=0 or y=0
+# ------------------------------------------------------------------------------
+# _L_axis0
+#
+# Hyperbolic arclength along a coordinate axis from 0 to a (a > 0),
+# in the Poincaré disk model.
+#
+# This is the exact hyperbolic distance from (0,0) to (0,a) or (a,0)
+# along an axis. It is used to convert a Euclidean axis-intersection
+# coordinate into a hyperbolic length contribution for symmetry cut edges.
+#
+# Formula:
+#   L(a) = log((1 + a) / (1 - a))
+# ------------------------------------------------------------------------------
 @inline _L_axis0(a::T) where {T<:Real}=log((one(T)+a)/(one(T)-a))
 
-#find max positive intersection coordinate with x=0 or y=0 from a closed polyline
+# ------------------------------------------------------------------------------
+# _axis_intersect_pos
+#
+# Find the maximum positive intersection coordinate of a closed polyline
+# with a coordinate axis.
+#
+# Given a closed boundary polyline (xs, ys), this scans all segments and
+# returns:
+# - for which == :x0 : max y > 0 where the boundary crosses x = 0
+# - for which == :y0 : max x > 0 where the boundary crosses y = 0
+#
+# This is purely Euclidean geometry; the result is later converted to a
+# hyperbolic length via _L_axis0.
+#
+# Arguments:
+# - xs, ys : closed polyline coordinates (last point should repeat first)
+# - which  : :x0 or :y0
+#
+# Keyword:
+# - eps    : tolerance for detecting axis crossings and on-axis vertices
+#
+# Returns:
+# - best   : maximum positive intersection coordinate (0 if none found)
+#
+# Used for:
+# - Determining the extent of virtual symmetry edges in reflection sectors
+# ------------------------------------------------------------------------------
 function _axis_intersect_pos(xs::Vector{T},ys::Vector{T},which::Symbol;eps::T=T(1e-14)) where {T<:Real}
     N=length(xs)
     best=zero(T)
@@ -238,21 +276,70 @@ function _axis_intersect_pos(xs::Vector{T},ys::Vector{T},which::Symbol;eps::T=T(
     return best
 end
 
-#hyperbolic boundary length of the "physical" desymmetrized boundary you discretize
+# ------------------------------------------------------------------------------
+# _physical_LH_fundamental
+#
+# Hyperbolic boundary length of the physical boundary actually discretized
+# in the fundamental domain.
+#
+# This includes only true billiard walls, and excludes any virtual symmetry cut edges.
+#
+# Used as the baseline perimeter contribution in the Weyl law before
+# symmetry corrections due to virtual edges of reflections are applied.
+#
+# Arguments:
+# - solver   : BIM_hyperbolic with symmetry already applied
+# - billiard : billiard geometry
+#
+# Keyword:
+# - kref     : reference k used only for accurate boundary sampling
+#
+# Returns:
+# - LH       : hyperbolic boundary length of the physical boundary
+# ------------------------------------------------------------------------------
 function _physical_LH_fundamental(solver::BIM_hyperbolic,billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
-    pre=QuantumBilliards.precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
+    pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
     bd=evaluate_points(solver,billiard,kref,pre;safety=1e-14,threaded=true)
     return T(bd.LH)
 end
 
-#add missing Dirichlet cut edges for Reflection symmetries
+# ------------------------------------------------------------------------------
+# symmetry_adapted_hyperbolic_arclength
+#
+# Effective hyperbolic perimeter length entering the Weyl law for a given
+# symmetry sector (with all reflection corrections).
+#
+# Logic:
+# - Start from Lphys = physical boundary length (Dirichlet)
+# - If no symmetry → return Lphys
+# - If Reflection symmetry:
+#     * identify missing virtual symmetry edges along x=0 and/or y=0
+#     * compute their hyperbolic lengths via _L_axis0
+#     * apply parity:
+#         parity = -1 → Dirichlet  → add length
+#         parity = +1 → Neumann    → subtract length
+# - If Rotation symmetry → return Lphys (wedge handling is implicit)
+#
+# The minus sign is absorbed here so the returned L can be directly used
+# in the Weyl perimeter term without further sign handling.
+#
+# Arguments:
+# - solver   : BIM_hyperbolic (with symmetry)
+# - billiard : geometry
+#
+# Keyword:
+# - kref     : reference k for boundary sampling
+#
+# Returns:
+# - Leff     : effective hyperbolic perimeter length
+# ------------------------------------------------------------------------------
 function symmetry_adapted_hyperbolic_arclength(solver::BIM_hyperbolic,billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     Lphys=_physical_LH_fundamental(solver,billiard;kref=kref)
     symm=solver.symmetry
     isnothing(symm) && return Lphys
     sym=symm[1]
     par=symm[1].parity
-    !(sym isa Reflection) && return Lphys #TODO Rotation already has the correct wedge handling
+    !(sym isa Reflection) && return Lphys # Rotation already has the correct wedge handling
     #get a closed polyline of the FULL boundary (no symmetry),to locate axis intersections
     solver0=BIM_hyperbolic(10.0,symmetry=nothing)
     pre0=precompute_hyperbolic_boundary_cdfs(solver0,billiard;M_cdf_base=4000,safety=1e-14)

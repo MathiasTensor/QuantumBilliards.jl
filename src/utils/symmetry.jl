@@ -49,14 +49,18 @@ Rotation(n::Int,m::Int;center::Tuple{Real,Real}=(0.0,0.0))=Rotation(n,mod(m,n),(
 
 # rotation of a point (x,y) by an angle α already wrapped in s,c=sincos(α) around a center of rotation (cx,cy). Added a separate K for type of center float.
 @inline function _rot_point(x::T,y::T,cx::K,cy::K,c::T,s::T) where {T<:Real,K<:Real}
-    xr=cx+c*(x-cx)-s*(y-cy)
-    yr=cy+s*(x-cx)+c*(y-cy)
+    Δx=x-cx;Δy=y-cy
+    xr=cx+c*Δx-s*Δy
+    yr=cy+s*Δx+c*Δy
     return xr,yr
 end
 
 # rotate (nx,ny) by angle with cos=c, sin=s
 @inline _rot_vec(nx::T,ny::T,c::T,s::T) where {T<:Real}=(c*nx-s*ny,s*nx+c*ny)
-@inline _rotation_matrix(ang::T) where {T<:Real}=SMatrix{2,2,T}((cos(ang),-sin(ang),sin(ang),cos(ang)))
+@inline function _rotation_matrix(ang::T) where {T<:Real}
+    s,c=sincos(ang)
+    return SMatrix{2,2,T}((c,-s,s,c))
+end
 
 # tables for cos(lθ), sin(lθ), and characters χ_m(l)=e^{i2π ml/n}. Best place to do it here since it should not be called by user
 @inline function _rotation_tables(::Type{T},n::Int,m::Int) where {T<:Real}
