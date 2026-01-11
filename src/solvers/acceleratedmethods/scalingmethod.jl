@@ -251,14 +251,19 @@ For a given reference wavenumber k solves the generalized eigenproblem (internal
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `ks::Vector{<:Real}`: The computed real wavenumbers.
 - `ten::Vector{<:Real}`: The corresponding tensions.
 """
-function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps) # the entire eigvals construction is pure BLAS
+    if cholesky
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eig_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps)
+    else
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps) 
+    end
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
@@ -279,13 +284,19 @@ For a given reference wavenumber k solves the generalized eigenproblem (internal
 - `Fk::Matrix{<:Real}`: The weighted derivative basis matrix (check the `construct_matrices` for more information)
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `ks::Vector{<:Real}`: The computed real wavenumbers.
 - `ten::Vector{<:Real}`: The corresponding tensions.
 """
-function solve(solver::AbsScalingMethod,F,Fk,k,dk)
-    @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+function solve(solver::AbsScalingMethod,F,Fk,k,dk;cholesky::Bool=false)
+    if cholesky
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eig_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps)
+    else
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(Fk);eps=solver.eps)
+    end
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]
@@ -306,15 +317,20 @@ Solver in a given `dk` interval with reference wavenumber `k` the corresponding 
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `ks::Vector{<:Real}`: The computed real wavenumbers.
 - `ten::Vector{<:Real}`: The corresponding tensions.
 - `X::Matrix{<:Real}`: The X matrix that contains information about the basis expansion coefficients (`X[:,i] <-> ks[i]`, check function desc.).
 """
-function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps) # pure BLAS
+    if cholesky
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps)
+    else
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps) # pure BLAS
+    end
     ks,ten=sm_results(mu,k)
     idx=abs.(ks.-k).<dk
     ks=ks[idx]

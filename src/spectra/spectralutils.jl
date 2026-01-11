@@ -343,7 +343,7 @@ end
 ################################################################
 
 """
-    function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+    function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
 
 Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard. Returns the computed eigenvalues and tensions.
 
@@ -356,6 +356,9 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 - `N_expect`: Expected number of eigenvalues per interval (default: `1`).
 - `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
+- `multithreaded_matrices::Bool=false`: Whether to enable multithreaded matrix construction for each `k` solve.
+- `multithreaded_ks::Bool=true`: Whether to parallelize over `k` intervals. Usually beneficial.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - A tuple `(k_res, ten_res, control)`:
@@ -363,7 +366,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     # Estimate the number of intervals and store the dk values
     println("Starting spectrum computation...")
     k0=k1
@@ -397,7 +400,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-
         dk=dk_values[i]
         k0+=dk
         println("Doing k: ", k0, " to: ", k0+dk+tol)
-        @time k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices)
+        @time k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices,cholesky=cholesky)
         overlap_and_merge!(k_res,ten_res,k_new,ten_new,control,k0-dk,k0;tol=tol)
         next!(p)
     end
@@ -405,9 +408,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol=1e-
 end
 
 """
-    compute_spectrum(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T, dk::T;
-                     tol::T=1e-4, multithreaded_matrices::Bool=false, multithreaded_ks::Bool=true) 
-                     where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+    compute_spectrum(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T, dk::T;tol::T=1e-4, multithreaded_matrices::Bool=false, multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
 
 Compute the eigenvalue spectrum over a fixed-resolution wavenumber grid `[k1, k2]` with step size `dk`, using a spectral method (e.g., Vergini–Saraceno). 
 
@@ -422,6 +423,7 @@ This version **does not adapt `dk`** using Weyl’s law but instead uses a fixed
 - `tol::T=1e-4`: Tolerance for overlap-and-merge when stitching results between intervals.
 - `multithreaded_matrices::Bool=false`: Whether to enable multithreaded matrix construction for each `k` solve.
 - `multithreaded_ks::Bool=true`: Whether to parallelize over `k` intervals. Usually beneficial.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `k_res::Vector{T}`: Final merged list of wavenumbers.
@@ -433,7 +435,7 @@ This version **does not adapt `dk`** using Weyl’s law but instead uses a fixed
 - Each interval is solved independently (with optional multithreading).
 - The results are then merged using the `overlap_and_merge!` function, keeping lower-tension eigenvalues if overlaps are found.
 """
-function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol=1e-4,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
+function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol=1e-4,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
     k_vals=collect(range(k1,k2,step=dk))
     println("Scaling Method...")
     p=Progress(length(k_vals),1)
@@ -448,7 +450,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;t
     
     @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[2:end]
         k0=k_vals[i]
-        k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices)
+        k_new,ten_new=solve_spectrum(solver,basis,billiard,k0,dk+tol,multithreaded=multithreaded_matrices,cholesky=cholesky)
         all_ks[i]=k_new
         all_tens[i]=ten_new
         next!(p)
@@ -468,7 +470,7 @@ function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;t
 end
 
 """
-    compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+    compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
 
 Computes the spectrum for a range of states `[N1, N2]` using the given solver, basis, and billiard. Translates the state numbers to wavenumbers using Weyl's law and then computes the spectrum via the k version of this function.
 
@@ -481,6 +483,9 @@ Computes the spectrum for a range of states `[N1, N2]` using the given solver, b
 - `N_expect`: Expected number of eigenvalues per interval (default: `1`).
 - `dk_threshold`: Maximum allowed interval size for `dk` (default: `0.05`).
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
+- `multithreaded_matrices::Bool=false`: Whether to enable multithreaded matrix construction for each `k` solve.
+- `multithreaded_ks::Bool=true`: Whether to parallelize over `k` intervals. Usually beneficial.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - A tuple `(k_res, ten_res, control)`:
@@ -488,18 +493,17 @@ Computes the spectrum for a range of states `[N1, N2]` using the given solver, b
     - `ten_res::Vector{T}`: Vector of corresponding tensions.
     - `control::Vector{Bool}`: Vector indicating whether each wavenumber was compared and merged (`true`) with tension comparisons or not (`false`).
 """
-function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+function compute_spectrum(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     # get the k1 and k2 from the N1 and N2
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
-    # Call the main with k
-    k_res,ten_res,control=compute_spectrum(solver,basis,billiard,k1,k2;tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental)
+    k_res,ten_res,control=compute_spectrum(solver,basis,billiard,k1,k2;tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental,multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,cholesky=cholesky)
     return k_res,ten_res,control
 end
 
 """
-    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+    compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
 
 Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given solver, basis, and billiard, returning the merged `StateData` containing wavenumbers, tensions, and eigenvectors. MAIN ONE -> for both eigenvalues and husimi/wavefunctions since the expansion coefficients of the basis for the k are saved
 
@@ -514,6 +518,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
 - `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `state-res::StateData{T,T}`: A struct containing:
@@ -522,7 +527,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `tens::Vector{T}`: Vector of tensions for each eigenvalue
 - `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
     k_vals=T[]
     dk_vals=T[]
     k0=k1
@@ -548,7 +553,7 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[1:end-1]
         ki=k_vals[i]
         dki=dk_vals[i]
-        all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dki+tol;multithreaded=multithreaded_matrices)
+        all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dki+tol;multithreaded=multithreaded_matrices,cholesky=cholesky)
         next!(p)
     end
     println("Merging intervals...")
@@ -582,6 +587,7 @@ After solving, results are merged using `overlap_and_merge_state!`, keeping lowe
 - `tol::T=1e-4`: Tolerance for merging results in overlapping intervals.
 - `multithreaded_matrices::Bool=false`: Enable multithreading for matrix assembly.
 - `multithreaded_ks::Bool=true`: Enable multithreading over `k` intervals.
+- `cholesky::Bool=false`: Use Cholesky decomposition for solving linear systems.
 
 # Returns
 - `state_res::StateData{T,T}`: Struct holding merged eigenvalues, tensions, and eigenvectors.
@@ -590,7 +596,7 @@ After solving, results are merged using `overlap_and_merge_state!`, keeping lowe
   - `state_res.X`: Basis coefficient vectors for each eigenvalue.
 - `control::Vector{Bool}`: Vector indicating if an eigenvalue was involved in overlap resolution (`true`) or added uniquely (`false`).
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol::T=T(1e-4),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol::T=T(1e-4),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver, Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
     k_vals=collect(range(k1,k2,step=dk))
     @info "Scaling Method w/ StateData..."
     println("Total intervals: ",length(k_vals))
@@ -600,7 +606,7 @@ function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2
     p=Progress(length(k_vals),1)
     @use_threads multithreading=multithreaded_ks for i in eachindex(k_vals)[1:end-1]
         ki=k_vals[i]
-        all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dk+tol;multithreaded=multithreaded_matrices)
+        all_states[i]=solve_state_data_bundle(solver,basis,billiard,ki,dk+tol;multithreaded=multithreaded_matrices,cholesky=cholesky)
         next!(p)
     end
     println("Merging intervals...")
@@ -633,6 +639,7 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
 - `fundamental`: Whether to use fundamental domain properties (default: `true`).
 - `multithreaded_matrices::Bool=false`: If the matrix construction should be multithreaded for the basis and gradient matrices. Very dependant on the k grid and the basis choice to determine the optimal choice for what to multithread.
 - `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
+- `cholesky::Bool=false`: Use Cholesky decomposition for solving linear systems (default: `false`).
 
 # Returns
 - `state-res::StateData{T,T}`: A struct containing:
@@ -641,11 +648,11 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
     - `tens::Vector{T}`: Vector of tensions for each eigenvalue
 - `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
+function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard}
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
-    return compute_spectrum_with_state(solver,basis,billiard,k1,k2,tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental,multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks)
+    return compute_spectrum_with_state(solver,basis,billiard,k1,k2,tol=tol,N_expect=N_expect,dk_threshold=dk_threshold,fundamental=fundamental,multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,cholesky=cholesky)
 end
 
 ########################
@@ -969,306 +976,3 @@ function compute_spectrum_test(solver::Sol,basis::Ba,pts::Pts,k1::T,k2::T,dk::T;
     display(f)
     return k_res,ten_res,control
 end
-
-
-
-
-
-
-
-
-# NEEDS MORE WORK
-#=
-"""
-    compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; 
-                              IntervalK::T = T(10.0), fundamental::Bool = true, 
-                              N_expect::Int = 3, log_file::String = "compute_spectrum_log.txt") 
-                              -> (ks_final::Vector{T}, tens_final::Vector{T}, control_final::Vector{Bool}) where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
-
-Compute the eigenvalue spectrum of a quantum billiard system over a specified interval `[k1, k2]`, 
-adaptively adjusting computational parameters to ensure accurate level counting and resolution.
-
-# Description
-
-`compute_spectrum_adaptive` calculates the eigenvalues (`ks`) and associated data (`tensions`, `control flags`) 
-for a quantum billiard problem within the interval `[k1, k2]`. It divides the interval into smaller subintervals 
-and adaptively adjusts the `dk_threshold` parameter in each subinterval to achieve the expected number of energy levels, 
-improving the accuracy and reliability of the spectrum computation.
-
-This function is crucial for spectral analysis in quantum billiard systems, where accurate eigenvalue computation is essential.
-
-# Arguments
-- `solver::Sol`: An instance of the accelerated solver.
-- `basis::Ba`: The basis set.
-- `billiard::Bi`: The billiard.
-- `k1::T`: The starting wavenumber.
-- `k2::T`: The ending wavenumber.
-
-# Keyword Arguments
-
-- `IntervalK::T = T(10.0)`: The length of each subinterval into which `[k1, k2]` is divided. Default is `10.0`.
-- `fundamental::Bool = true`: If `true`, computations are performed on the fundamental domain; if `false`, on the full billiard domain.
-- `N_expect::Int = 3`: The expected number of energy levels per single generalized eigenvalue problem, guiding the adaptive adjustment of `dk_threshold`.
-- `log_file::String = "compute_spectrum_log.txt"`: The file name for logging computation details.
-
-# Returns
-
-A tuple containing:
-
-- `ks_final::Vector{T}`: A vector of computed eigenvalues within the interval `[k1, k2]`.
-- `tens_final::Vector{T}`: A vector of associated tensions.
-- `control_final::Vector{Bool}`: A vector of boolean control flags for merging analysis.
-
-# Algorithm Details
-
-1. **Interval Division**:
-   - The main interval `[k1, k2]` is partitioned into smaller subintervals of length `IntervalK`.
-
-2. **Adaptive `dk_threshold` Adjustment**:
-   - For each subinterval `[k_start, k_end]`, the function `spectrum_inner_call` is invoked.
-   - `dk_threshold` controls the size of the interval the results of the generalized eigenvalue problem; it is adaptively adjusted based on the diff level count.
-
-3. **Level Counting and Adjustment Logic**:
-   - **Theoretical Level Count (`N_smooth`)**: Estimated using the smooth Weyl law for the billiard system.
-   - **Actual vs. Theoretical Difference (`th_num_diff`)**: The difference between the actual number of levels found and the smooth theoretical expectation.
-   - **Average Difference (`avg_sum_diff`)**: The average of `th_num_diff` over all levels in the subinterval.
-   - **Adjustment Criteria**:
-     - If `avg_sum_diff > 1.0` (too many levels), decrease `dk_threshold`.
-     - If `avg_sum_diff < -1.0` (missing levels), increase `dk_threshold`.
-     - Adjustments are constrained within sensible minimum and maximum `dk_threshold` values computed based on `N_expect`.
-
-4. **Iterative Refinement**:
-   - The adjustment process repeats until the average difference is within ±1.0 or the `dk_threshold` reaches its limits.
-   - A maximum iteration limit (`max_iterations = 20`) prevents infinite loops.
-
-5. **Result Compilation**:
-   - Valid eigenvalues and associated data from each subinterval are collected.
-   - The final results (`ks_final`, `tens_final`, `control_final`) are aggregates of these subinterval computations.
-
-# Helper Functions
-
-- **`N_smooth(k)`**: Estimates the cumulative number of energy levels up to wavenumber `k` using the smooth part of Weyl's formula.
-- **`th_num_diff(k, ks, k0)`**: Calculates the difference between the numerical and theoretical number of levels below `k`, relative to a starting point `k0`.
-- **`avg_sum_diff(ks, k0)`**: Computes the average of `th_num_diff` over a set of computed eigenvalues `ks` in a given subinterval.
-- **`dk_smallest_func(k)` & `dk_largest_func(k)`**: Determine the smallest and largest sensible values for `dk_threshold` based on `k` and `N_expect`.
-- **`spectrum_inner_call(k_start, k_end, dk_threshold_initial)`**: Performs the adaptive computation within a subinterval, adjusting `dk_threshold` iteratively for each subinterval.
-
-"""
-function compute_spectrum_adaptive(solver::Sol, basis::Ba, billiard::Bi, k1::T, k2::T; IntervalK::T = T(10.0), fundamental::Bool = true, N_expect::Int = 3, log_file::String = "compute_spectrum_log.txt") where {Sol <: AcceleratedSolver, Ba <: AbsBasis, Bi <: AbsBilliard,T <: Real}
-
-    # Set up the file logger
-    #logfile = open(log_file, "w")
-    #file_logger = LoggingExtras.SimpleLogger(logfile, Logging.Info)
-    # Use the file logger only
-    #global_logger(file_logger)
-
-    # Arrays that will contain returned results
-    intervals = T[]
-    ks_final = T[]
-    tens_final = T[]  # Assuming tensors are of type T
-    control_final = Bool[]
-
-    # Helpers for determining the average of fluctuations
-    # Just calculates the N for the smooth part from a given k
-    N_smooth(k) = weyl_law(k, billiard; fundamental = fundamental)
-
-    # Counts the number of levels in an interval [k0, k] for k ∈ ks ⊂ [k0, k1]
-    th_num_diff(k, ks::Vector{T}, k0) = count(_k -> _k < k, ks) - (N_smooth(k) - N_smooth(k0))
-
-    # Averages the level count for all k ∈ ks. The main criterion function
-    avg_sum_diff(ks::Vector{T}, k0) = sum(th_num_diff(k, ks, k0) for k in ks) / length(ks)
-
-    # Helpers for the limits of the while loop that modifies the threshold dk
-    dk_smallest_func(k; fundamental = true) = begin
-        denom = fundamental ?
-            (billiard.area_fundamental * k) / (2π) - (billiard.length_fundamental) / (4π) :
-            (billiard.area * k) / (2π) - (billiard.length) / (4π)
-        0.5 * N_expect / denom
-    end
-
-    dk_largest_func(k; fundamental = true) = begin
-        denom = fundamental ?
-            (billiard.area_fundamental * k) / (2π) - (billiard.length_fundamental) / (4π) :
-            (billiard.area * k) / (2π) - (billiard.length) / (4π)
-        2.0 * N_expect / denom
-    end
-
-    # Helper for inner callback -> Iteratively checks whether we are losing or gaining levels based on the previous result
-    function spectrum_inner_call(k_start, k_end, dk_threshold_initial)
-        dk_threshold = dk_threshold_initial
-        dk_smallest = dk_smallest_func(k_end; fundamental = fundamental)
-        dk_largest = dk_largest_func(k_start; fundamental = fundamental)
-        iteration = 0
-        max_iterations = 20  # Prevent infinite loops
-
-        @info "Processing interval [$(k_start), $(k_end)] with initial dk_threshold=$(dk_threshold_initial)"
-
-        # Initialize variables to store the best computed results
-        best_k_res = T[]
-        best_tens = T[]
-        best_control = Bool[]
-        best_diff = Inf  # Initialize best_diff to a large value
-
-        # Temporary storage for current subinterval results
-        temp_storage = Dict{Int, Tuple{Vector{T}, Vector{T}, Vector{Bool}, T}}()
-
-        while true
-            iteration += 1
-            if iteration > max_iterations
-                @warn "Maximum iterations reached in interval [$(k_start), $(k_end)]. Selecting best available results."
-                break
-            end
-
-            # Compute the spectrum in the interval [k_start, k_end]
-            k_res_current, tens_current, control_current = compute_spectrum(
-                solver,
-                basis,
-                billiard,
-                k_start,
-                k_end;
-                dk_threshold = dk_threshold,
-                fundamental = fundamental,
-            )
-
-            # Crop the k_res so that we do not have edge outer levels
-            valid_indices = findall(x -> x >= k_start && x <= k_end, k_res_current)
-            if isempty(valid_indices)
-                @warn "No valid levels found in interval [$(k_start), $(k_end)] with dk_threshold=$(dk_threshold)."
-                # Continue to the next iteration
-                continue
-            end
-
-            # Extract valid results
-            k_res_current = k_res_current[valid_indices]
-            tens_current = tens_current[valid_indices]
-            control_current = control_current[valid_indices]
-
-            # Compute average difference
-            diff = avg_sum_diff(k_res_current, k_start)
-
-            # Store current results in temporary storage
-            temp_storage[iteration] = (k_res_current, tens_current, control_current, diff)
-
-            @info "Iteration $(iteration): dk_threshold=$(dk_threshold), avg_diff=$(diff), levels_found=$(length(k_res_current))"
-
-            # Check if the current diff is closer to zero than the best so far and update the hashmap
-            if abs(diff) < abs(best_diff)
-                best_diff = diff
-                best_k_res = k_res_current
-                best_tens = tens_current
-                best_control = control_current
-            end
-
-            # Adjust dk_threshold based on average difference
-            if diff > 1.0 && dk_threshold > dk_smallest
-                dk_threshold_old = dk_threshold
-                dk_threshold *= 0.9  # We have too many levels, decrease dk
-                @debug "Decreasing dk_threshold from $(dk_threshold_old) to $(dk_threshold) (too many levels)"
-            elseif diff < -1.0 && dk_threshold < dk_largest
-                dk_threshold_old = dk_threshold
-                dk_threshold *= 1.1  # We are missing levels, increase dk
-                @debug "Increasing dk_threshold from $(dk_threshold_old) to $(dk_threshold) (missing levels)"
-            else
-                # We are within ±1 or have reached the smallest/largest sensible dk
-                if dk_threshold < dk_smallest
-                    @warn "dk_threshold ($(dk_threshold)) is smaller than the smallest allowed dk ($(dk_smallest)) for N_expect = $(N_expect)"
-                elseif dk_threshold > dk_largest
-                    @warn "dk_threshold ($(dk_threshold)) is larger than the largest allowed dk ($(dk_largest)) for N_expect = $(N_expect)"
-                end
-                @info "Accepting results for interval [$(k_start), $(k_end)] after $(iteration) iterations."
-                break  # Exit the loop
-            end
-        end
-        # After iterations, select the results with avg_diff closest to zero
-        @info "Selecting results with avg_diff closest to zero (avg_diff=$(best_diff))"
-        # Flush temporary storage for this subinterval
-        temp_storage = nothing  # Allow garbage collection
-
-        return best_k_res, best_tens, best_control, dk_threshold  # Return best results
-    end
-    # End of helper functions
-    # Fill the intervals with increments by IntervalK
-    intervals = [k1]
-    k_run = k1
-    while k_run < k2
-        k_run += IntervalK
-        if k_run >= k2
-            intervals = [intervals; k2]  # Only the last one goes here
-            break
-        else
-            intervals = [intervals; k_run]
-        end
-    end
-    total_intervals = length(intervals) - 1
-    @info "Total intervals to process: $(total_intervals)"
-    for i in 1:total_intervals
-        k_start = intervals[i]
-        k_end = intervals[i + 1]
-        # Some sensible starting dk_threshold
-        dk_threshold_initial = 0.05
-        # Log the start of processing for this interval
-        @info "Starting interval $(i)/$(total_intervals): [$(k_start), $(k_end)]"
-        k_res, tens, control, final_dk_threshold = spectrum_inner_call(k_start, k_end, dk_threshold_initial)
-        append!(ks_final, k_res)
-        append!(tens_final, tens)
-        append!(control_final, control)
-        @info "Finished interval $(i): levels_found=$(length(k_res)), final_dk_threshold=$(final_dk_threshold)"
-    end
-    @info "Spectrum computation completed. Total levels found: $(length(ks_final))"
-    #close(logfile) # close the logger
-    return ks_final, tens_final, control_final
-end
-=#
-
-#=
-function compute_spectrum_with_state(solver::Sol,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true) where {Sol<:AcceleratedSolver,Ba<:AbsBasis,Bi<:AbsBilliard,T<:Real}
-    # Estimate the number of intervals and store the dk values
-    k0=k1
-    dk_values=[]
-    A_fund=billiard.area_fundamental;L_fund=billiard.length_fundamental;A_full=billiard.area;L_full=billiard.length
-    while k0<k2
-        if fundamental
-            dk=N_expect/(A_fund*k0/(2*pi)-L_fund/(4*pi)) # weyl estimate
-        else
-            dk=N_expect/(A_full*k0/(2*pi)-L_full/(4*pi))
-        end
-        dk<0.0 ? -dk : dk
-        dk>dk_threshold ? dk=dk_threshold : nothing # For small k this limits the size of the interval
-        push!(dk_values,dk)
-        k0+=dk
-    end
-    println("min/max dk value: ",extrema(dk_values))
-    # Initialize the progress bar with estimated number of intervals
-    println("Scaling Method w/ StateData...")
-    p=Progress(length(dk_values),1)
-    @info "Total number of eigenvalue problems to solve... $(length(dk_values))"
-    # Actual computation using precomputed dk values
-    k0=k1
-    state_res::StateData{T,T}=solve_state_data_bundle_with_INFO(solver,basis,billiard,k0,dk_values[1]+tol;multithreaded=multithreaded_matrices)
-    control::Vector{Bool}=[false for _ in 1:length(state_res.ks)]
-    #all_states=Vector{StateData{T,T}}(undef,length(dk_values))
-    #k_vals=Vector{T}(undef,length(dk_values))
-    #all_states[1]=state_res
-    #k_vals[1]=k0
-    #@use_threads multithreading=multithreaded_ks for i in eachindex(dk_values)[2:end]
-    for i in eachindex(dk_values)[2:end]
-        dk=dk_values[i]
-        k0+=dk
-        state_new::StateData{T,T}=solve_state_data_bundle(solver,basis,billiard,k0,dk+tol;multithreaded=multithreaded_matrices)
-        # Merge the new state into the accumulated state
-        overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,state_new.ks,state_new.tens,state_new.X,control,k0-dk,k0;tol=tol)
-        #all_states[i]=state_new
-        #k_vals[i]=k0
-        next!(p)
-    end
-    # do the merging here
-    #println("Merging intervals...")
-    #p=Progress(length(dk_values)-1,1)
-    #state_res=all_states[1]
-    #for i in 2:length(all_states)
-    #    overlap_and_merge_state!(state_res.ks,state_res.tens,state_res.X,all_states[i].ks,all_states[i].tens,all_states[i].X,control,k_vals[i-1],k_vals[i];tol=tol)
-    #    next!(p)
-    #end
-    return state_res,control
-end
-=#

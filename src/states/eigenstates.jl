@@ -228,16 +228,17 @@ Solves the generalized eigenvalue problem in a small interval `[k0-dk, k0+dk]` a
 - `k<:Real`: The center of the interval for which to solve the eigenvalue problem.
 - `dk<:Real`: The width of the interval for which to solve the eigenvalue problem.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 A `StateData` object containing the wavenumbers, the tensions and the expansion coefficients for the basis stored as a Vector of Vectors after a generalized eigenvalue problem computation.
 """
-function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
     basis_new=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard, k)
-    ks,tens,X_matrix=solve_vectors(solver,basis_new,pts,k,dk;multithreaded=multithreaded) # this one filters the ks that are outside k+-dk and gives us the filtered out ks, tensions and X matrix of filtered vectors. No need to store dim as we can get it from the length(X[1])
+    ks,tens,X_matrix=solve_vectors(solver,basis_new,pts,k,dk;multithreaded=multithreaded,cholesky=cholesky) # this one filters the ks that are outside k+-dk and gives us the filtered out ks, tensions and X matrix of filtered vectors. No need to store dim as we can get it from the length(X[1])
     # Extract columns of X_matrix and store them as a Vector of Vectors b/c it is easier to merge them in the top function -> compute_spectrum_with_state
     X_vectors=[Vector(col) for col in eachcol(X_matrix)]
     return StateData(ks,X_vectors,tens)

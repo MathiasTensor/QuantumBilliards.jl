@@ -85,6 +85,7 @@ export adapt_basis, triangle_corners, make_triangle_and_basis
 export GeneralizedSinai, make_quarter_generalized_sinai, make_full_boundary_generalized_sinai, make_desymmetrized_full_generalized_sinai, make_generalized_sinai_and_basis
 
 include("solvers/fulldecompositions.jl")
+include("solvers/gen_cholesky_rank_red.jl")
 include("solvers/matrixconstructors.jl")
 include("states/gradients.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix

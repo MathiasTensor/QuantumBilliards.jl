@@ -10,22 +10,23 @@ Solves the wavenumber for an `AcceleratedSolver` by finding the one closest to t
 - `k::T`: The reference wavenumber.
 - `dk::T`: The interval in which to find the closest wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `T`: The closest wavenumber found in the `dk` interval.
 - `T`: The corresponding tension found for the closest wavenumber (by construction smallest tension in the given interval via findmin in the code).
 """
-function solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
+function solve_wavenumber(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true,cholesky::Bool=false)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard,k)
-    ks,ts=solve(solver,new_basis,pts,k,dk;multithreaded=multithreaded)
+    ks,ts=solve(solver,new_basis,pts,k,dk;multithreaded=multithreaded,cholesky=cholesky)
     idx=findmin(abs.(ks.-k))[2]
     return ks[idx],ts[idx]
 end
 
 """
-    solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
+    solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true,cholesky::Bool=true)
 
 Solves for all the wavenumbers and corresponding tensions that `solve(<:AcceleratedSolver...)` gives us in the given interval `dk`.
 
@@ -36,16 +37,17 @@ Solves for all the wavenumbers and corresponding tensions that `solve(<:Accelera
 - `k::T`: The reference wavenumber.
 - `dk::T`: The interval in which to find the wavenumbers and corresponding tensions.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `cholesky::Bool=false`: If the generalized eigenproblem should be solved via Cholesky factorization (default false).
 
 # Returns
 - `Vector{T}`: The wavenumbers found in the `dk` interval.
 - `Vector{T}`: The corresponding tensions found for the wavenumbers in the `dk` interval.
 """
-function solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true)
+function solve_spectrum(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k,dk;multithreaded::Bool=true,cholesky::Bool=false)
     dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
     new_basis=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver, billiard,k)
-    ks,ts=solve(solver,new_basis,pts,k,dk;multithreaded=multithreaded)
+    ks,ts=solve(solver,new_basis,pts,k,dk;multithreaded=multithreaded,cholesky=cholesky)
     return ks,ts
 end
 
