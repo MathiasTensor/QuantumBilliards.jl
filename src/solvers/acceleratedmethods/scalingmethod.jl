@@ -327,7 +327,7 @@ Solver in a given `dk` interval with reference wavenumber `k` the corresponding 
 function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     if cholesky
-        @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps)
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eig_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps)
     else
         @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(Fk);eps=solver.eps) # pure BLAS
     end
