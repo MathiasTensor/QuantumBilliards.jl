@@ -179,8 +179,7 @@ function _improve_subspace!(J::Matrix{T},AJ::Matrix{T},A::Symmetric{T,Matrix{T}}
 end
 
 """
-    generalized_eig_cholesky(A::Symmetric{T,Matrix{T}}, B::Symmetric{T,Matrix{T}};
-                                 eps_rank::T = T(1e-14)) where {T<:Real} -> Vector{T}
+    generalized_eig_cholesky(A::Symmetric{T,Matrix{T}}, B::Symmetric{T,Matrix{T}};eps_rank::T = T(1e-14),want_vecs::Bool=false) where {T<:Real} -> Vector{T}
 
 Compute generalized eigenvalues `μ` of the pencil `(B, A)` restricted to the numerical range
 of `A`, using a pivoted-Cholesky + one-sweep subspace. This is made from A x = λ B x where λ = 1/μ,
