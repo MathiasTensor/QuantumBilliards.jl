@@ -1,3 +1,150 @@
+"""
+Contains a pivoted-Cholesky based numerical-range extraction and a stable solver
+for the symmetric generalized eigenvalue problem
+
+    B x = μ A x     (equivalently A x = λ B x with μ = 1/λ)
+
+when `A` is positive semidefinite but numerically singular.
+
+----------------------------------------------------------------------
+1) Pivoted Cholesky: numerical rank and range of A
+----------------------------------------------------------------------
+
+`_cholpiv_factor(A; eps_rank)` computes a pivoted Cholesky factorization
+
+    P' A P ≈ U' U
+
+where `P` is a permutation matrix and `U` is upper-triangular.
+The factorization is stopped when the remaining pivots fall below `eps_rank`,
+so the number of nonzero pivots
+
+    r0 = Fchol.rank
+
+is the numerical rank of `A`, i.e. the dimension of its numerical range
+
+    range(A) = span{ eigenvectors with eigenvalue > eps }.
+
+This gives the size of the physically meaningful subspace.
+
+----------------------------------------------------------------------
+2) Initial basis for range(A)
+----------------------------------------------------------------------
+
+`_cholpiv_fill!` builds a basis `J ∈ ℝ^{n×r0}` for `range(A)` from the Cholesky
+factor. Internally it inverts the leading block of `U` to obtain vectors
+spanning the same range as `A`.
+
+We then add `pad` random columns to avoid missing important directions:
+
+    J ← [ J   Ω ],     Ω ∈ ℝ^{n×pad}
+
+so that `J ∈ ℝ^{n×m}` with `m = r0 + pad`.
+
+Finally we orthonormalize:
+
+    J ← orth(J)
+
+so `J'J ≈ I`.
+
+This gives a *rough* basis for the numerical range of `A`.
+
+----------------------------------------------------------------------
+3) Subspace improvement:  J ← orth(A J)
+----------------------------------------------------------------------
+
+We perform one “power-type” subspace sweep
+
+    AJ = A*J
+    J  = orth(AJ)
+    AJ = A*J
+
+Mathematically, if
+
+    A = S diag(d) S',    d₁ ≥ d₂ ≥ ⋯ ≥ 0,
+
+then multiplying by `A` scales each component by `dᵢ`.
+Directions belonging to the numerical nullspace (`dᵢ ≈ 0`) are suppressed,
+while true range directions are amplified.
+
+After orthonormalization this produces a much cleaner basis for `range(A)`.
+The final `AJ = A*J` is cached for later.
+
+----------------------------------------------------------------------
+4) Projection to the reduced problem
+----------------------------------------------------------------------
+
+We project the operators to the subspace:
+
+    Ared = J' * A * J   = J' * AJ
+    Bred = J' * B * J
+
+These are small (`m×m`) symmetric matrices representing the generalized
+eigenproblem restricted to the numerical range of `A`.
+
+----------------------------------------------------------------------
+5) Removal of the remaining nullspace inside Ared
+----------------------------------------------------------------------
+
+We diagonalize
+
+    Ared = U diag(d) U'
+
+and keep only eigenvalues
+
+    d > max(eps_rank * d_max, eps(T)).
+
+This removes any nullspace that survived the projection step.
+Ukeep, dkeep are the kept eigenvectors and eigenvalues.
+
+----------------------------------------------------------------------
+6) Whitening (conversion to a standard eigenproblem)
+----------------------------------------------------------------------
+
+We build
+
+    T = Ukeep * diag(1 / sqrt(dkeep)),
+
+which satisfies
+
+    T' * Ared * T = I.
+
+Then
+
+    B2 = T' * Bred * T
+
+is the reduced operator in a basis where `A = I`.
+The generalized problem
+
+    Bred y = μ Ared y
+
+has become the standard symmetric problem
+
+    B2 z = μ z.
+
+----------------------------------------------------------------------
+7) Back-transformation to the physical space
+----------------------------------------------------------------------
+
+The eigenvectors of the original problem are
+
+    x = J * T * z.
+
+The matrix
+
+    S2 = J * T
+
+is therefore a whitened basis for the numerical range of `A`
+satisfying
+
+    S2' * A * S2 = I.
+
+When `want_vecs = true`, the function returns `(μ, Z, S2)`,
+so that physical coefficient vectors are obtained as
+
+    X = S2 * Z.
+
+MO/12/1/26
+"""
 
 """
     _thin_qr!(Y::Matrix{T}) where {T<:Real} -> Matrix{T}
@@ -143,10 +290,10 @@ function _cholpiv_fill!(J::Matrix{T},F;r0::Int=F.rank) where {T<:Real}
     ldiv!(UpperTriangular(U11),X) 
     fill!(@view(J[:,1:r0]),zero(T))
     @inbounds for i in 1:r0
-        pi=p[i]
-        @views J[pi,1:r0].=X[i,:]
+        _pi=p[i]
+        @views J[_pi,1:r0].=X[i,:]
     end
-    J
+    return J
 end
 
 """
