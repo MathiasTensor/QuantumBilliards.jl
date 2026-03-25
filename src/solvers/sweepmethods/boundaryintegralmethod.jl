@@ -667,7 +667,6 @@ function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoin
             if add_y # reflect only over the y axis
                 xr=xj;yr=_y_reflect(yj,shift_y)
                 _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
-                end
             end
             if add_xy # reflect over both the axes
                 xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
