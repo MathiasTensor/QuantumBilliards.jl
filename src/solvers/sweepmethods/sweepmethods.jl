@@ -178,7 +178,7 @@ end
 function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
-    ks_approx=get_eigenvalues(ks,abs.(tens);threshold=threshold)
+    ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
     solver_new=update_field(solver,:pts_scaling_factor,2*solver.pts_scaling_factor)
     try
         solver_new=update_field(solver_new,:dim_scaling_factor,1.5*solver.dim_scaling_factor)
