@@ -170,173 +170,6 @@ function is_converged_pairwise(current::Matrix{T}, previous::Matrix{T}, tol::T=T
 end
 
 """
-    dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi;d0::T = T(1.0), b0::T = T(2.0),solver_type::Symbol = :Accelerated, partitions::Integer = 10,samplers::Vector{Sam}, min_dim::Integer = 100, min_pts::Integer = 500,dd::T = T(0.1), db::T = T(0.3),return_benchmarked_matrices::Bool = true, display_benchmarked_matrices::Bool = true, print_params=true) where {T<:Real, Sam<:AbsSampler, Ba<:AbsBasis, Bi<:AbsBilliard}
-
-Constructs solvers dynamically for a range of wavenumbers, `k1` to `k2`, optimizing for parameters `d` and `b`. This functions allows the user to not have to make manual tests for when the solvers are optimal in a given range of ks, since these parameters change (albeit slowly) throughout the spectrum computations.
-
-# Description of Return
-
-# Arguments
-- `k1::T`, `k2::T`: Start and end wavenumbers for the solver.
-- `basis::Ba`: Basis object to be resized for the solvers.
-- `billiard::Bi`: Billiard object specifying the geometry of the problem.
-- `d0::T`: Initial value for parameter `d` (default: 1.0).
-- `b0::T`: Initial value for parameter `b` (default: 2.0).
-- `solver_type::Symbol`: Type of solver to use. Options are:
-  - `:Accelerated`
-  - `:ParticularSolutions`
-  - `:Decomposition`
-  - `:BoundaryIntegralMethod`
-- `partitions::Integer`: Number of partitions to divide the `k1` to `k2` range (default: 10).
-- `samplers::Vector{Sam}`: Vector of samplers for the solver.
-- `min_dim::Integer`: Minimum dimension for the solver's basis (default: 100).
-- `min_pts::Integer`: Minimum number of points for evaluation (default: 500).
-- `dd::T`: Increment step for parameter `d` during optimization (default: 0.1).
-- `db::T`: Increment step for parameter `b` during optimization (default: 0.3).
-- `return_benchmarked_matrices::Bool`: If `true`, returns the benchmarked matrices (default: `true`).
-- `display_benchmarked_matrices::Bool`: If `true`, displays the matrices as heatmaps (default: `true`).
-- `print_params::Bool`: If printing d,b determined params. Default is `true`.
-
-# Returns
-- If `return_benchmarked_matrices` is `true`: A tuple `(matrices_k_dict, solvers)`, where:
-  - `sorted_entries::Vector{Pair{T,Vector{Matrix{T}}}}`: collected dictionary mapping wavenumbers to matrices.
-  - `solvers::Vector`: List of constructed solvers.
-- If `return_benchmarked_matrices` is `false`: Only the `solvers` vector.
-"""
-function dynamical_solver_construction(k1::T, k2::T, basis::Ba, billiard::Bi; d0::T=T(1.0), b0::T=T(4.0), solver_type::Symbol=:Accelerated, partitions::Integer=10, samplers::Vector{Sam}=[GaussLegendreNodes()], min_dim=100, min_pts=500, dd=0.1, db=0.3, return_benchmarked_matrices=true, display_benchmarked_matrices=true, print_params=true) where {T<:Real,Sam<:AbsSampler,Ba<:AbsBasis,Bi<:AbsBilliard}
-    ds=Vector{T}(undef,partitions-1) # temp storage for part 1
-    bs=Vector{T}(undef,partitions-1) # together with ds construct returned solvers
-    matrices_k_dict = Dict{T,Vector{Matrix{T}}}()
-    # helper solver constructor
-    construct_solver(_d,_b,type_sol) = begin
-        if type_sol==:Accelerated
-            return ScalingMethodA(_d,_b,samplers;min_dim=min_dim,min_pts=min_pts)
-        elseif type_sol==:ParticularSolutions
-            return ParticularSolutionsMethod(_d,_b,_b,samplers;min_dim=min_dim,min_pts=min_pts,min_int_pts=min_pts)
-        elseif type_sol==:Decomposition
-            return DecompositionMethod(_d,_b,samplers;min_dim=min_dim,min_pts=min_pts)
-        elseif type_sol==:BoundaryIntegralMethod
-            return BoundaryIntegralMethod(_b,samplers;min_pts=min_pts)
-        end
-    end
-    # preallocate solver vectors
-    if solver_type==:Accelerated
-        solvers=Vector{AcceleratedSolver}(undef,partitions-1)
-    elseif solver_type==:ParticularSolutions
-        solvers=Vector{ParticularSolutionsMethod}(undef,partitions-1)
-    elseif solver_type==:Decomposition
-        solvers=Vector{DecompositionMethod}(undef,partitions-1)
-    elseif solver_type==:BoundaryIntegralMethod
-        solvers=Vector{BoundaryIntegralMethod}(undef,partitions-1)
-    end
-    # iterate over the ks at the ends and start the next d when the previous smaller k ends. THIS ONE JUST DETERMINES D. WHEN THIS ONE IS OK WE DETERMINE B.
-    ks_ends=collect(range(k1,k2,partitions))
-    intervals::Vector{Tuple{T,T}}=[(ks_ends[i],ks_ends[i+1]) for i in 1:(length(ks_ends)-1)]
-    b=b0 # placeholder for part 1
-    @showprogress "Determining optimal d values..." for (i,(_,k_end)) in enumerate(intervals)
-        d=d0 # start anew for next k
-        converged=false 
-        while !converged
-            solver=construct_solver(d,b,solver_type)
-            L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
-            basis_new=resize_basis(basis,billiard,dim,k_end)
-            pts=evaluate_points(solver,billiard,k_end) # this is already the correct BoundaryPoints type based on the solver type
-            mat=construct_matrices(solver,basis_new,pts,k_end)
-            M=deepcopy(mat)
-            if length(mat)==1 # BIM 
-                mat[abs.(mat).<eps(T)].=NaN
-                has_nan_column=any(all(isnan,matrix[:,col]) for col in axes(matrix,2)) # test whether a column is all NaN which means we have reached a satisfactory d. Could use just the end column for NaN test but this is matrix orientation independant and more general. Not crucial step so we can leave it as-is
-                if has_nan_column 
-                    matrices_k_dict[k_end]=[M] # the b variation will not show in the matrices so we can return them at this step
-                    ds[i]=d
-                    converged=true # break
-                end
-            else # Scaling, Decomposition or PSM
-                m1,m2=mat
-                M1=deepcopy(m1)
-                M2=deepcopy(m2)
-                m1[abs.(m1).<eps(T)].=NaN 
-                m2[abs.(m2).<eps(T)].=NaN
-                has_nan_column1=any(all(isnan,m1[:,col]) for col in axes(m1,2))
-                has_nan_column2=any(all(isnan,m2[:,col]) for col in axes(m2,2))
-                if has_nan_column1&&has_nan_column2
-                    matrices_k_dict[k_end]=[M1,M2]
-                    ds[i]=d
-                    converged=true # break
-                end
-            end
-            d+=dd
-        end
-    end
-    previous_ks=fill(NaN,partitions) # for while loop first iteration check since no previous k
-    ks_min=Vector{Tuple{T,T,T}}()
-    @showprogress "Determining optimal b values..." for (i,(_,k_end)) in enumerate(intervals)
-        b=b0
-        previous_mat=nothing  # variable to store the previous matrix
-        converged=false 
-        while !converged
-            solver=construct_solver(ds[i],b,solver_type)
-            L = billiard.length;dim=round(Int,L*k_end*solver.dim_scaling_factor/(2*pi))
-            basis_new=resize_basis(basis,billiard,dim,k_end)
-            dk=2/(billiard.area_fundamental*k_end/(2*pi)-billiard.length_fundamental/(4*pi)) # this ensures a minimum will be found due to weyl's law
-            res = solve_wavenumber(solver,basis_new,billiard,k_end,dk)
-            k_res,ten=res
-            pts=evaluate_points(solver,billiard,k_end)
-            mat=construct_matrices(solver,basis_new,pts,k_end)[2]  # Fk is the most varying one
-            eigenvalue_converged=!isnan(previous_ks[i])&&abs(k_res-previous_ks[i])<sqrt(eps(T))
-            matrix_converged=!isnothing(previous_mat)&&is_converged_pairwise(mat,previous_mat) # checks max difference between the previous and current mat
-            if eigenvalue_converged&&matrix_converged
-                converged=true
-                bs[i]=b
-            end
-            previous_mat=deepcopy(mat)
-            push!(ks_min,(k_end,k_res,ten))
-            previous_ks[i]=k_res
-            b+=db
-        end
-    end
-    if print_params
-        printstyled("k evaluation point:",italic=true,color=:cyan,bold=true)
-        println()
-        println(ks_ends)
-        printstyled("Optimal d:",italic=true,color=:cyan,bold=true)
-        println()
-        println(ds)
-        printstyled("Optimal b:",italic=true,color=:cyan,bold=true)
-        println()
-        println(bs)
-        printstyled("Eigenvalues:",italic=true,color=:cyan,bold=true)
-        println()
-        colors=[:red,:green,:blue,:yellow,:cyan,:magenta] # Define some colors
-        for (i,tuple) in enumerate(ks_min)
-            color=colors[mod(i-1,length(colors))+1]
-            printstyled(tuple,color=color)
-            println()
-        end
-    end
-    sorted_entries::Vector{Pair{T,Vector{Matrix{T}}}}=sort(collect(matrices_k_dict);by=x->x[1])
-    if display_benchmarked_matrices
-        f=Figure(resolution=(500*length(first(values(matrices_k_dict))),500*partitions))
-        r=1 
-        for (key,vals) in sorted_entries
-            c=1
-            for val in vals
-                plot_Z!(f,r,c,val;title="$key")
-                c+=1 
-            end
-            r+=1 
-        end
-        display(f)
-    end
-    solvers=[construct_solver(d,b,solver_type) for (d,b) in zip(ds,bs)]
-    if return_benchmarked_matrices
-        return sorted_entries, solvers, intervals
-    else
-        return solvers, intervals
-    end
-end
-
-"""
     compute_benchmarks(solver, basis, billiard, k, dk; d_range = [2.0], b_range=[2.0],btimes=1)
 
 Wrapper for benchmark_solver that also iterates over a d and b range to chekc when we have unchanging solutions to the eigenvalues and tensions.
@@ -368,17 +201,17 @@ end
     return evaluate_points(solver,billiard,k)
 end
 
-@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun=:default,multithreaded::Bool=true) where {Ba<:AbsBasis}
-    return construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    return construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
 end
 
 @timeit TO "SVD" function svdvals_timed(A)
     return svdvals(A)
 end
 
-function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;kernel_fun=:default,multithreaded::Bool=true) where {Bi<:AbsBilliard}
+function solve_timed(solver::BoundaryIntegralMethod,billiard::Bi,k::Real;multithreaded::Bool=true) where {Bi<:AbsBilliard}
     pts=evaluate_points_timed(solver,billiard,k)
-    A=construct_matrices_timed(solver,AbstractHankelBasis(),pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+    A=construct_matrices_timed(solver,AbstractHankelBasis(),pts,k;multithreaded=multithreaded)
     σs=svdvals_timed(A)
     show(TO)
     reset_timer!(TO)
@@ -489,8 +322,8 @@ and `|corr₁ + corr₂|`.
    3. `λ_corrected_2 = k + corr₁ + corr₂` (2nd-order),
    4. `tens_2 = abs(corr₁ + corr₂)`.
 """
-function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    A,dA,ddA=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
