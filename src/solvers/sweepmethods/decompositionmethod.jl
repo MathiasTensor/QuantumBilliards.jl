@@ -79,26 +79,7 @@ function DecompositionMethod(dim_scaling_factor::T,pts_scaling_factor::Union{T,V
 end
 
 """
-    struct BoundaryPointsDM{T} <: AbsPoints where {T<:Real}
-
-Holds boundary data for the Decomposition Method, including boundary coordinates, normals,
-and weighting arrays.
-
-# Fields
-- `xy::Vector{SVector{2,T}}`: Boundary points `(x, y)`.
-- `normal::Vector{SVector{2,T}}`: Normal vectors at each boundary point.
-- `w::Vector{T}`: Integration weights or "tension" weights for each point.
-- `w_n::Vector{T}`: Additional normalization or weighted factor, defined as `rn=dot.(xy,normal); w_n=(w.*rn)./(2.0*k.^2)` as per the literature (link in `solve` function).
-"""
-struct BoundaryPointsDM{T} <: AbsPoints where {T<:Real}
-    xy::Vector{SVector{2,T}}
-    normal::Vector{SVector{2,T}} #normal vectors in points
-    w::Vector{T} # tension weights
-    w_n::Vector{T} #normalization weights
-end
-
-"""
-    evaluate_points(solver::DecompositionMethod, billiard::Bi, k) -> BoundaryPointsDM{T}
+    evaluate_points(solver::DecompositionMethod, billiard::Bi, k) -> BoundaryPoints{T}
 
 Generate boundary points and associated normals/weights for the Decomposition Method. It:
 1. Determines how many points to sample on each boundary curve, based on `k` and `pts_scaling_factor`.
@@ -111,7 +92,7 @@ Generate boundary points and associated normals/weights for the Decomposition Me
 - `k::Real`: The wavenumber/frequency-like parameter used to scale the number of points on each boundary.
 
 # Returns
-- `BoundaryPointsDM{T}`: A struct containing:
+- `BoundaryPoints{T}`: A struct containing:
   - `xy`: All boundary points,
   - `normal`: Corresponding normal vectors,
   - `w`: Primary integration weights `w=ds`,
@@ -155,30 +136,11 @@ function evaluate_points(solver::DecompositionMethod,billiard::Bi,k) where {Bi<:
             append!(w_n_all,w_n)
         end
     end
-    return BoundaryPointsDM{type}(xy_all,normal_all, w_all, w_n_all)
+    return BoundaryPoints{type}(xy_all,normal_all,Vector{type}(),Vector{type}(),w_all,w_n_all,Vector{type}(),Vector{SVector{2,type}}(),zero(type),zero(type))
 end
 
 """
-    BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsDM{T}) where {T<:Real}
-
-Convert a `BoundaryPointsDM{T}` to a `BoundaryPoints{T}` by extracting the coordinates, normals, arc-lengths, and integration weights.
-
-# Arguments
-- `pts::BoundaryPointsDM{T}`: The boundary points data structure containing coordinates, normals, and weights.
-
-# Returns
-- `BoundaryPoints{T}`: A new boundary points structure with the same coordinates, normals, arc-lengths, and integration weights.
-"""
-function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsDM{T}) where {T<:Real}
-    xy=pts.xy
-    normal=pts.normal
-    ds=pts.w
-    s=cumsum(ds)
-    return BoundaryPoints{T}(xy,normal,s,ds)
-end
-
-"""
-    construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct two matrices `F` and `G` for the Decomposition Method, with timing output. Uses `TimerOutput`
 to benchmark the following:
@@ -191,7 +153,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 # Arguments
 - `solver::DecompositionMethod`: The solver config for dimension scaling and minimal points.
 - `basis::Ba<:AbsBasis`: A basis implementing `basis_and_gradient_matrices(...)`.
-- `pts::BoundaryPointsDM`: Boundary data (points, normals, weights).
+- `pts::BoundaryPoints`: Boundary data (points, normals, weights).
 - `k::Real`: Wavenumber/frequency parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -201,7 +163,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 
 **Note**: Prints out timing results of each sub-step via `print_timer(to)`.
 """
-function construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     t0=time()
     xy=pts.xy;w=pts.w;wn=pts.w_n;N=basis.dim
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
@@ -226,7 +188,7 @@ function construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts:
 end
 
 """
-    construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct two matrices `F` and `G` for the Decomposition Method.
 
@@ -236,7 +198,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 # Arguments
 - `solver::DecompositionMethod`: Contains scaling factors, minimal points, etc.
 - `basis::Ba<:AbsBasis`: Provides a method `basis_and_gradient_matrices(basis, k, points)`.
-- `pts::BoundaryPointsDM`: Boundary points, normals, and weights.
+- `pts::BoundaryPoints`: Boundary points, normals, and weights.
 - `k::Real`: The wavenumber used for constructing the basis and derivatives.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -247,7 +209,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 
 **Note**: After this step, `(F, G)` can be used in a generalized eigenvalue problem.
 """
-function construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w
     wn=pts.w_n
@@ -271,7 +233,7 @@ function construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryP
 end
 
 """
-    solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Solve the generalized eigenvalue problem given by the matrices `(F, G)` for the largest eigenvalue
 `λ[end]`, then return its reciprocal. `t = 1 / λ[end]` represents the smallest possible reciprocal of the largest eigenvalue of the generalizedc eigenvalue problem and is thus a marker of tension. So this is what must be minimized in the sweep.
@@ -281,14 +243,14 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 # Arguments
 - `solver::DecompositionMethod`: The solver config, including `eps` for numerical tolerances.
 - `basis::Ba<:AbsBasis`: Basis used to build matrices.
-- `pts::BoundaryPointsDM`: Boundary data with points, normals, weights.
+- `pts::BoundaryPoints`: Boundary data with points, normals, weights.
 - `k::Real`: Wavenumber or frequency-like parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `t::Float64`: The reciprocal of the largest eigenvalue from `generalized_eigvals(F, G)`, i.e. `1 / λ[end]`.
 """
-function solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
     lam0=mu[end]
@@ -297,7 +259,7 @@ function solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;mul
 end
 
 # INTERNAL BENCHMARKS
-function solve_INFO(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function solve_INFO(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     s_constr=time()
     @info "Constructing F,G for Fx=λGx..."
     @time F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
@@ -339,7 +301,7 @@ end
 """
     solve(solver::DecompositionMethod,F::Matrix,G::Matrix)
 
-Solve the generalized eigenvalue problem given by the matrices `(F, G)` for the largest eigenvalue. This implementation does not internally construct the F and G matrices but must be provided. Should be avoided in favor of `solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPointsDM,k)`
+Solve the generalized eigenvalue problem given by the matrices `(F, G)` for the largest eigenvalue. This implementation does not internally construct the F and G matrices but must be provided. Should be avoided in favor of `solve(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k)`
 `λ[end]`, then return its reciprocal. `t = 1 / λ[end]` represents the smallest possible reciprocal of the largest eigenvalue of the generalizedc eigenvalue problem and is thus a marker of tension. So this is what must be minimized in the sweep.
 Further reading:
 https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
@@ -360,7 +322,7 @@ function solve(solver::DecompositionMethod,F,G)
 end
 
 """
-    solve_vect(solver::DecompositionMethod,basis::AbsBasis,pts::BoundaryPointsDM,k;multithreaded::Bool=true)
+    solve_vect(solver::DecompositionMethod,basis::AbsBasis,pts::BoundaryPoints,k;multithreaded::Bool=true)
 
 Similar to `solve`, but also returns the associated eigenvector. This function:
 1. Constructs `(F, G)`.
@@ -372,7 +334,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 # Arguments
 - `solver::DecompositionMethod`: The solver config.
 - `basis::AbsBasis`: Basis object used in matrix construction.
-- `pts::BoundaryPointsDM`: Boundary data with points, normals, weights.
+- `pts::BoundaryPoints`: Boundary data with points, normals, weights.
 - `k::Real`: Wavenumber or parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -381,7 +343,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
   - `t = 1 / mu[end]`: The reciprocal of the largest eigenvalue. 
   - `x = x_vector ./ sqrt(mu[end])`: The corresponding eigenvector in the original basis.
 """
-function solve_vect(solver::DecompositionMethod,basis::AbsBasis,pts::BoundaryPointsDM,k;multithreaded::Bool=true)
+function solve_vect(solver::DecompositionMethod,basis::AbsBasis,pts::BoundaryPoints,k;multithreaded::Bool=true)
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(G);eps=solver.eps)
     x=Z[:,end]

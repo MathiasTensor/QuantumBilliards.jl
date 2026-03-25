@@ -11,7 +11,7 @@ Represents the struct containing the parameters of the Scaling Method by Vergini
 Fields:
 - `dim_scaling_factor<:Real`: Scaling factor for the basis used. This one should be around 3.0-4.0 as a start to see how well the tension values are.
 - `pts_scaling_factor::Vector{<:Real}`: Scaling factor for the boudnary evaluation points used. If it's a single value, it will be used for all dimensions. Should be minimally 4.0, preferably 5.0 as a start. Best to check how changing this changes the minima of the tension values.
-- `sampler::Vector`: A vector of samplers that determine the construction of `BoundaryPointsSM` on the boundary. By default `GaussLegendreNodes` are used to sample the boundary.
+- `sampler::Vector`: A vector of samplers that determine the construction of `BoundaryPoints` on the boundary. By default `GaussLegendreNodes` are used to sample the boundary.
 - `eps::T`: A tolerance for the solver, by default eps(T), so usually machine precision. Best leave it as is.
 - `min_dim::Int64`: The minimum dimension for the basis. This is in a way legacy code that is here for compatibility. But since one does not construct this struct outside it's function constructors just leave it.
 - `min_pts::Int64`: The minimum number of points for the boundary evaluation. This is in a way legacy code that is here for compatibility. But since one does not construct this struct outside it's function constructors just leave it.
@@ -54,7 +54,7 @@ Constructor for ScalingMethodA struct that takes into account provided samplers.
 # Arguments
 - `dim_scaling_factor<:Real`: Scaling factor for the basis used. This one should be around 3.0-4.0 as a start to see how well the tension values are.
 - `pts_scaling_factor::Vector{<:Real}`: Scaling factor for the boudnary evaluation points used. If it's a single value, it will be used for all dimensions. Should be minimally 4.0, preferably 5.0 as a start. Best to check how changing this changes the minima of the tension values.
-- `samplers::Vector{Sam}`: A vector of samplers that determine the construction of `BoundaryPointsSM` on the boundary. Check samplers.jl too see the list to choose.
+- `samplers::Vector{Sam}`: A vector of samplers that determine the construction of `BoundaryPoints` on the boundary. Check samplers.jl too see the list to choose.
 - `min_dim::Int64`: The minimum dimension for the basis. This is in a way legacy code that is here for compatibility. No need to change.
 - `min_pts::Int64`: The minimum number of points for the boundary evaluation. This is in a way legacy code that is here for compatibility. No need to change.
 
@@ -68,24 +68,6 @@ function ScalingMethodA(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector
 end
 
 """
-    BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
-
-Represents the boundary points and their information that is neccesery to construct the matrices required in the Scaling Method.
-
-# Fields
-- `xy::Vector{SVector{2,T}}`: The coordinates of the boundary points.
-- `w::Vector{T}`: The weights of the boundary points. To be used for the weight matrix construction for F and Fk.
-- `ds::Vector{T}`: The arc length differences between the boundary points.
-- `normal::Vector{SVector{2,T}}`: The normal vectors at the boundary points.
-"""
-struct BoundaryPointsSM{T} <: AbsPoints where {T<:Real}
-    xy::Vector{SVector{2,T}}
-    w::Vector{T}
-    ds::Vector{T}
-    normal::Vector{SVector{2,T}}
-end
-
-"""
     evaluate_points(solver::AbsScalingMethod, billiard::Bi, k<:Real) where {Bi<:AbsBilliard}
 
 Evaluate points on the boundary of the `billiard` at the given wavenumber `k` which determines the density of points (and the `sampler` hidden in `solver` that distributes them).
@@ -96,7 +78,7 @@ Evaluate points on the boundary of the `billiard` at the given wavenumber `k` wh
 - `k<:Real`: The wavenumber at which the points are evaluated.
 
 # Returns
-- `BoundaryPointsSM{T}`: A struct containing the evaluated points and their weights (all the information needed for the `ScalingMethod`).
+- `BoundaryPoints{T}`: A struct containing the evaluated points and their weights (all the information needed for the `ScalingMethod`).
 """
 function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
@@ -135,38 +117,18 @@ function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:Abs
             append!(normal_all,normal)
         end
     end
-    return BoundaryPointsSM{type}(xy_all,w_all,ds_all,normal_all)
+    return BoundaryPoints{type}(xy_all,normal_all,Vector{type}(),ds_all,w_all,Vector{type}(),Vector{type}(),Vector{SVector{2,type}}(),zero(type),zero(type))
 end
 
 """
-    BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsSM{T}) where {T<:Real}
-
-Converts a `BoundaryPointsSM` struct to a `BoundaryPoints` struct by computing the cumulative arc length and returning the new struct.
-
-# Arguments
-- `pts::BoundaryPointsSM{T}`: The boundary points struct of the scaling method to convert to generic `BoundaryPoints`.
-
-# Returns
-- `BoundaryPoints{T}`: A new struct with the same coordinates, normals, and weights, but with cumulative arc length and integration weights.
-"""
-function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsSM{T}) where {T<:Real}
-    xy=pts.xy
-    normal=pts.normal
-    ds=pts.ds
-    s=cumsum(ds)
-    BoundaryPoints{T}(xy,normal,s,ds)
-end
-
-"""
-    construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;
-                                 multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Benchmark the construction of F = G'*(W*G) and Fk = (dG/dk)'*(W*G) + (G'*(W*dG))
 using the same algorithm as `construct_matrices` (BLAS syr!/syr2k style; no W*G temp).
 
 Returns (F, Fk) and prints a detailed TimerOutput.
 """
-function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     t0=time()
     xy=pts.xy; w=pts.w; N=basis.dim
     nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
@@ -192,21 +154,21 @@ function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::Boun
 end
 
 """
-    construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Constructs all the matrices needeed for the Scaling Method for a given reference k wavenumber. We need to construct from the solver a matrix that evaluates the basis function on the boundary, apply the weights to it and then multiplies it with the basis matrix transpose. This is detailed in section 6 of Barnett8s thesis: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html.
 
 # Arguments
 - `solver::ScalingMethodA`: The solver for which the matrices are constructed. Redundant information, used b/c other methods have functions with same signatures and multiple dispatches are useful.
 - `basis::Ba`: The basis on which the matrices are constructed.
-- `pts::BoundaryPointsSM`: The points on the boundary on which the matrices are constructed.
+- `pts::BoundaryPoints`: The points on the boundary on which the matrices are constructed.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `F::Symmetric{<:Real}`: The matrix that evaluates the basis function on the boundary and applies the weights.
 - `Fk::Symmetric{<:Real}`: The matrix that evaluates the derivative of the basis function on the boundary and applies the weights.
 """
-function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPointsSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w
     N=basis.dim                                 
@@ -240,14 +202,14 @@ function sm_results(mu,k)
 end
 
 """
-    solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPoints,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 For a given reference wavenumber k solves the generalized eigenproblem (internally calculates `generalized_eigvals` since we do not require the `X` matrix of coefficients for the wavefunction construction). The `dk` is the interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers). The `dk` is determined empirically for a given k range and the specific geometry (and possibly basis).
 
 # Arguments
 - `solver::AbsScalingMethod`: The scaling method to be used.
 - `basis::Ba`: The basis function.
-- `pts::BoundaryPointsSM`: The boundary points.
+- `pts::BoundaryPoints`: The boundary points.
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
@@ -257,7 +219,7 @@ For a given reference wavenumber k solves the generalized eigenproblem (internal
 - `ks::Vector{<:Real}`: The computed real wavenumbers.
 - `ten::Vector{<:Real}`: The corresponding tensions.
 """
-function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
+function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPoints,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     if cholesky
         @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eig_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps)
@@ -273,7 +235,7 @@ function solve(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;mul
 end
 
 """
-    solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPointsSM, k<:Real, dk<:Real) where {Ba<:AbsBasis}
+    solve(solver::AbsScalingMethod, basis::Ba, pts::BoundaryPoints, k<:Real, dk<:Real) where {Ba<:AbsBasis}
 
 Variant of solve where the F and Fk matrices are already constructed.
 For a given reference wavenumber k solves the generalized eigenproblem (internally calculates `generalized_eigvals` since we do not require the `X` matrix of coefficients for the wavefunction construction). The `dk` is the interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers). The `dk` is determined empirically for a given k range and the specific geometry (and possibly basis).
@@ -306,14 +268,14 @@ function solve(solver::AbsScalingMethod,F,Fk,k,dk;cholesky::Bool=false)
 end
 
 """
-    solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPoints,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Solver in a given `dk` interval with reference wavenumber `k` the corresponding correct wavenumbers, their tensions and the `X` matrix that contains information about the basis expansion coefficients (every column of `X` corresponds to a vector of coefficents that construct the wavefunction for the same index eigenvalue in `ks`). Internally it calls `generalized_eigen` since this also returns/constructs the `X` matrix and not just the generalized eigenvalues.
 
 # Arguments
 - `solver::AbsScalingMethod`: The scaling method to be used.
 - `basis::Ba`: The basis function.
-- `pts::BoundaryPointsSM`: The boundary points.
+- `pts::BoundaryPoints`: The boundary points.
 - `k<:Real`: The reference wavenumber.
 - `dk<:Real`: The interval for which we consider the computed `ks` to be valid solutions (correct wavenumbers).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
@@ -324,7 +286,7 @@ Solver in a given `dk` interval with reference wavenumber `k` the corresponding 
 - `ten::Vector{<:Real}`: The corresponding tensions.
 - `X::Matrix{<:Real}`: The X matrix that contains information about the basis expansion coefficients (`X[:,i] <-> ks[i]`, check function desc.).
 """
-function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPointsSM,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
+function solve_vectors(solver::AbsScalingMethod,basis::Ba,pts::BoundaryPoints,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis}
     F,Fk=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     if cholesky
         @blas_multi_then_1 MAX_BLAS_THREADS mu,Z,C=generalized_eig_cholesky(Symmetric(F),Symmetric(Fk);eps_rank=solver.eps,want_vecs=true)

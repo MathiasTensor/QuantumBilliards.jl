@@ -898,7 +898,7 @@ function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1
         push!(dks,kstep)
     end
     println("EBIM...")
-    all_pts=Vector{BoundaryPointsBIM{T}}(undef,length(ks))
+    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
     @showprogress desc="Calculating boundary points EBIM..." Threads.@threads for i in eachindex(ks)
         all_pts[i]=evaluate_points(deepcopy(bim_solver),billiard,ks[i])
     end

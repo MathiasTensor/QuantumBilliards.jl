@@ -1,3 +1,9 @@
+# Useful reading:
+#  - https://github.com/ahbarnett/mpspack - by Alex Barnett & Timo Betcke (MATLAB)
+#  - Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
+#  - Barnett, A. H., & Betcke, T. (2007). Stability and convergence of the method of fundamental solutions for Helmholtz problems on analytic domains. Journal of Computational Physics, 227(14), 7003-7026.
+#  - Zhao, L., & Barnett, A. (2015). Robust and efficient solution of the drum problem via Nyström approximation of the Fredholm determinant. SIAM Journal on Numerical Analysis, Stable URL: https://www.jstor.org/stable/24512689
+
 ##########################
 #### BESSEL FUNCTIONS ####
 ##########################
@@ -5,54 +11,9 @@
 H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
 J(n::Int,x::T) where {T<:Real}=Bessels.besselj(n,x)
 J(ns::As,x::T) where {T<:Real,As<:AbstractRange{Int}}=Bessels.besselj(ns,x)
-
-##########################################################################################################
-#### WEIGHT FUNCTIONS USED BY KRESS: Boundary Integral Equations in time-harmonic acoustic scattering ####
-##########################################################################################################
 two_pi=2*pi
-
-# The parameter s ∈ [0,2π] in all non-reparametried functions. We rescale it since segment parametrizations go from [0,1]
-v(s::T,q::Int) where {T<:Real}=(1/q-1/2)*((pi-s)/pi)^3+1/q*((s-pi)/pi)+0.5
-dv(s::T,q::Int) where {T<:Real}=-(3*(1/q-1/2)/π)*((π-s)/π)^2+1/(q*π)
-ddv(s::T,q::Int) where {T<:Real}=-6*(1/q-1/2)/π^3*(π-s)
-w_kress(s::T,q::Int) where {T<:Real}=2*pi*(v(s,q)^q)/(v(s,q)^q+v(2*pi-s,q)^q)
-w_reparametrized(s::T,q::Int) where {T<:Real}=w_kress(2*pi*s,q)/(2*pi)
-function dw_reparametrized(t::T,q::Int) where {T<:Real}
-    s=two_pi*t
-    As=v(s,q)^q
-    Cs=v(two_pi-s,q)^q
-    Bs=As+Cs
-    dAs=q*v(s,q)^(q-1)*dv(s,q)
-    dCs=-q*v(two_pi-s,q)^(q-1)*dv(two_pi-s,q)
-    dwk=two_pi*(dAs*Bs-As*(dAs+dCs))/Bs^2
-    return dwk
-end
-function d2w_reparametrized(t::T,q::Int) where {T<:Real}
-    s=two_pi*t
-    vs=v(s,q)
-    dv1=dv(s,q)
-    dv2=ddv(s,q)
-    As=vs^q
-    Bs=v(two_pi-s,q)^q
-    D=As+Bs
-    A1=q*vs^(q-1)*dv1
-    B1=-q*v(two_pi-s,q)^(q-1)*dv(two_pi-s,q)
-    D1=A1+B1
-    A2=q*(q-1)*vs^(q-2)*dv1^2 + q*vs^(q-1)*dv2
-    B2=q*(q-1)*v(two_pi-s,q)^(q-2)*dv(two_pi-s,q)^2+q*v(two_pi-s,q)^(q-1)*(-ddv(two_pi-s,q))
-    D2=A2+B2
-    num=(A2*D-As*D2)*D^2-2*D*D1*(A1*D-As*D1)
-    den=D^4
-    return (two_pi)^2*(num/den)
-end
-
-# Reparametrized functions for vectors
-v(s::AbstractVector{T},q::Int) where {T<:Real}=v.(s,q)
-dv(s::AbstractVector{T},q::Int) where {T<:Real}=dv.(s,q)
-w_kress(s::AbstractVector{T},q::Int) where {T<:Real}=w_kress.(s,q)
-w_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=w_reparametrized.(s,q)
-dw_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=dw_reparametrized.(s,q)
-d2w_reparametrized(s::AbstractVector{T},q::Int) where {T<:Real}=d2w_reparametrized.(s,q)
+inv_two_pi=1/two_pi
+euler_over_pi=MathConstants.eulergamma/pi
 
 ###########################
 #### CONSTRUCTOR CFIE ####
@@ -66,53 +27,30 @@ struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     min_dim::Int64
     min_pts::Int64
     billiard::Bi
+    symmetry::Union{Vector{Any},Nothing}
 end
 
-struct CFIE_polar_corner_correction{T,Bi,F1,F2,F3}<:SweepSolver where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function} 
-    sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
-    pts_scaling_factor::Vector{T}
-    dim_scaling_factor::T
-    w::F1
-    w_der::F2
-    w2_der::F3
-    eps::T
-    min_dim::Int64
-    min_pts::Int64
-    billiard::Bi
-end
-
-function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
-    billiard.full_boundary[1] isa PolarSegment || billiard.full_boundary[1] isa CircleSegment ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
-    length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_nocorners only works with billiards with 1 PolarSegment full boundary")
+function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry=nothing) where {T<:Real,Bi<:AbsBilliard}
+    any([!(boundary isa PolarSegment) for boundary in billiard.full_boundary]) && error("CFIE_polar_nocorners only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard)
-end
-
-function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;q=8,min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
-    @error "NOT YET CORRECTLY IMPLEMENTED"
-    billiard.full_boundary[1] isa PolarSegment || billiard.full_boundary[1] isa CircleSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
-    length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    w::Function=v->w_reparametrized(v,q) # quadrature weights 
-    w_der::Function=v->dw_reparametrized(v,q) # quadrature weights derivatives 
-    w2_der::Function=v->d2w_reparametrized(v,q) # second derivatives of quadrature weights
-    sampler=[LinearNodes()]
-    return CFIE_polar_corner_correction{T,Bi,typeof(w),typeof(w_der),typeof(w2_der)}(sampler,bs,bs[1],w,w_der,w2_der,eps,min_pts,min_pts,billiard)
-end
-
-function CFIE_polar_corner_correction(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi,w::F1,w_der::F2,w2_der::F3;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard,F1<:Function,F2<:Function,F3<:Function}
-    @error "NOT YET CORRECTLY IMPLEMENTED"
-    billiard.full_boundary[1] isa PolarSegment || billiard.full_boundary[1] isa CircleSegment ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
-    length(billiard.full_boundary)==1 ? nothing : error("CFIE_polar_corner_correction only works with billiards with 1 PolarSegment full boundary")
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler=[LinearNodes()]
-    return CFIE_polar_corner_correction{T,Bi,F1,F2,F3}(sampler,bs,bs[1],w,w_der,w2_der,eps,min_pts,min_pts,billiard)
+    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
 #############################
 #### BOUNDARY EVALUATION ####
 #############################
+
+# helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
+function component_offsets(comps::Vector)
+    nc=length(comps)
+    offs=Vector{Int}(undef,nc+1)
+    offs[1]=1
+    for a in 1:nc
+        offs[a+1]=offs[a]+length(comps[a].xy)
+    end
+    return offs
+end
 
 #### use N even for the algorithm - equidistant parameters ####
 s(k::Int,N::Int)=two_pi*k/N
@@ -126,64 +64,67 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
     s::Vector{T} # arc lengths at ts
     ds::Vector{T} # diffs between crv lengths at ts
+    compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
 end
 
-function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=billiard.full_boundary[1]
-    L=boundary.length
+# reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
+function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    N=length(pts.xy)
+    xy=reverse(pts.xy)
+    tangent=reverse(-pts.tangent)
+    tangent_2=reverse(pts.tangent_2)
+    ts=copy(pts.ts) # these can stay the same since they are just the parameters of the curve, and reversing the order of points does not change the parameter values at those points
+    ws=copy(pts.ws)
+    ws_der=copy(pts.ws_der)
+    ds=reverse(pts.ds)
+    s=similar(pts.s)
+    s[1]=zero(T)
+    for i in 2:N
+        s[i]=s[i-1]+ds[i-1]
+    end
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,s,ds,pts.compid)
+end
+
+function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
     isodd(N) ? N+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
     ts=[s(k,N) for k in 1:N]
     ts_rescaled=ts./two_pi # b/c our curves and tangents are defined on [0,1]
-    xy=curve(boundary,ts_rescaled) 
-    tangent_1st=tangent(boundary,ts_rescaled)./(two_pi) # ! Rescaled tangents due to chain rule ∂γ/∂θ = ∂γ/∂u * ∂u/∂θ = ∂γ/∂u * 1/(2π)
-    tangent_2nd=tangent_2(boundary,ts_rescaled)./(two_pi)^2 # ! Rescaled tangents due to chain rule ∂²γ/∂θ² = ∂²γ/∂u² * (∂u/∂θ)² + ∂γ/∂u * ∂²u/∂θ² = ∂²γ/∂u² * 1/(2π)^2 + ∂γ/∂u * 0 = ∂²γ/∂u² * 1/(2π)^2
-    ss=arc_length(boundary,ts_rescaled)
+    xy=curve(crv,ts_rescaled) 
+    tangent_1st=tangent(crv,ts_rescaled)./(two_pi) # ! Rescaled tangents due to chain rule ∂γ/∂θ = ∂γ/∂u * ∂u/∂θ = ∂γ/∂u * 1/(2π)
+    tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi)^2 # ! Rescaled tangents due to chain rule ∂²γ/∂θ² = ∂²γ/∂u² * (∂u/∂θ)² + ∂γ/∂u * ∂²u/∂θ² = ∂²γ/∂u² * 1/(2π)^2 + ∂γ/∂u * 0 = ∂²γ/∂u² * 1/(2π)^2
+    ss=arc_length(crv,ts_rescaled)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws=ts
-    ws_der=[one(T) for _ in 1:N]
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ss,ds)
+    ws=fill(T(two_pi/N),N)
+    ws_der=ones(T,N) # we kep these for future with different quadratures ala Kress (1)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ss,ds,idx)
 end
 
-function evaluate_points(solver::CFIE_polar_corner_correction{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    crv=billiard.full_boundary[1]
-    L=crv.length
-    bs=solver.pts_scaling_factor[1]
-    N=max(solver.min_pts,round(Int,k*L*bs/two_pi))
-    isodd(N) ? N+=1 : nothing
-    ts=[s(i,N) for i in 1:N]
-    u0=ts./two_pi
-    u=solver.w.(u0)               # new local param
-    du_du0=solver.w_der.(u0)      # derivative w.r.t. u0
-    d2u_du0=solver.w2_der.(u0)    # second derivative w.r.t. u0
-    du_dθ=du_du0./two_pi          # ∂u/∂θ
-    du_dθ2=d2u_du0./(two_pi)^2   # ∂²u/∂θ²
-    xy_local=curve(crv,u)
-    tangent_1st=tangent(crv,u).*du_dθ
-    tangent_2nd=tangent_2(crv,u).*(du_dθ.^2).+tangent(crv,u).*du_dθ2
-    ss=arc_length(crv,u)
-    ds=diff(ss)
-    append!(ds,L+ss[1]-ss[end])
-    ws_der=two_pi.*du_du0
-    ts_final=two_pi.*u
-    return BoundaryPointsCFIE(xy_local,tangent_1st,tangent_2nd,ts_final,ts_final,ws_der,ss,ds)
+function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(billiard.full_boundary))
+    for (idx,crv) in enumerate(billiard.full_boundary)
+        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
+    end
+    return pts
 end
 
-function BoundaryPointsCFIE_to_BoundaryPoints(bdPoints::BoundaryPointsCFIE{T}) where {T<:Real}
-    normal=[SVector(-getindex(t,2),getindex(t,1)) for t in bdPoints.tangent]
-    return BoundaryPoints(bdPoints.xy,normal,bdPoints.s,bdPoints.ds)
+# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
+function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    offs=component_offsets(pts)
+    return offs[end]-1
 end
 
 ##################################
 #### KRESS CIRCULANT R MATRIX ####
 ##################################
 
-# Provide 2 functions, kress_R_fft! and kress_R_sum!, to compute the circulant R matrix for the Kress method. kress_R_fft! uses the FFT to compute the matrix efficiently, while kress_R_sum! computes it using a direct summation approach. Both functions modify the input matrix R0 in place. The best performance is achieved with kress_R_fft! for large matrices, while kress_R_sum! is more straightforward and may be easier to understand for smaller matrices.
+# Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
 # Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
 # Alex Barnett's idea to use ifft to get the circulant vector kernel and construct the circulant with circshift, .
-function kress_R_fft!(R0::AbstractMatrix{T}) where {T<:Real}
+function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
     N=size(R0,1)
     n=N÷2 # integer division
     a=zeros(Complex{T},N) #  build the spectral vector a (first col)
@@ -201,34 +142,441 @@ function kress_R_fft!(R0::AbstractMatrix{T}) where {T<:Real}
     return nothing
 end
 
-function kress_R_sum_LEGACY!(R0::AbstractMatrix{T}) where {T<:Real}
-    N=size(R0,1)
-    M=N/2-1
-    ks=collect(0:N-1) # build the 1d series s[0:N-1] 
-    s=zeros(T,N)
-    @inbounds for m in 1:M
-        s.+=(1/m).*cos.(two_pi*m.*ks./N)
-    end
-    alt=(-1).^ks # "alternating" term  cos((N/2)*(i-j)*2π/N) = (-1)^(i-j)
-    # build the index‐difference matrix once: idx[i,j] = mod(i-j, N) in 0:(N-1)
-    idx=@. mod((1:N)'.-(1:N),N)  # this is N×N of UInts
-    @. R0=-2*two_pi/N*(s[idx.+1].-(1/N)*alt[idx.+1]) # fill R0 with one big broadcast
-    return nothing
-end
-
-function kress_R_sum!(R0::AbstractMatrix{T}, ts::Vector{T}) where {T<:Real}
+# legacy from incomplete corner correction implementation where we could not use the FFT due to non-uniform weights. This is a direct O(N^2) summation approach to compute the R matrix, which is less efficient than the FFT-based method but serves as a reference.
+function kress_R!(R0::AbstractMatrix{T},ts::Vector{T}) where {T<:Real}
     ds=ts.*T(0.5) # ds[i] = s_i/2
     D=ds.-ds' # D[i,j] = (s_i/2) - (s_j/2) = (s_i - s_j)/2
     R0.=-log.(4 .*sin.(D).^2)
     R0[diagind(R0)].=zero(T)
     return nothing
-  end
+end
 
-################################################################
-#### FIRST AND SECOND LAYER BOUNDARY POTENTIAL CONSTRUCTION ####
-################################################################
+# Build the R matrix for the CFIE method by assembling the circulant R matrices for each component of the boundary. The function takes a vector of BoundaryPointsCFIE objects, computes the appropriate offsets for each component, and fills in the R matrix using the kress_R! function for each component's corresponding block. It is block diagonal since only for boundary interaction within the same component we have the singularity that needs to be corrected by the R matrix, while for interactions between different components the kernel is smooth and does not require correction.
+# R = [ R_1  0   0  ...  0
+#       0   R_2 0   ...  0
+#       0   0   R_3 ...  0
+#       ... ... ... ...  ...
+#       0   0   0   ...  R_nc ]
+function build_Rmat_CFIE(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    Rmat=zeros(T,Ntot,Ntot)
+    for a in 1:length(pts)
+        Na=length(pts[a].xy)
+        ra=offs[a]:(offs[a+1]-1)
+        kress_R!(@view Rmat[ra,ra])
+    end
+    return Rmat
+end
 
-#### ONLY NEED TO USE DOUBLE LAYER POTENTIAL - NO NEUMANN RESONANCES CHECK ####
+###########################################
+#### GEOMETRY CACHE / CHEBYSHEV HELPERS ####
+###########################################
+
+struct CFIEGeomCache{T<:Real}
+    R::Matrix{T}
+    invR::Matrix{T}
+    inner::Matrix{T}
+    logterm::Matrix{T}
+    speed::Vector{T}
+    kappa::Vector{T}
+end
+
+function cfie_geom_cache(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    ts=pts.ts
+    N=length(pts.xy)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    ddX=getindex.(pts.tangent_2,1)
+    ddY=getindex.(pts.tangent_2,2)
+    ΔX=@. X-X'
+    ΔY=@. Y-Y'
+    R=hypot.(ΔX,ΔY)
+    R[diagind(R)].=one(T)
+    invR=inv.(R)
+    invR[diagind(invR)].=zero(T)
+    dX_row=reshape(dX,1,N)
+    dY_row=reshape(dY,1,N)
+    inner=@. dY_row*ΔX-dX_row*ΔY
+    ΔT=ts.-ts'
+    logterm=log.(4 .*sin.(ΔT./2).^2)
+    logterm[diagind(logterm)].=zero(T)
+    speed=@. sqrt(dX^2+dY^2)
+    κnum=dX.*ddY.-dY.*ddX
+    κden=dX.^2 .+ dY.^2
+    kappa=inv_two_pi.*(κnum./κden)
+    return CFIEGeomCache(R,invR,inner,logterm,speed,kappa)
+end
+
+##############################################
+#### PRECOMPUTED SYMMETRY IMAGE GEOMETRY #####
+##############################################
+
+struct SymmetryImageCache{T<:Real}
+    xy::Vector{SVector{2,T}}
+    tangent::Vector{SVector{2,T}}
+    speed::Vector{T}
+    scale::ComplexF64
+end
+
+function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflection) where {T<:Real}
+    N=length(pts.xy)
+    shift_x=hasproperty(sym,:shift_x) ? T(getproperty(sym,:shift_x)) : zero(T)
+    shift_y=hasproperty(sym,:shift_y) ? T(getproperty(sym,:shift_y)) : zero(T)
+    ops=_reflect_ops_and_scales(T,sym)
+    caches=Vector{SymmetryImageCache{T}}(undef,length(ops))
+    for (q,(op,scale_r)) in enumerate(ops)
+        xy=Vector{SVector{2,T}}(undef,N)
+        tangent=Vector{SVector{2,T}}(undef,N)
+        speed=Vector{T}(undef,N)
+        pt=zeros(T,2)
+        @inbounds for j in 1:N
+            xj,yj=pts.xy[j]
+            txj,tyj=pts.tangent[j]
+            if op==1
+                x_reflect_point!(pt,xj,yj,shift_x)
+                xy[j]=SVector(pt[1],pt[2])
+                tangent[j]=SVector(-txj,tyj)
+            elseif op==2
+                y_reflect_point!(pt,xj,yj,shift_y)
+                xy[j]=SVector(pt[1],pt[2])
+                tangent[j]=SVector(txj,-tyj)
+            else
+                xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
+                xy[j]=SVector(pt[1],pt[2])
+                tangent[j]=SVector(-txj,-tyj)
+            end
+            speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
+        end
+        caches[q]=SymmetryImageCache{T}(xy,tangent,speed,ComplexF64(scale_r,0.0))
+    end
+    return caches
+end
+
+function build_rotation_image_caches(pts::BoundaryPointsCFIE{T},sym::Rotation) where {T<:Real}
+    N=length(pts.xy)
+    cx,cy=sym.center
+    ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+    caches=Vector{SymmetryImageCache{T}}(undef,sym.n-1)
+    for l in 2:sym.n
+        xy=Vector{SVector{2,T}}(undef,N)
+        tangent=Vector{SVector{2,T}}(undef,N)
+        speed=Vector{T}(undef,N)
+        pt=zeros(T,2)
+        @inbounds for j in 1:N
+            xj,yj=pts.xy[j]
+            txj,tyj=pts.tangent[j]
+            rot_point!(pt,xj,yj,cx,cy,ctab[l],stab[l])
+            xy[j]=SVector(pt[1],pt[2])
+            tangent[j]=SVector(ctab[l]*txj-stab[l]*tyj,stab[l]*txj+ctab[l]*tyj)
+            speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
+        end
+        caches[l-1]=SymmetryImageCache{T}(xy,tangent,speed,ComplexF64(χ[l]))
+    end
+    return caches
+end
+
+function build_symmetry_image_caches(pts::BoundaryPointsCFIE{T},symmetry::Union{Nothing,Any,AbstractVector}) where {T<:Real}
+    symmetry===nothing && return SymmetryImageCache{T}[]
+    syms=symmetry isa AbstractVector ? symmetry : Any[symmetry]
+    caches=SymmetryImageCache{T}[]
+    for sym in syms
+        if sym isa Reflection
+            append!(caches,build_reflection_image_caches(pts,sym))
+        elseif sym isa Rotation
+            append!(caches,build_rotation_image_caches(pts,sym))
+        else
+            error("Unsupported symmetry type $(typeof(sym))")
+        end
+    end
+    return caches
+end
+
+###############################
+#### DIRECT A CONSTRUCTION ####
+###############################
+
+function _add_symmetry_contributions!(A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},k::T,symmetry;multithreaded::Bool=true) where {T<:Real}
+    symmetry===nothing && return A
+    αL2=Complex{T}(0,k/2)
+    αM2=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    nc=length(pts)
+    for b in 1:nc
+        pb=pts[b]
+        caches=build_symmetry_image_caches(pb,symmetry)
+        isempty(caches) && continue
+        Nb=length(pb.xy)
+        rb=offs[b]:(offs[b+1]-1)
+        for cache in caches
+            @use_threads multithreading=multithreaded for j in 1:Nb
+                gj=rb[j]
+                xj,yj=cache.xy[j]
+                txj,tyj=cache.tangent[j]
+                sj=cache.speed[j]
+                χ=cache.scale
+                wj=pb.ws[j]
+                @inbounds for a in 1:nc
+                    pa=pts[a]
+                    Na=length(pa.xy)
+                    ra=offs[a]:(offs[a+1]-1)
+                    for i in 1:Na
+                        gi=ra[i]
+                        xi,yi=pa.xy[i]
+                        dx=xi-xj
+                        dy=yi-yj
+                        r2=muladd(dx,dx,dy*dy)
+                        r2<=(eps(T))^2 && continue
+                        r=sqrt(r2)
+                        invr=inv(r)
+                        inn=tyj*dx-txj*dy
+                        h1=H(1,k*r)
+                        h0=H(0,k*r)
+                        dterm=αL2*inn*h1*invr
+                        sterm=αM2*h0*sj
+                        A[gi,gj]+= -(χ*wj)*(dterm+ik*sterm)
+                    end
+                end
+            end
+        end
+    end
+    return A
+end
+
+function _A(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    offs=component_offsets(pts)
+    αL1=k*inv_two_pi
+    αL2=Complex{T}(0,k/2)
+    αM1=-inv_two_pi
+    αM2=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    fill!(A,zero(Complex{T}))
+    Gs=[cfie_geom_cache(p) for p in pts]
+    nc=length(pts)
+    for a in 1:nc
+        pa=pts[a]
+        Ga=Gs[a]
+        Na=length(pa.xy)
+        ra=offs[a]:(offs[a+1]-1)
+        @inbounds for i in 1:Na
+            gi=ra[i]
+            si=Ga.speed[i]
+            κi=Ga.kappa[i]
+            wi=pa.ws[i]
+            dval=Complex{T}(wi*κi,zero(T))
+            m1=αM1*si
+            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
+            sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
+            A[gi,gi]=one(Complex{T})-(dval+ik*sval)
+        end
+        @use_threads multithreading=multithreaded for j in 2:Na
+            gj=ra[j]
+            sj=Ga.speed[j]
+            wj=pa.ws[j]
+            @inbounds for i in 1:(j-1)
+                gi=ra[i]
+                si=Ga.speed[i]
+                rij=Ga.R[i,j]
+                invr=Ga.invR[i,j]
+                lt=Ga.logterm[i,j]
+                h1=H(1,k*rij)
+                h0=H(0,k*rij)
+                j1=real(h1)
+                j0=real(h0)
+                inn_ij=Ga.inner[i,j]
+                inn_ji=Ga.inner[j,i]
+                l1_ij=αL1*inn_ij*j1*invr
+                l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
+                dval_ij=Rmat[gi,gj]*l1_ij+wj*l2_ij
+                m1_ij=αM1*j0*sj
+                m2_ij=αM2*h0*sj-m1_ij*lt
+                sval_ij=Rmat[gi,gj]*m1_ij+wj*m2_ij
+                A[gi,gj]=-(dval_ij+ik*sval_ij)
+                wi=pa.ws[i]
+                l1_ji=αL1*inn_ji*j1*invr
+                l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
+                dval_ji=Rmat[gj,gi]*l1_ji+wi*l2_ji
+                m1_ji=αM1*j0*si
+                m2_ji=αM2*h0*si-m1_ji*lt
+                sval_ji=Rmat[gj,gi]*m1_ji+wi*m2_ji
+                A[gj,gi]=-(dval_ji+ik*sval_ji)
+            end
+        end
+    end
+    for a in 1:nc, b in 1:nc
+        a==b && continue
+        pa=pts[a]
+        pb=pts[b]
+        Na=length(pa.xy)
+        Nb=length(pb.xy)
+        ra=offs[a]:(offs[a+1]-1)
+        rb=offs[b]:(offs[b+1]-1)
+        Xa=getindex.(pa.xy,1)
+        Ya=getindex.(pa.xy,2)
+        Xb=getindex.(pb.xy,1)
+        Yb=getindex.(pb.xy,2)
+        dXb=getindex.(pb.tangent,1)
+        dYb=getindex.(pb.tangent,2)
+        sb=@. sqrt(dXb^2+dYb^2)
+        @use_threads multithreading=multithreaded for j in 1:Nb
+            gj=rb[j]
+            xj=Xb[j]
+            yj=Yb[j]
+            txj=dXb[j]
+            tyj=dYb[j]
+            sj=sb[j]
+            wj=pb.ws[j]
+            @inbounds for i in 1:Na
+                gi=ra[i]
+                dx=Xa[i]-xj
+                dy=Ya[i]-yj
+                r2=muladd(dx,dx,dy*dy)
+                r2<=(eps(T))^2 && continue
+                r=sqrt(r2)
+                invr=inv(r)
+                inn=tyj*dx-txj*dy
+                h1=H(1,k*r)
+                h0=H(0,k*r)
+                dval=wj*(αL2*inn*h1*invr)
+                sval=wj*(αM2*h0*sj)
+                A[gi,gj]=-(dval+ik*sval)
+            end
+        end
+    end
+    _add_symmetry_contributions!(A,pts,offs,k,solver.symmetry;multithreaded=multithreaded)
+    return A
+end
+
+function _A(solver::CFIE_polar_nocorners,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    Rmat=build_Rmat_CFIE(pts)
+    return _A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+end
+
+function solve(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    mu=svdvals(A)
+    return mu[end]
+end
+
+function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    Rmat=build_Rmat_CFIE(pts)
+    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    mu=svdvals(A)
+    return mu[end]
+end
+
+function solve_vect(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    u_mu=real.(u_mu)
+    return mu,u_mu
+end
+
+function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    Rmat=build_Rmat_CFIE(pts)
+    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    u_mu=real.(u_mu)
+    return mu,u_mu
+end
+
+function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks)}}}(undef,length(ks))
+    for i in eachindex(ks)
+        pts=evaluate_points(solver,solver.billiard,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
+end
+
+function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    t0=time()
+    @info "Constructing circulant R matrix..."
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    Rmat=build_Rmat_CFIE(pts)
+    t1=time()
+    @info "Building boundary operator A..."
+    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    t2=time()
+    cA=cond(A)
+    @info "Condition number of A: $(round(cA;sigdigits=4))"
+    @info "Performing SVD..."
+    t3=time()
+    s=svdvals(A)
+    t4=time()
+    build_R=t1-t0
+    build_A=t2-t1
+    svd_time=t4-t3
+    total=build_R+build_A+svd_time
+    println("────────── SOLVE_INFO SUMMARY ──────────")
+    println("R-matrix build: ",100*build_R/total," %")
+    println("A-matrix build: ",100*build_A/total," %")
+    println("SVD: ",100*svd_time/total," %")
+    println("(total: ",total," s)")
+    println("────────────────────────────────────────")
+    return s[end]
+end
+
+####################
+#### CFIE UTILS ####
+####################
+
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE_polar_nocorners;k=20.0,markersize=5) where {Bi<:AbsBilliard}
+    f=Figure(resolution=(1200,1200))
+    ax=Axis(f[1,1],title="boundary + point‐wise weights",aspect=DataAspect())
+    pts_all=evaluate_points(solver,billiard,k)
+    N=length(pts_all)
+    for i in 1:N
+        pts=pts_all[i]
+        xs=getindex.(pts.xy,1)
+        ys=getindex.(pts.xy,2)
+        ws_pts=pts.ws
+        scatter!(ax,xs,ys;markersize=markersize,color=ws_pts,colormap=:viridis,strokewidth=0)
+        nxs=getindex.(pts.tangent,2)
+        nys=-getindex.(pts.tangent,1)
+        arrows!(ax,xs,ys,nxs,nys,color=:black,lengthscale=0.1)
+        ws_funs=[v->fill(one(eltype(v)),length(v))]
+        ws_der_funs=[v->fill(zero(eltype(v)),length(v))]
+        panels=length(ws_funs)
+        for j in 1:panels
+            row=2+div(j-1,2)
+            col=1+((j-1) % 2)
+            tloc=collect(range(0,1,length=200))
+            wline=ws_funs[j](tloc)
+            wderline=ws_der_funs[j](tloc)
+            a1=Axis(f[row,2*col-1],title="panel $j w(u)",xlabel="u",ylabel="w")
+            lines!(a1,tloc,wline,linewidth=2)
+            a2=Axis(f[row,2*col],title="panel $j w′(u)",xlabel="u",ylabel="w′")
+            lines!(a2,tloc,wderline,linewidth=2)
+        end
+    end
+    return f
+end
+
+# LEGACY CODE
+#=
 function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T;multithreaded::Bool=true) where {T<:Real}
     ts=pts.ts
     N=length(pts.xy)
@@ -322,155 +670,8 @@ function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T;multithreaded::Bool=
     L1[d].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
     L2[d].=κ # the "curvature type" limit for DLP
     M1[d].=-1/(two_pi).*speed
-    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ws_der).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s)
-    #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
+    #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ws_der).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s). Commented out since we are using uniform weights and w'(s)=1, so log(w'(s))=0, so this term does not contribute.
+    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
     return L1,L2,M1,M2
 end
-
-#####################################
-#### Vectorized Nystrom M Matrix ####
-#####################################
-
-function M(solver::CFIE_polar_nocorners,pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real}
-    N=length(pts.xy)
-    if use_combined
-        L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k,multithreaded=multithreaded)
-        A_double=Rmat.*L1.+(two_pi/N).*L2 # D
-        A_single=Rmat.*M1.+(two_pi/N).*M2 # S
-        A=A_double.+(im*k)*A_single # D+i*k*S
-    else
-        L1,L2=L1_L2_matrix(pts,k,multithreaded=multithreaded)
-        A=@. Rmat.*L1.+(two_pi/N).*L2 # pure double layer
-    end
-    return Diagonal(ones(Complex{T},N))-A
-end
-
-function M(solver::CFIE_polar_corner_correction,pts::BoundaryPointsCFIE{T},k::T,Rmat::Matrix{T};use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real}
-    N=length(pts.xy)
-    ws_der=pts.ws_der
-    if use_combined
-        L1,L2,M1,M2=L1_L2_M1_M2_matrix(pts,k,multithreaded=multithreaded)
-        A_double=Rmat.*L1.+(two_pi/N).*L2 # D
-        A_single=Rmat.*M1.+(two_pi/N).*M2 # S
-        A=(A_double.+(im*k)*A_single).*ws_der' # D+i*k*S
-    else
-        L1,L2=L1_L2_matrix(pts,k,multithreaded=multithreaded)
-        A=@. Rmat.*L1.+(two_pi/N).*L2 # pure double layer
-        A=A.*ws_der'
-    end
-    return Diagonal(ones(Complex{T},N))-A
-end
-
-##############
-#### MAIN ####
-##############
-
-function solve(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    N=length(pts.xy)
-    Rmat=zeros(T,N,N)
-    solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts) # fft work for trapezoidal parametrization, sum needs to be for weights (domains with corners)
-    A=M(solver,pts,k,Rmat;use_combined=use_combined,multithreaded=multithreaded)
-    mu=svdvals(A)
-    return mu[end]
-end
-
-function solve_external_R(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=M(solver,pts,k,Rmat;use_combined=use_combined,multithreaded=multithreaded)
-    mu=svdvals(A)
-    return mu[end]
-end
-
-function solve_vect(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k;use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    N=length(pts.xy)
-    Rmat=zeros(T,N,N)
-    solver isa CFIE_polar_nocorners ? kress_R_fft!(Rmat) : kress_R_sum!(Rmat,pts.ts)
-    A=M(solver,pts,k,Rmat;use_combined=use_combined,multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
-    return mu,u_mu
-end
-
-function solve_eigenvectors_CFIE(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,ks::Vector{T};use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{BoundaryPointsCFIE{eltype(ks)}}(undef,length(ks))
-    for i in eachindex(ks)
-        pts=evaluate_points(solver,solver.billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];use_combined=use_combined,multithreaded=multithreaded)
-        us_all[i]=u
-        pts_all[i]=pts
-    end
-    return us_all,pts_all
-end
-
-function solve_INFO(solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},basis::Ba,pts::BoundaryPointsCFIE{T},k::T;use_combined::Bool=false,multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    t0=time()
-    @info "Constructing circulant R matrix..."
-    N=length(pts.xy)
-    Rmat=zeros(T,N,N)
-    if solver isa CFIE_polar_nocorners
-        kress_R_fft!(Rmat)
-    else
-        kress_R_sum!(Rmat,pts.ts)
-    end
-    t1=time()
-    @info "Building boundary operator A (S + L ? $(use_combined))..."
-    A=M(solver,pts,k,Rmat;use_combined=use_combined,multithreaded=multithreaded)
-    t2=time()
-    cA=cond(A)
-    @info "Condition number of A: $(round(cA;sigdigits=4))"
-    @info "Performing SVD..."
-    t3=time()
-    s=svdvals(A)
-    t4=time()
-    build_R=t1-t0
-    build_A=t2-t1
-    svd_time=t4-t3
-    total=build_R+build_A+svd_time
-    println("────────── SOLVE_INFO SUMMARY ──────────")
-    println(" R-matrix build: ",100*build_R/total," %")
-    println(" A-matrix build: ",100*build_A/total," %")
-    println(" SVD: ",100*svd_time/total," %")
-    println(" (total: ",total," s")
-    println("─────────────────────────────────────────")
-    return s[end]
-end
-
-####################
-#### CFIE UTILS ####
-####################
-
-function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_polar_nocorners,CFIE_polar_corner_correction},;k=20.0,markersize=5) where {Bi<:AbsBilliard}
-    pts=evaluate_points(solver,billiard,k)
-    xs=getindex.(pts.xy,1)
-    ys=getindex.(pts.xy,2)
-    ws_pts=pts.ws
-    f=Figure(resolution=(1200,1200))
-    ax=Axis(f[1,1],title="boundary + point‐wise weights",aspect=DataAspect())
-    scatter!(ax,xs,ys;markersize=markersize,color=ws_pts,colormap=:viridis,strokewidth=0)
-    nxs=getindex.(pts.tangent,2)
-    nys=-getindex.(pts.tangent,1)
-    arrows!(ax,xs,ys,nxs,nys,color=:black,lengthscale=0.1)
-    if solver isa CFIE_polar_corner_correction
-        ws_funs=[solver.w] 
-        ws_der_funs=[solver.w_der]
-    else
-        ws_funs=[v->fill(one(eltype(v)),length(v))]
-        ws_der_funs=[v->fill(zero(eltype(v)),length(v))]
-    end
-    panels=length(ws_funs)
-    for i in 1:panels
-        row=2+div(i-1,2)
-        col=1+((i-1) % 2)
-        tloc=collect(range(0,1,length=200))
-        wline=ws_funs[i](tloc)
-        wderline=ws_der_funs[i](tloc)
-        a1=Axis(f[row,2*col-1],title="panel $i w(u)",xlabel="u",ylabel="w")
-        lines!(a1,tloc,wline,linewidth=2)
-        a2=Axis(f[row,2*col],title="panel $i w′(u)",xlabel="u",ylabel="w′")
-        lines!(a2,tloc,wderline,linewidth=2)
-    end
-    return f
-end
+=#

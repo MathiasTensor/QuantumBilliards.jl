@@ -27,28 +27,6 @@ struct BoundaryIntegralMethod{T} <: SweepSolver where {T<:Real}
 end
 
 """
-    struct BoundaryPointsBIM{T<:Real}
-
-Represents the boundary points used in the method.
-
-# Fields
-- `xy::Vector{SVector{2,T}}`: Coordinates of the boundary points.
-- `normal::Vector{SVector{2,T}}`: Normal vectors at the boundary points.
-- `curvature::Vector{T}`: Curvatures at the boundary points.
-- `ds::Vector{T}`: Arc lengths between consecutive boundary points.
-- `shift_x::T`: x axis shift for the given geometry (contained in the billiard struct).
-- `shift_y::T`: y axis shift for the given geometry (contained in the billiard struct).
-"""
-struct BoundaryPointsBIM{T} <: AbsPoints where {T<:Real}
-    xy::Vector{SVector{2,T}}
-    normal::Vector{SVector{2,T}}
-    curvature::Vector{T}
-    ds::Vector{T}
-    shift_x::T
-    shift_y::T
-end
-
-"""
     struct AbstractHankelBasis <: AbsBasis
 
 Compatibility placeholder.
@@ -64,31 +42,6 @@ function resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:AbstractHank
     return AbstractHankelBasis()
 end
 
-"""
-    BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
-
-Converts a `BoundaryPointsBIM` object to a `BoundaryPoints` object.
-
-# Arguments
-- `pts::BoundaryPointsBIM{T}`: An object containing:
-  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
-  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
-  - `ds::Vector{T}`: Integration weights (arc length differences between points).
-
-# Returns
-- `BoundaryPoints{T}`: An object containing:
-  - `xy::Vector{SVector{2, T}}`: Coordinates of the boundary points.
-  - `normal::Vector{SVector{2, T}}`: Normal vectors at the boundary points.
-  - `s::Vector{T}`: Arc length coordinates (cumulative sum of `ds`).
-  - `ds::Vector{T}`: diff(s).
-"""
-function BoundaryPointsMethod_to_BoundaryPoints(pts::BoundaryPointsBIM{T}) where {T<:Real}
-    xy=pts.xy
-    normal=pts.normal
-    ds=pts.ds
-    s=cumsum(ds)
-    return BoundaryPoints{T}(xy,normal,s,ds)
-end
 
 ### STANDARD BIM ###
 
@@ -127,7 +80,7 @@ function _boundary_curves_for_solver(billiard::Bi,solver::BoundaryIntegralMethod
 end
 
 """
-    evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k::Real) -> BoundaryPointsBIM
+    evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k::Real) -> BoundaryPoints
 
 Evaluates the boundary points and associated properties for the given solver and billiard.
 
@@ -137,7 +90,7 @@ Evaluates the boundary points and associated properties for the given solver and
 - `k::Real`: Wavenumber.
 
 # Returns
-- `BoundaryPointsBIM`: Evaluated boundary points and properties.
+- `BoundaryPoints{T}`: Evaluated boundary points and properties.
 """
 function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
@@ -177,25 +130,25 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
     end
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : type(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : type(0.0)
-    return BoundaryPointsBIM{type}(xy_all,normal_all,kappa_all,w_all,shift_x,shift_y)
+    return BoundaryPoints{type}(xy_all,normal_all,Vector{type}(),w_all,Vector{type}(),Vector{type}(),kappa_all,Vector{SVector{2,type}}(),shift_x,shift_y)
 end
 
 #### NEW MATRIX CODE, SLIGHTLY FASTER UTILIZING THE DEFAULT KERNEL'S FUNCTION HANKEL FUNCTION SYMMETRY ####
 
 """
-    default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T) -> Matrix{Complex{T}}
+    default_helmholtz_kernel_matrix(bp::BoundaryPoints{T}, k::T) -> Matrix{Complex{T}}
 
 Computes the Helmholtz kernel matrix for the given boundary points using the matrix-based approach.
 
 # Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between boundary points, incorporating curvature for singular cases.
 """
-function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     normals=bp.normal
     curvatures=bp.curvature
@@ -232,25 +185,20 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;multithre
 end
 
 """
-    compute_kernel_matrix(bp::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+    compute_kernel_matrix(bp::BoundaryPoints{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
 
 Computes the kernel matrix for the given boundary points using the specified kernel function w/ NO symmetry.
 
 # Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: The computed kernel matrix.
 """
-function compute_kernel_matrix(bp::BoundaryPointsBIM{T},k::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {T<:Real}
-    if kernel_fun==:default
-        return default_helmholtz_kernel_matrix(bp,k;multithreaded=multithreaded)
-    else
-        return kernel_fun(bp,k)
-    end
+function compute_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    return default_helmholtz_kernel_matrix(bp,k;multithreaded=multithreaded)
 end
 
 """
@@ -276,35 +224,20 @@ if the pair was non-singular (distance² > tol2), `false` otherwise.
 end
 
 """
-    @inline add_pair_custom!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,kernel_fun;scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:AbstractFloat} -> Bool
-
-Like `add_pair_default!` but uses a user-supplied kernel evaluator:
-`kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`.
-"""
-@inline function _add_pair_custom!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,kernel_fun;scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real}
-    val_ij=kernel_fun(i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k)*scale
-    @inbounds begin
-        M[i,j]+=val_ij
-    end
-    return true
-end
-
-"""
-    compute_kernel_matrix(bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+    compute_kernel_matrix(bp::BoundaryPoints{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; multithreaded::Bool=true) -> Matrix{Complex{T}}
 
 Computes the kernel matrix for the given boundary points with symmetry reflections applied.
 
 # Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
+- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
 - `symmetry::Vector{Any}`: Symmetry to apply.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use, must have the signature: `kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: The computed kernel matrix with symmetry reflections applied.
 """
-function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     nrm=bp.normal
     κ=bp.curvature 
@@ -338,55 +271,31 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k:
     if have_rot
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
     end
-    isdef=(kernel_fun===:default) # we only have predefined the default kernel's add_pair! matrix builders. For other kernels it can be different and built with add_pair_custom!
     @use_threads multithreading=multithreaded for i in 1:N  # make if instead of elseif since can have >1 symmetry
         xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2] # i is the target, j is the source
         @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
             xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
-            if isdef
-                ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
-                if !ok; K[i,j]+=Complex(κ[i]/TWO_PI); end
-            else
-                _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,kernel_fun)
+            ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
+            if !ok; K[i,j]+=Complex(κ[i]/TWO_PI); end
             end
             if add_x # reflect only over the x axis
                 xr=_x_reflect(xj,shift_x);yr=yj
-                if isdef 
-                    _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
-                else
-                    nxjr,nyjr=_x_reflect_normal(nxj,nyj) # the custom kernels might be functions of source normals which actually change under symmetries!
-                    _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=sxgn)
-                end
+                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
             end
             if add_y # reflect only over the y axis
                 xr=xj;yr=_y_reflect(yj,shift_y)
-                if isdef
-                    _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
-                else
-                    nxjr,nyjr=_y_reflect_normal(nxj,nyj)
-                    _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=sygn)
-                end
+                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
             end
             if add_xy # reflect over both the axes
                 xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
-                if isdef 
-                    _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
-                else
-                    nxjr,nyjr=_xy_reflect_normal(nxj,nyj)
-                    _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=sxy)
-                end
+                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
             end
             if have_rot
                 @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
                     cl=ctab[l+1];sl=stab[l+1]
                     xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
                     phase=χ[l+1]  # e^{i 2π m l / n}, rotations due to being 1d-irreps have real characters
-                    if isdef
-                        _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
-                    else
-                        nxjr,nyjr=_rot_vec(nxj,nyj,cl,sl) # rotate the normals if custom kernel due to potential source normal dependance
-                        _add_pair_custom!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxjr,nyjr,k,kernel_fun;scale=phase)
-                    end
+                    _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
                 end
             end
         end 
@@ -395,24 +304,23 @@ function compute_kernel_matrix(bp::BoundaryPointsBIM{T},symmetry::Vector{Any},k:
 end
 
 """
-    fredholm_matrix(bp::BoundaryPointsBIM{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+    fredholm_matrix(bp::BoundaryPoints{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; multithreaded::Bool=true) -> Matrix{Complex{T}}
 
 Constructs the Fredholm matrix for the boundary integral method using the computed kernel matrix.
 
 # Arguments
-- `bp::BoundaryPointsBIM{T}`: Boundary points structure containing the source points, normal vectors, curvatures, and differential arc lengths.
+- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, curvatures, and differential arc lengths.
 - `symmetry::Vector{Any}`: Symmetry to apply.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use, must have the signature `kernel_fun(i,j, xi,yi,nxi,nyi, xj,yj,nxj,nyj, k) :: Complex`. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix, incorporating differential arc lengths and symmetry reflections.
 """
-function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},k::T;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {T<:Real}
+function fredholm_matrix(bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},k::T;multithreaded::Bool=true) where {T<:Real}
     K=isnothing(symmetry) ?
-        compute_kernel_matrix(bp,k;kernel_fun=kernel_fun,multithreaded=multithreaded) :
-        compute_kernel_matrix(bp,symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+        compute_kernel_matrix(bp,k;multithreaded=multithreaded) :
+        compute_kernel_matrix(bp,symmetry,k;multithreaded=multithreaded)
     ds=bp.ds
     @inbounds for j in 1:length(ds)
         @views K[:,j].*=ds[j]
@@ -425,61 +333,59 @@ function fredholm_matrix(bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},No
 end
 
 """
-    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+    construct_matrices(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPoints, k::T) -> Matrix{Complex{T}}
 
 Constructs the Fredholm matrix using the solver, basis, and boundary points for the boundary integral method.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
+- `pts::BoundaryPoints{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix.
 """
-function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    return @blas_1 fredholm_matrix(pts,solver.symmetry,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    return @blas_1 fredholm_matrix(pts,solver.symmetry,k;multithreaded=multithreaded)
 end
 
-function solve_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+function solve_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A) # Arpack's version of svd for computing only the smallest singular value should be better but is non-reentrant
     return mu[end]
 end
 
 """
-    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> T
+    solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPoints{T}, k::T; multithreaded::Bool=true, use_krylov::Bool=true) -> T
 
 Computes the smallest singular value of the Fredholm matrix for a given configuration.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
+- `pts::BoundaryPoints{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
 
 # Returns
 - `T`: The smallest singular value of the Fredholm matrix.
 """
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
     if use_krylov
-        return solve_krylov(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_krylov(solver,basis,pts,k,multithreaded=multithreaded)
     else
-        return solve_full(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_full(solver,basis,pts,k,multithreaded=multithreaded)
     end
 end
 
 # INTERNAL BENCHMARKS
-function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     s_constr=time()
     @info "constructing Fredholm matrix A..."
-    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+    A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @info "Condition number of A for svd: $(cond(A))"
     e_constr=time()
     @info "SVD..."
@@ -496,16 +402,16 @@ function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryP
     return mu[end]
 end
 
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
     if use_krylov
-        return solve_krylov_INFO(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_krylov_INFO(solver,basis,pts,k,multithreaded=multithreaded)
     else
-        return solve_full_INFO(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_full_INFO(solver,basis,pts,k,multithreaded=multithreaded)
     end
 end
 
-function solve_vect_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
+function solve_vect_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
     idx=findmin(S)[2]
     mu=S[idx]
@@ -515,16 +421,15 @@ function solve_vect_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryP
 end
 
 """
-    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPointsBIM{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Tuple{T, Vector{T}}
+    solve_vect(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPoints{T}, k::T; multithreaded::Bool=true, use_krylov::Bool=true) -> Tuple{T, Vector{T}}
 
 Computes the smallest singular value and its corresponding singular vector for the Fredholm matrix.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `pts::BoundaryPointsBIM{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
+- `pts::BoundaryPoints{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
 - `k::T`: Wavenumber.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
 
@@ -533,17 +438,17 @@ Computes the smallest singular value and its corresponding singular vector for t
   - `T`: The smallest singular value of the Fredholm matrix.
   - `Vector{T}`: The corresponding singular vector.
 """
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
     if use_krylov
-        return solve_vect_krylov(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_vect_krylov(solver,basis,pts,k,multithreaded=multithreaded)
     else
-        return solve_vect_full(solver,basis,pts,k,kernel_fun=kernel_fun,multithreaded=multithreaded)
+        return solve_vect_full(solver,basis,pts,k,multithreaded=multithreaded)
     end
     
 end
 
 """
-    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, billiard::Bi, basis::Ba, ks::Vector{T}; kernel_fun=default_helmholtz_kernel_matrix) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}}
+    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, billiard::Bi, basis::Ba, ks::Vector{T}; multithreaded::Bool=true, use_krylov::Bool=true) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPoints}}
 
 Computes the eigenvectors of the boundary integral method for a range of wave numbers.
 
@@ -552,23 +457,239 @@ Computes the eigenvectors of the boundary integral method for a range of wave nu
 - `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
 - `basis::Ba<:AbstractHankelBasis`: The basis function used for solving the eigenvalue problem.
 - `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
-- `kernel_fun::Union{Symbol, Function}`: Kernel function to use. Defaults to `:default` (Helmholtz kernel).
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
 
 # Returns
-- `Tuple{Vector{Vector{T}}, Vector{BoundaryPointsBIM}}`:
+- `Tuple{Vector{Vector{T}}, Vector{BoundaryPoints}}`:
   - `Vector{Vector{T}}`: A vector containing the eigenvectors for each wave number in `ks`.
-  - `Vector{BoundaryPointsBIM}`: A vector of `BoundaryPointsBIM` objects, representing the boundary points used for each wave number in `ks`.
+  - `Vector{BoundaryPoints}`: A vector of `BoundaryPoints` objects, representing the boundary points used for each wave number in `ks`.
 """
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};kernel_fun=:default,multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{BoundaryPointsBIM{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
     for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];kernel_fun=kernel_fun,multithreaded=multithreaded,use_krylov=use_krylov)
+        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded,use_krylov=use_krylov)
         us_all[i]=u
         pts_all[i]=pts
     end
     return us_all,pts_all
+end
+
+#########################################################
+#### CONSTRUCTORS FOR COMPLEX ks - FOR BEYN's METHOD ####
+#########################################################
+
+# Add the 2D Helmholtz double-layer kernel contribution to M[i,j].
+# Discrete collocation (row = target i, column = source j).
+#
+# Indices / geometry:
+#   i     – target (row / collocation) index
+#   j     – source (column / integration) index
+#   xi,yi – target coordinates (point i)
+#   xj,yj – source  coordinates (point j)
+#   nxi,nyi – unit outward normal at the target point i
+#   nxj,nyj – unit outward normal at the source point j (unused in this kernel)
+#
+# Physics:
+#   k     – complex wavenumber on the contour
+#   pref  – prefactor for the DLP kernel; for 2D Helmholtz with G = (i/4)H0^(1)(kr),
+#           ∂G/∂n = (ik/4) ( (x−y)·n / r ) H1^(1)(kr). Here we use pref = -im*k/2 to match
+#           the BIM’s normalization.
+#
+# Numerics:
+#   tol2  – distance^2 threshold; if |x_i - x_j|^2 ≤ tol2 treat as near-self and
+#           return false so the caller can handle the diagonal/near-singular term.
+#   scale – optional symmetry/sign scaling (default 1).
+#
+# Returns:
+#   true  – contribution added to M[i,j]
+#   false – skipped (caller should add diagonal correction, e.g. κ/(2π), outside)
+@inline function _add_pair_default_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},tol2::T,pref::Complex{T};scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real}
+    dx=xi-xj;dy=yi-yj
+    d2=muladd(dx,dx,dy*dy)
+    if d2<=tol2
+        return false
+    end
+    d=sqrt(d2)
+    invd=inv(d)
+    h=pref*SpecialFunctions.hankelh1(1,k*d)
+    @inbounds begin
+        M[i,j]+=scale*((nxi*dx+nyi*dy)*invd)*h
+    end
+    return true
+end
+
+# Build the complex-k boundary integral operator matrix K for a *single* boundary
+# (no explicit symmetry images). Supports either:
+#   - default double-layer kernel (fast path, triangular fill + mirror),
+#   - or a user-provided `kernel_fun` (full N×N fill).
+#
+# Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm kernel for reuse
+#   bp         – BoundaryPoints{T}: holds xy, normals, curvature κ, and panel ds
+#   k          – complex wavenumber on the Beyn contour
+#   multithreaded – toggle threaded loops (via @use_threads)
+#
+# Numerics/constants:
+#   tol2 = (eps(T))^2 – near-self threshold on squared distance
+#   pref = -im*k/2    – prefactor matching the chosen DLP normalization
+#
+# Strategy (default):
+#   * Upper-triangular loop j=1:i, then mirror to (j,i) to fill the matrix.
+#   * Off-diagonal: add DLP using target normal at i and H1^(1)(k r).
+#   * Diagonal  : when r≈0 (d2≤tol2), insert κ[i]/(2π).
+#
+# Strategy (custom):
+#   * Full N×N loop, each entry via `_add_pair_custom_complex!`.
+#
+# Output:
+#   K::Matrix{Complex{T}} – the assembled kernel (before ds-weighting / identity).
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+    xy=bp.xy;nrm=bp.normal;κ=bp.curvature;N=length(xy)
+    xs=getindex.(xy,1);ys=getindex.(xy,2);nx=getindex.(nrm,1);ny=getindex.(nrm,2)
+    tol2=(eps(T))^2;pref=-im*k/2
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
+        @inbounds for j in 1:i
+            dx=xi-xs[j];dy=yi-ys[j];d2=muladd(dx,dx,dy*dy)
+            if d2≤tol2
+                K[i,j]=Complex{T}(κ[i]/TWO_PI)
+            else
+                d=sqrt(d2);invd=inv(d);h=pref*SpecialFunctions.hankelh1(1,k*d)
+                K[i,j]=(nxi*dx+nyi*dy)*invd*h
+                if i!=j
+                    K[j,i]=(nx[j]*(-dx)+ny[j]*(-dy))*invd*h
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+# Build the complex-k boundary integral operator matrix K with symmetry images.
+# This augments the direct kernel with reflected source contributions according to
+# the provided symmetry list (x-axis, y-axis, or origin reflections), including the
+# correct parity signs per symmetry.
+#
+# Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm kernel for reuse
+#   bp        – BoundaryPoints{T} (xy, normals, curvature κ, shifts of symmetry axes)
+#   symmetry  – Vector of symmetry descriptors (e.g., X/Y/XYReflection with parity)
+#   k         – complex wavenumber
+#   multithreaded – threading toggle
+#
+# Reflection controls:
+#   add_x,add_y,add_xy – which images to add (x-reflect, y-reflect, both)
+#   sxgn, sygn, sxy    – corresponding parity factors ±1 (from `parity`)
+#   shift_x, shift_y   – axis shifts of the geometry for correct mirror positions
+#
+# Strategy:
+#   For each target i and source j:
+#     - Add direct pair (default/custom).
+#     - If add_x:   add source reflected across y-axis:  x -> 2*shift_x - x, y→y, scaled by sxgn.
+#     - If add_y:   add source reflected across x-axis:  x -> x, y→2*shift_y - y, scaled by sygn.
+#     - If add_xy:  add source reflected across both axes, scaled by sxy.
+#   Near-diagonal handling (default only): if the *direct* pair is near, caller adds κ/(2π).
+#
+# Output:
+#   K::Matrix{Complex{T}} fully populated with symmetry images included.
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Vector{Any},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+    xy=bp.xy
+    nrm=bp.normal
+    κ=bp.curvature 
+    N=length(xy)
+    tol2=(eps(T))^2
+    pref=-im*k/2
+    add_x=false;add_y=false;add_xy=false # true if the symmetry is present
+    sxgn=one(T);sygn=one(T);sxy=one(T) # the scalings +/- depending on the symmetry considerations
+    shift_x=bp.shift_x;shift_y=bp.shift_y # the reflection axes shifts from billiard geometry
+    have_rot=false
+    nrot=1;mrot=0
+    cx=zero(T);cy=zero(T)
+    @inbounds for s in symmetry # symmetry here is always != nothing
+        if hasproperty(s,:axis)
+            if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
+            if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+            if s.axis==:origin
+                add_x=true;add_y=true;add_xy=true
+                sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+                sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+                sxy=sxgn*sygn
+            end
+        elseif s isa Rotation
+            have_rot=true
+            nrot=s.n
+            mrot=mod(s.m,nrot)
+            cx,cy=s.center
+        end
+    end
+    if have_rot
+        ctab,stab,χ=_rotation_tables(T,nrot,mrot)
+    end
+    @use_threads multithreading=multithreaded for i in 1:N # make if instead of elseif since can have >1 symmetry
+        xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2] # i is the target, j is the source
+        @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
+            xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
+            ok=_add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
+            if !ok; K[i,j]+=Complex(κ[i]/TWO_PI); end
+            if add_x # reflect only over the x axis
+                xr=_x_reflect(xj,shift_x);yr=yj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
+            end
+            if add_y # reflect only over the y axis
+                xr=xj;yr=_y_reflect(yj,shift_y)
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
+                end
+            end
+            if add_xy # reflect over both the axes
+                xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
+            end
+            if have_rot
+                @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
+                    cl=ctab[l+1];sl=stab[l+1]
+                    xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
+                    phase=χ[l+1]  # e^{i 2π m l / n}, rotations due to being 1d-irreps have real characters
+                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+# Assemble the full Fredholm operator A(k) for the DLP formulation at complex k:
+#   A(k) = I - K(k) D,   where D = diag(ds) applies panel quadrature weights (right scaling).
+#
+# Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm matrix for reuse, constructed from the kernel
+#   bp        – BoundaryPoints (xy, normals, curvature, panel lengths ds, symmetry shifts)
+#   symmetry  – nothing -> no images; Vector -> include symmetry images in K(k)
+#   k         – complex wavenumber
+#   multithreaded, kernel_fun – passed to compute_kernel_matrix_complex_k(...)
+#
+# Steps:
+#   1) Build kernel matrix K (with/without symmetry) at k.
+#   2) Right-scale by panel lengths: for each column j, K[:,j] *= ds[j].
+#   3) Form A := -K  and add identity on the diagonal -> A = I - K.
+#   4) Change numerical zeros to 0 via filter_matrix!.
+#
+# Output:
+#   A::Matrix{Complex{T}} ready for use in Beyn contour solves (T(z) ≡ A(z)).
+function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+    if isnothing(symmetry)
+        compute_kernel_matrix_complex_k!(K,bp,k;multithreaded=multithreaded)
+    else
+        compute_kernel_matrix_complex_k!(K,bp,symmetry,k,multithreaded=multithreaded)
+    end
+    ds=bp.ds
+    oneK=one(eltype(K)) 
+    @inbounds for j in axes(K,2) 
+        @views K[:,j].*=-ds[j] 
+        K[j,j]+=oneK
+    end
+    filter_matrix!(K)
+    return nothing
 end

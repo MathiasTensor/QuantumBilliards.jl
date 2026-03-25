@@ -368,7 +368,7 @@ end
     return evaluate_points(solver,billiard,k)
 end
 
-@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=:default,multithreaded::Bool=true) where {Ba<:AbsBasis}
+@timeit TO "construct_matrices" function construct_matrices_timed(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun=:default,multithreaded::Bool=true) where {Ba<:AbsBasis}
     return construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
 end
 
@@ -459,7 +459,7 @@ end
     solve_DEBUG_w_2nd_order_corrections(
         solver::ExpandedBoundaryIntegralMethod,
         basis::Ba,
-        pts::BoundaryPointsBIM,
+        pts::BoundaryPoints,
         k;
         kernel_fun=(:default, :first, :second)
     ) -> (Vector{T}, Vector{T}, Vector{T}, Vector{T})
@@ -477,7 +477,7 @@ and `|corr₁ + corr₂|`.
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The EBIM solver config.
 - `basis::Ba`: Basis function type.
-- `pts::BoundaryPointsBIM`: Boundary geometry.
+- `pts::BoundaryPoints`: Boundary geometry.
 - `k`: Wavenumber for the eigenproblem.
 - `kernel_fun`: A triple `(base, first, second)` or custom functions for kernel & derivatives.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
@@ -489,7 +489,7 @@ and `|corr₁ + corr₂|`.
    3. `λ_corrected_2 = k + corr₁ + corr₂` (2nd-order),
    4. `tens_2 = abs(corr₁ + corr₂)`.
 """
-function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun=(:default,:first,:second),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
@@ -573,7 +573,7 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     ks_all_2=Vector{Union{T,Missing}}(missing,length(ks))
     tens_all_1=Vector{Union{T,Missing}}(missing,length(ks))
     tens_all_2=Vector{Union{T,Missing}}(missing,length(ks))
-    all_pts=Vector{BoundaryPointsBIM{T}}(undef,length(ks))
+    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
     @showprogress desc="Calculating boundary points..." for i in eachindex(ks) 
         all_pts[i]=evaluate_points(bim_solver,billiard,ks[i])
     end
@@ -645,7 +645,7 @@ function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis
         push!(dks,kstep)
     end
     println("EBIM...")
-    all_pts=Vector{BoundaryPointsBIM{T}}(undef,length(ks))
+    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
     @showprogress desc="Calculating boundary points EBIM..." Threads.@threads for i in eachindex(ks)
         all_pts[i]=evaluate_points(deepcopy(bim_solver),billiard,ks[i])
     end

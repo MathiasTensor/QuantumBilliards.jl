@@ -11,7 +11,6 @@ include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/billiardutils.jl")
 include("utils/typeutils.jl")
-include("utils/gridutils.jl")
 include("utils/symmetry.jl")
 include("utils/boyd.jl")
 export companion_matrix, interval_roots_boyd, subdivide_intervals
@@ -93,7 +92,6 @@ export basis_matrix, basis_and_gradient_matrices, dk_matrix
 include("solvers/acceleratedmethods/scalingmethod.jl")
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 
-
 include("solvers/sweepmethods/particularsolutionsmethod.jl")
 include("solvers/sweepmethods/decompositionmethod.jl")
 include("solvers/sweepmethods/boundaryintegralmethod.jl")
@@ -101,11 +99,13 @@ include("chebyshev/chebyshev_core.jl")
 include("chebyshev/chebyshev_point_symmetry.jl")
 include("chebyshev/chebyshev_hankel.jl")
 include("chebyshev/chebyshev_DLP_euclidian_helmholtz.jl")
+include("chebyshev/chebyshev_SLP_DLP_euclidian_helmholtz.jl")
 include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
-include("solvers/sweepmethods/sweepmethods.jl")
-include("solvers/sweepmethods/cfie.jl")
 include("solvers/krylovsolvers.jl")
+include("solvers/sweepmethods/cfie.jl")
 include("solvers/acceleratedmethods/beyn.jl")
+include("solvers/sweepmethods/sweepmethods.jl")
+
 include("Hyperbolic/patched_taylor_series_Q.jl")
 include("Hyperbolic/DLP_hyperbolic_helmholtz.jl")
 include("Hyperbolic/BIM_hyperbolic.jl")
@@ -114,6 +114,7 @@ include("Hyperbolic/weyl_hyperbolic.jl")
 include("Hyperbolic/Beyn_hyperbolic.jl")
 include("Hyperbolic/husimi_hyperbolic.jl")
 include("Hyperbolic/wavefunction_hyperbolic.jl")
+
 export ScalingMethodA 
 export DecompositionMethod, ParticularSolutionsMethod
 export BoundaryPointsSM, BoundaryPointsDM
@@ -131,8 +132,6 @@ include("spectra/unfolding.jl")
 export weyl_law
 export compute_spectrum, compute_spectrum_optimized, compute_spectrum_with_state_optimized
 export curvature_correction, corner_correction, curvature_and_corner_corrections, dos_weyl, k_at_state
-include("spectra/spectralStatistics.jl")
-export number_variance, plot_subtract_level_counts_from_weyl, probability_berry_robnik, cumulative_berry_robnik, compare_level_count_to_weyl, plot_nnls, plot_cumulative_spacing_distribution, plot_subtract_level_counts_from_weyl, plot_point_distribution!, plot_length_spectrum!, length_spectrum, probability_berry_robnik_brody, cumulative_berry_robnik_brody, plot_U_diff
 
 #states
 include("states/basisstates.jl")
@@ -153,23 +152,10 @@ export save_husimi_functions!, load_husimi_functions, save_vec_from_StateData!, 
 export ϕ, wavefunction_multi, wavefunction_multi_with_husimi, plot_wavefunctions, plot_wavefunctions_with_husimi
 export momentum_representation_of_wavefunction, computeRadiallyIntegratedDensity, computeAngularIntegratedMomentumDensity
 
-#plotting functions in Makie
-include("plotting/plottingmakie.jl")
-export plot_curve!, plot_boundary!, plot_boundary_orientation!, plot_symmetry_adapted_boundary
-export plot_domain_fun!, plot_domain!
-export plot_wavefunction!, plot_wavefunction_gradient!, plot_probability!
-export plot_boundary_function!, plot_momentum_function!, plot_husimi_function!
-export plot_heatmap!, plot_heatmap_balaced!
-export plot_angularly_integrated_density!, plot_radially_integrated_density!, plot_momentum_representation_polar!, plot_momentum_cartesian_representation!
-include("plotting/testplotting.jl")
-export  plot_geometry_test!, plot_basis_test!, plot_solver_test!, plot_state_test!, plot_matrix!, plot_mean_level_spacing!
-
 include("utils/benchmarkutils.jl")
 export BenchmarkInfo
 export benchmark_solver, compute_benchmarks
 
-include("plotting/benchmarkplotting.jl")
-export plot_benchmarks!
 include("utils/savingutils.jl")
 export save_numerical_ks_and_tensions!, read_numerical_ks_and_tensions, compute_and_save_closest_pairs!, save_numerical_ks!, read_numerical_ks, filter_and_save_ks_and_tensions!, plot_Z!, dynamical_solver_construction, save_ks_and_husimi_functions!, read_ks_and_husimi_functions
 include("utils/rotationutils.jl")

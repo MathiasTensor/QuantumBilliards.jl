@@ -91,20 +91,6 @@ function ParticularSolutionsMethod(dim_scaling_factor::T,pts_scaling_factor::Uni
 end
 
 """
-    struct PointsPSM{T} <: AbsPoints where {T<:Real}
-
-Holds boundary and interior points `(x, y)` for the Particular Solutions Method.
-
-# Fields
-- `xy_boundary::Vector{SVector{2,T}}`: A list of 2D boundary points.
-- `xy_interior::Vector{SVector{2,T}}`: A list of 2D interior points.
-"""
-struct PointsPSM{T} <: AbsPoints where {T<:Real}
-    xy_boundary::Vector{SVector{2,T}}
-    xy_interior::Vector{SVector{2,T}} #normal vectors in points
-end
-
-"""
     evaluate_points(solver::ParticularSolutionsMethod, billiard::Bi, k)
 
 Generate boundary and interior points for the Particular Solutions Method. Uses the solver's scaling
@@ -117,7 +103,7 @@ and how many interior points to sample.
 - `k::Real`: Wavenumber, used to scale the number of points (e.g. `k * L * scaling / (2π)`).
 
 # Returns
-- `PointsPSM{T}`: A struct containing:
+- `BoundaryPoints{T}`: A struct containing:
   - `xy_boundary`: All boundary points appended from each curve.
   - `xy_interior`: Randomly sampled interior points.
 """
@@ -146,11 +132,11 @@ function evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where
     L=billiard.length
     M=max(solver.min_int_pts,round(Int,k*L*b_int/(2*pi)))
     xy_int_all=random_interior_points_polygon(billiard,M)
-    return PointsPSM{type}(xy_all,xy_int_all)
+    return BoundaryPoints{type}(xy_all,Vector{SVector{2,type}}(),Vector{type}(),Vector{type}(),Vector{type}(),Vector{type}(),Vector{type}(),xy_int_all,zero(type),zero(type))
 end
 
 """
-    construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct the basis matrices for boundary points and interior points, with timing information.
 This is a benchmarking variant that uses a `TimerOutput` to measure the time spent creating each
@@ -159,7 +145,7 @@ matrix. It prints the timings at the end.
 # Arguments
 - `solver::ParticularSolutionsMethod`: Solver config, specifying scaling factors.
 - `basis::Ba<:AbsBasis`: A basis to evaluate (e.g. FourierBessel basis).
-- `pts::PointsPSM`: The boundary/interior points to evaluate.
+- `pts::BoundaryPoints{T}`: The boundary/interior points to evaluate.
 - `k::Real`: Wavenumber for the basis.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -168,7 +154,7 @@ matrix. It prints the timings at the end.
   - `B::Matrix`: The basis matrix evaluated at boundary points.
   - `B_int::Matrix`: The basis matrix evaluated at interior points.
 """
-function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     to=TimerOutput()
     pts_bd=pts.xy_boundary
     pts_int=pts.xy_interior
@@ -182,7 +168,7 @@ function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::B
 end
 
 """
-     construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+     construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct two matrices for the Particular Solutions Method: one for boundary points, one for interior points.
 These represent the basis functions evaluated at the domain's boundary and interior.
@@ -190,7 +176,7 @@ These represent the basis functions evaluated at the domain's boundary and inter
 # Arguments
 - `solver::ParticularSolutionsMethod`: The PSM solver config.
 - `basis::Ba<:AbsBasis`: A basis type implementing `basis_matrix(...)`.
-- `pts::PointsPSM`: Contains boundary (`xy_boundary`) and interior (`xy_interior`) points.
+- `pts::BoundaryPoints{T}`: Contains boundary (`xy_boundary`) and interior (`xy_interior`) points.
 - `k::Real`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -199,7 +185,7 @@ These represent the basis functions evaluated at the domain's boundary and inter
   - `B::Matrix`: Basis matrix at boundary points.
   - `B_int::Matrix`: Basis matrix at interior points.
 """
-function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     pts_bd=pts.xy_boundary
     pts_int=pts.xy_interior
     @blas_1 begin
@@ -209,7 +195,7 @@ function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::Poi
     return B,B_int  
 end
 
-function solve_full(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function solve_full(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     B,B_int=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS solution=svdvals(B,B_int)
     return minimum(solution)
@@ -229,7 +215,7 @@ end
     return 0
 end
 
-function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
+function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     # tol is adjustable, based on how the R[1,1] scales below with k. Tested up to k=500 it seems fine with 1e-14
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
@@ -249,7 +235,7 @@ function solve_with_rank_reduction(solver::ParticularSolutionsMethod,basis::Ba,p
 end
 
 """
-    solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-10)
+    solve(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-10)
 
 Solve the Particular Solutions Method by constructing `(B, B_int)` and computing a measure
 (e.g. minimum singular value) that indicates how well the interior and boundary constraints
@@ -261,7 +247,7 @@ The idea is to represent the minimization of the boundary tension of the wavefun
 # Arguments
 - `solver::ParticularSolutionsMethod`: PSM solver config.
 - `basis::Ba<:AbsBasis`: The basis (e.g. a trigonometric or radial basis).
-- `pts::PointsPSM`: Boundary and interior points for evaluation.
+- `pts::BoundaryPoints{T}`: Boundary points for evaluation.
 - `k::Real`: Wavenumber or frequency-like parameter.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_rank_reduction::Bool=true`: If true, uses a rank-reduced solver variant that is more stable for large bases & offers unparalleled performance compared with the full SVD approach. If very high basis dimensions are used, this is recommended, but sometimes tolerance needs adjustement.
@@ -271,7 +257,7 @@ The idea is to represent the minimization of the boundary tension of the wavefun
 - `::Real`: The minimum generalized singular value (or similar measure). Lower values can
   indicate a better "fit" to the PDE boundary conditions.
 """
-function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-10) where {Ba<:AbsBasis}
+function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_rank_reduction=true,tol=1e-10) where {Ba<:AbsBasis}
     if use_rank_reduction
         return solve_with_rank_reduction(solver,basis,pts,k;multithreaded=multithreaded,tol=tol)
     else
@@ -280,7 +266,7 @@ function solve(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;mult
 end
 
 # INTERNAL
-function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
+function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     @time "Matrix construction" B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     T=eltype(B)
     @blas_multi_then_1 MAX_BLAS_THREADS begin 
@@ -298,14 +284,14 @@ function solve_INFO(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k
 end
 
 """
-    solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
+    solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
 
 Returns the smallest singular value and the basis expansion coefficient vector for use in `boundary_function`.
 
 # Arguments
 - `solver::ParticularSolutionsMethod`: PSM solver configuration.
 - `basis::Ba<:AbsBasis`: Basis used to assemble boundary/interior matrices.
-- `pts::PointsPSM`: Collocation points (boundary + interior).
+- `pts::BoundaryPoints{T}`: Boundary points for evaluation.
 - `k::Real`: Wavenumber.
 - `multithreaded::Bool=true`: Pass-through for matrix construction.
 - `tol::Real=1e-10`: Tolerance for numerical rank determination in the rank-reduced solver. Adjust if necessary (you see too much spiking in the tension plot). A good choice is to start with 1e-10 and lower it if necessary. Rule of thumb here is that tol should increase with k since R[1,1] decreases with k.
@@ -314,7 +300,7 @@ Returns the smallest singular value and the basis expansion coefficient vector f
 - `μ::Real`: the stabilized analogue of the smallest generalized singular value.
 - `chat::Vector`: Coefficient vector in the given `basis`.
 """
-function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::PointsPSM,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
+function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS begin
         T=eltype(B)

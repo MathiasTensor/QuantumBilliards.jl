@@ -7,19 +7,19 @@ using LinearAlgebra
 ################################
 
 
-function solve_krylov(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_krylov(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS vals,_,_,_=svdsolve(A,1,:SR)
     return vals[1]
 end
 
-function solve_vect_krylov(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_vect_krylov(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS vals,_,rvect,_=svdsolve(A,1,:SR) # take the lowest singular value and the associated eigenvector, might add option to choose the number of lowest lying singualr values for symmetry reasons.
     return vals[1],rvect[1]
 end
 
-function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
+function solve_krylov(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded=multithreaded)
     CT=eltype(A)
     n=size(A,1)
@@ -96,7 +96,7 @@ end
 ##############
 # INTERNAL FUNCTION THAT GIVES US USEFUL INFORMATION OF THE TIME COMPLEXITY AND STABILITY OF THE ALGORITHM
 
-function solve_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     t0=time()
     @info "Constructing BIM matrix A(k=$k)…"
     @time A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded)
@@ -112,7 +112,7 @@ function solve_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::Boundar
     return σ
 end
 
-function solve_vect_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_vect_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;kernel_fun::Union{Symbol,Function}=:default,multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     t0=time(); @info "Constructing BIM matrix A(k=$k)…"
     @time A=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded)
     @info "A size: $(size(A)) eltype=$(eltype(A))"
@@ -129,7 +129,7 @@ function solve_vect_krylov_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::Bo
     return σ,v
 end
 
-function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk; kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
+function solve_krylov_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k,dk; kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {Ba<:AbstractHankelBasis}
     t0=time(); @info "Constructing A,dA,ddA at k=$k…"
     @time A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun=kernel_fun,multithreaded)
     @blas_multi MAX_BLAS_THREADS begin
@@ -186,7 +186,7 @@ end
 
 #TODO EBIM - L and R eigenvectors simultaneously when compatibility is resolved for KrylovKit > 10.1 we can use BiArnoldi method below - bieigsolve that is designed for non-hermitian EVP and will give simultaneously both left and right eigenvectors. Currently we do 2 separate solver for left and right eigenvectors.
 #=
-function solve_krylov_biarnoldi(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPointsBIM,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol::Real=1e-14,maxiter::Int=5000,krylovdim::Int=max(40,min(80,2*nev+1))) where {Ba<:AbstractHankelBasis}
+function solve_krylov_biarnoldi(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k,dk;kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}=(:default,:first,:second),multithreaded::Bool=true,nev::Int=5,tol::Real=1e-14,maxiter::Int=5000,krylovdim::Int=max(40,min(80,2*nev+1))) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;kernel_fun,multithreaded)
     CT=eltype(A)
     n=size(A,1)

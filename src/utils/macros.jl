@@ -45,6 +45,52 @@ macro use_threads(args...)
 end
 
 """
+    @benchit [timeit=true|false] [\"label\"] expr
+
+The `@benchit` macro is a benchmarking tool that allows you to measure the execution time, memory allocation, and garbage collection time of a given expression.
+"""
+macro benchit(args...)
+    isempty(args) && error("@benchit needs arguments")
+    timeit_expr=:(false)
+    label_expr="\"benchmark\""
+    i=1
+    if args[1] isa Expr && args[1].head== :(=) && args[1].args[1]==:timeit
+        timeit_expr=args[1].args[2]
+        i+=1
+    end
+    i>length(args) && error("@benchit is missing a body")
+    if args[i] isa String || (args[i] isa Expr && args[i].head != :(=))
+        label_expr=args[i]
+        i+=1
+    end
+    i>length(args) && error("@benchit is missing a body")
+    body=
+        if i==length(args)
+            args[i]
+        else
+            Expr(:block,args[i:end]...)
+        end
+
+    return esc(quote
+        if $timeit_expr
+            local _stats=Base.@timed $body
+            local _t=_stats.time
+            local _bytes=_stats.bytes
+            local _gctime=_stats.gctime
+            local _alloc_mb=_bytes / 1024^2
+            println(
+                $label_expr,": ",
+                round(_t; digits=6)," s, ",
+                round(_alloc_mb; digits=3)," MiB alloc, ",
+                round(_gctime; digits=6)," s gc")
+            _stats.value
+        else
+            $body
+        end
+    end)
+end
+
+"""
     @blas_threads n expr
 
 Temporarily set BLAS threads to `n` for `expr`, then restore the previous value.

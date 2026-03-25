@@ -682,7 +682,6 @@ end
 #
 # KEYWORD INPUTS
 #   multithreaded::Bool
-#   kernel_fun::Union{Symbol,Function} (currently unused; kept for API symmetry)
 #
 # OUTPUTS
 #   nothing (fills Ks)

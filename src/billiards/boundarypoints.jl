@@ -9,12 +9,24 @@ Stores discretized boundary information for a billiard curve:
 - `normal::Vector{SVector{2,T}}`: Outward unit normals at each boundary point.
 - `s::Vector{T}`: Arc‐length parameters corresponding to each `xy` point.
 - `ds::Vector{T}`: Integration weights (segment lengths) for each point.
+- `w::Vector{T}`: Method‐specific weights (e.g. for SM: `ds ./ rn`, for DM: `ds`, for BIM: can be empty).
+- `w_n::Vector{T}`: DM‐specific weights (e.g. `ds ./ rn`).
+- `curvature::Vector{T}`: Curvature values at boundary points (used in BIM/EBIM/Beyn).
+- `xy_int::Vector{SVector{2,T}}`: Interior points used in PSM.
+- `shift_x::T`: Shift in x for symmetry operations in BIM/EBIM/Beyn.
+- `shift_y::T`: Shift in y for symmetry operations in BIM/EBIM/Beyn.
 """
 struct BoundaryPoints{T} <: AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}}
     normal::Vector{SVector{2,T}} #normal vectors in points
     s::Vector{T} # arc length coords
-    ds::Vector{T} #integration weights
+    ds::Vector{T} # integration weights
+    w::Vector{T} # method-specific weights (SM: ds./rn, DM: ds, BIM: can leave empty)
+    w_n::Vector{T} # DM specific weights
+    curvature::Vector{T} # BIM/EBIM/Beyn specific curvature values at the boundary points
+    xy_int::Vector{SVector{2,T}} # used in PSM for the interior points
+    shift_x::T # used in BIM/EBIM/Beyn to get the correct reflections/rotations wrt new symmetry axes
+    shift_y::T # used in BIM/EBIM/Beyn to get the correct reflections/rotations wrt new symmetry axes
 end
 
 """
@@ -116,14 +128,14 @@ function boundary_coords(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBil
                 l+=Lc
             end    
         end
-        return BoundaryPoints(xy_all,normal_all,s_all,ds_all) 
+        return BoundaryPoints(xy_all,normal_all,s_all,ds_all,Vector{T}(),Vector{T}(),Vector{T}(),Vector{SVector{2,T}}(),zero(T),zero(T)) 
     end
 end
 
 """
     boundary_coords(billiard::Bi, sampler::S, N::Int) :: BoundaryPoints{T} where {Bi<:AbsBilliard, S<:AbsSampler, T<:Real}
 
- # IMPORTANT: First curve must be real in the f`billiard.full_boundary`
+ # IMPORTANT: First curve must be real in the `billiard.full_boundary`
 
 Sample the entire `billiard.full_boundary` using a generic `sampler`. Each real curve is sampled
 with `Nc = round(Int, N * (crv.length / total_length))` points. Virtual curves are skipped.
@@ -156,7 +168,7 @@ function boundary_coords(billiard::Bi,sampler::S,N) where {Bi<:AbsBilliard,S<:Ab
                     l+=Lc
                 end    
             end
-        return BoundaryPoints(xy_all,normal_all,s_all,ds_all) 
+        return BoundaryPoints(xy_all,normal_all,s_all,ds_all,Vector{T}(),Vector{T}(),Vector{T}(),Vector{SVector{2,T}}(),zero(T),zero(T)) 
     end
 end
 
@@ -221,6 +233,6 @@ function boundary_coords_desymmetrized_full_boundary(billiard::Bi,sampler::Fouri
                 l+=Lc
             end    
         end
-        return BoundaryPoints(xy_all,normal_all,s_all,ds_all) 
+        return BoundaryPoints(xy_all,normal_all,s_all,ds_all,Vector{T}(),Vector{T}(),Vector{T}(),Vector{SVector{2,T}}(),zero(T),zero(T)) 
     end
 end

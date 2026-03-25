@@ -28,6 +28,12 @@ end
 
 When constructing the boundary function u we need to sometimes shift the starting point on the full boundary. This is a helper function that shifts all the fields in the BoundaryPoints struct such that all of them are shifted by the shift_s field in the billiard struct.
 
+1) pick `start_index = argmin(|s_i - shift_s|)` (nearest sampled boundary point to the wanted shift_s),
+2) apply `circshift(..., -start_index+1)` to every boundary-aligned array (s, xy, normal, ds, and u),
+so the chosen point becomes index 1 and alignment between fields is preserved,
+3) renormalize arclength: subtract `s_offset = shifted_s[1]` so the new start is exactly s=0,
+4) wrap with `mod(·, L_effective)` to keep s continuous on [0, L_effective) after the circular shift.
+
 # Arguments
 - `billiard::Bi<:AbsBilliard`: the billiard object.
 - `u::AbstractVector{U<:Real}`: the boundary function vector obtained from the full_boundary. Can be either complex or real

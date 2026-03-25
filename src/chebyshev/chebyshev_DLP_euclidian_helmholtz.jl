@@ -141,11 +141,11 @@ end
 # this is optimized for hankel type complex k contour evaluations.
 # Inputs:
 #   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals
+#   bp: BoundaryPoints containing the boundary points and normals
 #   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
 #   multithreaded: whether to use multithreading or not
 #################################################################################
-function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
     Mk=length(plans);N=length(bp.xy);tol2=(eps(T))^2
     pref=Vector{Complex{T}}(undef,Mk);ab=Vector{NTuple{2,Float64}}(undef,Mk)
     @inbounds for m in 1:Mk
@@ -190,11 +190,11 @@ end
 # Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the upper triangle and mirrors it to the lower triangle and used for a single matrix.
 # Inputs:
 #   K: matrix to fill
-#   bp: BoundaryPointsBIM containing the boundary points and normals
+#   bp: BoundaryPoints containing the boundary points and normals
 #   plan: ChebHankelPlanH1x containing the k value and chebyshev tables
 #   multithreaded: whether to use multithreading or not
 #################################################################################
-function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
+function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy);tol2=(eps(T))^2;k=plan.k;pref=Complex{T}(0,-0.5)*k;a,b=Float64(real(k)),Float64(imag(k));pans=plan.panels
     fill!(K,zero(eltype(K)))
     @use_threads multithreading=multithreaded for i in 1:N
@@ -221,63 +221,15 @@ end
 
 #################################################################################
 # Construct matrices along complex ks as defined in the plans for which chebyshev interpolations are already precomputed.
-# this is optimized for hankel type complex k contour evaluations.
-# Inputs:
-#   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals
-#   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
-#   kernel_fun!: function to compute the kernel contribution directly. This should have the signature
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
-#   multithreaded: whether to use multithreading or not
-#################################################################################
-function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},plans::Vector{ChebHankelPlanH1x},kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
-    Mk=length(plans)
-    N=length(bp.xy)
-    nth=Threads.nthreads()
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        @inbounds for j in 1:N
-            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
-            @inbounds for m in 1:Mk
-                kernel_fun!(Ks[m],i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,plans[m].k,one(Complex{T}))
-            end
-        end
-    end
-    return nothing
-end
-
-#################################################################################
-# Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
-# Inputs:
-#   K: matrix to fill
-#   bp: BoundaryPointsBIM containing the boundary points and normals
-#   k: complex wavenumber
-#   kernel_fun!: function to compute the kernel contribution directly. This should have the signature
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,     #       nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
-#   multithreaded: whether to use multithreading or not
-#################################################################################
-function _one_k_nosymm_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},plan::ChebHankelPlanH1x,kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
-    N=length(bp.xy);fill!(K,zero(eltype(K)))
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        @inbounds for j in 1:N
-            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j];kernel_fun!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,plan.k,one(Complex{T}))
-        end
-    end
-    return nothing
-end
-
-#################################################################################
-# Construct matrices along complex ks as defined in the plans for which chebyshev interpolations are already precomputed.
 # this is optimized for hankel type complex k contour evaluations and reflection symmetry.
 # Inputs:
 #   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
+#   bp: BoundaryPoints containing the boundary points and normals  
 #   sym: Reflection symmetry object
 #   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
 #   multithreaded: whether to use multhreading or not
 #################################################################################
-function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded)  # direct only
     Mk=length(plans);N=length(bp.xy);tol2=(eps(T))^2;shift_x=bp.shift_x;shift_y=bp.shift_y;ops=_reflect_ops_and_scales(T,sym)
     pref=Vector{Complex{T}}(undef,Mk)
@@ -327,12 +279,12 @@ end
 # Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
 # Inputs:
 #   K: matrix to fill
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
+#   bp: BoundaryPoints containing the boundary points and normals  
 #   sym: Reflection symmetry object 
 #   plan: ChebHankelPlanH1x containing the k value and chebyshev tables
 #   multithreaded: whether to use multhreading or not
 #################################################################################
-function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
+function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
     _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded)
     N=length(bp.xy);tol2=(eps(T))^2;k=plan.k;pref=Complex{T}(0,-0.5)*k;a,b=Float64(real(k)),Float64(imag(k));pans=plan.panels
     shift_x=bp.shift_x;shift_y=bp.shift_y;ops=_reflect_ops_and_scales(T,sym);pt=[zero(T),zero(T)]
@@ -364,86 +316,15 @@ end
 
 #################################################################################
 # Construct matrices along complex ks as defined in the plans for which chebyshev interpolations are already precomputed.
-# this is optimized for hankel type complex k contour evaluations and reflection symmetry.
-# Inputs:
-#   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
-#   sym: Reflection symmetry object
-#   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
-#   kernel_fun!: function to compute the kernel contribution directly. This should have the signature
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
-#   multithreaded: whether to use multhreading or not
-#################################################################################
-function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,plans::Vector{ChebHankelPlanH1x},kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
-    Mk=length(plans)
-    N=length(bp.xy)
-    shift_x=bp.shift_x;shift_y=bp.shift_y
-    ops=_reflect_ops_and_scales(T,sym)
-    nth=Threads.nthreads()
-    pt_tls=[zeros(T,2) for _ in 1:nth];nn_tls=[zeros(T,2) for _ in 1:nth]
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        tid=Threads.threadid();pt=pt_tls[tid];nn=nn_tls[tid]
-        @inbounds for j in 1:N
-            xj0,yj0=bp.xy[j];nxj0,nyj0=bp.normal[j]
-            @inbounds for (op,scale_r) in ops
-                if op==1
-                    x_reflect_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,shift_x)
-                elseif op==2
-                    y_reflect_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,shift_y)
-                else
-                    xy_reflect_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,shift_x,shift_y)
-                end
-                scale=Complex{T}(scale_r,zero(T))
-                @inbounds for m in 1:Mk
-                    kernel_fun!(Ks[m],i,j,xi,yi,nxi,nyi,pt[1],pt[2],nn[1],nn[2],plans[m].k,scale)
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-#################################################################################
-# Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
-# Inputs:
-#   K: matrix to fill
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
-#   sym: Reflection symmetry object 
-#   k: complex wavenumber
-#   kernel_fun!: function to compute the kernel contribution directly. This should have the signature
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,     #       nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
-#   multithreaded: whether to use multhreading or not
-#################################################################################
-function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,plan::ChebHankelPlanH1x,kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
-    _one_k_nosymm_DLP_chebyshev!(K,bp,plan,kernel_fun!;multithreaded)
-    N=length(bp.xy);shift_x=bp.shift_x;shift_y=bp.shift_y;ops=_reflect_ops_and_scales(T,sym);pt=[zero(T),zero(T)];nn=[zero(T),zero(T)]
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        @inbounds for j in 1:N
-            xj0,yj0=bp.xy[j];nxj0,nyj0=bp.normal[j]
-            @inbounds for (op,scale_r) in ops
-                if op==1;x_reflect_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,shift_x)
-                elseif op==2;y_reflect_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,shift_y)
-                else;xy_reflect_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,shift_x,shift_y);end
-                kernel_fun!(K,i,j,xi,yi,nxi,nyi,pt[1],pt[2],nn[1],nn[2],plan.k,Complex{T}(scale_r,zero(T)))
-            end
-        end
-    end
-    return K
-end
-
-#################################################################################
-# Construct matrices along complex ks as defined in the plans for which chebyshev interpolations are already precomputed.
 # this is optimized for hankel type complex k contour evaluations and rotational symmetry.
 # Inputs:
 #   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
+#   bp: BoundaryPoints containing the boundary points and normals  
 #   sym: Rotation symmetry object
 #   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
 #   multithreaded: whether to use multhreading or not
 #################################################################################
-function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Rotation,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Rotation,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded)
     Mk=length(plans)
     N=length(bp.xy)
@@ -490,12 +371,12 @@ end
 # Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
 # Inputs:
 #   K: matrix to fill
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
+#   bp: BoundaryPoints containing the boundary points and normals  
 #   sym: Rotation symmetry object 
 #   plan: ChebHankelPlanH1x containing the k value and chebyshev tables
 #   multithreaded: whether to use multhreading or not
 #################################################################################
-function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
+function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
     _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded)
     N=length(bp.xy);tol2=(eps(T))^2;k=plan.k;pref=Complex{T}(0,-0.5)*k;a,b=Float64(real(k)),Float64(imag(k));pans=plan.panels
     cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n));pt=[zero(T),zero(T)]
@@ -521,82 +402,20 @@ function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Bounda
 end
 
 #################################################################################
-# Construct matrices along complex ks as defined in the plans for which chebyshev interpolations are already precomputed.
-# this is optimized for hankel type complex k contour evaluations and rotational symmetry.
-# Inputs:
-#   Ks: vector of matrices to fill, one for each complex k in plans. This  should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
-#   sym: Rotation symmetry object
-#   plans: vector of ChebHankelPlanH1x containing the k values  and chebyshev tables for each k
-#   kernel_fun!: function to compute the kernel contribution directly. This should have the signature
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
-#   multithreaded: whether to use multhreading or not   
-#################################################################################
-function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Rotation,plans::Vector{ChebHankelPlanH1x},kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
-    Mk=length(plans);N=length(bp.xy)
-    cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
-    nth=Threads.nthreads()
-    pt_tls=[zeros(T,2) for _ in 1:nth];nn_tls=[zeros(T,2) for _ in 1:nth]
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        tid=Threads.threadid();pt=pt_tls[tid];nn=nn_tls[tid]
-        @inbounds for j in 1:N
-            xj0,yj0=bp.xy[j];nxj0,nyj0=bp.normal[j]
-            @inbounds for l in 2:sym.n
-                rot_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,cx,cy,ctab[l],stab[l]) # in the custom kernel we need both point and normal rotated perhaps
-                phase=χ[l]
-                @inbounds for m in 1:Mk
-                    kernel_fun!(Ks[m],i,j,xi,yi,nxi,nyi,pt[1],pt[2],nn[1],nn[2],plans[m].k,phase)
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-#################################################################################
-# Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
-# Inputs:
-#   K: matrix to fill
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
-#   sym: Rotation symmetry object 
-#   k: complex wavenumber
-#   kernel_fun!: function to compute the kernel contribution directly. This should have the signature
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,     #       nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
-#   multithreaded: whether to use multhreading or not
-#################################################################################
-function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,plan::ChebHankelPlanH1x,kernel_fun!::Function;multithreaded::Bool=true) where {T<:Real}
-    _one_k_nosymm_DLP_chebyshev!(K,bp,plan,kernel_fun!;multithreaded)
-    N=length(bp.xy);cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n));pt=[zero(T),zero(T)];nn=[zero(T),zero(T)]
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        @inbounds for j in 1:N
-            xj0,yj0=bp.xy[j];nxj0,nyj0=bp.normal[j]
-            @inbounds for l in 2:sym.n
-                rot_point_normal!(pt,nn,xj0,yj0,nxj0,nyj0,cx,cy,ctab[l],stab[l]);kernel_fun!(K,i,j,xi,yi,nxi,nyi,pt[1],pt[2],nn[1],nn[2],plan.k,χ[l])
-            end
-        end
-    end
-    return nothing
-end
-
-#################################################################################
 # Main interface to compute double-layer potential kernel matrices using chebyshev-hankel plans.
 # Inputs:
 #   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
-#   bp: BoundaryPointsBIM containing the boundary points and normals  
+#   bp: BoundaryPoints containing the boundary points and normals  
 #   symmetry: either nothing, or a vector of symmetry objects (Reflection or Rotation)
 #   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
 #   multithreaded: whether to use multhreading or not
-#   kernel_fun: either :default to use the default DLP kernel, or a function with signature. OPTIONAL
-#       : kernel_fun!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},scale::Complex{T}) where {T<:Real}
 #################################################################################
-function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
+function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
-        return compute_kernel_matrices_DLP_chebyshev!(Ks,bp,plans;multithreaded,kernel_fun)
+        return compute_kernel_matrices_DLP_chebyshev!(Ks,bp,plans;multithreaded)
     else
         try 
-            compute_kernel_matrices_DLP_chebyshev!(Ks,bp,symmetry[1],plans;multithreaded,kernel_fun)
+            compute_kernel_matrices_DLP_chebyshev!(Ks,bp,symmetry[1],plans;multithreaded)
         catch _
             error("Error computing kernel matrices with symmetry $(symmetry): ")
             
@@ -608,45 +427,39 @@ end
 # Internal dispatchers for different symmetry cases
 ##################################################################################
 
-function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    kernel_fun===:default && return _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded)
-    return _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded,kernel_fun)
+function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+    return _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},plan::ChebHankelPlanH1x;multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    kernel_fun===:default && return _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded)
-    return _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded,kernel_fun)
+function compute_kernel_matrices_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
+    return _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    kernel_fun===:default && return _all_k_reflection_DLP_chebyshev!(Ks,bp,sym,plans;multithreaded)
-    return _all_k_reflection_DLP_chebyshev!(Ks,bp,sym,plans,kernel_fun;multithreaded)
+function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+    return _all_k_reflection_DLP_chebyshev!(Ks,bp,sym,plans;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,plan::ChebHankelPlanH1x;multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    kernel_fun===:default && return _one_k_reflection_DLP_chebyshev!(K,bp,sym,plan;multithreaded)
-    return _one_k_reflection_DLP_chebyshev!(K,bp,sym,plan,kernel_fun;multithreaded)
+function compute_kernel_matrices_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
+    return _one_k_reflection_DLP_chebyshev!(K,bp,sym,plan;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},
-sym::Rotation,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    kernel_fun===:default && return _all_k_rotation_DLP_chebyshev!(Ks,bp,sym,plans;multithreaded)
-    return _all_k_rotation_DLP_chebyshev!(Ks,bp,sym,plans,kernel_fun;multithreaded)
+function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},
+sym::Rotation,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+    return _all_k_rotation_DLP_chebyshev!(Ks,bp,sym,plans;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},
-sym::Rotation,plan::ChebHankelPlanH1x;multithreaded::Bool=true,kernel_fun::Union{Symbol,Function}=:default) where {T<:Real}
-    kernel_fun===:default && return _one_k_rotation_DLP_chebyshev!(K,bp,sym,plan;multithreaded)
-    return _one_k_rotation_DLP_chebyshev!(K,bp,sym,plan,kernel_fun;multithreaded)
+function compute_kernel_matrices_DLP_chebyshev!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},
+sym::Rotation,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
+    return _one_k_rotation_DLP_chebyshev!(K,bp,sym,plan;multithreaded)
 end
 
 #################################################################################
 # Assemble Fredholm matrices from kernel matrices by applying quadrature weights and adding identity.
 # Inputs:
 #   Ks: vector of matrices to modify in place
-#   bp: BoundaryPointsBIM containing the boundary points and quadrature weights
+#   bp: BoundaryPoints containing the boundary points and quadrature weights
 #################################################################################
-function assemble_fredholm_matrices!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T}) where {T<:Real}
+function assemble_fredholm_matrices!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T}) where {T<:Real}
     ds=bp.ds
     N=length(ds)
     Mk=length(Ks)
@@ -668,9 +481,9 @@ end
 # Assemble Fredholm matrix from kernel matrix by applying quadrature weights and adding identity.
 # Inputs:
 #   Ks: single matrix to modify in place
-#   bp: BoundaryPointsBIM containing the boundary points and quadrature weights
+#   bp: BoundaryPoints containing the boundary points and quadrature weights
 #################################################################################
-function assemble_fredholm_matrices!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T}) where {T<:Real}
+function assemble_fredholm_matrices!(K::Matrix{Complex{T}},bp::BoundaryPoints{T}) where {T<:Real}
     ds=bp.ds
     N=length(ds)
     @inbounds for j in 1:N
@@ -690,14 +503,14 @@ end
 ##################################################################################
 # Estimate suitable rmin and rmax for BIM based on boundary points and symmetry.
 # Inputs:
-#   bp: BoundaryPointsBIM containing the boundary points
+#   bp: BoundaryPoints containing the boundary points
 #   sym: either nothing or a vector of symmetry objects (Reflection or Rotation) 
 #   pad: tuple of (rmin_pad,rmax_pad) to pad the estimated rmin and rmax
 #   rmax_factor: factor to multiply the estimated rmax by
 # Outputs:
 #   rmin,rmax: estimated minimum and maximum distances between boundary points considering symmetry
 ##################################################################################
-function estimate_rmin_rmax(bp::BoundaryPointsBIM{T},sym::Union{Nothing,Vector{Any}}=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=3.0) where {T<:Real}
+function estimate_rmin_rmax(bp::BoundaryPoints{T},sym::Union{Nothing,Vector{Any}}=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=3.0) where {T<:Real}
     N=length(bp.xy);@assert N>1
     tol2=(eps(T))^2
     nth=Threads.nthreads()

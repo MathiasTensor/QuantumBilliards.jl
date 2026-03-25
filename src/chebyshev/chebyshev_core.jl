@@ -45,22 +45,8 @@
 # All functions are allocation-free inside tight loops and suitable for
 # multi-threaded vectorized usage.
 #
-# MO / 02-12-25
+# MO / 03-23-26
 ###############################################################################
-
-# We evaluated the function at Chebyshev–Lobatto nodes at each panel and then fit the Chebyshev coefficients. c is the vector of Chebyshev coefficients and f is the vector of function evaluations at Chebyshev nodes
-# This is all done with clenshaw's reverse recurrence algorithm for numerical stability.
-@inline function _cheb_clenshaw(c::AbstractVector{ComplexF64},t::Float64)::ComplexF64
-    b1=0.0+0.0im
-    b2=0.0+0.0im
-    twot=2*t
-    @inbounds for k in (length(c)-1):-1:1
-        b=muladd(twot,b1,c[k+1]-b2)
-        b2=b1
-        b1=b
-    end
-    return muladd(t,b1,c[1])-b2
-end
 
 # =============================================================================
 # Compute Chebyshev expansion coefficients c (in place) from samples f taken at
@@ -158,6 +144,180 @@ end
     end
     b[end]=rmax
     return b
+end
+
+# =============================================================================
+# UNROLLED CLENSHAW
+# =============================================================================
+
+#=
+Unrolled versions of the Clenshaw recurrence for small fixed M (4 to 8) to avoid loop overhead. These are used in the innermost loops of Hankel evaluations where M is typically small with large panelization.
+=#
+
+#4th degree
+@inline function _cheb_clenshaw_4(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
+@inline function _cheb_clenshaw_4(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
+# 5th degree
+@inline function _cheb_clenshaw_5(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[6];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
+@inline function _cheb_clenshaw_5(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[6,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
+# 6th degree
+@inline function _cheb_clenshaw_6(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[7];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
+@inline function _cheb_clenshaw_6(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[7,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
+# 7th degree
+@inline function _cheb_clenshaw_7(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[8];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
+@inline function _cheb_clenshaw_7(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[8,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
+# 8th degree
+@inline function _cheb_clenshaw_8(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[9];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[8];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
+@inline function _cheb_clenshaw_8(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[9,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[8,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
+# =============================================================================
+# TOP CALLING FUNCTIONS FOR CHEBYSHEV
+# =============================================================================
+
+# We evaluated the function at Chebyshev–Lobatto nodes at each panel and then fit the Chebyshev coefficients. c is the vector of Chebyshev coefficients and f is the vector of function evaluations at Chebyshev nodes
+# This is all done with clenshaw's reverse recurrence algorithm for numerical stability.
+@inline function _cheb_clenshaw(c::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    M=length(c)-1
+    if M==4
+        return _cheb_clenshaw_4(c,t)
+    elseif M==5
+        return _cheb_clenshaw_5(c,t)
+    elseif M==6
+        return _cheb_clenshaw_6(c,t)
+    elseif M==7
+        return _cheb_clenshaw_7(c,t)
+    elseif M==8
+        return _cheb_clenshaw_8(c,t)
+    else
+        b1=0.0+0.0im
+        b2=0.0+0.0im
+        u=2*t
+        @inbounds for k in M:-1:1
+            b=muladd(u,b1,c[k+1]-b2)
+            b2=b1
+            b1=b
+        end
+        return muladd(t,b1,c[1])-b2
+    end
+end
+
+# Matrix of coefficients is stored in column-major order, so we pass the column index to these functions when we have a set of  coefficients for multiple panels. The unrolled versions are used when M is small (4 to 8) to avoid loop overhead in the innermost loops of Hankel evaluations where M is typically small with large panelization.
+@inline function _cheb_clenshaw_col(coeffs::AbstractMatrix{ComplexF64},col::Int,M::Int,t::Float64)::ComplexF64
+    if M==4
+        return _cheb_clenshaw_4(coeffs,col,t)
+    elseif M==5
+        return _cheb_clenshaw_5(coeffs,col,t)
+    elseif M==6
+        return _cheb_clenshaw_6(coeffs,col,t)
+    elseif M==7
+        return _cheb_clenshaw_7(coeffs,col,t)
+    elseif M==8
+        return _cheb_clenshaw_8(coeffs,col,t)
+    else
+        b1=0.0+0.0im
+        b2=0.0+0.0im
+        u=2*t
+        @inbounds for k in M:-1:1
+            b0=muladd(u,b1,coeffs[k+1,col]-b2)
+            b2=b1
+            b1=b0
+        end
+        return muladd(t,b1,coeffs[1,col])-b2
+    end
 end
 
 

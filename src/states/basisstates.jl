@@ -12,7 +12,7 @@ Constructs a state that represent a single indexed basis element that is useful 
 - `eps`: The precision of calculations.
 - `basis`: The basis in which the state is defined.
 """
-struct BasisState{K,T,Ba} <: StationaryState 
+struct BasisState{K,T,Ba}<:StationaryState 
     k::K
     k_basis::K
     vec::Vector{T}
@@ -35,11 +35,11 @@ Constructs the basis state of the given index i.
 # Returns
 -`BasisState` object representing the basis state.
 """
-function BasisState(basis::Ba, k::T, i::Integer) where {T<:Real, Ba<:AbsBasis} 
-    dim = basis.dim
-    typ = typeof(k)
-    eps = set_precision(k)
-    vec = zeros(typ,dim)
-    vec[i] = one(typ)
-    return BasisState(k,k, vec, i, dim, eps, basis)
+function BasisState(basis::Ba,k::T,i::Integer) where {T<:Real,Ba<:AbsBasis} 
+    dim=basis.dim
+    typ=typeof(k)
+    eps=set_precision(k)
+    vec=zeros(typ,dim)
+    vec[i]=one(typ)
+    return BasisState(k,k,vec,i,dim,eps,basis)
 end

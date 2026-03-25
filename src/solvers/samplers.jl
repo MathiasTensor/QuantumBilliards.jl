@@ -1,4 +1,3 @@
-
 using FastGaussQuadrature
 using StaticArrays
 using StatsBase
@@ -240,43 +239,3 @@ function random_interior_points_polygon(billiard::Bi,M::Int;N_polygon_checks::In
     end
     return pts
 end
-
-#=
-#needs some work
-function fourier_nodes(N::Int; primes=(2,3,5)) #starts at 0 ends at 
-    if primes == false
-        M = N
-    else
-        M = nextprod(primes,N)
-    end
-    t = collect(i/M for i in 0:(M-1))
-    dt = diff(t)
-    dt = push!(dt,dt[1])
-    return t, dt
-end
-
-function fourier_nodes(N::Int, crv_lengths; primes=(2,3,5)) #starts at 0 ends at 
-    if primes == false
-        M = N
-    else
-        M = nextprod(primes,N)
-    end
-    L = sum(crv_lengths)
-    ts =Vector{Vector{typeof(L)}}(undef,0)
-    dts =Vector{Vector{typeof(L)}}(undef,0)
-    start = 0.0
-    for l in crv_lengths
-        ds = L/(l*M) 
-        println(start*ds)
-        t = collect(range(start*ds,1.0,step=ds))
-        #println(t)
-        dt_end = 1.0 - t[end]
-        start = (ds - dt_end)/ds
-        push!(ts,t)
-        dt = diff(t)
-        push!(dt,dt_end)
-        push!(dts,dt)
-    end
-    return ts,dts
-end
-=#

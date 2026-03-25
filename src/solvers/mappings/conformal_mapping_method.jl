@@ -15,7 +15,6 @@ using CSV,DataFrames # for saving the eigenvalues and/or their differences. If o
 
 sympy=pyimport("sympy") # use Python's sympy API
 z,w=sympy.symbols("z w") # symbol for z, w (both complex)
-#TODO New solve function which uses ARPACK to solve say 2000 eignevalues if a sigma inverse shifted matrix where we vary the sigma so we can get the lowest 25% of levels of A with iterating this process and merging the results.
 
 
 ##################################
@@ -612,41 +611,6 @@ function ϕ(k::Int,l::Int,roots::Dict{Tuple{Int,Int},T},r::T,φ::T;symmetry::Sym
     inv_pi=1/sqrt(pi)
     N=(k==0 ? inv_pi : sqrt(2)*inv_pi)/(0.5*bessel_j_nu_der(k,j))
     return N*Bessels.besselj(k,j*r)*(symmetry==:ODD ? sin(k*φ) : cos(k*φ))
-end
-
-"""
-    make_inv_newton_fd(f::Function;tol::T=1e-12,maxiter::Int=1000) :: Function
-
-Return a function `invf(w)` that approximates the inverse of `f(z)` via Newton’s method. This is now a LEGACY function that was used to invert the (x,y) Cartesian grid coordinates back to the domain D coordinates via f^-1.
-
-# Arguments
-- `f::Function`: mapping from z to w  
-- `tol`: convergence tolerance for |Δxy|  
-- `maxiter`: maximum Newton iterations
-
-# Returns
-- `invf::Function`: takes `w::Complex` and returns `z≈f⁻¹(w)` as `Complex`
-"""
-function make_inv_newton_fd(f::Function;tol=1e-12,maxiter=1000)
-    function invf(w::Complex{<:Real})
-        xy=[real(w),imag(w)] # represent z = x + i y as a real vector [x,y].
-        function F(xy::Vector{T}) where {T<:Real} #  real‐valued residual F(xy) = [Re(f(z)-w), Im(f(z)-w)].
-            z=xy[1]+im*xy[2]
-            fz=f(z)-w
-            return [real(fz),imag(fz)]
-        end
-        for _ in 1:maxiter # Newton loop
-            Fv=F(xy)
-            J=ForwardDiff.jacobian(F,xy) # eval root minimizer F and Jacobian F at current xy
-            δ=J\Fv # solve J · δ = Fv
-            xy.-=δ
-            if norm(δ)<tol
-                break
-            end
-        end
-        return xy[1]+im*xy[2]
-    end
-    return invf
 end
 
 """
