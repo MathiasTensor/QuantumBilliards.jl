@@ -240,23 +240,38 @@ Computes the kernel matrix for the given boundary points with symmetry reflectio
 function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     nrm=bp.normal
-    κ=bp.curvature 
+    κ=bp.curvature
     N=length(xy)
     K=zeros(Complex{T},N,N)
     tol2=(eps(T))^2
     pref=Complex{T}(0,-k/2)
-    add_x=false;add_y=false;add_xy=false # true if the symmetry is present
-    sxgn=one(T);sygn=one(T);sxy=one(T) # the scalings +/- depending on the symmetry considerations
-    shift_x=bp.shift_x;shift_y=bp.shift_y # the reflection axes shifts from billiard geometry
+    add_x=false
+    add_y=false
+    add_xy=false
+    sxgn=one(T)
+    sygn=one(T)
+    sxy=one(T)
+    shift_x=bp.shift_x
+    shift_y=bp.shift_y
     have_rot=false
-    nrot=1;mrot=0
-    cx=zero(T);cy=zero(T)
-    @inbounds for s in symmetry # symmetry here is always != nothing
+    nrot=1
+    mrot=0
+    cx=zero(T)
+    cy=zero(T)
+    @inbounds for s in symmetry
         if hasproperty(s,:axis)
-            if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
-            if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+            if s.axis==:y_axis
+                add_x=true
+                sxgn=(s.parity==-1 ? -one(T) : one(T))
+            end
+            if s.axis==:x_axis
+                add_y=true
+                sygn=(s.parity==-1 ? -one(T) : one(T))
+            end
             if s.axis==:origin
-                add_x=true;add_y=true;add_xy=true
+                add_x=true
+                add_y=true
+                add_xy=true
                 sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
                 sygn=(s.parity[2]==-1 ? -one(T) : one(T))
                 sxy=sxgn*sygn
@@ -271,34 +286,45 @@ function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;
     if have_rot
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
     end
-    @use_threads multithreading=multithreaded for i in 1:N  # make if instead of elseif since can have >1 symmetry
-        xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2] # i is the target, j is the source
-        @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
-            xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi=xy[i][1]
+        yi=xy[i][2]
+        nxi=nrm[i][1]
+        nyi=nrm[i][2]
+        @inbounds for j in 1:N
+            xj=xy[j][1]
+            yj=xy[j][2]
+            nxj=nrm[j][1]
+            nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
-            if !ok; K[i,j]+=Complex(κ[i]/TWO_PI); end
+            if !ok
+                K[i,j]+=Complex(κ[i]/TWO_PI)
             end
-            if add_x # reflect only over the x axis
-                xr=_x_reflect(xj,shift_x);yr=yj
+            if add_x
+                xr=_x_reflect(xj,shift_x)
+                yr=yj
                 _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
             end
-            if add_y # reflect only over the y axis
-                xr=xj;yr=_y_reflect(yj,shift_y)
+            if add_y
+                xr=xj
+                yr=_y_reflect(yj,shift_y)
                 _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
             end
-            if add_xy # reflect over both the axes
-                xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
+            if add_xy
+                xr=_x_reflect(xj,shift_x)
+                yr=_y_reflect(yj,shift_y)
                 _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
             end
             if have_rot
-                @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
-                    cl=ctab[l+1];sl=stab[l+1]
+                @inbounds for l in 1:nrot-1
+                    cl=ctab[l+1]
+                    sl=stab[l+1]
                     xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
-                    phase=χ[l+1]  # e^{i 2π m l / n}, rotations due to being 1d-irreps have real characters
+                    phase=χ[l+1]
                     _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
                 end
             end
-        end 
+        end
     end
     return K
 end
