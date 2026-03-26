@@ -323,7 +323,7 @@ end
 # INPUTS
 #   Ks::Vector{Matrix{Complex{T}}}
 #       Preallocated matrices, length Mk, each N×N
-#   bp::BoundaryPointsBIM{T}
+#   bp::BoundaryPoints{T}
 #       Boundary discretization struct containing:
 #         bp.xy         :: Vector{SVector{2,T}}  collocation points
 #         bp.normal     :: Vector{SVector{2,T}}  outward normals
@@ -339,7 +339,7 @@ end
 # OUTPUTS
 #   nothing (fills Ks in-place)
 ################################################################################
-function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     Mk=length(tabs)
     N=length(bp.xy)
     @use_threads multithreading=multithreaded for m in 1:Mk
@@ -373,7 +373,7 @@ end
 #
 # INPUTS
 #   K::Matrix{Complex{T}}   Preallocated N×N output
-#   bp::BoundaryPointsBIM{T} boundary discretization
+#   bp::BoundaryPoints{T} boundary discretization
 #   tab::QTaylorTable       Q_ν table for this k
 #
 # KEYWORD INPUTS
@@ -382,7 +382,7 @@ end
 # OUTPUTS
 #   nothing (fills K in-place)
 ################################################################################
-function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
     fill!(K,zero(eltype(K)))
     @use_threads multithreading=multithreaded for i in 1:N
@@ -412,7 +412,7 @@ end
 # INPUTS
 #   Ks::Vector{Matrix{Complex{T}}}
 #       Preallocated, length Mk, each N×N (filled in-place)
-#   bp::BoundaryPointsBIM{T}
+#   bp::BoundaryPoints{T}
 #       Boundary discretization:
 #         bp.xy        :: Vector{SVector{2,T}}  collocation points (source/target)
 #         bp.normal    :: Vector{SVector{2,T}}  Euclidean normals at source points
@@ -432,7 +432,7 @@ end
 # OUTPUTS
 #   nothing (fills Ks in-place)
 ################################################################################
-function _all_k_reflection_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function _all_k_reflection_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     Mk=length(tabs)
     N=length(bp.xy)
@@ -487,7 +487,7 @@ end
 #
 # INPUTS
 #   K::Matrix{Complex{T}}   Preallocated N×N output
-#   bp::BoundaryPointsBIM{T}
+#   bp::BoundaryPoints{T}
 #   sym::Reflection
 #   tab::QTaylorTable
 #
@@ -497,7 +497,7 @@ end
 # OUTPUTS
 #   nothing (fills Ks in-place)
 ################################################################################
-function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
+function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
     _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     N=length(bp.xy)
     tol2=(eps(T))^2
@@ -546,7 +546,7 @@ end
 #
 # INPUTS
 #   Ks::Vector{Matrix{Complex{T}}}   (Mk matrices, each N×N) filled in-place
-#   bp::BoundaryPointsBIM{T}         boundary discretization
+#   bp::BoundaryPoints{T}         boundary discretization
 #   sym::Rotation                   rotation symmetry descriptor (n-fold, sector m)
 #   tabs::Vector{QTaylorTable}       Q_ν tables for each wavenumber
 #
@@ -556,7 +556,7 @@ end
 # OUTPUTS
 #   nothing
 ################################################################################
-function _all_k_rotation_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Rotation,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function _all_k_rotation_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Rotation,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     Mk=length(tabs)
     N=length(bp.xy)
@@ -603,7 +603,7 @@ end
 #
 # INPUTS
 #   K::AbstractMatrix{Complex{T}}  Preallocated N×N output 
-#   bp::BoundaryPointsBIM{T}
+#   bp::BoundaryPoints{T}
 #   sym::Rotation
 #   tab::QTaylorTable
 #
@@ -613,7 +613,7 @@ end
 # OUTPUTS
 #   nothing
 ################################################################################
-function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
+function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
     _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     N=length(bp.xy)
     tol2=(eps(T))^2
@@ -642,27 +642,27 @@ function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bound
     return nothing
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Reflection,ks::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,ks::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_reflection_DLP_hyperbolic!(Ks,bp,sym,ks;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     return _one_k_reflection_DLP_hyperbolic!(K,bp,sym,tab;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},sym::Rotation,ks::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Rotation,ks::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_rotation_DLP_hyperbolic!(Ks,bp,sym,ks;multithreaded)
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     return _one_k_rotation_DLP_hyperbolic!(K,bp,sym,tab;multithreaded)
 end
 
@@ -675,7 +675,7 @@ end
 #
 # INPUTS (MULTI-k)
 #   Ks::Vector{Matrix{Complex{T}}}
-#   bp::BoundaryPointsBIM{T}
+#   bp::BoundaryPoints{T}
 #   symmetry::Union{Vector{Any},Nothing}
 #       - nothing or Vector with one symmetry element (Reflection or Rotation)
 #   tabs::Vector{QTaylorTable}
@@ -686,7 +686,7 @@ end
 # OUTPUTS
 #   nothing (fills Ks)
 ################################################################################
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
         return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     else
@@ -705,7 +705,7 @@ function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},
     end
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T},symmetry::Union{Vector{Any},Nothing},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
         return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     else
@@ -737,7 +737,7 @@ end
 #
 #   K  : N×N matrix with entries K[i,j] = ∂_{n_y} G_k^ℍ(x_i,x_j)
 #
-#   bp : BoundaryPointsBIM containing quadrature weights ds_j
+#   bp : BoundaryPoints containing quadrature weights ds_j
 #        (Euclidean arclength elements along Γ)
 #
 # Discretization
@@ -757,7 +757,7 @@ end
 #
 #   3) filter_matrix! removes noise-induced numerical artifacts.
 ################################################################################
-function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPointsBIM{T}) where {T<:Real}
+function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T}) where {T<:Real}
     @inbounds for j in axes(K,2)
         @views K[:,j].*=bp.ds[j]
     end
@@ -773,12 +773,12 @@ end
 #
 # INPUTS:
 #   Ks::Vector{Matrix{Complex{T}}}   Mk matrices, each N×N (filled in-place)
-#   bp::BoundaryPointsBIM{T}         provides bp.ds (Euclidean quadrature weights)
+#   bp::BoundaryPoints{T}         provides bp.ds (Euclidean quadrature weights)
 #
 # OUTPUTS:
 #   nothing
 #------------------------------------------------------------------------------
-function assemble_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPointsBIM{T}) where {T<:Real}
+function assemble_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T}) where {T<:Real}
     ds=bp.ds
     N=length(ds)
     Mk=length(Ks)

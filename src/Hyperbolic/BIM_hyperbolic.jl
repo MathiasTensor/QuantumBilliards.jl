@@ -237,7 +237,7 @@ end
 #   pts_hyp::BoundaryPointsHypBIM{T}
 #     Hyperbolic boundary container for THIS k (typically constructed once at kmax
 #     and reused across k-sweep). Fields used here:
-#       pts_hyp.xy,normal,curvature,ds  (via conversion to BoundaryPointsBIM)
+#       pts_hyp.xy,normal,curvature,ds  (via conversion to BoundaryPoints)
 #     Hyperbolic extras (λ,dsH,ξ,LH) are not used by matrix assembly.
 #
 #   k
@@ -265,7 +265,7 @@ end
 #------------------------------------------------------------------------------
 function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,h=1e-4,P::Int=30,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
-    pts=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts_hyp)
+    pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
@@ -334,7 +334,7 @@ end
 #------------------------------------------------------------------------------
 function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,h=1e-4,P::Int=30,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
-    pts=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts_hyp)
+    pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
@@ -411,7 +411,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     kmax=maximum(ks)
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=M_cdf_base,safety=safety)
     pts_hyp=evaluate_points(solver,billiard,real(kmax),pre;safety=safety,threaded=multithreaded_matrices)
-    pts=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts_hyp)
+    pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation

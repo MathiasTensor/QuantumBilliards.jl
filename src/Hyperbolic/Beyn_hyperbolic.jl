@@ -162,7 +162,7 @@ end
 #
 #   pts :: BoundaryPointsHypBIM{T}
 #       Boundary discretization in the hyperbolic setting.
-#       NOTE: you convert to Euclidean BoundaryPointsBIM for kernel assembly.
+#       NOTE: you convert to Euclidean BoundaryPoints for kernel assembly.
 #
 #   N :: Int
 #       Number of boundary DOFs (must match length(pts.xy)).
@@ -232,7 +232,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     ks=ComplexF64.(zj)
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
-    pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
+    pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
     dmin=max(dmin,1e-3)
     #pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=h,P=P)
     #tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
@@ -438,7 +438,7 @@ function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{
     tensN=Vector{T}(undef,rk)
     logs=collect_logs ? String[] : nothing
     A_buf=fill(zero(Complex{T}),N,N)
-    pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
+    pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     dmin=max(dmin,1e-3)
     #pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=T(h),P=P)
@@ -512,7 +512,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     @info "beyn:start(hyp)" k0=k0 R=R nq=nq N=N r=r
     Tbufs=[zeros(Complex{T},N,N) for _ in 1:nq]
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
-    pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPointsBIM(pts)
+    pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
     xy=pts_eucl.xy
     if norm(xy[1]-xy[end])<1e-14
         @warn "Duplicate endpoint in boundary points; drop last point!" N=length(xy)

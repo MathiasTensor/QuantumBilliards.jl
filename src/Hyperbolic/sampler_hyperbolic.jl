@@ -10,11 +10,11 @@ function _boundary_curves_for_solver(billiard::Bi,solver::BIM_hyperbolic) where 
 end
 
 #------------------------------------------------------------------------------
-# _BoundaryPointsHypBIM_to_BoundaryPointsBIM(bph)->bp
+# _BoundaryPointsHypBIM_to_BoundaryPoints(bph)->bp
 #
 # PURPOSE
 #   Convert a hyperbolic boundary-point container (BoundaryPointsHypBIM) into the
-#   standard Euclidean BIM container (BoundaryPointsBIM) expected by low-level
+#   standard Euclidean points (BoundaryPoints) expected by low-level
 #   Fredholm / layer-kernel matrix constructors.
 #
 #   PRESERVED (copied by reference, no allocation for vectors):
@@ -32,12 +32,12 @@ end
 #       bph.xy, bph.normal, bph.curvature, bph.ds
 #
 # OUTPUTS
-#   bp::BoundaryPointsBIM{T}
+#   bp::BoundaryPoints{T}
 #     Uses the same vector objects for xy/normal/curvature/ds (zero-copy).
 #     shift_x and shift_y are set to 0 (no shifts in Poincaré disk workflow).
 #------------------------------------------------------------------------------
-@inline function _BoundaryPointsHypBIM_to_BoundaryPointsBIM(bph::BoundaryPointsHypBIM{T}) where{T<:Real}
-    return BoundaryPointsBIM{T}(bph.xy,bph.normal,bph.curvature,bph.ds,zero(T),zero(T))
+@inline function _BoundaryPointsHypBIM_to_BoundaryPoints(bph::BoundaryPointsHypBIM{T}) where {T<:Real}
+    return BoundaryPoints{T}(bph.xy,bph.normal,Vector{T}(),bph.ds,Vector{T}(),Vector{T}(),bph.curvature,Vector{SVector{2,T}}(),zero(T),zero(T))
 end
 
 #------------------------------------------------------------------------------
