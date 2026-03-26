@@ -173,7 +173,7 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
                 end
             else
                 r=sqrt(d2);invr=inv(r) # compute r and 1/r for that matrix entry
-                p=_find_panel(pans_ref,r);P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
+                p=_find_panel(plans[1],r);P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
                 t=(2*r-(P.b+P.a))/(P.b-P.a);invsqrt=inv(sqrt(r)) # compute local chebyshev coordinate and 1/sqrt(r) needed for hankel evaluation
                 h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab) # evaluate hankel functions for all ks at this r efficiently
                 @inbounds for m in 1:Mk # accumulate into each matrix on the contour the respective contribution
@@ -205,7 +205,7 @@ function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boundary
                 val=Complex{T}(bp.curvature[i]/(2π));K[i,j]=val;if i!=j;K[j,i]=val;end
             else
                 r=sqrt(d2);invr=inv(r)
-                p=_find_panel(pans,r)
+                p=_find_panel(plan,r)
                 P=pans[p]
                 t=(2*r-(P.b+P.a))/(P.b-P.a)
                 invsqrt=inv(sqrt(r))
@@ -259,7 +259,7 @@ function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bou
                 dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
                     r=sqrt(d2);invr=inv(r)
-                    p=_find_panel(pans_ref,r)
+                    p=_find_panel(plans[1],r)
                     P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
                     t=(2*r-(P.b+P.a))/(P.b-P.a) # compute local chebyshev coordinate and 1/sqrt(r) needed for hankel evaluation
                     invsqrt=inv(sqrt(r))
@@ -299,7 +299,7 @@ function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boun
                 dx=xi-pt_local[1];dy=yi-pt_local[2];d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
                     r=sqrt(d2);invr=inv(r)
-                    p=_find_panel(pans,r)
+                    p=_find_panel(plan,r)
                     P=pans[p]
                     t=(2*r-(P.b+P.a))/(P.b-P.a)
                     invsqrt=inv(sqrt(r))
@@ -351,7 +351,7 @@ function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bound
                 dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
                     r=sqrt(d2);invr=inv(r)
-                    p=_find_panel(pans_ref,r);P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
+                    p=_find_panel(plans[1],r);P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
                     t=(2*r-(P.b+P.a))/(P.b-P.a) # compute local chebyshev coordinate and 1/sqrt(r) needed for hankel evaluation
                     invsqrt=inv(sqrt(r))
                     h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab) # evaluate hankel functions for all ks at this r efficiently
@@ -389,7 +389,7 @@ function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Bounda
                 dx=xi-pt_local[1];dy=yi-pt_local[2];d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
                     r=sqrt(d2);invr=inv(r)
-                    p=_find_panel(pans,r);P=pans[p]
+                    p=_find_panel(plan,r);P=pans[p]
                     t=(2*r-(P.b+P.a))/(P.b-P.a);invsqrt=inv(sqrt(r))
                     phase=_exp_ikr(a,b,r)
                     h1x=_cheb_clenshaw(P.c1,t);h=χ[l]*pref*(phase*h1x*invsqrt)
