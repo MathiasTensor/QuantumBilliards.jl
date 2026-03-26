@@ -112,8 +112,8 @@ end
 
 function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=_boundary_curves_for_solver(solver,billiard)
-    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : type(0.0)
-    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : type(0.0)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : zero(T)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : zero(T)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
         pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx;shift_x=shift_x,shift_y=shift_y) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx;shift_x=shift_x,shift_y=shift_y))
