@@ -72,7 +72,7 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
-    ts=copy(pts.ts) # these can stay the same since they are just the parameters of the curve, and reversing the order of points does not change the parameter values at those points
+    ts=reverse(pts.ts) # these can stay the same since they are just the parameters of the curve, and reversing the order of points does not change the parameter values at those points for equispacings. Still for futureproofing reverse them
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
@@ -244,15 +244,15 @@ function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflectio
             if op==1
                 x_reflect_point!(pt,xj,yj,shift_x)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(-txj,tyj)
+                tangent[j]=-SVector(-txj,tyj)
             elseif op==2
                 y_reflect_point!(pt,xj,yj,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(txj,-tyj)
+                tangent[j]=-SVector(txj,-tyj)
             else
                 xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(-txj,-tyj)
+                tangent[j]=-SVector(-txj,-tyj)
             end
             speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
         end
