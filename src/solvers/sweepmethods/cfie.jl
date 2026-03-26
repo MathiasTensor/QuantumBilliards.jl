@@ -233,8 +233,8 @@ end
 
 function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflection) where {T<:Real}
     N=length(pts.xy)
-    shift_x=hasproperty(pts,:shift_x) ? pts[1].shift_x : zero(T)
-    shift_y=hasproperty(pts,:shift_y) ? pts[1].shift_y : zero(T)
+    shift_x=hasproperty(pts,:shift_x) ? pts.shift_x : zero(T)
+    shift_y=hasproperty(pts,:shift_y) ? pts.shift_y : zero(T)
     ops=_reflect_ops_and_scales(T,sym)
     caches=Vector{SymmetryImageCache{T}}(undef,length(ops))
     for (q,(op,scale_r)) in enumerate(ops)
