@@ -168,10 +168,6 @@ include("spectra/localization_entropy.jl")
 export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d, heatmap_R_vs_A_2d, combined_heatmaps_with_husimi, correlation_matrix, correlation_matrix_and_average
 include("spectra/reccurence.jl")
 export S, plot_S_heatmap!, plot_S_heatmaps!
-include("spectra/classical_transport_time.jl")
-export generate_p_0_chaotic_init_conditions, calculate_p2_averages, convert_p_0_chaotic_init_conditions_to_cartesian, simulate_trajectories, plot_p2_stats!, generate_intervals_from_limits
-include("spectra/antiscar_mushroom.jl")
-export calculate_bb_bbox_localization_mushroom, create_husimi_localization_mat, calculate_overlap, get_bb_localization_indexes
 include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes, compute_boundary, compute_boundary_tension
 include("spectra/evolution.jl")
