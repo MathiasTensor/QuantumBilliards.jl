@@ -252,8 +252,8 @@ function chebyshev_params(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},zj::Ab
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
             pidx2,tloc2,_=panel_and_geom(plans2[j],rs)
             pidx3,tloc3,_=panel_and_geom(plans3[j],rs)
-            eval_h1!(view(approx0,:,j),plans0[j],rs,pidx0,tloc0)
-            eval_h1!(view(approx1,:,j),plans1[j],rs,pidx1,tloc1)
+            eval_h!(view(approx0,:,j),plans0[j],rs,pidx0,tloc0)
+            eval_h!(view(approx1,:,j),plans1[j],rs,pidx1,tloc1)
             eval_j!(view(approx2,:,j),plans2[j],rs,pidx2,tloc2)
             eval_j!(view(approx3,:,j),plans3[j],rs,pidx3,tloc3)
         end
