@@ -562,7 +562,7 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE},basis::Ba,pts::Un
             construct_boundary_matrices!(Tbuf_check,solver,pts,[λ[j]];multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false) # construct the T(λ[j]) matrix for the eigenvalue λ[j] to check the residual
             @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,Tbuf_check[1],@view(Phi[:,j]))
             ybuf_norm=norm(ybuf)
-            @info "k=$((λ[j])) ||A(k)v(k)|| = $(ybuf_norm) < $res_tol"
+            @info "k=$((λ[j])) ||A(k)v(k)|| = $(ybuf_norm)"
             if auto_discard_spurious
                 if ybuf_norm≥res_tol
                     keep[j]=false
