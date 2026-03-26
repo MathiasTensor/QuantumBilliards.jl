@@ -347,8 +347,8 @@ function _add_symmetry_contributions!(A::Matrix{Complex{T}},pts::Vector{Boundary
                         dterm=αL2*inn*h1*invr
                         sterm=αM2*h0*sj
                         #A[gi,gj]+= -(χ*wj)*(dterm+ik*sterm)
-                        A[gi,gj]+= -(χ*wj)*(dterm) # DLP TEST
-                        #A[gi,gj]+= -(χ*wj)*(ik*sterm) # SLP TEST
+                        #A[gi,gj]+= -(χ*wj)*(dterm) # DLP TEST
+                        A[gi,gj]+= -(χ*wj)*(ik*sterm) # SLP TEST
                     end
                 end
             end
