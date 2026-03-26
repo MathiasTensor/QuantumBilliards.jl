@@ -34,7 +34,7 @@ function _sweep_dim(solver::SweepSolver,billiard::AbsBilliard,ks)
     return max(solver.min_dim,round(Int,billiard.length*kmax*solver.dim_scaling_factor/(2*pi)))
 end
 
-function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_combined::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -59,7 +59,7 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     return res
 end
 
-function _k_sweep(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_combined::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -84,7 +84,7 @@ function _k_sweep(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBill
     return res
 end
 
-function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_combined::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -135,8 +135,8 @@ function _k_sweep(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilli
     return res
 end
 
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_combined::Bool=false,use_krylov::Bool=true,tol=1e-10)
-    return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_combined=use_combined,use_krylov=use_krylov,tol=tol)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+    return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol)
 end
 
 ############ REFINEMENT ############
