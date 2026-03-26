@@ -554,7 +554,6 @@ function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryP
     else
         s=svdvals(A)
     end
-    else
     t4=time()
     build_R=t1-t0
     build_A=t2-t1
