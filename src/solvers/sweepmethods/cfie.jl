@@ -473,6 +473,15 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPoints
     return mu[end]
 end
 
+function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    mu=svdvals(A)
+    return mu[end]
+end
+
 function solve_vect(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)

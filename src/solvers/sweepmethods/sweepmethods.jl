@@ -69,11 +69,12 @@ function _k_sweep(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBill
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices)
     next!(p)
+    Rmat=build_Rmat_CFIE(pts)
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         is_calculating=true 
         while is_calculating
             try
-                res[i]=solve(solver,new_basis,pts,ks[i];multithreaded=multithreaded_matrices)
+                res[i]=solve(solver,new_basis,pts,ks[i],Rmat;multithreaded=multithreaded_matrices)
                 is_calculating=false
             catch e
                 @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
