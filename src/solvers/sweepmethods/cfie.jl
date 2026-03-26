@@ -31,7 +31,7 @@ struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
 end
 
 function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry=nothing) where {T<:Real,Bi<:AbsBilliard}
-    any([!(boundary isa PolarSegment) for boundary in billiard.full_boundary]) && error("CFIE_polar_nocorners only works with polar curves")
+    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_polar_nocorners only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
