@@ -213,10 +213,10 @@ end
 function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::Union{T,Complex{T}};multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
-    αL2=Complex{T}(0,k/2)
+    αL2=k/2*im
     αM1=-inv_two_pi
     αM2=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
+    ik=k*im
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p) for p in pts]
     nc=length(pts)
