@@ -168,7 +168,7 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
             κden=dXa.^2 .+dYa.^2
             kappa_i=_INV_TWO_PI.*(κnum./κden)
             Rkress=zeros(T,Ni,Ni)
-            kress_R_fft!(Rkress)
+            kress_R!(Rkress)
             blocks[a,b]=CFIEBlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,logterm,kappa_i,Rkress)
         else
             blocks[a,b]=CFIEBlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,nothing,nothing,nothing)
