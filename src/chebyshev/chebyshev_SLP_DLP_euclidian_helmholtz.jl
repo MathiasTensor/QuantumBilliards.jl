@@ -256,7 +256,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             m1=αM1*sj
             m2=((0.5im-_EULER_OVER_PI)-_INV_TWO_PI*log((km^2/4)*(sj^2)))*sj
             sval=ComplexF64(rjj*m1,0.0)+wj*m2
-            As[m][gi,gj]=1.0-(dval+iks[m]*sval)
+            As[m][gi,gj]=1.0-(dval+real(iks[m])*sval)
         end
         @inbounds for i in (j+1):blk.Ni
             gi=ro+i-1
@@ -282,8 +282,8 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
                 m2i=βM2*si-m1i*lt
                 svalij=rijR*m1j+wj*m2j
                 svalji=rijR*m1i+wi*m2i
-                As[m][gi,gj]=-(dvalij+iks[m]*svalij)
-                As[m][gj,gi]=-(dvalji+iks[m]*svalji)
+                As[m][gi,gj]=-(dvalij+real(iks[m])*svalij)
+                As[m][gj,gi]=-(dvalji+real(iks[m])*svalji)
             end
         end
         return nothing
@@ -303,7 +303,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
                 βM=αM2*h0
                 dval=wj*(βL*inn)
                 sval=wj*(βM*sj)
-                As[m][gi,gj]=-(dval+iks[m]*sval)
+                As[m][gi,gj]=-(dval+real(iks[m])*sval)
             end
         end
         return nothing
