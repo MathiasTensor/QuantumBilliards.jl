@@ -62,7 +62,6 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ts::Vector{T} # parametrization that needs to go from [0,2π]
     ws::Vector{T} # the weights for the quadrature at ts
     ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
-    s::Vector{T} # arc lengths at ts
     ds::Vector{T} # diffs between crv lengths at ts
     compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
 end
@@ -77,14 +76,19 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
-    s=similar(pts.s)
-    s[1]=zero(T)
-    for i in 2:N
-        s[i]=s[i-1]+ds[i-1]
-    end
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,s,ds,pts.compid)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid)
 end
 
+function _boundary_curves_for_solver(solver::CFIE_polar_nocorners,billiard::Bi) where {Bi<:AbsBilliard}
+    if isnothing(solver.symmetry)
+        hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
+    end
+    hasproperty(billiard,:desymmetrized_full_boundary) && return getfield(billiard,:desymmetrized_full_boundary)
+    hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
+    error("No usable boundary field found in $(typeof(billiard))")
+end
+
+# single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
 function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
@@ -100,12 +104,14 @@ function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) 
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # we kep these for future with different quadratures ala Kress (1)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ss,ds,idx)
+    # put it in global
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
 end
 
 function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(billiard.full_boundary))
-    for (idx,crv) in enumerate(billiard.full_boundary)
+    boundary=_boundary_curves_for_solver(solver,billiard)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
+    for (idx,crv) in enumerate(boundary)
         pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
     end
     return pts
@@ -238,15 +244,15 @@ function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflectio
             if op==1
                 x_reflect_point!(pt,xj,yj,shift_x)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=-SVector(-txj,tyj)
+                tangent[j]=SVector(-txj,tyj)
             elseif op==2
                 y_reflect_point!(pt,xj,yj,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=-SVector(txj,-tyj)
+                tangent[j]=SVector(txj,-tyj)
             else
                 xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=-SVector(-txj,-tyj)
+                tangent[j]=SVector(-txj,-tyj)
             end
             speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
         end
