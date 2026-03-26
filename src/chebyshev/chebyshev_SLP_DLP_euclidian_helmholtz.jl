@@ -190,7 +190,7 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
             blocks[a,b]=CFIEBlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,nothing,nothing,nothing)
         end
     end
-    pref_plan=plan_h1(0,1.0+0im,Float64(global_rmin),Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,Float64(global_rmin),Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
     pans=pref_plan.panels
     for a in 1:nc, b in 1:nc
         blk=blocks[a,b]
