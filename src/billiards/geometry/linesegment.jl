@@ -229,8 +229,8 @@ Compute the second derivative (curvature‐related) vector of a line segment at 
 # Returns
 - `SVector{2,T}`: The second derivative of the segment at `t`.
 """
-function tangent_2(line::L,t) where {T<:Real,L<:LineSegments{T}}
-    return ForwardDiff.derivative(u->tangent(line,u),t)
+function tangent_2(line::L,t::T) where {T<:Real,L<:LineSegments{T}}
+    return SVector(ForwardDiff.derivative(u->tangent(line,u)[1],t),ForwardDiff.derivative(u->tangent(line,u)[2],t))
 end
 
 """

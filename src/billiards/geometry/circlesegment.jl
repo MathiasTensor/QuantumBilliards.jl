@@ -223,8 +223,10 @@ Compute the second derivative of a circular segment at a single parameter `t`.
 # Returns
 - `SVector{2,T}`: The second derivative vector at `t`.
 """
-function tangent_2(circle::L,t) where {T<:Real,L<:CircleSegments{T}}
-    return ForwardDiff.derivative(u->tangent(circle,u),t)
+function tangent_2(circle::L,t::T) where {T<:Real,L<:CircleSegments{T}}
+    tx(u)=tangent(circle,u)[1]
+    ty(u)=tangent(circle,u)[2]
+    return SVector(ForwardDiff.derivative(tx,t),ForwardDiff.derivative(ty,t))
 end
 
 """

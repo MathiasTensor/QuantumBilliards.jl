@@ -147,8 +147,8 @@ Compute the tangent vector derivative (2nd derivative w.r.t. `t`) of the polar s
 # Returns
 - `SVector{2,T}`: The derivative `d^2/dt^2 [ affine_map( r_func(t) ) ]`.
 """
-function tangent_2(polar::L,t) where {T,L<:PolarSegments{T}}
-    return ForwardDiff.derivative(u->tangent(polar,u),t)
+function tangent_2(polar::L,t::T) where {T<:Real,L<:PolarSegments{T}}
+    return SVector(ForwardDiff.derivative(u->tangent(polar,u)[1],t),ForwardDiff.derivative(u->tangent(polar,u)[2],t))
 end
 
 """
