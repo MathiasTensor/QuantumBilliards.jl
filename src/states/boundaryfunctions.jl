@@ -369,7 +369,7 @@ and shift the arclength origin if the billiard requests it.
 # Arguments
 - `solver::BoundaryIntegralMethod{T}`: Holds symmetry info.
 - `u::AbstractVector{U}`: Boundary data on the desymmetrized boundary (real or complex).
-- `pts::BoundaryPointsBIM{T}`: Boundary points in BIM representation.
+- `pts::BoundaryPoints{T}`: Boundary points.
 - `billiard::Bi`: Geometry (may carry `shift_s` for arclength origin).
 
 # Returns
@@ -377,7 +377,7 @@ and shift the arclength origin if the billiard requests it.
 - `Vector{U}`: Symmetry-extended (and shifted) boundary function; element type matches input
   unless a non-trivial rotation forces complex characters.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPointsBIM{T}, billiard::Bi) where {T<:Real,Bi<:AbsBilliard,U<:Number}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPoints{T},billiard::Bi) where {T<:Real,Bi<:AbsBilliard,U<:Number}
     symmetries=solver.symmetry
     pts=BoundaryPointsMethod_to_BoundaryPoints(pts)
     regularize!(u)
@@ -397,14 +397,14 @@ has `m % n ≠ 0`, the corresponding symmetry application produces complex bound
 # Arguments
 - `solver::BoundaryIntegralMethod{T}`: Holds symmetry info.
 - `us_all::Vector{<:AbstractVector}`: Boundary data (each real or complex).
-- `pts_all::Vector{BoundaryPointsBIM{T}}`: Matching BIM boundary points.
+- `pts_all::Vector{BoundaryPoints{T}}`: Matching boundary points.
 - `billiard::Bi`: Geometry.
 
 # Returns
 - `Vector{BoundaryPoints{T}}`: Processed boundary points for each input.
 - `Vector{Vector{<:Number}}`: Processed boundary functions; element types match per case.
 """
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T},us_all::Vector{<:AbstractVector},pts_all::Vector{BoundaryPointsBIM{T}},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+function boundary_function_BIM(solver::BoundaryIntegralMethod{T},us_all::Vector{<:AbstractVector},pts_all::Vector{BoundaryPoints{T}},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     sym=solver.symmetry
     needs_complex=!isnothing(sym) && any(s->(s isa Rotation) && mod(s.m,s.n)!=0,sym)
     n=length(us_all)

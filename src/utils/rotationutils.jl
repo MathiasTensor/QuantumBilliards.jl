@@ -79,7 +79,11 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::
         end
     end
     full_s=cumsum(full_ds)
-    return BoundaryPoints{T}(full_xy,full_normal,full_s,full_ds)
+    empty_w=T[]
+    empty_wn=T[]
+    empty_curv=T[]
+    empty_xyint=SVector{2,T}[]
+    return BoundaryPoints{T}(full_xy,full_normal,full_s,full_ds,empty_w,empty_wn,empty_curv,empty_xyint,pts.shift_x,pts.shift_y)
 end
 
 """
