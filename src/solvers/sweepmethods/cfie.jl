@@ -459,8 +459,13 @@ end
 
 function solve(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    use_krylov ? @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR);reverse!(mu) : mu=svdvals(A)
-    return mu[end]
+    if use_krylov 
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        return mu[1]
+    else
+        mu=svdvals(A)
+        return mu[end]
+    end 
 end
 
 function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
@@ -469,8 +474,13 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPoints
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
     A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    use_krylov ? @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR);reverse!(mu) : mu=svdvals(A)
-    return mu[end]
+    if use_krylov 
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        return mu[1]
+    else
+        mu=svdvals(A)
+        return mu[end]
+    end 
 end
 
 function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
@@ -478,8 +488,13 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPoints
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    use_krylov ? @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR);reverse!(mu) : mu=svdvals(A)
-    return mu[end]
+   if use_krylov 
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        return mu[1]
+    else
+        mu=svdvals(A)
+        return mu[end]
+    end 
 end
 
 function solve_vect(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
