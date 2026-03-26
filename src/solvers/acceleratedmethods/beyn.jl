@@ -320,7 +320,7 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     if use_chebyshev
         block_cache=build_cfie_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
         plans0,plans1,plans2,plans3=build_CFIE_plans(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
-        ws=CFIEMultiHankelWorkspace(Mk;ntls=Threads.nthreads())
+        ws=CFIEMultiBesselWorkspace(Mk;ntls=Threads.nthreads())
         @inbounds for j in eachindex(Tbufs)
             fill!(Tbufs[j],0.0+0.0im)
         end
