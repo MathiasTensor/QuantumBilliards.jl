@@ -21,7 +21,7 @@
 # 2. Call `build_cfie_block_caches` to precompute the geometry-related terms for each block of the CFIE matrix.
 # 3. Call `compute_kernel_matrices_CFIE_chebyshev!` to compute the CFIE matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
 #
-# MO 24/3/26
+# MO 26/3/26
 #################################################################
 
 _TWO_PI=2*pi
@@ -122,20 +122,20 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
         Yb=getindex.(pb.xy,2)
         dXb=getindex.(pb.tangent,1)
         dYb=getindex.(pb.tangent,2)
-        ΔX=@. reshape(Xa,Ni,1)-reshape(Xb,1,Nj)
-        ΔY=@. reshape(Ya,Ni,1)-reshape(Yb,1,Nj)
+        ΔX=reshape(Xa,Ni,1).-reshape(Xb,1,Nj)
+        ΔY=reshape(Ya,Ni,1).-reshape(Yb,1,Nj)
         R=hypot.(ΔX,ΔY)
         invR=similar(R)
         @inbounds for j in 1:Nj, i in 1:Ni
             rij=R[i,j]
-            invR[i,j]=rij>eps(T) ? inv(rij) : zero(T)
+            invR[i,j]=rij > eps(T) ? inv(rij) : zero(T)
         end
         dXbr=reshape(dXb,1,Nj)
         dYbr=reshape(dYb,1,Nj)
-        inner=@. dYbr*ΔX-dXbr*ΔY
-        speed_j=@. sqrt(dXb^2+dYb^2)
+        inner=dYbr.*ΔX.-dXbr.*ΔY
+        speed_j=sqrt.(dXb.^2 .+dYb.^2)
         wj=copy(pb.ws)
-        same=(a==b)
+        same= (a==b)
         rmin_blk=typemax(T)
         rmax_blk=zero(T)
         @inbounds for j in 1:Nj, i in 1:Ni
@@ -161,11 +161,11 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
             dYa=getindex.(pa.tangent,2)
             ddXa=getindex.(pa.tangent_2,1)
             ddYa=getindex.(pa.tangent_2,2)
-            ΔT=@. reshape(ts,Ni,1)-reshape(ts,1,Ni)
-            logterm=log.(4 .* sin.(ΔT./2).^2)
+            ΔT=reshape(ts,Ni,1).-reshape(ts,1,Ni)
+            logterm=log.(4 .*sin.(ΔT./ 2).^2)
             logterm[diagind(logterm)].=zero(T)
             κnum=dXa.*ddYa.-dYa.*ddXa
-            κden=dXa.^2 .+ dYa.^2
+            κden=dXa.^2 .+dYa.^2
             kappa_i=_INV_TWO_PI.*(κnum./κden)
             Rkress=zeros(T,Ni,Ni)
             kress_R_fft!(Rkress)

@@ -58,7 +58,7 @@ Practical guidance
 - For very high k or intricate geometries, start conservative (smaller R, larger nq) and relax if safe.
 
 Added support for BoundaryPointsCFIE to handle domains with holes (e.g., annulus) where the CFIE formulation is needed.
-MO 25/3/26
+MO 26/3/26
 =#
 
 #################
