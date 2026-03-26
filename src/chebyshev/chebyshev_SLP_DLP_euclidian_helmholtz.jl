@@ -185,7 +185,7 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
                 blk.tloc[i,j]=0.0
             else
                 rij=Float64(blk.R[i,j])
-                p=_find_panel(pans,rij)
+                p=_find_panel(pref_plan,rij)
                 P=pans[p]
                 blk.pidx[i,j]=Int32(p)
                 blk.tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
