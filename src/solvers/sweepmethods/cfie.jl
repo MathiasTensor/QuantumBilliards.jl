@@ -209,7 +209,7 @@ end
 #### DIRECT A CONSTRUCTION ####
 ###############################
 
-function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::Union{T,Complex{T}};multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -312,7 +312,7 @@ function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{Boun
     return A
 end
 
-function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::Union{T,Complex{T}};multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -397,7 +397,7 @@ function solve_eigenvectors_CFIE(solver::CFIE,basis::Ba,ks::Vector{T};multithrea
     return us_all,pts_all
 end
 
-function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     t0=time()
     @info "Constructing circulant R matrix..."
     offs=component_offsets(pts)
