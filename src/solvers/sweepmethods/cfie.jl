@@ -533,7 +533,7 @@ function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vect
     return us_all,pts_all
 end
 
-function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     t0=time()
     @info "Constructing circulant R matrix..."
     offs=component_offsets(pts)
@@ -548,7 +548,13 @@ function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryP
     @info "Condition number of A: $(round(cA;sigdigits=4))"
     @info "Performing SVD..."
     t3=time()
-    s=svdvals(A)
+    if use_krylov 
+        @blas_multi_then_1 MAX_BLAS_THREADS s,_,_,_=svdsolve(A,1,:SR)
+        reverse!(s)
+    else
+        s=svdvals(A)
+    end
+    else
     t4=time()
     build_R=t1-t0
     build_A=t2-t1
