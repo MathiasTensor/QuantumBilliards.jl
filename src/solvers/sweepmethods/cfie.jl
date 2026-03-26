@@ -19,7 +19,7 @@ euler_over_pi=MathConstants.eulergamma/pi
 #### CONSTRUCTOR CFIE ####
 ###########################
 
-struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
+struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
@@ -30,11 +30,11 @@ struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
 end
 
 #!!!! symmetry==nothing always, since log-periodic trapezoidal rule only works for the full boundary, so we cannot use it with symmetries.
-function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
-    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_polar_nocorners only works with polar curves")
+function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard)
+    return CFIE{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard)
 end
 
 #############################
@@ -80,7 +80,7 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
 end
 
 # single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
-function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points(solver::CFIE{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
@@ -99,7 +99,7 @@ function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) 
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
 end
 
-function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
@@ -211,7 +211,7 @@ end
 #### DIRECT A CONSTRUCTION ####
 ###############################
 
-function construct_matrices(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -314,7 +314,7 @@ function construct_matrices(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},p
     return A
 end
 
-function construct_matrices(solver::CFIE_polar_nocorners,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -322,7 +322,7 @@ function construct_matrices(solver::CFIE_polar_nocorners,pts::Vector{BoundaryPoi
     return construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
 end
 
-function solve(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     if use_krylov 
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
@@ -333,7 +333,7 @@ function solve(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts:
     end 
 end
 
-function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -348,7 +348,7 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPoints
     end 
 end
 
-function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -362,7 +362,7 @@ function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPoints
     end 
 end
 
-function solve_vect(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
@@ -372,7 +372,7 @@ function solve_vect(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba
     return mu,u_mu
 end
 
-function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -386,7 +386,7 @@ function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryP
     return mu,u_mu
 end
 
-function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_eigenvectors_CFIE(solver::CFIE,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks)}}}(undef,length(ks))
     for i in eachindex(ks)
@@ -398,7 +398,7 @@ function solve_eigenvectors_CFIE(solver::CFIE_polar_nocorners,basis::Ba,ks::Vect
     return us_all,pts_all
 end
 
-function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     t0=time()
     @info "Constructing circulant R matrix..."
     offs=component_offsets(pts)
@@ -437,7 +437,7 @@ end
 #### CFIE UTILS ####
 ####################
 
-function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE_polar_nocorners;k=20.0,markersize=5) where {Bi<:AbsBilliard}
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0,markersize=5) where {Bi<:AbsBilliard}
     f=Figure(resolution=(1200,1200))
     ax=Axis(f[1,1],title="boundary + point‐wise weights",aspect=DataAspect())
     pts_all=evaluate_points(solver,billiard,k)

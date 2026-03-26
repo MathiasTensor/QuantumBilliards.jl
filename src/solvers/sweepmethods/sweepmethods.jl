@@ -59,7 +59,7 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     return res
 end
 
-function _k_sweep(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::CFIE,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -151,7 +151,7 @@ function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billia
     end
 end
 
-function _refine_objective(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
+function _refine_objective(solver::CFIE,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
         solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
