@@ -202,7 +202,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
         end
         Threads.@threads for j in eachindex(zj)
             @inbounds for i in eachindex(rs)
-                exact[i,j]=besselhx(1,1,ComplexF64(zj[j])*rs[i])
+                exact[i,j]=SpecialFunctions.besselhx(1,1,ComplexF64(zj[j])*rs[i])
             end
         end
         @inbounds for j in 1:nz
@@ -246,8 +246,8 @@ function chebyshev_params(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},zj::Ab
         Threads.@threads for j in eachindex(zj)
             @inbounds for i in eachindex(rs)
                 z=ComplexF64(zj[j])*rs[i]
-                exact0[i,j]=besselh(0,1,z)
-                exact1[i,j]=besselh(1,1,z)
+                exact0[i,j]=SpecialFunctions.besselh(0,1,z)
+                exact1[i,j]=SpecialFunctions.besselh(1,1,z)
             end
         end
         @inbounds for j in 1:nz
