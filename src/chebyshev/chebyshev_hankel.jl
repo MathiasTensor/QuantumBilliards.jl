@@ -68,7 +68,7 @@ function _build_table_h1x!(k::ComplexF64,a::Float64,b::Float64;M::Int=16)::ChebH
         t=cospi(j/M) # chebyshev node in [-1,1]
         r=((b+a)+(b-a)*t)/2 # affine map to [a,b] so we are in the correct sector
         z=k*r # argument for Hankel in local coordinates
-        H1x=besselhx(1,1,z) # scaled: exp(-i z) * H1^(1)(z) since AMOS provides this directly and is more stable than computing the unscaled version due to underflow/overflow issues with large/small |Im(z)|.
+        H1x=SpecialFunctions.besselhx(1,1,z) # scaled: exp(-i z) * H1^(1)(z) since AMOS provides this directly and is more stable than computing the unscaled version due to underflow/overflow issues with large/small |Im(z)|.
         f1[j+1]=sqrt(r)*H1x # G1(r) since for small r this is well behaved
     end
     c1=Vector{ComplexF64}(undef,M+1) # preallocate chebyshev coeffs
@@ -116,7 +116,7 @@ function _build_table_h1!(ν::Int,k::ComplexF64,a::Float64,b::Float64;M::Int=16)
         t=cospi(j/M) # chebyshev node in [-1,1]
         r=((b+a)+(b-a)*t)/2 # affine map to [a,b] so we are in the correct sector
         z=k*r # argument for Hankel in local coordinates
-        f1[j+1]=besselh(ν,1,z) # unscaled complex-argument Hankel from AMOS. We use this for complex k since Bessels.jl doesn't support complex arguments and AMOS is more stable for complex arguments. Just dont use this here with large im part for z !!! 
+        f1[j+1]=SpecialFunctions.besselh(ν,1,z) # unscaled complex-argument Hankel from AMOS. We use this for complex k since Bessels.jl doesn't support complex arguments and AMOS is more stable for complex arguments. Just dont use this here with large im part for z !!! 
         #FIXME It is hacky since for _build_table_h1x! we used the scaled version primarily for Beyn's method since we did not know the size of the imaginary part, but this seems not safe
     end
     c=Vector{ComplexF64}(undef,M+1) # preallocate chebyshev coeffs
