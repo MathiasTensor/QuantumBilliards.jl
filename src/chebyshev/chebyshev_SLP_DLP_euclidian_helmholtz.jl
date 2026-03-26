@@ -110,16 +110,6 @@ struct CFIEBlockSystemCache{T<:Real}
     rmax::Float64
 end
 
-function component_offsets(comps::Vector)
-    nc=length(comps)
-    offs=Vector{Int}(undef,nc+1)
-    offs[1]=1
-    for a in 1:nc
-        offs[a+1]=offs[a]+length(comps[a].xy)
-    end
-    return offs
-end
-
 function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
