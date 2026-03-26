@@ -310,7 +310,7 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     else
         Rmat=build_Rmat_CFIE(pts)
         @benchit timeit=timeit "CFIE complex k" @inbounds for j in eachindex(zj)
-            _A(solver,Tbufs[j],pts,Rmat,zj[j];multithreaded=multithreaded)
+            construct_matrices(solver,Tbufs[j],pts,Rmat,zj[j];multithreaded=multithreaded)
         end
     end
     return nothing

@@ -211,7 +211,7 @@ end
 #### DIRECT A CONSTRUCTION ####
 ###############################
 
-function construct_matrices(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -319,11 +319,12 @@ function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::T
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
-    return construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    return A
 end
 
 function solve(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     if use_krylov 
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
@@ -338,7 +339,7 @@ function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multi
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
-    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     if use_krylov 
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
@@ -352,7 +353,7 @@ function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat:
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
    if use_krylov 
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
@@ -363,7 +364,7 @@ function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat:
 end
 
 function solve_vect(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
@@ -377,7 +378,7 @@ function solve_vect(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
-    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
@@ -407,7 +408,7 @@ function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k:
     Rmat=build_Rmat_CFIE(pts)
     t1=time()
     @info "Building boundary operator A..."
-    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     t2=time()
     cA=cond(A)
     @info "Condition number of A: $(round(cA;sigdigits=4))"
