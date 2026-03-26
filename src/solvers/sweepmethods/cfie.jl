@@ -238,15 +238,15 @@ function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflectio
             if op==1
                 x_reflect_point!(pt,xj,yj,shift_x)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(-txj,tyj)
+                tangent[j]=-SVector(-txj,tyj)
             elseif op==2
                 y_reflect_point!(pt,xj,yj,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(txj,-tyj)
+                tangent[j]=-SVector(txj,-tyj)
             else
                 xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(-txj,-tyj)
+                tangent[j]=-SVector(-txj,-tyj)
             end
             speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
         end
