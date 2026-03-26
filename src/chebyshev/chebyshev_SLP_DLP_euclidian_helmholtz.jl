@@ -1,25 +1,20 @@
 #################################################################
 #   CHEBYSHEV-BASED SLP/DLP EVALUATION FOR CFIE ASSEMBLY IN 2D EUCLIDEAN HELMHOLTZ 
-# Functions to build Chebyshev-based SLP/DLP evaluation plans for multiple wavenumbers, and to compute the CFIE matrix blocks using these plans. Also includes functions to build symmetry image caches for reflection and rotation symmetries.
-#
+# Functions to build Chebyshev-based SLP/DLP evaluation plans for multiple wavenumbers, and to compute the CFIE matrix blocks using these plans. 
 # Logic:
 # - Build Chebyshev-based Hankel evaluation plans for the SLP and DLP kernels for each wavenumber.
 # - Precompute the geometry-related terms (R, invR, inner product, speed, quadrature weights) for each block of the CFIE matrix.
 # - For each block, use the precomputed geometry and the Chebyshev plans to evaluate the SLP and DLP contributions for each pair of points, and accumulate the CFIE matrix entries.
-# - If symmetries are present, build image caches that store the reflected/rotated points and tangents, and use these to compute the contributions from the symmetry images efficiently.
 #
 # API: 
 # - `build_CFIE_plans(...)`: Builds Chebyshev-based Hankel evaluation plans for the given wavenumbers and geometry.
 # - `build_cfie_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE matrix.
 # - `h01_multi_ks_at_r!(...)`: Evaluates the SLP and DLP Hankel functions for multiple wavenumbers at given distances.
-# - `build_symmetry_image_caches(...)`: Builds caches of reflected/rotated points and tangents for the given symmetries.
 # - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
 # USUALLY NOT CALLED DIRECTLY: 
 # - `_accum_cfie_default_sym!(...)`: Default function to accumulate CFIE matrix entries for a given pair of points and their geometric terms.
 # - `_one_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for a single wavenumber without using symmetries, using Chebyshev-based SLP/DLP evaluation.
-# - `_one_k_images_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for a single wavenumber using symmetry image caches, using Chebyshev-based SLP/DLP evaluation.
 # - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
-# - `_all_k_images_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for all wavenumbers using symmetry image caches, using Chebyshev-based SLP/DLP evaluation.
 #
 # Workflow: 
 # 1. Call `build_CFIE_plans` to create the Chebyshev evaluation plans for the desired wavenumbers and geometry.
@@ -338,93 +333,6 @@ function _one_k_nosymm_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{Boundar
     return nothing
 end
 
-#############################################################
-#### PRECOMPUTED IMAGE CFIE ASSEMBLY: ALL k / ONE k #########
-#############################################################
-
-function _all_k_images_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},imgcaches_by_comp::Vector{Vector{SymmetryImageCache{T}}},plans0::Vector{ChebHankelPlanH1},plans1::Vector{ChebHankelPlanH1},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
-    isempty(imgcaches_by_comp) && return nothing
-    Mk=length(plans0)
-    nc=length(pts)
-    offs=component_offsets(pts)
-    pans_ref=plans0[1].panels
-    ks=Vector{ComplexF64}(undef,Mk)
-    @inbounds for m in 1:Mk
-        ks[m]=ComplexF64(plans1[m].k)
-    end
-
-    function body!(cache::SymmetryImageCache{T},pb::BoundaryPointsCFIE{T},rb::UnitRange{Int},j::Int,h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64}) where {T<:Real}
-        gj=rb[j]
-        xj,yj=cache.xy[j]
-        txj,tyj=cache.tangent[j]
-        sj=cache.speed[j]
-        χ=cache.scale
-        wj=pb.ws[j]
-        βsw=-χ*wj
-        βm=0.5im*sj
-        @inbounds for a in 1:nc
-            pa=pts[a]
-            ra=offs[a]:(offs[a+1]-1)
-            Na=length(pa.xy)
-            for i in 1:Na
-                gi=ra[i]
-                xi,yi=pa.xy[i]
-                dx=xi-xj
-                dy=yi-yj
-                d2=muladd(dx,dx,dy*dy)
-                d2<=(eps(T))^2 && continue
-                r=sqrt(d2)
-                invr=inv(r)
-                inn=tyj*dx-txj*dy
-                γ=inn*invr
-                p=_find_panel(pans_ref,Float64(r))
-                P=pans_ref[p]
-                t=(2*Float64(r)-(P.b+P.a))/(P.b-P.a)
-                h01_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,Int32(p),t)
-                for m in 1:Mk
-                    k=ks[m]
-                    h0=h0vals[m]
-                    h1=h1vals[m]
-                    dterm=(0.5im*k)*γ*h1
-                    sterm=βm*h0
-                    As[m][gi,gj]+=βsw*(dterm+1im*k*sterm)
-                end
-            end
-        end
-        return nothing
-    end
-
-    for b in 1:nc
-        pb=pts[b]
-        rb=offs[b]:(offs[b+1]-1)
-        Nb=length(pb.xy)
-        caches=imgcaches_by_comp[b]
-        isempty(caches) && continue
-        if multithreaded
-            for cache in caches
-                @use_threads multithreading=multithreaded for j in 1:Nb
-                    tid=Threads.threadid()
-                    body!(cache,pb,rb,j,h0_tls[tid],h1_tls[tid])
-                end
-            end
-        else
-            h0vals=h0_tls[1]
-            h1vals=h1_tls[1]
-            for cache in caches
-                for j in 1:Nb
-                    body!(cache,pb,rb,j,h0vals,h1vals)
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-function _one_k_images_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},imgcaches_by_comp::Vector{Vector{SymmetryImageCache{T}}},plan0::ChebHankelPlanH1,plan1::ChebHankelPlanH1,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
-    _all_k_images_CFIE_chebyshev!([A],pts,imgcaches_by_comp,[plan0],[plan1],h0_tls,h1_tls;multithreaded=multithreaded)
-    return nothing
-end
-
 #################################
 #### HIGH LEVEL ENTRY POINTS ####
 #################################
@@ -471,10 +379,6 @@ end
 #     - inner products, invR, log terms
 #     - diagonal limits and FFT-based corrections
 #
-# image_caches  :: Vector{Vector{SymmetryImageCache{T}}}
-#   Symmetry contributions (reflection / rotation).
-#   Each cache contains transformed geometry and scaling factors.
-#
 # multithreaded :: Bool (default=true)
 #   Enables threading over columns j=1:N.
 #
@@ -494,19 +398,7 @@ function compute_kernel_matrices_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},
     return nothing
 end
 
-function compute_kernel_matrices_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH1},plans1::Vector{ChebHankelPlanH1},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T},image_caches::Vector{Vector{SymmetryImageCache{T}}};multithreaded::Bool=true) where {T<:Real}
-    _all_k_nosymm_CFIE_chebyshev!(As,pts,plans0,plans1,h0_tls,h1_tls,block_cache;multithreaded=multithreaded)
-    _all_k_images_CFIE_chebyshev!(As,pts,image_caches,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
-    return nothing
-end
-
 function compute_kernel_matrices_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH1,plan1::ChebHankelPlanH1, h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
     _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,h0_tls,h1_tls,block_cache;multithreaded=multithreaded)
-    return nothing
-end
-
-function compute_kernel_matrices_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH1,plan1::ChebHankelPlanH1,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T},image_caches::Vector{Vector{SymmetryImageCache{T}}};multithreaded::Bool=true) where {T<:Real}
-    _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,h0_tls,h1_tls,block_cache;multithreaded=multithreaded)
-    _one_k_images_CFIE_chebyshev!(A,pts,image_caches,plan0,plan1,h0_tls,h1_tls;multithreaded=multithreaded)
     return nothing
 end

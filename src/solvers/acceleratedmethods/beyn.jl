@@ -303,18 +303,10 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
         block_cache=build_cfie_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
         plans0,plans1=build_CFIE_plans(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
         ws=CFIEMultiHankelWorkspace(Mk;ntls=Threads.nthreads())
-        if isnothing(solver.symmetry)
-            @inbounds for j in eachindex(Tbufs)
-                fill!(Tbufs[j],0.0+0.0im)
-            end
-            @benchit timeit=timeit "CFIE Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,ws.h0_tls,ws.h1_tls,block_cache;multithreaded=multithreaded)
-        else
-            imgcaches_by_comp=[build_symmetry_image_caches(p,solver.symmetry) for p in pts]
-            @inbounds for j in eachindex(Tbufs)
-                fill!(Tbufs[j],0.0+0.0im)
-            end
-            @benchit timeit=timeit "CFIE Chebyshev with symmetry" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,ws.h0_tls,ws.h1_tls,block_cache,imgcaches_by_comp;multithreaded=multithreaded)
+        @inbounds for j in eachindex(Tbufs)
+            fill!(Tbufs[j],0.0+0.0im)
         end
+        @benchit timeit=timeit "CFIE Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,ws.h0_tls,ws.h1_tls,block_cache;multithreaded=multithreaded)
     else
         Rmat=build_Rmat_CFIE(pts)
         @benchit timeit=timeit "CFIE complex k" @inbounds for j in eachindex(zj)

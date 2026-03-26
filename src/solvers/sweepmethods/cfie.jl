@@ -27,14 +27,14 @@ struct CFIE_polar_nocorners{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     min_dim::Int64
     min_pts::Int64
     billiard::Bi
-    symmetry::Union{Vector{Any},Nothing}
 end
 
-function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry=nothing) where {T<:Real,Bi<:AbsBilliard}
+#!!!! symmetry==nothing always, since log-periodic trapezoidal rule only works for the full boundary, so we cannot use it with symmetries.
+function CFIE_polar_nocorners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
     any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_polar_nocorners only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
+    return CFIE_polar_nocorners{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard)
 end
 
 #############################
@@ -63,8 +63,6 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ws::Vector{T} # the weights for the quadrature at ts
     ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
     ds::Vector{T} # diffs between crv lengths at ts
-    shift_x::T # the x shift to apply to the reflected image points (if any)
-    shift_y::T # the y shift to apply to the reflected image points (if any)
     compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
 end
 
@@ -78,20 +76,11 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.shift_x,pts.shift_y,pts.compid)
-end
-
-function _boundary_curves_for_solver(solver::CFIE_polar_nocorners,billiard::Bi) where {Bi<:AbsBilliard}
-    if isnothing(solver.symmetry)
-        hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
-    end
-    hasproperty(billiard,:desymmetrized_full_boundary) && return getfield(billiard,:desymmetrized_full_boundary)
-    hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
-    error("No usable boundary field found in $(typeof(billiard))")
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid)
 end
 
 # single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
-function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int;shift_x::T=zero(T),shift_y::T=zero(T)) where {T<:Real,C<:AbsCurve}
+function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
@@ -107,16 +96,14 @@ function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int;s
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # we kep these for future with different quadratures ala Kress (1)
     # put it in global
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,shift_x,shift_y,idx)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
 end
 
 function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=_boundary_curves_for_solver(solver,billiard)
-    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : zero(T)
-    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : zero(T)
+    boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
-        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx;shift_x=shift_x,shift_y=shift_y) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx;shift_x=shift_x,shift_y=shift_y))
+        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
     end
     return pts
 end
@@ -220,142 +207,9 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T}) where {T<:Real}
     return CFIEGeomCache(R,invR,inner,logterm,speed,kappa)
 end
 
-##############################################
-#### PRECOMPUTED SYMMETRY IMAGE GEOMETRY #####
-##############################################
-
-struct SymmetryImageCache{T<:Real}
-    xy::Vector{SVector{2,T}}
-    tangent::Vector{SVector{2,T}}
-    speed::Vector{T}
-    scale::ComplexF64
-end
-
-function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflection) where {T<:Real}
-    N=length(pts.xy)
-    shift_x=hasproperty(pts,:shift_x) ? pts.shift_x : zero(T)
-    shift_y=hasproperty(pts,:shift_y) ? pts.shift_y : zero(T)
-    ops=_reflect_ops_and_scales(T,sym)
-    caches=Vector{SymmetryImageCache{T}}(undef,length(ops))
-    for (q,(op,scale_r)) in enumerate(ops)
-        xy=Vector{SVector{2,T}}(undef,N)
-        tangent=Vector{SVector{2,T}}(undef,N)
-        speed=Vector{T}(undef,N)
-        pt=zeros(T,2)
-        @inbounds for j in 1:N
-            xj,yj=pts.xy[j]
-            txj,tyj=pts.tangent[j]
-            if op==1
-                x_reflect_point!(pt,xj,yj,shift_x)
-                xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(-txj,tyj)
-            elseif op==2
-                y_reflect_point!(pt,xj,yj,shift_y)
-                xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(txj,-tyj)
-            else
-                xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
-                xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=SVector(-txj,-tyj)
-            end
-            speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
-        end
-        caches[q]=SymmetryImageCache{T}(xy,tangent,speed,ComplexF64(scale_r,0.0))
-    end
-    return caches
-end
-
-function build_rotation_image_caches(pts::BoundaryPointsCFIE{T},sym::Rotation) where {T<:Real}
-    N=length(pts.xy)
-    cx,cy=sym.center
-    ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
-    caches=Vector{SymmetryImageCache{T}}(undef,sym.n-1)
-    for l in 2:sym.n
-        xy=Vector{SVector{2,T}}(undef,N)
-        tangent=Vector{SVector{2,T}}(undef,N)
-        speed=Vector{T}(undef,N)
-        pt=zeros(T,2)
-        @inbounds for j in 1:N
-            xj,yj=pts.xy[j]
-            txj,tyj=pts.tangent[j]
-            rot_point!(pt,xj,yj,cx,cy,ctab[l],stab[l])
-            xy[j]=SVector(pt[1],pt[2])
-            tangent[j]=SVector(ctab[l]*txj-stab[l]*tyj,stab[l]*txj+ctab[l]*tyj)
-            speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
-        end
-        caches[l-1]=SymmetryImageCache{T}(xy,tangent,speed,ComplexF64(χ[l]))
-    end
-    return caches
-end
-
-function build_symmetry_image_caches(pts::BoundaryPointsCFIE{T},symmetry::Union{Nothing,Any,AbstractVector}) where {T<:Real}
-    symmetry===nothing && return SymmetryImageCache{T}[]
-    syms=symmetry isa AbstractVector ? symmetry : Any[symmetry]
-    caches=SymmetryImageCache{T}[]
-    for sym in syms
-        if sym isa Reflection
-            append!(caches,build_reflection_image_caches(pts,sym))
-        elseif sym isa Rotation
-            append!(caches,build_rotation_image_caches(pts,sym))
-        else
-            error("Unsupported symmetry type $(typeof(sym))")
-        end
-    end
-    return caches
-end
-
 ###############################
 #### DIRECT A CONSTRUCTION ####
 ###############################
-
-function _add_symmetry_contributions!(A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},k::T,symmetry;multithreaded::Bool=true) where {T<:Real}
-    symmetry===nothing && return A
-    αL2=Complex{T}(0,k/2)
-    αM2=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    nc=length(pts)
-    for b in 1:nc
-        pb=pts[b]
-        caches=build_symmetry_image_caches(pb,symmetry)
-        isempty(caches) && continue
-        Nb=length(pb.xy)
-        rb=offs[b]:(offs[b+1]-1)
-        for cache in caches
-            @use_threads multithreading=multithreaded for j in 1:Nb
-                gj=rb[j]
-                xj,yj=cache.xy[j]
-                txj,tyj=cache.tangent[j]
-                sj=cache.speed[j]
-                χ=cache.scale
-                wj=pb.ws[j]
-                @inbounds for a in 1:nc
-                    pa=pts[a]
-                    Na=length(pa.xy)
-                    ra=offs[a]:(offs[a+1]-1)
-                    for i in 1:Na
-                        gi=ra[i]
-                        xi,yi=pa.xy[i]
-                        dx=xi-xj
-                        dy=yi-yj
-                        r2=muladd(dx,dx,dy*dy)
-                        r2<=(eps(T))^2 && continue
-                        r=sqrt(r2)
-                        invr=inv(r)
-                        inn=tyj*dx-txj*dy
-                        h1=H(1,k*r)
-                        h0=H(0,k*r)
-                        dterm=αL2*inn*h1*invr
-                        sterm=αM2*h0*sj
-                        #A[gi,gj]+= -(χ*wj)*(dterm+ik*sterm)
-                        #A[gi,gj]+= -(χ*wj)*(dterm) # DLP TEST
-                        A[gi,gj]+= -(χ*wj)*(ik*sterm) # SLP TEST
-                    end
-                end
-            end
-        end
-    end
-    return A
-end
 
 function construct_matrices(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
@@ -457,7 +311,6 @@ function construct_matrices(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},p
             end
         end
     end
-    _add_symmetry_contributions!(A,pts,offs,k,solver.symmetry;multithreaded=multithreaded)
     return A
 end
 
