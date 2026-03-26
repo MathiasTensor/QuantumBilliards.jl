@@ -8,9 +8,7 @@
 #### BESSEL FUNCTIONS ####
 ##########################
 
-H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
-J(n::Int,x::T) where {T<:Real}=Bessels.besselj(n,x)
-J(ns::As,x::T) where {T<:Real,As<:AbstractRange{Int}}=Bessels.besselj(ns,x)
+H(n::Int,x::Union{T,Complex{T}}) where {T<:Real}= isreal(x) ? Bessels.hankelh1(n,x) : Complex{T}(Bessels.hankelh1(n,x))
 two_pi=2*pi
 inv_two_pi=1/two_pi
 euler_over_pi=MathConstants.eulergamma/pi
