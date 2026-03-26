@@ -144,17 +144,17 @@ end
 
 # For BIM/CFIE, refinement is controlled by boundary discretization (pts_scaling_factor).
 # dim_scaling_factor is only relevant for basis-type solvers and is ignored by some dispatches below.
-function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true)
+function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices)
+        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
     end
 end
 
-function _refine_objective(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true)
+function _refine_objective(solver::CFIE_polar_nocorners,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices)
+        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
     end
 end
 
@@ -176,7 +176,7 @@ function _refine_objective(solver::ParticularSolutionsMethod,basis::AbsBasis,bil
     end
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
@@ -185,7 +185,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         solver_new=update_field(solver_new,:dim_scaling_factor,1.5*solver.dim_scaling_factor)
     catch _
     end
-    f_min=_refine_objective(solver_new,basis,billiard;multithreaded_matrices=multithreaded_matrices)
+    f_min=_refine_objective(solver_new,basis,billiard;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov)
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     dk=ks[2]-ks[1]
