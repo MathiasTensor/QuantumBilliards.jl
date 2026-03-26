@@ -345,7 +345,7 @@ function _add_symmetry_contributions!(A::Matrix{Complex{T}},pts::Vector{Boundary
     return A
 end
 
-function _A(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -449,41 +449,41 @@ function _A(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},pts::Vector{Bound
     return A
 end
 
-function _A(solver::CFIE_polar_nocorners,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE_polar_nocorners,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
-    return _A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    return construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
 end
 
-function solve(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    mu=svdvals(A)
+function solve(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    use_krylov ? @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR);reverse!(mu) : mu=svdvals(A)
     return mu[end]
 end
 
-function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
-    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    mu=svdvals(A)
+    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    use_krylov ? @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR);reverse!(mu) : mu=svdvals(A)
     return mu[end]
 end
 
-function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    mu=svdvals(A)
+    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    use_krylov ? @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR);reverse!(mu) : mu=svdvals(A)
     return mu[end]
 end
 
 function solve_vect(solver::CFIE_polar_nocorners,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
@@ -497,7 +497,7 @@ function solve_vect(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryP
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     Rmat=build_Rmat_CFIE(pts)
-    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
@@ -527,7 +527,7 @@ function solve_INFO(solver::CFIE_polar_nocorners,basis::Ba,pts::Vector{BoundaryP
     Rmat=build_Rmat_CFIE(pts)
     t1=time()
     @info "Building boundary operator A..."
-    A=_A(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    A=construct_matrices(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     t2=time()
     cA=cond(A)
     @info "Condition number of A: $(round(cA;sigdigits=4))"
