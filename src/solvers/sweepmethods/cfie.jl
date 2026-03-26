@@ -8,7 +8,8 @@
 #### BESSEL FUNCTIONS ####
 ##########################
 
-H(n::Int,x::Union{T,Complex{T}}) where {T<:Real}= isreal(x) ? Bessels.hankelh1(n,x) : Complex{T}(SpecialFunctions.besselh(n,1,x))
+H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
+H(n::Int,x::Complex{T}) where {T<:Real}=SpecialFunctions.besselh(n,1,x)
 two_pi=2*pi
 inv_two_pi=1/two_pi
 euler_over_pi=MathConstants.eulergamma/pi
