@@ -227,35 +227,53 @@ function chebyshev_params(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},zj::Ab
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
-    plans0=Vector{ChebHankelPlanH1}(undef,nz)
-    plans1=Vector{ChebHankelPlanH1}(undef,nz)
+
+    plans0=Vector{ChebHankelPlanH}(undef,nz)
+    plans1=Vector{ChebHankelPlanH}(undef,nz)
+    plans2=Vector{ChebJPlan}(undef,nz)
+    plans3=Vector{ChebJPlan}(undef,nz)
     approx0=Matrix{ComplexF64}(undef,sampling_points,nz)
     approx1=Matrix{ComplexF64}(undef,sampling_points,nz)
+    approx2=Matrix{ComplexF64}(undef,sampling_points,nz)
+    approx3=Matrix{ComplexF64}(undef,sampling_points,nz)
     exact0=Matrix{ComplexF64}(undef,sampling_points,nz)
     exact1=Matrix{ComplexF64}(undef,sampling_points,nz)
+    exact2=Matrix{ComplexF64}(undef,sampling_points,nz)
+    exact3=Matrix{ComplexF64}(undef,sampling_points,nz)
     max_errs0=fill(Inf,nz)
     max_errs1=fill(Inf,nz)
+    max_errs2=fill(Inf,nz)
+    max_errs3=fill(Inf,nz)
+
     for it in 1:max_iter
-        plans0,plans1=build_CFIE_plans(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
+        plans0,plans1,plans2,plans3=build_CFIE_plans(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
         Threads.@threads for j in eachindex(zj)
             pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
+            pidx2,tloc2,_=panel_and_geom(plans2[j],rs)
+            pidx3,tloc3,_=panel_and_geom(plans3[j],rs)
             eval_h1!(view(approx0,:,j),plans0[j],rs,pidx0,tloc0)
             eval_h1!(view(approx1,:,j),plans1[j],rs,pidx1,tloc1)
+            eval_j!(view(approx2,:,j),plans2[j],rs,pidx2,tloc2)
+            eval_j!(view(approx3,:,j),plans3[j],rs,pidx3,tloc3)
         end
         Threads.@threads for j in eachindex(zj)
             @inbounds for i in eachindex(rs)
                 z=ComplexF64(zj[j])*rs[i]
                 exact0[i,j]=SpecialFunctions.besselh(0,1,z)
                 exact1[i,j]=SpecialFunctions.besselh(1,1,z)
+                exact2[i,j]=SpecialFunctions.besselj(0,z)
+                exact3[i,j]=SpecialFunctions.besselj(1,z)
             end
         end
         @inbounds for j in 1:nz
             max_errs0[j]=maximum(abs.(view(approx0,:,j).-view(exact0,:,j)))
             max_errs1[j]=maximum(abs.(view(approx1,:,j).-view(exact1,:,j)))
+            max_errs2[j]=maximum(abs.(view(approx2,:,j).-view(exact2,:,j)))
+            max_errs3[j]=maximum(abs.(view(approx3,:,j).-view(exact3,:,j)))
         end
-        verbose && @info "CFIE Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1)
-        (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)) && return n_panels,M,plans0,plans1,max_errs0,max_errs1
+        verbose && @info "CFIE Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3)
+        (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)) && return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
         if it%3==0
             M+=grow_M
         else
@@ -263,7 +281,7 @@ function chebyshev_params(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},zj::Ab
         end
     end
     @warn "CFIE Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
-    return n_panels,M,plans0,plans1,max_errs0,max_errs1
+    return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
 end
 
 #####################################################
@@ -301,17 +319,14 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     @assert length(Tbufs)==Mk
     if use_chebyshev
         block_cache=build_cfie_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
-        plans0,plans1=build_CFIE_plans(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+        plans0,plans1,plans2,plans3=build_CFIE_plans(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
         ws=CFIEMultiHankelWorkspace(Mk;ntls=Threads.nthreads())
         @inbounds for j in eachindex(Tbufs)
             fill!(Tbufs[j],0.0+0.0im)
         end
-        @benchit timeit=timeit "CFIE Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,ws.h0_tls,ws.h1_tls,block_cache;multithreaded=multithreaded)
+        @benchit timeit=timeit "CFIE Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
     else
-        Rmat=build_Rmat_CFIE(pts)
-        @benchit timeit=timeit "CFIE complex k" @inbounds for j in eachindex(zj)
-            construct_matrices!(solver,Tbufs[j],pts,Rmat,zj[j];multithreaded=multithreaded)
-        end
+        @error("Direct matrix construction is only for real k currently")
     end
     return nothing
 end

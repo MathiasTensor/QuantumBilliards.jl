@@ -21,10 +21,10 @@
 #
 # Main API
 # - plan_h1x : build a complex-k scaled H1 plan
-# - plan_h1  : build a real-k unscaled H_ν plan
+# - plan_h  : build a real-k unscaled H_ν plan
 # - panel_indices / panel_and_geom : precompute panel locations and local coords
 # - eval_h1x! / eval_h1x : evaluate the stored scaled quantity
-# - eval_h1!  / eval_h1  : evaluate the physical unscaled Hankel
+# - eval_h!  / eval_h  : evaluate the physical unscaled Hankel
 # - precompute_phase : precompute exp(i k r) for the complex-k route
 #
 # MO/20/3/26
@@ -37,12 +37,21 @@ struct ChebHankelTableH1x
     c1::Vector{ComplexF64}   # coeffs of Gν(r) = √r * Hνx(k r)
 end
 
-struct ChebHankelTableH1
+struct ChebHankelTableH
     a::Float64 # start of panel 
     b::Float64 # end of panel
     M::Int # order of the chebyshev polynomial for panel [a,b]
-    ν::Int # order of the Hankel type 1 function
-    c::Vector{ComplexF64}   # coeffs of Gν(r) = √r * Hνx(k r)
+    ν::Int # degree of the Hankel type function
+    κ::Int # order/type of the Hankel function 
+    c::Vector{ComplexF64} 
+end
+
+struct ChebJTable
+    a::Float64 # start of panel 
+    b::Float64 # end of panel
+    M::Int # order of the chebyshev polynomial for panel [a,b]
+    ν::Int # degree of the J
+    c::Vector{ComplexF64} 
 end
 
 # =============================================================================
@@ -78,50 +87,79 @@ end
 
 # =============================================================================
 # Construct a Chebyshev table on a single panel [a,b] for the unscaled Hankel:
-#   Hν(z) = H_ν^(1)(z),  with  z = k*r and k real.
+#   Hν(z) = H_ν^(κ)(z),  with  z = k*r and k real.
 #
-# We approximate the function Fν(r) = H_ν^(1)(k r) on Chebyshev nodes t_j = cos(π j / M), j=0..M, mapped to r_j ∈ [a,b].
+# We approximate the function Fν(r) = H_ν^(κ)(k r) on Chebyshev nodes t_j = cos(π j / M), j=0..M, mapped to r_j ∈ [a,b].
 #
 # Unlike the complex-k scaled route, this real-k path stores the unscaled Hankel
 # values directly.
 #
 # Inputs
 #   ν :: Int                 # Hankel order (typically 0 or 1)
+#   κ :: Int                 # Hankel type (1 or 2 etc.)
 #   k :: Float64             # fixed real wavenumber
 #   a,b :: Float64           # panel endpoints, 0 < a < b
 #   M :: Int                 # Chebyshev degree (stores M+1 coeffs)
 #
 # Output
-#   ChebHankelTableH1(a,b,M,ν,c) where c are the Chebyshev coeffs of Fν.
+#   ChebHankelTableH(a,b,M,ν,c) where c are the Chebyshev coeffs of Fν.
 # =============================================================================
-function _build_table_h1!(ν::Int,k::Float64,a::Float64,b::Float64;M::Int=16)::ChebHankelTableH1
+function _build_table_h!(ν::Int,κ::Int,k::Float64,a::Float64,b::Float64;M::Int=16)::ChebHankelTableH
     @assert a>0 && b>a "a=$(a), b=$(b)" # sanity check to keep the interval bounded above 0 and to not be degenerate/reversed
     f1=Vector{ComplexF64}(undef,M+1) # preallocate the vector storing function evalutions at chebyshev nodes
     @inbounds for j in 0:M
         t=cospi(j/M) # chebyshev node in [-1,1]
         r=((b+a)+(b-a)*t)/2 # affine map to [a,b] so we are in the correct sector
         z=k*r # argument for Hankel in local coordinates
-        f1[j+1]=ComplexF64(Bessels.hankelh1(ν,z)) # unscaled real-argument Hankel from Bessels.jl
+        f1[j+1]=ComplexF64(Bessels.hankelh(ν,κ,z)) # unscaled real-argument Hankel from Bessels.jl
     end
     c=Vector{ComplexF64}(undef,M+1) # preallocate chebyshev coeffs
     _chebfit!(c,f1) # fit the chebyshev coeffs to the chebyshev node evaluations
-    return ChebHankelTableH1(a,b,M,ν,c) # construct the table for that particular panel with local cheby polynomial 
+    return ChebHankelTableH(a,b,M,ν,κ,c) # construct the table for that particular panel with local cheby polynomial 
 end
 
 # multiple dispatch version of above with complex k. Maybe redundant since we have the scaled version but this one does not need the exp mul in the end and therefore faster. Other one is LEGACY made for original formulation for Beyn's method.
-function _build_table_h1!(ν::Int,k::ComplexF64,a::Float64,b::Float64;M::Int=16)::ChebHankelTableH1
+function _build_table_h!(ν::Int,κ::Int,k::ComplexF64,a::Float64,b::Float64;M::Int=16)::ChebHankelTableH
     @assert a>0 && b>a "a=$(a), b=$(b)" # sanity check to keep the interval bounded above 0 and to not be degenerate/reversed
     f1=Vector{ComplexF64}(undef,M+1) # preallocate the vector storing function evalutions at chebyshev nodes
     @inbounds for j in 0:M
         t=cospi(j/M) # chebyshev node in [-1,1]
         r=((b+a)+(b-a)*t)/2 # affine map to [a,b] so we are in the correct sector
         z=k*r # argument for Hankel in local coordinates
-        f1[j+1]=SpecialFunctions.besselh(ν,1,z) # unscaled complex-argument Hankel from AMOS. We use this for complex k since Bessels.jl doesn't support complex arguments and AMOS is more stable for complex arguments. Just dont use this here with large im part for z !!! 
+        f1[j+1]=SpecialFunctions.besselh(ν,κ,z) # unscaled complex-argument Hankel from AMOS. We use this for complex k since Bessels.jl doesn't support complex arguments and AMOS is more stable for complex arguments. Just dont use this here with large im part for z !!! 
         #FIXME It is hacky since for _build_table_h1x! we used the scaled version primarily for Beyn's method since we did not know the size of the imaginary part, but this seems not safe
     end
     c=Vector{ComplexF64}(undef,M+1) # preallocate chebyshev coeffs
     _chebfit!(c,f1) # fit the chebyshev coeffs to the chebyshev node evaluations
-    return ChebHankelTableH1(a,b,M,ν,c) # construct the table for that particular panel with local cheby polynomial 
+    return ChebHankelTableH(a,b,M,ν,κ,c) # construct the table for that particular panel with local cheby polynomial 
+end
+
+function _build_table_j!(ν::Int,k::Float64,a::Float64,b::Float64;M::Int=16)::ChebJTable
+    @assert a>0 && b>a "a=$(a), b=$(b)" 
+    f1=Vector{ComplexF64}(undef,M+1)
+    @inbounds for j in 0:M
+        t=cospi(j/M) 
+        r=((b+a)+(b-a)*t)/2 
+        z=k*r 
+        f1[j+1]=Bessels.besselj(ν,z) 
+    end
+    c=Vector{ComplexF64}(undef,M+1) 
+    _chebfit!(c,f1) 
+    return ChebJTable(a,b,M,ν,c)
+end
+
+function _build_table_j!(ν::Int,k::ComplexF64,a::Float64,b::Float64;M::Int=16)::ChebJTable
+    @assert a>0 && b>a "a=$(a), b=$(b)" 
+    f1=Vector{ComplexF64}(undef,M+1)
+    @inbounds for j in 0:M
+        t=cospi(j/M) 
+        r=((b+a)+(b-a)*t)/2 
+        z=k*r 
+        f1[j+1]=SpecialFunctions.besselj(ν,z)
+    end
+    c=Vector{ComplexF64}(undef,M+1) 
+    _chebfit!(c,f1) 
+    return ChebJTable(a,b,M,ν,c)
 end
 
 # LEGACY USED FOR BEYN; need it for backwards compatibility
@@ -136,10 +174,23 @@ struct ChebHankelPlanH1x
     npanels::Int
 end
 
-struct ChebHankelPlanH1
+struct ChebHankelPlanH
     k::Union{Float64,ComplexF64}
     ν::Int
-    panels::Vector{ChebHankelTableH1}
+    κ::Int
+    panels::Vector{ChebHankelTableH}
+    rmin::Float64
+    rmax::Float64
+    grading::Symbol
+    dr::Float64
+    invdr::Float64
+    npanels::Int
+end
+
+struct ChebJPlan
+    k::Union{Float64,ComplexF64}
+    ν::Int
+    panels::Vector{ChebJTable}
     rmin::Float64
     rmax::Float64
     grading::Symbol
@@ -192,6 +243,8 @@ end
 # Inputs
 #   ν :: Int
 #       # Hankel order (typically 0 for SLP or 1 for DLP)
+#   κ :: Int
+#       # Hankel type (1 for H^(1), 2 for H^(2), etc.)
 #   k :: Float64
 #       # fixed real wavenumber
 #   rmin,rmax :: Float64
@@ -204,20 +257,57 @@ end
 #       # panel-size ratio for :geometric
 #
 # Output
-#   ChebHankelPlanH1(k,ν,panels,...) containing the panelized Chebyshev tables.
+#   ChebHankelPlanH(κ,k,ν,panels,...) containing the panelized Chebyshev tables.
 # =============================================================================
-function plan_h1(ν::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebHankelPlanH1
+function plan_h(ν::Int,κ::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebHankelPlanH
     @assert rmin>0 && rmax>rmin
     br= grading===:uniform ?
         _breaks_uniform(rmin,rmax,npanels) :
         _breaks_geometric(rmin,rmax,npanels;ratio=geo_ratio) # breakpoints for panels. These are the same for all k, so we can reuse them if we build multiple plans for different k's but the same geometry.
-    panels=Vector{ChebHankelTableH1}(undef,npanels)
+    panels=Vector{ChebHankelTableH}(undef,npanels)
     @inbounds Threads.@threads for i in 1:npanels
-        panels[i]=_build_table_h1!(ν,k,br[i],br[i+1];M=M)
+        panels[i]=_build_table_h!(ν,κ,k,br[i],br[i+1];M=M)
     end
     dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
     invdr= grading===:uniform ? inv(dr) : 0.0
-    return ChebHankelPlanH1(k,ν,panels,rmin,rmax,grading,dr,invdr,npanels)
+    return ChebHankelPlanH(k,ν,κ,panels,rmin,rmax,grading,dr,invdr,npanels)
+end
+
+# =============================================================================
+# Build a piecewise-Chebyshev plan for the Bessel function J_ν(k r) over r ∈ [rmin,rmax].
+#
+# The interval is split into `npanels` either uniformly or with geometric growth. 
+# Each panel stores M+1 Chebyshev coefficients (degree M) for the Bessel function values.
+# This is intended for use in the CFIE when evaluating the interior Dirichlet Green’s function, which involves J_ν(k r).
+# 
+# Inputs
+#   ν :: Int
+#       # Bessel order need both 0 and 1 for CFIE
+#   k :: Union{Float64,ComplexF64}
+#       # fixed wavenumber (real or complex)
+#   rmin,rmax :: Float64
+#       # 0 < rmin < rmax
+#   npanels :: Int
+#   M :: Int
+#   grading :: Symbol
+#       # :uniform or :geometric
+#   geo_ratio :: Real
+#       # panel-size ratio for :geometric
+# Output
+#   ChebJPlan(k,ν,panels,...) containing the panelized Chebyshev tables for J_ν(k r).
+# =============================================================================
+function plan_j(ν::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebJPlan
+    @assert rmin>0 && rmax>rmin
+    br= grading===:uniform ?
+        _breaks_uniform(rmin,rmax,npanels) :
+        _breaks_geometric(rmin,rmax,npanels;ratio=geo_ratio) # breakpoints for panels. These are the same for all k, so we can reuse them if we build multiple plans for different k's but the same geometry.
+    panels=Vector{ChebJTable}(undef,npanels)
+    @inbounds Threads.@threads for i in 1:npanels
+        panels[i]=_build_table_j!(ν,k,br[i],br[i+1];M=M)
+    end
+    dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
+    invdr= grading===:uniform ? inv(dr) : 0.0
+    return ChebJPlan(k,ν,panels,rmin,rmax,grading,dr,invdr,npanels)
 end
 
 # =============================================================================
@@ -228,7 +318,7 @@ end
 # on which the Chebyshev coefficients for G₁(r) = √r * H₁x(k r) were fitted.
 #
 # Inputs
-#   panels :: Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH1}}   # vector of panel structs
+#   panels :: Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}}   # vector of panel structs
 #   r      :: Float64                      # query radius (must be positive)
 #
 # Output
@@ -243,7 +333,7 @@ end
 #   - @inbounds avoids bounds checks for speed.
 #   - Typical Np = 50–300, so this routine is negligible cost compared to Hankel evaluation.
 # =============================================================================
-@inline function _find_panel_binary(panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH1}},r::Float64)::Int
+@inline function _find_panel_binary(panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}},r::Float64)::Int
     lo=1;hi=length(panels)
     @inbounds while lo≤hi
         mid=(lo+hi)>>>1
@@ -271,7 +361,7 @@ end
 # where dr = (rmax - rmin) / npanels.
 #
 # Inputs
-#   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH1}
+#   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
 #          # plan with uniform panel spacing (pl.grading === :uniform)
 #          # must contain fields rmin, invdr, npanels
 #   r  :: Float64
@@ -289,7 +379,7 @@ end
 #   - O(1) cost: one multiply, one floor, and clamping.
 # =============================================================================
 
-@inline function _find_panel_uniform(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH1},r::Float64)::Int
+@inline function _find_panel_uniform(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r::Float64)::Int
     p=Int(floor((r-pl.rmin)*pl.invdr))+1
     return ifelse(p<1,1,ifelse(p>pl.npanels,pl.npanels,p))
 end
@@ -305,7 +395,7 @@ end
 # p such that r ∈ [panels[p].a, panels[p].b], regardless of grading type.
 #
 # Inputs
-#   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH1}
+#   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
 #          # Chebyshev plan containing panels and grading information
 #   r  :: Float64
 #          # query radius (must lie within plan range)
@@ -320,7 +410,7 @@ end
 #   - Otherwise:
 #         uses binary search over panel intervals (_find_panel_binary)
 # =============================================================================
-@inline function _find_panel(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH1},r::Float64)::Int
+@inline function _find_panel(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r::Float64)::Int
     if pl.grading===:uniform
         return _find_panel_uniform(pl,r)
     else
@@ -336,8 +426,8 @@ end
 # evaluation of H₁x or H₁.
 #
 # Inputs
-#   pl    :: Union{ChebHankelPlanH1x,ChebHankelPlanH1}
-#             # plan containing `panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH1}}`
+#   pl    :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
+#             # plan containing `panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}` and grading information
 #   rvec  :: AbstractVector{Float64}
 #             # radii (each must satisfy pl.panels[1].a ≤ r ≤ pl.panels[end].b)
 #
@@ -351,7 +441,7 @@ end
 #   - All outputs are computed in place; no allocations except the result vector.
 #   - Complexity: O(length(rvec) * log Np).
 # =============================================================================
-function panel_indices(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH1},rvec::AbstractVector{Float64})::Vector{Int32}
+function panel_indices(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Vector{Int32}
     p=similar(rvec,Int32)
     @inbounds Threads.@threads for i in eachindex(rvec)
         p[i]=Int32(_find_panel(pl,rvec[i]))
@@ -370,7 +460,7 @@ end
 #   • invsqrt[i]  = 1 / √r[i]
 #
 # Inputs
-#   pl     :: Union{ChebHankelPlanH1x,ChebHankelPlanH1}  # plan containing panels [a,b]
+#   pl     :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}  # plan containing panels [a,b]
 #   rvec   :: AbstractVector{Float64}  # radii (must lie in total range of plan)
 #   pidx   :: AbstractVector{Int32}    # panel indices for each r[i]
 #
@@ -379,7 +469,7 @@ end
 #       t        :: Vector{Float64}     # mapped Chebyshev coordinates
 #       invsqrt  :: Vector{Float64}     # 1/√r for normalization
 # =============================================================================
-function precompute_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH1},rvec::AbstractVector{Float64},pidx::AbstractVector{Int32})::Tuple{Vector{Float64},Vector{Float64}}
+function precompute_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64},pidx::AbstractVector{Int32})::Tuple{Vector{Float64},Vector{Float64}}
     @assert length(rvec)==length(pidx)
     n=length(rvec)
     t=Vector{Float64}(undef,n)
@@ -404,7 +494,7 @@ end
 # an extra pass over rvec and redundant memory traffic.
 #
 # Inputs
-#   pl   :: Union{ChebHankelPlanH1x,ChebHankelPlanH1}
+#   pl   :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}  # Chebyshev plan with panels and grading info
 #   rvec :: Vector{Float64}  # radii (must lie in [panels[1].a, panels[end].b])
 #
 # Outputs
@@ -417,7 +507,7 @@ end
 #     minimize overhead.
 #   - Forces no allocations inside the threaded loop.
 # =============================================================================
-function panel_and_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH1},rvec::AbstractVector{Float64})::Tuple{Vector{Int32},Vector{Float64},Vector{Float64}}
+function panel_and_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Tuple{Vector{Int32},Vector{Float64},Vector{Float64}}
     n=length(rvec)
     pidx=Vector{Int32}(undef,n)
     t=Vector{Float64}(undef,n)
@@ -529,7 +619,7 @@ end
 
 # =============================================================================
 # Fast evaluation of the unscaled Hankel for the real-k plan:
-#   H_ν^(1)(k r),  with k real.
+#   H_ν^(κ)(k r),  with k real.
 #
 # Each panel stores Chebyshev coefficients of the direct unscaled Hankel
 # values on that interval. No exponential scaling and no 1/sqrt(r)
@@ -538,7 +628,7 @@ end
 # Inputs
 #   H1   :: AbstractVector{ComplexF64}
 #           # output
-#   pl   :: ChebHankelPlanH1
+#   pl   :: ChebHankelPlanH
 #           # plan at fixed real k
 #   r    :: AbstractVector{Float64}
 #           # radii (unused; kept for API compatibility)
@@ -548,13 +638,43 @@ end
 #           # per-point Chebyshev coordinate
 #
 # Output
-#   Fills H1 in place with H_ν^(1)(k r_i).
+#   Fills H1 in place with H_ν^(κ)(k r_i).
 # =============================================================================
-function eval_h1!(H1::AbstractVector{ComplexF64},pl::ChebHankelPlanH1,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64})
+function eval_h!(H1::AbstractVector{ComplexF64},pl::ChebHankelPlanH,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64})
     pans=pl.panels
     @inbounds Threads.@threads for i in eachindex(r)
         T=pans[pidx[i]]
         H1[i]=_cheb_clenshaw(T.c,t[i])
+    end
+    return nothing
+end
+
+# =============================================================================
+# Fast evaluation of the Bessel function J_ν(k r) for the same radius r across
+# multiple real or complex wavenumbers (one per plan).
+#
+# Each plan stores the direct unscaled Bessel values on the same panel
+# partition, so the same `pidx` and `t` may be reused across all plans.
+#
+# Inputs
+#   J     :: AbstractVector{ComplexF64}
+#           # output vector (length = length(plans))   
+#   pl    :: ChebJPlan
+#           # Chebyshev plan for J_ν(k r) at fixed k
+#   r     :: AbstractVector{Float64}
+#           # radii (unused; kept for API compatibility)
+#   pidx  :: AbstractVector{Int32}
+#           # per-point panel index
+#   t     :: AbstractVector{Float64}
+#           # per-point Chebyshev coordinate
+# Output
+#   Fills J in place with J_ν(k r_i) for each plan.
+# =============================================================================
+function eval_j!(J::AbstractVector{ComplexF64},pl::ChebJPlan,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64})
+    pans=pl.panels
+    @inbounds Threads.@threads for i in eachindex(r)
+        T=pans[pidx[i]]
+        J[i]=_cheb_clenshaw(T.c,t[i])
     end
     return nothing
 end
@@ -588,11 +708,11 @@ end
 
 # =============================================================================
 # Evaluate the unscaled Hankel
-#   H_ν^(1)(k r),  with k real,
+#   H_ν^(κ)(k r),  with k real,
 # at a single point using the real-k Chebyshev plan.
 #
 # Inputs
-#   pl   :: ChebHankelPlanH1
+#   pl   :: ChebHankelPlanH
 #           # precomputed Chebyshev plan for fixed real k
 #   pidx :: Int32
 #           # panel index such that r ∈ [a,b]
@@ -601,9 +721,27 @@ end
 #
 # Output
 #   ComplexF64
-#           # approximation of H_ν^(1)(k r)
+#           # approximation of H_ν^(κ)(k r)
 # =============================================================================
-@inline function eval_h1(pl::ChebHankelPlanH1,pidx::Int32,t::Float64)
+@inline function eval_h(pl::ChebHankelPlanH,pidx::Int32,t::Float64)
+    return _cheb_clenshaw(pl.panels[pidx].c,t)
+end
+
+# =============================================================================
+# Evaluate the Bessel function J_ν(k r) for a single point using the Chebyshev plan for J.
+#
+# Inputs
+#   pl   :: ChebJPlan
+#           # precomputed Chebyshev plan for J_ν(k r) at fixed k
+#   pidx :: Int32
+#           # panel index such that r ∈ [a,b]
+#   t    :: Float64
+#           # mapped Chebyshev coordinate in [-1,1]
+# Output
+#   ComplexF64
+#           # approximation of J_ν(k r)
+# =============================================================================
+@inline function eval_j(pl::ChebJPlan,pidx::Int32,t::Float64)
     return _cheb_clenshaw(pl.panels[pidx].c,t)
 end
 
@@ -637,7 +775,7 @@ function eval_h1x_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVecto
 end
 
 # =============================================================================
-# Evaluate the unscaled Hankel H_ν^(1)(k r) for the same radius r across
+# Evaluate the unscaled Hankel H_ν^(κ)(k r) for the same radius r across
 # multiple real wavenumbers (one per plan).
 #
 # Each plan stores the direct unscaled Hankel coefficients on the same panel
@@ -646,7 +784,7 @@ end
 # Inputs
 #   out  :: AbstractVector{ComplexF64}
 #           # length == length(plans)
-#   plans:: AbstractVector{ChebHankelPlanH1}
+#   plans:: AbstractVector{ChebHankelPlanH}
 #           # real-k Chebyshev plans
 #   r    :: Float64
 #           # radius for this evaluation point (unused; kept for API symmetry)
@@ -656,9 +794,38 @@ end
 #           # Chebyshev coordinate for r
 #
 # Output
-#   out[m] = H_ν^(1)(k_m r) for m = 1..length(plans).
+#   out[m] = H_ν^(κ)(k_m r) for m = 1..length(plans).
 # =============================================================================
-function eval_h1_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1},r::Float64,pidx::Int32,t::Float64)
+function eval_h_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH},r::Float64,pidx::Int32,t::Float64)
+    @inbounds for m in eachindex(plans)
+        plan_m=plans[m]
+        out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+    end
+    return nothing
+end
+
+# =============================================================================
+# Evaluate the Bessel function J_ν(k r) for the same radius r across multiple
+# wavenumbers (one per plan).
+#
+# Each plan stores the direct unscaled Bessel coefficients on the same panel
+# partition, so the same `pidx` and `t` may be reused across all plans.
+#
+# Inputs
+#   out  :: AbstractVector{ComplexF64}
+#           # length == length(plans)
+#   plans:: AbstractVector{ChebJPlan}
+#           # Chebyshev plans for J_ν(k r) at fixed k
+#   r    :: Float64
+#           # radius for this evaluation point (unused; kept for API symmetry)
+#   pidx :: Int32
+#           # panel index for r
+#   t    :: Float64
+#           # Chebyshev coordinate for r
+# Output
+#   out[m] = J_ν(k_m r) for m = 1..length(plans).
+# =============================================================================
+function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebJPlan},r::Float64,pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans)
         plan_m=plans[m]
         out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)

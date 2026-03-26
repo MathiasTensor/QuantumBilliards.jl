@@ -32,7 +32,17 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
 #### MULTI-K H0/H1 ####
 #######################
 
-@inline function h01_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH1},plans1::AbstractVector{ChebHankelPlanH1},pidx::Int32,t::Float64)
+@inline function bessels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
+    @inbounds for m in eachindex(plans0)
+        h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
+        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+        j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
+        j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
+    end
+    return nothing
+end
+
+@inline function hankels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
         h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
@@ -44,15 +54,19 @@ end
 #### PLAN BUILDERS FOR CFIE ####
 ################################
 
-function build_CFIE_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)::Tuple{Vector{ChebHankelPlanH1},Vector{ChebHankelPlanH1}}
+function build_CFIE_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
     Mk=length(ks)
-    plans0=Vector{ChebHankelPlanH1}(undef,Mk)
-    plans1=Vector{ChebHankelPlanH1}(undef,Mk)
+    plans0=Vector{ChebHankelPlanH}(undef,Mk)
+    plans1=Vector{ChebHankelPlanH}(undef,Mk)
+    plansj0=Vector{ChebJPlan}(undef,Mk)
+    plansj1=Vector{ChebJPlan}(undef,Mk)
     if nthreads<=1 || Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
-            plans0[m]=plan_h1(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plans1[m]=plan_h1(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
         end
     else
         nt=min(nthreads,Mk)
@@ -68,12 +82,14 @@ function build_CFIE_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float
         Threads.@threads for tid in 1:nt
             @inbounds for m in chunks[tid]
                 k=ComplexF64(ks[m])
-                plans0[m]=plan_h1(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plans1[m]=plan_h1(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
             end
         end
     end
-    return plans0,plans1
+    return plans0,plans1,plansj0,plansj1
 end
 
 #################################
@@ -199,15 +215,19 @@ end
 #### EXPLICIT WORKSPACE ####
 ############################
 
-struct CFIEMultiHankelWorkspace
+struct CFIEMultiBesselWorkspace
     h0_tls::Vector{Vector{ComplexF64}}
     h1_tls::Vector{Vector{ComplexF64}}
+    j0_tls::Vector{Vector{ComplexF64}}
+    j1_tls::Vector{Vector{ComplexF64}}
 end
 
-function CFIEMultiHankelWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
+function CFIEMultiBesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
     h0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
-    return CFIEMultiHankelWorkspace(h0_tls,h1_tls)
+    j0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    j1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    return CFIEMultiBesselWorkspace(h0_tls,h1_tls,j0_tls,j1_tls)
 end
 
 ###################################
@@ -225,13 +245,13 @@ end
 #### DIRECT NO-SYMMETRY CFIE ASSEMBLY: ALL k / ONE k ########
 #############################################################
 
-function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH1},plans1::Vector{ChebHankelPlanH1},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
+function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
     Mk=length(plans0)
     ks=Vector{ComplexF64}(undef,Mk)
     αL1=Vector{ComplexF64}(undef,Mk)
     αL2=Vector{ComplexF64}(undef,Mk)
     iks=Vector{ComplexF64}(undef,Mk)
-    multithreaded && @assert length(h0_tls)>=Threads.nthreads() && length(h1_tls)>=Threads.nthreads()
+    multithreaded && @assert length(h0_tls)>=Threads.nthreads() && length(h1_tls)>=Threads.nthreads() && length(j0_tls)>=Threads.nthreads() && length(j1_tls)>=Threads.nthreads()
     @inbounds for m in 1:Mk
         km=ComplexF64(plans1[m].k)
         ks[m]=km
@@ -246,7 +266,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
     blocks=sys.blocks
     nc=size(blocks,1)
 
-    function same_block_col!(blk::CFIEBlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64}) where {T<:Real}
+    function same_block_col!(blk::CFIEBlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64},j0vals::Vector{ComplexF64},j1vals::Vector{ComplexF64}) where {T<:Real}
         ro=blk.row_offset;co=blk.col_offset
         sj=blk.speed_j[j];wj=blk.wj[j];gj=co+j-1
         gi=ro+j-1;κj=blk.kappa_i[j];rjj=blk.Rkress[j,j]
@@ -256,7 +276,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             m1=αM1*sj
             m2=((0.5im-_EULER_OVER_PI)-_INV_TWO_PI*log((km^2/4)*(sj^2)))*sj
             sval=ComplexF64(rjj*m1,0.0)+wj*m2
-            As[m][gi,gj]=1.0-(dval+real(iks[m])*sval)
+            As[m][gi,gj]=1.0-(dval+(iks[m])*sval)
         end
         @inbounds for i in (j+1):blk.Ni
             gi=ro+i-1
@@ -264,10 +284,10 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             lt=blk.logterm[i,j];rijR=blk.Rkress[i,j]
             inn_ij=blk.inner[i,j];inn_ji=blk.inner[j,i]
             si=blk.speed_j[i];wi=blk.wj[i]
-            h01_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
+            bessels_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t)
             for m in 1:Mk
                 h0=h0vals[m];h1=h1vals[m]
-                j0=real(h0);j1=real(h1)
+                j0=j0vals[m];j1=j1vals[m]
                 βL1=αL1[m]*j1*invr
                 βL2=αL2[m]*h1*invr
                 βM1=αM1*j0
@@ -282,8 +302,8 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
                 m2i=βM2*si-m1i*lt
                 svalij=rijR*m1j+wj*m2j
                 svalji=rijR*m1i+wi*m2i
-                As[m][gi,gj]=-(dvalij+real(iks[m])*svalij)
-                As[m][gj,gi]=-(dvalji+real(iks[m])*svalji)
+                As[m][gi,gj]=-(dvalij+(iks[m])*svalij)
+                As[m][gj,gi]=-(dvalji+(iks[m])*svalji)
             end
         end
         return nothing
@@ -296,7 +316,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             gi=ro+i-1
             invr=blk.invR[i,j];inn=blk.inner[i,j]
             p=blk.pidx[i,j];t=blk.tloc[i,j]
-            h01_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
+            hankels_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
             for m in 1:Mk
                 h0=h0vals[m];h1=h1vals[m]
                 βL=αL2[m]*h1*invr
@@ -313,7 +333,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         blk=blocks[a,a]
         @use_threads multithreading=multithreaded for j in 1:blk.Nj
             tid=Threads.threadid()
-            same_block_col!(blk,j,h0_tls[tid],h1_tls[tid])
+            same_block_col!(blk,j,h0_tls[tid],h1_tls[tid],j0_tls[tid],j1_tls[tid])
         end
     end
 
@@ -328,8 +348,8 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
     return nothing
 end
 
-function _one_k_nosymm_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH1,plan1::ChebHankelPlanH1,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _all_k_nosymm_CFIE_chebyshev!([A],pts,[plan0],[plan1],h0_tls,h1_tls,block_cache;multithreaded=multithreaded)
+function _one_k_nosymm_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
+    _all_k_nosymm_CFIE_chebyshev!([A],pts,[plan0],[plan1],[plan2],[plan3],h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
     return nothing
 end
 
@@ -358,20 +378,21 @@ end
 #     - tangent
 #     - ws
 #
-# plans0,plans1 :: Vector{ChebHankelPlanH1}
+# plans0,plans1,plans2 :: Vector{ChebHankelPlanH1}
 #   Chebyshev interpolation plans for:
 #     - H0 (SLP kernel)  -> plans0
 #     - H1 (DLP kernel)  -> plans1
+#     - H2 (additional kernel) -> plans2 for J and Y evaluations needed for Kress correction for complex k
 #   Must have same length Mk.
 #
-# plan0,plan1   :: ChebHankelPlanH1
+# plan0,plan1,plan2   :: ChebHankelPlanH1
 #   Single-k version of the above.
 #
-# h0_tls,h1_tls :: Vector{Vector{ComplexF64}}
+# h0_tls,h1_tls,h2_tls :: Vector{Vector{ComplexF64}}
 #   Thread-local scratch buffers:
 #     - outer length ≥ nthreads()
 #     - inner length ≥ Mk
-#   Used to store H0/H1 evaluations per thread.
+#   Used to store H0/H1/H2 evaluations per thread.
 #
 # block_cache   :: CFIEBlockSystemCache{T}
 #   Precomputed geometry + Kress:
@@ -393,12 +414,12 @@ end
 #   S = single-layer operator
 #############################################################
 
-function compute_kernel_matrices_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH1},plans1::Vector{ChebHankelPlanH1},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _all_k_nosymm_CFIE_chebyshev!(As,pts,plans0,plans1,h0_tls,h1_tls,block_cache;multithreaded=multithreaded)
+function compute_kernel_matrices_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
+    _all_k_nosymm_CFIE_chebyshev!(As,pts,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
     return nothing
 end
 
-function compute_kernel_matrices_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH1,plan1::ChebHankelPlanH1, h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,h0_tls,h1_tls,block_cache;multithreaded=multithreaded)
+function compute_kernel_matrices_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
+    _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
     return nothing
 end

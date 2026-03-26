@@ -210,7 +210,7 @@ end
 #### DIRECT A CONSTRUCTION ####
 ###############################
 
-function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::Union{T,Complex{T}};multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
     αL2=k/2*im
@@ -313,7 +313,7 @@ function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{Boun
     return A
 end
 
-function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::Union{T,Complex{T}};multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
