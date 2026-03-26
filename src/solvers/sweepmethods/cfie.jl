@@ -63,6 +63,8 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ws::Vector{T} # the weights for the quadrature at ts
     ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
     ds::Vector{T} # diffs between crv lengths at ts
+    shift_x::T # the x shift to apply to the reflected image points (if any)
+    shift_y::T # the y shift to apply to the reflected image points (if any)
     compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
 end
 
@@ -76,7 +78,7 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.shift_x,pts.shift_y,pts.compid)
 end
 
 function _boundary_curves_for_solver(solver::CFIE_polar_nocorners,billiard::Bi) where {Bi<:AbsBilliard}
@@ -89,7 +91,7 @@ function _boundary_curves_for_solver(solver::CFIE_polar_nocorners,billiard::Bi) 
 end
 
 # single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
-function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int;shift_x::T=zero(T),shift_y::T=zero(T)) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
@@ -105,14 +107,16 @@ function _evaluate_points(solver::CFIE_polar_nocorners{T},crv::C,k::T,idx::Int) 
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # we kep these for future with different quadratures ala Kress (1)
     # put it in global
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,shift_x,shift_y,idx)
 end
 
 function evaluate_points(solver::CFIE_polar_nocorners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=_boundary_curves_for_solver(solver,billiard)
+    shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : type(0.0)
+    shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : type(0.0)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
-        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
+        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx;shift_x=shift_x,shift_y=shift_y) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx;shift_x=shift_x,shift_y=shift_y))
     end
     return pts
 end
@@ -229,8 +233,8 @@ end
 
 function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflection) where {T<:Real}
     N=length(pts.xy)
-    shift_x=hasproperty(sym,:shift_x) ? T(getproperty(sym,:shift_x)) : zero(T)
-    shift_y=hasproperty(sym,:shift_y) ? T(getproperty(sym,:shift_y)) : zero(T)
+    shift_x=hasproperty(pts[1],:shift_x) ? pts[1].shift_x : zero(T)
+    shift_y=hasproperty(pts[1],:shift_y) ? pts[1].shift_y : zero(T)
     ops=_reflect_ops_and_scales(T,sym)
     caches=Vector{SymmetryImageCache{T}}(undef,length(ops))
     for (q,(op,scale_r)) in enumerate(ops)
@@ -244,15 +248,15 @@ function build_reflection_image_caches(pts::BoundaryPointsCFIE{T},sym::Reflectio
             if op==1
                 x_reflect_point!(pt,xj,yj,shift_x)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=-SVector(-txj,tyj)
+                tangent[j]=SVector(-txj,tyj)
             elseif op==2
                 y_reflect_point!(pt,xj,yj,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=-SVector(txj,-tyj)
+                tangent[j]=SVector(txj,-tyj)
             else
                 xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
                 xy[j]=SVector(pt[1],pt[2])
-                tangent[j]=-SVector(-txj,-tyj)
+                tangent[j]=SVector(-txj,-tyj)
             end
             speed[j]=sqrt(tangent[j][1]^2+tangent[j][2]^2)
         end
@@ -342,7 +346,9 @@ function _add_symmetry_contributions!(A::Matrix{Complex{T}},pts::Vector{Boundary
                         h0=H(0,k*r)
                         dterm=αL2*inn*h1*invr
                         sterm=αM2*h0*sj
-                        A[gi,gj]+= -(χ*wj)*(dterm+ik*sterm)
+                        #A[gi,gj]+= -(χ*wj)*(dterm+ik*sterm)
+                        A[gi,gj]+= -(χ*wj)*(dterm) # DLP TEST
+                        #A[gi,gj]+= -(χ*wj)*(ik*sterm) # SLP TEST
                     end
                 end
             end
