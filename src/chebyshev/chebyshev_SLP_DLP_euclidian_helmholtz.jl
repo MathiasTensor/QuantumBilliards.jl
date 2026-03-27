@@ -316,7 +316,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
                 βM=αM2*h0
                 dval=wj*(βL*inn)
                 sval=wj*(βM*sj)
-                As[m][gi,gj]=-(dval+real(iks[m])*sval)
+                As[m][gi,gj]=-(dval+(iks[m])*sval)
             end
         end
         return nothing
