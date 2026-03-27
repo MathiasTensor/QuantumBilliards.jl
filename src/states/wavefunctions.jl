@@ -187,7 +187,7 @@ Determine whether the points `pts` lie inside the billiard polygon sampled with
 - `Vector{Bool}`: mask of points lying inside the billiard domain
 """
 function points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true,boundary_type::Symbol=:OUTER) where {T<:Real,Bi<:AbsBilliard}
-    polygon_xy_vectors=billiard_polygon(billiard,N_polygon_checks,boundary_type;fundamental_domain=fundamental_domain)
+    polygon_xy_vectors=billiard_polygon(billiard,N_polygon_checks;fundamental_domain=fundamental_domain,boundary_type=boundary_type)
     mask=fill(false,length(pts))
     if boundary_type==:OUTER
         # single connected domain: concatenate all curve pieces into one polygon
