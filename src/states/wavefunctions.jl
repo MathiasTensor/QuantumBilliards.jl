@@ -807,12 +807,9 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
+        s=maximum(abs,ψ)
+        s= s>0 ? s : 1
+        @. ψ=sign(real(ψ)/s)*abs(real(ψ)/s)^0.5
     end
     L=billiard.length
     if fundamental
@@ -864,12 +861,9 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
+        s=maximum(abs,ψ)
+        s= s>0 ? s : 1
+        @. ψ=sign(real(ψ)/s)*abs(real(ψ)/s)^0.5
     end
     L=billiard.length
     if fundamental
@@ -972,12 +966,9 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
+        s=maximum(abs,ψ)
+        s= s>0 ? s : 1
+        @. ψ=sign(real(ψ)/s)*abs(real(ψ)/s)^0.5
     end
     L=billiard.length
     if fundamental
@@ -1044,12 +1035,9 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
+        s=maximum(abs,ψ)
+        s= s>0 ? s : 1
+        @. ψ=sign(real(ψ)/s)*abs(real(ψ)/s)^0.5
     end
     L=billiard.length
     if fundamental
