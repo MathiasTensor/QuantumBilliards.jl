@@ -71,7 +71,7 @@ function make_circle_with_holes(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),hol
     validate_holes(R,x0,y0,holes)
     outer_origin=SVector(x0,y0)
     outer=CircleSegment(R,2*pi,zero(T),zero(T),zero(T);origin=outer_origin,rot_angle=rot_angle)
-    boundary=Vector{Any}(undef,1+length(holes))
+    boundary=Vector{CircleSegment{T}}(undef,1+length(holes))
     boundary[1]=outer
     @inbounds for (i,(r,hx,hy)) in enumerate(holes)
         origin=SVector(hx,hy)
