@@ -12,7 +12,6 @@
 # - `h01_multi_ks_at_r!(...)`: Evaluates the SLP and DLP Hankel functions for multiple wavenumbers at given distances.
 # - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
 # USUALLY NOT CALLED DIRECTLY: 
-# - `_accum_cfie_default_sym!(...)`: Default function to accumulate CFIE matrix entries for a given pair of points and their geometric terms.
 # - `_one_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for a single wavenumber without using symmetries, using Chebyshev-based SLP/DLP evaluation.
 # - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
 #
@@ -32,6 +31,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
 #### MULTI-K H0/H1 ####
 #######################
 
+# Evaluates the H0/H1/J0/J1 values at multiple k*r values, needed for multi CFIE assembly -> same_block_col!
 @inline function bessels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
@@ -42,6 +42,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
     return nothing
 end
 
+# Same as above but only for H0/H1, used for CFIE assembly when J0/J1 are not needed -> off_block_col! 
 @inline function hankels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
@@ -121,6 +122,7 @@ struct CFIEBlockSystemCache{T<:Real}
     rmax::Float64
 end
 
+# Builds the CFIE block caches for all pairs of components, precomputing the geometry-related terms needed for the CFIE matrix assembly.
 function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
@@ -211,9 +213,11 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
     return CFIEBlockSystemCache{T}(blocks,offs,Float64(global_rmin),Float64(global_rmax))
 end
 
-############################
-#### EXPLICIT WORKSPACE ####
-############################
+##########################
+#### BESSEL WORKSPACE ####
+##########################
+
+# Contains the thread-local storage for the Hankel and Bessel function values at multiple wavenumbers, used during CFIE assembly to avoid repeated allocations.
 
 struct CFIEMultiBesselWorkspace
     h0_tls::Vector{Vector{ComplexF64}}
@@ -228,17 +232,6 @@ function CFIEMultiBesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
     j0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     j1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     return CFIEMultiBesselWorkspace(h0_tls,h1_tls,j0_tls,j1_tls)
-end
-
-###################################
-#### DEFAULT CFIE ACCUMULATION ####
-###################################
-
-@inline function _accum_cfie_default_sym!(A::AbstractMatrix{ComplexF64},i::Int,j::Int,inn::T,invr::T,sj::T,wj::T,h0::ComplexF64,h1::ComplexF64,k::ComplexF64,scale::ComplexF64) where {T<:Real}
-    dterm=(0.5im*k)*(inn*invr)*h1
-    sterm=(0.5im)*sj*h0
-    @inbounds A[i,j]+= -scale*wj*(dterm+1im*k*sterm)
-    return nothing
 end
 
 #############################################################
