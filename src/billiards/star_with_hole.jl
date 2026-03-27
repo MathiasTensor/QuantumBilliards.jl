@@ -48,7 +48,7 @@ end
 Construct a billiard with an outer star and one inner star hole.
 The hole must fit strictly inside the outer boundary.
 """
-function StarHoleBilliard(;Rout::T,ϵout::T,mout::Int,xout::T=zero(T),yout::T=zero(T),φout::T=zero(T),Rin::T,ϵin::T,min::Int,xin::T=zero(T),yin::T=zero(T),φin::T=zero(T)) where {T<:Real}
+function StarHoleBilliard(::Type{T};Rout::T,ϵout::T,mout::Int,xout::T=zero(T),yout::T=zero(T),φout::T=zero(T),Rin::T,ϵin::T,min::Int,xin::T=zero(T),yin::T=zero(T),φin::T=zero(T)) where {T<:Real}
     outer,_=make_star_polar_boundary(Rout,ϵout,mout;x0=xout,y0=yout,rot_angle=φout)
     inner,_=make_star_polar_boundary(Rin,ϵin,min;x0=xin,y0=yin,rot_angle=φin)
     dcent=hypot(xin-xout,yin-yout)
@@ -70,7 +70,7 @@ end
 Convenience constructor returning `(billiard,basis)`.
 For hole geometries this is intended for CFIE, so symmetry reduction is not used.
 """
-function make_star_hole_and_basis(;Rout::T=1.0,ϵout::T=0.20,mout::Int=5,xout::T=zero(T),yout::T=zero(T),φout::T=zero(T),Rin::T=0.20,ϵin::T=0.10,min::Int=7,xin::T=T(0.12),yin::T=T(-0.08),φin::T=T(0.31)) where {T<:Real}
+function make_star_hole_and_basis(::Type{T};Rout::T=1.0,ϵout::T=0.20,mout::Int=5,xout::T=zero(T),yout::T=zero(T),φout::T=zero(T),Rin::T=0.20,ϵin::T=0.10,min::Int=7,xin::T=T(0.12),yin::T=T(-0.08),φin::T=T(0.31)) where {T<:Real}
     billiard=StarHoleBilliard(Rout=Rout,ϵout=ϵout,mout=mout,xout=xout,yout=yout,φout=φout,Rin=Rin,ϵin=ϵin,min=min,xin=xin,yin=yin,φin=φin)
     return billiard,AbstractHankelBasis()
 end
