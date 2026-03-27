@@ -1,29 +1,4 @@
 """
-    make_circle(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
-
-Construct a full circle boundary as a single `CircleSegment`.
-
-# Arguments
-- `radius::T`: Circle radius.
-- `x0::T=zero(T)`: x-coordinate of the center.
-- `y0::T=zero(T)`: y-coordinate of the center.
-- `rot_angle::T=zero(T)`: Optional rotation angle.
-
-# Returns
-- `(boundary, center)` where
-  - `boundary::Vector{CircleSegment{T}}`
-  - `center::SVector{2,T}`
-"""
-function make_circle(radius::T;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
-    radius<=zero(T) && error("Circle radius must be positive.")
-    origin=SVector(x0,y0)
-    circle=CircleSegment(radius,2p*i,zero(T),zero(T),zero(T);origin=origin,rot_angle=rot_angle)
-    boundary=[circle]
-    center=SVector(x0,y0)
-    return boundary,center
-end
-
-"""
     validate_holes(R::T, x0::T, y0::T, holes::Vector{Tuple{T,T,T}}) where {T<:Real}
 
 Validate that all holes:
