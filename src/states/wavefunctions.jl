@@ -669,7 +669,10 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
         next!(progress)
     end
     for i in eachindex(Psi2ds)
-        phase_fix_max!(Psi2ds[i])
+        ψ=Psi2ds[i]
+        phase_fix_max!(ψ)
+        ψ./=maximum(abs.(ψ)+1e-16)
+        Psi2ds[i]=ψ
     end
     return Psi2ds,x_grid,y_grid
 end
