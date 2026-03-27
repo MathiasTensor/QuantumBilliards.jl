@@ -806,6 +806,17 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 """
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
+        ψ = Psi2ds[i]
+        amax = maximum(abs, ψ)
+        l2 = sqrt(sum(abs2, ψ))
+
+        println("i=",i,
+            "  k=",ks[i],
+            "  max=",amax,
+            "  L2=",l2,
+            "  max/L2=",amax/(l2+eps()))
+    end
+    for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         s=maximum(abs,ψ)
         s= s>0 ? s : 1
@@ -859,6 +870,17 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+    for i in eachindex(Psi2ds)
+        ψ = Psi2ds[i]
+        amax = maximum(abs, ψ)
+        l2 = sqrt(sum(abs2, ψ))
+
+        println("i=",i,
+            "  k=",ks[i],
+            "  max=",amax,
+            "  L2=",l2,
+            "  max/L2=",amax/(l2+eps()))
+    end
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         s=maximum(abs,ψ)
