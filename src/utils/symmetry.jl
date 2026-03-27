@@ -2,8 +2,8 @@
 using CoordinateTransformations
 using StaticArrays
 
-reflect_x=CoordinateTransformations.LinearMap(SMatrix{2,2}([-1.0 0.0;0.0 1.0]))
-reflect_y=CoordinateTransformations.LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
+reflect_x=LinearMaps.LinearMap(SMatrix{2,2}([-1.0 0.0;0.0 1.0]))
+reflect_y=LinearMaps.LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
 
 """
     Reflection
@@ -16,7 +16,7 @@ Represents a geometric reflection symmetry.
 - `axis::Symbol`: The axis of reflection (`:x_axis`, `:y_axis`, or `:origin`).
 """
 struct Reflection <: AbsSymmetry
-    sym_map::CoordinateTransformations.LinearMap{SMatrix{2,2,Float64,4}}
+    sym_map::LinearMaps.LinearMap{SMatrix{2,2,Float64,4}}
     parity::Union{Int64,Vector{Int64}}
     axis::Symbol
 end
