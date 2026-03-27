@@ -784,34 +784,6 @@ function partition_vector(ks::Vector, N::Integer)
 end
 
 """
-        make_plot_wavefunctions(Psi2ds::Vector; q=0.995)
-
-Scales the wavefunction matrices for plotting by normalizing them based on a quantile of their absolute values. This helps to enhance the visibility of the wavefunction features in the plots, especially when there are outliers or extreme values.
-
-# Arguments
-- `Psi2ds::Vector{Matrix}`: A vector of 2D wavefunction matrices that you want to prepare for plotting.
-- `q::Float64=0.995`: (Optional) The quantile to use for scaling. Default is 0.995, which means that the scaling factor will be based on the value below which 99.5% of the absolute values of the wavefunction fall.
-
-# Returns
-- `Psi_plot::Vector{Matrix{Float64}}`: A vector of 2D wavefunction matrices that have been scaled for plotting. Each matrix is normalized by the specified quantile of its absolute values, and the values are clamped between -1.0 and 1.0 to enhance visibility in the plots.
-"""
-function make_plot_wavefunctions(Psi2ds::Vector; q=0.995)
-    Psi_plot=Vector{Matrix{Float64}}(undef,length(Psi2ds))
-    for i in eachindex(Psi2ds)
-        ψ=real.(Psi2ds[i])
-        vals=sort!(abs.(vec(ψ)))
-        idx=max(1,round(Int,q*length(vals)))
-        s=vals[idx]
-        s=s>0 ? s : maximum(vals)
-        s=s>0 ? s : 1.0
-        ψplot=ψ./s
-        clamp!(ψplot,-1.0,1.0)
-        Psi_plot[i]=ψplot
-    end
-    return Psi_plot
-end
-
-"""
     plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the wavefunction_multi or a similar function.
@@ -833,7 +805,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
-    Psi2ds=make_plot_wavefunctions(Psi2ds)
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        s=maximum(abs,ψ)
+        s= s>0 ? s : 1
+        @. ψ=sign(real(ψ)/s)*abs(real(ψ)/s)^0.5
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -882,7 +859,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
-    Psi2ds=make_plot_wavefunctions(Psi2ds)
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -982,7 +967,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
-    Psi2ds=make_plot_wavefunctions(Psi2ds)
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -1046,7 +1039,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
-    Psi2ds=make_plot_wavefunctions(Psi2ds)
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
