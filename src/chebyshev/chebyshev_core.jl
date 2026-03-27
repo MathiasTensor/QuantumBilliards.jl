@@ -264,6 +264,35 @@ end
     return muladd(t,b1,-b2)+coeffs[1,col]
 end
 
+@inline function _cheb_clenshaw_9(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[10,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[9,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[8,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
+@inline function _cheb_clenshaw_10(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[11,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[10,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[9,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[8,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3,col];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2,col];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1,col]
+end
+
 # =============================================================================
 # TOP CALLING FUNCTIONS FOR CHEBYSHEV
 # =============================================================================
@@ -282,6 +311,10 @@ end
         return _cheb_clenshaw_7(c,t)
     elseif M==8
         return _cheb_clenshaw_8(c,t)
+    elseif M==9
+        return _cheb_clenshaw_9(c,t)
+    elseif M==10
+        return _cheb_clenshaw_10(c,t)
     else
         b1=0.0+0.0im
         b2=0.0+0.0im
@@ -307,6 +340,10 @@ end
         return _cheb_clenshaw_7(coeffs,col,t)
     elseif M==8
         return _cheb_clenshaw_8(coeffs,col,t)
+    elseif M==9
+        return _cheb_clenshaw_9(coeffs,col,t)
+    elseif M==10
+        return _cheb_clenshaw_10(coeffs,col,t)
     else
         b1=0.0+0.0im
         b2=0.0+0.0im
