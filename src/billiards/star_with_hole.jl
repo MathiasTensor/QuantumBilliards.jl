@@ -13,7 +13,7 @@ struct StarHoleBilliard{T}<:AbsBilliard where {T<:Real}
     s_shift::T
 end
 
-@inline _star_r(R::T,ϵ::T,m::Int,θ::T,φ::T) where {T<:Real}=R*(one(T)+ϵ*cos(m*(θ-φ)))
+@inline _star_r(R::T,ϵ::T,m::Int,θ,φ) where {T<:Real}=R*(one(T)+ϵ*cos(m*(θ-φ)))
 @inline _max_star_radius(R::T,ϵ::T) where {T<:Real}=R*(one(T)+abs(ϵ))
 @inline _min_star_radius(R::T,ϵ::T) where {T<:Real}=R*(one(T)-abs(ϵ))
 
