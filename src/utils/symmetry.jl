@@ -1,10 +1,8 @@
 
-using CoordinateTransformations
 using StaticArrays
-using LinearMaps
 
-reflect_x=LinearMaps.LinearMap(SMatrix{2,2}([-1.0 0.0;0.0 1.0]))
-reflect_y=LinearMaps.LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
+reflect_x=SMatrix{2,2}([-1.0 0.0;0.0 1.0])
+reflect_y=SMatrix{2,2}([1.0 0.0;0.0 -1.0])
 
 """
     Reflection
@@ -12,12 +10,12 @@ reflect_y=LinearMaps.LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
 Represents a geometric reflection symmetry.
 
 # Fields
-- `sym_map::LinearMap{SMatrix{2,2,Float64,4}}`: The linear map defining the reflection.
+- `sym_map::SMatrix{2,2,Float64,4}`: The linear map defining the reflection.
 - `parity::Union{Int64,Vector{Int64}}`: The parity of the wavefunction under reflection -> is vector for xy - reflection.
 - `axis::Symbol`: The axis of reflection (`:x_axis`, `:y_axis`, or `:origin`).
 """
 struct Reflection <: AbsSymmetry
-    sym_map::LinearMaps.LinearMap{SMatrix{2,2,Float64,4}}
+    sym_map::SMatrix{2,2,Float64,4}
     parity::Union{Int64,Vector{Int64}}
     axis::Symbol
 end
