@@ -1,6 +1,7 @@
 
 using CoordinateTransformations
 using StaticArrays
+using LinearMaps
 
 reflect_x=LinearMaps.LinearMap(SMatrix{2,2}([-1.0 0.0;0.0 1.0]))
 reflect_y=LinearMaps.LinearMap(SMatrix{2,2}([1.0 0.0;0.0 -1.0]))
