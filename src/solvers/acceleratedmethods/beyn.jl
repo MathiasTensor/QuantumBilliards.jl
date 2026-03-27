@@ -814,7 +814,7 @@ function compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE},basis::Ba,b
     tens_all=Vector{T}(undef,ntot)
     tensN_all=Vector{T}(undef,ntot)
     us_all=Vector{Vector{Complex{T}}}(undef,ntot)
-    pts_all=Vector{Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}}}(undef,ntot)
+    pts_all= solver isa CFIE ? Vector{BoundaryPointsCFIE{T}}(undef,ntot) : Vector{Union{BoundaryPoints{T}}}(undef,ntot)
     Threads.@threads for i in 1:nw
         n=n_by_win[i]
         n==0 && continue
