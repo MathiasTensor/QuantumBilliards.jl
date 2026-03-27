@@ -227,8 +227,8 @@ end
 # billiard, basis = make_annulus_and_basis(1.0, 0.2; xh=0.25, yh=0.0)
 
 # Example 3: two holes
-# holes = [(0.15, -0.25, 0.0), (0.10, 0.28, 0.12)]
-# billiard, basis = make_multihole_and_basis(1.0, holes)
+# holes = [(0.5, -0.4, -0.1), (0.3, 0.4, 0.15)] 
+# billiard, basis = QuantumBilliards.make_multihole_and_basis(1.0, holes)
 
 # Example 4: no holes, same type family
 # billiard, basis = make_circle_with_holes_and_basis(1.0)
