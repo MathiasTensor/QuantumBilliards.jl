@@ -668,7 +668,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
         next!(progress)
     end
     for i in eachindex(Psi2ds)
-        Psi2ds[i]/=maximum(abs.(Psi2ds[i])+1e-16)
+        Psi2ds[i]/=(maximum(abs.(Psi2ds[i]))+1e-16)
         Psi2ds[i],_=phase_fix_real(Psi2ds[i])
     end
     return Psi2ds,x_grid,y_grid
