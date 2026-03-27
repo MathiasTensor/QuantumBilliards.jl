@@ -537,8 +537,6 @@ where
         r=sqrt(r2)
         invr=inv(r)
         inn=muladd(ty[j],dx,-(tx[j]*dy)) # ty*dx - tx*dy
-        h0::Complex{T}
-        h1::Complex{T}
         if float32_bessel
             zf=Float32(k*r)
             h0=Complex{T}(Bessels.hankelh1(0,zf))
