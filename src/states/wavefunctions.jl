@@ -144,7 +144,7 @@ function is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T}):
 end
 
 """
-    is_point_in_multiply_connected_polygon(components::Vector{<:Vector{SVector{2,T}}}, point::SVector{2,T})::Bool where {T<:Real}
+    is_point_in_multiply_connected_polygon(components, point::SVector{2,T})::Bool where {T<:Real}
 
 Check whether `point` lies inside a multiply connected polygonal domain.
 
@@ -154,7 +154,7 @@ Convention:
 
 A point is inside the domain iff it is inside the outer polygon and not inside any hole polygon.
 """
-function is_point_in_multiply_connected_polygon(components::Vector{<:Vector{SVector{2,T}}},point::SVector{2,T})::Bool where {T<:Real}
+function is_point_in_multiply_connected_polygon(components,point::SVector{2,T})::Bool where {T<:Real}
     isempty(components) && return false
     is_point_in_polygon(components[1],point) || return false # must be inside outer boundary
     @inbounds for h in 2:length(components) # must be outside every hole
