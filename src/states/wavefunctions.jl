@@ -817,7 +817,9 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_
     @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
+        amax=maximum(abs,Psi2ds[j])
+        colorrange=(-amax,amax)
+        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=colorrange)
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -865,7 +867,9 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vec
     @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
+        amax=maximum(abs,Psi2ds[j])
+        colorrange=(-amax,amax)
+        hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=colorrange)
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -965,7 +969,9 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
-        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]),maximum(Psi2ds[j])))
+        amax=maximum(abs,Psi2ds[j])
+        colorrange=(-amax,amax)
+        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=colorrange)
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         if !isempty(use_projection_grid[1]) && !isempty(use_projection_grid[2])
             projection_grid=classical_phase_space_matrix(use_projection_grid[1],use_projection_grid[2],qs_list[j],ps_list[j])
@@ -1039,7 +1045,9 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax_wave=Axis(f[row, col][1, 1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-maximum(Psi2ds[j]), maximum(Psi2ds[j])))
+        amax=maximum(abs,Psi2ds[j])
+        colorrange=(-amax,amax)
+        hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=colorrange)
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
