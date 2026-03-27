@@ -594,7 +594,7 @@ Given a complex wavefunction `psi` that is expected to be real up to a global ph
 """
 function phase_fix_real(psi::AbstractArray{Complex{T}}) where {T<:Real}
     s=sum(psi.^2)
-    θ=0.5*angle(s)
+    θ=0.5*Base.angle(s)
     return psi.*exp(-im*θ),θ
 end
 
