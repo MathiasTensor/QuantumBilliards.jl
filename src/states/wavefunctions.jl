@@ -669,7 +669,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     end
     for i in eachindex(Psi2ds)
         Psi2ds[i],_=phase_fix_real(Psi2ds[i])
-         nrm=sqrt(sum(abs2,Psi2ds[i][pts_masked_indices]))
+        nrm=sqrt(sum(abs2,Psi2ds[i][pts_masked_indices]))
         Psi2ds[i]./=nrm
     end
     return Psi2ds,x_grid,y_grid
@@ -805,6 +805,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -818,9 +827,7 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_
     @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        amax=maximum(abs,Psi2ds[j])
-        colorrange=(-amax,amax)
-        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=colorrange)
+        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -855,6 +862,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -868,9 +884,7 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vec
     @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        amax=maximum(abs,Psi2ds[j])
-        colorrange=(-amax,amax)
-        hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=colorrange)
+        hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=(-1,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -956,6 +970,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -970,9 +993,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
-        amax=maximum(abs,Psi2ds[j])
-        colorrange=(-amax,amax)
-        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=colorrange)
+        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         if !isempty(use_projection_grid[1]) && !isempty(use_projection_grid[2])
             projection_grid=classical_phase_space_matrix(use_projection_grid[1],use_projection_grid[2],qs_list[j],ps_list[j])
@@ -1021,6 +1042,15 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
+    for i in eachindex(Psi2ds)
+        ψ=Psi2ds[i]
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
+    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -1046,9 +1076,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax_wave=Axis(f[row, col][1, 1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        amax=maximum(abs,Psi2ds[j])
-        colorrange=(-amax,amax)
-        hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=colorrange)
+        hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
