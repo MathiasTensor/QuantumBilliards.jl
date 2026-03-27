@@ -669,7 +669,8 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     end
     for i in eachindex(Psi2ds)
         Psi2ds[i],_=phase_fix_real(Psi2ds[i])
-        Psi2ds[i]/=(sum(abs2,Psi2ds[i])^0.5) # normalize each wavefunction
+         nrm=sqrt(sum(abs2,Psi2ds[i][pts_masked_indices]))
+        Psi2ds[i]./=nrm
     end
     return Psi2ds,x_grid,y_grid
 end
