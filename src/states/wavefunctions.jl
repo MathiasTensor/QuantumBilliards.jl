@@ -657,6 +657,47 @@ end
 ###########################################################################
 ###########################################################################
 
+# Helpers for plotting billiard boundaries and curves
+
+function plot_curve!(ax,crv::AbsRealCurve;plot_normal=true,dens=20.0,color_crv=:grey,linewidth=0.75)
+    L=crv.length
+    grid=max(round(Int,L*dens),3)
+    t=range(0.0,1.0,grid)
+    pts=curve(crv,t)
+    lines!(ax,pts,color=color_crv,linewidth=linewidth)
+    if plot_normal
+        ns=normal_vec(crv,t)
+        arrows!(ax,getindex.(pts,1),getindex.(pts,2),getindex.(ns,1),getindex.(ns,2),color=:black,lengthscale=0.1)
+    end
+    ax.aspect=DataAspect()
+end
+
+function plot_curve!(ax,crv::AbsVirtualCurve;plot_normal=false,dens=10.0,color_crv=:grey,linewidth=0.75)
+    L=crv.length
+    grid=max(round(Int,L*dens),3)
+    t=range(0.0,1.0,grid)
+    pts=curve(crv,t)
+    lines!(ax,pts,color=color_crv,linestyle=:dash,linewidth=linewidth)
+    if plot_normal
+        ns=normal_vec(crv,t)
+        arrows!(ax,getindex.(pts,1),getindex.(pts,2),getindex.(ns,1),getindex.(ns,2),color=:black,lengthscale=0.1)
+    end
+    ax.aspect=DataAspect()
+end
+
+function plot_boundary!(ax,billiard::AbsBilliard;fundamental_domain=true,desymmetrized_full_domain=false,dens=100.0,plot_normal=true,color_crv=:grey,linewidth=0.75)
+    if fundamental_domain
+        boundary=billiard.fundamental_boundary
+    elseif desymmetrized_full_domain
+        boundary=billiard.desymmetrized_full_boundary
+    else
+        boundary=billiard.full_boundary
+    end
+    for curve in boundary 
+        plot_curve!(ax,curve;dens=dens,plot_normal=plot_normal,color_crv=color_crv,linewidth=linewidth)
+    end
+end
+
 """
     batch_wrapper(plot_func::Function, args...; N::Integer=100, kwargs...)
 
