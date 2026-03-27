@@ -360,7 +360,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE},pts::Unio
     wj=(R/nq).*ej # contour weights
     #TODO Make the Fredholm matrices working buffers from outside to prevent large allocations in a loop (only for RAM critical applications since this is a small part of the actual execution time)
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
-    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info) # construct the T(zj) matrices for each contour point zj.
+    @time "matrix construction" construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info) # construct the T(zj) matrices for each contour point zj.
     # Allocate the buffers for the Beyn method. These are used in the matrix construction and then in the contour integrations to avoid repeated allocations. The matrices are sized according to the expected number of eigenvalues r and the size of the Fredholm matrices N.
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.
