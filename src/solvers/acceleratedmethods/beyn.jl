@@ -196,7 +196,7 @@ end
 function _CFIE_project_V_subspace!(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     isnothing(solver.symmetry) && return V
     maps=build_symmetry_maps(pts,solver.symmetry)
-    apply_projection!(V,W,maps,solver.symmetry[1])
+    apply_projection!(V,W,maps,solver.symmetry)
     return V
 end
 
