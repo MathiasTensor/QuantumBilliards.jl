@@ -380,43 +380,20 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE},pts::Unio
     solver isa CFIE && _CFIE_project_V_subspace!(solver,pts,V) # for CFIE we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem.
 
     if solver isa CFIE
-        maps = build_symmetry_maps(flatten_points(pts)[1],solver.symmetry)
-        sym  = solver.symmetry
-
-        # 1. Check idempotence: P(P(V)) = P(V)
-        Vtest = copy(V)
-        apply_projection!(Vtest, maps, sym)
-        err_idem = norm(Vtest - V) / norm(V)
-
-        println("Projection idempotence error = ", err_idem)
-
-        # 2. Check invariance: P(V) = V
-        Vproj = copy(V)
-        apply_projection!(Vproj, maps, sym)
-        err_invar = norm(Vproj - V) / norm(V)
-
-        println("Projection invariance error = ", err_invar)
-
-        # 3. Strong check: symmetry action directly
-        sym  = solver.symmetry[1]
-        if sym isa Reflection
-            map = sym.axis == :y_axis ? maps[:x] :
-                sym.axis == :x_axis ? maps[:y] : maps[:xy]
-
-            σ = sym.axis == :origin ? nothing : sym.parity
-
-            maxerr = 0.0
-            for j in 1:size(V,2), i in 1:size(V,1)
-                if sym.axis == :origin
-                    # skip here (more complex)
-                else
-                    err = abs(V[i,j] - σ*V[map[i],j])
-                    maxerr = max(maxerr, err)
-                end
-            end
-
-            println("Max symmetry error (reflection) = ", maxerr)
-        end
+        sym=solver.symmetry
+        maps=build_symmetry_maps(flatten_points(pts)[1],solver.symmetry)
+        Wproj=similar(V)
+        apply_projection!(V,Wproj,maps,sym)
+        Vtest=copy(V)
+        Wtest=similar(Vtest)
+        apply_projection!(Vtest,Wtest,maps,sym)
+        err_idem=norm(Vtest-V)/norm(V)
+        println("Projection idempotence error = ",err_idem)
+        Vproj=copy(V)
+        Wproj2=similar(Vproj)
+        apply_projection!(Vproj,Wproj2,maps,sym)
+        err_invar=norm(Vproj-V)/norm(V)
+        println("Projection invariance error = ",err_invar)
     end
 
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.

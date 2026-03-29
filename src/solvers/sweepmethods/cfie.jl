@@ -534,41 +534,44 @@ function build_symmetry_maps(xy::Vector{SVector{2,T}},sym;tol::T=T(1e-10)) where
     return maps
 end
 
-function apply_projection!(V::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym) where {T<:Real}
+function apply_projection!(V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym) where {T<:Real}
     isnothing(sym) && return V
     N,r=size(V)
     sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
+    @assert size(W)==size(V)
     if sym isa Reflection
         if sym.axis==:y_axis
-            σ=sym.parity;map=maps[:x]
+            σ=sym.parity
+            map=maps[:x]
             @inbounds for j in 1:r, i in 1:N
-                V[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
+                W[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
             end
         elseif sym.axis==:x_axis
-            σ=sym.parity;map=maps[:y]
+            σ=sym.parity
+            map=maps[:y]
             @inbounds for j in 1:r, i in 1:N
-                V[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
+                W[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
             end
         elseif sym.axis==:origin
             σx,σy=sym.parity
-            mx=maps[:x]
-            my=maps[:y]
-            mxy=maps[:xy]
+            mx,my,mxy=maps[:x],maps[:y],maps[:xy]
             @inbounds for j in 1:r, i in 1:N
-                V[i,j]=(V[i,j]+σx*V[mx[i],j]+σy*V[my[i],j]+σx*σy*V[mxy[i],j])*0.25
+                W[i,j]=(V[i,j]+σx*V[mx[i],j]+σy*V[my[i],j]+σx*σy*V[mxy[i],j])*0.25
             end
         end
     elseif sym isa Rotation
         n=sym.n
-        map_rot::Vector{Vector{Int}}=maps[:rot]
-        χ::Vector{Complex{T}}=maps[:χ]
+        map_rot=maps[:rot]
+        χ=maps[:χ]
+        invn=inv(T(n))
         @inbounds for j in 1:r, i in 1:N
-            s::Complex{T}=zero(Complex{T})
+            s=zero(Complex{T})
             for l in 1:n
                 s+=conj(χ[l])*V[map_rot[l][i],j]
             end
-            V[i,j]=s/T(n)
+            W[i,j]=s*invn
         end
     end
+    copyto!(V,W)
     return V
 end
