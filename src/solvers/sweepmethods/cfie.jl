@@ -540,20 +540,20 @@ function apply_projection!(V::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},
     sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
     if sym isa Reflection
         if sym.axis==:y_axis
-            σ=sym.parity;map::Vector{Int}=maps[:x]
+            σ=sym.parity;map=maps[:x]
             @inbounds for j in 1:r, i in 1:N
                 V[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
             end
         elseif sym.axis==:x_axis
-            σ=sym.parity;map::Vector{Int}=maps[:y]
+            σ=sym.parity;map=maps[:y]
             @inbounds for j in 1:r, i in 1:N
                 V[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
             end
         elseif sym.axis==:origin
             σx,σy=sym.parity
-            mx::Vector{Int}=maps[:x]
-            my::Vector{Int}=maps[:y]
-            mxy::Vector{Int}=maps[:xy]
+            mx=maps[:x]
+            my=maps[:y]
+            mxy=maps[:xy]
             @inbounds for j in 1:r, i in 1:N
                 V[i,j]=(V[i,j]+σx*V[mx[i],j]+σy*V[my[i],j]+σx*σy*V[mxy[i],j])*0.25
             end
