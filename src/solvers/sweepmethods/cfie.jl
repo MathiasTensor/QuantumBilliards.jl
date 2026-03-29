@@ -26,14 +26,14 @@ struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     min_dim::Int64
     min_pts::Int64
     billiard::Bi
+    symmetry::Union{Nothing,Vector{Any}}
 end
 
-#!!!! symmetry==nothing always, since log-periodic trapezoidal rule only works for the full boundary, so we cannot use it with symmetries.
-function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15)) where {T<:Real,Bi<:AbsBilliard}
+function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
     any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard)
+    return CFIE{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
 #############################
@@ -469,103 +469,106 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0,markers
     return f
 end
 
-# LEGACY CODE
-#=
-function L1_L2_matrix(pts::BoundaryPointsCFIE{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    ts=pts.ts
-    N=length(pts.xy)
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    ΔX=@. X-X'   # ΔX[i,j] = X[i] - X[j] = x(t_i) - x(t_j)
-    ΔY=@. Y-Y'   # ΔY[i,j] = Y[i] - Y[j] = y(t_i) - y(t_j)
-    R=hypot.(ΔX,ΔY)
-    R[diagind(R)].=one(T) # avoid zeros on diagonal, does not influence result since overwritten few lines below
-    dX=getindex.(pts.tangent,1) # dx/dt
-    dY=getindex.(pts.tangent,2) # dy/dt
-    ddX=getindex.(pts.tangent_2,1) # d2x/dt2
-    ddY=getindex.(pts.tangent_2,2) # d2y/dt2
-    κnum=dX.*ddY.-dY.*ddX  # length-N
-    κden=dX.^2 .+dY.^2 # length-N
-    κ=(1/(two_pi))*(κnum./κden) # length-N
-    ΔT=ts .-ts' # pts.ts ∈ [0,2π]
-    dX_mat=reshape(dX,1,N)
-    dY_mat=reshape(dY,1,N)
-    inner=@. dY_mat*ΔX-dX_mat*ΔY
-    H1=zeros(Complex{T},size(R)) 
-    @use_threads multithreading=multithreaded for i in 1:N # In this case R is symmetric
-        H1[i,i]=one(T) # can be whatever
-        for j in i+1:N
-            H1ij=H(1,k*R[i,j])
-            H1[i,j]=H1ij
-            H1[j,i]=H1ij
+###############################################################################
+################## Symmetry mapping and projection utilities ##################
+###############################################################################
+# mostly used for CFIE where we need to project onto an irrep since we cant construct with Kress's log split since it needs full domain
+# this allows Beyn's method to handle symmetries even in the case of CFIE.
+
+function flatten_points(pts::Vector{<:BoundaryPointsCFIE{T}}) where {T<:Real}
+    offs::Vector{Int}=component_offsets(pts)
+    N::Int=offs[end]-1
+    xy::Vector{SVector{2,T}}=Vector{SVector{2,T}}(undef,N)
+    for c in 1:length(pts)
+        o=offs[c];pc=pts[c].xy
+        @inbounds for i in 1:length(pc)
+            xy[o+i-1]=pc[i]
         end
     end
-    J1=real.(H1)
-    # assemble L and L1 off the diagonal
-    L1=k/(two_pi)*inner.*J1./R
-    L=im*k/2*inner.*H1./R
-    L2=L.-L1.*log.(4*sin.(ΔT/2).^2)
-    # fix diagonal entries by taking the known limits
-    L1[diagind(L1)].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
-    L2[diagind(L2)].=κ # the diagonal of SLP is 0 so no contribution with log(w'(s))L1(s,s), # the "curvature type" limit for DLP
-    return L1,L2
+    return xy,offs
 end
 
-function L1_L2_M1_M2_matrix(pts::BoundaryPointsCFIE{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    ts=pts.ts
-    N=length(pts.xy)
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    ΔX=@. X-X'   # ΔX[i,j] = X[i] - X[j] = x(t_i) - x(t_j)
-    ΔY=@. Y-Y'   # ΔY[i,j] = Y[i] - Y[j] = y(t_i) - y(t_j)
-    R=hypot.(ΔX,ΔY)
-    R[diagind(R)].=one(T) # avoid zeros on diagonal, does not influence result since overwritten few lines below
-    dX=getindex.(pts.tangent,1) # tangent x
-    dY=getindex.(pts.tangent,2) # tangent y
-    ddX=getindex.(pts.tangent_2,1) # d2x/dt2
-    ddY=getindex.(pts.tangent_2,2) # d2y/dt2
-    κnum=dX.*ddY.-dY.*ddX  # length-N
-    κden=dX.^2 .+dY.^2 # length-N
-    κ=(1/(two_pi))*(κnum./κden) # length-N
-    ΔT=ts .-ts'
-    dX_mat=reshape(dX,1,N)
-    dY_mat=reshape(dY,1,N)
-    inner=@. dY_mat*ΔX-dX_mat*ΔY
-    H1=zeros(Complex{T},size(R))
-    H0=zeros(Complex{T},size(R))  
-    @use_threads multithreading=multithreaded for i in 1:N # In this case R is symmetric
-        H1[i,i]=1.0 # can be whatever since diagonal limits correction later
-        H0[i,i]=1.0 # can be whatever since diagonal limits correction later
-        for j in i+1:N
-            H1ij=H(1,k*R[i,j])
-            H0ij=H(0,k*R[i,j])
-            H1[i,j]=H1ij
-            H1[j,i]=H1ij
-            H0[i,j]=H0ij
-            H0[j,i]=H0ij
+function match_index(xr::T,yr::T,xy::Vector{SVector{2,T}};tol::T=T(1e-10)) where {T<:Real}
+    best::Int=0
+    dmin::T=typemax(T)
+    cnt::Int=0
+    @inbounds for j in 1:length(xy)
+        dx::T=xy[j][1]-xr
+        dy::T=xy[j][2]-yr
+        d::T=dx*dx+dy*dy
+        if d<tol*tol
+            best=j;cnt+=1
+        elseif d<dmin
+            dmin=d
         end
     end
-    # bessels as Re: Hj=Jj-im*Yj
-    J1=real.(H1)
-    J0=real.(H0)
-    speed=@. sqrt(dX^2+dY^2) 
-    speed_row=reshape(speed,1,N) # 1×N this should be [x'(τ)^2 + y'(τ) for τ is ts]
-    # assemble L and L1 off the diagonal element wise 
-    #L1=-k/(2*pi)*inner.*J1./R
-    L1=k/(2*pi)*inner.*J1./R
-    L=im*k/2*inner.*H1./R
-    L2=L.-L1.*log.(4*sin.(ΔT/2).^2)
-    # assemble M1 and M2 off the diagonal element wise 
-    M1=-1/(two_pi).*J0.*speed_row
-    M=im/2. *H0.*speed_row
-    M2=M.-M1.*log.(4*sin.(ΔT/2).^2)
-    # fix diagonal entries by taking the known limits
-    d=diagind(L1)
-    L1[d].=zero(Complex{T}) # lim t→s L1 = 0 for SLP
-    L2[d].=κ # the "curvature type" limit for DLP
-    M1[d].=-1/(two_pi).*speed
-    #M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed .+2 .*log.(pts.ws_der).*M1[d] # Kress's modification to DLP limit with 2*log(w'(s))*M1(s,s). Commented out since we are using uniform weights and w'(s)=1, so log(w'(s))=0, so this term does not contribute.
-    M2[d].=((im/2-MathConstants.eulergamma/pi).-(1/(two_pi)).*log.((k^2)/4 .*speed.^2)).*speed
-    return L1,L2,M1,M2
+    cnt==1 && return best
+    cnt==0 && error("no match (dmin=$dmin)")
+    error("ambiguous match ($cnt)")
 end
-=#
+
+function build_symmetry_maps(xy::Vector{SVector{2,T}},sym::Union{Reflection,Rotation};tol::T=T(1e-10)) where {T<:Real}
+    maps::Dict{Symbol,Any}=Dict{Symbol,Any}()
+    sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
+    if sym isa Reflection
+        if sym.axis==:y_axis
+            maps[:x]=[match_index(-p[1],p[2],xy;tol=tol) for p in xy]
+        elseif sym.axis==:x_axis
+            maps[:y]=[match_index(p[1],-p[2],xy;tol=tol) for p in xy]
+        elseif sym.axis==:origin
+            maps[:x]=[match_index(-p[1],p[2],xy;tol=tol) for p in xy]
+            maps[:y]=[match_index(p[1],-p[2],xy;tol=tol) for p in xy]
+            maps[:xy]=[match_index(-p[1],-p[2],xy;tol=tol) for p in xy]
+        end
+    elseif sym isa Rotation
+        n::Int=sym.n
+        cx,cy=sym.center
+        cos_tab,sin_tab,χ=_rotation_tables(T,n,sym.m)
+        maps[:rot]=Vector{Vector{Int}}(undef,n)
+        for l in 1:n
+            c::T=cos_tab[l];s::T=sin_tab[l]
+            maps[:rot][l]=[match_index(_rot_point(p[1],p[2],cx,cy,c,s)...,xy;tol=tol) for p in xy]
+        end
+        maps[:χ]=χ
+    end
+    return maps
+end
+
+function apply_projection!(V::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym::Union{Nothing,Vector{Any}}) where {T<:Real}
+    isnothing(sym) && return V
+    N,r=size(V)
+    sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
+    if sym isa Reflection
+        if sym.axis==:y_axis
+            σ::Int=sym.parity;map::Vector{Int}=maps[:x]
+            @inbounds for j in 1:r, i in 1:N
+                V[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
+            end
+        elseif sym.axis==:x_axis
+            σ::Int=sym.parity;map::Vector{Int}=maps[:y]
+            @inbounds for j in 1:r, i in 1:N
+                V[i,j]=(V[i,j]+σ*V[map[i],j])*0.5
+            end
+        elseif sym.axis==:origin
+            σx,σy=sym.parity
+            mx::Vector{Int}=maps[:x]
+            my::Vector{Int}=maps[:y]
+            mxy::Vector{Int}=maps[:xy]
+            @inbounds for j in 1:r, i in 1:N
+                V[i,j]=(V[i,j]+σx*V[mx[i],j]+σy*V[my[i],j]+σx*σy*V[mxy[i],j])*0.25
+            end
+        end
+    elseif sym isa Rotation
+        n::Int=sym.n
+        map_rot::Vector{Vector{Int}}=maps[:rot]
+        χ::Vector{Complex{T}}=maps[:χ]
+        @inbounds for j in 1:r, i in 1:N
+            s::Complex{T}=zero(Complex{T})
+            for l in 1:n
+                s+=conj(χ[l])*V[map_rot[l][i],j]
+            end
+            V[i,j]=s/T(n)
+        end
+    end
+    return V
+end

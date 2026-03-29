@@ -6,7 +6,7 @@ struct LinearNodes <: AbsSampler
 end 
 
 """
-    sample_points(sampler::LinearNodes, N::Int)
+    sample_points(sampler::LinearNodes,N::Int)
 
 Divides the interval [0,1] into N segments.
 Uses the midpoints of these segments as the nodes.
@@ -20,13 +20,13 @@ Computes the differences between consecutive nodes as weights.
 - `t::Vector{Float64}`: Array of midpoints from [0,1]
 - `dt::Vector{Float64}`: Array of step sizes (differentials).    
 """
-function sample_points(sampler::LinearNodes, N::Int)
+function sample_points(sampler::LinearNodes,N::Int)
     t=midpoints(range(0,1.0,length=(N+1)))
     dt=diff(range(0,1.0,length=(N+1)))
     return t,dt
 end
 
-struct GaussLegendreNodes <: AbsSampler 
+struct GaussLegendreNodes<:AbsSampler 
 end 
 
 """
@@ -43,7 +43,7 @@ Maps the nodes from the interval [-1,1] to [0,1] and then scales the weights acc
 - `t::Vector{Float64}`: Array of parametrizations from [0,1]
 - `dt::Vector{Float64}`: Array of step sizes (differentials). 
 """
-function sample_points(sampler::GaussLegendreNodes, N::Int)
+function sample_points(sampler::GaussLegendreNodes,N::Int)
     x,w=gausslegendre(N)
     t=0.5.*x.+0.5 # rescaled to [0,1]
     dt=w.*0.5 
@@ -99,16 +99,16 @@ function chebyshev_nodes(N::Int)
 end
 =#
 
-struct FourierNodes <: AbsSampler where T<:Real
+struct FourierNodes<:AbsSampler where {T<:Real}
     primes::Union{Vector{Int64},Nothing}
     lengths::Union{Vector{Float64},Nothing} 
 end 
 
-FourierNodes() = FourierNodes(nothing,nothing)
-FourierNodes(lengths::Vector{Float64}) = FourierNodes(nothing,lengths)
+FourierNodes()=FourierNodes(nothing,nothing)
+FourierNodes(lengths::Vector{Float64})=FourierNodes(nothing,lengths)
 
 """
-    sample_points(sampler::FourierNodes, N::Int)
+    sample_points(sampler::FourierNodes,N::Int)
 
 Generates parametrizatons `ts` and their pairwise differences `dts` using the `FourierNodes` sampler. Used in the construction of the boundary function `u(s)`.
 
@@ -120,7 +120,7 @@ Generates parametrizatons `ts` and their pairwise differences `dts` using the `F
 - `t::Vector{Float64}`: Array of parametrizations from [0,1]
 - `dt::Vector{Float64}`: Array of step sizes (differentials). 
 """
-function sample_points(sampler::FourierNodes, N::Int)
+function sample_points(sampler::FourierNodes,N::Int)
     if isnothing(sampler.primes) 
         M=N
     else

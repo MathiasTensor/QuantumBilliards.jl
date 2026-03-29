@@ -492,8 +492,7 @@ flattened boundary cache and boundary density `u`.
 
 This uses the same kernel as the CFIE assembly:
 
-    ψ(x) = -∑_j w_j u_j [ (i k / 2) * inn * H1(k r) / r
-                        + i k * (i/2) * H0(k r) * s_j ]
+    ψ(x) = -∑_j w_j u_j [ (i k / 2) * inn * H1(k r) / r + i k * (i/2) * H0(k r) * s_j ]
 
 where
     inn = t_y (x-x_j) - t_x (y-y_j)

@@ -182,6 +182,19 @@ function beyn_buffer_matrices(::Type{T},N::Int64,r::Int64,rng::G) where {T<:Real
     return V,X,A0,A1
 end
 
+# Applies the projection onto the symmetry subspace defined by `symmetry` to the buffer matrix `V` in the case of CFIE, where the boundary points are represented by `BoundaryPointsCFIE`.
+# This is necessary because CFIE requires working with the full domain, and we need to ensure that the buffer matrix respects the symmetry of the problem.
+#
+# Inputs:
+#   - solver::CFIE: The CFIE solver instance containing the symmetry information.
+#   - pts::Vector{BoundaryPointsCFIE{T}}: The boundary points in the CFIE formulation.
+#   - V::Matrix{Complex{T}}: The buffer matrix to be projected.
+# Output:
+#   - The function modifies `V` in-place to contain the projected values.
+function _CFIE_project_V_subspace!(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},V::Matrix{Complex{T}}) where {T<:Real}
+    apply_projection!(V,build_symmetry_maps(flatten_points(pts)[1],solver.symmetry),solver.symmetry)
+end
+
 function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
     rs=collect(range(Float64(rmin),Float64(rmax);length=sampling_points))
@@ -363,6 +376,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE},pts::Unio
     @time "matrix construction" construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info) # construct the T(zj) matrices for each contour point zj.
     # Allocate the buffers for the Beyn method. These are used in the matrix construction and then in the contour integrations to avoid repeated allocations. The matrices are sized according to the expected number of eigenvalues r and the size of the Fredholm matrices N.
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
+    solver isa CFIE && _CFIE_project_V_subspace!(solver,pts,V) # for CFIE we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem.
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
