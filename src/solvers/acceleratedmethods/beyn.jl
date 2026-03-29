@@ -380,7 +380,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE},pts::Unio
     solver isa CFIE && _CFIE_project_V_subspace!(solver,pts,V) # for CFIE we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem.
 
     if solver isa CFIE
-        maps = sbuild_symmetry_maps(flatten_points(pts)[1],solver.symmetry)
+        maps = build_symmetry_maps(flatten_points(pts)[1],solver.symmetry)
         sym  = solver.symmetry
 
         # 1. Check idempotence: P(P(V)) = P(V)
