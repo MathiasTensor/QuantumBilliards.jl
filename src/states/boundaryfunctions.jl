@@ -379,7 +379,6 @@ and shift the arclength origin if the billiard requests it.
 """
 function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPoints{T},billiard::Bi) where {T<:Real,Bi<:AbsBilliard,U<:Number}
     symmetries=solver.symmetry
-    pts=BoundaryPointsMethod_to_BoundaryPoints(pts)
     regularize!(u)
     pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
     u_full=apply_symmetries_to_boundary_function(u,symmetries)
