@@ -507,7 +507,7 @@ function match_index(xr::T,yr::T,xy::Vector{SVector{2,T}};tol::T=T(1e-10)) where
     error("ambiguous match ($cnt)")
 end
 
-function build_symmetry_maps(xy::Vector{SVector{2,T}},sym::Union{Reflection,Rotation};tol::T=T(1e-10)) where {T<:Real}
+function build_symmetry_maps(xy::Vector{SVector{2,T}},sym;tol::T=T(1e-10)) where {T<:Real}
     maps::Dict{Symbol,Any}=Dict{Symbol,Any}()
     sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
     if sym isa Reflection
@@ -534,7 +534,7 @@ function build_symmetry_maps(xy::Vector{SVector{2,T}},sym::Union{Reflection,Rota
     return maps
 end
 
-function apply_projection!(V::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym::Union{Nothing,Vector{Any}}) where {T<:Real}
+function apply_projection!(V::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym) where {T<:Real}
     isnothing(sym) && return V
     N,r=size(V)
     sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
