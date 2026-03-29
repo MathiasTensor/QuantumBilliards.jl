@@ -522,70 +522,64 @@ function build_rotation_maps_components(pts::Vector{<:BoundaryPointsCFIE{T}},sym
     lens=[length(p.xy) for p in pts]
     cx,cy=sym.center
     n=sym.n
-    cos_tab,sin_tab,χ=_rotation_tables(T,n,sym.m) # rotation tables / characters
-    comp_centers=Vector{SVector{2,T}}(undef,ncomp) # component centers for fast target-component detection
-    for c in 1:ncomp
-        s=SVector(zero(T),zero(T))
-        pc=pts[c].xy
-        @inbounds for q in pc
-            s+=q
-        end
-        comp_centers[c]=s/T(length(pc))
-    end
-    rotmaps=Vector{Vector{Int}}(undef,n) # identity + n-1 rotated maps
+    cos_tab,sin_tab,χ=_rotation_tables(T,n,sym.m)
     Ntot=offs[end]-1
+    rotmaps=Vector{Vector{Int}}(undef,n)
     rotmaps[1]=collect(1:Ntot)
+    @inline function find_shift_to_component(pa::Vector{SVector{2,T}},pb::Vector{SVector{2,T}},c::T,s::T)
+        Na=length(pa)
+        Nb=length(pb)
+        Na==Nb || return nothing
+        # rotate first point of source component
+        p0=pa[1]
+        x0r,y0r=_rot_point(p0[1],p0[2],cx,cy,c,s)
+        bestj=0
+        dmin=typemax(T)
+        @inbounds for j in 1:Nb
+            dx=pb[j][1]-x0r
+            dy=pb[j][2]-y0r
+            d=dx*dx+dy*dy
+            if d<dmin
+                dmin=d
+                bestj=j
+            end
+        end
+        dmin>tol^2 && return nothing
+        sh=bestj-1
+        # verify same shift works for all points
+        @inbounds for j in 1:Na
+            jj=mod1(j+sh,Nb)
+            q=pa[j]
+            xr,yr=_rot_point(q[1],q[2],cx,cy,c,s)
+            dx=pb[jj][1]-xr
+            dy=pb[jj][2]-yr
+            d=dx*dx+dy*dy
+            d>tol^2 && return nothing
+        end
+        return sh
+    end
     for l in 1:n-1
         c=cos_tab[l+1]
         s=sin_tab[l+1]
         map=Vector{Int}(undef,Ntot)
-        target_comp=Vector{Int}(undef,ncomp)  # determine component permutation and shift for this l
+        target_comp=Vector{Int}(undef,ncomp)
         shift_comp=Vector{Int}(undef,ncomp)
         for a in 1:ncomp
             pa=pts[a].xy
-            Na=length(pa)
-            cc=comp_centers[a]
-            xr,yr=_rot_point(cc[1],cc[2],cx,cy,c,s)
-            bestc=0
-            dmin=typemax(T)
+            found=false
             for b in 1:ncomp
-                d=norm(comp_centers[b]-SVector{2,T}(xr,yr))
-                if d<dmin
-                    dmin=d
-                    bestc=b
+                sh=find_shift_to_component(pa,pts[b].xy,c,s)
+                if sh!==nothing
+                    target_comp[a]=b
+                    shift_comp[a]=sh
+                    found=true
+                    break
                 end
             end
-            bestc==0 && error("No target component found for rotated component $a")
-            target_comp[a]=bestc
-            Nb=lens[bestc]
-            Na==Nb || error("Rotation maps component $a (size $Na) to component $bestc (size $Nb), sizes differ.")
-            p0=pa[1] # determine cyclic shift using first node
-            x0r,y0r=_rot_point(p0[1],p0[2],cx,cy,c,s)
-            pb=pts[bestc].xy
-            bestj=0
-            dmin=typemax(T)
-            @inbounds for j in 1:Nb
-                dx=pb[j][1]-x0r
-                dy=pb[j][2]-y0r
-                d=dx*dx+dy*dy
-                if d<dmin
-                    dmin=d
-                    bestj=j
-                end
-            end
-            dmin>tol^2 && error("Rotation component match failed: component $a -> $bestc, dmin=$(sqrt(dmin))")
-            shift_comp[a]=bestj-1
-            @inbounds for j in 1:Na  # verify shift on all nodes
-                jj=mod1(j+shift_comp[a],Nb)
-                q=pa[j]
-                xr,yr=_rot_point(q[1],q[2],cx,cy,c,s)
-                dx=pb[jj][1]-xr
-                dy=pb[jj][2]-yr
-                d=dx*dx+dy*dy
-                d>tol^2 && error("Rotation shift verification failed for component $a -> $bestc at local index $j, err=$(sqrt(d))")
-            end
+            found || error("Could not find rotated target component for component $a")
         end
-        for a in 1:ncomp  # build global permutation
+        # build global permutation
+        for a in 1:ncomp
             b=target_comp[a]
             Na=lens[a]
             Nb=lens[b]
