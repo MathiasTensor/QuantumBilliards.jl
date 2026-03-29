@@ -83,7 +83,16 @@ function _evaluate_points(solver::CFIE{T},crv::C,k::T,idx::Int) where {T<:Real,C
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
-    isodd(N) ? N+=1 : nothing # make sure Ntot is even, since we need to have an even number of points for the quadrature
+    needed=2 # need it to. be even number of points for reflections and at same type divisible by rotation order for rotations. A bit hacky but valid for reflections/rotations
+    if solver.symmetry!==nothing
+        for sym in solver.symmetry
+            if sym isa Rotation
+                needed=lcm(needed,sym.n)
+            end
+        end
+    end
+    remN=mod(N,needed)
+    remN!=0 && (N+=needed-remN)
     ts=[s(k,N) for k in 1:N]
     ts_rescaled=ts./two_pi # b/c our curves and tangents are defined on [0,1]
     xy=curve(crv,ts_rescaled) 
@@ -507,10 +516,97 @@ function match_index(xr::T,yr::T,xy::Vector{SVector{2,T}};tol::T=T(1e-10)) where
     error("ambiguous match ($cnt)")
 end
 
-function build_symmetry_maps(xy::Vector{SVector{2,T}},sym;tol::T=T(1e-10)) where {T<:Real}
-    maps::Dict{Symbol,Any}=Dict{Symbol,Any}()
+function build_rotation_maps_components(pts::Vector{<:BoundaryPointsCFIE{T}},sym::Rotation;tol::T=T(1e-8)) where {T<:Real}
+    ncomp=length(pts)
+    offs=component_offsets(pts)
+    lens=[length(p.xy) for p in pts]
+    cx,cy=sym.center
+    n=sym.n
+    cos_tab,sin_tab,χ=_rotation_tables(T,n,sym.m) # rotation tables / characters
+    comp_centers=Vector{SVector{2,T}}(undef,ncomp) # component centers for fast target-component detection
+    for c in 1:ncomp
+        s=SVector(zero(T),zero(T))
+        pc=pts[c].xy
+        @inbounds for q in pc
+            s+=q
+        end
+        comp_centers[c]=s/T(length(pc))
+    end
+    rotmaps=Vector{Vector{Int}}(undef,n) # identity + n-1 rotated maps
+    Ntot=offs[end]-1
+    rotmaps[1]=collect(1:Ntot)
+    for l in 1:n-1
+        c=cos_tab[l+1]
+        s=sin_tab[l+1]
+        map=Vector{Int}(undef,Ntot)
+        target_comp=Vector{Int}(undef,ncomp)  # determine component permutation and shift for this l
+        shift_comp=Vector{Int}(undef,ncomp)
+        for a in 1:ncomp
+            pa=pts[a].xy
+            Na=length(pa)
+            cc=comp_centers[a]
+            xr,yr=_rot_point(cc[1],cc[2],cx,cy,c,s)
+            bestc=0
+            dmin=typemax(T)
+            for b in 1:ncomp
+                d=norm(comp_centers[b]-SVector{2,T}(xr,yr))
+                if d<dmin
+                    dmin=d
+                    bestc=b
+                end
+            end
+            bestc==0 && error("No target component found for rotated component $a")
+            target_comp[a]=bestc
+            Nb=lens[bestc]
+            Na==Nb || error("Rotation maps component $a (size $Na) to component $bestc (size $Nb), sizes differ.")
+            p0=pa[1] # determine cyclic shift using first node
+            x0r,y0r=_rot_point(p0[1],p0[2],cx,cy,c,s)
+            pb=pts[bestc].xy
+            bestj=0
+            dmin=typemax(T)
+            @inbounds for j in 1:Nb
+                dx=pb[j][1]-x0r
+                dy=pb[j][2]-y0r
+                d=dx*dx+dy*dy
+                if d<dmin
+                    dmin=d
+                    bestj=j
+                end
+            end
+            dmin>tol^2 && error("Rotation component match failed: component $a -> $bestc, dmin=$(sqrt(dmin))")
+            shift_comp[a]=bestj-1
+            @inbounds for j in 1:Na  # verify shift on all nodes
+                jj=mod1(j+shift_comp[a],Nb)
+                q=pa[j]
+                xr,yr=_rot_point(q[1],q[2],cx,cy,c,s)
+                dx=pb[jj][1]-xr
+                dy=pb[jj][2]-yr
+                d=dx*dx+dy*dy
+                d>tol^2 && error("Rotation shift verification failed for component $a -> $bestc at local index $j, err=$(sqrt(d))")
+            end
+        end
+        for a in 1:ncomp  # build global permutation
+            b=target_comp[a]
+            Na=lens[a]
+            Nb=lens[b]
+            sh=shift_comp[a]
+            oa=offs[a]
+            ob=offs[b]
+            @inbounds for j in 1:Na
+                jj=mod1(j+sh,Nb)
+                map[oa+j-1]=ob+jj-1
+            end
+        end
+        rotmaps[l+1]=map
+    end
+    return Dict{Symbol,Any}(:rot=>rotmaps,:χ=>χ)
+end
+
+function build_symmetry_maps(pts::Vector{<:BoundaryPointsCFIE{T}},sym;tol::T=T(1e-10)) where {T<:Real}
+    xy,_=flatten_points(pts)
     sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
     if sym isa Reflection
+        maps=Dict{Symbol,Any}()
         if sym.axis==:y_axis
             maps[:x]=[match_index(-p[1],p[2],xy;tol=tol) for p in xy]
         elseif sym.axis==:x_axis
@@ -519,19 +615,15 @@ function build_symmetry_maps(xy::Vector{SVector{2,T}},sym;tol::T=T(1e-10)) where
             maps[:x]=[match_index(-p[1],p[2],xy;tol=tol) for p in xy]
             maps[:y]=[match_index(p[1],-p[2],xy;tol=tol) for p in xy]
             maps[:xy]=[match_index(-p[1],-p[2],xy;tol=tol) for p in xy]
+        else
+            error("Unknown reflection axis $(sym.axis)")
         end
+        return maps
     elseif sym isa Rotation
-        n::Int=sym.n
-        cx,cy=sym.center
-        cos_tab,sin_tab,χ=_rotation_tables(T,n,sym.m)
-        maps[:rot]=Vector{Vector{Int}}(undef,n)
-        for l in 1:n
-            c::T=cos_tab[l];s::T=sin_tab[l]
-            maps[:rot][l]=[match_index(_rot_point(p[1],p[2],cx,cy,c,s)...,xy;tol=tol) for p in xy]
-        end
-        maps[:χ]=χ
+        return build_rotation_maps_components(pts,sym;tol=max(T(1e-8),tol))
+    else
+        error("Unknown symmetry type $(typeof(sym))")
     end
-    return maps
 end
 
 function apply_projection!(V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym) where {T<:Real}

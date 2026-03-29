@@ -194,8 +194,10 @@ end
 # Output:
 #   - The function modifies `V` in-place to contain the projected values.
 function _CFIE_project_V_subspace!(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
-    solver.symmetry===nothing && return V # if no symmetry, no projection needed
-    apply_projection!(V,W,build_symmetry_maps(flatten_points(pts)[1],solver.symmetry),solver.symmetry)
+    isnothing(solver.symmetry) && return V
+    maps=build_symmetry_maps(pts,solver.symmetry)
+    apply_projection!(V,W,maps,solver.symmetry[1])
+    return V
 end
 
 function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
