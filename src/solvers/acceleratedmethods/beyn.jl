@@ -385,6 +385,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE},pts::Unio
         W=similar(V)
         _CFIE_project_V_subspace!(solver,pts,V,W) # for CFIE we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem.
     end
+    #=
     if solver isa CFIE
         sym=solver.symmetry
         maps=build_symmetry_maps(flatten_points(pts)[1],solver.symmetry)
@@ -401,6 +402,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE},pts::Unio
         err_invar=norm(Vproj-V)/norm(V)
         println("Projection invariance error = ",err_invar)
     end
+    =#
 
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
