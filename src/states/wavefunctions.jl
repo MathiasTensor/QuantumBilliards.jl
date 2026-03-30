@@ -49,13 +49,13 @@ Given an AbsBilliard object with multiple connected components (holes), computes
 - `Vector{Vector{SVector{2,<:Real}}}`: For each crv in the billiard full_boundary form a Vector{SVector{2,<:Real}} object containing the discretization points for that curve.
 """
 function _billiard_polygon_multi_component(billiard::Bi,N_polygon_checks::Int) where {Bi<:AbsBilliard}
-    boundary=billiard.full_boundary # fundamental == full for multi-component billiards (CFIE), so we just take full boundary
+    boundary=billiard.full_boundary # fundamental == full for multi-component billiards (CFIE_kress), so we just take full boundary
     ncomp=length(boundary)
     xy_components=Vector{Vector}(undef,ncomp)
     comp_lengths=zeros(Float64,ncomp) # determine component lengths
     for i in 1:ncomp
         comp=boundary[i]
-        comp_lengths[i]=comp.length # comp cannot be composite due to Kress analytic splitting in CFIE, so we can just take length of the component
+        comp_lengths[i]=comp.length # comp cannot be composite due to Kress analytic splitting in CFIE_kress, so we can just take length of the component
     end
     total_length=sum(comp_lengths)
     comp_points=[max(16,round(Int,N_polygon_checks*L/total_length)) for L in comp_lengths]  # distribute total polygon budget across connected components
@@ -177,7 +177,7 @@ Determine whether the points `pts` lie inside the billiard polygon sampled with
 - `N_polygon_checks::Int`: total polygon sampling budget
 
 # Keyword arguments
-- `fundamental_domain::Bool=true`: use the fundamental boundary for BIM. Ignored for CFIE.
+- `fundamental_domain::Bool=true`: use the fundamental boundary for BIM. Ignored for CFIE_kress.
 - `boundary_type::Symbol=:OUTER`: `:OUTER` for single connected domain, `:OUTER_INNER` for multiply connected domain.
     For `boundary_type == :OUTER`, the billiard is treated as a single connected domain.
     For `boundary_type == :OUTER_INNER`, the billiard is treated as a multiply connected domain:
@@ -433,10 +433,10 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{<:AbstractV
 end
 
 ###########################################################################
-############################ CFIE CONSTRUCTION ############################
+############################ CFIE_kress CONSTRUCTION ############################
 ###########################################################################
 
-# Flattne the CFIE boundary points into a single cache for faster wavefunction reconstruction, and then evaluate the CFIE wavefunction at many points from the flattened cache and boundary density `u`.
+# Flattne the CFIE_kress boundary points into a single cache for faster wavefunction reconstruction, and then evaluate the CFIE_kress wavefunction at many points from the flattened cache and boundary density `u`.
 struct CFIEWavefunctionCache{T<:Real}
     x::Vector{T} # boundary x_j
     y::Vector{T} # boundary y_j
@@ -449,13 +449,13 @@ end
 """
     flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real} -> CFIEWavefunctionCache{T}
 
-Flattens the CFIE boundary points from the fundamental domain into a single cache for faster wavefunction reconstruction.
+Flattens the CFIE_kress boundary points from the fundamental domain into a single cache for faster wavefunction reconstruction.
 
 # Inputs:
 - `comps`: Vector of `BoundaryPointsCFIE` objects, one for each component of the boundary.
 
 # Outputs:
-- `CFIEWavefunctionCache{T}`: A struct containing flattened vectors of boundary coordinates, tangents, quadrature weights, etc., for efficient CFIE wavefunction evaluation.
+- `CFIEWavefunctionCache{T}`: A struct containing flattened vectors of boundary coordinates, tangents, quadrature weights, etc., for efficient CFIE_kress wavefunction evaluation.
 """
 function flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     N=sum(length(c.xy) for c in comps)
@@ -487,10 +487,10 @@ end
 """
     ϕ_cfie(xp::T, yp::T, k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false) where {T<:Real} -> Complex{T}
 
-Evaluate the CFIE-reconstructed wavefunction at point `(xp, yp)` from a
+Evaluate the CFIE_kress-reconstructed wavefunction at point `(xp, yp)` from a
 flattened boundary cache and boundary density `u`.
 
-This uses the same kernel as the CFIE assembly:
+This uses the same kernel as the CFIE_kress assembly:
 
     ψ(x) = -∑_j w_j u_j [ (i k / 2) * inn * H1(k r) / r + i k * (i/2) * H0(k r) * s_j ]
 
@@ -500,7 +500,7 @@ where
 # Arguments
 - `xp, yp` : evaluation point p = SVector(xp, yp)
 - `k::T`      : real wavenumber
-- `cache::CFIEWavefunctionCache{T}`  : flattened CFIE geometry cache
+- `cache::CFIEWavefunctionCache{T}`  : flattened CFIE_kress geometry cache
 - `u::AbstractVector{Complex{T}}`      : complex boundary density, same ordering as flattening
 - `float32_bessel::Bool`     : evaluate Hankels in Float32 and cast back
 
@@ -570,7 +570,7 @@ end
 """
     ϕ_cfie!(ψ::AbstractVector{Complex{T}},pts::AbstractVector{SVector{2,T}},k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}},float32_bessel::Bool=false) where {T<:Real}
 
-Compute the CFIE wavefunction on many points.
+Compute the CFIE_kress wavefunction on many points.
 """
 function ϕ_cfie_flat!(ψ::AbstractVector{Complex{T}},pts::AbstractVector,k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false) where {T<:Real}
     Threads.@threads for i in eachindex(pts)
@@ -600,12 +600,12 @@ end
 """
     wavefunction_multi_cfie(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{Vector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
-Construct a sequence of 2D wavefunction matrices for CFIE states on a common grid.
+Construct a sequence of 2D wavefunction matrices for CFIE_kress states on a common grid.
 
 # Arguments
 - `ks`         : eigenvalues
 - `vec_us`     : boundary densities, one per eigenstate
-- `vec_comps`  : CFIE boundary discretizations, one per eigenstate
+- `vec_comps`  : CFIE_kress boundary discretizations, one per eigenstate
 - `billiard`   : billiard geometry
 
 # Keyword arguments
@@ -645,7 +645,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
         caches[i]=flatten_cfie_wavefunction_cache(vec_comps[i])
     end
     Psi_flat=zeros(S,nx*ny) # flat workspace reused per state
-    progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
+    progress=Progress(nstates,desc="Constructing CFIE_kress wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
     @inbounds for i in eachindex(ks)
         k=ks[i]
