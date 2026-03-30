@@ -5,7 +5,7 @@
 #### CONSTRUCTOR ####
 #####################
 
-struct CFIE_alpert{T,Bi} <: SweepSolver where {T<:Real,Bi<:AbsBilliard}
+struct CFIE_alpert{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
     sampler::Vector{LinearNodes}
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
