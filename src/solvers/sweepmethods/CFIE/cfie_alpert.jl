@@ -202,9 +202,9 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
-    ws=pts.ws
+    h=pts.ws[1]
+    wq=pts.ds
     N=length(X)
-    h=inv(T(N-1))
     a=rule.a
     jcorr=rule.j
     ξ=rule.x
@@ -213,7 +213,7 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
-        wi=ws[i]
+        wi=wq[i]
         κi=G.kappa[i]
         ui=C.us[i]
         A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
@@ -223,13 +223,13 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            A[gi,gj]-=ws[j]*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]-=wq[j]*(αD*inn*H(1,k*rij)*invr)
         end
         @inbounds for j in 1:N
             j==i && continue
             abs(j-i)<a && continue
             gj=row_range[j]
-            A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            A[gi,gj]-=ik*(wq[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
         ℓ=Vector{T}(undef,N)
         @inbounds for p in 1:jcorr
@@ -331,7 +331,7 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
         txj=timg[1]
         tyj=timg[2]
         sj=sqrt(txj*txj+tyj*tyj)
-        wj=pb.ws[j]
+        wj=pb.ds[j]
         @inbounds for i in 1:Na
             gi=ra[i]
             dx=Xa[i]-xj
@@ -466,7 +466,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
             txj=dXb[j]
             tyj=dYb[j]
             sj=sb[j]
-            wj=pb.ws[j]
+            wj=pb.ds[j]
             @inbounds for i in 1:Na
                 gi=ra[i]
                 dx=Xa[i]-xj
@@ -545,7 +545,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
                 txj=dXb[j]
                 tyj=dYb[j]
                 sj=sb[j]
-                wj=pb.ws[j]
+                wj=pb.ds[j]
                 @inbounds for i in 1:Na
                     gi=ra[i]
                     dx=Xa[i]-xj
