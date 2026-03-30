@@ -511,25 +511,22 @@ end
 #####################
 
 # _reflection_shifts
-# Compute the reflection-axis shifts used by reflection image maps.
+# Return the reflection-axis shifts carried by the billiard geometry.
 #
 # Inputs:
 #   - ::Type{T} :
-#       Real numeric type used in the current assembly.
+#       Real scalar type used in the current computation.
 #   - billiard :
-#       Geometry object that may optionally define
-#         * `x_axis` : x-location of the vertical reflection axis
-#         * `y_axis` : y-location of the horizontal reflection axis
+#       Geometry object which may carry `x_axis` and/or `y_axis`.
 #
 # Outputs:
 #   - sx::T :
-#       Shift of the vertical reflection axis. Defaults to zero if absent.
+#       x-shift of the reflection axis for y-axis reflections.
 #   - sy::T :
-#       Shift of the horizontal reflection axis. Defaults to zero if absent.
+#       y-shift of the reflection axis for x-axis reflections.
 #
 # Notes:
-#   - These shifts are only relevant for reflecting coordinates.
-#   - Tangents/normals are direction vectors, so they are not translated.
+#   - If the billiard does not define these properties, the shifts default to 0.
 @inline function _reflection_shifts(::Type{T},billiard) where {T<:Real}
     sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
     sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
@@ -537,243 +534,186 @@ end
 end
 
 # image_point_x
-# Reflect a point across the vertical symmetry axis x = sx.
+# Reflect a point across the y-axis (possibly shifted to x = sx).
 #
 # Inputs:
 #   - q::SVector{2,T} :
 #       Source point.
 #   - billiard :
-#       Geometry object that may define the axis shift `x_axis`.
+#       Geometry object that may carry the reflection-axis shift `x_axis`.
 #
 # Outputs:
-#   - qx::SVector{2,T} :
-#       Reflected point (x,y) -> (2*sx - x, y).
+#   - qimg::SVector{2,T} :
+#       Reflected point.
 @inline function image_point_x(q::SVector{2,T},billiard) where {T<:Real}
     sx,_=_reflection_shifts(T,billiard)
     return SVector{2,T}(_x_reflect(q[1],sx),q[2])
 end
 
 # image_point_y
-# Reflect a point across the horizontal symmetry axis y = sy.
+# Reflect a point across the x-axis (possibly shifted to y = sy).
 #
 # Inputs:
 #   - q::SVector{2,T} :
 #       Source point.
 #   - billiard :
-#       Geometry object that may define the axis shift `y_axis`.
+#       Geometry object that may carry the reflection-axis shift `y_axis`.
 #
 # Outputs:
-#   - qy::SVector{2,T} :
-#       Reflected point (x,y) -> (x, 2*sy - y).
+#   - qimg::SVector{2,T} :
+#       Reflected point.
 @inline function image_point_y(q::SVector{2,T},billiard) where {T<:Real}
     _,sy=_reflection_shifts(T,billiard)
     return SVector{2,T}(q[1],_y_reflect(q[2],sy))
 end
 
 # image_point_xy
-# Reflect a point across both reflection axes.
+# Reflect a point across both coordinate axes (origin symmetry, possibly shifted axes).
 #
 # Inputs:
 #   - q::SVector{2,T} :
 #       Source point.
 #   - billiard :
-#       Geometry object that may define the axis shifts `x_axis` and `y_axis`.
+#       Geometry object that may carry `x_axis` and `y_axis`.
 #
 # Outputs:
-#   - qxy::SVector{2,T} :
-#       Doubly reflected point (x,y) -> (2*sx - x, 2*sy - y).
+#   - qimg::SVector{2,T} :
+#       Doubly reflected point.
 @inline function image_point_xy(q::SVector{2,T},billiard) where {T<:Real}
     sx,sy=_reflection_shifts(T,billiard)
     return SVector{2,T}(_x_reflect(q[1],sx),_y_reflect(q[2],sy))
 end
 
 # image_tangent_x
-# Reflect a tangent/direction vector across the vertical symmetry axis.
+# Tangent map for a y-axis reflection image used in the desymmetrized CFIE assembly.
 #
 # Inputs:
 #   - t::SVector{2,T} :
-#       Tangent or other direction vector.
+#       Source tangent on the fundamental boundary.
+#
+# Outputs:
+#   - timg::SVector{2,T} :
+#       Tangent of the reflected image curve with the correct full-boundary orientation.
+#
+# Notes:
+#   - A single reflection reverses orientation.
+#   - Therefore we must negate the reflected tangent.
+#   - Reflection across the y-axis sends (tx,ty) -> (-tx,ty), and restoring the
+#     physical CCW orientation gives -( -tx,ty ) = (tx,-ty).
 @inline function image_tangent_x(t::SVector{2,T}) where {T<:Real}
     tx,ty=_x_reflect_normal(t[1],t[2])
-    return SVector{2,T}(tx,ty)
+    return SVector{2,T}(-tx,-ty)
 end
 
 # image_tangent_y
-# Reflect a tangent/direction vector across the horizontal symmetry axis.
+# Tangent map for an x-axis reflection image used in the desymmetrized CFIE assembly.
 #
 # Inputs:
 #   - t::SVector{2,T} :
-#       Tangent or other direction vector.
+#       Source tangent on the fundamental boundary.
+#
+# Outputs:
+#   - timg::SVector{2,T} :
+#       Tangent of the reflected image curve with the correct full-boundary orientation.
+#
+# Notes:
+#   - A single reflection reverses orientation.
+#   - Therefore we must negate the reflected tangent.
+#   - Reflection across the x-axis sends (tx,ty) -> (tx,-ty), and restoring the
+#     physical CCW orientation gives -( tx,-ty ) = (-tx,ty).
 @inline function image_tangent_y(t::SVector{2,T}) where {T<:Real}
     tx,ty=_y_reflect_normal(t[1],t[2])
-    return SVector{2,T}(tx,ty)
+    return SVector{2,T}(-tx,-ty)
 end
 
 # image_tangent_xy
-# Reflect a tangent/direction vector across both symmetry axes.
+# Tangent map for the double reflection (origin / XY image).
 #
 # Inputs:
 #   - t::SVector{2,T} :
-#       Tangent or other direction vector.
+#       Source tangent on the fundamental boundary.
 #
 # Outputs:
-#   - txy::SVector{2,T} :
-#       Tangent with both components sign flipped.
+#   - timg::SVector{2,T} :
+#       Tangent of the doubly reflected image curve.
 #
 # Notes:
-#   - This is the direction-vector analogue of `image_point_xy`.
+#   - The double reflection has determinant +1, so orientation is preserved.
+#   - Hence no additional minus sign is needed here.
 @inline function image_tangent_xy(t::SVector{2,T}) where {T<:Real}
     tx,ty=_xy_reflect_normal(t[1],t[2])
     return SVector{2,T}(tx,ty)
 end
 
 # image_weight_x
-# Return the scalar symmetry weight for the x-image contribution.
+# Return the scalar parity weight for the y-axis reflection image contribution.
 #
 # Inputs:
 #   - sym::Reflection :
-#       Reflection symmetry descriptor.
+#       Reflection symmetry object with `axis == :origin`.
 #
 # Outputs:
 #   - σx :
-#       Image weight for the x-reflected contribution.
-#
-# Notes:
-#   - For a simple x- or y-reflection, this just returns `sym.parity`.
-#   - For `XYReflection`, this returns the parity associated with the x-image.
-@inline function image_weight_x(sym::Reflection)
-    return sym.axis==:origin ? sym.parity[1] : sym.parity
-end
+#       Weight of the x-image term.
+@inline image_weight_x(sym::Reflection)=sym.parity[1]
 
 # image_weight_y
-# Return the scalar symmetry weight for the y-image contribution.
+# Return the scalar parity weight for the x-axis reflection image contribution.
 #
 # Inputs:
 #   - sym::Reflection :
-#       Reflection symmetry descriptor.
+#       Reflection symmetry object with `axis == :origin`.
 #
 # Outputs:
 #   - σy :
-#       Image weight for the y-reflected contribution.
-@inline function image_weight_y(sym::Reflection)
-    return sym.axis==:origin ? sym.parity[2] : sym.parity
-end
+#       Weight of the y-image term.
+@inline image_weight_y(sym::Reflection)=sym.parity[2]
 
 # image_weight_xy
-# Return the scalar symmetry weight for the doubly reflected xy-image.
+# Return the scalar parity weight for the double-reflection image contribution.
 #
 # Inputs:
 #   - sym::Reflection :
-#       Reflection symmetry descriptor. Must represent origin / XY symmetry.
+#       Reflection symmetry object with `axis == :origin`.
 #
 # Outputs:
 #   - σxy :
-#       Product parity σx*σy for the xy-image term.
-@inline function image_weight_xy(sym::Reflection)
-    sym.axis==:origin || error("image_weight_xy is only meaningful for XY/origin reflection.")
-    return sym.parity[1]*sym.parity[2]
-end
-
-# image_point
-# Dispatch helper for single-image reflections.
-#
-# Inputs:
-#   - sym::Reflection :
-#       Reflection descriptor.
-#   - q::SVector{2,T} :
-#       Source point.
-#   - billiard :
-#       Geometry object providing reflection-axis shifts if present.
-#
-# Outputs:
-#   - qimg::SVector{2,T} :
-#       Reflected point for a single reflection symmetry.
-#
-# Errors:
-#   - Throws for `sym.axis == :origin`, because XY reflection is not a single
-#     image term; it must be split into x, y, and xy contributions.
-#
-# Notes:
-#   - This helper is fine for `XReflection` and `YReflection`.
-#   - For `XYReflection`, call `image_point_x`, `image_point_y`,
-#     and `image_point_xy` explicitly.
-@inline function image_point(sym::Reflection,q::SVector{2,T},billiard) where {T<:Real}
-    if sym.axis==:y_axis
-        return image_point_x(q,billiard)
-    elseif sym.axis==:x_axis
-        return image_point_y(q,billiard)
-    elseif sym.axis==:origin
-        error("XY/origin reflection should be split into x, y, and xy images.")
-    else
-        error("Unknown reflection axis $(sym.axis)")
-    end
-end
-
-# image_tangent
-# Dispatch helper for single-image reflections acting on tangents.
-#
-# Inputs:
-#   - sym::Reflection :
-#       Reflection descriptor.
-#   - t::SVector{2,T} :
-#       Tangent/direction vector.
-#
-# Outputs:
-#   - timg::SVector{2,T} :
-#       Reflected tangent for a single reflection symmetry.
-#
-# Errors:
-#   - Throws for `sym.axis == :origin`, because XY reflection is not one image
-#     contribution but three separate ones.
-@inline function image_tangent(sym::Reflection,t::SVector{2,T}) where {T<:Real}
-    if sym.axis==:y_axis
-        return image_tangent_x(t)
-    elseif sym.axis==:x_axis
-        return image_tangent_y(t)
-    elseif sym.axis==:origin
-        error("XY/origin reflection should be split into x, y, and xy images.")
-    else
-        error("Unknown reflection axis $(sym.axis)")
-    end
-end
+#       Weight of the xy-image term, equal to σx*σy.
+@inline image_weight_xy(sym::Reflection)=sym.parity[1]*sym.parity[2]
 
 # image_weight
-# Dispatch helper for single-image reflection weights.
+# Return the parity weight for a single-axis reflection contribution.
 #
 # Inputs:
 #   - sym::Reflection :
-#       Reflection descriptor.
+#       Reflection object with axis `:x_axis` or `:y_axis`.
 #
 # Outputs:
 #   - σ :
-#       Scalar image weight for a single reflected contribution.
+#       Scalar parity/sign weight.
 #
-# Errors:
-#   - Throws for `sym.axis == :origin`, because XY reflection must be split
-#     into three contributions with weights σx, σy, and σx*σy.
+# Notes:
+#   - Do not use this for `:origin`; that case must be split into x, y, and xy images.
 @inline function image_weight(sym::Reflection)
-    if sym.axis==:origin
-        error("XY/origin reflection should be split into separate x, y, and xy image weights.")
-    end
+    sym.axis==:origin && error("XY/origin reflection must be split into x, y, and xy image terms.")
     return sym.parity
 end
 
 # image_point
-# Rotate a point by the l-th power of a C_n symmetry.
+# Rotate a source point by the l-th nontrivial C_n image.
 #
 # Inputs:
 #   - sym::Rotation :
-#       Rotation descriptor containing the order `n`, irrep index `m`,
-#       and center of rotation.
+#       Rotation symmetry descriptor.
 #   - q::SVector{2,T} :
 #       Source point.
 #   - l::Int :
-#       Rotation power. `l=0` is identity, `l=1` is one step, etc.
+#       Rotation power.
 #   - costab, sintab :
-#       Precomputed cosine and sine tables from `_rotation_tables`.
+#       Precomputed cosine/sine tables from `_rotation_tables`.
 #
 # Outputs:
-#   - qrot::SVector{2,T} :
+#   - qimg::SVector{2,T} :
 #       Rotated point.
 @inline function image_point(sym::Rotation,q::SVector{2,T},l::Int,costab,sintab) where {T<:Real}
     c=costab[l+1]
@@ -784,21 +724,24 @@ end
 end
 
 # image_tangent
-# Rotate a tangent/direction vector by the l-th power of a C_n symmetry.
+# Rotate a source tangent by the l-th nontrivial C_n image.
 #
 # Inputs:
 #   - sym::Rotation :
-#       Rotation descriptor.
+#       Rotation symmetry descriptor.
 #   - t::SVector{2,T} :
-#       Tangent/direction vector.
+#       Source tangent.
 #   - l::Int :
-#       Rotation power. `l=0` is identity.
+#       Rotation power.
 #   - costab, sintab :
-#       Precomputed cosine and sine tables from `_rotation_tables`.
+#       Precomputed cosine/sine tables.
 #
 # Outputs:
-#   - trot::SVector{2,T} :
+#   - timg::SVector{2,T} :
 #       Rotated tangent.
+#
+# Notes:
+#   - Rotations preserve orientation, so no extra minus sign is needed.
 @inline function image_tangent(sym::Rotation,t::SVector{2,T},l::Int,costab,sintab) where {T<:Real}
     c=costab[l+1]
     s=sintab[l+1]
