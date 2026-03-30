@@ -122,71 +122,150 @@ end
 #### ALPERT SAME-COMPONENT ASSEMBLY ####
 ########################################
 
-function assemble_self_block_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αL2=k/2*im
-    αM2=Complex{T}(0,one(T)/2)
-    αM1=-inv_two_pi
-    ik=k*im
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    ts=pts.ts
-    h=pts.ws[1]
-    N=length(ts)
-    a=rule.a
-    jcorr=rule.j
-    ξ=rule.x
-    ω=rule.w
+function assemble_self_block_alpert!(solver::CFIE_alpert{T},
+    A::AbstractMatrix{Complex{T}},
+    pts::BoundaryPointsCFIE{T},
+    G::CFIEGeomCache{T},
+    row_range::UnitRange{Int},
+    k::T,
+    rule::AlpertLogRule{T};
+    multithreaded::Bool=true) where {T<:Real}
+
+    αL1 = k*inv_two_pi
+    αL2 = Complex{T}(0,k/2)
+    αM1 = -inv_two_pi
+    αM2 = Complex{T}(0,one(T)/2)
+    ik  = Complex{T}(0,k)
+
+    X  = getindex.(pts.xy,1)
+    Y  = getindex.(pts.xy,2)
+    dX = getindex.(pts.tangent,1)
+    dY = getindex.(pts.tangent,2)
+    ts = pts.ts
+    ws = pts.ws
+
+    N     = length(ts)
+    h     = ws[1]
+    a     = rule.a
+    jcorr = rule.j
+    ξ     = rule.x
+    ω     = rule.w
+
     @use_threads multithreading=multithreaded for i in 1:N
-        gi=row_range[i]
-        ti=ts[i]
-        xi=X[i]
-        yi=Y[i]
-        si=G.speed[i]
-        κi=G.kappa[i]
-        ddiag=Complex{T}(h*κi,zero(T))
-        sdiag=Complex{T}(zero(T),zero(T))
-        sdiag+=Complex{T}(zero(T),zero(T))+h*((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
-        sdiag+=Complex{T}(2*π/(T(N)^2)*(αM1*si),zero(T)) # Kress diagonal log-weight equivalent
-        A[gi,gi]+=one(Complex{T})-(ddiag+ik*sdiag)
-        @inbounds for δ in a:(N-a)
-            j=mod1(i+δ,N)
-            gj=row_range[j]
-            r=G.R[i,j]
-            invr=G.invR[i,j]
-            inn=G.inner[i,j]
-            sj=G.speed[j]
-            wj=pts.ws[j]
-            dker=αL2*inn*H(1,k*r)*invr
-            sker=αM2*H(0,k*r)*sj
-            A[gi,gj]+= -(wj*dker+ik*(wj*sker))
+        gi = row_range[i]
+        ti = ts[i]
+        xi = X[i]
+        yi = Y[i]
+        si = G.speed[i]
+        κi = G.kappa[i]
+        wi = ws[i]
+
+        # ----------------------------
+        # diagonal: finite limits only
+        # ----------------------------
+        ddiag = Complex{T}(wi*κi,zero(T))
+
+        m2diag = ((Complex{T}(0,one(T)/2) - euler_over_pi) -
+                  inv_two_pi*log((k^2/4)*si^2))*si
+
+        sdiag = wi*m2diag
+
+        A[gi,gi] += one(Complex{T}) - (ddiag + ik*sdiag)
+
+        # ---------------------------------------------------
+        # far periodic trapezoid: use wrapped distance to i
+        # ---------------------------------------------------
+        @inbounds for j in 1:N
+            j == i && continue
+            m = j - i
+            m >  N÷2 && (m -= N)
+            m < -N÷2 && (m += N)
+            abs(m) < a && continue
+
+            gj   = row_range[j]
+            rij  = G.R[i,j]
+            invr = G.invR[i,j]
+            lt   = G.logterm[i,j]
+            sj   = G.speed[j]
+            wj   = ws[j]
+
+            h1 = H(1,k*rij)
+            h0 = H(0,k*rij)
+            j1 = real(h1)
+            j0 = real(h0)
+
+            inn = G.inner[i,j]
+
+            l1 = αL1*inn*j1*invr
+            l2 = αL2*inn*h1*invr - l1*lt
+
+            m1 = αM1*j0*sj
+            m2 = αM2*h0*sj - m1*lt
+
+            A[gi,gj] += -wj*(l1*lt + l2 + ik*(m1*lt + m2))
         end
-        l=Vector{T}(undef,N)
+
+        # ---------------------------------------------------------
+        # near singular region: Alpert corrected off-grid sampling
+        # ---------------------------------------------------------
+        ℓ = Vector{T}(undef,N)
+
         @inbounds for p in 1:jcorr
-            fac=h*ω[p]
-            θp=wrap_angle(ti+h*ξ[p])
-            trig_cardinal_weights!(l,θp,ts)
-            xp,yp,txp,typ,sp=_eval_offgrid_source(l,X,Y,dX,dY)
-            dx=xi-xp
-            dy=yi-yp
-            r=sqrt(dx*dx+dy*dy)
-            inn=typ*dx-txp*dy
-            dker=αL2*inn*H(1,k*r)/r
-            sker=αM2*H(0,k*r)*sp
-            coeff=-(fac*dker+ik*(fac*sker))
-            @views A[gi,row_range].+=coeff.*l
-            θm=wrap_angle(ti-h*ξ[p])
-            trig_cardinal_weights!(l,θm,ts)
-            xm,ym,txm,tym,sm=_eval_offgrid_source(l,X,Y,dX,dY)
-            dx=xi-xm
-            dy=yi-ym
-            r=sqrt(dx*dx+dy*dy)
-            inn=tym*dx-txm*dy
-            dker=αL2*inn*H(1,k*r)/r
-            sker=αM2*H(0,k*r)*sm
-            coeff=-(fac*dker+ik*(fac*sker))
-            @views A[gi,row_range].+=coeff.*l
+            fac = h*ω[p]
+
+            # right correction node
+            θp = wrap_angle(ti + h*ξ[p])
+            trig_cardinal_weights!(ℓ,θp,ts)
+            xp,yp,txp,typ,sp = _eval_offgrid_source(ℓ,X,Y,dX,dY)
+
+            dx  = xi - xp
+            dy  = yi - yp
+            r   = sqrt(dx*dx + dy*dy)
+            invr = inv(r)
+            lt  = log(4*sin((ti-θp)/2)^2)
+
+            h1 = H(1,k*r)
+            h0 = H(0,k*r)
+            j1 = real(h1)
+            j0 = real(h0)
+
+            inn = typ*dx - txp*dy
+
+            l1 = αL1*inn*j1*invr
+            l2 = αL2*inn*h1*invr - l1*lt
+
+            m1 = αM1*j0*sp
+            m2 = αM2*h0*sp - m1*lt
+
+            coeff = -fac*(l1*lt + l2 + ik*(m1*lt + m2))
+            @views A[gi,row_range] .+= coeff .* ℓ
+
+            # left correction node
+            θm = wrap_angle(ti - h*ξ[p])
+            trig_cardinal_weights!(ℓ,θm,ts)
+            xm,ym,txm,tym,sm = _eval_offgrid_source(ℓ,X,Y,dX,dY)
+
+            dx  = xi - xm
+            dy  = yi - ym
+            r   = sqrt(dx*dx + dy*dy)
+            invr = inv(r)
+            lt  = log(4*sin((ti-θm)/2)^2)
+
+            h1 = H(1,k*r)
+            h0 = H(0,k*r)
+            j1 = real(h1)
+            j0 = real(h0)
+
+            inn = tym*dx - txm*dy
+
+            l1 = αL1*inn*j1*invr
+            l2 = αL2*inn*h1*invr - l1*lt
+
+            m1 = αM1*j0*sm
+            m2 = αM2*h0*sm - m1*lt
+
+            coeff = -fac*(l1*lt + l2 + ik*(m1*lt + m2))
+            @views A[gi,row_range] .+= coeff .* ℓ
         end
     end
 
@@ -210,7 +289,6 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         ra=offs[a]:(offs[a+1]-1)
         assemble_self_block_alpert!(solver,A,pts[a],Gs[a],ra,k,rule;multithreaded=multithreaded)
     end
-    # cross-component blocks unchanged: smooth quadrature
     for a in 1:nc, b in 1:nc
         a==b && continue
         pa=pts[a]
