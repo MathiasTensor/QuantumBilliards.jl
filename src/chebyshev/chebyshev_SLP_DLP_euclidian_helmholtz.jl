@@ -1,24 +1,24 @@
 #################################################################
-#   CHEBYSHEV-BASED SLP/DLP EVALUATION FOR CFIE ASSEMBLY IN 2D EUCLIDEAN HELMHOLTZ 
-# Functions to build Chebyshev-based SLP/DLP evaluation plans for multiple wavenumbers, and to compute the CFIE matrix blocks using these plans. 
+#   CHEBYSHEV-BASED SLP/DLP EVALUATION FOR CFIE_kress ASSEMBLY IN 2D EUCLIDEAN HELMHOLTZ 
+# Functions to build Chebyshev-based SLP/DLP evaluation plans for multiple wavenumbers, and to compute the CFIE_kress matrix blocks using these plans. 
 # Logic:
 # - Build Chebyshev-based Hankel evaluation plans for the SLP and DLP kernels for each wavenumber.
-# - Precompute the geometry-related terms (R, invR, inner product, speed, quadrature weights) for each block of the CFIE matrix.
-# - For each block, use the precomputed geometry and the Chebyshev plans to evaluate the SLP and DLP contributions for each pair of points, and accumulate the CFIE matrix entries.
+# - Precompute the geometry-related terms (R, invR, inner product, speed, quadrature weights) for each block of the CFIE_kress matrix.
+# - For each block, use the precomputed geometry and the Chebyshev plans to evaluate the SLP and DLP contributions for each pair of points, and accumulate the CFIE_kress matrix entries.
 #
 # API: 
 # - `build_CFIE_plans(...)`: Builds Chebyshev-based Hankel evaluation plans for the given wavenumbers and geometry.
-# - `build_cfie_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE matrix.
+# - `build_cfie_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE_kress matrix.
 # - `h01_multi_ks_at_r!(...)`: Evaluates the SLP and DLP Hankel functions for multiple wavenumbers at given distances.
-# - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
+# - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE_kress matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
 # USUALLY NOT CALLED DIRECTLY: 
-# - `_one_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for a single wavenumber without using symmetries, using Chebyshev-based SLP/DLP evaluation.
-# - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
+# - `_one_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_kress matrix blocks for a single wavenumber without using symmetries, using Chebyshev-based SLP/DLP evaluation.
+# - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_kress matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
 #
 # Workflow: 
 # 1. Call `build_CFIE_plans` to create the Chebyshev evaluation plans for the desired wavenumbers and geometry.
-# 2. Call `build_cfie_block_caches` to precompute the geometry-related terms for each block of the CFIE matrix.
-# 3. Call `compute_kernel_matrices_CFIE_chebyshev!` to compute the CFIE matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
+# 2. Call `build_cfie_block_caches` to precompute the geometry-related terms for each block of the CFIE_kress matrix.
+# 3. Call `compute_kernel_matrices_CFIE_chebyshev!` to compute the CFIE_kress matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
 #
 # MO 26/3/26
 #################################################################
@@ -31,7 +31,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
 #### MULTI-K H0/H1 ####
 #######################
 
-# Evaluates the H0/H1/J0/J1 values at multiple k*r values, needed for multi CFIE assembly -> same_block_col!
+# Evaluates the H0/H1/J0/J1 values at multiple k*r values, needed for multi CFIE_kress assembly -> same_block_col!
 @inline function bessels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
@@ -42,7 +42,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
     return nothing
 end
 
-# Same as above but only for H0/H1, used for CFIE assembly when J0/J1 are not needed -> off_block_col! 
+# Same as above but only for H0/H1, used for CFIE_kress assembly when J0/J1 are not needed -> off_block_col! 
 @inline function hankels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
@@ -52,7 +52,7 @@ end
 end
 
 ################################
-#### PLAN BUILDERS FOR CFIE ####
+#### PLAN BUILDERS FOR CFIE_kress ####
 ################################
 
 function build_CFIE_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
@@ -122,7 +122,7 @@ struct CFIEBlockSystemCache{T<:Real}
     rmax::Float64
 end
 
-# Builds the CFIE block caches for all pairs of components, precomputing the geometry-related terms needed for the CFIE matrix assembly.
+# Builds the CFIE_kress block caches for all pairs of components, precomputing the geometry-related terms needed for the CFIE_kress matrix assembly.
 function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
@@ -217,7 +217,7 @@ end
 #### BESSEL WORKSPACE ####
 ##########################
 
-# Contains the thread-local storage for the Hankel and Bessel function values at multiple wavenumbers, used during CFIE assembly to avoid repeated allocations.
+# Contains the thread-local storage for the Hankel and Bessel function values at multiple wavenumbers, used during CFIE_kress assembly to avoid repeated allocations.
 
 struct CFIEMultiBesselWorkspace
     h0_tls::Vector{Vector{ComplexF64}}
@@ -235,7 +235,7 @@ function CFIEMultiBesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
 end
 
 #############################################################
-#### DIRECT NO-SYMMETRY CFIE ASSEMBLY: ALL k / ONE k ########
+#### DIRECT NO-SYMMETRY CFIE_kress ASSEMBLY: ALL k / ONE k ########
 #############################################################
 
 function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
@@ -353,7 +353,7 @@ end
 #############################################################
 # compute_kernel_matrices_CFIE_chebyshev!
 #
-# Assemble CFIE matrices using Chebyshev-interpolated Hankel kernels.
+# Assemble CFIE_kress matrices using Chebyshev-interpolated Hankel kernels.
 #
 # INPUT
 # -----
@@ -398,7 +398,7 @@ end
 #
 # OUTPUT
 # ------
-# As / A are filled in-place with CFIE matrices:
+# As / A are filled in-place with CFIE_kress matrices:
 #
 #   A = I - (D + i*k*S)
 #

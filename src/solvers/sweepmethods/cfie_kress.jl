@@ -15,10 +15,10 @@ inv_two_pi=1/two_pi
 euler_over_pi=MathConstants.eulergamma/pi
 
 ###########################
-#### CONSTRUCTOR CFIE ####
+#### CONSTRUCTOR CFIE_kress ####
 ###########################
 
-struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
+struct CFIE_kress{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard} 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
@@ -29,18 +29,18 @@ struct CFIE{T,Bi}<:SweepSolver where {T<:Real,Bi<:AbsBilliard}
     symmetry::Union{Nothing,Vector{Any}}
 end
 
-function CFIE(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
-    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE only works with polar curves")
+function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
+    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_kress only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
+    return CFIE_kress{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
 #############################
 #### BOUNDARY EVALUATION ####
 #############################
 
-# helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
+# helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE_kress method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
 function component_offsets(comps::Vector)
     nc=length(comps)
     offs=Vector{Int}(undef,nc+1)
@@ -79,7 +79,7 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
 end
 
 # single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
-function _evaluate_points(solver::CFIE{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
@@ -107,7 +107,7 @@ function _evaluate_points(solver::CFIE{T},crv::C,k::T,idx::Int) where {T<:Real,C
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
 end
 
-function evaluate_points(solver::CFIE{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
@@ -116,7 +116,7 @@ function evaluate_points(solver::CFIE{T},billiard::Bi,k::T) where {T<:Real,Bi<:A
     return pts
 end
 
-# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
+# For CFIE_kress with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
 function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     return offs[end]-1
@@ -156,7 +156,7 @@ function kress_R!(R0::AbstractMatrix{T},ts::Vector{T}) where {T<:Real}
     return nothing
 end
 
-# Build the R matrix for the CFIE method by assembling the circulant R matrices for each component of the boundary. The function takes a vector of BoundaryPointsCFIE objects, computes the appropriate offsets for each component, and fills in the R matrix using the kress_R! function for each component's corresponding block. It is block diagonal since only for boundary interaction within the same component we have the singularity that needs to be corrected by the R matrix, while for interactions between different components the kernel is smooth and does not require correction.
+# Build the R matrix for the CFIE_kress method by assembling the circulant R matrices for each component of the boundary. The function takes a vector of BoundaryPointsCFIE objects, computes the appropriate offsets for each component, and fills in the R matrix using the kress_R! function for each component's corresponding block. It is block diagonal since only for boundary interaction within the same component we have the singularity that needs to be corrected by the R matrix, while for interactions between different components the kernel is smooth and does not require correction.
 # R = [ R_1  0   0  ...  0
 #       0   R_2 0   ...  0
 #       0   0   R_3 ...  0
@@ -219,7 +219,7 @@ end
 #### DIRECT A CONSTRUCTION ####
 ###############################
 
-function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1=k*inv_two_pi
     αL2=k/2*im
@@ -322,7 +322,7 @@ function construct_matrices!(solver::CFIE,A::Matrix{Complex{T}},pts::Vector{Boun
     return A
 end
 
-function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -331,7 +331,7 @@ function construct_matrices(solver::CFIE,pts::Vector{BoundaryPointsCFIE{T}},k::T
     return A
 end
 
-function solve(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     if use_krylov 
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
@@ -342,7 +342,7 @@ function solve(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{Boundary
     end 
 end
 
-function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -357,7 +357,7 @@ function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multi
     end 
 end
 
-function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -371,7 +371,7 @@ function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat:
     end 
 end
 
-function solve_vect(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
@@ -381,7 +381,7 @@ function solve_vect(solver::CFIE,A::Matrix{Complex{T}},basis::Ba,pts::Vector{Bou
     return mu,u_mu
 end
 
-function solve_vect(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -395,7 +395,7 @@ function solve_vect(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;
     return mu,u_mu
 end
 
-function solve_eigenvectors_CFIE(solver::CFIE,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_eigenvectors_CFIE(solver::CFIE_kress,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks)}}}(undef,length(ks))
     for i in eachindex(ks)
@@ -407,7 +407,7 @@ function solve_eigenvectors_CFIE(solver::CFIE,basis::Ba,ks::Vector{T};multithrea
     return us_all,pts_all
 end
 
-function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     t0=time()
     @info "Constructing circulant R matrix..."
     offs=component_offsets(pts)
@@ -443,10 +443,10 @@ function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;
 end
 
 ####################
-#### CFIE UTILS ####
+#### CFIE_kress UTILS ####
 ####################
 
-function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE;k=20.0,markersize=5) where {Bi<:AbsBilliard}
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::CFIE_kress;k=20.0,markersize=5) where {Bi<:AbsBilliard}
     f=Figure(resolution=(1200,1200))
     ax=Axis(f[1,1],title="boundary + point‐wise weights",aspect=DataAspect())
     pts_all=evaluate_points(solver,billiard,k)
@@ -481,15 +481,15 @@ end
 ###############################################################################
 ################## Symmetry mapping and projection utilities ##################
 ###############################################################################
-# mostly used for CFIE where we need to project onto an irrep since we cant construct with Kress's log split since it needs full domain
-# this allows Beyn's method to handle symmetries even in the case of CFIE.
+# mostly used for CFIE_kress where we need to project onto an irrep since we cant construct with Kress's log split since it needs full domain
+# this allows Beyn's method to handle symmetries even in the case of CFIE_kress.
 
 # flatten_points
-# Flatten a vector of CFIE boundary components into one global point array for all components.
+# Flatten a vector of CFIE_kress boundary components into one global point array for all components.
 #
 # Inputs:
 #   - pts::Vector{<:BoundaryPointsCFIE{T}} :
-#       Boundary components in CFIE. Each component stores its own
+#       Boundary components in CFIE_kress. Each component stores its own
 #       `xy` points, and the components are assumed to be ordered exactly
 #       as they appear in the global boundary assembly.
 #
@@ -560,11 +560,11 @@ end
 
 # build_rotation_maps_components
 # Construct the discrete action of a rotational symmetry on a multi-component
-# CFIE boundary by matching rotated components through cyclic index shifts.
+# CFIE_kress boundary by matching rotated components through cyclic index shifts.
 #
 # Inputs:
 #   - pts::Vector{<:BoundaryPointsCFIE{T}} :
-#       Boundary components of the full CFIE geometry. Each component is
+#       Boundary components of the full CFIE_kress geometry. Each component is
 #       assumed to be sampled uniformly in its own periodic parameter.
 #   - sym::Rotation :
 #       Rotation symmetry object specifying:
@@ -678,11 +678,11 @@ function build_rotation_maps_components(pts::Vector{<:BoundaryPointsCFIE{T}},sym
 end
 
 # build_symmetry_maps
-# Construct discrete symmetry maps for a CFIE boundary discretization.
+# Construct discrete symmetry maps for a CFIE_kress boundary discretization.
 #
 # Inputs:
 #   - pts::Vector{<:BoundaryPointsCFIE{T}} :
-#       Full CFIE boundary components.
+#       Full CFIE_kress boundary components.
 #   - sym :
 #       Currently expected to be a vector containing exactly one symmetry
 #       object (`Reflection` or `Rotation`).
