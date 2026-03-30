@@ -1,123 +1,222 @@
-# Ref: HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999, https://math.nist.gov/~BAlpert/ggauss.pdf
-# NOTE: could not find table for 32th order...
+# Ref: HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999
+# This version is endpoint-aware, open-panel, and avoids storing O(jcorr*N^2) dense tensors.
 
 struct AlpertComponentCache{T<:Real}
-    Lp0::Matrix{T} # N × jcorr, base interpolation vectors for +ξ_p
-    Lm0::Matrix{T} # N × jcorr, base interpolation vectors for -ξ_p
-    xp::Matrix{T}  # jcorr × N
-    yp::Matrix{T}
-    txp::Matrix{T}
-    typ::Matrix{T}
-    sp::Matrix{T}
-    xm::Matrix{T}
-    ym::Matrix{T}
-    txm::Matrix{T}
-    tym::Matrix{T}
-    sm::Matrix{T}
+    us::Vector{T}       # interpolation nodes on [0,1]
+    bw::Vector{T}       # barycentric weights for open-panel interpolation
+    Le::Matrix{T}       # jcorr × N, left-end interpolation vectors
+    Re::Matrix{T}       # jcorr × N, right-end interpolation vectors
+    xe::Vector{T}       # left-end corrected source geometry
+    ye::Vector{T}
+    txe::Vector{T}
+    tye::Vector{T}
+    se::Vector{T}
+    xr::Vector{T}       # right-end corrected source geometry
+    yr::Vector{T}
+    txr::Vector{T}
+    tyr::Vector{T}
+    sr::Vector{T}
 end
 
-@inline function wrap_angle(t::T) where {T<:Real}
-    tp=mod(t,two_pi)
-    return tp==zero(T) ? T(two_pi) : tp
+# _panel_us
+# Build the open-panel interpolation nodes on [0,1].
+#
+# Inputs:
+#   - ::Type{T} :
+#       Scalar type.
+#   - N::Int :
+#       Number of panel nodes.
+#
+# Outputs:
+#   - us::Vector{T} :
+#       Uniform nodes 0, 1/(N-1), ..., 1.
+@inline function _panel_us(::Type{T},N::Int) where {T<:Real}
+    return collect(range(zero(T),one(T),length=N))
 end
 
-@inline function wrap_diff(t::T) where {T<:Real}
-    d=mod(t+T(pi),two_pi)-T(pi)
-    return d
-end
-
-function trig_cardinal_weights!(l::AbstractVector{T},θ::T,ts::AbstractVector{T}) where {T<:Real}
-    N=length(ts)
-    fill!(l,zero(T))
-    for j in 1:N
-        δ=wrap_diff(θ-ts[j])
-        if abs(δ)<=64*eps(T)
-            l[j]=one(T)
-            return l
-        end
-    end
-    invN=inv(T(N))
+# _barycentric_weights_open
+# Compute barycentric interpolation weights for a given set of open-panel nodes.
+#
+# Inputs:
+#   - us::AbstractVector{T} :
+#       Interpolation nodes on [0,1].
+#
+# Outputs:
+#   - bw::Vector{T} :
+#       Barycentric weights.
+function _barycentric_weights_open(us::AbstractVector{T}) where {T<:Real}
+    N=length(us)
+    bw=Vector{T}(undef,N)
     @inbounds for j in 1:N
-        δ=wrap_diff(θ-ts[j])
-        s=sin(δ/2)
-        c=cos(δ/2)
-        l[j]=invN*sin(T(N)*δ/2)*(c/s) 
+        v=one(T)
+        uj=us[j]
+        for m in 1:N
+            m==j && continue
+            v*=uj-us[m]
+        end
+        bw[j]=inv(v)
     end
-    return l
+    return bw
 end
 
-@inline function _eval_shifted_source(base::AbstractVector{T},i::Int,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
-    N=length(base)
-    x=zero(T);y=zero(T);tx=zero(T);ty=zero(T)
-    @inbounds @simd for q in 1:N
-        idx=mod1(q-i+1,N)
-        w=base[idx]
-        x+=w*X[q]
-        y+=w*Y[q]
-        tx+=w*dX[q]
-        ty+=w*dY[q]
+# _interp_vector_open!
+# Build the barycentric interpolation vector at u for the open panel [0,1].
+#
+# Inputs:
+#   - ℓ::AbstractVector{T} :
+#       Output interpolation vector.
+#   - u::T :
+#       Query parameter.
+#   - us::AbstractVector{T} :
+#       Panel nodes.
+#   - bw::AbstractVector{T} :
+#       Barycentric weights for `us`.
+#
+# Outputs:
+#   - ℓ :
+#       Interpolation coefficients such that f(u) ≈ sum_j ℓ[j] f(us[j]).
+function _interp_vector_open!(ℓ::AbstractVector{T},u::T,us::AbstractVector{T},bw::AbstractVector{T}) where {T<:Real}
+    fill!(ℓ,zero(T))
+    hit=0
+    den=zero(T)
+    @inbounds for j in eachindex(us)
+        δ=u-us[j]
+        if abs(δ)<=64*eps(T)
+            hit=j
+            break
+        end
+        den+=bw[j]/δ
     end
+    if hit!=0
+        ℓ[hit]=one(T)
+        return ℓ
+    end
+    @inbounds for j in eachindex(us)
+        δ=u-us[j]
+        ℓ[j]=(bw[j]/δ)/den
+    end
+    return ℓ
+end
+
+# _interp_geom_from_vec
+# Evaluate point/tangent/speed geometry from an interpolation vector.
+#
+# Inputs:
+#   - ℓ :
+#       Interpolation coefficients.
+#   - X,Y,dX,dY :
+#       Panel geometry arrays.
+#
+# Outputs:
+#   - x,y,tx,ty,s :
+#       Interpolated point, tangent, and speed.
+@inline function _interp_geom_from_vec(ℓ::AbstractVector{T},X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+    x=dot(ℓ,X)
+    y=dot(ℓ,Y)
+    tx=dot(ℓ,dX)
+    ty=dot(ℓ,dY)
     s=sqrt(tx*tx+ty*ty)
     return x,y,tx,ty,s
 end
 
+# _build_alpert_component_cache
+# Precompute only endpoint-special Alpert data for one smooth panel.
+#
+# Inputs:
+#   - pts::BoundaryPointsCFIE{T} :
+#       One smooth panel.
+#   - rule::AlpertLogRule{T} :
+#       Log-singular Alpert rule.
+#
+# Outputs:
+#   - C::AlpertComponentCache{T} :
+#       Lightweight cache storing interpolation metadata and endpoint rules.
+#
+# Notes:
+#   - This intentionally does NOT store interior shifted interpolation vectors.
+#   - Interior correction geometry is built on-the-fly inside `_assemble_self_alpert!`.
 function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
-    ts=pts.ts
-    N=length(ts)
-    h=pts.ws[1]
+    N=length(X)
+    us=_panel_us(T,N)
+    bw=_barycentric_weights_open(us)
+    h=inv(T(N-1))
     jcorr=rule.j
-    Lp0=Matrix{T}(undef,N,jcorr)
-    Lm0=Matrix{T}(undef,N,jcorr)
-    xp=Matrix{T}(undef,jcorr,N)
-    yp=Matrix{T}(undef,jcorr,N)
-    txp=Matrix{T}(undef,jcorr,N)
-    typ=Matrix{T}(undef,jcorr,N)
-    sp=Matrix{T}(undef,jcorr,N)
-    xm=Matrix{T}(undef,jcorr,N)
-    ym=Matrix{T}(undef,jcorr,N)
-    txm=Matrix{T}(undef,jcorr,N)
-    tym=Matrix{T}(undef,jcorr,N)
-    sm=Matrix{T}(undef,jcorr,N)
-    tmp=Vector{T}(undef,N)
+    ξ=rule.x
+    Le=Matrix{T}(undef,jcorr,N)
+    Re=Matrix{T}(undef,jcorr,N)
+    xe=Vector{T}(undef,jcorr); ye=similar(xe)
+    txe=similar(xe); tye=similar(xe); se=similar(xe)
+    xr=Vector{T}(undef,jcorr); yr=similar(xr)
+    txr=similar(xr); tyr=similar(xr); sr=similar(xr)
+    ℓ=Vector{T}(undef,N)
     @inbounds for p in 1:jcorr
-        θp=wrap_angle(ts[1]+h*rule.x[p])
-        trig_cardinal_weights!(tmp,θp,ts)
-        @views copyto!(Lp0[:,p],tmp)
-        θm=wrap_angle(ts[1]-h*rule.x[p])
-        trig_cardinal_weights!(tmp,θm,ts)
-        @views copyto!(Lm0[:,p],tmp)
-        @views bp=Lp0[:,p]
-        @views bm=Lm0[:,p]
-        for i in 1:N
-            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source(bp,i,X,Y,dX,dY)
-            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source(bm,i,X,Y,dX,dY)
-        end
+        ul=h*ξ[p]
+        _interp_vector_open!(ℓ,ul,us,bw)
+        @views copyto!(Le[p,:],ℓ)
+        xe[p],ye[p],txe[p],tye[p],se[p]=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
+        ur=one(T)-h*ξ[p]
+        _interp_vector_open!(ℓ,ur,us,bw)
+        @views copyto!(Re[p,:],ℓ)
+        xr[p],yr[p],txr[p],tyr[p],sr[p]=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
     end
-    return AlpertComponentCache(Lp0,Lm0,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
+
+    return AlpertComponentCache(us,bw,Le,Re,xe,ye,txe,tye,se,xr,yr,txr,tyr,sr)
 end
 
+# _assemble_self_alpert!
+# Assemble the self-panel CFIE block using:
+#   - plain trapezoid for DLP off-diagonal
+#   - plain trapezoid for far SLP
+#   - endpoint-special Alpert corrections near the left/right ends
+#   - on-the-fly interior Alpert corrections away from the ends
+#
+# Inputs:
+#   - solver,A,pts,G,C,row_range,k,rule :
+#       Standard self-block assembly data.
+#   - multithreaded::Bool=true :
+#       Whether to thread over target rows.
+#
+# Outputs:
+#   - Modifies `A` in place.
+#
+# Notes:
+#   - This assumes `pts` is ONE smooth panel.
+#   - It is not yet a corner-aware or multi-segment panelwise implementation.
 function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertComponentCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
+
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
     ws=pts.ws
-    N=length(pts.ts)
-    h=ws[1]
+
+    N=length(X)
+    h=inv(T(N-1))
     a=rule.a
     jcorr=rule.j
+    ξ=rule.x
+    ω=rule.w
+
+    left_last=a
+    right_first=N-a+1
+
     @use_threads multithreading=multithreaded for i in 1:N
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
         wi=ws[i]
         κi=G.kappa[i]
+
         A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
+
+        # DLP off-diagonal: plain trapezoid
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -126,32 +225,82 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex
             invr=G.invR[i,j]
             A[gi,gj]-=ws[j]*(αD*inn*H(1,k*rij)*invr)
         end
-        @inbounds for j in 1:N
-            j==i && continue
-            m=j-i
-            m>N÷2 && (m-=N)
-            m<-N÷2 && (m+=N)
-            abs(m)<a && continue
-            gj=row_range[j]
-            A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-        end
-        @inbounds for p in 1:jcorr # SLP near Alpert corrections
-            fac=h*rule.w[p]
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-            @views basep=C.Lp0[:,p]
-            for q in 1:N
-                A[gi,row_range[q]]+=coeff*basep[mod1(q-i+1,N)]
+
+        # SLP far part
+        if i<=left_last
+            @inbounds for j in (a+1):N
+                j==i && continue
+                gj=row_range[j]
+                A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
             end
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-            @views basem=C.Lm0[:,p]
-            for q in 1:N
-                A[gi,row_range[q]]+=coeff*basem[mod1(q-i+1,N)]
+        elseif i>=right_first
+            @inbounds for j in 1:(N-a)
+                j==i && continue
+                gj=row_range[j]
+                A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            end
+        else
+            @inbounds for j in 1:N
+                j==i && continue
+                abs(j-i)<a && continue
+                gj=row_range[j]
+                A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            end
+        end
+
+        # SLP near correction
+        ℓ=Vector{T}(undef,N)
+
+        if i<=left_last
+            @inbounds for p in 1:jcorr
+                fac=h*ω[p]
+                dx=xi-C.xe[p]
+                dy=yi-C.ye[p]
+                r=sqrt(dx*dx+dy*dy)
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.se[p]))
+                @views Le_p=C.Le[p,:]
+                for q in 1:N
+                    A[gi,row_range[q]]+=coeff*Le_p[q]
+                end
+            end
+        elseif i>=right_first
+            @inbounds for p in 1:jcorr
+                fac=h*ω[p]
+                dx=xi-C.xr[p]
+                dy=yi-C.yr[p]
+                r=sqrt(dx*dx+dy*dy)
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sr[p]))
+                @views Re_p=C.Re[p,:]
+                for q in 1:N
+                    A[gi,row_range[q]]+=coeff*Re_p[q]
+                end
+            end
+        else
+            ui=C.us[i]
+            @inbounds for p in 1:jcorr
+                fac=h*ω[p]
+
+                up=ui+h*ξ[p]
+                _interp_vector_open!(ℓ,up,C.us,C.bw)
+                xp,yp,txp,typ,sp=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
+                dx=xi-xp
+                dy=yi-yp
+                r=sqrt(dx*dx+dy*dy)
+                coeff=-ik*(fac*(αS*H(0,k*r)*sp))
+                for q in 1:N
+                    A[gi,row_range[q]]+=coeff*ℓ[q]
+                end
+
+                um=ui-h*ξ[p]
+                _interp_vector_open!(ℓ,um,C.us,C.bw)
+                xm,ym,txm,tym,sm=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
+                dx=xi-xm
+                dy=yi-ym
+                r=sqrt(dx*dx+dy*dy)
+                coeff=-ik*(fac*(αS*H(0,k*r)*sm))
+                for q in 1:N
+                    A[gi,row_range[q]]+=coeff*ℓ[q]
+                end
             end
         end
     end

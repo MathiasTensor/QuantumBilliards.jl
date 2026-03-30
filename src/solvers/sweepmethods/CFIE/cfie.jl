@@ -108,8 +108,12 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid)
 end
 
+###############
+#### KRESS ####
+###############
+
 # single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
-function _evaluate_points(solver::S,crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve,S<:CFIE}
+function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
@@ -138,7 +142,7 @@ function _evaluate_points(solver::S,crv::C,k::T,idx::Int) where {T<:Real,C<:AbsC
 end
 
 # By default for kress fudamental=false since we need the full set of points for the log split -> for alpert we can use symmetries and can choose fundamental domain
-function evaluate_points(solver::CFIE_kress,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
@@ -147,12 +151,77 @@ function evaluate_points(solver::CFIE_kress,billiard::Bi,k::T) where {T<:Real,Bi
     return pts
 end
 
+################
+#### ALPERT ####
+################
+
+# _open_panel_weights
+# Build simple open-panel geometric spacing weights from sampled arclength values.
+#
+# Inputs:
+#   - ss::AbstractVector{T} :
+#       Arclength values sampled on an open panel.
+#
+# Outputs:
+#   - ds::Vector{T} :
+#       Local geometric spacing weights for use in smooth quadrature parts.
+function _open_panel_weights(ss::AbstractVector{T}) where {T<:Real}
+    N=length(ss)
+    ds=Vector{T}(undef,N)
+    if N==1
+        ds[1]=zero(T)
+        return ds
+    elseif N==2
+        v=ss[2]-ss[1]
+        ds[1]=v
+        ds[2]=v
+        return ds
+    end
+    ds[1]=ss[2]-ss[1]
+    @inbounds for j in 2:N-1
+        ds[j]=(ss[j+1]-ss[j-1])/2
+    end
+    ds[N]=ss[N]-ss[N-1]
+    return ds
+end
+
+# _evaluate_points
+# Build one open boundary panel for CFIE_alpert.
+#
+# Inputs:
+#   - solver::CFIE_alpert{T}
+#   - crv::C
+#   - k::T
+#   - idx::Int
+#
+# Outputs:
+#   - BoundaryPointsCFIE{T}
+#
+# Notes:
+#   - Unlike Kress, this is NOT periodic.
+#   - No lcm / symmetry-dependent point adjustment is used here -> since we do it before Beyn.
+function _evaluate_points(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    L=crv.length
+    bs=solver.pts_scaling_factor
+    N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
+    N<2 && (N=2)
+    ts=collect(range(zero(T),one(T),length=N))  # parametrization nodes; periodic [0,2π) for Kress, open [0,1] for Alpert
+    xy=curve(crv,ts)
+    tangent_1st=tangent(crv,ts)
+    tangent_2nd=tangent_2(crv,ts)
+    ss=arc_length(crv,ts)
+    ds=_open_panel_weights(ss)
+    h=inv(T(N-1))
+    ws=fill(h,N)          # parameter-space step for Alpert endpoint logic
+    ws_der=ones(T,N)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
+end
+
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    # if style: boundary = [seg1, seg2, ...] then we know it is only outer boundary with many segments
-    # so we check if it is a vector. Otherwise we must have [outer_component, hole1_component, ...] where each component is itself a vector of curves.
+    # old style: [seg1, seg2, ...] = only outer boundary split into several panels
     if !(boundary[1] isa AbstractVector)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
@@ -160,8 +229,7 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
         end
         return pts
     end
-    # boundary[1] is the outer boundary component
-    # boundary[2:end] are hole components
+    # component style: [[outer panels], [hole1 panels], [hole2 panels], ...]
     outer_boundary=boundary[1]
     inner_boundaries=boundary[2:end]
     n_outer=length(outer_boundary)
