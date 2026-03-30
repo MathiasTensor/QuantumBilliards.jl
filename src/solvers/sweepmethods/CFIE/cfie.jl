@@ -151,15 +151,32 @@ end
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    # length(boundary)=1 implies here only outer boundary with potentially many segments building it, so different from Kress where outer is necceserily 1 closed curve (crv)
-    outer_boundary=boundary[1]
-    inner_boundaries=boundary[2:end] # these are the holes, and we need to reverse their orientation since they are oriented opposite to outer boudnary
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(outer_boundary)+length(inner_boundaries))
-    for (idx,crv) in enumerate(outer_boundary)
-        pts[idx]=_evaluate_points(solver,crv,k,idx)
+    # if style: boundary = [seg1, seg2, ...] then we know it is only outer boundary with many segments
+    # so we check if it is a vector. Otherwise we must have [outer_component, hole1_component, ...] where each component is itself a vector of curves.
+    if !(boundary[1] isa AbstractVector)
+        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+        for (idx,crv) in enumerate(boundary)
+            pts[idx]=_evaluate_points(solver,crv,k,idx)
+        end
+        return pts
     end
-    for (idx,crv) in enumerate(inner_boundaries)
-        pts[length(outer_boundary)+idx]=_reverse_component_orientation(_evaluate_points(solver,crv,k,length(outer_boundary)+idx))
+    # boundary[1] is the outer boundary component
+    # boundary[2:end] are hole components
+    outer_boundary=boundary[1]
+    inner_boundaries=boundary[2:end]
+    n_outer=length(outer_boundary)
+    n_inner=sum(length(comp) for comp in inner_boundaries)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,n_outer+n_inner)
+    pos=1
+    for crv in outer_boundary
+        pts[pos]=_evaluate_points(solver,crv,k,pos)
+        pos+=1
+    end
+    for comp in inner_boundaries
+        for crv in comp
+            pts[pos]=_reverse_component_orientation(_evaluate_points(solver,crv,k,pos))
+            pos+=1
+        end
     end
     return pts
 end
