@@ -1,24 +1,3 @@
-###########################
-#### CONSTRUCTOR CFIE_kress ####
-###########################
-
-struct CFIE_kress{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard} 
-    sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
-    pts_scaling_factor::Vector{T}
-    dim_scaling_factor::T
-    eps::T
-    min_dim::Int64
-    min_pts::Int64
-    billiard::Bi
-    symmetry::Union{Nothing,Vector{Any}}
-end
-
-function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
-    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_kress only works with polar curves")
-    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler=[LinearNodes()]
-    return CFIE_kress{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
-end
 
 ##################################
 #### KRESS CIRCULANT R MATRIX ####

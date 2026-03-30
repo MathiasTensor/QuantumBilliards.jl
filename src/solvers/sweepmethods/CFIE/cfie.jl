@@ -20,6 +20,52 @@ euler_over_pi=MathConstants.eulergamma/pi
 
 abstract type CFIE<:SweepSolver end
 
+################################
+#### CONSTRUCTOR CFIE_kress ####
+################################
+
+struct CFIE_kress{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard} 
+    sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
+    pts_scaling_factor::Vector{T}
+    dim_scaling_factor::T
+    eps::T
+    min_dim::Int64
+    min_pts::Int64
+    billiard::Bi
+    symmetry::Union{Nothing,Vector{Any}}
+end
+
+function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
+    any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_kress only works with polar curves")
+    bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[LinearNodes()]
+    return CFIE_kress{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
+end
+
+#################################
+#### CONSTRUCTOR CFIE_alpert ####
+#################################
+
+struct CFIE_alpert{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
+    sampler::Vector{LinearNodes}
+    pts_scaling_factor::Vector{T}
+    dim_scaling_factor::T
+    eps::T
+    min_dim::Int64
+    min_pts::Int64
+    billiard::Bi
+    symmetry::Union{Nothing,Vector{Any}}
+    alpert_order::Int
+end
+
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
+    !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
+    _=alpert_log_rule(T,alpert_order)
+    bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[LinearNodes()]
+    return CFIE_alpert{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order)
+end
+
 #############################
 #### BOUNDARY EVALUATION ####
 #############################
@@ -91,11 +137,22 @@ function _evaluate_points(solver::S,crv::C,k::T,idx::Int) where {T<:Real,C<:AbsC
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
 end
 
-function evaluate_points(solver::S,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard,S<:CFIE}
+# By default for kress fudamental=false since we need the full set of points for the log split -> for alpert we can use symmetries and can choose fundamental domain
+function evaluate_points(solver::CFIE_kress,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard,S<:CFIE}
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
         pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
+    end
+    return pts
+end
+
+# For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
+function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+    for (idx,crv) in enumerate(boundary)
+        pts[idx]=idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
     end
     return pts
 end
@@ -109,6 +166,11 @@ end
 ###############################################################################
 ################## Symmetry mapping and projection utilities ##################
 ###############################################################################
+
+####################
+#### CFIE KRESS ####
+####################
+
 # mostly used for CFIE where we need to project onto an irrep since we cant construct with Kress's log split since it needs full domain
 # this allows Beyn's method to handle symmetries even in the case of CFIE_kress.
 
@@ -417,4 +479,304 @@ function apply_projection!(V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Compl
     end
     copyto!(V,W)
     return V
+end
+
+#####################
+#### CFIE ALPERT ####
+#####################
+
+# _reflection_shifts
+# Compute the reflection-axis shifts used by reflection image maps.
+#
+# Inputs:
+#   - ::Type{T} :
+#       Real numeric type used in the current assembly.
+#   - billiard :
+#       Geometry object that may optionally define
+#         * `x_axis` : x-location of the vertical reflection axis
+#         * `y_axis` : y-location of the horizontal reflection axis
+#
+# Outputs:
+#   - sx::T :
+#       Shift of the vertical reflection axis. Defaults to zero if absent.
+#   - sy::T :
+#       Shift of the horizontal reflection axis. Defaults to zero if absent.
+#
+# Notes:
+#   - These shifts are only relevant for reflecting coordinates.
+#   - Tangents/normals are direction vectors, so they are not translated.
+@inline function _reflection_shifts(::Type{T},billiard) where {T<:Real}
+    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
+    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
+    return sx,sy
+end
+
+# image_point_x
+# Reflect a point across the vertical symmetry axis x = sx.
+#
+# Inputs:
+#   - q::SVector{2,T} :
+#       Source point.
+#   - billiard :
+#       Geometry object that may define the axis shift `x_axis`.
+#
+# Outputs:
+#   - qx::SVector{2,T} :
+#       Reflected point (x,y) -> (2*sx - x, y).
+@inline function image_point_x(q::SVector{2,T},billiard) where {T<:Real}
+    sx,_=_reflection_shifts(T,billiard)
+    return SVector{2,T}(_x_reflect(q[1],sx),q[2])
+end
+
+# image_point_y
+# Reflect a point across the horizontal symmetry axis y = sy.
+#
+# Inputs:
+#   - q::SVector{2,T} :
+#       Source point.
+#   - billiard :
+#       Geometry object that may define the axis shift `y_axis`.
+#
+# Outputs:
+#   - qy::SVector{2,T} :
+#       Reflected point (x,y) -> (x, 2*sy - y).
+@inline function image_point_y(q::SVector{2,T},billiard) where {T<:Real}
+    _,sy=_reflection_shifts(T,billiard)
+    return SVector{2,T}(q[1],_y_reflect(q[2],sy))
+end
+
+# image_point_xy
+# Reflect a point across both reflection axes.
+#
+# Inputs:
+#   - q::SVector{2,T} :
+#       Source point.
+#   - billiard :
+#       Geometry object that may define the axis shifts `x_axis` and `y_axis`.
+#
+# Outputs:
+#   - qxy::SVector{2,T} :
+#       Doubly reflected point (x,y) -> (2*sx - x, 2*sy - y).
+@inline function image_point_xy(q::SVector{2,T},billiard) where {T<:Real}
+    sx,sy=_reflection_shifts(T,billiard)
+    return SVector{2,T}(_x_reflect(q[1],sx),_y_reflect(q[2],sy))
+end
+
+# image_tangent_x
+# Reflect a tangent/direction vector across the vertical symmetry axis.
+#
+# Inputs:
+#   - t::SVector{2,T} :
+#       Tangent or other direction vector.
+@inline function image_tangent_x(t::SVector{2,T}) where {T<:Real}
+    tx,ty=_x_reflect_normal(t[1],t[2])
+    return SVector{2,T}(tx,ty)
+end
+
+# image_tangent_y
+# Reflect a tangent/direction vector across the horizontal symmetry axis.
+#
+# Inputs:
+#   - t::SVector{2,T} :
+#       Tangent or other direction vector.
+@inline function image_tangent_y(t::SVector{2,T}) where {T<:Real}
+    tx,ty=_y_reflect_normal(t[1],t[2])
+    return SVector{2,T}(tx,ty)
+end
+
+# image_tangent_xy
+# Reflect a tangent/direction vector across both symmetry axes.
+#
+# Inputs:
+#   - t::SVector{2,T} :
+#       Tangent or other direction vector.
+#
+# Outputs:
+#   - txy::SVector{2,T} :
+#       Tangent with both components sign flipped.
+#
+# Notes:
+#   - This is the direction-vector analogue of `image_point_xy`.
+@inline function image_tangent_xy(t::SVector{2,T}) where {T<:Real}
+    tx,ty=_xy_reflect_normal(t[1],t[2])
+    return SVector{2,T}(tx,ty)
+end
+
+# image_weight_x
+# Return the scalar symmetry weight for the x-image contribution.
+#
+# Inputs:
+#   - sym::Reflection :
+#       Reflection symmetry descriptor.
+#
+# Outputs:
+#   - σx :
+#       Image weight for the x-reflected contribution.
+#
+# Notes:
+#   - For a simple x- or y-reflection, this just returns `sym.parity`.
+#   - For `XYReflection`, this returns the parity associated with the x-image.
+@inline function image_weight_x(sym::Reflection)
+    return sym.axis==:origin ? sym.parity[1] : sym.parity
+end
+
+# image_weight_y
+# Return the scalar symmetry weight for the y-image contribution.
+#
+# Inputs:
+#   - sym::Reflection :
+#       Reflection symmetry descriptor.
+#
+# Outputs:
+#   - σy :
+#       Image weight for the y-reflected contribution.
+@inline function image_weight_y(sym::Reflection)
+    return sym.axis==:origin ? sym.parity[2] : sym.parity
+end
+
+# image_weight_xy
+# Return the scalar symmetry weight for the doubly reflected xy-image.
+#
+# Inputs:
+#   - sym::Reflection :
+#       Reflection symmetry descriptor. Must represent origin / XY symmetry.
+#
+# Outputs:
+#   - σxy :
+#       Product parity σx*σy for the xy-image term.
+@inline function image_weight_xy(sym::Reflection)
+    sym.axis==:origin || error("image_weight_xy is only meaningful for XY/origin reflection.")
+    return sym.parity[1]*sym.parity[2]
+end
+
+# image_point
+# Dispatch helper for single-image reflections.
+#
+# Inputs:
+#   - sym::Reflection :
+#       Reflection descriptor.
+#   - q::SVector{2,T} :
+#       Source point.
+#   - billiard :
+#       Geometry object providing reflection-axis shifts if present.
+#
+# Outputs:
+#   - qimg::SVector{2,T} :
+#       Reflected point for a single reflection symmetry.
+#
+# Errors:
+#   - Throws for `sym.axis == :origin`, because XY reflection is not a single
+#     image term; it must be split into x, y, and xy contributions.
+#
+# Notes:
+#   - This helper is fine for `XReflection` and `YReflection`.
+#   - For `XYReflection`, call `image_point_x`, `image_point_y`,
+#     and `image_point_xy` explicitly.
+@inline function image_point(sym::Reflection,q::SVector{2,T},billiard) where {T<:Real}
+    if sym.axis==:y_axis
+        return image_point_x(q,billiard)
+    elseif sym.axis==:x_axis
+        return image_point_y(q,billiard)
+    elseif sym.axis==:origin
+        error("XY/origin reflection should be split into x, y, and xy images.")
+    else
+        error("Unknown reflection axis $(sym.axis)")
+    end
+end
+
+# image_tangent
+# Dispatch helper for single-image reflections acting on tangents.
+#
+# Inputs:
+#   - sym::Reflection :
+#       Reflection descriptor.
+#   - t::SVector{2,T} :
+#       Tangent/direction vector.
+#
+# Outputs:
+#   - timg::SVector{2,T} :
+#       Reflected tangent for a single reflection symmetry.
+#
+# Errors:
+#   - Throws for `sym.axis == :origin`, because XY reflection is not one image
+#     contribution but three separate ones.
+@inline function image_tangent(sym::Reflection,t::SVector{2,T}) where {T<:Real}
+    if sym.axis==:y_axis
+        return image_tangent_x(t)
+    elseif sym.axis==:x_axis
+        return image_tangent_y(t)
+    elseif sym.axis==:origin
+        error("XY/origin reflection should be split into x, y, and xy images.")
+    else
+        error("Unknown reflection axis $(sym.axis)")
+    end
+end
+
+# image_weight
+# Dispatch helper for single-image reflection weights.
+#
+# Inputs:
+#   - sym::Reflection :
+#       Reflection descriptor.
+#
+# Outputs:
+#   - σ :
+#       Scalar image weight for a single reflected contribution.
+#
+# Errors:
+#   - Throws for `sym.axis == :origin`, because XY reflection must be split
+#     into three contributions with weights σx, σy, and σx*σy.
+@inline function image_weight(sym::Reflection)
+    if sym.axis==:origin
+        error("XY/origin reflection should be split into separate x, y, and xy image weights.")
+    end
+    return sym.parity
+end
+
+# image_point
+# Rotate a point by the l-th power of a C_n symmetry.
+#
+# Inputs:
+#   - sym::Rotation :
+#       Rotation descriptor containing the order `n`, irrep index `m`,
+#       and center of rotation.
+#   - q::SVector{2,T} :
+#       Source point.
+#   - l::Int :
+#       Rotation power. `l=0` is identity, `l=1` is one step, etc.
+#   - costab, sintab :
+#       Precomputed cosine and sine tables from `_rotation_tables`.
+#
+# Outputs:
+#   - qrot::SVector{2,T} :
+#       Rotated point.
+@inline function image_point(sym::Rotation,q::SVector{2,T},l::Int,costab,sintab) where {T<:Real}
+    c=costab[l+1]
+    s=sintab[l+1]
+    cx,cy=sym.center
+    xr,yr=_rot_point(q[1],q[2],T(cx),T(cy),c,s)
+    return SVector{2,T}(xr,yr)
+end
+
+# image_tangent
+# Rotate a tangent/direction vector by the l-th power of a C_n symmetry.
+#
+# Inputs:
+#   - sym::Rotation :
+#       Rotation descriptor.
+#   - t::SVector{2,T} :
+#       Tangent/direction vector.
+#   - l::Int :
+#       Rotation power. `l=0` is identity.
+#   - costab, sintab :
+#       Precomputed cosine and sine tables from `_rotation_tables`.
+#
+# Outputs:
+#   - trot::SVector{2,T} :
+#       Rotated tangent.
+@inline function image_tangent(sym::Rotation,t::SVector{2,T},l::Int,costab,sintab) where {T<:Real}
+    c=costab[l+1]
+    s=sintab[l+1]
+    tx,ty=_rot_vec(t[1],t[2],c,s)
+    return SVector{2,T}(tx,ty)
 end
