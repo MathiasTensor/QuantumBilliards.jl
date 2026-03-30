@@ -163,11 +163,7 @@ function assemble_self_block_alpert!(solver::CFIE_alpert{T},
         # DLP finite limit + SLP finite part
         # ----------------------------------
         ddiag = Complex{T}(wi*κi,zero(T))
-
-        sdiag_reg = ((Complex{T}(0,one(T)/2) - euler_over_pi) -
-                     inv_two_pi*log((k^2/4)*si^2))*si
-
-        A[gi,gi] += one(Complex{T}) - (ddiag + ik*(wi*sdiag_reg))
+        A[gi,gi] += one(Complex{T}) - ddiag
 
         # -------------------------------------------------
         # DLP: plain trapezoid on all off-diagonal entries
