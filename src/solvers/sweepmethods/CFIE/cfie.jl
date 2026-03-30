@@ -138,7 +138,7 @@ function _evaluate_points(solver::S,crv::C,k::T,idx::Int) where {T<:Real,C<:AbsC
 end
 
 # By default for kress fudamental=false since we need the full set of points for the log split -> for alpert we can use symmetries and can choose fundamental domain
-function evaluate_points(solver::CFIE_kress,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard,S<:CFIE}
+function evaluate_points(solver::CFIE_kress,billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
@@ -150,7 +150,8 @@ end
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+    #boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+    boundary=billiard.full_boundary
     # if style: boundary = [seg1, seg2, ...] then we know it is only outer boundary with many segments
     # so we check if it is a vector. Otherwise we must have [outer_component, hole1_component, ...] where each component is itself a vector of curves.
     if !(boundary[1] isa AbstractVector)
