@@ -79,6 +79,21 @@ end
     end
 end
 
+struct AlpertComponentCache{T<:Real}
+    Lp0::Matrix{T} # N × jcorr, base interpolation vectors for +ξ_p
+    Lm0::Matrix{T} # N × jcorr, base interpolation vectors for -ξ_p
+    xp::Matrix{T}  # jcorr × N
+    yp::Matrix{T}
+    txp::Matrix{T}
+    typ::Matrix{T}
+    sp::Matrix{T}
+    xm::Matrix{T}
+    ym::Matrix{T}
+    txm::Matrix{T}
+    tym::Matrix{T}
+    sm::Matrix{T}
+end
+
 @inline function wrap_angle(t::T) where {T<:Real}
     tp=mod(t,two_pi)
     return tp==zero(T) ? T(two_pi) : tp
@@ -109,13 +124,58 @@ function trig_cardinal_weights!(l::AbstractVector{T},θ::T,ts::AbstractVector{T}
     return l
 end
 
-@inline function _eval_offgrid_source(l::AbstractVector{T},X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
-    x=dot(l,X)
-    y=dot(l,Y)
-    tx=dot(l,dX)
-    ty=dot(l,dY)
+@inline function _eval_shifted_source(base::AbstractVector{T},i::Int,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+    N=length(base)
+    x=zero(T);y=zero(T);tx=zero(T);ty=zero(T)
+    @inbounds @simd for q in 1:N
+        idx=mod1(q-i+1,N)
+        w=base[idx]
+        x+=w*X[q]
+        y+=w*Y[q]
+        tx+=w*dX[q]
+        ty+=w*dY[q]
+    end
     s=sqrt(tx*tx+ty*ty)
     return x,y,tx,ty,s
+end
+
+function build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    ts=pts.ts
+    N=length(ts)
+    h=pts.ws[1]
+    jcorr=rule.j
+    Lp0=Matrix{T}(undef,N,jcorr)
+    Lm0=Matrix{T}(undef,N,jcorr)
+    xp=Matrix{T}(undef,jcorr,N)
+    yp=Matrix{T}(undef,jcorr,N)
+    txp=Matrix{T}(undef,jcorr,N)
+    typ=Matrix{T}(undef,jcorr,N)
+    sp=Matrix{T}(undef,jcorr,N)
+    xm=Matrix{T}(undef,jcorr,N)
+    ym=Matrix{T}(undef,jcorr,N)
+    txm=Matrix{T}(undef,jcorr,N)
+    tym=Matrix{T}(undef,jcorr,N)
+    sm=Matrix{T}(undef,jcorr,N)
+    tmp=Vector{T}(undef,N)
+    @inbounds for p in 1:jcorr
+        θp=wrap_angle(ts[1]+h*rule.x[p])
+        trig_cardinal_weights!(tmp,θp,ts)
+        @views copyto!(Lp0[:,p],tmp)
+        θm=wrap_angle(ts[1]-h*rule.x[p])
+        trig_cardinal_weights!(tmp,θm,ts)
+        @views copyto!(Lm0[:,p],tmp)
+        @views bp=Lp0[:,p]
+        @views bm=Lm0[:,p]
+        for i in 1:N
+            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source(bp,i,X,Y,dX,dY)
+            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source(bm,i,X,Y,dX,dY)
+        end
+    end
+    return AlpertComponentCache(Lp0,Lm0,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
 end
 
 function assemble_self_block_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertComponentCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
