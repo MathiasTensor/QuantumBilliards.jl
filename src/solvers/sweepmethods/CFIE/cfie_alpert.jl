@@ -18,7 +18,7 @@ struct CFIE_alpert{T,Bi} <: SweepSolver where {T<:Real,Bi<:AbsBilliard}
 end
 
 function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
-    !(alpert_order in {2,3,4,5,6,8,10,12,14,16}) && @error "not currently supported"
+    !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     _=alpert_log_rule(T,alpert_order)
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
