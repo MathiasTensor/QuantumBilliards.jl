@@ -280,3 +280,33 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     idx=findmin(S)[2]
     return S[idx],real.(Vt[idx,:])
 end
+
+function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    t0=time()
+    @info "Building boundary operator A..."
+    construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
+    t1=time()
+    cA=cond(A)
+    @info "Condition number of A: $(round(cA;sigdigits=4))"
+    @info "Performing SVD..."
+    t2=time()
+    if use_krylov 
+        @blas_multi_then_1 MAX_BLAS_THREADS s,_,_,_=svdsolve(A,1,:SR)
+        reverse!(s)
+    else
+        s=svdvals(A)
+    end
+    t3=time()
+    build_A=t1-t0
+    svd_time=t3-t2
+    total=build_A+svd_time
+    println("────────── SOLVE_INFO SUMMARY ──────────")
+    println("A-matrix build: ",100*build_A/total," %")
+    println("SVD: ",100*svd_time/total," %")
+    println("(total: ",total," s)")
+    println("────────────────────────────────────────")
+    return s[end]
+end
