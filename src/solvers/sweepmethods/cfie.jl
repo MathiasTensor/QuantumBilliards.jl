@@ -484,6 +484,21 @@ end
 # mostly used for CFIE where we need to project onto an irrep since we cant construct with Kress's log split since it needs full domain
 # this allows Beyn's method to handle symmetries even in the case of CFIE.
 
+# flatten_points
+# Flatten a vector of CFIE boundary components into one global point array for all components.
+#
+# Inputs:
+#   - pts::Vector{<:BoundaryPointsCFIE{T}} :
+#       Boundary components in CFIE. Each component stores its own
+#       `xy` points, and the components are assumed to be ordered exactly
+#       as they appear in the global boundary assembly.
+#
+# Outputs:
+#   - xy::Vector{SVector{2,T}} :
+#       All boundary points concatenated into a single vector.
+#   - offs::Vector{Int} :
+#       Component offsets such that component `c` occupies the global range
+#       `offs[c] : offs[c+1]-1`.
 function flatten_points(pts::Vector{<:BoundaryPointsCFIE{T}}) where {T<:Real}
     offs::Vector{Int}=component_offsets(pts)
     N::Int=offs[end]-1
@@ -497,6 +512,32 @@ function flatten_points(pts::Vector{<:BoundaryPointsCFIE{T}}) where {T<:Real}
     return xy,offs
 end
 
+
+# match_index
+# Find the unique index in a flattened boundary point array that matches
+# a target point `(xr,yr)` within a given tolerance.
+#
+# Inputs:
+#   - xr::T, yr::T :
+#       Coordinates of the target point.
+#   - xy::Vector{SVector{2,T}} :
+#       Flattened boundary point cloud to search in.
+#   - tol::T=T(1e-10) :
+#       Matching tolerance in Euclidean distance.
+#
+# Outputs:
+#   - best::Int :
+#       Unique matching index in `xy`.
+#
+# Errors:
+#   - Throws if no point lies within tolerance.
+#   - Throws if more than one point lies within tolerance.
+#
+# Notes:
+#   - This is appropriate for reflection symmetries, where reflected nodes
+#     are expected to coincide with sampled nodes up to roundoff.
+#   - It is generally not robust enough for rotational symmetry on its own;
+#     for rotations we instead use build_rotation_maps_components.
 function match_index(xr::T,yr::T,xy::Vector{SVector{2,T}};tol::T=T(1e-10)) where {T<:Real}
     best::Int=0
     dmin::T=typemax(T)
@@ -516,6 +557,46 @@ function match_index(xr::T,yr::T,xy::Vector{SVector{2,T}};tol::T=T(1e-10)) where
     error("ambiguous match ($cnt)")
 end
 
+
+# build_rotation_maps_components
+# Construct the discrete action of a rotational symmetry on a multi-component
+# CFIE boundary by matching rotated components through cyclic index shifts.
+#
+# Inputs:
+#   - pts::Vector{<:BoundaryPointsCFIE{T}} :
+#       Boundary components of the full CFIE geometry. Each component is
+#       assumed to be sampled uniformly in its own periodic parameter.
+#   - sym::Rotation :
+#       Rotation symmetry object specifying:
+#         * `n`      : order of the rotation group C_n
+#         * `m`      : irrep index
+#         * `center` : rotation center
+#   - tol::T=T(1e-8) :
+#       Tolerance used when verifying that one rotated component matches
+#       another by a single cyclic shift.
+#
+# Outputs:
+#   - Dict{Symbol,Any} with:
+#       * `:rot` => rotmaps
+#           A vector of global permutation maps. `rotmaps[l+1]` gives the
+#           permutation corresponding to rotation by `2π*l/n`.
+#       * `:χ` => χ
+#           Character table values for the irrep, as returned by
+#           `_rotation_tables(T,n,m)`.
+#
+# Idea:
+#   1. For each nontrivial rotation power `l=1,...,n-1`, rotate each source
+#      component.
+#   2. For every candidate target component, attempt to match the rotated
+#      source points by a single cyclic shift.
+#   3. Once the target component and shift are found, assemble the global
+#      permutation map using component offsets.
+#
+# Notes:
+#   - This is component-aware and therefore works for outer boundaries plus
+#     holes.
+#   - It requires that a rotated component maps to another component with the
+#     same number of sampled nodes -> always the case!.
 function build_rotation_maps_components(pts::Vector{<:BoundaryPointsCFIE{T}},sym::Rotation;tol::T=T(1e-8)) where {T<:Real}
     ncomp=length(pts)
     offs=component_offsets(pts)
@@ -596,6 +677,26 @@ function build_rotation_maps_components(pts::Vector{<:BoundaryPointsCFIE{T}},sym
     return Dict{Symbol,Any}(:rot=>rotmaps,:χ=>χ)
 end
 
+# build_symmetry_maps
+# Construct discrete symmetry maps for a CFIE boundary discretization.
+#
+# Inputs:
+#   - pts::Vector{<:BoundaryPointsCFIE{T}} :
+#       Full CFIE boundary components.
+#   - sym :
+#       Currently expected to be a vector containing exactly one symmetry
+#       object (`Reflection` or `Rotation`).
+#   - tol::T=T(1e-10) :
+#       Matching tolerance for reflection maps, and lower bound for the
+#       rotation-component matcher.
+#
+# Outputs:
+#   - maps::Dict{Symbol,Any} :
+#       For reflections:
+#         * `:x`, `:y`, `:xy` as needed, each a global permutation vector.
+#       For rotations:
+#         * `:rot` : vector of global permutation maps for each rotation power
+#         * `:χ`   : character table for the chosen irrep
 function build_symmetry_maps(pts::Vector{<:BoundaryPointsCFIE{T}},sym;tol::T=T(1e-10)) where {T<:Real}
     xy,_=flatten_points(pts)
     sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
@@ -620,6 +721,35 @@ function build_symmetry_maps(pts::Vector{<:BoundaryPointsCFIE{T}},sym;tol::T=T(1
     end
 end
 
+# apply_projection!
+# Apply the symmetry projector to a block of vectors `V`, writing through a
+# workspace `W` and copying the projected result back into `V`.
+#
+# Inputs:
+#   - V::AbstractMatrix{Complex{T}} :
+#       Block of vectors to project. Columns are independent probe vectors.
+#   - W::AbstractMatrix{Complex{T}} :
+#       Workspace of the same size as `V`. This is required so the projection
+#       is applied from the original `V` rather than in-place during reading.
+#   - maps::Dict{Symbol,Any} :
+#       Symmetry maps produced by `build_symmetry_maps`.
+#   - sym :
+#       Currently expected to be a vector containing exactly one symmetry object.
+#
+# Outputs:
+#   - Returns `V`, modified in-place to contain the projected vectors.
+#
+# Reflection projectors:
+#   - y-axis reflection:
+#       P = (I + σ R_x)/2
+#   - x-axis reflection:
+#       P = (I + σ R_y)/2
+#   - origin / XY reflection:
+#       P = (I + σ_x R_x + σ_y R_y + σ_xσ_y R_xy)/4
+#
+# Rotation projector:
+#   - For a C_n irrep with characters χ_l,
+#       P = (1/n) Σ_l conj(χ_l) R_l
 function apply_projection!(V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym) where {T<:Real}
     isnothing(sym) && return V
     N,r=size(V)

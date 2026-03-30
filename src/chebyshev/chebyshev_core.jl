@@ -264,6 +264,20 @@ end
     return muladd(t,b1,-b2)+coeffs[1,col]
 end
 
+# 9th degree
+@inline function _cheb_clenshaw_9(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[10];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[9];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[8];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
 @inline function _cheb_clenshaw_9(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
     b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
     b0=muladd(u,b1,-b2)+coeffs[10,col];b2=b1;b1=b0
@@ -278,6 +292,21 @@ end
     return muladd(t,b1,-b2)+coeffs[1,col]
 end
 
+# 10th degree
+@inline function _cheb_clenshaw_10(coeffs::AbstractVector{ComplexF64},t::Float64)::ComplexF64
+    b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
+    b0=muladd(u,b1,-b2)+coeffs[11];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[10];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[9];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[8];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[7];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[6];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[5];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[4];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[3];b2=b1;b1=b0
+    b0=muladd(u,b1,-b2)+coeffs[2];b2=b1;b1=b0
+    return muladd(t,b1,-b2)+coeffs[1]
+end
 @inline function _cheb_clenshaw_10(coeffs::AbstractMatrix{ComplexF64},col::Int,t::Float64)::ComplexF64
     b1=0.0+0.0im;b2=0.0+0.0im;u=2*t
     b0=muladd(u,b1,-b2)+coeffs[11,col];b2=b1;b1=b0
