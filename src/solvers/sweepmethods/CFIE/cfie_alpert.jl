@@ -118,121 +118,59 @@ end
     return x,y,tx,ty,s
 end
 
-########################################
-#### ALPERT SAME-COMPONENT ASSEMBLY ####
-########################################
-
-function assemble_self_block_alpert!(solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    pts::BoundaryPointsCFIE{T},
-    G::CFIEGeomCache{T},
-    row_range::UnitRange{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true) where {T<:Real}
-
-    αD = Complex{T}(0,k/2)                # DLP prefactor
-    αS = Complex{T}(0,one(T)/2)           # SLP prefactor before ik
-    ik = Complex{T}(0,k)
-
-    X  = getindex.(pts.xy,1)
-    Y  = getindex.(pts.xy,2)
-    dX = getindex.(pts.tangent,1)
-    dY = getindex.(pts.tangent,2)
-    ts = pts.ts
-    ws = pts.ws
-
-    N     = length(ts)
-    h     = ws[1]
-    a     = rule.a
-    jcorr = rule.j
-    ξ     = rule.x
-    ω     = rule.w
-
+function assemble_self_block_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertComponentCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    ws=pts.ws
+    N=length(pts.ts)
+    h=ws[1]
+    a=rule.a
+    jcorr=rule.j
     @use_threads multithreading=multithreaded for i in 1:N
-        gi = row_range[i]
-        ti = ts[i]
-        xi = X[i]
-        yi = Y[i]
-        si = G.speed[i]
-        κi = G.kappa[i]
-        wi = ws[i]
-
-        # ----------------------------------
-        # diagonal:
-        # DLP finite limit + SLP finite part
-        # ----------------------------------
-        ddiag = Complex{T}(wi*κi,zero(T))
-        A[gi,gi] += one(Complex{T}) - ddiag
-
-        # -------------------------------------------------
-        # DLP: plain trapezoid on all off-diagonal entries
-        # -------------------------------------------------
+        gi=row_range[i]
+        xi=X[i]
+        yi=Y[i]
+        wi=ws[i]
+        κi=G.kappa[i]
+        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
         @inbounds for j in 1:N
-            j == i && continue
-
-            gj   = row_range[j]
-            rij  = G.R[i,j]
-            invr = G.invR[i,j]
-            sj   = G.speed[j]
-            wj   = ws[j]
-            inn  = G.inner[i,j]
-
-            dker = αD * inn * H(1,k*rij) * invr
-            A[gi,gj] += -wj*dker
+            j==i && continue
+            gj=row_range[j]
+            rij=G.R[i,j]
+            inn=G.inner[i,j]
+            invr=G.invR[i,j]
+            A[gi,gj]-=ws[j]*(αD*inn*H(1,k*rij)*invr)
         end
-
-        # ---------------------------------------------------------
-        # SLP far region: plain trapezoid away from the singularity
-        # ---------------------------------------------------------
         @inbounds for j in 1:N
-            j == i && continue
-            m = j - i
-            m >  N÷2 && (m -= N)
-            m < -N÷2 && (m += N)
-            abs(m) < a && continue
-
-            gj = row_range[j]
-            sj = G.speed[j]
-            wj = ws[j]
-
-            sker = αS * H(0,k*G.R[i,j]) * sj
-            A[gi,gj] += -ik*(wj*sker)
+            j==i && continue
+            m=j-i
+            m>N÷2 && (m-=N)
+            m<-N÷2 && (m+=N)
+            abs(m)<a && continue
+            gj=row_range[j]
+            A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-
-        # ---------------------------------------------------------
-        # SLP near singular region: Alpert correction only
-        # ---------------------------------------------------------
-        ℓ = Vector{T}(undef,N)
-
-        @inbounds for p in 1:jcorr
-            fac = h*ω[p]
-
-            # right node
-            θp = wrap_angle(ti + h*ξ[p])
-            trig_cardinal_weights!(ℓ,θp,ts)
-            xp,yp,txp,typ,sp = _eval_offgrid_source(ℓ,X,Y,dX,dY)
-
-            dx = xi - xp
-            dy = yi - yp
-            r  = sqrt(dx*dx + dy*dy)
-
-            sker = αS * H(0,k*r) * sp
-            coeff = -ik*(fac*sker)
-            @views A[gi,row_range] .+= coeff .* ℓ
-
-            # left node
-            θm = wrap_angle(ti - h*ξ[p])
-            trig_cardinal_weights!(ℓ,θm,ts)
-            xm,ym,txm,tym,sm = _eval_offgrid_source(ℓ,X,Y,dX,dY)
-
-            dx = xi - xm
-            dy = yi - ym
-            r  = sqrt(dx*dx + dy*dy)
-
-            sker = αS * H(0,k*r) * sm
-            coeff = -ik*(fac*sker)
-            @views A[gi,row_range] .+= coeff .* ℓ
+        @inbounds for p in 1:jcorr # SLP near Alpert corrections
+            fac=h*rule.w[p]
+            dx=xi-C.xp[p,i]
+            dy=yi-C.yp[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            @views basep=C.Lp0[:,p]
+            for q in 1:N
+                A[gi,row_range[q]]+=coeff*basep[mod1(q-i+1,N)]
+            end
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            @views basem=C.Lm0[:,p]
+            for q in 1:N
+                A[gi,row_range[q]]+=coeff*basem[mod1(q-i+1,N)]
+            end
         end
     end
 
@@ -245,16 +183,17 @@ end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
-    αL2=k/2*im
+    αL2=Complex{T}(0,k/2)
     αM2=Complex{T}(0,one(T)/2)
-    ik=k*im
+    ik=Complex{T}(0,k)
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p) for p in pts]
     rule=alpert_log_rule(T,solver.alpert_order)
+    Cs=[build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
     nc=length(pts)
     for a in 1:nc
         ra=offs[a]:(offs[a+1]-1)
-        assemble_self_block_alpert!(solver,A,pts[a],Gs[a],ra,k,rule;multithreaded=multithreaded)
+        assemble_self_block_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
     end
     for a in 1:nc, b in 1:nc
         a==b && continue
@@ -286,11 +225,11 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
                 r2=muladd(dx,dx,dy*dy)
                 r2<=(eps(T))^2 && continue
                 r=sqrt(r2)
-                invr=inv(r)
                 inn=tyj*dx-txj*dy
+                invr=inv(r)
                 dval=wj*(αL2*inn*H(1,k*r)*invr)
                 sval=wj*(αM2*H(0,k*r)*sj)
-                A[gi,gj]+= -(dval+ik*sval)
+                A[gi,gj]-=(dval+ik*sval)
             end
         end
     end
