@@ -150,9 +150,15 @@ end
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
-    for (idx,crv) in enumerate(boundary)
-        pts[idx]=idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
+    # length(boundary)=1 implies here only outer boundary with potentially many segments building it, so different from Kress where outer is necceserily 1 closed curve (crv)
+    outer_boundary=boundary[1]
+    inner_boundaries=boundary[2:end]
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(outer_boundary)+length(inner_boundaries))
+    for (idx,crv) in enumerate(outer_boundary)
+        pts[idx]=_evaluate_points(solver,crv,k,idx)
+    end
+    for (idx,crv) in enumerate(inner_boundaries)
+        pts[length(outer_boundary)+idx]=_reverse_component_orientation(_evaluate_points(solver,crv,k,length(outer_boundary)+idx))
     end
     return pts
 end
