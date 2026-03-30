@@ -186,37 +186,37 @@ end
 # Notes:
 #   - This assumes `pts` is ONE smooth panel.
 #   - It is not yet a corner-aware or multi-segment panelwise implementation.
-function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertComponentCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert!(solver::CFIE_alpert{T},
+    A::AbstractMatrix{Complex{T}},
+    pts::BoundaryPointsCFIE{T},
+    G::CFIEGeomCache{T},
+    C::AlpertComponentCache{T},
+    row_range::UnitRange{Int},
+    k::T,
+    rule::AlpertLogRule{T};
+    multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
-
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
     ws=pts.ws
-
     N=length(X)
     h=inv(T(N-1))
     a=rule.a
     jcorr=rule.j
     ξ=rule.x
     ω=rule.w
-
-    left_last=a
-    right_first=N-a+1
-
     @use_threads multithreading=multithreaded for i in 1:N
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
         wi=ws[i]
         κi=G.kappa[i]
-
+        ui=C.us[i]
         A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
-
-        # DLP off-diagonal: plain trapezoid
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -225,62 +225,17 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex
             invr=G.invR[i,j]
             A[gi,gj]-=ws[j]*(αD*inn*H(1,k*rij)*invr)
         end
-
-        # SLP far part
-        if i<=left_last
-            @inbounds for j in (a+1):N
-                j==i && continue
-                gj=row_range[j]
-                A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-            end
-        elseif i>=right_first
-            @inbounds for j in 1:(N-a)
-                j==i && continue
-                gj=row_range[j]
-                A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-            end
-        else
-            @inbounds for j in 1:N
-                j==i && continue
-                abs(j-i)<a && continue
-                gj=row_range[j]
-                A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-            end
+        @inbounds for j in 1:N
+            j==i && continue
+            abs(j-i)<a && continue
+            gj=row_range[j]
+            A[gi,gj]-=ik*(ws[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-
-        # SLP near correction
         ℓ=Vector{T}(undef,N)
-
-        if i<=left_last
-            @inbounds for p in 1:jcorr
-                fac=h*ω[p]
-                dx=xi-C.xe[p]
-                dy=yi-C.ye[p]
-                r=sqrt(dx*dx+dy*dy)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.se[p]))
-                @views Le_p=C.Le[p,:]
-                for q in 1:N
-                    A[gi,row_range[q]]+=coeff*Le_p[q]
-                end
-            end
-        elseif i>=right_first
-            @inbounds for p in 1:jcorr
-                fac=h*ω[p]
-                dx=xi-C.xr[p]
-                dy=yi-C.yr[p]
-                r=sqrt(dx*dx+dy*dy)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sr[p]))
-                @views Re_p=C.Re[p,:]
-                for q in 1:N
-                    A[gi,row_range[q]]+=coeff*Re_p[q]
-                end
-            end
-        else
-            ui=C.us[i]
-            @inbounds for p in 1:jcorr
-                fac=h*ω[p]
-
-                up=ui+h*ξ[p]
+        @inbounds for p in 1:jcorr
+            fac=h*ω[p]
+            up=ui+h*ξ[p]
+            if up<=one(T)
                 _interp_vector_open!(ℓ,up,C.us,C.bw)
                 xp,yp,txp,typ,sp=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
                 dx=xi-xp
@@ -290,8 +245,18 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex
                 for q in 1:N
                     A[gi,row_range[q]]+=coeff*ℓ[q]
                 end
-
-                um=ui-h*ξ[p]
+            else
+                dx=xi-C.xr[p]
+                dy=yi-C.yr[p]
+                r=sqrt(dx*dx+dy*dy)
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sr[p]))
+                @views Re_p=C.Re[p,:]
+                for q in 1:N
+                    A[gi,row_range[q]]+=coeff*Re_p[q]
+                end
+            end
+            um=ui-h*ξ[p]
+            if um>=zero(T)
                 _interp_vector_open!(ℓ,um,C.us,C.bw)
                 xm,ym,txm,tym,sm=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
                 dx=xi-xm
@@ -301,10 +266,18 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex
                 for q in 1:N
                     A[gi,row_range[q]]+=coeff*ℓ[q]
                 end
+            else
+                dx=xi-C.xe[p]
+                dy=yi-C.ye[p]
+                r=sqrt(dx*dx+dy*dy)
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.se[p]))
+                @views Le_p=C.Le[p,:]
+                for q in 1:N
+                    A[gi,row_range[q]]+=coeff*Le_p[q]
+                end
             end
         end
     end
-
     return A
 end
 
