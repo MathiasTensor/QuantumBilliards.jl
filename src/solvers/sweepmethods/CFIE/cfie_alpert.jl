@@ -227,7 +227,7 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
     return A
 end
 
-# assemble_desymmetrized_reflection_images!
+# _assemble_reflection_images!
 # Add all reflection image contributions for one source component block.
 #
 # Inputs:
@@ -244,7 +244,7 @@ end
 #   - For `:origin` (XYReflection), this expands into three image terms:
 #       x-image, y-image, and xy-image,
 #     with weights σx, σy, and σx*σy respectively.
-function assemble_desymmetrized_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},solver::CFIE_alpert{T},billiard::Bi,k::T,sym::Reflection;multithreaded::Bool=true) where {T<:Real.Bi<:AbsBilliard}
+function _assemble_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},solver::CFIE_alpert{T},billiard::Bi,k::T,sym::Reflection;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     if sym.axis==:y_axis
         _add_image_block!(A,ra,rb,pa,pb,k,q->image_point(sym,q,billiard),t->image_tangent(sym,t),image_weight(sym);multithreaded=multithreaded)
     elseif sym.axis==:x_axis
@@ -366,7 +366,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
             for a in 1:nc, b in 1:nc
                 ra=offs[a]:(offs[a+1]-1)
                 rb=offs[b]:(offs[b+1]-1)
-                assemble_desymmetrized_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
+                _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
             end
         elseif sym isa Rotation
             costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
