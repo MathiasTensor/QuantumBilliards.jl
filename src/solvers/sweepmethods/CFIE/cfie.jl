@@ -151,8 +151,9 @@ end
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
     # length(boundary)=1 implies here only outer boundary with potentially many segments building it, so different from Kress where outer is necceserily 1 closed curve (crv)
+    length(boundary)==1 && return [_evaluate_points(solver,boundary[1],k,1)] # if we have only one component, then we can just evaluate it and return since we dont need to worry about orientations (no holes, only 1 closed curve for outer boundary)
     outer_boundary=boundary[1]
-    inner_boundaries=boundary[2:end]
+    inner_boundaries=boundary[2:end] # these are the holes, and we need to reverse their orientation since they are oriented opposite to outer boudnary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(outer_boundary)+length(inner_boundaries))
     for (idx,crv) in enumerate(outer_boundary)
         pts[idx]=_evaluate_points(solver,crv,k,idx)
