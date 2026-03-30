@@ -246,9 +246,9 @@ end
 #     with weights σx, σy, and σx*σy respectively.
 function _assemble_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},solver::CFIE_alpert{T},billiard::Bi,k::T,sym::Reflection;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     if sym.axis==:y_axis
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point(sym,q,billiard),t->image_tangent(sym,t),image_weight(sym);multithreaded=multithreaded)
+        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_x(q,billiard),t->image_tangent_x(t),image_weight(sym);multithreaded=multithreaded)
     elseif sym.axis==:x_axis
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point(sym,q,billiard),t->image_tangent(sym,t),image_weight(sym);multithreaded=multithreaded)
+        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_y(q,billiard),t->image_tangent_y(t),image_weight(sym);multithreaded=multithreaded)
     elseif sym.axis==:origin
         σx=image_weight_x(sym)
         σy=image_weight_y(sym)
