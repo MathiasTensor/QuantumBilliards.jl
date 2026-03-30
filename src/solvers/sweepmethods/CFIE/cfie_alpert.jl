@@ -131,11 +131,9 @@ function assemble_self_block_alpert!(solver::CFIE_alpert{T},
     rule::AlpertLogRule{T};
     multithreaded::Bool=true) where {T<:Real}
 
-    αL1 = k*inv_two_pi
-    αL2 = Complex{T}(0,k/2)
-    αM1 = -inv_two_pi
-    αM2 = Complex{T}(0,one(T)/2)
-    ik  = Complex{T}(0,k)
+    αD = Complex{T}(0,k/2)                # DLP prefactor
+    αS = Complex{T}(0,one(T)/2)           # SLP prefactor before ik
+    ik = Complex{T}(0,k)
 
     X  = getindex.(pts.xy,1)
     Y  = getindex.(pts.xy,2)
@@ -160,21 +158,37 @@ function assemble_self_block_alpert!(solver::CFIE_alpert{T},
         κi = G.kappa[i]
         wi = ws[i]
 
-        # ----------------------------
-        # diagonal: finite limits only
-        # ----------------------------
+        # ----------------------------------
+        # diagonal:
+        # DLP finite limit + SLP finite part
+        # ----------------------------------
         ddiag = Complex{T}(wi*κi,zero(T))
 
-        m2diag = ((Complex{T}(0,one(T)/2) - euler_over_pi) -
-                  inv_two_pi*log((k^2/4)*si^2))*si
+        sdiag_reg = ((Complex{T}(0,one(T)/2) - euler_over_pi) -
+                     inv_two_pi*log((k^2/4)*si^2))*si
 
-        sdiag = wi*m2diag
+        A[gi,gi] += one(Complex{T}) - (ddiag + ik*(wi*sdiag_reg))
 
-        A[gi,gi] += one(Complex{T}) - (ddiag + ik*sdiag)
+        # -------------------------------------------------
+        # DLP: plain trapezoid on all off-diagonal entries
+        # -------------------------------------------------
+        @inbounds for j in 1:N
+            j == i && continue
 
-        # ---------------------------------------------------
-        # far periodic trapezoid: use wrapped distance to i
-        # ---------------------------------------------------
+            gj   = row_range[j]
+            rij  = G.R[i,j]
+            invr = G.invR[i,j]
+            sj   = G.speed[j]
+            wj   = ws[j]
+            inn  = G.inner[i,j]
+
+            dker = αD * inn * H(1,k*rij) * invr
+            A[gi,gj] += -wj*dker
+        end
+
+        # ---------------------------------------------------------
+        # SLP far region: plain trapezoid away from the singularity
+        # ---------------------------------------------------------
         @inbounds for j in 1:N
             j == i && continue
             m = j - i
@@ -182,89 +196,46 @@ function assemble_self_block_alpert!(solver::CFIE_alpert{T},
             m < -N÷2 && (m += N)
             abs(m) < a && continue
 
-            gj   = row_range[j]
-            rij  = G.R[i,j]
-            invr = G.invR[i,j]
-            lt   = G.logterm[i,j]
-            sj   = G.speed[j]
-            wj   = ws[j]
+            gj = row_range[j]
+            sj = G.speed[j]
+            wj = ws[j]
 
-            h1 = H(1,k*rij)
-            h0 = H(0,k*rij)
-            j1 = real(h1)
-            j0 = real(h0)
-
-            inn = G.inner[i,j]
-
-            l1 = αL1*inn*j1*invr
-            l2 = αL2*inn*h1*invr - l1*lt
-
-            m1 = αM1*j0*sj
-            m2 = αM2*h0*sj - m1*lt
-
-            A[gi,gj] += -wj*(l1*lt + l2 + ik*(m1*lt + m2))
+            sker = αS * H(0,k*G.R[i,j]) * sj
+            A[gi,gj] += -ik*(wj*sker)
         end
 
         # ---------------------------------------------------------
-        # near singular region: Alpert corrected off-grid sampling
+        # SLP near singular region: Alpert correction only
         # ---------------------------------------------------------
         ℓ = Vector{T}(undef,N)
 
         @inbounds for p in 1:jcorr
             fac = h*ω[p]
 
-            # right correction node
+            # right node
             θp = wrap_angle(ti + h*ξ[p])
             trig_cardinal_weights!(ℓ,θp,ts)
             xp,yp,txp,typ,sp = _eval_offgrid_source(ℓ,X,Y,dX,dY)
 
-            dx  = xi - xp
-            dy  = yi - yp
-            r   = sqrt(dx*dx + dy*dy)
-            invr = inv(r)
-            lt  = log(4*sin((ti-θp)/2)^2)
+            dx = xi - xp
+            dy = yi - yp
+            r  = sqrt(dx*dx + dy*dy)
 
-            h1 = H(1,k*r)
-            h0 = H(0,k*r)
-            j1 = real(h1)
-            j0 = real(h0)
-
-            inn = typ*dx - txp*dy
-
-            l1 = αL1*inn*j1*invr
-            l2 = αL2*inn*h1*invr - l1*lt
-
-            m1 = αM1*j0*sp
-            m2 = αM2*h0*sp - m1*lt
-
-            coeff = -fac*(l1*lt + l2 + ik*(m1*lt + m2))
+            sker = αS * H(0,k*r) * sp
+            coeff = -ik*(fac*sker)
             @views A[gi,row_range] .+= coeff .* ℓ
 
-            # left correction node
+            # left node
             θm = wrap_angle(ti - h*ξ[p])
             trig_cardinal_weights!(ℓ,θm,ts)
             xm,ym,txm,tym,sm = _eval_offgrid_source(ℓ,X,Y,dX,dY)
 
-            dx  = xi - xm
-            dy  = yi - ym
-            r   = sqrt(dx*dx + dy*dy)
-            invr = inv(r)
-            lt  = log(4*sin((ti-θm)/2)^2)
+            dx = xi - xm
+            dy = yi - ym
+            r  = sqrt(dx*dx + dy*dy)
 
-            h1 = H(1,k*r)
-            h0 = H(0,k*r)
-            j1 = real(h1)
-            j0 = real(h0)
-
-            inn = tym*dx - txm*dy
-
-            l1 = αL1*inn*j1*invr
-            l2 = αL2*inn*h1*invr - l1*lt
-
-            m1 = αM1*j0*sm
-            m2 = αM2*h0*sm - m1*lt
-
-            coeff = -fac*(l1*lt + l2 + ik*(m1*lt + m2))
+            sker = αS * H(0,k*r) * sm
+            coeff = -ik*(fac*sker)
             @views A[gi,row_range] .+= coeff .* ℓ
         end
     end
