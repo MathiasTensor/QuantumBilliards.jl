@@ -205,7 +205,7 @@ function _evaluate_points(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
     N<2 && (N=2)
-    ts=collect(range(zero(T),one(T),length=N))  # parametrization nodes; periodic [0,2π) for Kress, open [0,1] for Alpert
+    ts=midpoints(range(zero(T),one(T),length=(N+1)))  # parametrization nodes; periodic [0,2π) for Kress, open [0,1] for Alpert
     xy=curve(crv,ts)
     tangent_1st=tangent(crv,ts)
     tangent_2nd=tangent_2(crv,ts)
