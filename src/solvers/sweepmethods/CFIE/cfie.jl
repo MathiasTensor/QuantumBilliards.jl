@@ -150,8 +150,7 @@ end
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    #boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    boundary=billiard.full_boundary
+    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
     # if style: boundary = [seg1, seg2, ...] then we know it is only outer boundary with many segments
     # so we check if it is a vector. Otherwise we must have [outer_component, hole1_component, ...] where each component is itself a vector of curves.
     if !(boundary[1] isa AbstractVector)
