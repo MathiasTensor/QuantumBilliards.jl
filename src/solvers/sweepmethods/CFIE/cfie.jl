@@ -309,7 +309,6 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
         tangent_1st[j]=gu*ujp
         tangent_2nd[j]=guu*(ujp*ujp)+gu*ujpp
     end
-    speed=@. sqrt(tangent_1st[begin][1]^2) # dummy init to keep type stable
     speed=Vector{T}(undef,N)
     @inbounds for j in 1:N
         tx=tangent_1st[j][1]
