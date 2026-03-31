@@ -2,8 +2,16 @@
 
 # Cache for simple billiards where we can use the periodic Alpert rule on the whole boundary. This is not corner-aware and does not support multiple segments.
 struct AlpertPeriodicCache{T<:Real}
-    m::Vector{Int}   # integer part of ξ_p
-    α::Vector{T}     # fractional part of ξ_p
+    xp::Matrix{T} # jcorr × N
+    yp::Matrix{T}
+    txp::Matrix{T}
+    typ::Matrix{T}
+    sp::Matrix{T}
+    xm::Matrix{T}
+    ym::Matrix{T}
+    txm::Matrix{T}
+    tym::Matrix{T}
+    sm::Matrix{T}
 end
 
 # wrap_angle
@@ -62,27 +70,52 @@ function trig_cardinal_weights!(l::AbstractVector{T}, θ::T, ts::AbstractVector{
     return l
 end
 
-# _eval_shifted_source_periodic
-# Evaluate the shifted source geometry for the periodic Alpert rule at a given interpolation vector. This is used to compute the corrected geometry for the shifted interpolation points in the periodic case.
-# Inputs:
-#  - l::AbstractVector{T} : Interpolation vector for the shifted point (length N).
-#  - X,Y : Geometry arrays for the original boundary points.
-#  - dX,dY : Tangent geometry arrays for the original boundary points.
+
+# 4-point equispaced Lagrange weights on local coordinate η ∈ [0,1),
+# using nodes at offsets -1, 0, 1, 2 relative to the local left node.
 #
-# Outputs:
-#   - x,y : Interpolated source point coordinates.
-#   - tx,ty : Interpolated tangent vectors.
-#   - s : Interpolated speed.
-@inline function _eval_shifted_source_periodic(l::AbstractVector{T},X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
-    x=zero(T);y=zero(T)
-    tx=zero(T);ty=zero(T)
-    @inbounds @simd for q in eachindex(l)
-        w=l[q]
-        x+=w*X[q]
-        y+=w*Y[q]
-        tx+=w*dX[q]
-        ty+=w*dY[q]
-    end
+# So if θ lies between ts[i] and ts[i+1], we interpolate using:
+#   ts[i-1], ts[i], ts[i+1], ts[i+2]
+#
+# with local coordinate η = (θ - ts[i]) / h.
+@inline function _lagrange4_weights(η::T) where {T<:Real}
+    w0=-(η)*(η-one(T))*(η-T(2))/T(6) # node -1
+    w1=(η+one(T))*(η-one(T))*(η-T(2))/T(2) # node  0
+    w2=-(η+one(T))*(η)*(η-T(2))/T(2) # node  1
+    w3=(η+one(T))*(η)*(η-one(T))/T(6) # node  2
+    return w0,w1,w2,w3
+end
+
+# Evaluate one periodic shifted source point/tangent/speed using a local
+# 4-point periodic stencil.
+#
+# Inputs:
+#   θ  : target shifted angle in (0, 2π]
+#   ts : equispaced periodic nodes
+#   h  : angular step = 2π/N
+#   X,Y,dX,dY : sampled geometry/tangent arrays at ts
+#
+# Output:
+#   x,y,tx,ty,s : interpolated point, tangent, and speed at angle θ
+@inline function _eval_shifted_source_periodic_local4(θ::T,ts::AbstractVector{T},h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+    N = length(ts)
+    # Convert θ to fractional grid coordinate in [0, N)
+    u=θ/h
+    u>=T(N) && (u-=T(N))
+    # With ts[j] = j*h for j=1..N, the interval [ts[i], ts[i+1]) corresponds to i = floor(u)
+    i0=floor(Int,u)
+    η=u-T(i0) # local coordinate in [0,1)
+    i=i0+1
+    i>N && (i-=N)
+    im1=mod1(i-1,N)
+    i0j=i
+    ip1=mod1(i+1,N)
+    ip2=mod1(i+2,N)
+    w0,w1,w2,w3=_lagrange4_weights(η)
+    x=w0*X[im1]+w1*X[i0j]+w2*X[ip1]+w3*X[ip2]
+    y=w0*Y[im1]+w1*Y[i0j]+w2*Y[ip1]+w3*Y[ip2]
+    tx=w0*dX[im1]+w1*dX[i0j]+w2*dX[ip1]+w3*dX[ip2]
+    ty=w0*dY[im1]+w1*dY[i0j]+w2*dY[ip1]+w3*dY[ip2]
     s=sqrt(tx*tx+ty*ty)
     return x,y,tx,ty,s
 end
@@ -94,17 +127,35 @@ end
 #   - rule::AlpertLogRule{T} : Alpert quadrature rule.
 # Outputs:
 #   - AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
-function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}) where {T<:Real}
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    ts=pts.ts
+    N=length(ts)
     jcorr=rule.j
-    m=Vector{Int}(undef,jcorr)
-    α=Vector{T}(undef,jcorr)
+    h=pts.ws[1]   # angular step = 2π/N
+    xp=Matrix{T}(undef,jcorr,N)
+    yp=similar(xp)
+    txp=similar(xp)
+    typ=similar(xp)
+    sp=similar(xp)
+    xm=similar(xp)
+    ym=similar(xp)
+    txm=similar(xp)
+    tym=similar(xp)
+    sm=similar(xp)
     @inbounds for p in 1:jcorr
-        ξ=rule.x[p]
-        mp=floor(Int,ξ)
-        m[p]=mp
-        α[p]=T(ξ-mp)
+        Δt=h*rule.x[p]
+        for i in 1:N
+            θp=wrap_angle(ts[i]+Δt)
+            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
+            θm=wrap_angle(ts[i]-Δt)
+            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic_local4(θm,ts,h,X,Y,dX,dY)
+        end
     end
-    return AlpertPeriodicCache(m,α)
+    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
 end
 
 # Cache whenever the boundary is panelized, so we can apply the endpoint-corrected Alpert rule on each panel separately
@@ -294,8 +345,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     ik=Complex{T}(0,k)
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
     N=length(pts.ts)
     a=rule.a
     jcorr=rule.j
@@ -306,9 +355,9 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        # diagonal term: periodic parameter measure
+        # diagonal
         A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
-        # DLP off-diagonal: tangent already contains dγ/dθ, so weight is h
+        # DLP off-diagonal
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -320,48 +369,26 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         # SLP far part
         @inbounds for j in 1:N
             j==i && continue
-            mrel=j-i
-            mrel>N÷2 && (mrel-=N)
-            mrel<-N÷2 && (mrel+=N)
-            abs(mrel)<a && continue
+            m=j-i
+            m>N÷2 && (m-=N)
+            m<-N÷2 && (m+=N)
+            abs(m)<a && continue
             gj=row_range[j]
             A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-        # near Alpert correction with 2-point local stencil
+        # Near correction:
         @inbounds for p in 1:jcorr
-            mp=C.m[p]
-            β=C.α[p]
-            w0=one(T)-β
-            w1=β
             fac=h*rule.w[p]
-            # ---- plus branch: θ_i + h*ξ_p ----
-            j0p=mod1(i+mp,N)
-            j1p=mod1(j0p+1,N)
-            xp=w0*X[j0p]+w1*X[j1p]
-            yp=w0*Y[j0p]+w1*Y[j1p]
-            txp=w0*dX[j0p]+w1*dX[j1p]
-            typ=w0*dY[j0p]+w1*dY[j1p]
-            sp=sqrt(txp*txp+typ*typ)
-            dx=xi-xp
-            dy=yi-yp
+            dx=xi-C.xp[p,i]
+            dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*sp))
-            A[gi,row_range[j0p]]+=coeff*w0
-            A[gi,row_range[j1p]]+=coeff*w1
-            # ---- minus branch: θ_i - h*ξ_p ----
-            j0m=mod1(i-mp,N)
-            j1m=mod1(j0m-1,N)
-            xm=w0*X[j0m]+w1*X[j1m]
-            ym=w0*Y[j0m]+w1*Y[j1m]
-            txm=w0*dX[j0m]+w1*dX[j1m]
-            tym=w0*dY[j0m]+w1*dY[j1m]
-            sm=sqrt(txm*txm+tym*tym)
-            dx=xi-xm
-            dy=yi-ym
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            A[gi,gi]+=coeff
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0, k*r)*sm))
-            A[gi,row_range[j0m]]+=coeff*w0
-            A[gi,row_range[j1m]]+=coeff*w1
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            A[gi,gi]+=coeff
         end
     end
     return A
