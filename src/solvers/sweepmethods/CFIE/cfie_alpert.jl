@@ -223,38 +223,44 @@ end
     return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
 
-# _open_local4_stencil
-# Compute the indices and weights for a local 4-point stencil used for interpolation near the endpoints of a panel. This is used for the endpoint corrections in the Alpert rule when applied to open panels.
+# _panel_local4_midpoint_data
+# Compute the indices and weights for a local 4-point stencil centered at the midpoint of a panel. This is used for applying the Alpert correction at the panel midpoints.
 # Inputs:
 #   - u : Local parameter value for which to compute the stencil (should be in [0,1] for a panel).
-#   - N : Number of points in the panel.
 #   - h : Step size (length of the panel divided by N).
+#   - N : Number of points in the panel.
 # Outputs:
-#   - idx : A tuple of 4 indices corresponding to the points used in the stencil.
-#   - wt : A tuple of 4 weights corresponding to the Lagrange interpolation weights
-@inline function _open_local4_stencil(u::T,N::Int,h::T) where {T<:Real}
-    uc=clamp(u,T(0.5)*h,one(T)-T(0.5)*h)
-    s=(uc-T(0.5)*h)/h
+#   - Tuple of indices (jm1, j, jp1, jp2) corresponding to the points used in the stencil.
+#   - Tuple of weights (w0, w1, w2, w3) corresponding to the Lagrange interpolation weights for the local coordinate η.
+@inline function _panel_local4_midpoint_data(u::T,h::T,N::Int) where {T<:Real}
+    s=u/h-T(1)/2
     j0=floor(Int,s)+1
+    η=s-floor(T,s)
     j0=clamp(j0,2,N-2)
-    η=(uc-((T(j0)-T(0.5))*h))/h
-    idx=(j0-1,j0,j0+1,j0+2)
-    wt=_lagrange4_weights(η)
-    return idx,wt
+    jm1=j0-1
+    j=j0
+    jp1=j0+1
+    jp2=j0+2
+    w0,w1,w2,w3=_lagrange4_weights(η)
+    return (jm1,j,jp1,jp2),(w0,w1,w2,w3)
 end
 
-# _interp_geom_local4
-# Perform local 4-point interpolation of geometry and tangent vectors for a given set of indices and weights.
+# _eval_shifted_source_panel_local4
+# Evaluate the geometry, tangent, and speed at a shifted source point using a local 4-point stencil for a panel. This is used to compute the Alpert correction for points near the panel midpoints.
 # Inputs:
-#   - idx : A tuple of 4 indices corresponding to the points used in the stencil.
-#   - wt : A tuple of 4 weights corresponding to the Lagrange interpolation weights.
-#   - X, Y : Vectors containing the x and y coordinates of the geometry at the sampled points.
-#   - dX, dY : Vectors containing the x and y components of the tangent vectors at the sampled points.
+#   - u : Local parameter value for the shifted source point.
+#   - h : Step size (length of the panel divided by N).
+#   - X, Y : Vectors containing the x and y coordinates of the geometry at the sampled points on the panel.
+#   - dX, dY : Vectors containing the x and y components of the tangent vectors at the sampled points on the panel.
 # Outputs:
-#   - x, y : Interpolated x and y coordinates of the geometry at the target parameter value.
-#   - tx, ty : Interpolated x and y components of the tangent vector at the target parameter value.
-#   - s : Interpolated speed (magnitude of the tangent vector) at the target parameter value.
-@inline function _interp_geom_local4(idx::NTuple{4,Int},wt::NTuple{4,T},X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+#   - x, y : Interpolated x and y coordinates of the geometry at the shifted source point.
+#   - tx, ty : Interpolated x and y components of the tangent vector at the shifted source point.
+#   - s : Interpolated speed (magnitude of the tangent vector) at the shifted source point.
+#   - idx : Tuple of indices used for the interpolation stencil.
+#   - wt : Tuple of weights used for the interpolation.
+@inline function _eval_shifted_source_panel_local4(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+    N=length(X)
+    idx,wt=_panel_local4_midpoint_data(u,h,N)
     i1,i2,i3,i4=idx
     w1,w2,w3,w4=wt
     x=w1*X[i1]+w2*X[i2]+w3*X[i3]+w4*X[i4]
@@ -262,7 +268,7 @@ end
     tx=w1*dX[i1]+w2*dX[i2]+w3*dX[i3]+w4*dX[i4]
     ty=w1*dY[i1]+w2*dY[i2]+w3*dY[i3]+w4*dY[i4]
     s=sqrt(tx*tx+ty*ty)
-    return x,y,tx,ty,s
+    return x,y,tx,ty,s,idx,wt
 end
 
 # _build_alpert_component_cache
@@ -303,8 +309,7 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
         Δu=h*rule.x[p]
         for i in 1:N
             up=us[i]+Δu
-            idx,wt=_open_local4_stencil(up,N,h)
-            x,y,tx,ty,s=_interp_geom_local4(idx,wt,X,Y,dX,dY)
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_panel_local4(up,h,X,Y,dX,dY)
             xp[p,i]=x
             yp[p,i]=y
             txp[p,i]=tx
@@ -319,8 +324,7 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
             wtp[p,i,3]=wt[3]
             wtp[p,i,4]=wt[4]
             um=us[i]-Δu
-            idx,wt=_open_local4_stencil(um,N,h)
-            x,y,tx,ty,s=_interp_geom_local4(idx,wt,X,Y,dX,dY)
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_panel_local4(um,h,X,Y,dX,dY)
             xm[p,i]=x
             ym[p,i]=y
             txm[p,i]=tx
