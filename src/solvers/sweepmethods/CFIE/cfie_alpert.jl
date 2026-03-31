@@ -357,7 +357,8 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         end
         # Alpert near correction
         @inbounds for p in 1:jcorr
-            fac=pts.ws[1]*rule.w[p]
+            h=pts.ws[1]
+            fac=h*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)

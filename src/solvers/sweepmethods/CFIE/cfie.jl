@@ -212,12 +212,10 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     tangent_1st=tangent(crv,ts_rescaled)./(two_pi)
     tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi)^2
     ss=arc_length(crv,ts_rescaled)
-    #ds=diff(ss)
-    #append!(ds,L+ss[1]-ss[end])
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N)
-    speed=[sqrt(t[1]^2+t[2]^2) for t in tangent_1st]
-    ds=ws.*speed
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
 
