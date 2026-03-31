@@ -2,8 +2,8 @@
 
 # Cache for simple billiards where we can use the periodic Alpert rule on the whole boundary. This is not corner-aware and does not support multiple segments.
 struct AlpertPeriodicCache{T<:Real}
-    Lp0::Matrix{T}   # N × jcorr
-    Lm0::Matrix{T}   # N × jcorr
+    Lp::Array{T,3}   # jcorr × N × N, with Lp[p,i,q]
+    Lm::Array{T,3}   # jcorr × N × N, with Lm[p,i,q]
     xp::Matrix{T}    # jcorr × N
     yp::Matrix{T}
     txp::Matrix{T}
@@ -68,19 +68,19 @@ end
 # _eval_shifted_source_periodic
 # Evaluate the shifted source geometry for the periodic Alpert rule at a given interpolation vector. This is used to compute the corrected geometry for the shifted interpolation points in the periodic case.
 # Inputs:
-#   - base::AbstractVector{T} : Base interpolation vector (length N).
-#   - i::Int : Index of the target point for which to evaluate the shifted source geometry.
-#   - X,Y,dX,dY : Geometry arrays for the panel (length N).
+#  - l::AbstractVector{T} : Interpolation vector for the shifted point (length N).
+#  - X,Y : Geometry arrays for the original boundary points.
+#  - dX,dY : Tangent geometry arrays for the original boundary points.
+#
 # Outputs:
 #   - x,y : Interpolated source point coordinates.
 #   - tx,ty : Interpolated tangent vectors.
 #   - s : Interpolated speed.
-@inline function _eval_shifted_source_periodic(base::AbstractVector{T},i::Int,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
-    N=length(base)
-    x=zero(T);y=zero(T);tx=zero(T);ty=zero(T)
-    @inbounds @simd for q in 1:N
-        idx=mod1(q-i+1,N)
-        w=base[idx]
+@inline function _eval_shifted_source_periodic(l::AbstractVector{T},X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+    x=zero(T);y=zero(T)
+    tx=zero(T);ty=zero(T)
+    @inbounds @simd for q in eachindex(l)
+        w=l[q]
         x+=w*X[q]
         y+=w*Y[q]
         tx+=w*dX[q]
@@ -104,30 +104,39 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     dY=getindex.(pts.tangent,2)
     ts=pts.ts
     N=length(ts)
-    h=pts.ws[1]
     jcorr=rule.j
-    Lp0=Matrix{T}(undef,N,jcorr)
-    Lm0=Matrix{T}(undef,N,jcorr)
+    # local speed with respect to the periodic parameter ts
+    speed=similar(X)
+    @inbounds for i in 1:N
+        speed[i]=sqrt(dX[i]^2+dY[i]^2)
+    end
+    # local arc-length spacing near node i
+    hs=pts.ds
+    Lp=Array{T,3}(undef,jcorr,N,N)
+    Lm=Array{T,3}(undef,jcorr,N,N)
     xp=Matrix{T}(undef,jcorr,N);yp=similar(xp)
     txp=similar(xp);typ=similar(xp);sp=similar(xp)
     xm=similar(xp);ym=similar(xp)
     txm=similar(xp);tym=similar(xp);sm=similar(xp)
     tmp=Vector{T}(undef,N)
     @inbounds for p in 1:jcorr
-        θp=wrap_angle(ts[1]+h*rule.x[p])
-        trig_cardinal_weights!(tmp,θp,ts)
-        @views copyto!(Lp0[:,p],tmp)
-        θm=wrap_angle(ts[1]-h*rule.x[p])
-        trig_cardinal_weights!(tmp,θm,ts)
-        @views copyto!(Lm0[:,p],tmp)
-        @views bp=Lp0[:,p]
-        @views bm=Lm0[:,p]
+        ξp=rule.x[p]
         for i in 1:N
-            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic(bp,i,X,Y,dX,dY)
-            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic(bm,i,X,Y,dX,dY)
+            # convert local arc-length shift to parameter shift
+            Δt=(hs[i]*ξp)/speed[i]
+            # + branch
+            θp=wrap_angle(ts[i]+Δt)
+            trig_cardinal_weights!(tmp,θp,ts)
+            @views copyto!(Lp[p,i,:],tmp)
+            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic(tmp,X,Y,dX,dY)
+            # - branch
+            θm=wrap_angle(ts[i]-Δt)
+            trig_cardinal_weights!(tmp,θm,ts)
+            @views copyto!(Lm[p,i,:],tmp)
+            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic(tmp,X,Y,dX,dY)
         end
     end
-    return AlpertPeriodicCache(Lp0,Lm0,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
+    return AlpertPeriodicCache(Lp,Lm,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
 end
 
 # Cache whenever the boundary is panelized, so we can apply the endpoint-corrected Alpert rule on each panel separately
@@ -318,7 +327,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     N=length(pts.ts)
-    h=pts.ws[1]
     a=rule.a
     jcorr=rule.j
     @use_threads multithreading=multithreaded for i in 1:N
@@ -341,7 +349,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         @inbounds for j in 1:N
             j==i && continue
             m=j-i
-            m>N÷2 && (m-=N)
+            m>N÷2  && (m-=N)
             m<-N÷2 && (m+=N)
             abs(m)<a && continue
             gj=row_range[j]
@@ -349,22 +357,23 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         end
         # Alpert near correction
         @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
+            fac=pts.ds[i]*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-            @views basep=C.Lp0[:,p]
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            @views lp=C.Lp[p,i,:]
             for q in 1:N
-                A[gi,row_range[q]]+=coeff*basep[mod1(q-i+1,N)]
+                A[gi,row_range[q]]+=coeff*lp[q]
             end
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-            @views basem=C.Lm0[:,p]
+
+            dx = xi - C.xm[p,i]
+            dy = yi - C.ym[p,i]
+            r  = sqrt(dx*dx + dy*dy)
+            coeff =-ik*(fac* (αS * H(0, k*r) * C.sm[p,i]))
+            @views lm=C.Lm[p,i,:]
             for q in 1:N
-                A[gi,row_range[q]]+=coeff*basem[mod1(q-i+1,N)]
+                A[gi,row_range[q]]+=coeff*lm[q]
             end
         end
     end
