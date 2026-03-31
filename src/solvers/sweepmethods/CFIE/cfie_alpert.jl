@@ -410,18 +410,11 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         end
         # Near correction: scatter onto the 4-point source stencil
         @inbounds for p in 1:jcorr
+            fac=h*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
-            _check_r(r,"periodic-near-plus",i,p)
-            tx=C.txp[p,i]
-            ty=C.typ[p,i]
-            sp=C.sp[p,i]
-            inn=ty*dx-tx*dy
-            invr=inv(r)
-            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
-            scoeff=-ik*(fac*(αS*H(0,k*r)*sp))
-            coeff=dcoeff+scoeff
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
             for m in 1:4
                 q=C.idxp[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
@@ -429,15 +422,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            _check_r(r,"periodic-near-minus",i,p)
-            tx=C.txm[p,i]
-            ty=C.tym[p,i]
-            sm=C.sm[p,i]
-            inn=ty*dx-tx*dy
-            invr=inv(r)
-            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
-            scoeff=-ik*(fac*(αS*H(0,k*r)*sm))
-            coeff=dcoeff+scoeff
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
             for m in 1:4
                 q=C.idxm[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
@@ -484,14 +469,7 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
             _check_r(r,"panel-near-plus",i,p)
-            tx=C.txp[p,i]
-            ty=C.typ[p,i]
-            sp=C.sp[p,i]
-            inn=ty*dx-tx*dy
-            invr=inv(r)
-            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
-            scoeff=-ik*(fac*(αS*H(0,k*r)*sp))
-            coeff=dcoeff+scoeff
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
             for m in 1:4
                 q=C.idxp[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
@@ -499,15 +477,7 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            _check_r(r,"panel-near-minus",i,p)
-            tx=C.txm[p,i]
-            ty=C.tym[p,i]
-            sm=C.sm[p,i]
-            inn=ty*dx-tx*dy
-            invr=inv(r)
-            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
-            scoeff=-ik*(fac*(αS*H(0,k*r)*sm))
-            coeff=dcoeff+scoeff
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
             for m in 1:4
                 q=C.idxm[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
