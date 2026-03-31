@@ -856,6 +856,7 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     t0=time()
     @info "Building boundary operator A..."
     construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
+    any(isnan.(A)) && error("NaN detected in system matrix A; check geometry and quadrature.")
     t1=time()
     cA=cond(A)
     @info "Condition number of A: $(round(cA;sigdigits=4))"
