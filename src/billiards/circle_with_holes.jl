@@ -129,7 +129,7 @@ This is designed to match the CFIE machinery for multiply connected domains.
 """
 struct CircularHoleBilliard{T}<:AbsBilliard where {T<:Real}
     full_boundary::Vector{CircleSegment{T}}
-    fundamental_boundary::Vector{Union{CircleSegment{T},VirtualLineSegment{T}}}
+    fundamental_boundary::Vector
     desymmetrized_full_boundary::Vector{CircleSegment{T}}
     length::T
     length_fundamental::T
@@ -191,7 +191,7 @@ Stored in the same boundary convention as `CircularHoleBilliard`.
 """
 struct AnnularBilliard{T}<:AbsBilliard where {T<:Real}
     full_boundary::Vector{CircleSegment{T}}
-    fundamental_boundary::Vector{Union{CircleSegment{T},VirtualLineSegment{T}}}
+    fundamental_boundary::Vector
     desymmetrized_full_boundary::Vector{CircleSegment{T}}
     length::T
     length_fundamental::T
