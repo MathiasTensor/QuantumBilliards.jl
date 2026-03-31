@@ -568,6 +568,11 @@ end
 #### DESYMMETRIZED KERNEL ####
 ##############################
 
+@inline dlp_weight(pts::BoundaryPointsCFIE,j::Int)=pts.ws[j]
+@inline function slp_weight(pts::BoundaryPointsCFIE{T},j::Int,sj::T) where {T<:Real}
+    return pts.ws[j]*sj
+end
+
 # _add_image_block!
 # Add one smooth image contribution from source component `pb` into the
 # target/source block (a,b) of the desymmetrized Alpert matrix.
@@ -614,7 +619,8 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
         txj=timg[1]
         tyj=timg[2]
         sj=sqrt(txj*txj+tyj*tyj)
-        wj=pb.ds[j]
+        wd=dlp_weight(pb,j)
+        ws=slp_weight(pb,j,sj)
         @inbounds for i in 1:Na
             gi=ra[i]
             dx=Xa[i]-xj
@@ -624,8 +630,8 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
             r=sqrt(r2)
             invr=inv(r)
             inn=tyj*dx-txj*dy
-            dval=weight*wj*(αD*inn*H(1,k*r)*invr)
-            sval=weight*wj*(αS*H(0,k*r)*sj)
+            dval=weight*wd*(αD*inn*H(1,k*r)*invr)
+            sval=weight*ws*(αS*H(0,k*r))
             A[gi,gj]-=(dval+ik*sval)
         end
     end
@@ -749,7 +755,8 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
             txj=dXb[j]
             tyj=dYb[j]
             sj=sb[j]
-            wj=pb.ds[j]
+            wd=dlp_weight(pb,j)
+            ws=slp_weight(pb,j,sj)
             @inbounds for i in 1:Na
                 gi=ra[i]
                 dx=Xa[i]-xj
@@ -759,8 +766,8 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
                 r=sqrt(r2)
                 invr=inv(r)
                 inn=tyj*dx-txj*dy
-                dval=wj*(αD*inn*H(1,k*r)*invr)
-                sval=wj*(αS*H(0,k*r)*sj)
+                dval=wd*(αD*inn*H(1,k*r)*invr)
+                sval=ws*(αS*H(0,k*r))
                 A[gi,gj]-=(dval+ik*sval)
             end
         end
@@ -828,7 +835,8 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
                 txj=dXb[j]
                 tyj=dYb[j]
                 sj=sb[j]
-                wj=pb.ds[j]
+                wd=dlp_weight(pb,j)
+                ws=slp_weight(pb,j,sj)
                 @inbounds for i in 1:Na
                     gi=ra[i]
                     dx=Xa[i]-xj
@@ -838,8 +846,8 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
                     r=sqrt(r2)
                     inn=tyj*dx-txj*dy
                     invr=inv(r)
-                    dval=wj*(αL2*inn*H(1,k*r)*invr)
-                    sval=wj*(αM2*H(0,k*r)*sj)
+                    dval=wd*(αL2*inn*H(1,k*r)*invr)
+                    sval=ws*(αM2*H(0,k*r))
                     A[gi,gj]-=(dval+ik*sval)
                 end
             end
