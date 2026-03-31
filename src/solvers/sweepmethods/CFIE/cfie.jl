@@ -97,12 +97,16 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
-function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     N=length(pts.xy)
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
-    ts=pts.is_periodic ? [s(j,N) for j in 1:N] : reverse(pts.ts)
+    if solver isa CFIE_kress
+        ts=reverse(pts.ts)
+    else
+        ts=pts.is_periodic ? [s(j,N) for j in 1:N] : reverse(pts.ts)
+    end
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
