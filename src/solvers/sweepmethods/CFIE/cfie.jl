@@ -257,6 +257,7 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
     if !(boundary[1] isa AbstractVector)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
+            @info "component $idx periodic = $(pts[idx].is_periodic), N=$(length(pts[idx].xy))"
             p=_is_closed_curve(crv) ? _evaluate_points_periodic(solver,crv,k,idx) : _evaluate_points_panel(solver,crv,k,idx)
             pts[idx]=(idx==1) ? p : _reverse_component_orientation(p)
         end
