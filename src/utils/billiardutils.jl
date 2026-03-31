@@ -144,3 +144,23 @@ function boundary_limits(curves;grd=1000)
     return xlim,ylim
 end
 
+"""
+    _is_closed_curve(crv::C; tol=1e-10) where {C<:AbsCurve}
+
+Checks if a curve is closed by comparing the start and end points and tangents.
+    
+# Arguments
+- `crv::C`: A curve object of type `C <: AbsCurve`.
+- `tol::Real`: Tolerance for determining if the curve is closed (default: `1e-10`).
+
+# Returns
+`true` if the curve is closed; otherwise, `false`.
+"""
+function _is_closed_curve(crv::C; tol=1e-10) where {C<:AbsCurve}
+    p0=curve(crv,[0.0])[1]
+    p1=curve(crv,[1.0])[1]
+    t0=tangent(crv,[0.0])[1]
+    t1=tangent(crv,[1.0])[1]
+    return norm(p0-p1)≤tol && norm(t0-t1)≤tol
+end
+

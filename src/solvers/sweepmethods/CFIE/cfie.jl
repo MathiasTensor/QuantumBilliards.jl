@@ -186,7 +186,6 @@ function _open_panel_weights(ss::AbstractVector{T}) where {T<:Real}
     return ds
 end
 
-
 # _evaluate_points_periodic
 # Build one closed boundary panel for CFIE_alpert. THis is used whenever the billiard boundary is not composite of many curves, but rather just just one curve
 # E.g Ellipse,Circle 
@@ -258,8 +257,8 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
     if !(boundary[1] isa AbstractVector)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
-            p=_evaluate_points_periodic(solver,crv,k,idx)
-            pts[idx]=idx==1 ? p : _reverse_component_orientation(p)
+            p=_is_closed_curve(crv) ? _evaluate_points_periodic(solver,crv,k,idx) : _evaluate_points_panel(solver,crv,k,idx)
+            pts[idx]=(idx==1) ? p : _reverse_component_orientation(p)
         end
         return pts
     end
