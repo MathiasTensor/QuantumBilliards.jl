@@ -226,6 +226,61 @@ function _is_component_closed(boundary::Vector{C},xtol::T) where {T<:Real,C<:Abs
     return _endpoint_distance(xR,xL)<=xtol
 end
 
+function build_component_join_topology(boundary::Vector{C};xtol=1e-10,angtol=1e-8,periodic::Bool=true) where {T<:Real,C<:AbsCurve}
+    n=length(boundary)
+    T=eltype(curve(boundary[1],[zero(T)]))
+    prev=Vector{Int}(undef,n)
+    next=Vector{Int}(undef,n)
+    left_kind=Vector{Symbol}(undef,n)
+    right_kind=Vector{Symbol}(undef,n)
+    left_angle=Vector{T}(undef,n)
+    right_angle=Vector{T}(undef,n)
+    # exact endpoints + tangents (NOT sampled nodes!)
+    xL=Vector{SVector{2,T}}(undef,n)
+    xR=Vector{SVector{2,T}}(undef,n)
+    tL=Vector{SVector{2,T}}(undef,n)
+    tR=Vector{SVector{2,T}}(undef,n)
+    @inbounds for i in 1:n
+        crv=boundary[i]
+        xL[i]=curve(crv,[zero(T)])[1]
+        xR[i]=curve(crv,[one(T)])[1]
+        tL[i]=tangent(crv,[zero(T)])[1]
+        tR[i]=tangent(crv,[one(T)])[1]
+    end
+    @inbounds for i in 1:n
+        prev[i]=(i==1) ? (periodic ? n : 0) : i-1
+        next[i]=(i==n) ? (periodic ? 1 : 0) : i+1
+        # -----------------
+        # LEFT JOIN
+        # -----------------
+        if prev[i]==0
+            left_kind[i]=:end
+            left_angle[i]=T(NaN)
+        else
+            d=_endpoint_distance(xR[prev[i]],xL[i])
+            d>xtol && error("Boundary ordering mismatch at left join of segment $i: distance = $d")
+
+            θ=_join_angle(tR[prev[i]],tL[i])
+            left_angle[i]=θ
+            left_kind[i]=(θ<=angtol) ? :smooth : :corner
+        end
+        # -----------------
+        # RIGHT JOIN
+        # -----------------
+        if next[i]==0
+            right_kind[i]=:end
+            right_angle[i]=T(NaN)
+        else
+            d=_endpoint_distance(xR[i],xL[next[i]])
+            d>xtol && error("Boundary ordering mismatch at right join of segment $i: distance = $d")
+            θ=_join_angle(tR[i],tL[next[i]])
+            right_angle[i]=θ
+            right_kind[i]=(θ<=angtol) ? :smooth : :corner
+        end
+    end
+    return AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle)
+end
+
 # _open_panel_weights
 # Build simple open-panel geometric spacing weights from sampled arclength values.
 #

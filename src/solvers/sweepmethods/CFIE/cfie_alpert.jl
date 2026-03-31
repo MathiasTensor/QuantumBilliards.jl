@@ -507,73 +507,21 @@ end
 #### COMPOSITE ALPERT HELP ####
 ###############################
 
-function _alpert_component_global_maps(solver::CFIE_alpert{T},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+function build_join_topology(solver::CFIE_alpert{T},billiard::Bi;xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    # simple closed components [outer,hole1,...]
-    if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
+    if !(boundary[1] isa AbstractVector)
         return nothing
     end
-    # single composite boundary [seg1,seg2,...]
-    if _is_single_composite_boundary(boundary)
-        return [collect(1:length(boundary))]
-    end
-    # nested composite components [[outer...],[hole1...],...]
-    maps=Vector{Vector{Int}}(undef,length(boundary))
+    topos=Vector{AlpertCompositeTopology{T}}(undef,length(boundary))
+    gmaps=Vector{Vector{Int}}(undef,length(boundary))
     pos=1
     @inbounds for c in eachindex(boundary)
-        nseg=length(boundary[c])
-        maps[c]=collect(pos:(pos+nseg-1))
+        comp=(c==1) ? boundary[c] : _reverse_component_curves(boundary[c])
+        nseg=length(comp)
+        gmaps[c]=collect(pos:(pos+nseg-1))
         pos+=nseg
-    end
-    return maps
-end
-
-function build_join_topology_from_pts(solver::CFIE_alpert{T},billiard::Bi,pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real,Bi<:AbsBilliard}
-    gmaps=_alpert_component_global_maps(solver,billiard)
-    gmaps===nothing && return nothing
-    topos=Vector{AlpertCompositeTopology{T}}(undef,length(gmaps))
-    @inbounds for c in eachindex(gmaps)
-        gmap=gmaps[c]
-        n=length(gmap)
-        prev=Vector{Int}(undef,n)
-        next=Vector{Int}(undef,n)
-        left_kind=Vector{Symbol}(undef,n)
-        right_kind=Vector{Symbol}(undef,n)
-        left_angle=Vector{T}(undef,n)
-        right_angle=Vector{T}(undef,n)
-        xL1=pts[gmap[1]].xy[1]
-        xRn=pts[gmap[end]].xy[end]
-        periodic=_endpoint_distance(xRn,xL1)<=xtol
-        for l in 1:n
-            prev[l]=(l==1) ? (periodic ? n : 0) : l-1
-            next[l]=(l==n) ? (periodic ? 1 : 0) : l+1
-        end
-        for l in 1:n
-            a=gmap[l]
-            if prev[l]==0
-                left_kind[l]=:end
-                left_angle[l]=T(NaN)
-            else
-                ap=gmap[prev[l]]
-                d=_endpoint_distance(pts[ap].xy[end],pts[a].xy[1])
-                d>xtol && error("Composite boundary mismatch at left join of local panel $l in component $c: distance = $d")
-                θ=_join_angle(pts[ap].tangent[end],pts[a].tangent[1])
-                left_angle[l]=θ
-                left_kind[l]=(θ<=angtol) ? :smooth : :corner
-            end
-            if next[l]==0
-                right_kind[l]=:end
-                right_angle[l]=T(NaN)
-            else
-                an=gmap[next[l]]
-                d=_endpoint_distance(pts[a].xy[end],pts[an].xy[1])
-                d>xtol && error("Composite boundary mismatch at right join of local panel $l in component $c: distance = $d")
-                θ=_join_angle(pts[a].tangent[end],pts[an].tangent[1])
-                right_angle[l]=θ
-                right_kind[l]=(θ<=angtol) ? :smooth : :corner
-            end
-        end
-        topos[c]=AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle)
+        periodic=_is_component_closed(comp,xtol)
+        topos[c]=build_component_join_topology(comp;xtol=xtol,angtol=angtol,periodic=periodic)
     end
     return topos,gmaps
 end
@@ -1052,7 +1000,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     Gs=[cfie_geom_cache(p) for p in pts]
     Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
     nc=length(pts)
-    topo_data=build_join_topology_from_pts(solver,solver.billiard,pts)
+    topo_data=build_join_topology(solver,solver.billiard)
     gmaps=topo_data===nothing ? nothing : topo_data[2]
     if topo_data===nothing
         for a in 1:nc
@@ -1208,7 +1156,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         rule=alpert_log_rule(T,solver.alpert_order)
         Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
         nc=length(pts)
-        topo_data=build_join_topology_from_pts(solver,solver.billiard,pts)
+        topo_data=build_join_topology(solver,solver.billiard)
         gmaps=topo_data===nothing ? nothing : topo_data[2]
         if topo_data===nothing
             for a in 1:nc
