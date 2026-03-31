@@ -195,7 +195,10 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLo
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
-#=
+###########################################
+########### PANEL LOGIC ALPERT ############
+###########################################
+
 struct AlpertPanelCache{T<:Real}
     xp::Matrix{T}
     yp::Matrix{T}
@@ -211,23 +214,6 @@ struct AlpertPanelCache{T<:Real}
     wtp::Array{T,3}      # jcorr × N × 4
     idxm::Array{Int,3}   # jcorr × N × 4
     wtm::Array{T,3}      # jcorr × N × 4
-end
-=#
-struct AlpertPanelCache{T<:Real}
-    us::Vector{T}
-    bw::Vector{T}
-    Le::Matrix{T}
-    Re::Matrix{T}
-    xe::Vector{T}
-    ye::Vector{T}
-    txe::Vector{T}
-    tye::Vector{T}
-    se::Vector{T}
-    xr::Vector{T}
-    yr::Vector{T}
-    txr::Vector{T}
-    tyr::Vector{T}
-    sr::Vector{T}
 end
 
 # _panel_us
@@ -250,7 +236,6 @@ end
 # Outputs:
 #   - Tuple of indices (jm1, j, jp1, jp2) corresponding to the points used in the stencil.
 #   - Tuple of weights (w0, w1, w2, w3) corresponding to the Lagrange interpolation weights for the local coordinate η.
-#=
 @inline function _panel_local4_midpoint_data(u::T,h::T,N::Int) where {T<:Real}
     s=u/h-T(1)/2
     j0=floor(Int,s)+1
@@ -263,7 +248,6 @@ end
     w0,w1,w2,w3=_lagrange4_weights(η)
     return (jm1,j,jp1,jp2),(w0,w1,w2,w3)
 end
-=#
 
 # _eval_shifted_source_panel_local4
 # Evaluate the geometry, tangent, and speed at a shifted source point using a local 4-point stencil for a panel. This is used to compute the Alpert correction for points near the panel midpoints.
@@ -278,7 +262,6 @@ end
 #   - s : Interpolated speed (magnitude of the tangent vector) at the shifted source point.
 #   - idx : Tuple of indices used for the interpolation stencil.
 #   - wt : Tuple of weights used for the interpolation.
-#=
 @inline function _eval_shifted_source_panel_local4(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
     N=length(X)
     idx,wt=_panel_local4_midpoint_data(u,h,N)
@@ -290,60 +273,6 @@ end
     ty=w1*dY[i1]+w2*dY[i2]+w3*dY[i3]+w4*dY[i4]
     s=sqrt(tx*tx+ty*ty)
     return x,y,tx,ty,s,idx,wt
-end
-=#
-
-function _barycentric_weights_open(us::AbstractVector{T}) where {T<:Real}
-    N=length(us)
-    bw=Vector{T}(undef,N)
-    @inbounds for j in 1:N
-        v=one(T)
-        uj=us[j]
-        for m in 1:N
-            m==j && continue
-            v*=uj-us[m]
-        end
-        bw[j]=inv(v)
-    end
-    return bw
-end
-
-function _interp_vector_open!(ℓ::AbstractVector{T},u::T,us::AbstractVector{T},bw::AbstractVector{T}) where {T<:Real}
-    fill!(ℓ,zero(T))
-    hit=0
-    den=zero(T)
-    @inbounds for j in eachindex(us)
-        δ=u-us[j]
-        if abs(δ)<=64*eps(T)
-            hit=j
-            break
-        end
-        den+=bw[j]/δ
-    end
-    if hit!=0
-        ℓ[hit]=one(T)
-        return ℓ
-    end
-    @inbounds for j in eachindex(us)
-        δ=u-us[j]
-        ℓ[j]=(bw[j]/δ)/den
-    end
-    return ℓ
-end
-
-@inline function _interp_geom_from_vec(
-    ℓ::AbstractVector{T},
-    X::AbstractVector{T},
-    Y::AbstractVector{T},
-    dX::AbstractVector{T},
-    dY::AbstractVector{T}
-) where {T<:Real}
-    x=dot(ℓ,X)
-    y=dot(ℓ,Y)
-    tx=dot(ℓ,dX)
-    ty=dot(ℓ,dY)
-    s=sqrt(tx*tx+ty*ty)
-    return x,y,tx,ty,s
 end
 
 # _build_alpert_component_cache
@@ -357,7 +286,6 @@ end
 #
 # Outputs:
 #   - C::AlpertComponentCache{T} : Cache storing interpolation metadata and endpoint rules.
-#=
 function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
@@ -417,53 +345,6 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
         end
     end
     return AlpertPanelCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
-end
-=#
-
-function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-
-    N=length(X)
-    us=pts.ts
-    bw=_barycentric_weights_open(us)
-
-    h=pts.ws[1]
-    jcorr=rule.j
-    ξ=rule.x
-
-    Le=Matrix{T}(undef,jcorr,N)
-    Re=Matrix{T}(undef,jcorr,N)
-
-    xe=Vector{T}(undef,jcorr)
-    ye=similar(xe)
-    txe=similar(xe)
-    tye=similar(xe)
-    se=similar(xe)
-
-    xr=Vector{T}(undef,jcorr)
-    yr=similar(xr)
-    txr=similar(xr)
-    tyr=similar(xr)
-    sr=similar(xr)
-
-    ℓ=Vector{T}(undef,N)
-
-    @inbounds for p in 1:jcorr
-        ul=h*ξ[p]
-        _interp_vector_open!(ℓ,ul,us,bw)
-        @views copyto!(Le[p,:],ℓ)
-        xe[p],ye[p],txe[p],tye[p],se[p]=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
-
-        ur=one(T)-h*ξ[p]
-        _interp_vector_open!(ℓ,ur,us,bw)
-        @views copyto!(Re[p,:],ℓ)
-        xr[p],yr[p],txr[p],tyr[p],sr[p]=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
-    end
-
-    return AlpertPanelCache(us,bw,Le,Re,xe,ye,txe,tye,se,xr,yr,txr,tyr,sr)
 end
 
 # _build_alpert_component_cache
@@ -555,7 +436,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     return A
 end
 
-#=
 function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
@@ -608,118 +488,6 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
             end
         end
     end
-    return A
-end
-=#
-
-function _assemble_self_alpert_panel!(
-    solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    pts::BoundaryPointsCFIE{T},
-    G::CFIEGeomCache{T},
-    C::AlpertPanelCache{T},
-    row_range::UnitRange{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true
-) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-
-    N=length(X)
-    h=pts.ws[1]
-    a=rule.a
-    jcorr=rule.j
-    ξ=rule.x
-    ω=rule.w
-
-    @use_threads multithreading=multithreaded for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
-        si=G.speed[i]
-        κi=G.kappa[i]
-        ui=C.us[i]
-
-        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
-
-        @inbounds for j in 1:N
-            j==i && continue
-            gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
-        end
-
-        @inbounds for j in 1:N
-            j==i && continue
-            abs(j-i)<a && continue
-            gj=row_range[j]
-            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-        end
-
-        ℓ=Vector{T}(undef,N)
-
-        @inbounds for p in 1:jcorr
-            fac=h*ω[p]
-
-            up=ui+h*ξ[p]
-            if up<=one(T)
-                _interp_vector_open!(ℓ,up,C.us,C.bw)
-                xp,yp,txp,typ,sp=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
-                dx=xi-xp
-                dy=yi-yp
-                r=sqrt(dx*dx+dy*dy)
-                _check_r(r,"panel-near-plus",i,p)
-                coeff=-ik*(fac*(αS*H(0,k*r)*sp))
-                for q in 1:N
-                    A[gi,row_range[q]]+=coeff*ℓ[q]
-                end
-            else
-                dx=xi-C.xr[p]
-                dy=yi-C.yr[p]
-                r=sqrt(dx*dx+dy*dy)
-                _check_r(r,"panel-right-end",i,p)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sr[p]))
-                @views Re_p=C.Re[p,:]
-                for q in 1:N
-                    A[gi,row_range[q]]+=coeff*Re_p[q]
-                end
-            end
-
-            um=ui-h*ξ[p]
-            if um>=zero(T)
-                _interp_vector_open!(ℓ,um,C.us,C.bw)
-                xm,ym,txm,tym,sm=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
-                dx=xi-xm
-                dy=yi-ym
-                r=sqrt(dx*dx+dy*dy)
-                _check_r(r,"panel-near-minus",i,p)
-                coeff=-ik*(fac*(αS*H(0,k*r)*sm))
-                for q in 1:N
-                    A[gi,row_range[q]]+=coeff*ℓ[q]
-                end
-            else
-                dx=xi-C.xe[p]
-                dy=yi-C.ye[p]
-                r=sqrt(dx*dx+dy*dy)
-                _check_r(r,"panel-left-end",i,p)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.se[p]))
-                @views Le_p=C.Le[p,:]
-                for q in 1:N
-                    A[gi,row_range[q]]+=coeff*Le_p[q]
-                end
-            end
-        end
-    end
-
     return A
 end
 

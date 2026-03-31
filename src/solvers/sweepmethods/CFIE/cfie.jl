@@ -56,42 +56,14 @@ struct CFIE_alpert{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
     billiard::Bi
     symmetry::Union{Nothing,Vector{Any}}
     alpert_order::Int
-    grading_power::T
 end
 
-function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order::Int=16,grading_power::T=T(3)) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     _=alpert_log_rule(T,alpert_order)
-    grading_power<one(T) && error("grading_power must be >= 1")
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_alpert{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order,grading_power)
-end
-
-# Alpert grading maps for panels whenever the boundary is not smooth
-
-@inline function _grade_map(t::T,β::T) where {T<:Real}
-    if t<=T(0.5)
-        return T(0.5)*(2*t)^β
-    else
-        return one(T)-T(0.5)*(2*(one(T)-t))^β
-    end
-end
-@inline function _grade_map_prime(t::T,β::T) where {T<:Real}
-    if t<=T(0.5)
-        return β*(2*t)^(β-one(T))
-    else
-        return β*(2*(one(T)-t))^(β-one(T))
-    end
-end
-@inline function _grade_map_second(t::T,β::T) where {T<:Real}
-    if β==one(T)
-        return zero(T)
-    elseif t<=T(0.5)
-        return 2*β*(β-one(T))*(2*t)^(β-T(2))
-    else
-        return -2*β*(β-one(T))*(2*(one(T)-t))^(β-T(2))
-    end
+    return CFIE_alpert{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order)
 end
 
 #############################
@@ -259,7 +231,6 @@ end
 #   - BoundaryPointsCFIE{T}
 # Notes:
 #   - No lcm / symmetry-dependent point adjustment is used here -> since we do it before Beyn.
-#=
 function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
@@ -274,52 +245,6 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     h=inv(T(N))   # midpoint spacing
     ws=fill(h,N)
     ws_der=ones(T,N)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
-end
-=#
-function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
-    L=crv.length
-    bs=solver.pts_scaling_factor
-    N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    N<4 && (N=4)
-    # uniform computational parameter
-    tmid=collect(midpoints(range(zero(T),one(T),length=N+1)))
-    h=inv(T(N))
-    β=solver.grading_power
-    # graded physical parameter on the curve
-    u=similar(tmid)
-    up=similar(tmid)
-    upp=similar(tmid)
-    @inbounds for j in eachindex(tmid)
-        tj=tmid[j]
-        u[j]=_grade_map(tj,β)
-        up[j]=_grade_map_prime(tj,β)
-        upp[j]=_grade_map_second(tj,β)
-    end
-    xy=curve(crv,u)
-    γu=tangent(crv,u)
-    γuu=tangent_2(crv,u)
-    tangent_1st=Vector{SVector{2,T}}(undef,N)
-    tangent_2nd=Vector{SVector{2,T}}(undef,N)
-    @inbounds for j in 1:N
-        gu=γu[j]
-        guu=γuu[j]
-        ujp=up[j]
-        ujpp=upp[j]
-        tangent_1st[j]=gu*ujp
-        tangent_2nd[j]=guu*(ujp*ujp)+gu*ujpp
-    end
-    speed=Vector{T}(undef,N)
-    @inbounds for j in 1:N
-        tx=tangent_1st[j][1]
-        ty=tangent_1st[j][2]
-        speed[j]=sqrt(tx*tx+ty*ty)
-    end
-    # computational parameter is uniform
-    ts=tmid
-    ws=fill(h,N)
-    ws_der=ones(T,N)
-    ds=h.*speed
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
 end
 
