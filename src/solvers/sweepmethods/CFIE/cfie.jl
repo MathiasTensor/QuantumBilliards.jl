@@ -258,7 +258,7 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
         for (idx,crv) in enumerate(boundary)
             p=_is_closed_curve(crv) ? _evaluate_points_periodic(solver,crv,k,idx) : _evaluate_points_panel(solver,crv,k,idx)
             pts[idx]=(idx==1) ? p : _reverse_component_orientation(p)
-            @info "Component $idx: $(length(p.xy)) points, periodic: $(p.is_periodic)"
+            @info "Simple boundary: Component $idx: $(length(p.xy)) points, periodic: $(p.is_periodic)"
         end
         return pts
     end
@@ -271,7 +271,7 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
     pos=1 # global position in the concatenated pts array
     for crv in outer_boundary
         pts[pos]=_evaluate_points_panel(solver,crv,k,pos)
-        @info "Component $pos: $(length(pts[pos].xy)) points, periodic: $(pts[pos].is_periodic)"
+        @info "Boundary with hole: Component $pos: $(length(pts[pos].xy)) points, periodic: $(pts[pos].is_periodic)"
         pos+=1
     end
     for comp in inner_boundaries
