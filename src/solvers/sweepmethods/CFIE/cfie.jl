@@ -199,9 +199,9 @@ end
 #   - xtol::T : Tolerance for determining if the curve is closed.
 # Outputs:
 #   - Bool : True if the curve is closed, false otherwise.
-@inline function _is_closed_curve(crv::C;xtol::T=T(1e-10)) where {T<:Real,C<:AbsCurve}
-    x0=curve(crv,[zero(T)])[1]
-    x1=curve(crv,[one(T)])[1]
+@inline function _is_closed_curve(crv::C;xtol=1e-10) where {C<:AbsCurve}
+    x0=curve(crv,[0.0])[1]
+    x1=curve(crv,[1.0])[1]
     return _endpoint_distance(x0,x1)<=xtol
 end
 
