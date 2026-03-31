@@ -305,6 +305,7 @@ end
 #   - AlpertComponentCache{T} : Precomputed cache for the Alpert rule, either periodic or panel-based.
 function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule) : _build_alpert_panel_cache(pts,rule)
+end
 
 ###########################################################
 ################ SELF ALPERT ASSEMBLY #####################
