@@ -226,7 +226,7 @@ end
 #   - us::Vector{T} :
 #       Uniform nodes 0, 1/(N-1), ..., 1.
 @inline function _panel_us(::Type{T},N::Int) where {T<:Real}
-    return collect(range(zero(T),one(T),length=N))
+    return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
 
 # _barycentric_weights_open
