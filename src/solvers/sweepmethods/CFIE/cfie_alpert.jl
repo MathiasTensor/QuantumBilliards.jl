@@ -198,24 +198,7 @@ end
 ###########################################
 ########### PANEL LOGIC ALPERT ############
 ###########################################
-#=
-struct AlpertPanelCache{T<:Real}
-    xp::Matrix{T}
-    yp::Matrix{T}
-    txp::Matrix{T}
-    typ::Matrix{T}
-    sp::Matrix{T}
-    xm::Matrix{T}
-    ym::Matrix{T}
-    txm::Matrix{T}
-    tym::Matrix{T}
-    sm::Matrix{T}
-    idxp::Array{Int,3}   # jcorr × N × 4
-    wtp::Array{T,3}      # jcorr × N × 4
-    idxm::Array{Int,3}   # jcorr × N × 4
-    wtm::Array{T,3}      # jcorr × N × 4
-end
-=#
+
 struct AlpertPanelCache{T<:Real}
     us::Vector{T}
     xp::Matrix{T}
@@ -362,7 +345,6 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
             wtm[p,i,4]=wt[4]
         end
     end
-    #return AlpertPanelCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
     return AlpertPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
@@ -486,59 +468,33 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
             gj=row_range[j]
             A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-        #=
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            _check_r(r,"panel-near-plus",i,p)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-            for m in 1:4
-                q=C.idxp[p,i,m]
-                A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
-            end
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-            for m in 1:4
-                q=C.idxm[p,i,m]
-                A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
-            end
-        end
-        =#
-        @inbounds for p in 1:jcorr
-            fac = h*rule.w[p]
-            Δu  = h*rule.x[p]
-            ui  = C.us[i]
-
+            Δu=h*rule.x[p]
+            ui=C.us[i]
             # plus side exists only if still inside panel
-            if ui + Δu < one(T)
-                dx = xi - C.xp[p,i]
-                dy = yi - C.yp[p,i]
-                r  = sqrt(dx*dx + dy*dy)
-
-                if isfinite(r) && r > sqrt(eps(T))
-                    coeff = -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            if ui+Δu<one(T)
+                dx=xi-C.xp[p,i]
+                dy=yi-C.yp[p,i]
+                r=sqrt(dx*dx+dy*dy)
+                if isfinite(r) && r>sqrt(eps(T))
+                    coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
                     for m in 1:4
-                        q = C.idxp[p,i,m]
-                        A[gi,row_range[q]] += coeff*C.wtp[p,i,m]
+                        q=C.idxp[p,i,m]
+                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
                     end
                 end
             end
-
             # minus side exists only if still inside panel
-            if ui - Δu > zero(T)
-                dx = xi - C.xm[p,i]
-                dy = yi - C.ym[p,i]
-                r  = sqrt(dx*dx + dy*dy)
-
-                if isfinite(r) && r > sqrt(eps(T))
-                    coeff = -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            if ui-Δu>zero(T)
+                dx=xi-C.xm[p,i]
+                dy=yi-C.ym[p,i]
+                r=sqrt(dx*dx+dy*dy)
+                if isfinite(r) && r>sqrt(eps(T))
+                    coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
                     for m in 1:4
-                        q = C.idxm[p,i,m]
-                        A[gi,row_range[q]] += coeff*C.wtm[p,i,m]
+                        q=C.idxm[p,i,m]
+                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
                     end
                 end
             end
