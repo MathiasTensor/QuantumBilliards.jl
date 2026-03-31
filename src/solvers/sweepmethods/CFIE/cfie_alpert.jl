@@ -320,63 +320,82 @@ end
 ################ SELF ALPERT ASSEMBLY #####################
 ###########################################################
 
-function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    N=length(pts.ts)
-    a=rule.a
-    jcorr=rule.j
-    h=pts.ws[1]
+function _assemble_self_alpert_periodic!(
+    A::AbstractMatrix{Complex{T}},
+    pts::BoundaryPointsCFIE{T},
+    G::CFIEGeomCache{T},
+    C::AlpertPeriodicCache{T},
+    row_range::UnitRange{Int},
+    k::T,
+    rule::AlpertLogRule{T};
+    multithreaded::Bool=true
+) where {T<:Real}
+
+    αD = Complex{T}(0, k/2)
+    αS = Complex{T}(0, one(T)/2)
+    ik = Complex{T}(0, k)
+
+    X = getindex.(pts.xy, 1)
+    Y = getindex.(pts.xy, 2)
+
+    N = length(pts.ts)
+    a = rule.a
+    jcorr = rule.j
+    h = pts.ws[1]
 
     @use_threads multithreading=multithreaded for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
-        wi=pts.ds[i]
-        κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
+        gi = row_range[i]
+        xi = X[i]
+        yi = Y[i]
 
+        # local physical speed = |dγ/dθ|
+        si = G.speed[i]
+        κi = G.kappa[i]
+
+        # diagonal term: uses physical ds = si * h
+        A[gi,gi] += one(Complex{T}) - Complex{T}(h * si * κi, zero(T))
+
+        # DLP off-diagonal: tangent already contains dγ/dθ, so weight is h only
         @inbounds for j in 1:N
-            j==i && continue
-            gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            A[gi,gj]-=pts.ds[j]*(αD*inn*H(1,k*rij)*invr)
+            j == i && continue
+            gj   = row_range[j]
+            rij  = G.R[i,j]
+            inn  = G.inner[i,j]
+            invr = G.invR[i,j]
+            A[gi,gj] -= h * (αD * inn * H(1, k*rij) * invr)
         end
 
+        # SLP far part: here we need one factor of speed
         @inbounds for j in 1:N
-            j==i && continue
-            m=j-i
-            m>N÷2  && (m-=N)
-            m<-N÷2 && (m+=N)
-            abs(m)<a && continue
-            gj=row_range[j]
-            A[gi,gj]-=ik*(pts.ds[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            j == i && continue
+            m = j - i
+            m >  N÷2 && (m -= N)
+            m < -N÷2 && (m += N)
+            abs(m) < a && continue
+            gj = row_range[j]
+            A[gi,gj] -= ik * (h * (αS * H(0, k*G.R[i,j]) * G.speed[j]))
         end
 
+        # Alpert near correction: again parameter weight h * w_p, shifted speed already in C.sp/C.sm
         @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
+            fac = h * rule.w[p]
 
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-            @views lp=C.Lp[p,i,:]
+            dx = xi - C.xp[p,i]
+            dy = yi - C.yp[p,i]
+            r  = sqrt(dx*dx + dy*dy)
+            coeff = -ik * (fac * (αS * H(0, k*r) * C.sp[p,i]))
+            @views lp = C.Lp[p,i,:]
             for q in 1:N
-                A[gi,row_range[q]]+=coeff*lp[q]
+                A[gi,row_range[q]] += coeff * lp[q]
             end
 
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-            @views lm=C.Lm[p,i,:]
+            dx = xi - C.xm[p,i]
+            dy = yi - C.ym[p,i]
+            r  = sqrt(dx*dx + dy*dy)
+            coeff = -ik * (fac * (αS * H(0, k*r) * C.sm[p,i]))
+            @views lm = C.Lm[p,i,:]
             for q in 1:N
-                A[gi,row_range[q]]+=coeff*lm[q]
+                A[gi,row_range[q]] += coeff * lm[q]
             end
         end
     end

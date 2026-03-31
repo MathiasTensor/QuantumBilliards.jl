@@ -137,8 +137,7 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
-    ws_der=ones(T,N) # we kep these for future with different quadratures ala Kress (1)
-    # put it in global
+    ws_der=ones(T,N) 
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
 
