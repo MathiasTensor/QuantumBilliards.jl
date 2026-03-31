@@ -329,6 +329,8 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     N=length(pts.ts)
     a=rule.a
     jcorr=rule.j
+    h=pts.ws[1]
+
     @use_threads multithreading=multithreaded for i in 1:N
         gi=row_range[i]
         xi=X[i]
@@ -336,7 +338,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         wi=pts.ds[i]
         κi=G.kappa[i]
         A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
-        # DLP off-diagonal
+
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -345,7 +347,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             invr=G.invR[i,j]
             A[gi,gj]-=pts.ds[j]*(αD*inn*H(1,k*rij)*invr)
         end
-        # SLP far part
+
         @inbounds for j in 1:N
             j==i && continue
             m=j-i
@@ -355,22 +357,23 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             gj=row_range[j]
             A[gi,gj]-=ik*(pts.ds[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-        # Alpert near correction
+
         @inbounds for p in 1:jcorr
-            h=pts.ws[1]
             fac=h*rule.w[p]
+
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
             @views lp=C.Lp[p,i,:]
             for q in 1:N
                 A[gi,row_range[q]]+=coeff*lp[q]
             end
+
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
             @views lm=C.Lm[p,i,:]
             for q in 1:N
                 A[gi,row_range[q]]+=coeff*lm[q]
