@@ -100,7 +100,8 @@ end
 @inline function _eval_shifted_source_periodic_local4(θ::T,ts::AbstractVector{T},h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
     N = length(ts)
     # Convert θ to fractional grid coordinate in [0, N)
-    u=θ/h
+    u=θ/h-one(T)
+    u<zero(T) && (u+=T(N))
     u>=T(N) && (u-=T(N))
     # With ts[j] = j*h for j=1..N, the interval [ts[i], ts[i+1]) corresponds to i = floor(u)
     i0=floor(Int,u)
