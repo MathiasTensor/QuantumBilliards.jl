@@ -103,9 +103,10 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
     if solver isa CFIE_kress # FIXME: Future: hacky stuff, kress can have reverse orientation since periodic but for alpert code structured differently
-        ts=reverse(pts.ts)
+        ts=reverse(pts.ts) # dont touch kress here !!!
     else
-        ts=pts.is_periodic ? [s(j,N) for j in 1:N] : reverse(pts.ts)
+        #ts=pts.is_periodic ? [s(j,N) for j in 1:N] : reverse(pts.ts)
+        ts=[s(j,N) for j in 1:N]
     end
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
