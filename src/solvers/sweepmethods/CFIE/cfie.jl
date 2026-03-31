@@ -159,6 +159,52 @@ end
 #### ALPERT ####
 ################
 
+# Topology of joins between oriented boundary segments.
+# With the current definition, angle = acos(dot(t̂_left, t̂_right)):
+#   - angle ≈ 0   => smooth join
+#   - angle > 0   => corner
+# For now the angle is mainly used to classify joins; a later corner correction
+# may need a more precise interior-angle convention.
+struct AlpertCompositeTopology{T<:Real}
+    prev::Vector{Int}
+    next::Vector{Int}
+    left_kind::Vector{Symbol}   # :smooth, :corner, :end
+    right_kind::Vector{Symbol}
+    left_angle::Vector{T}
+    right_angle::Vector{T}
+end
+
+# needed normalized tangents for the dot product in _join_angle
+@inline function _unit_tangent(v::SVector{2,T}) where {T<:Real}
+    n=sqrt(v[1]^2+v[2]^2)
+    return v/n
+end
+
+@inline function _endpoint_distance(a::SVector{2,T},b::SVector{2,T}) where {T<:Real}
+    return sqrt((a[1]-b[1])^2+(a[2]-b[2])^2) # hypot(a-b)
+end
+
+# compute an approximate angle between segments using start and end tangents. It need not be exact since it is only used to decide whether to apply corner or smooth correction, and the corner correction is robust to angle misspecification.
+@inline function _join_angle(t1::SVector{2,T},t2::SVector{2,T}) where {T<:Real}
+    u1=_unit_tangent(t1)
+    u2=_unit_tangent(t2)
+    c=clamp(dot(u1,u2),-one(T),one(T))
+    return acos(c)
+end
+
+# _is_component_closed
+# Check if a a vector of curve segments forms a closed component by comparing the start point of the first segment with the end point of the last segment. This is used to determine if we should apply periodic corrections in the Alpert quadrature.
+# Inputs:
+#   - boundary::Vector{C} : Vector of curve segments that make up the boundary component, where C <: AbsCurve.
+#   - xtol::T : Tolerance for checking if the start and end points are close enough to be considered a closed component.
+# Outputs:
+#   - Bool : True if the component is closed (start and end points are within xtol), false otherwise.
+function _is_component_closed(boundary::Vector{C},xtol::T) where {T<:Real,C<:AbsCurve}
+    xL=curve(boundary[1],[zero(T)])[1]
+    xR=curve(boundary[end],[one(T)])[1]
+    return _endpoint_distance(xR,xL)<=xtol
+end
+
 # _open_panel_weights
 # Build simple open-panel geometric spacing weights from sampled arclength values.
 #

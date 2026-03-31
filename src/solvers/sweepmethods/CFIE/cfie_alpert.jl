@@ -199,7 +199,7 @@ end
 ########### PANEL LOGIC ALPERT ############
 ###########################################
 
-struct AlpertPanelCache{T<:Real}
+struct AlpertSmoothPanelCache{T<:Real}
     us::Vector{T}
     xp::Matrix{T}
     yp::Matrix{T}
@@ -228,7 +228,7 @@ end
     return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
 
-# _panel_local4_midpoint_data
+# _panel_smooth_local4_midpoint_data
 # Compute the indices and weights for a local 4-point stencil centered at the midpoint of a panel. This is used for applying the Alpert correction at the panel midpoints.
 # Inputs:
 #   - u : Local parameter value for which to compute the stencil (should be in [0,1] for a panel).
@@ -237,7 +237,7 @@ end
 # Outputs:
 #   - Tuple of indices (jm1, j, jp1, jp2) corresponding to the points used in the stencil.
 #   - Tuple of weights (w0, w1, w2, w3) corresponding to the Lagrange interpolation weights for the local coordinate η.
-@inline function _panel_local4_midpoint_data(u::T,h::T,N::Int) where {T<:Real}
+@inline function _panel_smooth_local4_midpoint_data(u::T,h::T,N::Int) where {T<:Real}
     s=u/h-T(1)/2
     j0=floor(Int,s)+1
     η=s-floor(T,s)
@@ -250,7 +250,7 @@ end
     return (jm1,j,jp1,jp2),(w0,w1,w2,w3)
 end
 
-# _eval_shifted_source_panel_local4
+# _eval_shifted_source_smooth_panel_local4
 # Evaluate the geometry, tangent, and speed at a shifted source point using a local 4-point stencil for a panel. This is used to compute the Alpert correction for points near the panel midpoints.
 # Inputs:
 #   - u : Local parameter value for the shifted source point.
@@ -263,9 +263,9 @@ end
 #   - s : Interpolated speed (magnitude of the tangent vector) at the shifted source point.
 #   - idx : Tuple of indices used for the interpolation stencil.
 #   - wt : Tuple of weights used for the interpolation.
-@inline function _eval_shifted_source_panel_local4(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+@inline function _eval_shifted_source_smooth_panel_local4(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
     N=length(X)
-    idx,wt=_panel_local4_midpoint_data(u,h,N)
+    idx,wt=_panel_smooth_local4_midpoint_data(u,h,N)
     i1,i2,i3,i4=idx
     w1,w2,w3,w4=wt
     x=w1*X[i1]+w2*X[i2]+w3*X[i3]+w4*X[i4]
@@ -287,7 +287,7 @@ end
 #
 # Outputs:
 #   - C::AlpertComponentCache{T} : Cache storing interpolation metadata and endpoint rules.
-function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
@@ -314,7 +314,7 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
         Δu=h*rule.x[p]
         for i in 1:N
             up=us[i]+Δu
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_panel_local4(up,h,X,Y,dX,dY)
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_local4(up,h,X,Y,dX,dY)
             xp[p,i]=x
             yp[p,i]=y
             txp[p,i]=tx
@@ -329,7 +329,7 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
             wtp[p,i,3]=wt[3]
             wtp[p,i,4]=wt[4]
             um=us[i]-Δu
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_panel_local4(um,h,X,Y,dX,dY)
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_local4(um,h,X,Y,dX,dY)
             xm[p,i]=x
             ym[p,i]=y
             txm[p,i]=tx
@@ -345,7 +345,7 @@ function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRul
             wtm[p,i,4]=wt[4]
         end
     end
-    return AlpertPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
+    return AlpertSmoothPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
 # _build_alpert_component_cache
@@ -356,7 +356,7 @@ end
 # Outputs:
 #   - AlpertComponentCache{T} : Precomputed cache for the Alpert rule, either periodic or panel-based.
 function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
-    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule) : _build_alpert_panel_cache(pts,rule)
+    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule) : _build_alpert_smooth_panel_cache(pts,rule)
 end
 
 ###########################################################
@@ -437,7 +437,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     return A
 end
 
-function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
@@ -503,6 +503,261 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
     return A
 end
 
+###############################
+#### COMPOSITE ALPERT HELP ####
+###############################
+
+function _alpert_component_global_maps(solver::CFIE_alpert{T},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+    if !(boundary[1] isa AbstractVector)
+        return nothing
+    end
+    maps=Vector{Vector{Int}}(undef,length(boundary))
+    pos=1
+    @inbounds for c in eachindex(boundary)
+        nseg=length(boundary[c])
+        maps[c]=collect(pos:(pos+nseg-1))
+        pos+=nseg
+    end
+    return maps
+end
+
+function build_join_topology_from_pts(solver::CFIE_alpert{T},billiard::Bi,pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real,Bi<:AbsBilliard}
+    gmaps=_alpert_component_global_maps(solver,billiard)
+    gmaps===nothing && return nothing
+    topos=Vector{AlpertCompositeTopology{T}}(undef,length(gmaps))
+    @inbounds for c in eachindex(gmaps)
+        gmap=gmaps[c]
+        n=length(gmap)
+        prev=Vector{Int}(undef,n)
+        next=Vector{Int}(undef,n)
+        left_kind=Vector{Symbol}(undef,n)
+        right_kind=Vector{Symbol}(undef,n)
+        left_angle=Vector{T}(undef,n)
+        right_angle=Vector{T}(undef,n)
+        xL1=pts[gmap[1]].xy[1]
+        xRn=pts[gmap[end]].xy[end]
+        periodic=_endpoint_distance(xRn,xL1)<=xtol
+        for l in 1:n
+            prev[l]=(l==1) ? (periodic ? n : 0) : l-1
+            next[l]=(l==n) ? (periodic ? 1 : 0) : l+1
+        end
+        for l in 1:n
+            a=gmap[l]
+            if prev[l]==0
+                left_kind[l]=:end
+                left_angle[l]=T(NaN)
+            else
+                ap=gmap[prev[l]]
+                d=_endpoint_distance(pts[ap].xy[end],pts[a].xy[1])
+                d>xtol && error("Composite boundary mismatch at left join of local panel $l in component $c: distance = $d")
+                θ=_join_angle(pts[ap].tangent[end],pts[a].tangent[1])
+                left_angle[l]=θ
+                left_kind[l]=(θ<=angtol) ? :smooth : :corner
+            end
+            if next[l]==0
+                right_kind[l]=:end
+                right_angle[l]=T(NaN)
+            else
+                an=gmap[next[l]]
+                d=_endpoint_distance(pts[a].xy[end],pts[an].xy[1])
+                d>xtol && error("Composite boundary mismatch at right join of local panel $l in component $c: distance = $d")
+                θ=_join_angle(pts[a].tangent[end],pts[an].tangent[1])
+                right_angle[l]=θ
+                right_kind[l]=(θ<=angtol) ? :smooth : :corner
+            end
+        end
+        topos[c]=AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle)
+    end
+    return topos,gmaps
+end
+
+@inline function _component_id_of_panel(a::Int,gmaps::Vector{Vector{Int}})
+    @inbounds for c in eachindex(gmaps)
+        a in gmaps[c] && return c
+    end
+    return 0
+end
+
+@inline function _panel_xy_tangent_arrays(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    return X,Y,dX,dY
+end
+
+@inline function _scatter_local4!(A::AbstractMatrix{Complex{T}},gi::Int,col_range::UnitRange{Int},coeff::Complex{T},idx,wt) where {T<:Real}
+    @inbounds for m in 1:4
+        q=idx[m]
+        A[gi,col_range[q]]+=coeff*wt[m]
+    end
+    return nothing
+end
+
+@inline function _right_neighbor_excluded_count(i::Int,N::Int,a::Int)
+    return max(0,i+a-1-N)
+end
+
+@inline function _left_neighbor_excluded_count(i::Int,a::Int)
+    return max(0,a-i)
+end
+
+@inline function _eval_on_open_panel_local4(pts::BoundaryPointsCFIE{T},u::T) where {T<:Real}
+    X,Y,dX,dY=_panel_xy_tangent_arrays(pts)
+    h=pts.ws[1]
+    return _eval_shifted_source_smooth_panel_local4(u,h,X,Y,dX,dY)
+end
+
+function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int};multithreaded::Bool=true) where {T<:Real}
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    a=rule.a
+    jcorr=rule.j
+    @inbounds for l in eachindex(gmap)
+        aidx=gmap[l]
+        pa=pts[aidx]
+        Ga=Gs[aidx]
+        Ca=Cs[aidx]
+        ra=offs[aidx]:(offs[aidx+1]-1)
+        Xa=getindex.(pa.xy,1)
+        Ya=getindex.(pa.xy,2)
+        Na=length(pa.xy)
+        ha=pa.ws[1]
+        left_smooth=topo.left_kind[l]===:smooth
+        right_smooth=topo.right_kind[l]===:smooth
+        lprev=topo.prev[l]
+        lnext=topo.next[l]
+        prev_idx=(lprev==0) ? 0 : gmap[lprev]
+        next_idx=(lnext==0) ? 0 : gmap[lnext]
+        prev_pts=(prev_idx==0) ? nothing : pts[prev_idx]
+        next_pts=(next_idx==0) ? nothing : pts[next_idx]
+        prev_ra=(prev_idx==0) ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
+        next_ra=(next_idx==0) ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
+        @use_threads multithreading=multithreaded for i in 1:Na
+            gi=ra[i]
+            xi=Xa[i]
+            yi=Ya[i]
+            si=Ga.speed[i]
+            κi=Ga.kappa[i]
+            ui=Ca.us[i]
+            A[gi,gi]+=one(Complex{T})-Complex{T}(ha*si*κi,zero(T))
+            for m in eachindex(gmap)
+                bidx=gmap[m]
+                pb=pts[bidx]
+                rb=offs[bidx]:(offs[bidx+1]-1)
+                Xb=getindex.(pb.xy,1)
+                Yb=getindex.(pb.xy,2)
+                dXb=getindex.(pb.tangent,1)
+                dYb=getindex.(pb.tangent,2)
+                sb=@. sqrt(dXb^2+dYb^2)
+                Nb=length(pb.xy)
+                for j in 1:Nb
+                    gj=rb[j]
+                    if !(bidx==aidx && j==i)
+                        dx=xi-Xb[j]
+                        dy=yi-Yb[j]
+                        r2=muladd(dx,dx,dy*dy)
+                        if r2>(eps(T))^2
+                            r=sqrt(r2)
+                            invr=inv(r)
+                            inn=dYb[j]*dx-dXb[j]*dy
+                            A[gi,gj]-=pb.ws[j]*(αD*inn*H(1,k*r)*invr)
+                        end
+                    end
+                    skip_slp=false
+                    if bidx==aidx
+                        skip_slp=abs(j-i)<a
+                    elseif right_smooth && bidx==next_idx
+                        nr=_right_neighbor_excluded_count(i,Na,a)
+                        skip_slp=(j<=nr)
+                    elseif left_smooth && bidx==prev_idx
+                        nl=_left_neighbor_excluded_count(i,a)
+                        skip_slp=(j>Nb-nl)
+                    end
+                    if !skip_slp
+                        dx=xi-Xb[j]
+                        dy=yi-Yb[j]
+                        r2=muladd(dx,dx,dy*dy)
+                        if r2>(eps(T))^2
+                            r=sqrt(r2)
+                            A[gi,gj]-=ik*(pb.ws[j]*(αS*H(0,k*r)*sb[j]))
+                        end
+                    end
+                end
+            end
+            for p in 1:jcorr
+                fac=ha*rule.w[p]
+                Δu=ha*rule.x[p]
+                if ui+Δu<one(T)
+                    dx=xi-Ca.xp[p,i]
+                    dy=yi-Ca.yp[p,i]
+                    r=sqrt(dx*dx+dy*dy)
+                    if isfinite(r) && r>sqrt(eps(T))
+                        coeff=-ik*(fac*(αS*H(0,k*r)*Ca.sp[p,i]))
+                        for m4 in 1:4
+                            q=Ca.idxp[p,i,m4]
+                            A[gi,ra[q]]+=coeff*Ca.wtp[p,i,m4]
+                        end
+                    end
+                end
+                if ui-Δu>zero(T)
+                    dx=xi-Ca.xm[p,i]
+                    dy=yi-Ca.ym[p,i]
+                    r=sqrt(dx*dx+dy*dy)
+                    if isfinite(r) && r>sqrt(eps(T))
+                        coeff=-ik*(fac*(αS*H(0,k*r)*Ca.sm[p,i]))
+                        for m4 in 1:4
+                            q=Ca.idxm[p,i,m4]
+                            A[gi,ra[q]]+=coeff*Ca.wtm[p,i,m4]
+                        end
+                    end
+                end
+            end
+            if right_smooth && next_idx!=0
+                for p in 1:jcorr
+                    Δu=ha*rule.x[p]
+                    if ui+Δu>=one(T)
+                        u2=ui+Δu-one(T)
+                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_local4(next_pts,u2)
+                        dx=xi-x
+                        dy=yi-y
+                        r=sqrt(dx*dx+dy*dy)
+                        if isfinite(r) && r>sqrt(eps(T))
+                            fac=ha*rule.w[p]
+                            coeff=-ik*(fac*(αS*H(0,k*r)*s2))
+                            _scatter_local4!(A,gi,next_ra,coeff,idx2,wt2)
+                        end
+                    end
+                end
+            end
+            if left_smooth && prev_idx!=0
+                for p in 1:jcorr
+                    Δu=ha*rule.x[p]
+                    if ui-Δu<=zero(T)
+                        u2=one(T)+ui-Δu
+                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_local4(prev_pts,u2)
+                        dx=xi-x
+                        dy=yi-y
+                        r=sqrt(dx*dx+dy*dy)
+                        if isfinite(r) && r>sqrt(eps(T))
+                            fac=ha*rule.w[p]
+                            coeff=-ik*(fac*(αS*H(0,k*r)*s2))
+                            _scatter_local4!(A,gi,prev_ra,coeff,idx2,wt2)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return A
+end
+
+###############################################
+############## ASSEMBLY DISPATCH ##############
+###############################################
+
 # _assemble_self_alpert!
 # Assemble the self-panel CFIE block using:
 #   - plain trapezoid for DLP off-diagonal
@@ -523,9 +778,24 @@ end
 #   - This assumes `pts` is ONE smooth panel.
 #   - It is not yet a corner-aware or multi-segment panelwise implementation.
 # ---------------------------------------------------------
-function _assemble_self_alpert!(
-solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    return  pts.is_periodic ? _assemble_self_alpert_periodic!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded) : _assemble_self_alpert_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
+function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    return  pts.is_periodic ? _assemble_self_alpert_periodic!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded) : _assemble_self_alpert_smooth_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
+end
+
+# _assemble_all_self_alpert_composite!
+# Assemble all self-interaction blocks for a composite boundary using the appropriate Alpert assembly for each component. This dispatches to `_assemble_self_alpert_composite_component!` for each component, which handles the logic for smooth joins and near corrections based on the composite topology.
+# Inputs:
+#   - solver,A,pts,G,C,offs,k,rule,topos,gmaps :
+#       Standard assembly data for the composite case, including the topological information and global index maps.
+#   - multithreaded::Bool=true :
+#       Whether to thread over target rows within each component.
+# Outputs:
+#   - Modifies `A` in place with all self-interaction blocks assembled for the composite boundary.
+function _assemble_all_self_alpert_composite!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}};multithreaded::Bool=true) where {T<:Real}
+    @inbounds for c in eachindex(gmaps)
+        _assemble_self_alpert_composite_component!(solver,A,pts,Gs,Cs,offs,k,rule,topos[c],gmaps[c];multithreaded=multithreaded)
+    end
+    return A
 end
 
 ##############################
@@ -688,6 +958,7 @@ end
 #
 # Outputs:
 #   - Modifies `A` in place to contain the desymmetrized operator matrix.
+#=
 function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     symmetry=solver.symmetry
     isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
@@ -765,11 +1036,101 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     end
     return A
 end
+=#
+function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    symmetry=solver.symmetry
+    isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
+    offs=component_offsets(pts)
+    fill!(A,zero(Complex{T}))
+    rule=alpert_log_rule(T,solver.alpert_order)
+    Gs=[cfie_geom_cache(p) for p in pts]
+    Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
+    nc=length(pts)
+    topo_data=build_join_topology_from_pts(solver,solver.billiard,pts)
+    gmaps=topo_data===nothing ? nothing : topo_data[2]
+    if topo_data===nothing
+        for a in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
+        end
+    else
+        topos,gmaps=topo_data
+        _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
+    end
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    for a in 1:nc, b in 1:nc
+        a==b && continue
+        if gmaps!==nothing
+            ca=_component_id_of_panel(a,gmaps)
+            cb=_component_id_of_panel(b,gmaps)
+            ca!=0 && ca==cb && continue
+        end
+        pa=pts[a]
+        pb=pts[b]
+        Na=length(pa.xy)
+        Nb=length(pb.xy)
+        ra=offs[a]:(offs[a+1]-1)
+        rb=offs[b]:(offs[b+1]-1)
+        Xa=getindex.(pa.xy,1)
+        Ya=getindex.(pa.xy,2)
+        Xb=getindex.(pb.xy,1)
+        Yb=getindex.(pb.xy,2)
+        dXb=getindex.(pb.tangent,1)
+        dYb=getindex.(pb.tangent,2)
+        sb=@. sqrt(dXb^2+dYb^2)
+        @use_threads multithreading=multithreaded for j in 1:Nb
+            gj=rb[j]
+            xj=Xb[j]
+            yj=Yb[j]
+            txj=dXb[j]
+            tyj=dYb[j]
+            sj=sb[j]
+            wd=dlp_weight(pb,j)
+            ws=slp_weight(pb,j,sj)
+            @inbounds for i in 1:Na
+                gi=ra[i]
+                dx=Xa[i]-xj
+                dy=Ya[i]-yj
+                r2=muladd(dx,dx,dy*dy)
+                r2<=(eps(T))^2 && continue
+                r=sqrt(r2)
+                _check_r(r,"symmetry before images",i,j)
+                invr=inv(r)
+                inn=tyj*dx-txj*dy
+                dval=wd*(αD*inn*H(1,k*r)*invr)
+                sval=ws*(αS*H(0,k*r))
+                A[gi,gj]-=(dval+ik*sval)
+            end
+        end
+    end
+    for sym in symmetry
+        if sym isa Reflection
+            for a in 1:nc, b in 1:nc
+                ra=offs[a]:(offs[a+1]-1)
+                rb=offs[b]:(offs[b+1]-1)
+                _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
+            end
+        elseif sym isa Rotation
+            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
+            for a in 1:nc, b in 1:nc
+                ra=offs[a]:(offs[a+1]-1)
+                rb=offs[b]:(offs[b+1]-1)
+                _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,sym,costab,sintab,χ;multithreaded=multithreaded)
+            end
+        else
+            error("Unknown symmetry type $(typeof(sym))")
+        end
+    end
+    return A
+end
 
 ########################
 #### HIGH LEVEL API ####
 ########################
 
+#=
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(solver.symmetry)
         offs=component_offsets(pts)
@@ -787,6 +1148,78 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         end
         for a in 1:nc, b in 1:nc
             a==b && continue
+            pa=pts[a]
+            pb=pts[b]
+            Na=length(pa.xy)
+            Nb=length(pb.xy)
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            Xa=getindex.(pa.xy,1)
+            Ya=getindex.(pa.xy,2)
+            Xb=getindex.(pb.xy,1)
+            Yb=getindex.(pb.xy,2)
+            dXb=getindex.(pb.tangent,1)
+            dYb=getindex.(pb.tangent,2)
+            sb=@. sqrt(dXb^2+dYb^2)
+            @use_threads multithreading=multithreaded for j in 1:Nb
+                gj=rb[j]
+                xj=Xb[j]
+                yj=Yb[j]
+                txj=dXb[j]
+                tyj=dYb[j]
+                sj=sb[j]
+                wd=dlp_weight(pb,j)
+                ws=slp_weight(pb,j,sj)
+                @inbounds for i in 1:Na
+                    gi=ra[i]
+                    dx=Xa[i]-xj
+                    dy=Ya[i]-yj
+                    r2=muladd(dx,dx,dy*dy)
+                    r2<=(eps(T))^2 && continue
+                    r=sqrt(r2)
+                    inn=tyj*dx-txj*dy
+                    invr=inv(r)
+                    dval=wd*(αL2*inn*H(1,k*r)*invr)
+                    sval=ws*(αM2*H(0,k*r))
+                    A[gi,gj]-=(dval+ik*sval)
+                end
+            end
+        end
+        return A
+    else
+        return construct_matrices_symmetry!(solver,A,pts,k;multithreaded=multithreaded)
+    end
+end
+=#
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    if isnothing(solver.symmetry)
+        offs=component_offsets(pts)
+        αL2=Complex{T}(0,k/2)
+        αM2=Complex{T}(0,one(T)/2)
+        ik=Complex{T}(0,k)
+        fill!(A,zero(Complex{T}))
+        Gs=[cfie_geom_cache(p) for p in pts]
+        rule=alpert_log_rule(T,solver.alpert_order)
+        Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
+        nc=length(pts)
+        topo_data=build_join_topology_from_pts(solver,solver.billiard,pts)
+        gmaps=topo_data===nothing ? nothing : topo_data[2]
+        if topo_data===nothing
+            for a in 1:nc
+                ra=offs[a]:(offs[a+1]-1)
+                _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
+            end
+        else
+            topos,gmaps=topo_data
+            _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
+        end
+        for a in 1:nc, b in 1:nc
+            a==b && continue
+            if gmaps!==nothing
+                ca=_component_id_of_panel(a,gmaps)
+                cb=_component_id_of_panel(b,gmaps)
+                ca!=0 && ca==cb && continue
+            end
             pa=pts[a]
             pb=pts[b]
             Na=length(pa.xy)
