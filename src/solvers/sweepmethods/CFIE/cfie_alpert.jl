@@ -45,10 +45,10 @@ end
 #   - ts::AbstractVector{T} : Periodic nodes on [0,1] mapped to angles (length N).
 # Outputs:
 #   - l : Modified in place to contain the trigonometric cardinal weights for interpolation at angle θ.
-function trig_cardinal_weights!(l::AbstractVector{T},θ::T,ts::AbstractVector{T}) where {T<:Real}
+function trig_cardinal_weights!(l::AbstractVector{T}, θ::T, ts::AbstractVector{T}) where {T<:Real}
     N=length(ts)
     fill!(l,zero(T))
-    for j in 1:N
+    @inbounds for j in 1:N
         δ=wrap_diff(θ-ts[j])
         if abs(δ)<=64*eps(T)
             l[j]=one(T)
@@ -56,12 +56,19 @@ function trig_cardinal_weights!(l::AbstractVector{T},θ::T,ts::AbstractVector{T}
         end
     end
     invN=inv(T(N))
-    @inbounds for j in 1:N
-        δ=wrap_diff(θ-ts[j])
-        s=sin(δ/2)
-        c=cos(δ/2)
-        l[j]=invN*sin(T(N)*δ/2)*(c/s)
+    if isodd(N)
+        @inbounds for j in 1:N
+            δ=wrap_diff(θ-ts[j])
+            l[j]=invN*sin(T(N)*δ/2)/sin(δ/2)
+        end
+    else
+        @inbounds for j in 1:N
+            δ=wrap_diff(θ-ts[j])
+            l[j]=invN*sin(T(N)*δ/2)*cot(δ/2)
+        end
     end
+    ssum=sum(l)
+    abs(ssum)>0 && (@. l=l/ssum)
     return l
 end
 
