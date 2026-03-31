@@ -410,11 +410,18 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         end
         # Near correction: scatter onto the 4-point source stencil
         @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            _check_r(r,"periodic-near-plus",i,p)
+            tx=C.txp[p,i]
+            ty=C.typ[p,i]
+            sp=C.sp[p,i]
+            inn=ty*dx-tx*dy
+            invr=inv(r)
+            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
+            scoeff=-ik*(fac*(αS*H(0,k*r)*sp))
+            coeff=dcoeff+scoeff
             for m in 1:4
                 q=C.idxp[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
@@ -422,7 +429,15 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            _check_r(r,"periodic-near-minus",i,p)
+            tx=C.txm[p,i]
+            ty=C.tym[p,i]
+            sm=C.sm[p,i]
+            inn=ty*dx-tx*dy
+            invr=inv(r)
+            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
+            scoeff=-ik*(fac*(αS*H(0,k*r)*sm))
+            coeff=dcoeff+scoeff
             for m in 1:4
                 q=C.idxm[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
@@ -432,17 +447,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     return A
 end
 
-function _assemble_self_alpert_panel!(
-    solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    pts::BoundaryPointsCFIE{T},
-    G::CFIEGeomCache{T},
-    C::AlpertPanelCache{T},
-    row_range::UnitRange{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true
-) where {T<:Real}
+function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
@@ -452,16 +457,13 @@ function _assemble_self_alpert_panel!(
     h=pts.ws[1]
     a=rule.a
     jcorr=rule.j
-
     @use_threads multithreading=multithreaded for i in 1:N
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-
         A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
-
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -470,37 +472,48 @@ function _assemble_self_alpert_panel!(
             invr=G.invR[i,j]
             A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
-
         @inbounds for j in 1:N
             j==i && continue
             abs(j-i)<a && continue
             gj=row_range[j]
             A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
             _check_r(r,"panel-near-plus",i,p)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            tx=C.txp[p,i]
+            ty=C.typ[p,i]
+            sp=C.sp[p,i]
+            inn=ty*dx-tx*dy
+            invr=inv(r)
+            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
+            scoeff=-ik*(fac*(αS*H(0,k*r)*sp))
+            coeff=dcoeff+scoeff
             for m in 1:4
                 q=C.idxp[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
             end
-
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            _check_r(r,"panel-near-minus",i,p)
+            tx=C.txm[p,i]
+            ty=C.tym[p,i]
+            sm=C.sm[p,i]
+            inn=ty*dx-tx*dy
+            invr=inv(r)
+            dcoeff=-fac*(αD*inn*H(1,k*r)*invr)
+            scoeff=-ik*(fac*(αS*H(0,k*r)*sm))
+            coeff=dcoeff+scoeff
             for m in 1:4
                 q=C.idxm[p,i,m]
                 A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
             end
         end
     end
-
     return A
 end
 
