@@ -212,18 +212,26 @@ struct AlpertPanelCache{T<:Real}
     wtm::Array{T,3}      # jcorr × N × 4
 end
 
+# _panel_us
+# Compute the local parameter values at the midpoints of the panels for a given number of points N.
+# Inputs:
+#   - T : Real type for the parameter values.
+#   - N : Number of points (panels) to compute the midpoints for.
+# Outputs:
+#   - Vector{T} : A vector containing the local parameter values at the midpoints
 @inline function _panel_us(::Type{T},N::Int) where {T<:Real}
     return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
 
-@inline function _lagrange4_weights(η::T) where {T<:Real}
-    w0=-(η)*(η-one(T))*(η-T(2))/T(6)
-    w1=(η+one(T))*(η-one(T))*(η-T(2))/T(2)
-    w2=-(η+one(T))*(η)*(η-T(2))/T(2)
-    w3=(η+one(T))*(η)*(η-one(T))/T(6)
-    return w0,w1,w2,w3
-end
-
+# _open_local4_stencil
+# Compute the indices and weights for a local 4-point stencil used for interpolation near the endpoints of a panel. This is used for the endpoint corrections in the Alpert rule when applied to open panels.
+# Inputs:
+#   - u : Local parameter value for which to compute the stencil (should be in [0,1] for a panel).
+#   - N : Number of points in the panel.
+#   - h : Step size (length of the panel divided by N).
+# Outputs:
+#   - idx : A tuple of 4 indices corresponding to the points used in the stencil.
+#   - wt : A tuple of 4 weights corresponding to the Lagrange interpolation weights
 @inline function _open_local4_stencil(u::T,N::Int,h::T) where {T<:Real}
     uc=clamp(u,T(0.5)*h,one(T)-T(0.5)*h)
     s=(uc-T(0.5)*h)/h
@@ -235,14 +243,18 @@ end
     return idx,wt
 end
 
-@inline function _interp_geom_local4(
-    idx::NTuple{4,Int},
-    wt::NTuple{4,T},
-    X::AbstractVector{T},
-    Y::AbstractVector{T},
-    dX::AbstractVector{T},
-    dY::AbstractVector{T}
-) where {T<:Real}
+# _interp_geom_local4
+# Perform local 4-point interpolation of geometry and tangent vectors for a given set of indices and weights.
+# Inputs:
+#   - idx : A tuple of 4 indices corresponding to the points used in the stencil.
+#   - wt : A tuple of 4 weights corresponding to the Lagrange interpolation weights.
+#   - X, Y : Vectors containing the x and y coordinates of the geometry at the sampled points.
+#   - dX, dY : Vectors containing the x and y components of the tangent vectors at the sampled points.
+# Outputs:
+#   - x, y : Interpolated x and y coordinates of the geometry at the target parameter value.
+#   - tx, ty : Interpolated x and y components of the tangent vector at the target parameter value.
+#   - s : Interpolated speed (magnitude of the tangent vector) at the target parameter value.
+@inline function _interp_geom_local4(idx::NTuple{4,Int},wt::NTuple{4,T},X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
     i1,i2,i3,i4=idx
     w1,w2,w3,w4=wt
     x=w1*X[i1]+w2*X[i2]+w3*X[i3]+w4*X[i4]
@@ -263,12 +275,7 @@ end
 #       Log-singular Alpert rule.
 #
 # Outputs:
-#   - C::AlpertComponentCache{T} :
-#       Lightweight cache storing interpolation metadata and endpoint rules.
-#
-# Notes:
-#   - This intentionally does NOT store interior shifted interpolation vectors.
-#   - Interior correction geometry is built on-the-fly inside `_assemble_self_alpert!`.
+#   - C::AlpertComponentCache{T} : Cache storing interpolation metadata and endpoint rules.
 function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
@@ -748,9 +755,9 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     return A
 end
 
-################################
-#### FULL MATRIX CONSTRUCTION ####
-################################
+########################
+#### HIGH LEVEL API ####
+########################
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(solver.symmetry)
