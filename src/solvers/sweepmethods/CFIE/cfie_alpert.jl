@@ -112,13 +112,7 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     ts=pts.ts
     N=length(ts)
     jcorr=rule.j
-    # local speed with respect to the periodic parameter ts
-    speed=similar(X)
-    @inbounds for i in 1:N
-        speed[i]=sqrt(dX[i]^2+dY[i]^2)
-    end
-    # local arc-length spacing near node i
-    hs=pts.ds
+    h=pts.ws[1]
     Lp=Array{T,3}(undef,jcorr,N,N)
     Lm=Array{T,3}(undef,jcorr,N,N)
     xp=Matrix{T}(undef,jcorr,N);yp=similar(xp)
@@ -129,15 +123,14 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     @inbounds for p in 1:jcorr
         ξp=rule.x[p]
         for i in 1:N
-            # convert local arc-length shift to parameter shift
-            Δt=(hs[i]*ξp)/speed[i]
+            Δt = h * ξp
             # + branch
-            θp=wrap_angle(ts[i]+Δt)
+            θp=wrap_angle(ts[i] + Δt)
             trig_cardinal_weights!(tmp,θp,ts)
             @views copyto!(Lp[p,i,:],tmp)
             xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic(tmp,X,Y,dX,dY)
             # - branch
-            θm=wrap_angle(ts[i]-Δt)
+            θm=wrap_angle(ts[i] - Δt)
             trig_cardinal_weights!(tmp,θm,ts)
             @views copyto!(Lm[p,i,:],tmp)
             xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic(tmp,X,Y,dX,dY)
@@ -364,7 +357,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         end
         # Alpert near correction
         @inbounds for p in 1:jcorr
-            fac=pts.ds[i]*rule.w[p]
+            fac=pts.ws[1]*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
@@ -373,11 +366,10 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             for q in 1:N
                 A[gi,row_range[q]]+=coeff*lp[q]
             end
-
-            dx = xi - C.xm[p,i]
-            dy = yi - C.ym[p,i]
-            r  = sqrt(dx*dx + dy*dy)
-            coeff =-ik*(fac* (αS * H(0, k*r) * C.sm[p,i]))
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
             @views lm=C.Lm[p,i,:]
             for q in 1:N
                 A[gi,row_range[q]]+=coeff*lm[q]
