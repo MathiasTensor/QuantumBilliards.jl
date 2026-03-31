@@ -102,7 +102,7 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
-    ts=reverse(pts.ts) # these can stay the same since they are just the parameters of the curve, and reversing the order of points does not change the parameter values at those points for equispacings. Still for futureproofing reverse them
+    ts=pts.is_periodic ? [s(j,N) for j in 1:N] : reverse(pts.ts)
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
