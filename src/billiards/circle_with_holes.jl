@@ -227,7 +227,10 @@ function AnnularBilliard(R::T,r::T;xh=zero(T),yh=zero(T),x0=zero(T),y0=zero(T),r
     length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     area=pi*R^2-pi*r^2
     length=2*pi*(R+r)
-    return AnnularBilliard(boundary,fundamental_boundary,desymmetrized_full_boundary,length,length_fundamental,area,R,r,SVector(x0,y0),SVector(xh,yh),area_fundamental,angles,angles_fundamental,zero(T))
+    angles=T[]
+    angles_fundamental=T[]
+    s_shift=zero(T)
+    return AnnularBilliard(boundary,fundamental_boundary,desymmetrized_full_boundary,length,length_fundamental,area,R,r,SVector(x0,y0),SVector(xh,yh),area_fundamental,angles,angles_fundamental,s_shift)
 end
 
 """
