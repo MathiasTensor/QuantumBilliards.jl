@@ -192,6 +192,27 @@ end
     return acos(c)
 end
 
+# _is_closed_curve
+# Checks if a curve is closed by comparing the start and end points.
+# Inputs:
+#   - crv::C : A curve object of type C <: AbsCurve.
+#   - xtol::T : Tolerance for determining if the curve is closed.
+# Outputs:
+#   - Bool : True if the curve is closed, false otherwise.
+@inline function _is_closed_curve(crv::C;xtol::T=T(1e-10)) where {T<:Real,C<:AbsCurve}
+    x0=curve(crv,[zero(T)])[1]
+    x1=curve(crv,[one(T)])[1]
+    return _endpoint_distance(x0,x1)<=xtol
+end
+
+@inline function _all_closed_curves(boundary)
+    return all(_is_closed_curve, boundary)
+end
+
+@inline function _is_single_composite_boundary(boundary)
+    return !(boundary[1] isa AbstractVector) && ! _all_closed_curves(boundary)
+end
+
 # _is_component_closed
 # Check if a a vector of curve segments forms a closed component by comparing the start point of the first segment with the end point of the last segment. This is used to determine if we should apply periodic corrections in the Alpert quadrature.
 # Inputs:
@@ -298,6 +319,7 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
 end
 
+#=
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
@@ -318,6 +340,46 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
     n_inner=sum(length(comp) for comp in inner_boundaries)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,n_outer+n_inner)
     pos=1 # global position in the concatenated pts array
+    for crv in outer_boundary
+        pts[pos]=_evaluate_points_panel(solver,crv,k,pos)
+        pos+=1
+    end
+    for comp in inner_boundaries
+        for crv in comp
+            pts[pos]=_reverse_component_orientation(solver,_evaluate_points_panel(solver,crv,k,pos))
+            pos+=1
+        end
+    end
+    return pts
+end
+=#
+
+function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+    # case 1: simple closed components [outer,hole1,hole2,...]
+    if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
+        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+        for (idx,crv) in enumerate(boundary)
+            p=_evaluate_points_periodic(solver,crv,k,idx)
+            pts[idx]=(idx==1) ? p : _reverse_component_orientation(solver,p)
+        end
+        return pts
+    end
+    # case 2: single composite boundary [seg1,seg2,...] (eg stadium)
+    if _is_single_composite_boundary(boundary)
+        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+        for (idx,crv) in enumerate(boundary)
+            pts[idx]=_evaluate_points_panel(solver,crv,k,idx)
+        end
+        return pts
+    end
+    # case 3: nested composite components [[outer...],[hole1...],...]
+    outer_boundary=boundary[1]
+    inner_boundaries=boundary[2:end]
+    n_outer=length(outer_boundary)
+    n_inner=sum(length(comp) for comp in inner_boundaries)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,n_outer+n_inner)
+    pos=1
     for crv in outer_boundary
         pts[pos]=_evaluate_points_panel(solver,crv,k,pos)
         pos+=1

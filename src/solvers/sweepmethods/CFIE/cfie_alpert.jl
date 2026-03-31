@@ -509,9 +509,15 @@ end
 
 function _alpert_component_global_maps(solver::CFIE_alpert{T},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    if !(boundary[1] isa AbstractVector)
+    # simple closed components [outer,hole1,...]
+    if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
         return nothing
     end
+    # single composite boundary [seg1,seg2,...]
+    if _is_single_composite_boundary(boundary)
+        return [collect(1:length(boundary))]
+    end
+    # nested composite components [[outer...],[hole1...],...]
     maps=Vector{Vector{Int}}(undef,length(boundary))
     pos=1
     @inbounds for c in eachindex(boundary)
