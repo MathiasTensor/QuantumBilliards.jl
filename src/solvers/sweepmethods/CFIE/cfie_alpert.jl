@@ -2,18 +2,8 @@
 
 # Cache for simple billiards where we can use the periodic Alpert rule on the whole boundary. This is not corner-aware and does not support multiple segments.
 struct AlpertPeriodicCache{T<:Real}
-    Lp::Array{T,3}   # jcorr × N × N, with Lp[p,i,q]
-    Lm::Array{T,3}   # jcorr × N × N, with Lm[p,i,q]
-    xp::Matrix{T}    # jcorr × N
-    yp::Matrix{T}
-    txp::Matrix{T}
-    typ::Matrix{T}
-    sp::Matrix{T}
-    xm::Matrix{T}
-    ym::Matrix{T}
-    txm::Matrix{T}
-    tym::Matrix{T}
-    sm::Matrix{T}
+    m::Vector{Int}   # integer part of ξ_p
+    α::Vector{T}     # fractional part of ξ_p
 end
 
 # wrap_angle
@@ -105,38 +95,16 @@ end
 # Outputs:
 #   - AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
 function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    ts=pts.ts
-    N=length(ts)
     jcorr=rule.j
-    h=pts.ws[1]
-    Lp=Array{T,3}(undef,jcorr,N,N)
-    Lm=Array{T,3}(undef,jcorr,N,N)
-    xp=Matrix{T}(undef,jcorr,N);yp=similar(xp)
-    txp=similar(xp);typ=similar(xp);sp=similar(xp)
-    xm=similar(xp);ym=similar(xp)
-    txm=similar(xp);tym=similar(xp);sm=similar(xp)
-    tmp=Vector{T}(undef,N)
+    m=Vector{Int}(undef,jcorr)
+    α=Vector{T}(undef,jcorr)
     @inbounds for p in 1:jcorr
-        ξp=rule.x[p]
-        for i in 1:N
-            Δt = h * ξp
-            # + branch
-            θp=wrap_angle(ts[i] + Δt)
-            trig_cardinal_weights!(tmp,θp,ts)
-            @views copyto!(Lp[p,i,:],tmp)
-            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic(tmp,X,Y,dX,dY)
-            # - branch
-            θm=wrap_angle(ts[i] - Δt)
-            trig_cardinal_weights!(tmp,θm,ts)
-            @views copyto!(Lm[p,i,:],tmp)
-            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic(tmp,X,Y,dX,dY)
-        end
+        ξ=rule.x[p]
+        mp=floor(Int,ξ)
+        m[p]=mp
+        α[p]=T(ξ-mp)
     end
-    return AlpertPeriodicCache(Lp,Lm,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
+    return AlpertPeriodicCache(m,α)
 end
 
 # Cache whenever the boundary is panelized, so we can apply the endpoint-corrected Alpert rule on each panel separately
@@ -320,83 +288,80 @@ end
 ################ SELF ALPERT ASSEMBLY #####################
 ###########################################################
 
-function _assemble_self_alpert_periodic!(
-    A::AbstractMatrix{Complex{T}},
-    pts::BoundaryPointsCFIE{T},
-    G::CFIEGeomCache{T},
-    C::AlpertPeriodicCache{T},
-    row_range::UnitRange{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true
-) where {T<:Real}
-
-    αD = Complex{T}(0, k/2)
-    αS = Complex{T}(0, one(T)/2)
-    ik = Complex{T}(0, k)
-
-    X = getindex.(pts.xy, 1)
-    Y = getindex.(pts.xy, 2)
-
-    N = length(pts.ts)
-    a = rule.a
-    jcorr = rule.j
-    h = pts.ws[1]
-
+function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    N=length(pts.ts)
+    a=rule.a
+    jcorr=rule.j
+    h=pts.ws[1]
     @use_threads multithreading=multithreaded for i in 1:N
-        gi = row_range[i]
-        xi = X[i]
-        yi = Y[i]
-
-        # local physical speed = |dγ/dθ|
-        si = G.speed[i]
-        κi = G.kappa[i]
-
-        # diagonal term: uses physical ds = si * h
-        A[gi,gi] += one(Complex{T}) - Complex{T}(h * si * κi, zero(T))
-
-        # DLP off-diagonal: tangent already contains dγ/dθ, so weight is h only
+        gi=row_range[i]
+        xi=X[i]
+        yi=Y[i]
+        si=G.speed[i]
+        κi=G.kappa[i]
+        # diagonal term: periodic parameter measure
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
+        # DLP off-diagonal: tangent already contains dγ/dθ, so weight is h
         @inbounds for j in 1:N
-            j == i && continue
-            gj   = row_range[j]
-            rij  = G.R[i,j]
-            inn  = G.inner[i,j]
-            invr = G.invR[i,j]
-            A[gi,gj] -= h * (αD * inn * H(1, k*rij) * invr)
+            j==i && continue
+            gj=row_range[j]
+            rij=G.R[i,j]
+            inn=G.inner[i,j]
+            invr=G.invR[i,j]
+            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
-
-        # SLP far part: here we need one factor of speed
+        # SLP far part
         @inbounds for j in 1:N
-            j == i && continue
-            m = j - i
-            m >  N÷2 && (m -= N)
-            m < -N÷2 && (m += N)
-            abs(m) < a && continue
-            gj = row_range[j]
-            A[gi,gj] -= ik * (h * (αS * H(0, k*G.R[i,j]) * G.speed[j]))
+            j==i && continue
+            mrel=j-i
+            mrel>N÷2 && (mrel-=N)
+            mrel<-N÷2 && (mrel+=N)
+            abs(mrel)<a && continue
+            gj=row_range[j]
+            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-
-        # Alpert near correction: again parameter weight h * w_p, shifted speed already in C.sp/C.sm
+        # near Alpert correction with 2-point local stencil
         @inbounds for p in 1:jcorr
-            fac = h * rule.w[p]
-
-            dx = xi - C.xp[p,i]
-            dy = yi - C.yp[p,i]
-            r  = sqrt(dx*dx + dy*dy)
-            coeff = -ik * (fac * (αS * H(0, k*r) * C.sp[p,i]))
-            @views lp = C.Lp[p,i,:]
-            for q in 1:N
-                A[gi,row_range[q]] += coeff * lp[q]
-            end
-
-            dx = xi - C.xm[p,i]
-            dy = yi - C.ym[p,i]
-            r  = sqrt(dx*dx + dy*dy)
-            coeff = -ik * (fac * (αS * H(0, k*r) * C.sm[p,i]))
-            @views lm = C.Lm[p,i,:]
-            for q in 1:N
-                A[gi,row_range[q]] += coeff * lm[q]
-            end
+            mp=C.m[p]
+            β=C.α[p]
+            w0=one(T)-β
+            w1=β
+            fac=h*rule.w[p]
+            # ---- plus branch: θ_i + h*ξ_p ----
+            j0p=mod1(i+mp,N)
+            j1p=mod1(j0p+1,N)
+            xp=w0*X[j0p]+w1*X[j1p]
+            yp=w0*Y[j0p]+w1*Y[j1p]
+            txp=w0*dX[j0p]+w1*dX[j1p]
+            typ=w0*dY[j0p]+w1*dY[j1p]
+            sp=sqrt(txp*txp+typ*typ)
+            dx=xi-xp
+            dy=yi-yp
+            r=sqrt(dx*dx+dy*dy)
+            coeff= -ik*(fac*(αS*H(0,k*r)*sp))
+            A[gi,row_range[j0p]]+=coeff*w0
+            A[gi,row_range[j1p]]+=coeff*w1
+            # ---- minus branch: θ_i - h*ξ_p ----
+            j0m=mod1(i-mp,N)
+            j1m=mod1(j0m-1,N)
+            xm=w0*X[j0m]+w1*X[j1m]
+            ym=w0*Y[j0m]+w1*Y[j1m]
+            txm=w0*dX[j0m]+w1*dX[j1m]
+            tym=w0*dY[j0m]+w1*dY[j1m]
+            sm=sqrt(txm*txm+tym*tym)
+            dx=xi-xm
+            dy=yi-ym
+            r=sqrt(dx*dx+dy*dy)
+            coeff= -ik*(fac*(αS*H(0, k*r)*sm))
+            A[gi,row_range[j0m]]+=coeff*w0
+            A[gi,row_range[j1m]]+=coeff*w1
         end
     end
     return A

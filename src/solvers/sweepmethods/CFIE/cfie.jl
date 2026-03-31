@@ -288,6 +288,47 @@ function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real
     return offs[end]-1
 end
 
+#########################################
+#### GEOMETRY CACHE FOR CFIE SOLVERS ####
+#########################################
+
+struct CFIEGeomCache{T<:Real}
+    R::Matrix{T}
+    invR::Matrix{T}
+    inner::Matrix{T}
+    logterm::Matrix{T}
+    speed::Vector{T}
+    kappa::Vector{T}
+end
+
+function cfie_geom_cache(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    ts=pts.ts
+    N=length(pts.xy)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    ddX=getindex.(pts.tangent_2,1)
+    ddY=getindex.(pts.tangent_2,2)
+    ΔX=@. X-X'
+    ΔY=@. Y-Y'
+    R=hypot.(ΔX,ΔY)
+    R[diagind(R)].=one(T)
+    invR=inv.(R)
+    invR[diagind(invR)].=zero(T)
+    dX_row=reshape(dX,1,N)
+    dY_row=reshape(dY,1,N)
+    inner=@. dY_row*ΔX-dX_row*ΔY
+    ΔT=ts.-ts'
+    logterm=log.(4 .*sin.(ΔT./2).^2)
+    logterm[diagind(logterm)].=zero(T)
+    speed=@. sqrt(dX^2+dY^2)
+    κnum=dX.*ddY.-dY.*ddX
+    κden=dX.^2 .+ dY.^2
+    kappa=inv_two_pi.*(κnum./κden)
+    return CFIEGeomCache(R,invR,inner,logterm,speed,kappa)
+end
+
 ###############################################################################
 ################## Symmetry mapping and projection utilities ##################
 ###############################################################################
