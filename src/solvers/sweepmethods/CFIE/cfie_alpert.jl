@@ -832,6 +832,7 @@ end
 
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
+    any(isnan.(A)) && error("NaN detected in system matrix A; check geometry and quadrature.")
     if use_krylov
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
