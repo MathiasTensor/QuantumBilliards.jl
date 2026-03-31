@@ -450,48 +450,67 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     return A
 end
 
-function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_panel!(
+    solver::CFIE_alpert{T},
+    A::AbstractMatrix{Complex{T}},
+    pts::BoundaryPointsCFIE{T},
+    G::CFIEGeomCache{T},
+    C::AlpertPanelCache{T},
+    row_range::UnitRange{Int},
+    k::T,
+    rule::AlpertLogRule{T};
+    multithreaded::Bool=true
+) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
+
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
-    h=pts.ws[1]
-    wq=pts.ds
+
     N=length(X)
+    h=pts.ws[1]
     a=rule.a
     jcorr=rule.j
     ξ=rule.x
     ω=rule.w
+
     @use_threads multithreading=multithreaded for i in 1:N
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
-        wi=wq[i]
+        si=G.speed[i]
         κi=G.kappa[i]
         ui=C.us[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
-        # DLP off-diagonal
+
+        # diagonal
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
+
+        # DLP off-diagonal: tangent already contains dγ/du, so weight is du = h
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            A[gi,gj]-=wq[j]*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
-        # SLP far part
+
+        # SLP far part: one factor of |γ'(u_j)|, so weight is h*speed[j]
         @inbounds for j in 1:N
             j==i && continue
             abs(j-i)<a && continue
             gj=row_range[j]
-            A[gi,gj]-=ik*(wq[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
+
         ℓ=Vector{T}(undef,N)
+
         @inbounds for p in 1:jcorr
             fac=h*ω[p]
+
             up=ui+h*ξ[p]
             if up<=one(T)
                 _interp_vector_open!(ℓ,up,C.us,C.bw)
@@ -513,6 +532,7 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
                     A[gi,row_range[q]]+=coeff*Re_p[q]
                 end
             end
+
             um=ui-h*ξ[p]
             if um>=zero(T)
                 _interp_vector_open!(ℓ,um,C.us,C.bw)
@@ -536,6 +556,7 @@ function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{C
             end
         end
     end
+
     return A
 end
 
