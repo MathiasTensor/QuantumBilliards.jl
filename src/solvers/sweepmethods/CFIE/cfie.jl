@@ -226,7 +226,7 @@ function _is_component_closed(boundary::Vector{C},xtol::T) where {T<:Real,C<:Abs
     return _endpoint_distance(xR,xL)<=xtol
 end
 
-function build_component_join_topology(boundary::Vector{C};xtol=1e-10,angtol=1e-8,periodic::Bool=true) where {T<:Real,C<:AbsCurve}
+function build_component_join_topology(boundary::Vector{C};xtol=1e-10,angtol=1e-8,periodic::Bool=true) where {C<:AbsCurve}
     n=length(boundary)
     T=Float64
     prev=Vector{Int}(undef,n)
