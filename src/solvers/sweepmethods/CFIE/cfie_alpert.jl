@@ -140,43 +140,41 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLo
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
     ts=pts.ts
-    N     = length(ts)
-    jcorr = rule.j
-    h     = pts.ws[1]
-    xp   = Matrix{T}(undef,jcorr,N)
-    yp   = similar(xp)
-    txp  = similar(xp)
-    typ  = similar(xp)
-    sp   = similar(xp)
-    xm   = similar(xp)
-    ym   = similar(xp)
-    txm  = similar(xp)
-    tym  = similar(xp)
-    sm   = similar(xp)
-
-    idxp = Array{Int,3}(undef,jcorr,N,4)
-    idxm = Array{Int,3}(undef,jcorr,N,4)
-    wtp  = Array{T,3}(undef,jcorr,N,4)
-    wtm  = Array{T,3}(undef,jcorr,N,4)
-
+    N=length(ts)
+    jcorr=rule.j
+    h=pts.ws[1]
+    xp=Matrix{T}(undef,jcorr,N)
+    yp=similar(xp)
+    txp=similar(xp)
+    typ=similar(xp)
+    sp=similar(xp)
+    xm=similar(xp)
+    ym=similar(xp)
+    txm=similar(xp)
+    tym=similar(xp)
+    sm=similar(xp)
+    idxp=Array{Int,3}(undef,jcorr,N,4)
+    idxm=Array{Int,3}(undef,jcorr,N,4)
+    wtp=Array{T,3}(undef,jcorr,N,4)
+    wtm=Array{T,3}(undef,jcorr,N,4)
     @inbounds for p in 1:jcorr
-        Δt = h * rule.x[p]
+        Δt=h*rule.x[p]
         for i in 1:N
-            θp = wrap_angle(ts[i] + Δt)
+            θp=wrap_angle(ts[i] + Δt)
             x,y,tx,ty,s,idx,wt = _eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
-            xp[p,i]  = x
-            yp[p,i]  = y
-            txp[p,i] = tx
-            typ[p,i] = ty
-            sp[p,i]  = s
-            idxp[p,i,1] = idx[1]
-            idxp[p,i,2] = idx[2]
-            idxp[p,i,3] = idx[3]
-            idxp[p,i,4] = idx[4]
-            wtp[p,i,1]  = wt[1]
-            wtp[p,i,2]  = wt[2]
-            wtp[p,i,3]  = wt[3]
-            wtp[p,i,4]  = wt[4]
+            xp[p,i]=x
+            yp[p,i]=y
+            txp[p,i]=tx
+            typ[p,i]=ty
+            sp[p,i]=s
+            idxp[p,i,1]=idx[1]
+            idxp[p,i,2]=idx[2]
+            idxp[p,i,3]=idx[3]
+            idxp[p,i,4]=idx[4]
+            wtp[p,i,1]=wt[1]
+            wtp[p,i,2]=wt[2]
+            wtp[p,i,3]=wt[3]
+            wtp[p,i,4]=wt[4]
             θm=wrap_angle(ts[i]-Δt)
             x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_local4(θm,ts,h,X,Y,dX,dY)
             xm[p,i]=x
@@ -378,6 +376,19 @@ end
 ################ SELF ALPERT ASSEMBLY #####################
 ###########################################################
 
+# _assemble_self_alpert_periodic!
+# Assemble the self-interaction block of the CFIE matrix for a periodic boundary using the periodic Alpert rule. This includes the standard diagonal and off-diagonal contributions from the DLP and SLP, as well as the near correction using the precomputed shifted interpolation vectors from the AlpertPeriodicCache.
+# Inputs:
+#   - A::AbstractMatrix{Complex{T}} : Matrix to assemble into (modified in place).
+#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization.
+#   - G::CFIEGeomCache{T} : Precomputed geometric quantities for the CFIE assembly.
+#   - C::AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
+#   - row_range::UnitRange{Int} : Row indices corresponding to the current boundary component.
+#   - k::T : Wave number.
+#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
+#   - multithreaded::Bool : Whether to use multithreading for assembly.
+# Outputs:
+#   - A : Modified in place with the self-interaction block assembled using the periodic Alpert rule.
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
@@ -417,22 +428,22 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         end
         # Near correction: scatter onto the 4-point source stencil
         @inbounds for p in 1:jcorr
-            fac = h * rule.w[p]
-            dx = xi - C.xp[p,i]
-            dy = yi - C.yp[p,i]
-            r  = sqrt(dx*dx + dy*dy)
-            coeff = -ik * (fac * (αS * H(0, k*r) * C.sp[p,i]))
+            fac=h*rule.w[p]
+            dx=xi-C.xp[p,i]
+            dy=yi-C.yp[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
             for m in 1:4
-                q = C.idxp[p,i,m]
-                A[gi, row_range[q]] += coeff * C.wtp[p,i,m]
+                q=C.idxp[p,i,m]
+                A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
             end
-            dx = xi - C.xm[p,i]
-            dy = yi - C.ym[p,i]
-            r  = sqrt(dx*dx + dy*dy)
-            coeff = -ik * (fac * (αS * H(0, k*r) * C.sm[p,i]))
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
             for m in 1:4
-                q = C.idxm[p,i,m]
-                A[gi, row_range[q]] += coeff * C.wtm[p,i,m]
+                q=C.idxm[p,i,m]
+                A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
             end
         end
     end
