@@ -1,17 +1,147 @@
 # Ref: HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999
-# This version is endpoint-aware, open-panel, and avoids storing O(jcorr*N^2) dense tensors.
 
-struct AlpertComponentCache{T<:Real}
-    us::Vector{T}       # interpolation nodes on [0,1]
-    bw::Vector{T}       # barycentric weights for open-panel interpolation
-    Le::Matrix{T}       # jcorr × N, left-end interpolation vectors
-    Re::Matrix{T}       # jcorr × N, right-end interpolation vectors
-    xe::Vector{T}       # left-end corrected source geometry
+# Cache for simple billiards where we can use the periodic Alpert rule on the whole boundary. This is not corner-aware and does not support multiple segments.
+struct AlpertPeriodicCache{T<:Real}
+    Lp0::Matrix{T}   # N × jcorr
+    Lm0::Matrix{T}   # N × jcorr
+    xp::Matrix{T}    # jcorr × N
+    yp::Matrix{T}
+    txp::Matrix{T}
+    typ::Matrix{T}
+    sp::Matrix{T}
+    xm::Matrix{T}
+    ym::Matrix{T}
+    txm::Matrix{T}
+    tym::Matrix{T}
+    sm::Matrix{T}
+end
+
+# wrap_angle
+# Wrap an angle to the interval (0, 2π].
+# Inputs:
+#   - t::T : Angle to wrap.
+# Outputs:
+#   - Wrapped angle in (0, 2π].
+@inline function wrap_angle(t::T) where {T<:Real}
+    tp=mod(t,two_pi)
+    return tp==zero(T) ? T(two_pi) : tp
+end
+
+# wrap_diff
+# Wrap a difference of angles to the interval (-π, π].
+# Inputs:
+#   - t::T : Angle difference to wrap.
+# Outputs:
+#   - Wrapped angle difference in (-π, π].
+@inline function wrap_diff(t::T) where {T<:Real}
+    return mod(t+T(pi),two_pi)-T(pi)
+end
+
+# trig_cardinal_weights!
+# Compute the trigonometric cardinal weights for a given query angle and periodic nodes. This is used to construct the shifted interpolation vectors for the periodic Alpert rule. The output vector `l` is modified in place.
+# Inputs:
+#   - l::AbstractVector{T} : Output vector to store the weights (length N).
+#   - θ::T : Angle for which to compute the weights.
+#   - ts::AbstractVector{T} : Periodic nodes on [0,1] mapped to angles (length N).
+# Outputs:
+#   - l : Modified in place to contain the trigonometric cardinal weights for interpolation at angle θ.
+function trig_cardinal_weights!(l::AbstractVector{T},θ::T,ts::AbstractVector{T}) where {T<:Real}
+    N=length(ts)
+    fill!(l,zero(T))
+    for j in 1:N
+        δ=wrap_diff(θ-ts[j])
+        if abs(δ)<=64*eps(T)
+            l[j]=one(T)
+            return l
+        end
+    end
+    invN=inv(T(N))
+    @inbounds for j in 1:N
+        δ=wrap_diff(θ-ts[j])
+        s=sin(δ/2)
+        c=cos(δ/2)
+        l[j]=invN*sin(T(N)*δ/2)*(c/s)
+    end
+    return l
+end
+
+# _eval_shifted_source_periodic
+# Evaluate the shifted source geometry for the periodic Alpert rule at a given interpolation vector. This is used to compute the corrected geometry for the shifted interpolation points in the periodic case.
+# Inputs:
+#   - base::AbstractVector{T} : Base interpolation vector (length N).
+#   - i::Int : Index of the target point for which to evaluate the shifted source geometry.
+#   - X,Y,dX,dY : Geometry arrays for the panel (length N).
+# Outputs:
+#   - x,y : Interpolated source point coordinates.
+#   - tx,ty : Interpolated tangent vectors.
+#   - s : Interpolated speed.
+@inline function _eval_shifted_source_periodic(base::AbstractVector{T},i::Int,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+    N=length(base)
+    x=zero(T);y=zero(T);tx=zero(T);ty=zero(T)
+    @inbounds @simd for q in 1:N
+        idx=mod1(q-i+1,N)
+        w=base[idx]
+        x+=w*X[q]
+        y+=w*Y[q]
+        tx+=w*dX[q]
+        ty+=w*dY[q]
+    end
+    s=sqrt(tx*tx+ty*ty)
+    return x,y,tx,ty,s
+end
+
+# _build_alpert_periodic_cache
+# Precompute the necessary data for applying the periodic Alpert rule to a simple billiard boundary. This includes the shifted interpolation vectors and the corresponding geometry for the shifted points. This cache is used to efficiently apply the periodic Alpert correction during matrix assembly.
+# Inputs:
+#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization.
+#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
+# Outputs:
+#   - AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
+function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    ts=pts.ts
+    N=length(ts)
+    h=pts.ws[1]
+    jcorr=rule.j
+    Lp0=Matrix{T}(undef,N,jcorr)
+    Lm0=Matrix{T}(undef,N,jcorr)
+    xp=Matrix{T}(undef,jcorr,N);yp=similar(xp)
+    txp=similar(xp);typ=similar(xp);sp=similar(xp)
+    xm=similar(xp);ym=similar(xp)
+    txm=similar(xp);tym=similar(xp);sm=similar(xp)
+    tmp=Vector{T}(undef,N)
+    @inbounds for p in 1:jcorr
+        θp=wrap_angle(ts[1]+h*rule.x[p])
+        trig_cardinal_weights!(tmp,θp,ts)
+        @views copyto!(Lp0[:,p],tmp)
+        θm=wrap_angle(ts[1]-h*rule.x[p])
+        trig_cardinal_weights!(tmp,θm,ts)
+        @views copyto!(Lm0[:,p],tmp)
+        @views bp=Lp0[:,p]
+        @views bm=Lm0[:,p]
+        for i in 1:N
+            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic(bp,i,X,Y,dX,dY)
+            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic(bm,i,X,Y,dX,dY)
+        end
+    end
+    return AlpertPeriodicCache(Lp0,Lm0,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
+end
+
+# Cache whenever the boundary is panelized, so we can apply the endpoint-corrected Alpert rule on each panel separately
+struct AlpertPanelCache{T<:Real}
+    us::Vector{T}
+    bw::Vector{T}
+    Le::Matrix{T}
+    Re::Matrix{T}
+    xe::Vector{T}
     ye::Vector{T}
     txe::Vector{T}
     tye::Vector{T}
     se::Vector{T}
-    xr::Vector{T}       # right-end corrected source geometry
+    xr::Vector{T}
     yr::Vector{T}
     txr::Vector{T}
     tyr::Vector{T}
@@ -135,7 +265,7 @@ end
 # Notes:
 #   - This intentionally does NOT store interior shifted interpolation vectors.
 #   - Interior correction geometry is built on-the-fly inside `_assemble_self_alpert!`.
-function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+function _build_alpert_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
@@ -143,15 +273,15 @@ function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLo
     N=length(X)
     us=_panel_us(T,N)
     bw=_barycentric_weights_open(us)
-    h=inv(T(N-1))
+    h=pts.ws[1]
     jcorr=rule.j
     ξ=rule.x
     Le=Matrix{T}(undef,jcorr,N)
     Re=Matrix{T}(undef,jcorr,N)
-    xe=Vector{T}(undef,jcorr); ye=similar(xe)
-    txe=similar(xe); tye=similar(xe); se=similar(xe)
-    xr=Vector{T}(undef,jcorr); yr=similar(xr)
-    txr=similar(xr); tyr=similar(xr); sr=similar(xr)
+    xe=Vector{T}(undef,jcorr);ye=similar(xe)
+    txe=similar(xe);tye=similar(xe);se=similar(xe)
+    xr=Vector{T}(undef,jcorr);yr=similar(xr)
+    txr=similar(xr);tyr=similar(xr);sr=similar(xr)
     ℓ=Vector{T}(undef,N)
     @inbounds for p in 1:jcorr
         ul=h*ξ[p]
@@ -163,38 +293,84 @@ function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLo
         @views copyto!(Re[p,:],ℓ)
         xr[p],yr[p],txr[p],tyr[p],sr[p]=_interp_geom_from_vec(ℓ,X,Y,dX,dY)
     end
-
-    return AlpertComponentCache(us,bw,Le,Re,xe,ye,txe,tye,se,xr,yr,txr,tyr,sr)
+    return AlpertPanelCache(us,bw,Le,Re,xe,ye,txe,tye,se,xr,yr,txr,tyr,sr)
 end
 
-# _assemble_self_alpert!
-# Assemble the self-panel CFIE block using:
-#   - plain trapezoid for DLP off-diagonal
-#   - plain trapezoid for far SLP
-#   - endpoint-special Alpert corrections near the left/right ends
-#   - on-the-fly interior Alpert corrections away from the ends
-#
+# _build_alpert_component_cache
+# Dispatch to the appropriate cache builder based on whether the boundary is periodic or panelized.
 # Inputs:
-#   - solver,A,pts,G,C,row_range,k,rule :
-#       Standard self-block assembly data.
-#   - multithreaded::Bool=true :
-#       Whether to thread over target rows.
-#
+#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization.
+#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
 # Outputs:
-#   - Modifies `A` in place.
-#
-# Notes:
-#   - This assumes `pts` is ONE smooth panel.
-#   - It is not yet a corner-aware or multi-segment panelwise implementation.
-function _assemble_self_alpert!(solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    pts::BoundaryPointsCFIE{T},
-    G::CFIEGeomCache{T},
-    C::AlpertComponentCache{T},
-    row_range::UnitRange{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true) where {T<:Real}
+#   - AlpertComponentCache{T} : Precomputed cache for the Alpert rule, either periodic or panel-based.
+function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule) : _build_alpert_panel_cache(pts,rule)
+
+###########################################################
+################ SELF ALPERT ASSEMBLY #####################
+###########################################################
+
+function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    N=length(pts.ts)
+    h=pts.ws[1]
+    a=rule.a
+    jcorr=rule.j
+    @use_threads multithreading=multithreaded for i in 1:N
+        gi=row_range[i]
+        xi=X[i]
+        yi=Y[i]
+        wi=pts.ds[i]
+        κi=G.kappa[i]
+        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
+        # DLP off-diagonal
+        @inbounds for j in 1:N
+            j==i && continue
+            gj=row_range[j]
+            rij=G.R[i,j]
+            inn=G.inner[i,j]
+            invr=G.invR[i,j]
+            A[gi,gj]-=pts.ds[j]*(αD*inn*H(1,k*rij)*invr)
+        end
+        # SLP far part
+        @inbounds for j in 1:N
+            j==i && continue
+            m=j-i
+            m>N÷2 && (m-=N)
+            m<-N÷2 && (m+=N)
+            abs(m)<a && continue
+            gj=row_range[j]
+            A[gi,gj]-=ik*(pts.ds[j]*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+        end
+        # Alpert near correction
+        @inbounds for p in 1:jcorr
+            fac=h*rule.w[p]
+            dx=xi-C.xp[p,i]
+            dy=yi-C.yp[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            @views basep=C.Lp0[:,p]
+            for q in 1:N
+                A[gi,row_range[q]]+=coeff*basep[mod1(q-i+1,N)]
+            end
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
+            r=sqrt(dx*dx+dy*dy)
+            coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            @views basem=C.Lm0[:,p]
+            for q in 1:N
+                A[gi,row_range[q]]+=coeff*basem[mod1(q-i+1,N)]
+            end
+        end
+    end
+    return A
+end
+
+function _assemble_self_alpert_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
@@ -217,6 +393,7 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},
         κi=G.kappa[i]
         ui=C.us[i]
         A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
+        # DLP off-diagonal
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -225,6 +402,7 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},
             invr=G.invR[i,j]
             A[gi,gj]-=wq[j]*(αD*inn*H(1,k*rij)*invr)
         end
+        # SLP far part
         @inbounds for j in 1:N
             j==i && continue
             abs(j-i)<a && continue
@@ -279,6 +457,31 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},
         end
     end
     return A
+end
+
+# _assemble_self_alpert!
+# Assemble the self-panel CFIE block using:
+#   - plain trapezoid for DLP off-diagonal
+#   - plain trapezoid for far SLP
+#   - endpoint-special Alpert corrections near the left/right ends
+#   - on-the-fly interior Alpert corrections away from the ends
+#
+# Inputs:
+#   - solver,A,pts,G,C,row_range,k,rule :
+#       Standard self-block assembly data.
+#   - multithreaded::Bool=true :
+#       Whether to thread over target rows.
+#
+# Outputs:
+#   - Modifies `A` in place.
+#
+# Notes:
+#   - This assumes `pts` is ONE smooth panel.
+#   - It is not yet a corner-aware or multi-segment panelwise implementation.
+# ---------------------------------------------------------
+function _assemble_self_alpert!(
+solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    return  pts.is_periodic ? _assemble_self_alpert_periodic!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded) : _assemble_self_alpert_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
 end
 
 ##############################

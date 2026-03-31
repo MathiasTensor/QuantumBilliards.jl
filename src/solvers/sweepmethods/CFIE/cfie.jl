@@ -93,6 +93,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
     ds::Vector{T} # diffs between crv lengths at ts
     compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
+    is_periodic::Bool # true = closed periodic curve, false = open panel
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
@@ -105,7 +106,7 @@ function _reverse_component_orientation(pts::BoundaryPointsCFIE{T}) where {T<:Re
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
 end
 
 ###############
@@ -138,7 +139,7 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # we kep these for future with different quadratures ala Kress (1)
     # put it in global
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
 
 # By default for kress fudamental=false since we need the full set of points for the log split -> for alpert we can use symmetries and can choose fundamental domain
@@ -185,8 +186,10 @@ function _open_panel_weights(ss::AbstractVector{T}) where {T<:Real}
     return ds
 end
 
-# _evaluate_points
-# Build one open boundary panel for CFIE_alpert.
+
+# _evaluate_points_periodic
+# Build one closed boundary panel for CFIE_alpert. THis is used whenever the billiard boundary is not composite of many curves, but rather just just one curve
+# E.g Ellipse,Circle 
 #
 # Inputs:
 #   - solver::CFIE_alpert{T}
@@ -198,51 +201,82 @@ end
 #   - BoundaryPointsCFIE{T}
 #
 # Notes:
-#   - Unlike Kress, this is NOT periodic.
 #   - No lcm / symmetry-dependent point adjustment is used here -> since we do it before Beyn.
-function _evaluate_points(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    L=crv.length
+    bs=solver.pts_scaling_factor
+    N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
+    N=max(N,4)
+    ts=[s(j,N) for j in 1:N]
+    ts_rescaled=ts./two_pi
+    xy=curve(crv,ts_rescaled)
+    tangent_1st=tangent(crv,ts_rescaled)./(two_pi)
+    tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi)^2
+    ss=arc_length(crv,ts_rescaled)
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
+    ws=fill(T(two_pi/N),N)
+    ws_der=ones(T,N)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
+end
+
+# _evaluate_points_panel
+# Build one open boundary panel for CFIE_alpert. This is used whenever the billiard boundary is composite of many curves, and we want to treat each curve as a separate panel. E.g for the stadium, we can treat the straight segments as one panel and the circular segments as another.
+#
+# Inputs:
+#   - solver::CFIE_alpert{T}
+#   - crv::C
+#   - k::T
+#   - idx::Int
+#
+# Outputs:
+#   - BoundaryPointsCFIE{T}
+# Notes:
+#   - No lcm / symmetry-dependent point adjustment is used here -> since we do it before Beyn.
+function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
     N<2 && (N=2)
-    ts=collect(midpoints(range(zero(T),one(T),length=(N+1))))  # parametrization nodes; periodic [0,2π) for Kress, open [0,1] for Alpert
+    ts=collect(midpoints(range(zero(T),one(T),length=(N+1))))
     xy=curve(crv,ts)
     tangent_1st=tangent(crv,ts)
     tangent_2nd=tangent_2(crv,ts)
     ss=arc_length(crv,ts)
     ds=_open_panel_weights(ss)
-    h=inv(T(N-1))
-    ws=fill(h,N)          # parameter-space step for Alpert endpoint logic
+    h=inv(T(N))   # midpoint spacing
+    ws=fill(h,N)
     ws_der=ones(T,N)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
 end
 
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    # old style: [seg1, seg2, ...] = only outer boundary split into several panels
+    # case 1: simple billiard with outer boundary [outer, hole1, hole2, ...], each is a single closed curve
     if !(boundary[1] isa AbstractVector)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
-            pts[idx]=_evaluate_points(solver,crv,k,idx)
+            p=_evaluate_points_periodic(solver,crv,k,idx)
+            pts[idx]=idx==1 ? p : _reverse_component_orientation(p)
         end
         return pts
     end
-    # component style: [[outer panels], [hole1 panels], [hole2 panels], ...]
+    # case 2: panelized style, 1st vector of boudnary is the outer boundary with potentially many components, second vector is the first hole etc. [[outer panels], [hole1 panels], ...]
     outer_boundary=boundary[1]
     inner_boundaries=boundary[2:end]
     n_outer=length(outer_boundary)
     n_inner=sum(length(comp) for comp in inner_boundaries)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,n_outer+n_inner)
-    pos=1
+    pos=1 # global position in the concatenated pts array
     for crv in outer_boundary
-        pts[pos]=_evaluate_points(solver,crv,k,pos)
+        pts[pos]=_evaluate_points_panel(solver,crv,k,pos)
         pos+=1
     end
     for comp in inner_boundaries
         for crv in comp
-            pts[pos]=_reverse_component_orientation(_evaluate_points(solver,crv,k,pos))
+            pts[pos]=_reverse_component_orientation(_evaluate_points_panel(solver,crv,k,pos))
             pos+=1
         end
     end
