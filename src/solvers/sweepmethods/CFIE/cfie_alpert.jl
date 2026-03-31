@@ -476,10 +476,10 @@ function _assemble_self_alpert_panel!(
 
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
-
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
+            _check_r(r,"panel-near-plus",i,p)
             coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
             for m in 1:4
                 q=C.idxp[p,i,m]
@@ -528,6 +528,12 @@ end
 ##############################
 #### DESYMMETRIZED KERNEL ####
 ##############################
+
+@inline function _check_r(r,name,i,j)
+    if !(isfinite(r)) || r <= 0
+        error("Bad distance in $name at i=$i j=$j : r=$r")
+    end
+end
 
 @inline dlp_weight(pts::BoundaryPointsCFIE,j::Int)=pts.ws[j]
 @inline function slp_weight(pts::BoundaryPointsCFIE{T},j::Int,sj::T) where {T<:Real}
@@ -589,6 +595,7 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
             r2=muladd(dx,dx,dy*dy)
             r2<=(eps(T))^2 && continue
             r=sqrt(r2)
+            _check_r(r,"image-block",i,j)
             invr=inv(r)
             inn=tyj*dx-txj*dy
             dval=weight*wd*(αD*inn*H(1,k*r)*invr)
