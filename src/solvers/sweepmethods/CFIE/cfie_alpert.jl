@@ -2,7 +2,7 @@
 
 # Cache for simple billiards where we can use the periodic Alpert rule on the whole boundary. This is not corner-aware and does not support multiple segments.
 struct AlpertPeriodicCache{T<:Real}
-    xp::Matrix{T} # jcorr × N
+    xp::Matrix{T}      # jcorr × N
     yp::Matrix{T}
     txp::Matrix{T}
     typ::Matrix{T}
@@ -12,6 +12,10 @@ struct AlpertPeriodicCache{T<:Real}
     txm::Matrix{T}
     tym::Matrix{T}
     sm::Matrix{T}
+    idxp::Array{Int,3} # jcorr × N × 4
+    wtp::Array{T,3}    # jcorr × N × 4
+    idxm::Array{Int,3} # jcorr × N × 4
+    wtm::Array{T,3}    # jcorr × N × 4
 end
 
 # wrap_angle
@@ -118,7 +122,9 @@ end
     tx=w0*dX[im1]+w1*dX[i0j]+w2*dX[ip1]+w3*dX[ip2]
     ty=w0*dY[im1]+w1*dY[i0j]+w2*dY[ip1]+w3*dY[ip2]
     s=sqrt(tx*tx+ty*ty)
-    return x,y,tx,ty,s
+    idx=(im1,i0j,ip1,ip2)
+    wt=(w0,w1,w2,w3)
+    return x,y,tx,ty,s,idx,wt
 end
 
 # _build_alpert_periodic_cache
@@ -134,29 +140,61 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLo
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
     ts=pts.ts
-    N=length(ts)
-    jcorr=rule.j
-    h=pts.ws[1]   # angular step = 2π/N
-    xp=Matrix{T}(undef,jcorr,N)
-    yp=similar(xp)
-    txp=similar(xp)
-    typ=similar(xp)
-    sp=similar(xp)
-    xm=similar(xp)
-    ym=similar(xp)
-    txm=similar(xp)
-    tym=similar(xp)
-    sm=similar(xp)
+    N     = length(ts)
+    jcorr = rule.j
+    h     = pts.ws[1]
+    xp   = Matrix{T}(undef,jcorr,N)
+    yp   = similar(xp)
+    txp  = similar(xp)
+    typ  = similar(xp)
+    sp   = similar(xp)
+    xm   = similar(xp)
+    ym   = similar(xp)
+    txm  = similar(xp)
+    tym  = similar(xp)
+    sm   = similar(xp)
+
+    idxp = Array{Int,3}(undef,jcorr,N,4)
+    idxm = Array{Int,3}(undef,jcorr,N,4)
+    wtp  = Array{T,3}(undef,jcorr,N,4)
+    wtm  = Array{T,3}(undef,jcorr,N,4)
+
     @inbounds for p in 1:jcorr
-        Δt=h*rule.x[p]
+        Δt = h * rule.x[p]
         for i in 1:N
-            θp=wrap_angle(ts[i]+Δt)
-            xp[p,i],yp[p,i],txp[p,i],typ[p,i],sp[p,i]=_eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
+            θp = wrap_angle(ts[i] + Δt)
+            x,y,tx,ty,s,idx,wt = _eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
+            xp[p,i]  = x
+            yp[p,i]  = y
+            txp[p,i] = tx
+            typ[p,i] = ty
+            sp[p,i]  = s
+            idxp[p,i,1] = idx[1]
+            idxp[p,i,2] = idx[2]
+            idxp[p,i,3] = idx[3]
+            idxp[p,i,4] = idx[4]
+            wtp[p,i,1]  = wt[1]
+            wtp[p,i,2]  = wt[2]
+            wtp[p,i,3]  = wt[3]
+            wtp[p,i,4]  = wt[4]
             θm=wrap_angle(ts[i]-Δt)
-            xm[p,i],ym[p,i],txm[p,i],tym[p,i],sm[p,i]=_eval_shifted_source_periodic_local4(θm,ts,h,X,Y,dX,dY)
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_local4(θm,ts,h,X,Y,dX,dY)
+            xm[p,i]=x
+            ym[p,i]=y
+            txm[p,i]=tx
+            tym[p,i]=ty
+            sm[p,i]=s
+            idxm[p,i,1]=idx[1]
+            idxm[p,i,2]=idx[2]
+            idxm[p,i,3]=idx[3]
+            idxm[p,i,4]=idx[4]
+            wtm[p,i,1]=wt[1]
+            wtm[p,i,2]=wt[2]
+            wtm[p,i,3]=wt[3]
+            wtm[p,i,4]=wt[4]
         end
     end
-    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm)
+    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
 # Cache whenever the boundary is panelized, so we can apply the endpoint-corrected Alpert rule on each panel separately
@@ -377,19 +415,25 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             gj=row_range[j]
             A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
-        # Near correction:
+        # Near correction: scatter onto the 4-point source stencil
         @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-            A[gi,gi]+=coeff
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-            A[gi,gi]+=coeff
+            fac = h * rule.w[p]
+            dx = xi - C.xp[p,i]
+            dy = yi - C.yp[p,i]
+            r  = sqrt(dx*dx + dy*dy)
+            coeff = -ik * (fac * (αS * H(0, k*r) * C.sp[p,i]))
+            for m in 1:4
+                q = C.idxp[p,i,m]
+                A[gi, row_range[q]] += coeff * C.wtp[p,i,m]
+            end
+            dx = xi - C.xm[p,i]
+            dy = yi - C.ym[p,i]
+            r  = sqrt(dx*dx + dy*dy)
+            coeff = -ik * (fac * (αS * H(0, k*r) * C.sm[p,i]))
+            for m in 1:4
+                q = C.idxm[p,i,m]
+                A[gi, row_range[q]] += coeff * C.wtm[p,i,m]
+            end
         end
     end
     return A
