@@ -102,7 +102,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
-    if solver isa CFIE_kress
+    if solver isa CFIE_kress # FIXME: Future: hacky stuff, kress can have reverse orientation since periodic but for alpert code structured differently
         ts=reverse(pts.ts)
     else
         ts=pts.is_periodic ? [s(j,N) for j in 1:N] : reverse(pts.ts)
@@ -150,7 +150,7 @@ function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
-        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(_evaluate_points(solver,crv,k,idx))
+        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(solver,_evaluate_points(solver,crv,k,idx))
     end
     return pts
 end
@@ -261,7 +261,7 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
             p=_is_closed_curve(crv) ? _evaluate_points_periodic(solver,crv,k,idx) : _evaluate_points_panel(solver,crv,k,idx)
-            pts[idx]=(idx==1) ? p : _reverse_component_orientation(p)
+            pts[idx]=(idx==1) ? p : _reverse_component_orientation(solver,p)
             @info "Simple boundary: Component $idx: $(length(p.xy)) points, periodic: $(p.is_periodic)"
         end
         return pts
@@ -280,7 +280,7 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
     end
     for comp in inner_boundaries
         for crv in comp
-            pts[pos]=_reverse_component_orientation(_evaluate_points_panel(solver,crv,k,pos))
+            pts[pos]=_reverse_component_orientation(solver,_evaluate_points_panel(solver,crv,k,pos))
             pos+=1
         end
     end
