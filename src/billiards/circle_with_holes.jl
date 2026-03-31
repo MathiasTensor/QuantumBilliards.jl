@@ -56,6 +56,67 @@ function make_circle_with_holes(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),hol
 end
 
 """
+    make_quarter_annulus(
+        R::T, r::T;
+        x0=zero(T), y0=zero(T),
+        xh=x0, yh=y0,
+        rot_angle=zero(T)
+    ) where {T<:Real}
+
+Construct the quarter fundamental boundary of an annulus / circular billiard
+with one circular hole, suitable for XY reflection symmetry.
+
+Returned boundary contains:
+- quarter outer arc,
+- quarter inner arc,
+- virtual vertical segment on x = x0,
+- virtual horizontal segment on y = y0.
+"""
+function make_quarter_annulus(R::T,r::T;x0=zero(T),y0=zero(T),xh=x0,yh=y0,rot_angle=zero(T)) where {T<:Real}
+    outer_origin=SVector(x0,y0)
+    inner_origin=SVector(xh,yh)
+    center=SVector(x0,y0)
+    outer_q=CircleSegment(R,pi/2,zero(T),zero(T),zero(T);origin=outer_origin,rot_angle=rot_angle)
+    inner_q=CircleSegment(r,pi/2,zero(T),zero(T),zero(T);origin=inner_origin,rot_angle=rot_angle)
+    p_outer_vert=SVector(x0,y0+R)
+    p_inner_vert=SVector(x0,yh+r)
+    p_inner_horz=SVector(xh+r,y0)
+    p_outer_horz=SVector(x0+R,y0)
+    virtual_segment_vertical=VirtualLineSegment(p_outer_vert,p_inner_vert)
+    virtual_segment_horizontal=VirtualLineSegment(p_inner_horz,p_outer_horz)
+    boundary=[outer_q,virtual_segment_vertical,inner_q,virtual_segment_horizontal]
+    return boundary,center
+end
+
+
+"""
+    make_quarter_full_annulus_boundary(
+        R::T, r::T;
+        x0=zero(T), y0=zero(T),
+        xh=x0, yh=y0,
+        rot_angle=zero(T)
+    ) where {T<:Real}
+
+Construct the desymmetrized *real* boundary for a quarter annulus:
+- quarter outer arc
+- quarter inner arc
+
+This is what CFIE_alpert with symmetry-images should use as
+`desymmetrized_full_boundary`.
+
+No virtual symmetry segments are included here.
+"""
+function make_quarter_full_annulus_boundary(R::T,r::T;x0=zero(T),y0=zero(T),xh=x0,yh=y0,rot_angle=zero(T)) where {T<:Real}
+    outer_origin=SVector(x0,y0)
+    inner_origin=SVector(xh,yh)
+    center=SVector(x0,y0)
+    outer_q=CircleSegment(R,pi/2,zero(T),zero(T),zero(T);origin=outer_origin,rot_angle=rot_angle)
+    inner_q=CircleSegment(r,pi/2,zero(T),zero(T),zero(T);origin=inner_origin,rot_angle=rot_angle)
+    boundary=[outer_q,inner_q]
+    return boundary,center
+end
+
+"""
     struct CircularHoleBilliard{T} <: AbsBilliard where {T<:Real}
 
 A circular outer billiard with zero or more circular holes.
@@ -68,7 +129,7 @@ This is designed to match the CFIE machinery for multiply connected domains.
 """
 struct CircularHoleBilliard{T}<:AbsBilliard where {T<:Real}
     full_boundary::Vector{CircleSegment{T}}
-    fundamental_boundary::Vector{CircleSegment{T}}
+    fundamental_boundary::Vector{Union{CircleSegment{T},VirtualLineSegment{T}}}
     desymmetrized_full_boundary::Vector{CircleSegment{T}}
     length::T
     length_fundamental::T
@@ -104,14 +165,15 @@ since no symmetry reduction is used here.
 """
 function CircularHoleBilliard(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),holes::Vector{Tuple{T,T,T}}=Tuple{T,T,T}[]) where {T<:Real}
     full_boundary,center=make_circle_with_holes(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=holes)
+    fundamental_boundary,_=make_quarter_annulus(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
+    desymmetrized_full_boundary,_=make_quarter_full_annulus_boundary(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
+    area_fundamental=(pi*R^2-pi*r^2)/4
+    angles_fundamental=[pi/2,pi/2]
+    length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     hole_radii=T[h[1] for h in holes]
     hole_centers=SVector{2,T}[SVector(h[2],h[3]) for h in holes]
     area=pi*R^2-sum(pi*r^2 for r in hole_radii)
     length=2*pi*R+sum(2*pi*r for r in hole_radii)
-    fundamental_boundary=full_boundary
-    desymmetrized_full_boundary=full_boundary
-    length_fundamental=length
-    area_fundamental=area
     angles=T[]
     angles_fundamental=T[]
     s_shift=zero(T)
@@ -128,8 +190,8 @@ A one-hole circular billiard.
 Stored in the same boundary convention as `CircularHoleBilliard`.
 """
 struct AnnularBilliard{T}<:AbsBilliard where {T<:Real}
-full_boundary::Vector{CircleSegment{T}}
-    fundamental_boundary::Vector{CircleSegment{T}}
+    full_boundary::Vector{CircleSegment{T}}
+    fundamental_boundary::Vector{Union{CircleSegment{T},VirtualLineSegment{T}}}
     desymmetrized_full_boundary::Vector{CircleSegment{T}}
     length::T
     length_fundamental::T
@@ -158,9 +220,14 @@ Construct a circular billiard with one circular hole.
 """
 function AnnularBilliard(R::T,r::T;xh=zero(T),yh=zero(T),x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
     boundary,outer_center=make_circle_with_holes(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=[(r,xh,yh)])
+    fundamental_boundary,_=make_quarter_annulus(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
+    desymmetrized_full_boundary,_=make_quarter_full_annulus_boundary(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
+    area_fundamental=(pi*R^2-pi*r^2)/4
+    angles_fundamental=[pi/2,pi/2]
+    length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     area=pi*R^2-pi*r^2
     length=2*pi*(R+r)
-    return AnnularBilliard(boundary,boundary,boundary,length,length,area,R,r,SVector(x0,y0),SVector(xh,yh),area,T[],T[],zero(T))
+    return AnnularBilliard(boundary,fundamental_boundary,desymmetrized_full_boundary,length,length_fundamental,area,R,r,SVector(x0,y0),SVector(xh,yh),area_fundamental,angles,angles_fundamental,zero(T))
 end
 
 """
@@ -171,21 +238,14 @@ Convenience wrapper for a circular outer boundary with multiple circular holes.
 
 Each hole is `(r, hx, hy)`.
 """
-function MultiHoleBilliard(
-    R::T,
-    holes::Vector{Tuple{T,T,T}};
-    x0=zero(T),
-    y0=zero(T),
-    rot_angle=zero(T)
-) where {T<:Real}
-    return CircularHoleBilliard(R; x0=x0, y0=y0, rot_angle=rot_angle, holes=holes)
+function MultiHoleBilliard(R::T,holes::Vector{Tuple{T,T,T}};x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
+    return CircularHoleBilliard(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=holes)
 end
 
 """
     make_annulus_and_basis(R::T, r::T; xh=zero(T), yh=zero(T),  x0=zero(T), y0=zero(T), rot_angle=zero(T))
 
-Construct a one-hole circular billiard together with a placeholder
-`AbstractHankelBasis()` object for Beyn / CFIE workflows.
+Construct a one-hole circular billiard with XYReflection symmetry.
 """
 function make_annulus_and_basis(R::T,r::T;xh=zero(T),yh=zero(T),x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
     billiard=AnnularBilliard(R,r;xh=xh,yh=yh,x0=x0,y0=y0,rot_angle=rot_angle)
@@ -196,8 +256,7 @@ end
 """
     make_circle_with_holes_and_basis(R::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), holes=Tuple{T,T,T}[]) where {T<:Real}
 
-Construct a multi-hole circular billiard together with a placeholder
-`AbstractHankelBasis()`.
+Construct a multi-hole circular billiard together with XYReflection symmetry.
 """
 function make_circle_with_holes_and_basis(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),holes::Vector{Tuple{T,T,T}}=Tuple{T,T,T}[]) where {T<:Real}
     billiard=CircularHoleBilliard(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=holes)
@@ -208,7 +267,7 @@ end
 """
     make_multihole_and_basis(R::T, holes::Vector{Tuple{T,T,T}}; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
 
-Construct a multi-hole circular billiard together with `AbstractHankelBasis()`.
+Construct a multi-hole circular billiard together with XYReflection symmetry.
 """
 function make_multihole_and_basis(R::T,holes::Vector{Tuple{T,T,T}};x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
     billiard=MultiHoleBilliard(R,holes;x0=x0,y0=y0,rot_angle=rot_angle)
