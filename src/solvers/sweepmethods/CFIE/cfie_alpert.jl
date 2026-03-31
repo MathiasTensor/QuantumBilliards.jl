@@ -530,7 +530,7 @@ end
 ##############################
 
 @inline function _check_r(r,name,i,j)
-    if !(isfinite(r)) || r <= 0
+    if !(isfinite(r)) || r <= sqrt(eps(eltype(r)))
         error("Bad distance in $name at i=$i j=$j : r=$r")
     end
 end
@@ -732,6 +732,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
                 r2=muladd(dx,dx,dy*dy)
                 r2<=(eps(T))^2 && continue
                 r=sqrt(r2)
+                _check_r(r,"symmetry before images",i,j)
                 invr=inv(r)
                 inn=tyj*dx-txj*dy
                 dval=wd*(αD*inn*H(1,k*r)*invr)
@@ -839,7 +840,6 @@ end
 
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
-    any(isnan.(A)) && error("NaN detected in system matrix A; check geometry and quadrature.")
     if use_krylov
         @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
