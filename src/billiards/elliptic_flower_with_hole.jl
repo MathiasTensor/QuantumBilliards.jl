@@ -120,8 +120,8 @@ Boundary convention:
     `desymmetrized_full_boundary = [outer_desym,inner_desym]`
 """
 struct EllipticFlowerWithOptionalHole{T}<:AbsBilliard where {T<:Real}
-    full_boundary::Vector{<:Union{PolarSegment,LineSegment}}
-    desymmetrized_full_boundary::Vector{<:Union{PolarSegment,LineSegment}}
+    full_boundary
+    desymmetrized_full_boundary
     length::T
     length_fundamental::T
     area::T
