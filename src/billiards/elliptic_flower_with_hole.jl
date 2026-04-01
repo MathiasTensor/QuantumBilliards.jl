@@ -23,7 +23,8 @@ function elliptic_arc(A::SVector{2,T},B::SVector{2,T},b::T;origin=zero(A),rot_an
     mp_minus=C - b*v
     s = norm(mp_plus) > norm(mp_minus) ? one(T) : -one(T)
     r_func=t->begin
-        θ=T(pi)*(one(T)-t)   # t=0 -> θ=π -> A,   t=1 -> θ=0 -> B
+        t=1-t
+        θ=T(pi)*(one(T)-t) 
         C + a*cos(θ)*u + s*b*sin(θ)*v
     end
     return PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
