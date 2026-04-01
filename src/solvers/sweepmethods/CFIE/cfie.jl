@@ -1056,71 +1056,112 @@ end
     return SVector{2,T}(tx,ty)
 end
 
-# apply_symmetries_to_boundary_points
-# Expand boundary geometry from fundamental domain → full domain.
 #
-# Inputs:
-#   pts         : Vector of BoundaryPointsCFIE (fundamental domain)
-#   symmetries  : Vector of symmetry ops or nothing
-#   billiard    : geometry (may carry axis shifts)
-#   same_direction::Bool :
-#       if true, enforce consistent CCW orientation after reflection
+#    apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing},billiard::Bi;same_direction::Bool=true) #  #where {Bi<:AbsBilliard,T<:Real}
 #
-# Output:
-#   full        : expanded boundary components (geometry)
+#Extend CFIE boundary-point components from a desymmetrized boundary to the full
+#boundary by applying reflections and/or rotations.
 #
-# Notes:
-#   - Reflections duplicate components with orientation handling.
-#   - Rotations generate n-1 additional copies.
-#   - Tangents are transformed consistently with geometry.
+#Ordering is matched to `apply_symmetries_to_boundary_function`, so the expanded
+#geometry and expanded boundary density stay aligned component-by-component.
+#
+#Reflection block order:
+# - `YReflection`  -> `[orig..., x...]`
+# - `XReflection`  -> `[orig..., y...]`
+# - `XYReflection` -> `[orig..., x..., y..., xy...]`
+#
+# Rotation block order:
+# - `[orig..., rot(l=1)..., rot(l=2)..., ...]`
+#
+#If `same_direction=true`, single reflections reverse point order so that the
+#reflected copy has the same physical boundary orientation as the original.
+#Double reflection and rotations preserve orientation and are not reversed.
 function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing},billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     symmetries===nothing && return pts
     full=copy(pts)
-    sx=hasproperty(billiard,:x_axis) ? T(billiard.x_axis) : zero(T)
-    sy=hasproperty(billiard,:y_axis) ? T(billiard.y_axis) : zero(T)
-    for s in symmetries
+    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
+    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
+    for sym in symmetries
         new_parts=BoundaryPointsCFIE{T}[]
-        if s isa Reflection
-            for c in pts
-                xy,t,ds=c.xy,c.tangent,c.ds
-                if s.axis===:y_axis || s.axis===:origin
-                    rxy=[SVector(_x_reflect(p[1],sx),p[2]) for p in xy]
-                    rt=[image_tangent_x(tt) for tt in t]
-                    push!(new_parts,BoundaryPointsCFIE(reverse(rxy),reverse(rt),c.tangent_2,c.ts,c.ws,c.ws_der,reverse(ds),c.compid,c.is_periodic))
-                end
-                if s.axis===:x_axis || s.axis===:origin
-                    rxy=[SVector(p[1],_y_reflect(p[2],sy)) for p in xy]
-                    rt=[image_tangent_y(tt) for tt in t]
-                    push!(new_parts,BoundaryPointsCFIE(reverse(rxy),reverse(rt),c.tangent_2,c.ts,c.ws,c.ws_der,reverse(ds),c.compid,c.is_periodic))
-                end
-                if s.axis===:origin
-                    rxy=[SVector(_x_reflect(p[1],sx),_y_reflect(p[2],sy)) for p in xy]
-                    rt=[image_tangent_xy(tt) for tt in t]
-                    push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,ds,c.compid,c.is_periodic))
+        if sym isa Reflection
+            if sym.axis===:y_axis || sym.axis===:origin
+                for c in pts
+                    n=length(c.xy)
+                    rxy=Vector{SVector{2,T}}(undef,n)
+                    rt=Vector{SVector{2,T}}(undef,n)
+                    @inbounds for j in 1:n
+                        p=c.xy[j]
+                        t=c.tangent[j]
+                        rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),p[2])
+                        tx,ty=_x_reflect_tangent(t[1],t[2])
+                        rt[j]=same_direction ? SVector{2,T}(-tx,-ty) : SVector{2,T}(tx,ty)
+                    end
+                    xy2=same_direction ? reverse(rxy) : rxy
+                    t2=same_direction ? reverse(rt) : rt
+                    ds2=same_direction ? reverse(c.ds) : copy(c.ds)
+                    push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
                 end
             end
-        elseif s isa Rotation
-            for l in 1:s.n-1
-                cx,cy=s.center
-                θ=T(2*pi*l/s.n);cθ=cos(θ);sθ=sin(θ)
+
+            if sym.axis===:x_axis || sym.axis===:origin
                 for c in pts
-                    N=length(c.xy)
-                    rxy=Vector{SVector{2,T}}(undef,N)
-                    rt=Vector{SVector{2,T}}(undef,N)
-                    @inbounds for j in 1:N
-                        p=c.xy[j];tt=c.tangent[j]
+                    n=length(c.xy)
+                    rxy=Vector{SVector{2,T}}(undef,n)
+                    rt=Vector{SVector{2,T}}(undef,n)
+                    @inbounds for j in 1:n
+                        p=c.xy[j]
+                        t=c.tangent[j]
+                        rxy[j]=SVector{2,T}(p[1],_y_reflect(p[2],sy))
+                        tx,ty=_y_reflect_tangent(t[1],t[2])
+                        rt[j]=same_direction ? SVector{2,T}(-tx,-ty) : SVector{2,T}(tx,ty)
+                    end
+                    xy2=same_direction ? reverse(rxy) : rxy
+                    t2=same_direction ? reverse(rt) : rt
+                    ds2=same_direction ? reverse(c.ds) : copy(c.ds)
+                    push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
+                end
+            end
+            if sym.axis===:origin
+                for c in pts
+                    n=length(c.xy)
+                    rxy=Vector{SVector{2,T}}(undef,n)
+                    rt=Vector{SVector{2,T}}(undef,n)
+                    @inbounds for j in 1:n
+                        p=c.xy[j]
+                        t=c.tangent[j]
+                        rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),_y_reflect(p[2],sy))
+                        tx,ty=_xy_reflect_tangent(t[1],t[2])
+                        rt[j]=SVector{2,T}(tx,ty)
+                    end
+                    push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
+                end
+            end
+        elseif sym isa Rotation
+            cx=T(sym.center[1])
+            cy=T(sym.center[2])
+            for l in 1:sym.n-1
+                θ=T(2π*l/sym.n)
+                cθ=cos(θ)
+                sθ=sin(θ)
+                for c in pts
+                    n=length(c.xy)
+                    rxy=Vector{SVector{2,T}}(undef,n)
+                    rt=Vector{SVector{2,T}}(undef,n)
+                    @inbounds for j in 1:n
+                        p=c.xy[j]
+                        t=c.tangent[j]
                         x=cθ*(p[1]-cx)-sθ*(p[2]-cy)+cx
                         y=sθ*(p[1]-cx)+cθ*(p[2]-cy)+cy
-                        tx=cθ*tt[1]-sθ*tt[2]
-                        ty=sθ*tt[1]+cθ*tt[2]
+                        tx=cθ*t[1]-sθ*t[2]
+                        ty=sθ*t[1]+cθ*t[2]
                         rxy[j]=SVector{2,T}(x,y)
                         rt[j]=SVector{2,T}(tx,ty)
                     end
-                    push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,c.ds,c.compid,c.is_periodic))
+                    push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
                 end
             end
         else
-            error("Unknown symmetry type $(typeof(s))")
+            error("Unknown symmetry type $(typeof(sym))")
         end
         append!(full,new_parts)
     end
