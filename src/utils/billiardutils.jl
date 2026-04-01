@@ -126,20 +126,23 @@ A tuple `(xlim, ylim)`:
 - `xlim::Tuple{<:Real,<:Real}`: The x-coordinate extrema as a tuple `(x_min, x_max)`.
 - `ylim::Tuple{<:Real,<:Real}`: The y-coordinate extrema as a tuple `(y_min, y_max)`.
 """
-function boundary_limits(curves;grd=1000) 
-    x_bnd=Vector{Any}()
-    y_bnd=Vector{Any}()
-    for crv in curves #names of variables not very nice
-        L=crv.length
-        N_bnd=max(512,round(Int,grd/L))
-        t=range(0.0,1.0,N_bnd)[1:end-1]
-        pts=curve(crv,t)
-        append!(x_bnd,getindex.(pts,1))
-        append!(y_bnd,getindex.(pts,2))
+function boundary_limits(curves;grd=1000)
+    x_bnd=Float64[]
+    y_bnd=Float64[]
+    comps=(isempty(curves) || !(curves[1] isa AbstractVector)) ? [curves] : curves
+    for comp in comps
+        compL=sum(crv.length for crv in comp)
+        for crv in comp
+            L=crv.length
+            N_bnd=max(512,round(Int,grd*L/compL))
+            t=range(0.0,1.0,N_bnd+1)[1:end-1]
+            pts=curve(crv,t)
+            append!(x_bnd,getindex.(pts,1))
+            append!(y_bnd,getindex.(pts,2))
+        end
     end
-    x_bnd[end]=x_bnd[1]
-    y_bnd[end]=y_bnd[1]
-    xlim=extrema(x_bnd)
-    ylim=extrema(y_bnd)
-    return xlim,ylim
+    isempty(x_bnd) && error("Empty boundary in boundary_limits.")
+    push!(x_bnd,x_bnd[1])
+    push!(y_bnd,y_bnd[1])
+    return extrema(x_bnd),extrema(y_bnd)
 end
