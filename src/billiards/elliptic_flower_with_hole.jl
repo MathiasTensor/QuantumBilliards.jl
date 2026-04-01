@@ -84,7 +84,7 @@ end
 function make_desymmetrized_polygon_hole_component(n::Int,Rh::T;
     θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
     verts=[SVector{2,T}(Rh*cos(θ0+2π*j/n),Rh*sin(θ0+2π*j/n)) for j in 0:n-1]
-    edge=LineSegment(verts[2],verts[1];origin=origin,rot_angle=rot_angle)
+    edge=LineSegment(verts[1],verts[2];origin=origin,rot_angle=rot_angle)
     return [edge],verts
 end
 
