@@ -90,6 +90,7 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
+    ws=build_cfie_alpert_workspace(solver,pts)
     res=similar(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
@@ -99,7 +100,7 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
         is_calculating=true 
         while is_calculating
             try
-                res[i]=solve(solver,new_basis,pts,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+                res[i]=solve(solver,new_basis,pts,ws,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
                 is_calculating=false
             catch e
                 @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."

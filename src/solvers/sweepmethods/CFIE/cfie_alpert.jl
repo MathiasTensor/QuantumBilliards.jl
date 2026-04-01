@@ -996,6 +996,56 @@ end
 #### HIGH LEVEL API ####
 ########################
 
+# CFIEAlpertWorkspace
+# Struct to hold all precomputed data for CFIE Alpert assembly, including:
+#   - Alpert quadrature rule
+#   - Component offsets for global indexing
+#   - Geometry caches for each component
+#   - Alpert component caches for each component
+#   - Composite topology information (if non-periodic)
+struct CFIEAlpertWorkspace{T<:Real,R,C}
+    rule::AlpertLogRule{T}
+    offs::Vector{Int}
+    Gs::Vector{CFIEGeomCache{T}}
+    Cs::Vector{C}
+    topos::Union{Nothing,Vector{AlpertCompositeTopology{T}}}
+    gmaps::Union{Nothing,Vector{Vector{Int}}}
+    panel_to_comp::Union{Nothing,Vector{Int}}
+    Ntot::Int
+end
+
+# build_cfie_alpert_workspace
+# Build the CFIEAlpertWorkspace for a given CFIE_alpert solver and boundary points. This precomputes all necessary data for efficient assembly, including geometry caches and Alpert component caches, and also analyzes the composite topology if applicable.
+# Inputs:
+#   - solver::CFIE_alpert{T} :
+#       The CFIE_alpert solver object containing parameters like Alpert order and symmetry.
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       The boundary points for the entire geometry, which may consist of multiple components.
+# Outputs:
+#   - CFIEAlpertWorkspace containing all precomputed data for assembly.
+function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    rule=alpert_log_rule(T,solver.alpert_order)
+    offs=component_offsets(pts)
+    Gs=[cfie_geom_cache(p) for p in pts]
+    Cs=[_build_alpert_component_cache(p,rule) for p in pts]
+    topo_data=build_join_topology(pts)
+    if topo_data===nothing
+        topos=nothing
+        gmaps=nothing
+        panel_to_comp=nothing
+    else
+        topos,gmaps=topo_data
+        panel_to_comp=zeros(Int,length(pts))
+        @inbounds for c in eachindex(gmaps), a in gmaps[c]
+            panel_to_comp[a]=c
+        end
+    end
+    Ntot=offs[end]-1
+    return CFIEAlpertWorkspace(rule,offs,Gs,Cs,topos,gmaps,panel_to_comp,Ntot)
+end
+
+# construct_matrices!
+# High-level function to construct the CFIE Alpert system matrix. This function checks for symmetry. It is mostly legacy since it is better to precomoute the workspace and call the version of construct_matrices! that takes the workspace as an argument, but it is still useful for quick prototyping and testing.
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(solver.symmetry)
         offs=component_offsets(pts)
@@ -1068,6 +1118,94 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     end
 end
 
+# construct_matrices!
+# High-level function to construct the CFIE Alpert system matrix. This function handles both the symmetry and non-symmetry cases, dispatching to the appropriate assembly routines. It uses the CFIEAlpertWorkspace to access all precomputed data for efficient assembly.
+# Inputs:
+#   - solver::CFIE_alpert{T} :
+#       The CFIE_alpert solver object containing parameters and symmetry information.
+#   - A::Matrix{Complex{T}} :
+#       The output system matrix to be filled.
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       The boundary points for the entire geometry.
+#   - k::T :
+#       The real wavenumber.
+#   - ws::CFIEAlpertWorkspace{T} :
+#       The precomputed workspace containing all necessary data for assembly.
+#   - multithreaded::Bool=true :
+#       Whether to use multithreading for assembly.
+# Outputs:
+#   - Modifies `A` in place to contain the assembled system matrix for the CFIE Alpert solver. 
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    fill!(A,zero(Complex{T}))
+    offs=ws.offs
+    Gs=ws.Gs
+    Cs=ws.Cs
+    rule=ws.rule
+    gmaps=ws.gmaps
+    topos=ws.topos
+    if topos===nothing
+        @inbounds for a in eachindex(pts)
+            ra=offs[a]:(offs[a+1]-1)
+            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
+        end
+    else
+        _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
+    end
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    for a in eachindex(pts), b in eachindex(pts)
+        a==b && continue
+        if ws.panel_to_comp!==nothing
+            ca=ws.panel_to_comp[a]
+            cb=ws.panel_to_comp[b]
+            ca!=0 && ca==cb && continue
+        end
+        pa=pts[a]
+        pb=pts[b]
+        Na=length(pa.xy)
+        Nb=length(pb.xy)
+        ra=offs[a]:(offs[a+1]-1)
+        rb=offs[b]:(offs[b+1]-1)
+        Xa=getindex.(pa.xy,1)
+        Ya=getindex.(pa.xy,2)
+        Xb=getindex.(pb.xy,1)
+        Yb=getindex.(pb.xy,2)
+        dXb=getindex.(pb.tangent,1)
+        dYb=getindex.(pb.tangent,2)
+        sb=@. sqrt(dXb^2+dYb^2)
+        @use_threads multithreading=multithreaded for j in 1:Nb
+            gj=rb[j]
+            xj=Xb[j]
+            yj=Yb[j]
+            txj=dXb[j]
+            tyj=dYb[j]
+            sj=sb[j]
+            wd=pb.ws[j]
+            wsj=pb.ws[j]*sj
+            @inbounds for i in 1:Na
+                gi=ra[i]
+                dx=Xa[i]-xj
+                dy=Ya[i]-yj
+                r2=muladd(dx,dx,dy*dy)
+                r2<=(eps(T))^2 && continue
+                r=sqrt(r2)
+                inn=tyj*dx-txj*dy
+                invr=inv(r)
+                dval=wd*(αD*inn*H(1,k*r)*invr)
+                sval=wsj*(αS*H(0,k*r))
+                A[gi,gj]-=(dval+ik*sval)
+            end
+        end
+    end
+    if !isnothing(solver.symmetry)
+        construct_matrices_symmetry_images!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    end
+    return A
+end
+
+# construct_matrices
+# High-level wrapper to construct the CFIE Alpert system matrix. This function checks for symmetry and dispatches to the appropriate assembly routine. It is mostly legacy since it is better to precompute the workspace.
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     Ntot=boundary_matrix_size(pts)
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -1075,10 +1213,32 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
     return A
 end
 
+# construct_matrices
+# High-level wrapper to construct the CFIE Alpert system matrix using a precomputed workspace. This is the recommended interface for efficient assembly, as it avoids redundant precomputation of geometry caches and Alpert component caches.
+# Inputs:
+#   - solver::CFIE_alpert{T} :
+#       The CFIE_alpert solver object containing parameters and symmetry information.
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       The boundary points for the entire geometry.
+#   - ws::CFIEAlpertWorkspace{T} :
+#       The precomputed workspace containing all necessary data for assembly.
+#   - k::T :
+#       The real wavenumber.
+#   - multithreaded::Bool=true :
+#       Whether to use multithreading for assembly.
+# Outputs:
+#   - A::Matrix{Complex{T}} containing the assembled system matrix for the CFIE Alpert solver.
+function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
+    construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    return A
+end
+
 ############################
 #### SOLVE WRAPPERS ########
 ############################
 
+# check below, legacy
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     if use_krylov
@@ -1090,6 +1250,38 @@ function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},
     end
 end
 
+# solve
+# High-level function to solve the CFIE eigenvalue problem using the Alpert-based discretization. This function constructs the system matrix and then computes the smallest singular value, which corresponds to the eigenvalue of interest.
+# Inputs:
+#   - solver::CFIE_alpert{T} :
+#       The CFIE_alpert solver object containing parameters and symmetry information.
+#   - basis::Ba :
+#       The basis object (not used in this implementation but included for API consistency).
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       The boundary points for the entire geometry.
+#   - ws::CFIEAlpertWorkspace{T} (optional) :
+#       The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
+#   - k::T :
+#       The real wavenumber.
+#   - multithreaded::Bool=true :
+#       Whether to use multithreading for assembly.
+#   - use_krylov::Bool=true :
+#       Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
+# Outputs:
+#   - The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem.
+function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
+    construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    if use_krylov
+        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        return mu[1]
+    else
+        s=svdvals(A)
+        return s[end]
+    end
+end
+
+# check below, legacy
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
@@ -1097,6 +1289,33 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     return S[idx],real.(Vt[idx,:])
 end
 
+# solve_vect
+# High-level function to solve the CFIE eigenvalue problem and return both the smallest singular value and the corresponding right singular vector (eigenfunction). This function constructs the system matrix and then computes the SVD to extract the smallest singular value and its associated singular vector.
+# Inputs:
+#   - solver::CFIE_alpert{T} :
+#       The CFIE_alpert solver object containing parameters and symmetry information.
+#   - basis::Ba :
+#       The basis object (not used in this implementation but included for API consistency).
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       The boundary points for the entire geometry.
+#   - ws::CFIEAlpertWorkspace{T} (optional) :
+#       The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
+#   - k::T :
+#       The real wavenumber.
+#   - multithreaded::Bool=true :
+#       Whether to use multithreading for assembly.
+# Outputs:
+#   - A tuple containing the smallest singular value and the corresponding right singular vector (eigenfunction) of the system matrix.
+function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
+    construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    idx=findmin(S)[2]
+    return S[idx],real.(Vt[idx,:])
+end
+
+# solve_INFO
+# High-level function to solve the CFIE eigenvalue problem while also providing detailed timing and condition number information. This function constructs the system matrix, computes its condition number, performs the SVD, and then reports the time taken for each step as well as the condition number of the matrix. 
 function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
