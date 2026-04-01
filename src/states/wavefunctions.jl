@@ -776,9 +776,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
-        s=maximum(abs,ψ)
-        s= s>0 ? s : 1
-        @. ψ=sign(real(ψ)/s)*abs(real(ψ)/s)^0.5
+        amax=maximum(abs,ψ)
+        if amax>0
+            @. ψ=real(ψ)/amax
+        else
+            @. ψ=real(ψ)
+        end
     end
     L=billiard.length
     if fundamental
