@@ -3,7 +3,7 @@
 function make_quarter_stadium_component(half_width;radius=one(half_width),x0=zero(half_width),y0=zero(half_width),rot_angle=zero(half_width))
     origin=SVector(x0,y0)
     T=typeof(half_width)
-    circle=CircleSegment(radius,pi/2,zero(T),half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    circle=CircleSegment(radius,T(pi/2),zero(T),half_width,zero(T);origin=origin,rot_angle=rot_angle)
     corners=[
         SVector(half_width,radius),
         SVector(zero(T),radius),
@@ -20,7 +20,7 @@ end
 function make_desymmetrized_stadium_component(half_width;radius=one(half_width),x0=zero(half_width),y0=zero(half_width),rot_angle=zero(half_width))
     origin=SVector(x0,y0)
     T=typeof(half_width)
-    circle=CircleSegment(radius,pi/2,zero(T),half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    circle=CircleSegment(radius,T(pi/2),zero(T),half_width,zero(T);origin=origin,rot_angle=rot_angle)
     corners=[SVector(half_width,radius),SVector(zero(T),radius)]
     line1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
     boundary=Union{LineSegment,CircleSegment}[circle,line1]
@@ -35,9 +35,9 @@ function make_full_stadium_component(half_width;radius=one(half_width),x0=zero(h
         SVector(-half_width, radius),
         SVector(-half_width,-radius),
         SVector( half_width,-radius)]
-    circle1=CircleSegment(radius,pi,-pi/2, half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    circle1=CircleSegment(radius,T(pi),T(-pi/2), half_width,zero(T);origin=origin,rot_angle=rot_angle)
     line1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
-    circle2=CircleSegment(radius,pi, pi/2,-half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    circle2=CircleSegment(radius,T(pi),T(pi/2),-half_width,zero(T);origin=origin,rot_angle=rot_angle)
     line2=LineSegment(corners[3],corners[4];origin=origin,rot_angle=rot_angle)
     boundary=Union{LineSegment,CircleSegment}[circle1,line1,circle2,line2]
     return boundary,corners

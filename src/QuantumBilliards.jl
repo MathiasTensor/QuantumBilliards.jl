@@ -66,7 +66,7 @@ include("billiards/star.jl")
 include("billiards/ellipse_mushroom.jl")
 include("billiards/c3.jl")
 include("billiards/africa.jl")
-include("billiards/circle_with_holes.jl")
+include("billiards/circle_with_circle_holes.jl")
 include("billiards/star_with_hole.jl")
 include("billiards/stadium_within_stadium.jl")
 export adapt_basis
