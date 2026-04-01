@@ -507,29 +507,6 @@ end
 #### COMPOSITE ALPERT HELP ####
 ###############################
 
-function _reverse_component_curves(comp::Vector{C}) where {C<:AbsCurve}
-    return reverse(comp)
-end
-
-function build_join_topology(solver::CFIE_alpert{T},billiard::Bi;xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real,Bi<:AbsBilliard}
-    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    if !(boundary[1] isa AbstractVector)
-        return nothing
-    end
-    topos=Vector{AlpertCompositeTopology{T}}(undef,length(boundary))
-    gmaps=Vector{Vector{Int}}(undef,length(boundary))
-    pos=1
-    @inbounds for c in eachindex(boundary)
-        comp=(c==1) ? boundary[c] : _reverse_component_curves(boundary[c])
-        nseg=length(comp)
-        gmaps[c]=collect(pos:(pos+nseg-1))
-        pos+=nseg
-        periodic=_is_component_closed(comp,xtol)
-        topos[c]=build_component_join_topology(comp;xtol=xtol,angtol=angtol,periodic=periodic)
-    end
-    return topos,gmaps
-end
-
 @inline function _component_id_of_panel(a::Int,gmaps::Vector{Vector{Int}})
     @inbounds for c in eachindex(gmaps)
         a in gmaps[c] && return c
@@ -756,20 +733,23 @@ function _assemble_all_self_alpert_composite!(solver::CFIE_alpert{T},A::Abstract
     return A
 end
 
-##############################
-#### DESYMMETRIZED KERNEL ####
-##############################
+#################
+#### HELPERS ####
+#################
 
 @inline function _check_r(r,name,i,j)
     if !(isfinite(r)) || r <= sqrt(eps(eltype(r)))
         @warn "Bad distance in $name at i=$i j=$j : r=$r"
     end
 end
-
 @inline dlp_weight(pts::BoundaryPointsCFIE,j::Int)=pts.ws[j]
 @inline function slp_weight(pts::BoundaryPointsCFIE{T},j::Int,sj::T) where {T<:Real}
     return pts.ws[j]*sj
 end
+
+##############################
+#### DESYMMETRIZED KERNEL ####
+##############################
 
 # _add_image_block!
 # Add one smooth image contribution from source component `pb` into the

@@ -56,40 +56,6 @@ function make_circle_with_holes(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),hol
 end
 
 """
-    make_quarter_annulus(
-        R::T, r::T;
-        x0=zero(T), y0=zero(T),
-        xh=x0, yh=y0,
-        rot_angle=zero(T)
-    ) where {T<:Real}
-
-Construct the quarter fundamental boundary of an annulus / circular billiard
-with one circular hole, suitable for XY reflection symmetry.
-
-Returned boundary contains:
-- quarter outer arc,
-- quarter inner arc,
-- virtual vertical segment on x = x0,
-- virtual horizontal segment on y = y0.
-"""
-function make_quarter_annulus(R::T,r::T;x0=zero(T),y0=zero(T),xh=x0,yh=y0,rot_angle=zero(T)) where {T<:Real}
-    outer_origin=SVector(x0,y0)
-    inner_origin=SVector(xh,yh)
-    center=SVector(x0,y0)
-    outer_q=CircleSegment(R,pi/2,zero(T),zero(T),zero(T);origin=outer_origin,rot_angle=rot_angle)
-    inner_q=CircleSegment(r,pi/2,zero(T),zero(T),zero(T);origin=inner_origin,rot_angle=rot_angle)
-    p_outer_vert=SVector(x0,y0+R)
-    p_inner_vert=SVector(x0,yh+r)
-    p_inner_horz=SVector(xh+r,y0)
-    p_outer_horz=SVector(x0+R,y0)
-    virtual_segment_vertical=VirtualLineSegment(p_outer_vert,p_inner_vert)
-    virtual_segment_horizontal=VirtualLineSegment(p_inner_horz,p_outer_horz)
-    boundary=[outer_q,virtual_segment_vertical,inner_q,virtual_segment_horizontal]
-    return boundary,center
-end
-
-
-"""
     make_quarter_full_annulus_boundary(
         R::T, r::T;
         x0=zero(T), y0=zero(T),
@@ -112,7 +78,7 @@ function make_quarter_full_annulus_boundary(R::T,r::T;x0=zero(T),y0=zero(T),xh=x
     center=SVector(x0,y0)
     outer_q=CircleSegment(R,pi/2,zero(T),zero(T),zero(T);origin=outer_origin,rot_angle=rot_angle)
     inner_q=CircleSegment(r,pi/2,zero(T),zero(T),zero(T);origin=inner_origin,rot_angle=rot_angle)
-    boundary=[outer_q,inner_q]
+    boundary=[[outer_q],[inner_q]]
     return boundary,center
 end
 
@@ -129,8 +95,7 @@ This is designed to match the CFIE machinery for multiply connected domains.
 """
 struct CircularHoleBilliard{T}<:AbsBilliard where {T<:Real}
     full_boundary::Vector{CircleSegment{T}}
-    fundamental_boundary::Vector
-    desymmetrized_full_boundary::Vector{CircleSegment{T}}
+    desymmetrized_full_boundary::Vector{Vector{CircleSegment{T}}}
     length::T
     length_fundamental::T
     area::T
@@ -165,7 +130,6 @@ since no symmetry reduction is used here.
 """
 function CircularHoleBilliard(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),holes::Vector{Tuple{T,T,T}}=Tuple{T,T,T}[]) where {T<:Real}
     full_boundary,center=make_circle_with_holes(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=holes)
-    fundamental_boundary,_=make_quarter_annulus(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
     desymmetrized_full_boundary,_=make_quarter_full_annulus_boundary(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
     area_fundamental=(pi*R^2-pi*r^2)/4
     angles_fundamental=[pi/2,pi/2]
@@ -191,8 +155,7 @@ Stored in the same boundary convention as `CircularHoleBilliard`.
 """
 struct AnnularBilliard{T}<:AbsBilliard where {T<:Real}
     full_boundary::Vector{CircleSegment{T}}
-    fundamental_boundary::Vector
-    desymmetrized_full_boundary::Vector{CircleSegment{T}}
+    desymmetrized_full_boundary::Vector{Vector{CircleSegment{T}}}
     length::T
     length_fundamental::T
     area::T
@@ -220,17 +183,15 @@ Construct a circular billiard with one circular hole.
 """
 function AnnularBilliard(R::T,r::T;xh=zero(T),yh=zero(T),x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
     boundary,outer_center=make_circle_with_holes(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=[(r,xh,yh)])
-    fundamental_boundary,_=make_quarter_annulus(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
     desymmetrized_full_boundary,_=make_quarter_full_annulus_boundary(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
-    area_fundamental=(pi*R^2-pi*r^2)/4
-    angles_fundamental=[pi/2,pi/2]
-    length_fundamental=symmetry_accounted_fundamental_boundary_length(fundamental_boundary)
     area=pi*R^2-pi*r^2
     length=2*pi*(R+r)
+    area_fundamental=area/4
+    length_fundamental=sum(crv.length for comp in desymmetrized_full_boundary for crv in comp)
     angles=T[]
     angles_fundamental=T[]
     s_shift=zero(T)
-    return AnnularBilliard(boundary,fundamental_boundary,desymmetrized_full_boundary,length,length_fundamental,area,R,r,SVector(x0,y0),SVector(xh,yh),area_fundamental,angles,angles_fundamental,s_shift)
+    return AnnularBilliard(boundary,desymmetrized_full_boundary,length,length_fundamental,area,R,r,SVector(x0,y0),SVector(xh,yh),area_fundamental,angles,angles_fundamental,s_shift)
 end
 
 """

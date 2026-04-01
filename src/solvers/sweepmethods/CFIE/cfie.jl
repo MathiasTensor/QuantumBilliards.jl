@@ -146,12 +146,42 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
 end
 
 # By default for kress fudamental=false since we need the full set of points for the log split -> for alpert we can use symmetries and can choose fundamental domain
+#=
 function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
     for (idx,crv) in enumerate(boundary)
         pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(solver,_evaluate_points(solver,crv,k,idx))
     end
+    return pts
+end
+=#
+
+# Kress works componentwise on smooth closed curves only.
+# Accept either:
+#   [outer,hole1,hole2,...]
+# or
+#   [[outer],[hole1],[hole2],...]
+# but reject composite multi-segment components like [[seg1,seg2,...],...].
+function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    boundary=billiard.full_boundary
+    if !(boundary[1] isa AbstractVector)
+        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+        for (idx,crv) in enumerate(boundary)
+            p=_evaluate_points(solver,crv,k,idx)
+            pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
+        end
+        return pts
+    end
+    ncomp=length(boundary)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,ncomp)
+    for (idx,comp) in enumerate(boundary)
+        length(comp)==1 || error("CFIE_kress requires each boundary component to be a single smooth closed curve.")
+        crv=comp[1]
+        p=_evaluate_points(solver,crv,k,idx)
+        pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
+    end
+
     return pts
 end
 
@@ -226,59 +256,62 @@ function _is_component_closed(boundary::Vector{C},xtol::T) where {T<:Real,C<:Abs
     return _endpoint_distance(xR,xL)<=xtol
 end
 
-function build_component_join_topology(boundary::Vector{C};xtol=1e-10,angtol=1e-8,periodic::Bool=true) where {C<:AbsCurve}
-    n=length(boundary)
-    T=Float64
-    prev=Vector{Int}(undef,n)
-    next=Vector{Int}(undef,n)
-    left_kind=Vector{Symbol}(undef,n)
-    right_kind=Vector{Symbol}(undef,n)
-    left_angle=Vector{T}(undef,n)
-    right_angle=Vector{T}(undef,n)
-    # exact endpoints + tangents (NOT sampled nodes!)
-    xL=Vector{SVector{2,T}}(undef,n)
-    xR=Vector{SVector{2,T}}(undef,n)
-    tL=Vector{SVector{2,T}}(undef,n)
-    tR=Vector{SVector{2,T}}(undef,n)
-    @inbounds for i in 1:n
-        crv=boundary[i]
-        xL[i]=curve(crv,[zero(T)])[1]
-        xR[i]=curve(crv,[one(T)])[1]
-        tL[i]=tangent(crv,[zero(T)])[1]
-        tR[i]=tangent(crv,[one(T)])[1]
-    end
-    @inbounds for i in 1:n
-        prev[i]=(i==1) ? (periodic ? n : 0) : i-1
-        next[i]=(i==n) ? (periodic ? 1 : 0) : i+1
-        # -----------------
-        # LEFT JOIN
-        # -----------------
-        if prev[i]==0
-            left_kind[i]=:end
-            left_angle[i]=T(NaN)
-        else
-            d=_endpoint_distance(xR[prev[i]],xL[i])
-            d>xtol && error("Boundary ordering mismatch at left join of segment $i: distance = $d")
-
-            θ=_join_angle(tR[prev[i]],tL[i])
-            left_angle[i]=θ
-            left_kind[i]=(θ<=angtol) ? :smooth : :corner
+# build_join_topology
+# Build the topology of joins between oriented boundary segments for Alpert quadrature. This function identifies the previous and next segments for each segment, classifies the type of join (smooth, corner, or end), and computes the angle between segments at the joins. The topology information is used to apply the correct quadrature corrections at joins, especially for corners.
+# Inputs:
+#   - pts::Vector{BoundaryPointsCFIE{T}} : Vector of boundary points for each segment, where T <: Real.
+#   - xtol::T : Tolerance for checking if segments are joined (i.e., if the end of one segment is close enough to the start of the next segment).
+#   - angtol::T : Tolerance for classifying joins as smooth or corner based on the angle between segments.
+# Outputs:
+#   - topos::Vector{AlpertCompositeTopology{T}} : Vector of composite topologies for each boundary component, containing information about joins and angles.
+#   - gmaps::Vector{Vector{Int}} : Vector of index mappings for each component, indicating which segments belong to which component.
+function build_join_topology(pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real}
+    nc=max(p.compid for p in pts)
+    topos=Vector{AlpertCompositeTopology{T}}(undef,nc)
+    gmaps=Vector{Vector{Int}}(undef,nc)
+    @inbounds for c in 1:nc
+        gmap=findall(p->p.compid==c,pts)
+        gmaps[c]=gmap
+        n=length(gmap)
+        prev=Vector{Int}(undef,n)
+        next=Vector{Int}(undef,n)
+        left_kind=Vector{Symbol}(undef,n)
+        right_kind=Vector{Symbol}(undef,n)
+        left_angle=Vector{T}(undef,n)
+        right_angle=Vector{T}(undef,n)
+        periodic=_endpoint_distance(pts[gmap[end]].xy[end],pts[gmap[1]].xy[1])<=xtol
+        for l in 1:n
+            prev[l]=(l==1) ? (periodic ? n : 0) : l-1
+            next[l]=(l==n) ? (periodic ? 1 : 0) : l+1
         end
-        # -----------------
-        # RIGHT JOIN
-        # -----------------
-        if next[i]==0
-            right_kind[i]=:end
-            right_angle[i]=T(NaN)
-        else
-            d=_endpoint_distance(xR[i],xL[next[i]])
-            d>xtol && error("Boundary ordering mismatch at right join of segment $i: distance = $d")
-            θ=_join_angle(tR[i],tL[next[i]])
-            right_angle[i]=θ
-            right_kind[i]=(θ<=angtol) ? :smooth : :corner
+        for l in 1:n
+            a=gmap[l]
+            if prev[l]==0
+                left_kind[l]=:end
+                left_angle[l]=T(NaN)
+            else
+                ap=gmap[prev[l]]
+                d=_endpoint_distance(pts[ap].xy[end],pts[a].xy[1])
+                d>xtol && error("Boundary ordering mismatch at left join of segment $l in component $c: distance = $d")
+                θ=_join_angle(pts[ap].tangent[end],pts[a].tangent[1])
+                left_angle[l]=θ
+                left_kind[l]=(θ<=angtol) ? :smooth : :corner
+            end
+            if next[l]==0
+                right_kind[l]=:end
+                right_angle[l]=T(NaN)
+            else
+                an=gmap[next[l]]
+                d=_endpoint_distance(pts[a].xy[end],pts[an].xy[1])
+                d>xtol && error("Boundary ordering mismatch at right join of segment $l in component $c: distance = $d")
+                θ=_join_angle(pts[a].tangent[end],pts[an].tangent[1])
+                right_angle[l]=θ
+                right_kind[l]=(θ<=angtol) ? :smooth : :corner
+            end
         end
+        topos[c]=AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle)
     end
-    return AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle)
+    return topos,gmaps
 end
 
 # _open_panel_weights
