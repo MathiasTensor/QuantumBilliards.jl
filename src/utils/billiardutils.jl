@@ -129,20 +129,23 @@ A tuple `(xlim, ylim)`:
 function boundary_limits(curves;grd=1000)
     x_bnd=Float64[]
     y_bnd=Float64[]
-    comps=(isempty(curves) || !(curves[1] isa AbstractVector)) ? [curves] : curves
-    for comp in comps
-        compL=sum(crv.length for crv in comp)
-        for crv in comp
-            L=crv.length
-            N_bnd=max(512,round(Int,grd*L/compL))
-            t=range(0.0,1.0,N_bnd+1)[1:end-1]
-            pts=curve(crv,t)
+    function collect_boundary!(obj)
+        if obj isa AbstractVector
+            for sub in obj
+                collect_boundary!(sub)
+            end
+        else
+            L=obj.length
+            N_bnd=max(512,round(Int,grd/L))
+            t=range(0.0,1.0,length=N_bnd+1)[1:end-1]
+            pts=curve(obj,t)
             append!(x_bnd,getindex.(pts,1))
             append!(y_bnd,getindex.(pts,2))
         end
     end
+    collect_boundary!(curves)
     isempty(x_bnd) && error("Empty boundary in boundary_limits.")
-    push!(x_bnd,x_bnd[1])
-    push!(y_bnd,y_bnd[1])
-    return extrema(x_bnd),extrema(y_bnd)
+    xlim=extrema(x_bnd)
+    ylim=extrema(y_bnd)
+    return xlim,ylim
 end

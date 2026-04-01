@@ -648,8 +648,6 @@ end
 ###########################################################################
 ###########################################################################
 
-# Helpers for plotting billiard boundaries and curves
-
 function plot_curve!(ax,crv::AbsRealCurve;plot_normal=true,dens=20.0,color_crv=:grey,linewidth=0.75)
     L=crv.length
     grid=max(round(Int,L*dens),3)
@@ -676,6 +674,17 @@ function plot_curve!(ax,crv::AbsVirtualCurve;plot_normal=false,dens=10.0,color_c
     ax.aspect=DataAspect()
 end
 
+function _plot_boundary_object!(ax,boundary;dens=100.0,plot_normal=true,color_crv=:grey,linewidth=0.75)
+    if boundary isa AbstractVector
+        for obj in boundary
+            _plot_boundary_object!(ax,obj;dens=dens,plot_normal=plot_normal,color_crv=color_crv,linewidth=linewidth)
+        end
+    else
+        plot_curve!(ax,boundary;dens=dens,plot_normal=plot_normal,color_crv=color_crv,linewidth=linewidth)
+    end
+    return ax
+end
+
 function plot_boundary!(ax,billiard::AbsBilliard;fundamental_domain=true,desymmetrized_full_domain=false,dens=100.0,plot_normal=true,color_crv=:grey,linewidth=0.75)
     if fundamental_domain
         boundary=billiard.fundamental_boundary
@@ -684,9 +693,8 @@ function plot_boundary!(ax,billiard::AbsBilliard;fundamental_domain=true,desymme
     else
         boundary=billiard.full_boundary
     end
-    for curve in boundary 
-        plot_curve!(ax,curve;dens=dens,plot_normal=plot_normal,color_crv=color_crv,linewidth=linewidth)
-    end
+    _plot_boundary_object!(ax,boundary;dens=dens,plot_normal=plot_normal,color_crv=color_crv,linewidth=linewidth)
+    return ax
 end
 
 """
