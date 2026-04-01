@@ -105,8 +105,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     if solver isa CFIE_kress # FIXME: Future: hacky stuff, kress can have reverse orientation since periodic but for alpert code structured differently
         ts=reverse(pts.ts) # dont touch kress here !!!
     else
-        #ts=[s(j,N) for j in 1:N]
-        ts=reverse(pts.ts)
+        ts=[s(j,N) for j in 1:N] # dont touch Alpert here !!!
     end
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
