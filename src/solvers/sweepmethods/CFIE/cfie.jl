@@ -266,7 +266,7 @@ end
 #   - topos::Vector{AlpertCompositeTopology{T}} : Vector of composite topologies for each boundary component, containing information about joins and angles.
 #   - gmaps::Vector{Vector{Int}} : Vector of index mappings for each component, indicating which segments belong to which component.
 function build_join_topology(pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real}
-    nc=max(p.compid for p in pts)
+    nc=maximum(p.compid for p in pts)
     topos=Vector{AlpertCompositeTopology{T}}(undef,nc)
     gmaps=Vector{Vector{Int}}(undef,nc)
     @inbounds for c in 1:nc
