@@ -128,7 +128,7 @@ For CFIE use, we set
 
 since no symmetry reduction is used here.
 """
-function CircularHoleBilliard(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),holes::Vector{Tuple{T,T,T}}=Tuple{T,T,T}[]) where {T<:Real}
+function CircularHoleBilliard(R::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),holes::Vector{Tuple{T,T,T}}=Tuple{T,T,T}[],xh=zero(T),yh=zero(T)) where {T<:Real}
     full_boundary,center=make_circle_with_holes(R;x0=x0,y0=y0,rot_angle=rot_angle,holes=holes)
     desymmetrized_full_boundary,_=make_quarter_full_annulus_boundary(R,r;x0=x0,y0=y0,xh=xh,yh=yh,rot_angle=rot_angle)
     area_fundamental=(pi*R^2-pi*r^2)/4
