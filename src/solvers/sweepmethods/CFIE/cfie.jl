@@ -1185,13 +1185,13 @@ end
 #   - Promotes to Complex if required by rotational irreps.
 function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing}) where {U<:Number,T<:Real}
     symmetries===nothing && return u
-    lens=[length(c.xy) for c in pts]
-    offs=Vector{Int}(undef,length(lens)+1)
+    lengths=[length(c.xy) for c in pts]
+    offs=Vector{Int}(undef,length(lengths)+1)
     offs[1]=1
-    @inbounds for i in 1:length(lens)
-        offs[i+1]=offs[i]+lens[i]
+    @inbounds for i in 1:length(lengths)
+        offs[i+1]=offs[i]+lengths[i]
     end
-    comps=[u[offs[i]:(offs[i+1]-1)] for i in 1:length(lens)]
+    comps=[u[offs[i]:(offs[i+1]-1)] for i in eachindex(lengths)]
     has_complex=any(s->(s isa Rotation) && mod(s.m,s.n)!=0,symmetries)
     S=(U<:Real && has_complex) ? Complex{T} : U
     compsS=[S.(c) for c in comps]
@@ -1199,31 +1199,32 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{
     for sym in symmetries
         new_parts=Vector{Vector{S}}()
         if sym isa Reflection
-            if sym.axis===:y_axis || sym.axis===:x_axis
-                p=S(sym.parity)
+            if sym.axis===:y_axis || sym.axis===:origin
+                p=S(sym.axis===:origin ? sym.parity[1] : sym.parity)
                 for c in compsS
                     push!(new_parts,p.*reverse(c))
                 end
-            elseif sym.axis===:origin
-                px,py=S(sym.parity[1]),S(sym.parity[2])
+            end
+            if sym.axis===:x_axis || sym.axis===:origin
+                p=S(sym.axis===:origin ? sym.parity[2] : sym.parity)
                 for c in compsS
-                    push!(new_parts,px.*reverse(c))
+                    push!(new_parts,p.*reverse(c))
                 end
+            end
+            if sym.axis===:origin
+                pxy=S(sym.parity[1]*sym.parity[2])
                 for c in compsS
-                    push!(new_parts,py.*reverse(c))
+                    push!(new_parts,pxy.*c)
                 end
-                for c in compsS
-                    push!(new_parts,(px*py).*c)
-                end
-            else
-                error("Unknown reflection axis $(sym.axis)")
             end
         elseif sym isa Rotation
-            n=sym.n;m=mod(sym.m,n)
+            n=sym.n
+            m=mod(sym.m,n)
             for l in 1:n-1
-                χ=(m==0) ? one(S) : S(cos(T(2π*m*l/n))+im*sin(T(2π*m*l/n)))
+                χ = m==0 ? one(Complex{T}) :
+                    Complex{T}(cos(T(2π)*T(m*l)/T(n)),sin(T(2π)*T(m*l)/T(n)))
                 for c in compsS
-                    push!(new_parts,χ.*c)
+                    push!(new_parts,S.(χ.*c))
                 end
             end
         else
