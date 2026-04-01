@@ -27,8 +27,8 @@ function _boundary_components(boundary)
         return [collect(comp) for comp in boundary]
     end
     all_closed=all(crv->begin
-        p0=curve(crv,(0.0,))[1]
-        p1=curve(crv,(1.0,))[1]
+        p0=curve(crv,[0.0])[1]
+        p1=curve(crv,[1.0])[1]
         hypot(p1[1]-p0[1],p1[2]-p0[2])<=1e-8
     end,boundary)
 
