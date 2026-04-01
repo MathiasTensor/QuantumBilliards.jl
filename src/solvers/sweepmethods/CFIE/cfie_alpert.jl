@@ -1003,7 +1003,7 @@ end
 #   - Geometry caches for each component
 #   - Alpert component caches for each component
 #   - Composite topology information (if non-periodic)
-struct CFIEAlpertWorkspace{T<:Real,R,C}
+struct CFIEAlpertWorkspace{T<:Real,C}
     rule::AlpertLogRule{T}
     offs::Vector{Int}
     Gs::Vector{CFIEGeomCache{T}}
