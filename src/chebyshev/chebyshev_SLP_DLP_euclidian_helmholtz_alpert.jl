@@ -746,128 +746,83 @@ end
 
 #### HELPER TO GET GLOBAL RMIN AND RMAX BOUNDS FOR ALL COMPONENTS ####
 
-function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symmetry,billiard;pad=(T(0.9),T(1.1)),rmax_factor::Real=1.0) where {T<:Real}
+function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symmetry::Union{Nothing,Vector{Any}}=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=1.05) where {T<:Real}
     nc=length(pts)
     @assert nc>0
     tol2=(eps(T))^2
     nth=Threads.nthreads()
     min2_tls=fill(T(Inf),nth)
     max2_tls=fill(zero(T),nth)
-    pt_tls=[zeros(T,2) for _ in 1:nth]
-    comp_ranges=Vector{UnitRange{Int}}(undef,nc)
-    s=1
-    for a in 1:nc
-        n=length(pts[a].xy)
-        comp_ranges[a]=s:(s+n-1)
-        s+=n
+    counts=[length(p.xy) for p in pts]
+    offs=cumsum(vcat(1,counts[1:end-1]))
+    totalN=sum(counts)
+    @inline function decode_idx(idx::Int)
+        c=searchsortedlast(offs,idx)
+        i=idx-offs[c]+1
+        return c,i
     end
-    ntot=s-1
-    function decode_idx(g::Int)
-        @inbounds for a in 1:nc
-            r=comp_ranges[a]
-            if g in r
-                return a, g-first(r)+1
-            end
-        end
-        error("decode_idx failure")
-    end
-    Threads.@threads for g in 1:ntot
-        tid=Threads.threadid()
-        pt=pt_tls[tid]
-        a,i=decode_idx(g)
-        xi,yi=pts[a].xy[i]
+    Threads.@threads for idx in 1:totalN
+        ca,ia=decode_idx(idx)
+        xa,ya=pts[ca].xy[ia]
         lmin2=typemax(T)
         lmax2=zero(T)
-        @inbounds for b in 1:nc
-            pb=pts[b]
+        @inbounds for cb in 1:nc
+            pb=pts[cb]
             Nb=length(pb.xy)
-            for j in 1:Nb
-                xj,yj=pb.xy[j]
-                if !(a==b && i==j)
-                    dx=xi-xj
-                    dy=yi-yj
+            for jb in 1:Nb
+                xj,yj=pb.xy[jb]
+                # direct distance
+                if !(ca==cb && ia==jb)
+                    dx=xa-xj
+                    dy=ya-yj
                     d2=muladd(dx,dx,dy*dy)
                     if d2>tol2
                         d2<lmin2 && (lmin2=d2)
                         d2>lmax2 && (lmax2=d2)
                     end
                 end
+                # symmetry-image distances
                 if symmetry !== nothing
+                    q=SVector{2,T}(xj,yj)
                     for s in symmetry
                         if s isa Reflection
-                            if s.axis===:y_axis
-                                q=image_point_x((xj,yj),billiard)
-                                pt[1]=q[1]; pt[2]=q[2]
-                                dx=xi-pt[1]; dy=yi-pt[2]
-                                d2=muladd(dx,dx,dy*dy)
-                                if d2>tol2
-                                    d2<lmin2 && (lmin2=d2)
-                                    d2>lmax2 && (lmax2=d2)
-                                end
-                            elseif s.axis===:x_axis
-                                q=image_point_y((xj,yj),billiard)
-                                pt[1]=q[1]; pt[2]=q[2]
-                                dx=xi-pt[1]; dy=yi-pt[2]
-                                d2=muladd(dx,dx,dy*dy)
-                                if d2>tol2
-                                    d2<lmin2 && (lmin2=d2)
-                                    d2>lmax2 && (lmax2=d2)
-                                end
-                            elseif s.axis===:origin
-                                q=image_point_x((xj,yj),billiard)
-                                pt[1]=q[1]; pt[2]=q[2]
-                                dx=xi-pt[1]; dy=yi-pt[2]
-                                d2=muladd(dx,dx,dy*dy)
-                                if d2>tol2
-                                    d2<lmin2 && (lmin2=d2)
-                                    d2>lmax2 && (lmax2=d2)
-                                end
-                                q=image_point_y((xj,yj),billiard)
-                                pt[1]=q[1]; pt[2]=q[2]
-                                dx=xi-pt[1]; dy=yi-pt[2]
-                                d2=muladd(dx,dx,dy*dy)
-                                if d2>tol2
-                                    d2<lmin2 && (lmin2=d2)
-                                    d2>lmax2 && (lmax2=d2)
-                                end
-                                q=image_point_xy((xj,yj),billiard)
-                                pt[1]=q[1]; pt[2]=q[2]
-                                dx=xi-pt[1]; dy=yi-pt[2]
-                                d2=muladd(dx,dx,dy*dy)
-                                if d2>tol2
-                                    d2<lmin2 && (lmin2=d2)
-                                    d2>lmax2 && (lmax2=d2)
-                                end
-                            else
-                                error("Unknown reflection axis $(s.axis)")
+                            qimg=image_point(s,q)
+                            dx=xa-qimg[1]
+                            dy=ya-qimg[2]
+                            d2=muladd(dx,dx,dy*dy)
+                            if d2>tol2
+                                d2<lmin2 && (lmin2=d2)
+                                d2>lmax2 && (lmax2=d2)
                             end
                         elseif s isa Rotation
-                            costab,sintab,_χ=_rotation_tables(T,s.n,s.m)
+                            costab,sintab,_χ=_rotation_tables(T,s.n,mod(s.m,s.n))
                             for l in 1:(s.n-1)
-                                q=image_point(s,(xj,yj),l,costab,sintab)
-                                pt[1]=q[1]; pt[2]=q[2]
-                                dx=xi-pt[1]
-                                dy=yi-pt[2]
+                                qimg=image_point(s,q,l,costab,sintab)
+                                dx=xa-qimg[1]
+                                dy=ya-qimg[2]
                                 d2=muladd(dx,dx,dy*dy)
                                 if d2>tol2
                                     d2<lmin2 && (lmin2=d2)
                                     d2>lmax2 && (lmax2=d2)
                                 end
                             end
+                        else
+                            error("Unknown symmetry type $(typeof(s))")
                         end
                     end
                 end
             end
         end
+        tid=Threads.threadid()
         lmin2<min2_tls[tid] && (min2_tls[tid]=lmin2)
         lmax2>max2_tls[tid] && (max2_tls[tid]=lmax2)
     end
     min2=minimum(min2_tls)
     max2=maximum(max2_tls)
     @assert isfinite(min2) && max2>zero(T) "estimate_rmin_rmax_cfie_alpert: degenerate geometry"
-    rmin=Float64(pad[1]*sqrt(min2))
-    rmax=Float64(pad[2]*rmax_factor*sqrt(max2))
-    return rmin,rmax
+    rmin=pad[1]*sqrt(min2)
+    rmax=pad[2]*rmax_factor*sqrt(max2)
+    return Float64(rmin),Float64(rmax)
 end
 
 # build_cfie_alpert_cheb_data
@@ -878,7 +833,7 @@ function build_cfie_alpert_cheb_data(solver::CFIE_alpert{T},pts::Vector{Boundary
         rmin=geomws.block_cache.rmin
         rmax=geomws.block_cache.rmax
     else
-        rmin,rmax=estimate_rmin_rmax_cfie_alpert(pts,solver.symmetry,solver.billiard;pad=(0.9,1.1),rmax_factor=1.0)
+        rmin,rmax=estimate_rmin_rmax_cfie_alpert(pts,solver.symmetry;pad=(0.9,1.1),rmax_factor=1.0)
     end
     plans0,plans1=build_CFIE_plans_alpert(ks,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=nthreads)
     SCs=build_alpert_shift_cheb_caches_multi_k(pts,geomws.Cs,plans0)
@@ -893,7 +848,7 @@ function build_cfie_alpert_cheb_data(solver::CFIE_alpert{T},pts::Vector{Boundary
         rmin=geomws.block_cache.rmin
         rmax=geomws.block_cache.rmax
     else
-        rmin,rmax=estimate_rmin_rmax_cfie_alpert(pts,solver.symmetry,solver.billiard;pad=(0.9,1.1),rmax_factor=1.0)
+        rmin,rmax=estimate_rmin_rmax_cfie_alpert(pts,solver.symmetry;pad=(0.9,1.1),rmax_factor=1.0)
     end
     plans0,plans1=build_CFIE_plans_alpert([k],rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=1)
     SCs=build_alpert_shift_cheb_caches_multi_k(pts,geomws.Cs,plans0)
