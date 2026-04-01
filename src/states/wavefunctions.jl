@@ -617,7 +617,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
         caches[i]=flatten_cfie_wavefunction_cache(vec_comps[i])
     end
     Psi_flat=zeros(S,nx*ny) # flat workspace reused per state
-    progress=Progress(nstates,desc="Constructing CFIE_kress wavefunction matrices...")
+    progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
     @inbounds for i in eachindex(ks)
         k=ks[i]
