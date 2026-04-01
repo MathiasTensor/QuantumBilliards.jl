@@ -69,6 +69,7 @@ include("billiards/africa.jl")
 include("billiards/circle_with_circle_holes.jl")
 include("billiards/star_with_hole.jl")
 include("billiards/stadium_within_stadium.jl")
+include("billiards/elliptic_flower_with_hole.jl")
 export adapt_basis
 export Stadium, Lemon, Triangle, Sinai
 export curve, tangent, arc_length
@@ -106,7 +107,8 @@ include("chebyshev/chebyshev_core.jl")
 include("chebyshev/chebyshev_point_symmetry.jl")
 include("chebyshev/chebyshev_hankel.jl")
 include("chebyshev/chebyshev_DLP_euclidian_helmholtz.jl")
-include("chebyshev/chebyshev_SLP_DLP_euclidian_helmholtz.jl")
+include("chebyshev/chebyshev_SLP_DLP_euclidian_helmholtz_kress.jl")
+include("chebyshev/chebyshev_SLP_DLP_euclidian_helmholtz_alpert.jl")
 include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
 include("solvers/krylovsolvers.jl")
 include("solvers/acceleratedmethods/beyn.jl")
