@@ -213,7 +213,6 @@ function solve_vect(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vect
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
     return mu,u_mu
 end
 
@@ -227,7 +226,6 @@ function solve_vect(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
     return mu,u_mu
 end
 
