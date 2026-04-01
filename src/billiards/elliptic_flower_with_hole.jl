@@ -46,7 +46,7 @@ function make_elliptic_flower_component(n::Int,Rb::T,b::T;
     boundary=AbsRealCurve[]
     for j in 1:n
         A=verts[j]
-        B=verts[mod1(j+2,n)]
+        B=verts[mod1(j+1,n)]
         push!(boundary,elliptic_arc(A,B,b;origin=origin,rot_angle=rot_angle))
     end
     return boundary,verts
@@ -76,7 +76,7 @@ Returns `(boundary,vertices)` where `boundary` is a one-element vector.
 function make_desymmetrized_elliptic_flower_component(n,Rb,b;θ0=0.0)
     verts=[SVector{2}(Rb*cos(θ0+2π*j/n),Rb*sin(θ0+2π*j/n)) for j in 0:n-1]
     A=verts[1]
-    B=verts[mod1(3,n)]
+    B=verts[2]
     arc=elliptic_arc(A,B,b)
     return [arc],verts
 end
