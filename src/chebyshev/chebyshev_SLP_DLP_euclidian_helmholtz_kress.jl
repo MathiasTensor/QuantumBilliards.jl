@@ -7,8 +7,8 @@
 # - For each block, use the precomputed geometry and the Chebyshev plans to evaluate the SLP and DLP contributions for each pair of points, and accumulate the CFIE_kress matrix entries.
 #
 # API: 
-# - `build_CFIE_plans(...)`: Builds Chebyshev-based Hankel evaluation plans for the given wavenumbers and geometry.
-# - `build_cfie_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE_kress matrix.
+# - `build_CFIE_plans_kress(...)`: Builds Chebyshev-based Hankel evaluation plans for the given wavenumbers and geometry.
+# - `build_cfie_kress_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE_kress matrix.
 # - `h01_multi_ks_at_r!(...)`: Evaluates the SLP and DLP Hankel functions for multiple wavenumbers at given distances.
 # - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE_kress matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
 # USUALLY NOT CALLED DIRECTLY: 
@@ -16,8 +16,8 @@
 # - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_kress matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
 #
 # Workflow: 
-# 1. Call `build_CFIE_plans` to create the Chebyshev evaluation plans for the desired wavenumbers and geometry.
-# 2. Call `build_cfie_block_caches` to precompute the geometry-related terms for each block of the CFIE_kress matrix.
+# 1. Call `build_CFIE_plans_kress` to create the Chebyshev evaluation plans for the desired wavenumbers and geometry.
+# 2. Call `build_cfie_kress_block_caches` to precompute the geometry-related terms for each block of the CFIE_kress matrix.
 # 3. Call `compute_kernel_matrices_CFIE_chebyshev!` to compute the CFIE_kress matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
 #
 # MO 26/3/26
@@ -42,7 +42,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
     return nothing
 end
 
-# Same as above but only for H0/H1, used for CFIE_kress assembly when J0/J1 are not needed -> off_block_col! 
+# Same as above but only for H0/H1
 @inline function hankels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
@@ -51,11 +51,11 @@ end
     return nothing
 end
 
-################################
+######################################
 #### PLAN BUILDERS FOR CFIE_kress ####
-################################
+######################################
 
-function build_CFIE_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
+function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
     Mk=length(ks)
     plans0=Vector{ChebHankelPlanH}(undef,Mk)
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
@@ -97,7 +97,7 @@ end
 #### COMPONENT / BLOCK CACHE ####
 #################################
 
-struct CFIEBlockCache{T<:Real}
+struct CFIE_kress_BlockCache{T<:Real}
     same::Bool
     row_offset::Int
     col_offset::Int
@@ -116,17 +116,17 @@ struct CFIEBlockCache{T<:Real}
 end
 
 struct CFIEBlockSystemCache{T<:Real}
-    blocks::Matrix{CFIEBlockCache{T}}
+    blocks::Matrix{CFIE_kress_BlockCache{T}}
     offsets::Vector{Int}
     rmin::Float64
     rmax::Float64
 end
 
 # Builds the CFIE_kress block caches for all pairs of components, precomputing the geometry-related terms needed for the CFIE_kress matrix assembly.
-function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
+function build_cfie_kress_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
-    blocks=Matrix{CFIEBlockCache{T}}(undef,nc,nc)
+    blocks=Matrix{CFIE_kress_BlockCache{T}}(undef,nc,nc)
     global_rmin=typemax(T)
     global_rmax=zero(T)
     for a in 1:nc, b in 1:nc
@@ -187,9 +187,9 @@ function build_cfie_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::I
             kappa_i=_INV_TWO_PI.*(κnum./κden)
             Rkress=zeros(T,Ni,Ni)
             kress_R!(Rkress)
-            blocks[a,b]=CFIEBlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,logterm,kappa_i,Rkress)
+            blocks[a,b]=CFIE_kress_BlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,logterm,kappa_i,Rkress)
         else
-            blocks[a,b]=CFIEBlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,nothing,nothing,nothing)
+            blocks[a,b]=CFIE_kress_BlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_j,wj,pidx,tloc,nothing,nothing,nothing)
         end
     end
     pref_plan=plan_h(0,1,1.0+0im,Float64(global_rmin),Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
@@ -259,7 +259,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
     blocks=sys.blocks
     nc=size(blocks,1)
 
-    function same_block_col!(blk::CFIEBlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64},j0vals::Vector{ComplexF64},j1vals::Vector{ComplexF64}) where {T<:Real}
+    function same_block_col!(blk::CFIE_kress_BlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64},j0vals::Vector{ComplexF64},j1vals::Vector{ComplexF64}) where {T<:Real}
         ro=blk.row_offset;co=blk.col_offset
         sj=blk.speed_j[j];wj=blk.wj[j];gj=co+j-1
         gi=ro+j-1;κj=blk.kappa_i[j];rjj=blk.Rkress[j,j]
@@ -302,7 +302,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         return nothing
     end
 
-    function off_block_col!(blk::CFIEBlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64}) where {T<:Real}
+    function off_block_col!(blk::CFIE_kress_BlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64}) where {T<:Real}
         ro=blk.row_offset;co=blk.col_offset
         sj=blk.speed_j[j];wj=blk.wj[j];gj=co+j-1
         @inbounds for i in 1:blk.Ni
