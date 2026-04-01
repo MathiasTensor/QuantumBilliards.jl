@@ -728,7 +728,14 @@ end
 #   - Modifies `A` in place with all self-interaction blocks assembled for the composite boundary.
 function _assemble_all_self_alpert_composite!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}};multithreaded::Bool=true) where {T<:Real}
     @inbounds for c in eachindex(gmaps)
-        _assemble_self_alpert_composite_component!(solver,A,pts,Gs,Cs,offs,k,rule,topos[c],gmaps[c];multithreaded=multithreaded)
+        gmap=gmaps[c]
+        if length(gmap)==1 && pts[gmap[1]].is_periodic
+            a=gmap[1]
+            ra=offs[a]:(offs[a+1]-1)
+            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
+        else
+            _assemble_self_alpert_composite_component!(solver,A,pts,Gs,Cs,offs,k,rule,topos[c],gmap;multithreaded=multithreaded)
+        end
     end
     return A
 end
