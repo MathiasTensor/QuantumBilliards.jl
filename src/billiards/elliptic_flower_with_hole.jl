@@ -10,18 +10,21 @@ The arc is chosen so that:
 
 Returns a `PolarSegment`.
 """
-function elliptic_arc(A::SVector{2,T},B::SVector{2,T},b::T;
-    origin=zero(A),rot_angle=zero(T)) where {T<:Real}
+function elliptic_arc(A::SVector{2,T},B::SVector{2,T},b::T;origin=zero(A),rot_angle=zero(T)) where {T<:Real}
     C=(A+B)/2
     d=norm(B-A)
-    c=d/2
-    a=sqrt(b^2+c^2)
+    a=d/2
+    a>zero(T) || error("A and B must be distinct.")
+    b<a || error("Need b < |B-A|/2 for a valid elliptic arc.")
     u=(B-A)/d
     v=SVector(-u[2],u[1])
-    sgn=norm(C+b*v)>norm(C-b*v) ? one(T) : -one(T)
+    # choose the branch whose midpoint is farther from the origin
+    mp_plus=C + b*v
+    mp_minus=C - b*v
+    s = norm(mp_plus) > norm(mp_minus) ? one(T) : -one(T)
     r_func=t->begin
-        θ=pi*(t-0.5)
-        C+a*cos(θ)*u+sgn*b*sin(θ)*v
+        θ=T(pi)*(one(T)-t)   # t=0 -> θ=π -> A,   t=1 -> θ=0 -> B
+        C + a*cos(θ)*u + s*b*sin(θ)*v
     end
     return PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
 end
