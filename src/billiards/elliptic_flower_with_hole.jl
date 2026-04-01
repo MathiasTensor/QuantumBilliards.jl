@@ -18,9 +18,14 @@ function elliptic_arc(A::SVector{2,T},B::SVector{2,T},b::T;
     a=sqrt(b^2+c^2)
     u=(B-A)/d
     v=SVector(-u[2],u[1])
+    center=zero(SVector{2,T}) # center is at origin in local coordinates
     r_func=t->begin
         θ=pi*(t-0.5)
-        C+a*cos(θ)*u+b*sin(θ)*v
+        p=C+a*cos(θ)*u+b*sin(θ)*v
+        if dot(p-C,C-center)<0
+            p=C+a*cos(θ)*u-b*sin(θ)*v
+        end
+        return p
     end
     return PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
 end
@@ -57,13 +62,13 @@ just one elliptic arc, namely the first one joining vertex 1 to vertex 3.
 
 Returns `(boundary,vertices)` where `boundary` is a one-element vector.
 """
-function make_desymmetrized_elliptic_flower_component(n::Int,Rb::T,b::T;
-    θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
-    verts=[SVector{2,T}(Rb*cos(θ0+2π*j/n),Rb*sin(θ0+2π*j/n)) for j in 0:n-1]
+function make_desymmetrized_elliptic_flower_component(n,Rb,b;θ0=0.0)
+    verts=[SVector{2}(Rb*cos(θ0+2π*j/n),Rb*sin(θ0+2π*j/n)) for j in 0:n-1]
     A=verts[1]
     B=verts[mod1(3,n)]
-    boundary=AbsRealCurve[elliptic_arc(A,B,b;origin=origin,rot_angle=rot_angle)]
-    return boundary,verts
+    arc=elliptic_arc(A,B,b)
+    origin=SVector(0.0,0.0)
+    return arc,verts
 end
 
 """
@@ -91,7 +96,7 @@ function make_desymmetrized_polygon_hole_component(n::Int,Rh::T;
     θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
     verts=[SVector{2,T}(Rh*cos(θ0+2π*j/n),Rh*sin(θ0+2π*j/n)) for j in 0:n-1]
     edge=LineSegment(verts[2],verts[1];origin=origin,rot_angle=rot_angle)
-    return AbsRealCurve[edge],verts
+    return edge,verts
 end
 
 @inline function _boundary_total_length(boundary)
