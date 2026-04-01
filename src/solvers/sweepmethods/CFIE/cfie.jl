@@ -1057,19 +1057,22 @@ end
 end
 
 # apply_symmetries_to_boundary_points
-# Apply the specified symmetries to a vector of CFIE boundary components, returning the full set of boundary points for the entire geometry.
+# Expand boundary geometry from fundamental domain → full domain.
+#
 # Inputs:
-#   - pts::Vector{BoundaryPointsCFIE{T}} :
-#       Boundary components corresponding to the fundamental domain, with points sampled according to the desymmetrized geometry.
-#   - symmetries::Union{Vector{Any},Nothing} :
-#       Vector of symmetry objects to apply, or `nothing` if no symmetries.
-#   - billiard::Bi :
-#       Geometry object which may carry reflection axis shifts.
-#   - same_direction::Bool=true :
-#       If true, reflected components will have their points reversed to maintain the same physical orientation as the fundamental domain. This is needed for #       CFIE assembly to ensure the correct normal direction, but should be set to false if the input points are already oriented according to the full geometry.
-# Outputs:
-#   - full::Vector{BoundaryPointsCFIE{T}} :
-#       Full set of boundary components for the entire geometry, including all reflected and rotated images.
+#   pts         : Vector of BoundaryPointsCFIE (fundamental domain)
+#   symmetries  : Vector of symmetry ops or nothing
+#   billiard    : geometry (may carry axis shifts)
+#   same_direction::Bool :
+#       if true, enforce consistent CCW orientation after reflection
+#
+# Output:
+#   full        : expanded boundary components (geometry)
+#
+# Notes:
+#   - Reflections duplicate components with orientation handling.
+#   - Rotations generate n-1 additional copies.
+#   - Tangents are transformed consistently with geometry.
 function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing},billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     symmetries===nothing && return pts
     full=copy(pts)
@@ -1079,9 +1082,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
         new_parts=BoundaryPointsCFIE{T}[]
         if s isa Reflection
             for c in pts
-                xy=c.xy
-                t=c.tangent
-                ds=c.ds
+                xy,t,ds=c.xy,c.tangent,c.ds
                 if s.axis===:y_axis || s.axis===:origin
                     rxy=[SVector(_x_reflect(p[1],sx),p[2]) for p in xy]
                     rt=[image_tangent_x(tt) for tt in t]
@@ -1101,15 +1102,13 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
         elseif s isa Rotation
             for l in 1:s.n-1
                 cx,cy=s.center
-                θ=T(2π*l/s.n)
-                cθ=cos(θ)
-                sθ=sin(θ)
+                θ=T(2*pi*l/s.n);cθ=cos(θ);sθ=sin(θ)
                 for c in pts
-                    rxy=Vector{SVector{2,T}}(undef,length(c.xy))
-                    rt=Vector{SVector{2,T}}(undef,length(c.tangent))
-                    @inbounds for j in eachindex(c.xy)
-                        p=c.xy[j]
-                        tt=c.tangent[j]
+                    N=length(c.xy)
+                    rxy=Vector{SVector{2,T}}(undef,N)
+                    rt=Vector{SVector{2,T}}(undef,N)
+                    @inbounds for j in 1:N
+                        p=c.xy[j];tt=c.tangent[j]
                         x=cθ*(p[1]-cx)-sθ*(p[2]-cy)+cx
                         y=sθ*(p[1]-cx)+cθ*(p[2]-cy)+cy
                         tx=cθ*tt[1]-sθ*tt[2]
@@ -1126,4 +1125,70 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
         append!(full,new_parts)
     end
     return full
+end
+
+# apply_symmetries_to_boundary_function
+# Expand boundary data (function values) from fundamental domain → full domain.
+#
+# Inputs:
+#   u           : values on flattened fundamental boundary
+#   pts         : corresponding vector of BoundaryPointsCFIE (fundamental domain)
+#   symmetries  : Vector of symmetry ops or nothing
+#
+# Output:
+#   u_full      : expanded vector consistent with geometry expansion
+#
+# Notes:
+#   - Mirrors apply_symmetries_to_boundary_points.
+#   - Reflection reverses ordering; rotation multiplies by character χ.
+#   - Promotes to Complex if required by rotational irreps.
+function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing}) where {U<:Number,T<:Real}
+    symmetries===nothing && return u
+    lens=[length(c.xy) for c in pts]
+    offs=Vector{Int}(undef,length(lens)+1)
+    offs[1]=1
+    @inbounds for i in 1:length(lens)
+        offs[i+1]=offs[i]+lens[i]
+    end
+    comps=[u[offs[i]:(offs[i+1]-1)] for i in 1:length(lens)]
+    has_complex=any(s->(s isa Rotation) && mod(s.m,s.n)!=0,symmetries)
+    S=(U<:Real && has_complex) ? Complex{T} : U
+    compsS=[S.(c) for c in comps]
+    full=copy(compsS)
+    for sym in symmetries
+        new_parts=Vector{Vector{S}}()
+        if sym isa Reflection
+            if sym.axis===:y_axis || sym.axis===:x_axis
+                p=S(sym.parity)
+                for c in compsS
+                    push!(new_parts,p.*reverse(c))
+                end
+            elseif sym.axis===:origin
+                px,py=S(sym.parity[1]),S(sym.parity[2])
+                for c in compsS
+                    push!(new_parts,px.*reverse(c))
+                end
+                for c in compsS
+                    push!(new_parts,py.*reverse(c))
+                end
+                for c in compsS
+                    push!(new_parts,(px*py).*c)
+                end
+            else
+                error("Unknown reflection axis $(sym.axis)")
+            end
+        elseif sym isa Rotation
+            n=sym.n;m=mod(sym.m,n)
+            for l in 1:n-1
+                χ=(m==0) ? one(S) : S(cos(T(2π*m*l/n))+im*sin(T(2π*m*l/n)))
+                for c in compsS
+                    push!(new_parts,χ.*c)
+                end
+            end
+        else
+            error("Unknown symmetry type $(typeof(sym))")
+        end
+        append!(full,new_parts)
+    end
+    return vcat(full...)
 end
