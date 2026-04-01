@@ -507,6 +507,10 @@ end
 #### COMPOSITE ALPERT HELP ####
 ###############################
 
+function _reverse_component_curves(comp::Vector{C}) where {C<:AbsCurve}
+    return reverse(comp)
+end
+
 function build_join_topology(solver::CFIE_alpert{T},billiard::Bi;xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
     if !(boundary[1] isa AbstractVector)
