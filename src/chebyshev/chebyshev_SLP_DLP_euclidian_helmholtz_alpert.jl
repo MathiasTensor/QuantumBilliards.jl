@@ -27,40 +27,6 @@
 #### GEOMETRY-ONLY WORKSPACE ###
 ###############################
 
-# CFIEAlpertGeomWorkspace
-# Stores all geometry-only information reused for all contour points zj.
-#
-# Fields:
-#   - rule:
-#       Alpert logarithmic correction rule.
-#   - offs:
-#       Global component offsets.
-#   - Gs:
-#       Per-component geometric caches (distance, curvature, speed, etc.).
-#   - Cs:
-#       Per-component Alpert interpolation caches (periodic or smooth-panel).
-#   - topos,gmaps,panel_to_comp:
-#       Composite topology metadata for multi-panel smooth joins.
-#   - block_cache:
-#       Ordinary off/self block distance lookup cache (R, invR, inner, pidx, tloc).
-#   - Ntot:
-#       Total matrix dimension.
-struct CFIEAlpertGeomWorkspace{T<:Real,C}
-    rule::AlpertLogRule{T}
-    offs::Vector{Int}
-    Gs::Vector{CFIEGeomCache{T}}
-    Cs::Vector{C}
-    topos::Union{Nothing,Vector{AlpertCompositeTopology{T}}}
-    gmaps::Union{Nothing,Vector{Vector{Int}}}
-    panel_to_comp::Union{Nothing,Vector{Int}}
-    block_cache::CFIEAlpertBlockSystemCache{T}
-    Ntot::Int
-end
-
-#################################
-#### BLOCK DISTANCE CACHES   ####
-#################################
-
 # CFIEAlpertBlockCache
 # Geometry-only block cache used for ordinary self/off-diagonal source-target
 # distance lookup and Chebyshev panel lookup.
@@ -101,6 +67,36 @@ struct CFIEAlpertBlockSystemCache{T<:Real}
     offsets::Vector{Int}
     rmin::Float64
     rmax::Float64
+end
+
+# CFIEAlpertGeomWorkspace
+# Stores all geometry-only information reused for all contour points zj.
+#
+# Fields:
+#   - rule:
+#       Alpert logarithmic correction rule.
+#   - offs:
+#       Global component offsets.
+#   - Gs:
+#       Per-component geometric caches (distance, curvature, speed, etc.).
+#   - Cs:
+#       Per-component Alpert interpolation caches (periodic or smooth-panel).
+#   - topos,gmaps,panel_to_comp:
+#       Composite topology metadata for multi-panel smooth joins.
+#   - block_cache:
+#       Ordinary off/self block distance lookup cache (R, invR, inner, pidx, tloc).
+#   - Ntot:
+#       Total matrix dimension.
+struct CFIEAlpertGeomWorkspace{T<:Real,C}
+    rule::AlpertLogRule{T}
+    offs::Vector{Int}
+    Gs::Vector{CFIEGeomCache{T}}
+    Cs::Vector{C}
+    topos::Union{Nothing,Vector{AlpertCompositeTopology{T}}}
+    gmaps::Union{Nothing,Vector{Vector{Int}}}
+    panel_to_comp::Union{Nothing,Vector{Int}}
+    block_cache::CFIEAlpertBlockSystemCache{T}
+    Ntot::Int
 end
 
 # build_cfie_alpert_block_caches
