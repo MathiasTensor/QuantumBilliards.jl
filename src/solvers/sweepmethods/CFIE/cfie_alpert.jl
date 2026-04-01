@@ -744,6 +744,54 @@ end
 #### HELPERS ####
 #################
 
+# CFIEAlpertWorkspace
+# Struct to hold all precomputed data for CFIE Alpert assembly, including:
+#   - Alpert quadrature rule
+#   - Component offsets for global indexing
+#   - Geometry caches for each component
+#   - Alpert component caches for each component
+#   - Composite topology information (if non-periodic)
+struct CFIEAlpertWorkspace{T<:Real,C}
+    rule::AlpertLogRule{T}
+    offs::Vector{Int}
+    Gs::Vector{CFIEGeomCache{T}}
+    Cs::Vector{C}
+    topos::Union{Nothing,Vector{AlpertCompositeTopology{T}}}
+    gmaps::Union{Nothing,Vector{Vector{Int}}}
+    panel_to_comp::Union{Nothing,Vector{Int}}
+    Ntot::Int
+end
+
+# build_cfie_alpert_workspace
+# Build the CFIEAlpertWorkspace for a given CFIE_alpert solver and boundary points. This precomputes all necessary data for efficient assembly, including geometry caches and Alpert component caches, and also analyzes the composite topology if applicable.
+# Inputs:
+#   - solver::CFIE_alpert{T} :
+#       The CFIE_alpert solver object containing parameters like Alpert order and symmetry.
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       The boundary points for the entire geometry, which may consist of multiple components.
+# Outputs:
+#   - CFIEAlpertWorkspace containing all precomputed data for assembly.
+function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    rule=alpert_log_rule(T,solver.alpert_order)
+    offs=component_offsets(pts)
+    Gs=[cfie_geom_cache(p) for p in pts]
+    Cs=[_build_alpert_component_cache(p,rule) for p in pts]
+    topo_data=build_join_topology(pts)
+    if topo_data===nothing
+        topos=nothing
+        gmaps=nothing
+        panel_to_comp=nothing
+    else
+        topos,gmaps=topo_data
+        panel_to_comp=zeros(Int,length(pts))
+        @inbounds for c in eachindex(gmaps), a in gmaps[c]
+            panel_to_comp[a]=c
+        end
+    end
+    Ntot=offs[end]-1
+    return CFIEAlpertWorkspace(rule,offs,Gs,Cs,topos,gmaps,panel_to_comp,Ntot)
+end
+
 @inline function _check_r(r,name,i,j)
     if !(isfinite(r)) || r <= sqrt(eps(eltype(r)))
         @warn "Bad distance in $name at i=$i j=$j : r=$r"
@@ -885,7 +933,6 @@ function _assemble_rotation_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{
     return A
 end
 
-
 # construct_matrices_symmetry!
 # Assemble the CFIE_Alpert matrix on the desymmetrized/fundamental boundary.
 #
@@ -992,57 +1039,115 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     return A
 end
 
+# construct_matrices_symmetry!
+# Workspace-backed symmetry assembly for CFIE_alpert.
+#
+# This assembles the desymmetrized operator directly from the fundamental
+# boundary data stored in `pts`, using precomputed geometry/alpert caches
+# from `ws`.
+#
+# Inputs:
+#   - solver::CFIE_alpert{T}
+#   - A::Matrix{Complex{T}}
+#   - pts::Vector{BoundaryPointsCFIE{T}}
+#   - ws::CFIEAlpertWorkspace{T}
+#   - k::T
+#   - multithreaded::Bool=true
+#
+# Outputs:
+#   - Modifies `A` in place.
+function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    symmetry=solver.symmetry
+    isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
+    fill!(A,zero(Complex{T}))
+    offs=ws.offs
+    Gs=ws.Gs
+    Cs=ws.Cs
+    rule=ws.rule
+    topos=ws.topos
+    gmaps=ws.gmaps
+    panel_to_comp=ws.panel_to_comp
+    nc=length(pts)
+    if topos===nothing
+        @inbounds for a in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
+        end
+    else
+        _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
+    end
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    for a in 1:nc, b in 1:nc
+        a==b && continue
+        if panel_to_comp!==nothing
+            ca=panel_to_comp[a]
+            cb=panel_to_comp[b]
+            ca!=0 && ca==cb && continue
+        end
+        pa=pts[a]
+        pb=pts[b]
+        Na=length(pa.xy)
+        Nb=length(pb.xy)
+        ra=offs[a]:(offs[a+1]-1)
+        rb=offs[b]:(offs[b+1]-1)
+        Xa=getindex.(pa.xy,1)
+        Ya=getindex.(pa.xy,2)
+        Xb=getindex.(pb.xy,1)
+        Yb=getindex.(pb.xy,2)
+        dXb=getindex.(pb.tangent,1)
+        dYb=getindex.(pb.tangent,2)
+        sb=@. sqrt(dXb^2+dYb^2)
+        @use_threads multithreading=multithreaded for j in 1:Nb
+            gj=rb[j]
+            xj=Xb[j]
+            yj=Yb[j]
+            txj=dXb[j]
+            tyj=dYb[j]
+            sj=sb[j]
+            wd=pb.ws[j]
+            wsj=pb.ws[j]*sj
+            @inbounds for i in 1:Na
+                gi=ra[i]
+                dx=Xa[i]-xj
+                dy=Ya[i]-yj
+                r2=muladd(dx,dx,dy*dy)
+                r2<=(eps(T))^2 && continue
+                r=sqrt(r2)
+                _check_r(r,"symmetry before images",i,j)
+                invr=inv(r)
+                inn=tyj*dx-txj*dy
+                dval=wd*(αD*inn*H(1,k*r)*invr)
+                sval=wsj*(αS*H(0,k*r))
+                A[gi,gj]-=(dval+ik*sval)
+            end
+        end
+    end
+    for sym in symmetry
+        if sym isa Reflection
+            for a in 1:nc, b in 1:nc
+                ra=offs[a]:(offs[a+1]-1)
+                rb=offs[b]:(offs[b+1]-1)
+                _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
+            end
+        elseif sym isa Rotation
+            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
+            for a in 1:nc, b in 1:nc
+                ra=offs[a]:(offs[a+1]-1)
+                rb=offs[b]:(offs[b+1]-1)
+                _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,sym,costab,sintab,χ;multithreaded=multithreaded)
+            end
+        else
+            error("Unknown symmetry type $(typeof(sym))")
+        end
+    end
+    return A
+end
+
 ########################
 #### HIGH LEVEL API ####
 ########################
-
-# CFIEAlpertWorkspace
-# Struct to hold all precomputed data for CFIE Alpert assembly, including:
-#   - Alpert quadrature rule
-#   - Component offsets for global indexing
-#   - Geometry caches for each component
-#   - Alpert component caches for each component
-#   - Composite topology information (if non-periodic)
-struct CFIEAlpertWorkspace{T<:Real,C}
-    rule::AlpertLogRule{T}
-    offs::Vector{Int}
-    Gs::Vector{CFIEGeomCache{T}}
-    Cs::Vector{C}
-    topos::Union{Nothing,Vector{AlpertCompositeTopology{T}}}
-    gmaps::Union{Nothing,Vector{Vector{Int}}}
-    panel_to_comp::Union{Nothing,Vector{Int}}
-    Ntot::Int
-end
-
-# build_cfie_alpert_workspace
-# Build the CFIEAlpertWorkspace for a given CFIE_alpert solver and boundary points. This precomputes all necessary data for efficient assembly, including geometry caches and Alpert component caches, and also analyzes the composite topology if applicable.
-# Inputs:
-#   - solver::CFIE_alpert{T} :
-#       The CFIE_alpert solver object containing parameters like Alpert order and symmetry.
-#   - pts::Vector{BoundaryPointsCFIE{T}} :
-#       The boundary points for the entire geometry, which may consist of multiple components.
-# Outputs:
-#   - CFIEAlpertWorkspace containing all precomputed data for assembly.
-function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
-    rule=alpert_log_rule(T,solver.alpert_order)
-    offs=component_offsets(pts)
-    Gs=[cfie_geom_cache(p) for p in pts]
-    Cs=[_build_alpert_component_cache(p,rule) for p in pts]
-    topo_data=build_join_topology(pts)
-    if topo_data===nothing
-        topos=nothing
-        gmaps=nothing
-        panel_to_comp=nothing
-    else
-        topos,gmaps=topo_data
-        panel_to_comp=zeros(Int,length(pts))
-        @inbounds for c in eachindex(gmaps), a in gmaps[c]
-            panel_to_comp[a]=c
-        end
-    end
-    Ntot=offs[end]-1
-    return CFIEAlpertWorkspace(rule,offs,Gs,Cs,topos,gmaps,panel_to_comp,Ntot)
-end
 
 # construct_matrices!
 # High-level function to construct the CFIE Alpert system matrix. This function checks for symmetry. It is mostly legacy since it is better to precomoute the workspace and call the version of construct_matrices! that takes the workspace as an argument, but it is still useful for quick prototyping and testing.
@@ -1136,72 +1241,74 @@ end
 # Outputs:
 #   - Modifies `A` in place to contain the assembled system matrix for the CFIE Alpert solver. 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    fill!(A,zero(Complex{T}))
-    offs=ws.offs
-    Gs=ws.Gs
-    Cs=ws.Cs
-    rule=ws.rule
-    gmaps=ws.gmaps
-    topos=ws.topos
-    if topos===nothing
-        @inbounds for a in eachindex(pts)
+    if isnothing(solver.symmetry)
+        fill!(A,zero(Complex{T}))
+        offs=ws.offs
+        Gs=ws.Gs
+        Cs=ws.Cs
+        rule=ws.rule
+        topos=ws.topos
+        gmaps=ws.gmaps
+        panel_to_comp=ws.panel_to_comp
+        αD=Complex{T}(0,k/2)
+        αS=Complex{T}(0,one(T)/2)
+        ik=Complex{T}(0,k)
+        if topos===nothing
+            @inbounds for a in eachindex(pts)
+                ra=offs[a]:(offs[a+1]-1)
+                _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
+            end
+        else
+            _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
+        end
+        for a in eachindex(pts), b in eachindex(pts)
+            a==b && continue
+            if panel_to_comp!==nothing
+                ca=panel_to_comp[a]
+                cb=panel_to_comp[b]
+                ca!=0 && ca==cb && continue
+            end
+            pa=pts[a]
+            pb=pts[b]
+            Na=length(pa.xy)
+            Nb=length(pb.xy)
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-        end
-    else
-        _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
-    end
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    for a in eachindex(pts), b in eachindex(pts)
-        a==b && continue
-        if ws.panel_to_comp!==nothing
-            ca=ws.panel_to_comp[a]
-            cb=ws.panel_to_comp[b]
-            ca!=0 && ca==cb && continue
-        end
-        pa=pts[a]
-        pb=pts[b]
-        Na=length(pa.xy)
-        Nb=length(pb.xy)
-        ra=offs[a]:(offs[a+1]-1)
-        rb=offs[b]:(offs[b+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Xb=getindex.(pb.xy,1)
-        Yb=getindex.(pb.xy,2)
-        dXb=getindex.(pb.tangent,1)
-        dYb=getindex.(pb.tangent,2)
-        sb=@. sqrt(dXb^2+dYb^2)
-        @use_threads multithreading=multithreaded for j in 1:Nb
-            gj=rb[j]
-            xj=Xb[j]
-            yj=Yb[j]
-            txj=dXb[j]
-            tyj=dYb[j]
-            sj=sb[j]
-            wd=pb.ws[j]
-            wsj=pb.ws[j]*sj
-            @inbounds for i in 1:Na
-                gi=ra[i]
-                dx=Xa[i]-xj
-                dy=Ya[i]-yj
-                r2=muladd(dx,dx,dy*dy)
-                r2<=(eps(T))^2 && continue
-                r=sqrt(r2)
-                inn=tyj*dx-txj*dy
-                invr=inv(r)
-                dval=wd*(αD*inn*H(1,k*r)*invr)
-                sval=wsj*(αS*H(0,k*r))
-                A[gi,gj]-=(dval+ik*sval)
+            rb=offs[b]:(offs[b+1]-1)
+            Xa=getindex.(pa.xy,1)
+            Ya=getindex.(pa.xy,2)
+            Xb=getindex.(pb.xy,1)
+            Yb=getindex.(pb.xy,2)
+            dXb=getindex.(pb.tangent,1)
+            dYb=getindex.(pb.tangent,2)
+            sb=@. sqrt(dXb^2+dYb^2)
+            @use_threads multithreading=multithreaded for j in 1:Nb
+                gj=rb[j]
+                xj=Xb[j]
+                yj=Yb[j]
+                txj=dXb[j]
+                tyj=dYb[j]
+                sj=sb[j]
+                wd=pb.ws[j]
+                wsj=pb.ws[j]*sj
+                @inbounds for i in 1:Na
+                    gi=ra[i]
+                    dx=Xa[i]-xj
+                    dy=Ya[i]-yj
+                    r2=muladd(dx,dx,dy*dy)
+                    r2<=(eps(T))^2 && continue
+                    r=sqrt(r2)
+                    inn=tyj*dx-txj*dy
+                    invr=inv(r)
+                    dval=wd*(αD*inn*H(1,k*r)*invr)
+                    sval=wsj*(αS*H(0,k*r))
+                    A[gi,gj]-=(dval+ik*sval)
+                end
             end
         end
+        return A
+    else
+        return construct_matrices_symmetry!(solver,A,pts,ws,k;multithreaded=multithreaded)
     end
-    if !isnothing(solver.symmetry)
-        construct_matrices_symmetry_images!(solver,A,pts,ws,k;multithreaded=multithreaded)
-    end
-    return A
 end
 
 # construct_matrices
