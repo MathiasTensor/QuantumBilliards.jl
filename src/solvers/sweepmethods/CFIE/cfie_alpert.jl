@@ -984,7 +984,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     Gs=[cfie_geom_cache(p) for p in pts]
     Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
     nc=length(pts)
-    topo_data=build_join_topology(solver,solver.billiard)
+    topo_data=build_join_topology(pts)
     gmaps=topo_data===nothing ? nothing : topo_data[2]
     if topo_data===nothing
         for a in 1:nc
@@ -1140,7 +1140,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         rule=alpert_log_rule(T,solver.alpert_order)
         Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
         nc=length(pts)
-        topo_data=build_join_topology(solver,solver.billiard)
+        topo_data=build_join_topology(pts)
         gmaps=topo_data===nothing ? nothing : topo_data[2]
         if topo_data===nothing
             for a in 1:nc
