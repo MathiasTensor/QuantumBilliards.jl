@@ -411,31 +411,6 @@ end
     return nothing
 end
 
-#################################
-#### OPEN-PANEL LOCAL4 EVAL  ####
-#################################
-
-# _panel_xy_tangent_arrays
-# Extract coordinate and tangent arrays from one BoundaryPointsCFIE panel.
-@inline function _panel_xy_tangent_arrays(pts::BoundaryPointsCFIE{T}) where {T<:Real}
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    return X,Y,dX,dY
-end
-
-# _eval_on_open_panel_local4
-# Evaluate local 4-point interpolation on an open smooth panel.
-#
-# Used by the composite multi-k Alpert self assembly when the shifted source
-# leaves one smooth panel and enters the next/previous smooth neighbor.
-@inline function _eval_on_open_panel_local4(pts::BoundaryPointsCFIE{T},u::T) where {T<:Real}
-    X,Y,dX,dY=_panel_xy_tangent_arrays(pts)
-    h=pts.ws[1]
-    return _eval_shifted_source_smooth_panel_local4(u,h,X,Y,dX,dY)
-end
-
 ########################################################
 #### MULTI-K DIRECT NO-SYMMETRY CFIE_alpert ASSEMBLY ####
 ########################################################
@@ -721,21 +696,31 @@ end
 
 #### HELPER TO GET GLOBAL RMIN AND RMAX BOUNDS FOR ALL COMPONENTS ####
 
-function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symmetry::Union{Nothing,Vector{Any}}=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=1.05) where {T<:Real}
+function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symmetry::Union{Nothing,Vector{Any}}=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=1.0) where {T<:Real}
     nc=length(pts)
     @assert nc>0
     tol2=(eps(T))^2
-    nth=Threads.nthreads()
-    min2_tls=fill(T(Inf),nth)
-    max2_tls=fill(zero(T),nth)
     counts=[length(p.xy) for p in pts]
-    offs=cumsum(vcat(1,counts[1:end-1]))
+    offs=Vector{Int}(undef,nc)
+    s=1
+    @inbounds for c in 1:nc
+        offs[c]=s
+        s+=counts[c]
+    end
     totalN=sum(counts)
     @inline function decode_idx(idx::Int)
         c=searchsortedlast(offs,idx)
         i=idx-offs[c]+1
         return c,i
     end
+    shift_x = hasproperty(pts[1], :shift_x) ? getproperty(pts[1], :shift_x) : zero(T)
+    shift_y = hasproperty(pts[1], :shift_y) ? getproperty(pts[1], :shift_y) : zero(T)
+    @inline reflect_y_axis(x::T,y::T) = (T(2)*shift_x - x, y)
+    @inline reflect_x_axis(x::T,y::T) = (x, T(2)*shift_y - y)
+    @inline reflect_origin(x::T,y::T) = (T(2)*shift_x - x, T(2)*shift_y - y)
+    nth=Threads.nthreads()
+    min2_tls=fill(T(Inf),nth)
+    max2_tls=fill(zero(T),nth)
     Threads.@threads for idx in 1:totalN
         ca,ia=decode_idx(idx)
         xa,ya=pts[ca].xy[ia]
@@ -746,7 +731,7 @@ function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symme
             Nb=length(pb.xy)
             for jb in 1:Nb
                 xj,yj=pb.xy[jb]
-                # direct distance
+                # Direct geometry
                 if !(ca==cb && ia==jb)
                     dx=xa-xj
                     dy=ya-yj
@@ -756,23 +741,68 @@ function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symme
                         d2>lmax2 && (lmax2=d2)
                     end
                 end
-                # symmetry-image distances
+                # Symmetry images
                 if symmetry !== nothing
-                    q=SVector{2,T}(xj,yj)
-                    for s in symmetry
-                        if s isa Reflection
-                            qimg=image_point(s,q)
-                            dx=xa-qimg[1]
-                            dy=ya-qimg[2]
-                            d2=muladd(dx,dx,dy*dy)
-                            if d2>tol2
-                                d2<lmin2 && (lmin2=d2)
-                                d2>lmax2 && (lmax2=d2)
+                    q = SVector{2,T}(xj,yj)
+                    for sym in symmetry
+                        if sym isa Reflection
+                            if sym.axis === :y_axis
+                                xr,yr = reflect_y_axis(xj,yj)
+                                dx=xa-xr
+                                dy=ya-yr
+                                d2=muladd(dx,dx,dy*dy)
+                                if d2>tol2
+                                    d2<lmin2 && (lmin2=d2)
+                                    d2>lmax2 && (lmax2=d2)
+                                end
+
+                            elseif sym.axis === :x_axis
+                                xr,yr = reflect_x_axis(xj,yj)
+                                dx=xa-xr
+                                dy=ya-yr
+                                d2=muladd(dx,dx,dy*dy)
+                                if d2>tol2
+                                    d2<lmin2 && (lmin2=d2)
+                                    d2>lmax2 && (lmax2=d2)
+                                end
+
+                            elseif sym.axis === :origin
+                                # Must include all three image families because
+                                # the assembly adds all three.
+                                xr,yr = reflect_y_axis(xj,yj)
+                                dx=xa-xr
+                                dy=ya-yr
+                                d2=muladd(dx,dx,dy*dy)
+                                if d2>tol2
+                                    d2<lmin2 && (lmin2=d2)
+                                    d2>lmax2 && (lmax2=d2)
+                                end
+
+                                xr,yr = reflect_x_axis(xj,yj)
+                                dx=xa-xr
+                                dy=ya-yr
+                                d2=muladd(dx,dx,dy*dy)
+                                if d2>tol2
+                                    d2<lmin2 && (lmin2=d2)
+                                    d2>lmax2 && (lmax2=d2)
+                                end
+
+                                xr,yr = reflect_origin(xj,yj)
+                                dx=xa-xr
+                                dy=ya-yr
+                                d2=muladd(dx,dx,dy*dy)
+                                if d2>tol2
+                                    d2<lmin2 && (lmin2=d2)
+                                    d2>lmax2 && (lmax2=d2)
+                                end
+                            else
+                                error("Unknown reflection axis $(sym.axis)")
                             end
-                        elseif s isa Rotation
-                            costab,sintab,_χ=_rotation_tables(T,s.n,mod(s.m,s.n))
-                            for l in 1:(s.n-1)
-                                qimg=image_point(s,q,l,costab,sintab)
+
+                        elseif sym isa Rotation
+                            costab,sintab,_χ = _rotation_tables(T,sym.n,mod(sym.m,sym.n))
+                            for l in 1:(sym.n-1)
+                                qimg = image_point(sym,q,l,costab,sintab)
                                 dx=xa-qimg[1]
                                 dy=ya-qimg[2]
                                 d2=muladd(dx,dx,dy*dy)
@@ -782,7 +812,7 @@ function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symme
                                 end
                             end
                         else
-                            error("Unknown symmetry type $(typeof(s))")
+                            error("Unknown symmetry type $(typeof(sym))")
                         end
                     end
                 end
@@ -797,7 +827,7 @@ function estimate_rmin_rmax_cfie_alpert(pts::Vector{BoundaryPointsCFIE{T}},symme
     @assert isfinite(min2) && max2>zero(T) "estimate_rmin_rmax_cfie_alpert: degenerate geometry"
     rmin=pad[1]*sqrt(min2)
     rmax=pad[2]*rmax_factor*sqrt(max2)
-    return Float64(rmin),Float64(rmax)
+    return Float64(rmin), Float64(rmax)
 end
 
 # build_cfie_alpert_cheb_data
