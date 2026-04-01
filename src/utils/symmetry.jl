@@ -27,6 +27,9 @@ end
 @inline _x_reflect_normal(nx::T,ny::T) where {T<:Real}=(-nx,ny)
 @inline _y_reflect_normal(nx::T,ny::T) where {T<:Real}=(nx,-ny)
 @inline _xy_reflect_normal(nx::T,ny::T) where {T<:Real}=(-nx,-ny)
+@inline _x_reflect_tangent(tx::T,ty::T) where {T<:Real}=(-tx,ty)
+@inline _y_reflect_tangent(tx::T,ty::T) where {T<:Real}=(tx,-ty)
+@inline _xy_reflect_tangent(tx::T,ty::T) where {T<:Real}=(-tx,-ty)
 
 """
     Rotation

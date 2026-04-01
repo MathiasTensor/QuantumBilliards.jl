@@ -407,41 +407,8 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
 end
 
-#=
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
-function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    # case 1: simple billiard with outer boundary [outer, hole1, hole2, ...], each is a single closed curve
-    if !(boundary[1] isa AbstractVector)
-        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
-        for (idx,crv) in enumerate(boundary)
-            p=_is_closed_curve(crv) ? _evaluate_points_periodic(solver,crv,k,idx) : _evaluate_points_panel(solver,crv,k,idx)
-            pts[idx]=(idx==1) ? p : _reverse_component_orientation(solver,p)
-        end
-        return pts
-    end
-    # case 2: panelized style, 1st vector of boudnary is the outer boundary with potentially many components, second vector is the first hole etc. [[outer panels], [hole1 panels], ...]
-    outer_boundary=boundary[1]
-    inner_boundaries=boundary[2:end]
-    n_outer=length(outer_boundary)
-    n_inner=sum(length(comp) for comp in inner_boundaries)
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,n_outer+n_inner)
-    pos=1 # global position in the concatenated pts array
-    for crv in outer_boundary
-        pts[pos]=_evaluate_points_panel(solver,crv,k,pos)
-        pos+=1
-    end
-    for comp in inner_boundaries
-        for crv in comp
-            pts[pos]=_reverse_component_orientation(solver,_evaluate_points_panel(solver,crv,k,pos))
-            pos+=1
-        end
-    end
-    return pts
-end
-=#
-
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
     # case 1: simple closed components [outer,hole1,hole2,...]
@@ -1087,4 +1054,138 @@ end
     s=sintab[l+1]
     tx,ty=_rot_vec(t[1],t[2],c,s)
     return SVector{2,T}(tx,ty)
+end
+
+# apply_symmetries_to_boundary_points
+# Apply the specified symmetries to a vector of CFIE boundary components, returning the full set of boundary points for the entire geometry.
+# Inputs:
+#   - pts::Vector{BoundaryPointsCFIE{T}} :
+#       Boundary components corresponding to the fundamental domain, with points sampled according to the desymmetrized geometry.
+#   - symmetries::Union{Vector{Any},Nothing} :
+#       Vector of symmetry objects to apply, or `nothing` if no symmetries.
+#   - billiard::Bi :
+#       Geometry object which may carry reflection axis shifts.
+#   - same_direction::Bool=true :
+#       If true, reflected components will have their points reversed to maintain the same physical orientation as the fundamental domain. This is needed for #       CFIE assembly to ensure the correct normal direction, but should be set to false if the input points are already oriented according to the full geometry.
+# Outputs:
+#   - full::Vector{BoundaryPointsCFIE{T}} :
+#       Full set of boundary components for the entire geometry, including all reflected and rotated images.
+function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing},billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    symmetries===nothing && return pts
+    full=copy(pts)
+    sx=hasproperty(billiard,:x_axis) ? T(billiard.x_axis) : zero(T)
+    sy=hasproperty(billiard,:y_axis) ? T(billiard.y_axis) : zero(T)
+    function reflect_component(c::BoundaryPointsCFIE{T},which::Symbol)
+        xy=c.xy
+        t=c.tangent
+        t2=c.tangent_2
+        ds=c.ds
+        N=length(xy)
+        rxy=Vector{SVector{2,T}}(undef,N)
+        rt=Vector{SVector{2,T}}(undef,N)
+        rt2=Vector{SVector{2,T}}(undef,N)
+        if which===:x
+            @inbounds for j in 1:N
+                p=xy[j]
+                tt=t[j]
+                tt2=t2[j]
+                rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),p[2])
+                tx,ty=_x_reflect_tangent(tt[1],tt[2])
+                rt[j]=SVector{2,T}(tx,ty)
+                t2x,t2y=_x_reflect_tangent(tt2[1],tt2[2])
+                rt2[j]=SVector{2,T}(t2x,t2y)
+            end
+        elseif which===:y
+            @inbounds for j in 1:N
+                p=xy[j]
+                tt=t[j]
+                tt2=t2[j]
+                rxy[j]=SVector{2,T}(p[1],_y_reflect(p[2],sy))
+                tx,ty=_y_reflect_tangent(tt[1],tt[2])
+                rt[j]=SVector{2,T}(tx,ty)
+                t2x,t2y=_y_reflect_tangent(tt2[1],tt2[2])
+                rt2[j]=SVector{2,T}(t2x,t2y)
+            end
+        elseif which===:xy
+            @inbounds for j in 1:N
+                p=xy[j]
+                tt=t[j]
+                tt2=t2[j]
+                rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),_y_reflect(p[2],sy))
+                tx,ty=_xy_reflect_tangent(tt[1],tt[2])
+                rt[j]=SVector{2,T}(tx,ty)
+                t2x,t2y=_xy_reflect_tangent(tt2[1],tt2[2])
+                rt2[j]=SVector{2,T}(t2x,t2y)
+            end
+        else
+            error("Unknown reflection kind $which")
+        end
+        do_reverse=same_direction && (which!=:xy)
+        rds=do_reverse ? reverse(ds) : copy(ds)
+        if do_reverse
+            reverse!(rxy)
+            reverse!(rt)
+            reverse!(rt2)
+        end
+        return BoundaryPointsCFIE(rxy,rt,rt2,copy(c.ts),copy(c.ws),copy(c.ws_der),rds,c.compid,c.is_periodic)
+    end
+    function rotate_component(c::BoundaryPointsCFIE{T},l::Int,sym::Rotation)
+        xy=c.xy
+        t=c.tangent
+        t2=c.tangent_2
+        ds=c.ds
+        N=length(xy)
+        rxy=Vector{SVector{2,T}}(undef,N)
+        rt=Vector{SVector{2,T}}(undef,N)
+        rt2=Vector{SVector{2,T}}(undef,N)
+        cx=T(sym.center[1])
+        cy=T(sym.center[2])
+        θ=T(2π*l/sym.n)
+        cθ=cos(θ)
+        sθ=sin(θ)
+        @inbounds for j in 1:N
+            p=xy[j]
+            tt=t[j]
+            tt2=t2[j]
+            x,y=_rot_point(p[1],p[2],cx,cy,cθ,sθ)
+            tx,ty=_rot_vec(tt[1],tt[2],cθ,sθ)
+            t2x,t2y=_rot_vec(tt2[1],tt2[2],cθ,sθ)
+            rxy[j]=SVector{2,T}(x,y)
+            rt[j]=SVector{2,T}(tx,ty)
+            rt2[j]=SVector{2,T}(t2x,t2y)
+        end
+        return BoundaryPointsCFIE(rxy,rt,rt2,copy(c.ts),copy(c.ws),copy(c.ws_der),copy(ds),c.compid,c.is_periodic)
+    end
+    for s in symmetries
+        new_parts=BoundaryPointsCFIE{T}[]
+        if s isa Reflection
+            if s.axis===:y_axis
+                @inbounds for c in pts
+                    push!(new_parts,reflect_component(c,:x))
+                end
+            elseif s.axis===:x_axis
+                @inbounds for c in pts
+                    push!(new_parts,reflect_component(c,:y))
+                end
+            elseif s.axis===:origin
+                @inbounds for c in pts
+                    push!(new_parts,reflect_component(c,:x))
+                    push!(new_parts,reflect_component(c,:y))
+                    push!(new_parts,reflect_component(c,:xy))
+                end
+            else
+                error("Unknown reflection axis $(s.axis)")
+            end
+        elseif s isa Rotation
+            for l in 1:s.n-1
+                @inbounds for c in pts
+                    push!(new_parts,rotate_component(c,l,s))
+                end
+            end
+        else
+            error("Unknown symmetry type $(typeof(s))")
+        end
+        append!(full,new_parts)
+    end
+    return full
 end

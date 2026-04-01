@@ -1,135 +1,125 @@
 using Bessels, LinearAlgebra, ProgressMeter
 
+using StaticArrays
+
 #########################################################################
-####################### HELPERS FOR INTERIOR MASK #######################
+######################## BOUNDARY -> POLYGON HELPERS ####################
 #########################################################################
 
 """
-    billiard_polygon_single_component(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
+    _boundary_components(boundary)
 
-Given <:AbsBilliard object, computes the points on the boundary of the billiard that are equidistant from each other, with the total number of points being N_polygon_checks. This only works for domains wihtout holes, otherwise see `_billiard_polygon_multi_component`.
-    
-# Arguments
-- `billiard`: A billiard object with a fundamental_boundary or full_boundary field.
-- `N_polygon_checks`: The total number of points to be distributed along the boundary.
-- `fundamental_domain::Bool=true`: A flag indicating whether to compute points on the fundamental or full boundary.
+Normalize a boundary description into a vector of connected components,
+where each component is a vector of curve pieces.
 
-# Returns
-- `Vector{Vector{SVector{2,<:Real}}}`: For each crv in the billiard boundary (chosen by the flag fundamental_domain) form a Vector{SVector{2,<:Real}} object containing the discretization points for that curve. 
+Returns `Vector{Vector}` with convention:
+- component 1 = outer boundary
+- components 2:end = holes
 """
-function _billiard_polygon_single_component(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {Bi<:AbsBilliard}
-    if fundamental_domain
-        boundary=billiard.fundamental_boundary
+function _boundary_components(boundary)
+    isempty(boundary) && return Vector{Vector{Any}}()
+    if boundary[1] isa AbstractVector
+        return [collect(comp) for comp in boundary]
     else
-        boundary=billiard.full_boundary
-    end
-    billiard_composite_lengths=[crv.length for crv in boundary] # Find the fraction of lengths wrt to the boundary
-    typ=eltype(billiard_composite_lengths[1])
-    total_billiard_length=sum(billiard_composite_lengths)
-    billiard_length_fractions=[crv.length/total_billiard_length for crv in boundary]
-    distributed_points=[round(Int, fract*N_polygon_checks) for fract in billiard_length_fractions] # Redistribute points based on the fractions
-    ts_vectors=[sample_points(LinearNodes(),crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts for the outer boundary
-    xy_vectors=Vector{Vector}(undef,length(boundary))
-    for (i,crv) in enumerate(boundary) 
-        xy_vectors[i]=curve(crv,ts_vectors[i])
-    end
-    return xy_vectors
-end
-
-"""
-    billiard_polygon_multi_component(billiard::Bi, N_polygon_checks::Int) :: Vector where {Bi<:AbsBilliard}
-
-Given an AbsBilliard object with multiple connected components (holes), computes the points on the boundary of the billiard that are equidistant from each other, with the total number of points being N_polygon_checks. This only works for domains with holes, otherwise see `_billiard_polygon_single_component`.
-
-# Arguments
-- `billiard`: A billiard object with a full_boundary field that contains multiple connected components.
-- `N_polygon_checks`: The total number of points to be distributed along the boundary.
-
-# Returns
-- `Vector{Vector{SVector{2,<:Real}}}`: For each crv in the billiard full_boundary form a Vector{SVector{2,<:Real}} object containing the discretization points for that curve.
-"""
-function _billiard_polygon_multi_component(billiard::Bi,N_polygon_checks::Int) where {Bi<:AbsBilliard}
-    boundary=billiard.full_boundary # fundamental == full for multi-component billiards (CFIE_kress), so we just take full boundary
-    ncomp=length(boundary)
-    xy_components=Vector{Vector}(undef,ncomp)
-    comp_lengths=zeros(Float64,ncomp) # determine component lengths
-    for i in 1:ncomp
-        comp=boundary[i]
-        comp_lengths[i]=comp.length # comp cannot be composite due to Kress analytic splitting in CFIE_kress, so we can just take length of the component
-    end
-    total_length=sum(comp_lengths)
-    comp_points=[max(16,round(Int,N_polygon_checks*L/total_length)) for L in comp_lengths]  # distribute total polygon budget across connected components
-    for i in 1:ncomp
-        comp=boundary[i]
-        ts=sample_points(LinearNodes(),comp_points[i])[1]
-        xy_components[i]=curve(comp,ts)
-    end
-    return xy_components
-end
-
-"""
-    billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true, solver::Symbol=:OUTER) :: Vector where {Bi<:AbsBilliard}
-
-Given an AbsBilliard object, computes the points on the boundary of the billiard that are equidistant from each other, with the total number of points being N_polygon_checks. This function handles both single-component and multi-component billiards by dispatching to the appropriate helper function.
-
-# Arguments
-- `billiard`: A billiard object with either a fundamental_boundary (for single-component) or full_boundary (for multi-component) field.
-- `N_polygon_checks`: The total number of points to be distributed along the boundary.
-
-# Keyword arguments
-- `fundamental_domain::Bool=true`: A flag indicating whether to compute points on the fundamental or full boundary for single-component billiards. This argument is ignored for multi-component billiards since their fundamental and full boundaries are the same.
-- `boundary_type::Symbol`: A symbol indicating single-component billiards `:OUTER` or `:OUTER_INNER` for multi-component billiards.
-
-# Returns
-- `Vector{Vector{SVector{2,<:Real}}}`: For each crv in the billiard boundary (chosen by the flag fundamental_domain for single-component billiards, or full_boundary for multi-component billiards) form a Vector{SVector{2,<:Real}} object containing the discretization points for that curve.
-"""
-function billiard_polygon(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true,boundary_type::Symbol=:OUTER) where {Bi<:AbsBilliard}
-    if boundary_type==:OUTER
-        return _billiard_polygon_single_component(billiard,N_polygon_checks;fundamental_domain=fundamental_domain)
-    elseif boundary_type==:OUTER_INNER
-        return _billiard_polygon_multi_component(billiard,N_polygon_checks)
-    else
-        error("Unknown boundary type: $boundary_type. Use :OUTER or :OUTER_INNER.")
+        return [collect(boundary)]
     end
 end
 
 """
-    is_left(p1::SVector{2,T}, p2::SVector{2,T}, pt::SVector{2,T}) where {T<:Real}
+    billiard_boundary_components(billiard::Bi;fundamental_domain=true) where {Bi<:AbsBilliard}
 
-Determines whether the point `pt` is to the left of the line segment defined by `p1` and `p2`.
+Return the billiard boundary as `Vector{Vector}` of connected components.
 
-# Arguments
-- `p1::SVector{2,T}`: The first point defining the line segment.
-- `p2::SVector{2,T}`: The second point defining the line segment.
-- `pt::SVector{2,T}`: The point to check.
-
-# Returns
-- `T`: + or - value depending if the point is to the left or right of the line segment.
+If `fundamental_domain=true`, uses `billiard.fundamental_boundary` when present,
+otherwise falls back to `billiard.full_boundary`.
 """
-function is_left(p1::SVector{2,T},p2::SVector{2,T},pt::SVector{2,T}) where {T<:Real}
+function billiard_boundary_components(billiard::Bi;fundamental_domain=true) where {Bi<:AbsBilliard}
+    boundary=fundamental_domain && hasproperty(billiard,:fundamental_boundary) ? billiard.fundamental_boundary : billiard.full_boundary
+    return _boundary_components(boundary)
+end
+
+"""
+    _component_length(comp)
+
+Total length of one connected component made of one or more curve pieces.
+"""
+@inline function _component_length(comp)
+    return sum(crv.length for crv in comp)
+end
+
+"""
+    _sample_component_polygon(comp,N)
+
+Sample one connected component into a polygon with about `N` points total,
+distributed across its curve pieces proportionally to arclength.
+"""
+function _sample_component_polygon(comp,N::Int)
+    npieces=length(comp)
+    npieces==0 && return SVector{2,Float64}[]
+    lengths=[crv.length for crv in comp]
+    Ltot=sum(lengths)
+    counts=Vector{Int}(undef,npieces)
+    @inbounds for i in 1:npieces
+        counts[i]=max(8,round(Int,N*lengths[i]/Ltot))
+    end
+    xy_parts=Vector{Vector}(undef,npieces)
+    @inbounds for i in 1:npieces
+        ts=sample_points(LinearNodes(),counts[i])[1]
+        xy_parts[i]=curve(comp[i],ts)
+    end
+    return vcat(xy_parts...)
+end
+
+"""
+    billiard_polygon_components(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {Bi<:AbsBilliard}
+
+Sample each connected component of the billiard into one polygon.
+
+Returns `Vector{Vector{SVector{2,T}}}` with convention:
+- polygon_components[1] = outer boundary polygon
+- polygon_components[2:end] = hole polygons
+"""
+function billiard_polygon_components(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {Bi<:AbsBilliard}
+    comps=billiard_boundary_components(billiard;fundamental_domain=fundamental_domain)
+    ncomp=length(comps)
+    ncomp==0 && return Vector{Vector{SVector{2,Float64}}}()
+    comp_lengths=[_component_length(comp) for comp in comps]
+    Ltot=sum(comp_lengths)
+    comp_points=Vector{Int}(undef,ncomp)
+    @inbounds for i in 1:ncomp
+        comp_points[i]=max(16,round(Int,N_polygon_checks*comp_lengths[i]/Ltot))
+    end
+    polys=Vector{Vector}(undef,ncomp)
+    @inbounds for i in 1:ncomp
+        polys[i]=_sample_component_polygon(comps[i],comp_points[i])
+    end
+    return polys
+end
+
+#########################################################################
+######################## POINT-IN-POLYGON HELPERS #######################
+#########################################################################
+
+"""
+    is_left(p1::SVector{2,T},p2::SVector{2,T},pt::SVector{2,T}) where {T<:Real}
+
+Signed area test for whether `pt` lies to the left of the directed segment `p1 -> p2`.
+"""
+@inline function is_left(p1::SVector{2,T},p2::SVector{2,T},pt::SVector{2,T}) where {T<:Real}
     return (p2[1]-p1[1])*(pt[2]-p1[2])-(pt[1]-p1[1])*(p2[2]-p1[2])
 end
 
-
-# Winding number algorithm to check if a point is inside a polygon
 """
-    is_point_in_polygon(polygon::Vector{SVector{2,T}}, point::SVector{2,T})::Bool where T
+    is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T})::Bool where {T<:Real}
 
-Determines whether a single `point` is inside a billiard `polygon` formed by it's boundary points. It implements a winding number algorithm for the checking.
-
-# Arguments
-- `polygon::Vector{SVector{2,T}}`: A vector of points representing the boundary of the polygon.
-- `point::SVector{2,T}`: A point to check if it's inside the polygon.
-
-# Returns
-- `Bool`: `true` if the point is inside the polygon, `false` otherwise.
+Winding-number point-in-polygon test.
 """
-function is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T})::Bool where T
+function is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T})::Bool where {T<:Real}
     winding_number=0
-    num_points=length(polygon)
-    for i in 1:num_points
+    n=length(polygon)
+    @inbounds for i in 1:n
         p1=polygon[i]
-        p2=polygon[(i%num_points)+1]
+        p2=polygon[(i%n)+1]
         if p1[2]<=point[2]
             if p2[2]>point[2] && is_left(p1,p2,point)>0
                 winding_number+=1
@@ -144,20 +134,18 @@ function is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T}):
 end
 
 """
-    is_point_in_multiply_connected_polygon(components, point::SVector{2,T})::Bool where {T<:Real}
+    is_point_in_multiply_connected_polygon(components,point::SVector{2,T})::Bool where {T<:Real}
 
-Check whether `point` lies inside a multiply connected polygonal domain.
+Test membership in a multiply connected domain.
 
 Convention:
-- `components[1]` is the outer boundary polygon
-- `components[2:end]` are hole polygons
-
-A point is inside the domain iff it is inside the outer polygon and not inside any hole polygon.
+- `components[1]` is outer boundary
+- `components[2:end]` are holes
 """
 function is_point_in_multiply_connected_polygon(components,point::SVector{2,T})::Bool where {T<:Real}
     isempty(components) && return false
-    is_point_in_polygon(components[1],point) || return false # must be inside outer boundary
-    @inbounds for h in 2:length(components) # must be outside every hole
+    is_point_in_polygon(components[1],point) || return false
+    @inbounds for h in 2:length(components)
         if is_point_in_polygon(components[h],point)
             return false
         end
@@ -165,45 +153,27 @@ function is_point_in_multiply_connected_polygon(components,point::SVector{2,T}):
     return true
 end
 
+#########################################################################
+############################ INTERIOR MASK ###############################
+#########################################################################
+
 """
-    points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true,boundary_type::Symbol=:OUTER) where {T<:Real,Bi<:AbsBilliard}
+    points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
 
-Determine whether the points `pts` lie inside the billiard polygon sampled with
-`N_polygon_checks` boundary points.
+Determine whether points lie inside the billiard domain by polygonizing each
+connected boundary component.
 
-# Arguments
-- `pts::Vector{SVector{2,T}}`: points to test
-- `billiard::Bi`: billiard geometry
-- `N_polygon_checks::Int`: total polygon sampling budget
-
-# Keyword arguments
-- `fundamental_domain::Bool=true`: use the fundamental boundary for BIM. Ignored for CFIE_kress.
-- `boundary_type::Symbol=:OUTER`: `:OUTER` for single connected domain, `:OUTER_INNER` for multiply connected domain.
-    For `boundary_type == :OUTER`, the billiard is treated as a single connected domain.
-    For `boundary_type == :OUTER_INNER`, the billiard is treated as a multiply connected domain:
-    the first component is the outer boundary and the remaining components are holes.
-
-# Returns
-- `Vector{Bool}`: mask of points lying inside the billiard domain
+Works for:
+- single smooth closed boundaries
+- composite outer boundaries
+- outer boundary with holes
+- composite holes
 """
-function points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true,boundary_type::Symbol=:OUTER) where {T<:Real,Bi<:AbsBilliard}
-    polygon_xy_vectors=billiard_polygon(billiard,N_polygon_checks;fundamental_domain=fundamental_domain,boundary_type=boundary_type)
+function points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
+    polygon_components=billiard_polygon_components(billiard,N_polygon_checks;fundamental_domain=fundamental_domain)
     mask=fill(false,length(pts))
-    if boundary_type==:OUTER
-        # single connected domain: concatenate all curve pieces into one polygon
-        polygon_points=vcat(polygon_xy_vectors...)
-        Threads.@threads for i in eachindex(pts)
-            mask[i]=is_point_in_polygon(polygon_points,pts[i])
-        end
-    elseif boundary_type==:OUTER_INNER
-        # multiply connected domain:
-        # polygon_xy_vectors[1] = outer boundary
-        # polygon_xy_vectors[2:end] = holes
-        Threads.@threads for i in eachindex(pts)
-            mask[i]=is_point_in_multiply_connected_polygon(polygon_xy_vectors,pts[i])
-        end
-    else
-        error("Unknown boundary type: $boundary_type. Use :OUTER or :OUTER_INNER.")
+    Threads.@threads for i in eachindex(pts)
+        mask[i]=is_point_in_multiply_connected_polygon(polygon_components,pts[i])
     end
     return mask
 end
@@ -600,12 +570,12 @@ end
 """
     wavefunction_multi_cfie(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{Vector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
-Construct a sequence of 2D wavefunction matrices for CFIE_kress states on a common grid.
+Construct a sequence of 2D wavefunction matrices for CFIE_kress / CFIE_alpert on a common grid.
 
 # Arguments
 - `ks`         : eigenvalues
 - `vec_us`     : boundary densities, one per eigenstate
-- `vec_comps`  : CFIE_kress boundary discretizations, one per eigenstate
+- `vec_comps`  : CFIE_kress / CFIE_alpert boundary discretizations, one per eigenstate
 - `billiard`   : billiard geometry
 
 # Keyword arguments

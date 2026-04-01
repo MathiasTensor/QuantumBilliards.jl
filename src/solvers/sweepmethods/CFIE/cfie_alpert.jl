@@ -727,13 +727,13 @@ end
 # Outputs:
 #   - Modifies `A` in place with all self-interaction blocks assembled for the composite boundary.
 function _assemble_all_self_alpert_composite!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}};multithreaded::Bool=true) where {T<:Real}
-    @inbounds for c in eachindex(gmaps)
+    @inbounds for c in eachindex(gmaps) # gmaps is a vector of vectors, where each inner vector contains the component indices that belong to that composite component. So we go closed componentwise and pull out the relevant component indices for each composite component, then dispatch to the appropriate assembly routine based on whether it's a single periodic component or a multi-component composite.
         gmap=gmaps[c]
-        if length(gmap)==1 && pts[gmap[1]].is_periodic
-            a=gmap[1]
+        if length(gmap)==1 && pts[gmap[1]].is_periodic # first check for the simple periodic case (one component, periodic geometry) and use the cheaper periodic Alpert assembly if so
+            a=gmap[1] # component index of the first (and only) component in this composite component
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-        else
+            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded) # if it's just one periodic component, we can use the cheaper periodic Alpert assembly
+        else # otherwise, we have to use the more expensive composite component assembly which can handle multiple components and smooth joins
             _assemble_self_alpert_composite_component!(solver,A,pts,Gs,Cs,offs,k,rule,topos[c],gmap;multithreaded=multithreaded)
         end
     end
@@ -903,85 +903,6 @@ end
 #
 # Outputs:
 #   - Modifies `A` in place to contain the desymmetrized operator matrix.
-#=
-function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    symmetry=solver.symmetry
-    isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
-    offs=component_offsets(pts)
-    fill!(A,zero(Complex{T}))
-    rule=alpert_log_rule(T,solver.alpert_order)
-    Gs=[cfie_geom_cache(p) for p in pts]
-    Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
-    nc=length(pts)
-    for a in 1:nc
-        ra=offs[a]:(offs[a+1]-1)
-        _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-    end
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    for a in 1:nc, b in 1:nc
-        a==b && continue
-        pa=pts[a]
-        pb=pts[b]
-        Na=length(pa.xy)
-        Nb=length(pb.xy)
-        ra=offs[a]:(offs[a+1]-1)
-        rb=offs[b]:(offs[b+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Xb=getindex.(pb.xy,1)
-        Yb=getindex.(pb.xy,2)
-        dXb=getindex.(pb.tangent,1)
-        dYb=getindex.(pb.tangent,2)
-        sb=@. sqrt(dXb^2+dYb^2)
-        @use_threads multithreading=multithreaded for j in 1:Nb
-            gj=rb[j]
-            xj=Xb[j]
-            yj=Yb[j]
-            txj=dXb[j]
-            tyj=dYb[j]
-            sj=sb[j]
-            wd=dlp_weight(pb,j)
-            ws=slp_weight(pb,j,sj)
-            @inbounds for i in 1:Na
-                gi=ra[i]
-                dx=Xa[i]-xj
-                dy=Ya[i]-yj
-                r2=muladd(dx,dx,dy*dy)
-                r2<=(eps(T))^2 && continue
-                r=sqrt(r2)
-                _check_r(r,"symmetry before images",i,j)
-                invr=inv(r)
-                inn=tyj*dx-txj*dy
-                dval=wd*(αD*inn*H(1,k*r)*invr)
-                sval=ws*(αS*H(0,k*r))
-                A[gi,gj]-=(dval+ik*sval)
-            end
-        end
-    end
-    # symmetry image contributions
-    for sym in symmetry
-        if sym isa Reflection
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
-            end
-        elseif sym isa Rotation
-            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,sym,costab,sintab,χ;multithreaded=multithreaded)
-            end
-        else
-            error("Unknown symmetry type $(typeof(sym))")
-        end
-    end
-    return A
-end
-=#
 function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     symmetry=solver.symmetry
     isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
@@ -1075,67 +996,6 @@ end
 #### HIGH LEVEL API ####
 ########################
 
-#=
-function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    if isnothing(solver.symmetry)
-        offs=component_offsets(pts)
-        αL2=Complex{T}(0,k/2)
-        αM2=Complex{T}(0,one(T)/2)
-        ik=Complex{T}(0,k)
-        fill!(A,zero(Complex{T}))
-        Gs=[cfie_geom_cache(p) for p in pts]
-        rule=alpert_log_rule(T,solver.alpert_order)
-        Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
-        nc=length(pts)
-        for a in 1:nc
-            ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-        end
-        for a in 1:nc, b in 1:nc
-            a==b && continue
-            pa=pts[a]
-            pb=pts[b]
-            Na=length(pa.xy)
-            Nb=length(pb.xy)
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            Xa=getindex.(pa.xy,1)
-            Ya=getindex.(pa.xy,2)
-            Xb=getindex.(pb.xy,1)
-            Yb=getindex.(pb.xy,2)
-            dXb=getindex.(pb.tangent,1)
-            dYb=getindex.(pb.tangent,2)
-            sb=@. sqrt(dXb^2+dYb^2)
-            @use_threads multithreading=multithreaded for j in 1:Nb
-                gj=rb[j]
-                xj=Xb[j]
-                yj=Yb[j]
-                txj=dXb[j]
-                tyj=dYb[j]
-                sj=sb[j]
-                wd=dlp_weight(pb,j)
-                ws=slp_weight(pb,j,sj)
-                @inbounds for i in 1:Na
-                    gi=ra[i]
-                    dx=Xa[i]-xj
-                    dy=Ya[i]-yj
-                    r2=muladd(dx,dx,dy*dy)
-                    r2<=(eps(T))^2 && continue
-                    r=sqrt(r2)
-                    inn=tyj*dx-txj*dy
-                    invr=inv(r)
-                    dval=wd*(αL2*inn*H(1,k*r)*invr)
-                    sval=ws*(αM2*H(0,k*r))
-                    A[gi,gj]-=(dval+ik*sval)
-                end
-            end
-        end
-        return A
-    else
-        return construct_matrices_symmetry!(solver,A,pts,k;multithreaded=multithreaded)
-    end
-end
-=#
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(solver.symmetry)
         offs=component_offsets(pts)
