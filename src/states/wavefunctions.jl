@@ -12,7 +12,12 @@ using StaticArrays
 Normalize a boundary description into a vector of connected components,
 where each component is a vector of curve pieces.
 
-Returns `Vector{Vector}` with convention:
+Accepted inputs:
+- `[outer,hole1,hole2,...]` for multiple closed components
+- `[seg1,seg2,...]` for one composite connected boundary
+- `[[outer...],[hole1...],...]` for explicitly grouped components
+
+Convention:
 - component 1 = outer boundary
 - components 2:end = holes
 """
@@ -20,6 +25,15 @@ function _boundary_components(boundary)
     isempty(boundary) && return Vector{Vector{Any}}()
     if boundary[1] isa AbstractVector
         return [collect(comp) for comp in boundary]
+    end
+    all_closed=all(crv->begin
+        p0=curve(crv,(0.0,))[1]
+        p1=curve(crv,(1.0,))[1]
+        hypot(p1[1]-p0[1],p1[2]-p0[2])<=1e-8
+    end,boundary)
+
+    if all_closed
+        return [[crv] for crv in boundary]
     else
         return [collect(boundary)]
     end
@@ -535,19 +549,6 @@ where
         ψi-= wr*Ki+wi*Kr
     end
     return Complex{T}(ψr, ψi)
-end
-
-"""
-    ϕ_cfie!(ψ::AbstractVector{Complex{T}},pts::AbstractVector{SVector{2,T}},k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}},float32_bessel::Bool=false) where {T<:Real}
-
-Compute the CFIE_kress wavefunction on many points.
-"""
-function ϕ_cfie_flat!(ψ::AbstractVector{Complex{T}},pts::AbstractVector,k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false) where {T<:Real}
-    Threads.@threads for i in eachindex(pts)
-        p=pts[i]
-        ψ[i]=ϕ_cfie_flat(p[1],p[2],k,cache,u;float32_bessel=float32_bessel)
-    end
-    return ψ
 end
 
 """
