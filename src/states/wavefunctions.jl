@@ -537,7 +537,7 @@ where
         #   K = i*A*h1 - B*h0
         A=khalf*inn*invr
         #B=khalf*sj[j]
-        B=khalf
+        B=khalf*sj[j]
         # i*A*h1 = (-A*imag(h1)) + i*(A*real(h1))
         Kr=muladd(-A,imag(h1),-B*real(h0))
         Ki=muladd(A,real(h1),-B*imag(h0))

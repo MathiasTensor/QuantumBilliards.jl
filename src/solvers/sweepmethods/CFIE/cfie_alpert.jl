@@ -1393,7 +1393,7 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
-    return S[idx],(Vt[idx,:])
+    return S[idx],conj.(Vt[idx,:])
 end
 
 # solve_vect
@@ -1418,7 +1418,7 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
-    return S[idx],(Vt[idx,:])
+    return S[idx],conj.(Vt[idx,:])
 end
 
 # solve_INFO
