@@ -602,7 +602,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     y_grid=collect(T,range(ylim[1],ylim[2],length=ny))
     pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
     npts=length(pts)
-    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(npts));fundamental_domain=false,boundary_type=:OUTER_INNER) : fill(true,npts)
+    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(npts));fundamental_domain=fundamental) : fill(true,npts)
     pts_masked_indices=findall(pts_mask)
     nmask=length(pts_masked_indices)
     NT=Threads.nthreads()
