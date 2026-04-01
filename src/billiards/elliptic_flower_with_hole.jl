@@ -49,7 +49,7 @@ function make_elliptic_flower_component(n::Int,Rb::T,b::T;
         B=verts[mod1(j+2,n)]
         push!(boundary,elliptic_arc(A,B,b;origin=origin,rot_angle=rot_angle))
     end
-    return boundary,verts
+    return [boundary],verts
 end
 
 """
@@ -68,7 +68,7 @@ function make_desymmetrized_elliptic_flower_component(n,Rb,b;θ0=0.0)
     B=verts[mod1(3,n)]
     arc=elliptic_arc(A,B,b)
     origin=SVector(0.0,0.0)
-    return arc,verts
+    return [arc],verts
 end
 
 """
@@ -82,7 +82,7 @@ function make_polygon_hole_component(n::Int,Rh::T;
     θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
     verts=[SVector{2,T}(Rh*cos(θ0+2π*j/n),Rh*sin(θ0+2π*j/n)) for j in 0:n-1]
     edges=[LineSegment(verts[i],verts[mod1(i+1,n)];origin=origin,rot_angle=rot_angle) for i in 1:n]
-    return edges,verts
+    return [edges],verts
 end
 
 """
@@ -96,7 +96,7 @@ function make_desymmetrized_polygon_hole_component(n::Int,Rh::T;
     θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
     verts=[SVector{2,T}(Rh*cos(θ0+2π*j/n),Rh*sin(θ0+2π*j/n)) for j in 0:n-1]
     edge=LineSegment(verts[2],verts[1];origin=origin,rot_angle=rot_angle)
-    return edge,verts
+    return [edge],verts
 end
 
 @inline function _boundary_total_length(boundary)
