@@ -158,7 +158,7 @@ end
 #   - max_errs2::Vector{Float64}
 #   - max_errs3::Vector{Float64}
 function chebyshev_params(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    block_cache=build_cfie_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax 
+    block_cache=build_cfie_kress_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax 
     rmin,rmax=block_cache.rmin,block_cache.rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
     nz=length(zj)
@@ -181,7 +181,7 @@ function chebyshev_params(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},
     max_errs2=fill(Inf,nz)
     max_errs3=fill(Inf,nz)
     for it in 1:max_iter
-        plans0,plans1,plans2,plans3=build_CFIE_plans(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
+        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
         Threads.@threads for j in eachindex(zj)
             pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)

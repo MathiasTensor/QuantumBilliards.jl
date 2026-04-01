@@ -290,31 +290,6 @@ function CFIEAlpertMultiBesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())
     return CFIEAlpertMultiBesselWorkspace(h0_tls,h1_tls)
 end
 
-###############################
-#### MULTI-K H0/H1 EVALS   ####
-###############################
-
-# hankels_multi_ks_at_r!
-# Evaluate H0/H1 for all k values at a pretabulated local panel coordinate.
-#
-# Inputs:
-#   - h0vals,h1vals:
-#       Output buffers of length Mk.
-#   - plans0,plans1:
-#       Chebyshev plans for H0/H1.
-#   - pidx,t:
-#       Panel index and local coordinate.
-#
-# Outputs:
-#   - h0vals,h1vals modified in place.
-@inline function hankels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
-    @inbounds for m in eachindex(plans0)
-        h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
-        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
-    end
-    return nothing
-end
-
 ########################################
 #### MULTI-K ALPERT SHIFT LOOKUP WS ####
 ########################################
