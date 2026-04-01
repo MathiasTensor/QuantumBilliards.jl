@@ -18,14 +18,10 @@ function elliptic_arc(A::SVector{2,T},B::SVector{2,T},b::T;
     a=sqrt(b^2+c^2)
     u=(B-A)/d
     v=SVector(-u[2],u[1])
-    center=zero(SVector{2,T}) # center is at origin in local coordinates
+    sgn=norm(C+b*v)>norm(C-b*v) ? one(T) : -one(T)
     r_func=t->begin
         θ=pi*(t-0.5)
-        p=C+a*cos(θ)*u+b*sin(θ)*v
-        if dot(p-C,C-center)<0
-            p=C+a*cos(θ)*u-b*sin(θ)*v
-        end
-        return p
+        C+a*cos(θ)*u+sgn*b*sin(θ)*v
     end
     return PolarSegment(r_func;origin=origin,rot_angle=rot_angle)
 end
@@ -49,7 +45,7 @@ function make_elliptic_flower_component(n::Int,Rb::T,b::T;
         B=verts[mod1(j+2,n)]
         push!(boundary,elliptic_arc(A,B,b;origin=origin,rot_angle=rot_angle))
     end
-    return [boundary],verts
+    return boundary,verts
 end
 
 """
@@ -82,7 +78,7 @@ function make_polygon_hole_component(n::Int,Rh::T;
     θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
     verts=[SVector{2,T}(Rh*cos(θ0+2π*j/n),Rh*sin(θ0+2π*j/n)) for j in 0:n-1]
     edges=[LineSegment(verts[i],verts[mod1(i+1,n)];origin=origin,rot_angle=rot_angle) for i in 1:n]
-    return [edges],verts
+    return edges,verts
 end
 
 """
@@ -92,6 +88,14 @@ Construct one fundamental-domain edge of a regular `n`-gon hole.
 
 Returns `(boundary,vertices)` where `boundary` is a one-element vector.
 """
+function make_desymmetrized_elliptic_flower_component(n,Rb,b;θ0=0.0)
+    verts=[SVector{2}(Rb*cos(θ0+2π*j/n),Rb*sin(θ0+2π*j/n)) for j in 0:n-1]
+    A=verts[1]
+    B=verts[mod1(3,n)]
+    arc=elliptic_arc(A,B,b)
+    return [arc],verts
+end
+
 function make_desymmetrized_polygon_hole_component(n::Int,Rh::T;
     θ0=zero(T),origin=(0.0,0.0),rot_angle=zero(T)) where {T<:Real}
     verts=[SVector{2,T}(Rh*cos(θ0+2π*j/n),Rh*sin(θ0+2π*j/n)) for j in 0:n-1]
@@ -165,6 +169,7 @@ function EllipticFlowerWithOptionalHole(n::Int;Rb=1.0,b=0.4,hole::Bool=false,hol
         Rh=hole_radius===nothing ? hole_scale*Rb : hole_radius
         inner_full,verts_inner=make_polygon_hole_component(n,Rh;θ0=θ0)
         inner_desym,_=make_desymmetrized_polygon_hole_component(n,Rh;θ0=θ0)
+
         full_boundary=[outer_full,inner_full]
         desymmetrized_full_boundary=[outer_desym,inner_desym]
         hole_radius_val=Rh
@@ -177,13 +182,13 @@ function EllipticFlowerWithOptionalHole(n::Int;Rb=1.0,b=0.4,hole::Bool=false,hol
     end
     length=_boundary_total_length(full_boundary)
     length_fundamental=_boundary_total_length(desymmetrized_full_boundary)
-    outer_area=zero(Float64)
-    inner_area=(hole && hole_radius_val!==nothing) ? _regular_ngon_area(n,hole_radius_val) : zero(Float64)
+    outer_area=0.0 
+    inner_area=(hole && hole_radius_val!==nothing) ? _regular_ngon_area(n,hole_radius_val) : 0.0
     area=outer_area-inner_area
     area_fundamental=area/Float64(n)
-    angles=Float64[]
-    angles_fundamental=Float64[]
-    return EllipticFlowerWithOptionalHole(full_boundary,desymmetrized_full_boundary,
+    return EllipticFlowerWithOptionalHole(
+        full_boundary,
+        desymmetrized_full_boundary,
         Float64(length),
         Float64(length_fundamental),
         Float64(area),
@@ -194,13 +199,10 @@ function EllipticFlowerWithOptionalHole(n::Int;Rb=1.0,b=0.4,hole::Bool=false,hol
         hole_radius_val,
         verts_outer,
         vertices_inner_val,
-        angles,
-        angles_fundamental)
+        Float64[],
+        Float64[]
+    )
 end
-
-############################
-#### BASIS HELPER ##########
-############################
 
 """
     make_elliptic_flower_and_basis(n;
