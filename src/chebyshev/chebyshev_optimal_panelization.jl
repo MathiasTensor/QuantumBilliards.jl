@@ -270,7 +270,7 @@ end
 #   - max_errs1::Vector{Float64}
 function chebyshev_params(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     ws=build_cfie_alpert_workspace(solver,pts) 
-    geomws=build_cfie_alpert_cheb_workspace(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
+    geomws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
     rmin,rmax=geomws.block_cache.rmin,geomws.block_cache.rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
     nz=length(zj)
