@@ -97,6 +97,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
+#=
 function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     N=length(pts.xy)
     xy=reverse(pts.xy)
@@ -107,6 +108,18 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     else
         ts=[s(j,N) for j in 1:N] # dont touch Alpert here !!!
     end
+    ws=copy(pts.ws)
+    ws_der=copy(pts.ws_der)
+    ds=reverse(pts.ds)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
+end
+=#
+function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
+    N=length(pts.xy)
+    xy=reverse(pts.xy)
+    tangent=reverse(-pts.tangent)
+    tangent_2=reverse(pts.tangent_2)
+    ts=[s(j,N) for j in 1:N]
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
@@ -409,6 +422,7 @@ end
 
 # For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
 # Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
+#=
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
     # case 1: simple closed components [outer,hole1,hole2,...]
@@ -442,6 +456,42 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
     for comp in inner_boundaries
         for crv in comp
             pts[pos]=_reverse_component_orientation(solver,_evaluate_points_panel(solver,crv,k,pos))
+            pos+=1
+        end
+    end
+    return pts
+end
+=#
+function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+
+    if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
+        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+        for (idx,crv) in enumerate(boundary)
+            p=_evaluate_points_periodic(solver,crv,k,idx)
+            pts[idx]=(idx==1) ? p : _reverse_component_orientation(solver,p)
+        end
+        return pts
+    end
+
+    if _is_single_composite_boundary(boundary)
+        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
+        for (idx,crv) in enumerate(boundary)
+            pts[idx]=_evaluate_points_panel(solver,crv,k,1)
+        end
+        return pts
+    end
+
+    ncomps=length(boundary)
+    npanels=sum(length(comp) for comp in boundary)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,npanels)
+
+    pos=1
+    for compid in 1:ncomps
+        comp=boundary[compid]
+        for crv in comp
+            p=_evaluate_points_panel(solver,crv,k,compid)
+            pts[pos]=(compid==1) ? p : _reverse_component_orientation(solver,p)
             pos+=1
         end
     end

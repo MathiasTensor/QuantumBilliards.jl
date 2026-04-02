@@ -1,3 +1,28 @@
+#################################################################
+#   CHEBYSHEV-BASED SLP/DLP EVALUATION FOR CFIE_alpert ASSEMBLY IN 2D EUCLIDEAN HELMHOLTZ 
+# Functions to build Chebyshev-based SLP/DLP evaluation plans for multiple wavenumbers, and to compute the CFIE_alpert matrix blocks using these plans. 
+# Logic:
+# - Build Chebyshev-based Hankel evaluation plans for the SLP and DLP kernels for each wavenumber.
+# - Precompute the geometry-related terms (R, invR, inner product, speed, quadrature weights) for each block of the CFIE_alpert matrix.
+# - For each block, use the precomputed geometry and the Chebyshev plans to evaluate the SLP and DLP contributions for each pair of points, and accumulate the CFIE_alpert matrix entries.
+#
+# API: 
+# - `build_CFIE_alpert_plans(...)`: Builds Chebyshev-based Hankel evaluation plans for the given wavenumbers and geometry.
+# - `build_cfie_alpert_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE_alpert matrix.
+# - `h01_multi_ks_at_r!(...)`: Evaluates the SLP and DLP Hankel functions for multiple wavenumbers at given distances.
+# - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE_alpert matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
+# USUALLY NOT CALLED DIRECTLY: 
+# - `_one_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_alpert matrix blocks for a single wavenumber without using symmetries, using Chebyshev-based SLP/DLP evaluation.
+# - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_alpert matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
+#
+# Workflow: 
+# 1. Call `build_cfie_alpert_workspace` to create the Alpert workspace, which includes building the CFIE_alpert block caches with `build_cfie_alpert_block_caches`.
+# 2. Call `build_cfie_alpert_cheb_workspace` to create the Chebyshev workspace, which includes building the Chebyshev plans for the SLP and DLP kernels for all wavenumbers with `build_CFIE_alpert_plans`.
+# 3. Call `compute_kernel_matrices_CFIE_alpert_chebyshev!` to compute the CFIE_alpert matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
+#
+# MO 2/4/26
+#################################################################
+
 _TWO_PI=2*pi
 _INV_TWO_PI=1/_TWO_PI
 
@@ -846,34 +871,6 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
 end
 
 ############################################################
-#### PUBLIC ENTRY POINTS ###################################
-############################################################
-
-function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T}) where {T<:Real}
-    if isnothing(solver.symmetry)
-        return compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws,ws.ks;multithreaded=true)
-    else
-        return compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As,solver,pts,ws,ws.ks;multithreaded=true)
-    end
-end
-
-function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    if isnothing(solver.symmetry)
-        return compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws,ws.ks;multithreaded=multithreaded)
-    else
-        return compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As,solver,pts,ws,ws.ks;multithreaded=multithreaded)
-    end
-end
-
-function compute_kernel_matrices_CFIE_alpert_chebyshev(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    Ntot=ws.direct.Ntot
-    Mk=ws.Mk
-    As=[Matrix{ComplexF64}(undef,Ntot,Ntot) for _ in 1:Mk]
-    compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws;multithreaded=multithreaded)
-    return As
-end
-
-############################################################
 #### GLOBAL rmin / rmax FOR CFIE_alpert CHEB PLANS #########
 ############################################################
 
@@ -1109,4 +1106,32 @@ function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{Bou
     plans0,plans1=build_CFIE_alpert_plans(ks,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
     bessel_ws=CFIE_H0_H1_BesselWorkspace(length(ks);ntls=ntls)
     return CFIEAlpertChebWorkspace{T,C}(direct,block_cache,plans0,plans1,bessel_ws,ks,length(ks))
+end
+
+###########################################################
+############## HIGH LEVEL ENTRY POINTS ####################
+###########################################################
+
+function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T}) where {T<:Real}
+    if isnothing(solver.symmetry)
+        return compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws,ws.ks;multithreaded=true)
+    else
+        return compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As,solver,pts,ws,ws.ks;multithreaded=true)
+    end
+end
+
+function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+    if isnothing(solver.symmetry)
+        return compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws,ws.ks;multithreaded=multithreaded)
+    else
+        return compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As,solver,pts,ws,ws.ks;multithreaded=multithreaded)
+    end
+end
+
+function compute_kernel_matrices_CFIE_alpert_chebyshev(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+    Ntot=ws.direct.Ntot
+    Mk=ws.Mk
+    As=[Matrix{ComplexF64}(undef,Ntot,Ntot) for _ in 1:Mk]
+    compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws;multithreaded=multithreaded)
+    return As
 end
