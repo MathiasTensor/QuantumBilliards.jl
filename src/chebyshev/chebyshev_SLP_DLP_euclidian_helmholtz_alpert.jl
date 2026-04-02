@@ -1,23 +1,3 @@
-#################################################################
-# CHEBYSHEV-BASED SLP/DLP EVALUATION FOR CFIE_alpert ASSEMBLY
-# MULTI-k ONLY, WITH ks::Vector{ComplexF64}
-#
-# This chunk adds:
-# - multi-k plan builder for Alpert
-# - Alpert chebyshev block cache
-# - combined cheb workspace
-# - small helpers to evaluate H0/H1 from plans
-#
-# Assumes already available elsewhere:
-# - ChebHankelPlanH
-# - plan_h
-# - _find_panel
-# - _cheb_clenshaw
-# - component_offsets
-# - BoundaryPointsCFIE
-# - CFIEAlpertWorkspace
-#################################################################
-
 _TWO_PI=2*pi
 _INV_TWO_PI=1/_TWO_PI
 
