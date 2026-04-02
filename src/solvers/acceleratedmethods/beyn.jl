@@ -250,13 +250,15 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
-        block_cache=build_cfie_kress_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
-        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
-        ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
-        @inbounds for j in eachindex(Tbufs)
-            fill!(Tbufs[j],0.0+0.0im)
+        @blas_1 begin
+            block_cache=build_cfie_kress_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
+            plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+            ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
+            @inbounds for j in eachindex(Tbufs)
+                fill!(Tbufs[j],0.0+0.0im)
+            end
+            @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
         end
-        @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
     else
         @error("Direct matrix construction is only for real k currently")
     end
@@ -267,12 +269,14 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
-        ws=build_cfie_alpert_workspace(solver,pts)
-        chebws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
-        @inbounds for j in eachindex(Tbufs)
-            fill!(Tbufs[j],0.0+0.0im)
+        @blas_1 begin
+            ws=build_cfie_alpert_workspace(solver,pts)
+            chebws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @inbounds for j in eachindex(Tbufs)
+                fill!(Tbufs[j],0.0+0.0im)
+            end
+            @benchit timeit=timeit "CFIE_alpert Chebyshev" compute_kernel_matrices_CFIE_alpert_chebyshev!(Tbufs,solver,pts,chebws;multithreaded=multithreaded)
         end
-        @benchit timeit=timeit "CFIE_alpert Chebyshev" compute_kernel_matrices_CFIE_alpert_chebyshev!(Tbufs,solver,pts,chebws;multithreaded=multithreaded)
     else
         @error("Direct matrix construction is only for real k currently")
     end
