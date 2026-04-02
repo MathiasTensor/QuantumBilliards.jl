@@ -197,14 +197,6 @@ struct CFIEAlpertChebWorkspace{T<:Real,C}
     Mk::Int
 end
 
-function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real}
-    direct=build_cfie_alpert_workspace(solver,pts)
-    block_cache=build_cfie_alpert_cheb_block_caches(pts;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
-    plans0,plans1=build_CFIE_alpert_plans(ks,block_cache.rmin,block_cache.rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
-    bessel_ws=CFIE_H0_H1_BesselWorkspace(length(ks);ntls=ntls)
-    return CFIEAlpertChebWorkspace{T,eltype(direct.Cs)}(direct,block_cache,plans0,plans1,bessel_ws,ks,length(ks))
-end
-
 ############################################
 #### CHEB LOOKUP HELPERS FOR ONE ENTRY #####
 ############################################
