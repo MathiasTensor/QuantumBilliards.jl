@@ -32,7 +32,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
 #######################
 
 # Evaluates the H0/H1/J0/J1 values at multiple k*r values, needed for multi CFIE_kress assembly -> same_block_col!
-@inline function bessels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
         h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
@@ -43,7 +43,7 @@ _EULER_OVER_PI=MathConstants.eulergamma/pi
 end
 
 # Same as above but only for H0/H1
-@inline function hankels_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
+@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
         h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
@@ -217,21 +217,32 @@ end
 #### BESSEL WORKSPACE ####
 ##########################
 
-# Contains the thread-local storage for the Hankel and Bessel function values at multiple wavenumbers, used during CFIE_kress assembly to avoid repeated allocations.
-
-struct CFIEMultiBesselWorkspace
+# For Kress since analytic split requries J0/J1 which for complex k cannot be gotten as just real and imaginary parts of H0/H1
+struct CFIE_H0_H1_J0_J1_BesselWorkspace
     h0_tls::Vector{Vector{ComplexF64}}
     h1_tls::Vector{Vector{ComplexF64}}
     j0_tls::Vector{Vector{ComplexF64}}
     j1_tls::Vector{Vector{ComplexF64}}
 end
 
-function CFIEMultiBesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
+function CFIE_H0_H1_J0_J1_BesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
     h0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     j0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     j1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
-    return CFIEMultiBesselWorkspace(h0_tls,h1_tls,j0_tls,j1_tls)
+    return CFIE_H0_H1_J0_J1_BesselWorkspace(h0_tls,h1_tls,j0_tls,j1_tls)
+end
+
+# For Alpert where we dont have analytic split therefore no need for J0/J1
+struct CFIE_H0_H1_BesselWorkspace
+    h0_tls::Vector{Vector{ComplexF64}}
+    h1_tls::Vector{Vector{ComplexF64}}
+end
+
+function CFIE_H0_H1_BesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
+    h0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    return CFIE_H0_H1_BesselWorkspace(h0_tls,h1_tls)
 end
 
 #############################################################
@@ -277,7 +288,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             lt=blk.logterm[i,j];rijR=blk.Rkress[i,j]
             inn_ij=blk.inner[i,j];inn_ji=blk.inner[j,i]
             si=blk.speed_j[i];wi=blk.wj[i]
-            bessels_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t)
+            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t)
             for m in 1:Mk
                 h0=h0vals[m];h1=h1vals[m]
                 j0=j0vals[m];j1=j1vals[m]
@@ -309,7 +320,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             gi=ro+i-1
             invr=blk.invR[i,j];inn=blk.inner[i,j]
             p=blk.pidx[i,j];t=blk.tloc[i,j]
-            hankels_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
+            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
             for m in 1:Mk
                 h0=h0vals[m];h1=h1vals[m]
                 βL=αL2[m]*h1*invr

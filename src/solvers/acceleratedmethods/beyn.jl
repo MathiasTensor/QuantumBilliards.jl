@@ -238,7 +238,7 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     if use_chebyshev
         block_cache=build_cfie_kress_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
         plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
-        ws=CFIEMultiBesselWorkspace(Mk;ntls=Threads.nthreads())
+        ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
         @inbounds for j in eachindex(Tbufs)
             fill!(Tbufs[j],0.0+0.0im)
         end
@@ -249,15 +249,15 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     return nothing
 end
 
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
-        geomws,plans0,plans1,SCs,wsb=build_cfie_alpert_cheb_data(solver,pts,zj;npanels=n_panels,M=M,grading=:uniform,geo_ratio=1.05,nthreads=Threads.nthreads())
+        chebws=build_cfie_alpert_cheb_workspace(solver,pts,zj;npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
         @inbounds for j in eachindex(Tbufs)
             fill!(Tbufs[j],0.0+0.0im)
         end
-        @benchit timeit=timeit "CFIE_alpert Chebyshev" compute_kernel_matrices_CFIE_alpert_chebyshev!(Tbufs,solver,pts,plans0,plans1,geomws,SCs,wsb;multithreaded=multithreaded)
+        @benchit timeit=timeit "CFIE_alpert Chebyshev" compute_kernel_matrices_CFIE_alpert_chebyshev!(Tbufs,solver,pts,chebws;multithreaded=multithreaded)
     else
         @error("Direct matrix construction is only for real k currently")
     end
