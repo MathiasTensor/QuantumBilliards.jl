@@ -65,12 +65,26 @@ MO 29/3/26
 #### HELPERS ####
 #################
 
+# Internal helpers to compute the area-based estimate of the counting function N(k) for a given billiard, optionally using the fundamental domain geometry. This is enouhg for the upper bound due to annoying billiard struct fundamental_boundary missing for complex geometries with no bases.
+@inline function area_count_estimate(k::T,billiard::Bi;fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    return A*k^2/(4*pi)
+end
+@inline function delta_area_count_estimate(billiard::Bi,k::T,Δk::T;fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    return A*((k+Δk)^2-k^2)/(4*pi)
+end
+@inline function dos_area_estimate(k::T,billiard::Bi;fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    A=fundamental ? billiard.area_fundamental : billiard.area
+    return A*k/(2*pi)
+end
+
 # ΔN(k,Δk) = N(k+Δk) - N(k)
 # Uses Weyl’s law as a fast estimator of eigenvalue count N(k).
 # Returns the estimated number of levels in the interval [k, k+Δk].
 function delta_weyl(billiard::Bi,k::T,Δk::T;fundamental::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     # Use Weyl’s law as a fast estimator of counting function N(k); difference gives # levels in [k,k+Δk]
-    weyl_law(k+Δk,billiard;fundamental=fundamental)-weyl_law(k,billiard;fundamental=fundamental)
+    delta_area_count_estimate(billiard,k,Δk;fundamental=fundamental)
 end
 
 # initial_step_from_dos
@@ -78,7 +92,7 @@ end
 # Formula: Δk₀ ≈ m / ρ(k). 
 # Ensures Δk₀ is not too small by flooring with min_step.
 function initial_step_from_dos(billiard::Bi,k::T,m::Int;fundamental::Bool=true,min_step::Real=1e-6) where {T<:Real,Bi<:AbsBilliard}
-    ρ=max(dos_weyl(k,billiard;fundamental=fundamental),1e-12) # estimate DOS ρ(k); clamp to avoid division by tiny numbers
+    ρ=max(dos_area_estimate(k,billiard;fundamental=fundamental),1e-12) # estimate DOS ρ(k); clamp to avoid division by tiny numbers
     max(m/ρ,min_step) # target m levels -> Δk≈m/ρ; enforce a minimum to avoid Δk≈0 in sparse regions
 end
 
