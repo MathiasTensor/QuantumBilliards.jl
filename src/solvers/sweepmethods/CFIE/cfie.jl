@@ -97,36 +97,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
-#=
-function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
-    N=length(pts.xy)
-    xy=reverse(pts.xy)
-    tangent=reverse(-pts.tangent)
-    tangent_2= -pts.tangent_2 
-    if solver isa CFIE_kress # FIXME: Future: hacky stuff, kress can have reverse orientation since periodic but for alpert code structured differently
-        ts=reverse(pts.ts) # dont touch kress here !!!
-    else
-        ts=[s(j,N) for j in 1:N] # dont touch Alpert here !!!
-    end
-    ws=copy(pts.ws)
-    ws_der=copy(pts.ws_der)
-    ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
-end
-=#
-#=
-function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
-    N=length(pts.xy)
-    xy=reverse(pts.xy)
-    tangent=reverse(-pts.tangent)
-    tangent_2=reverse(pts.tangent_2)
-    ts=[s(j,N) for j in 1:N]
-    ws=copy(pts.ws)
-    ws_der=copy(pts.ws_der)
-    ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
-end
-=#
+# this function is really tricky since we need to reverse the order of the points but also flip the tangents and ds to maintain the correct orientation for the holes. We also need to be careful with the periodicity and the weights. The compid should remain unchanged since we are just reversing the order of points within the same component. Closed periodic polar curves ts behave differently from open panels due to the definiiton of the log analytic split for Kress needing [s(j,N) for j in 1:N] while for Alpert we chose midpoints.
 function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     N=length(pts.xy)
     xy=reverse(pts.xy)
