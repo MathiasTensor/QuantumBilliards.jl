@@ -97,7 +97,8 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
-function _reverse_component_orientation(solver::CFIE_alpert,pts::BoundaryPointsCFIE{T}) where {T<:Real}
+#=
+function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     N=length(pts.xy)
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
@@ -112,13 +113,30 @@ function _reverse_component_orientation(solver::CFIE_alpert,pts::BoundaryPointsC
     ds=reverse(pts.ds)
     return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
 end
-
-function _reverse_component_orientation(solver::CFIE_kress,pts::BoundaryPointsCFIE{T}) where {T<:Real}
+=#
+#=
+function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     N=length(pts.xy)
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
     ts=[s(j,N) for j in 1:N]
+    ws=copy(pts.ws)
+    ws_der=copy(pts.ws_der)
+    ds=reverse(pts.ds)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
+end
+=#
+function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
+    N=length(pts.xy)
+    xy=reverse(pts.xy)
+    tangent=reverse(-pts.tangent)
+    tangent_2=reverse(pts.tangent_2)
+    ts=if pts.is_periodic
+        [s(j,N) for j in 1:N]
+    else
+        collect(midpoints(range(zero(T),one(T),length=N+1)))
+    end
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
