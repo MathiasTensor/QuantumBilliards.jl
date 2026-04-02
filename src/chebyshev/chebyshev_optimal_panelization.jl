@@ -269,7 +269,7 @@ end
 #   - max_errs0::Vector{Float64}
 #   - max_errs1::Vector{Float64}
 function chebyshev_params(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    geomws=build_cfie_alpert_geom_workspace(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
+    geomws=build_cfie_alpert_cheb_workspace(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
     rmin,rmax=geomws.block_cache.rmin,geomws.block_cache.rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
     nz=length(zj)
@@ -284,7 +284,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{
     max_errs0=fill(Inf,nz)
     max_errs1=fill(Inf,nz)
     for it in 1:max_iter
-        plans0,plans1=build_CFIE_plans_alpert(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
+        plans0,plans1=build_CFIE_alpert_plans(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
         Threads.@threads for j in eachindex(zj)
             pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
