@@ -227,7 +227,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
 zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
     plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
-    Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
+    @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
         plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform)
     end
     if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
@@ -251,9 +251,9 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            block_cache=build_cfie_kress_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
-            plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
-            ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
@@ -270,8 +270,8 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            ws=build_cfie_alpert_workspace(solver,pts)
-            chebws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_alpert Workspace" ws=build_cfie_alpert_workspace(solver,pts)
+            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
