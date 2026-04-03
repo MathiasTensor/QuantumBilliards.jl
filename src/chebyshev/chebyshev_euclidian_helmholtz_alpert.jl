@@ -86,10 +86,6 @@ struct CFIEAlpertBlockSystemCache{T<:Real}
     offsets::Vector{Int}
     rmin::Float64
     rmax::Float64
-    Xs::Vector{Vector{T}}
-    Ys::Vector{Vector{T}}
-    dXs::Vector{Vector{T}}
-    dYs::Vector{Vector{T}}
 end
 
 function build_cfie_alpert_cheb_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
