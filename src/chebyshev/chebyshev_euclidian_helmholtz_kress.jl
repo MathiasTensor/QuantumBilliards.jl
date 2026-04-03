@@ -10,7 +10,7 @@
 # - `build_CFIE_plans_kress(...)`: Builds Chebyshev-based Hankel evaluation plans for the given wavenumbers and geometry.
 # - `build_cfie_kress_block_caches(...)`: Precomputes the geometry-related terms for each block of the CFIE_kress matrix.
 # - `h01_multi_ks_at_r!(...)`: Evaluates the SLP and DLP Hankel functions for multiple wavenumbers at given distances.
-# - `compute_kernel_matrices_CFIE_chebyshev!(...)`: Main function to compute the CFIE_kress matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
+# - `compute_kernel_matrices_CFIE_kress_chebyshev!(...)`: Main function to compute the CFIE_kress matrix blocks for all wavenumbers, using the appropriate method based on the presence of symmetries and the number of wavenumbers.
 # USUALLY NOT CALLED DIRECTLY: 
 # - `_one_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_kress matrix blocks for a single wavenumber without using symmetries, using Chebyshev-based SLP/DLP evaluation.
 # - `_all_k_nosymm_CFIE_chebyshev!(...)`: Computes the CFIE_kress matrix blocks for all wavenumbers without using symmetries, using Chebyshev-based SLP/DLP evaluation.
@@ -18,7 +18,7 @@
 # Workflow: 
 # 1. Call `build_CFIE_plans_kress` to create the Chebyshev evaluation plans for the desired wavenumbers and geometry.
 # 2. Call `build_cfie_kress_block_caches` to precompute the geometry-related terms for each block of the CFIE_kress matrix.
-# 3. Call `compute_kernel_matrices_CFIE_chebyshev!` to compute the CFIE_kress matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
+# 3. Call `compute_kernel_matrices_CFIE_kress_chebyshev!` to compute the CFIE_kress matrix blocks for all wavenumbers, which will internally call the appropriate function based on the presence of symmetries and the number of wavenumbers.
 #
 # MO 26/3/26
 #################################################################
@@ -233,18 +233,6 @@ function CFIE_H0_H1_J0_J1_BesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads())
     return CFIE_H0_H1_J0_J1_BesselWorkspace(h0_tls,h1_tls,j0_tls,j1_tls)
 end
 
-# For Alpert where we dont have analytic split therefore no need for J0/J1
-struct CFIE_H0_H1_BesselWorkspace
-    h0_tls::Vector{Vector{ComplexF64}}
-    h1_tls::Vector{Vector{ComplexF64}}
-end
-
-function CFIE_H0_H1_BesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
-    h0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
-    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
-    return CFIE_H0_H1_BesselWorkspace(h0_tls,h1_tls)
-end
-
 #############################################################
 #### DIRECT NO-SYMMETRY CFIE_kress ASSEMBLY: ALL k / ONE k ########
 #############################################################
@@ -362,7 +350,7 @@ end
 #################################
 
 #############################################################
-# compute_kernel_matrices_CFIE_chebyshev!
+# compute_kernel_matrices_CFIE_kress_chebyshev!
 #
 # Assemble CFIE_kress matrices using Chebyshev-interpolated Hankel kernels.
 #
@@ -418,12 +406,12 @@ end
 #   S = single-layer operator
 #############################################################
 
-function compute_kernel_matrices_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_CFIE_kress_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_CFIE_chebyshev!(As,pts,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
     return nothing
 end
 
-function compute_kernel_matrices_CFIE_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_CFIE_kress_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
     _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
     return nothing
 end

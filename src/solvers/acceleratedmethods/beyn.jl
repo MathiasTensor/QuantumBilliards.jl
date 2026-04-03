@@ -257,7 +257,7 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
-            @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
+            @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
         end
     else
         @error("Direct matrix construction is only for real k currently")

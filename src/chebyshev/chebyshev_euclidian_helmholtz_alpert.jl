@@ -180,12 +180,14 @@ end
 struct CFIE_H0_H1_BesselWorkspace
     h0_tls::Vector{Vector{ComplexF64}}
     h1_tls::Vector{Vector{ComplexF64}}
+    coeff_tls::Vector{Vector{ComplexF64}}
 end
 
 function CFIE_H0_H1_BesselWorkspace(Mk::Int;ntls::Int=(Threads.nthreads()))
     h0_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
-    return CFIE_H0_H1_BesselWorkspace(h0_tls,h1_tls)
+    coeff_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    return CFIE_H0_H1_BesselWorkspace(h0_tls,h1_tls,coeff_tls)
 end
 
 #########################################
@@ -225,7 +227,7 @@ end
 #### SELF-ALPERT ASSEMBLY, CHEBYSHEV, MULTI-k ONLY #####
 ########################################################
 
-function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     khalf=Vector{ComplexF64}(undef,Mk)
@@ -306,7 +308,7 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{Comple
     return nothing
 end
 
-function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     khalf=Vector{ComplexF64}(undef,Mk)
@@ -405,15 +407,15 @@ function _scatter_local4_multi!(As::Vector{<:AbstractMatrix{ComplexF64}},gi::Int
     return nothing
 end
 
-function _assemble_self_alpert_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
-    return pts.is_periodic ? _assemble_self_alpert_periodic_cheb!(As,pts,G,C,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded) : _assemble_self_alpert_smooth_panel_cheb!(solver,As,pts,G,C,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+function _assemble_self_alpert_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+    return pts.is_periodic ? _assemble_self_alpert_periodic_cheb!(As,pts,G,C,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded) : _assemble_self_alpert_smooth_panel_cheb!(solver,As,pts,G,C,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
 end
 
 ##################################################################
 #### COMPOSITE SELF-ASSEMBLY + IMAGE BLOCKS, CHEB, MULTI-k #######
 ##################################################################
 
-function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     khalf=Vector{ComplexF64}(undef,Mk)
@@ -447,7 +449,7 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
             tid=Threads.threadid()
             h0vals=h0_tls[tid]
             h1vals=h1_tls[tid]
-            coeffs=Vector{ComplexF64}(undef,Mk)
+            coeffs=coeff_tls[tid]
             gi=ra[i]
             xi=Xa[i]
             yi=Ya[i]
@@ -582,15 +584,15 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
     return nothing
 end
 
-function _assemble_all_self_alpert_composite_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_all_self_alpert_composite_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     @inbounds for c in eachindex(gmaps)
         gmap=gmaps[c]
         if length(gmap)==1 && pts[gmap[1]].is_periodic
             a=gmap[1]
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         else
-            _assemble_self_alpert_composite_component_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos[c],gmap,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_composite_component_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos[c],gmap,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     end
     return nothing
@@ -696,14 +698,15 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMat
     plans1=ws.plans1
     h0_tls=ws.bessel_ws.h0_tls
     h1_tls=ws.bessel_ws.h1_tls
+    coeff_tls=ws.bessel_ws.coeff_tls
     nc=length(pts)
     if topos===nothing
         @inbounds for a in 1:nc
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     else
-        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
     end
     αD=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
@@ -785,14 +788,15 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
     plans1=ws.plans1
     h0_tls=ws.bessel_ws.h0_tls
     h1_tls=ws.bessel_ws.h1_tls
+    coeff_tls=ws.bessel_ws.coeff_tls
     nc=length(pts)
     if topos===nothing
         @inbounds for a in 1:nc
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     else
-        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
     end
     αD=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
@@ -1111,14 +1115,6 @@ end
 ###########################################################
 ############## HIGH LEVEL ENTRY POINTS ####################
 ###########################################################
-
-function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T}) where {T<:Real}
-    if isnothing(solver.symmetry)
-        return compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws,ws.ks;multithreaded=true)
-    else
-        return compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As,solver,pts,ws,ws.ks;multithreaded=true)
-    end
-end
 
 function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     if isnothing(solver.symmetry)
