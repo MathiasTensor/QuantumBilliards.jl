@@ -323,13 +323,13 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
-    @benchit timeit=timeit "LU factorization" begin
+    @benchit timeit=info "LU factorization" begin
         @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq # LU factor all T(zj) matrices
             Fs[j]=lu!(Tbufs1[j];check=false)
         end
     end
     xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:) # vector views for BLAS.axpy! operations, to avoid allocations in the loop via reshaping the matrices each time in the loop
-    @benchit timeit=timeit "Contour integration - ldiv! + axpy!" begin
+    @benchit timeit=info "Contour integration - ldiv! + axpy!" begin
         @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)
             ldiv!(X,Fs[j],V) # make efficient inverse
             BLAS.axpy!(wj[j],xv,a0v) # A0 += wj[j] * X
