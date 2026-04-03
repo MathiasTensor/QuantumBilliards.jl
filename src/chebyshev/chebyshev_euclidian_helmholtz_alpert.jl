@@ -231,8 +231,6 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{Comple
         αD[m]=0.5im*ks[m]
         khalf[m]=0.5*ks[m]
     end
-    #X=getindex.(pts.xy,1)
-    #Y=getindex.(pts.xy,2)
     N=length(pts.ts)
     a=rule.a
     jcorr=rule.j
@@ -312,8 +310,6 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
         αD[m]=0.5im*ks[m]
         khalf[m]=0.5*ks[m]
     end
-    #X=getindex.(pts.xy,1)
-    #Y=getindex.(pts.xy,2)
     N=length(X)
     h=pts.ws[1]
     a=rule.a
@@ -464,11 +460,6 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
                 bidx=gmap[sidx]
                 pb=pts[bidx]
                 rb=offs[bidx]:(offs[bidx+1]-1)
-                #Xb=getindex.(pb.xy,1)
-                #Yb=getindex.(pb.xy,2)
-                #dXb=getindex.(pb.tangent,1)
-                #dYb=getindex.(pb.tangent,2)
-                #sb=@. sqrt(dXb^2+dYb^2)
                 Xb=block_cache.Xs[bidx]
                 Yb=block_cache.Ys[bidx]
                 dXb=block_cache.dXs[bidx]
@@ -618,8 +609,6 @@ function _add_image_block_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},a::Int,
     end
     Na=length(pa.xy)
     Nb=length(pb.xy)
-    #Xa=getindex.(pa.xy,1)
-    #Ya=getindex.(pa.xy,2)
     Xa=block_cache.Xs[a]
     Ya=block_cache.Ys[a]
     @use_threads multithreading=multithreaded for j in 1:Nb
@@ -727,19 +716,6 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMat
             cb=panel_to_comp[b]
             ca!=0 && ca==cb && continue
         end
-        #pa=pts[a]
-        #pb=pts[b]
-        #Na=length(pa.xy)
-        #Nb=length(pb.xy)
-        #ra=offs[a]:(offs[a+1]-1)
-        #rb=offs[b]:(offs[b+1]-1)
-        #Xa=getindex.(pa.xy,1)
-        #Ya=getindex.(pa.xy,2)
-        #Xb=getindex.(pb.xy,1)
-        #Yb=getindex.(pb.xy,2)
-        #dXb=getindex.(pb.tangent,1)
-        #dYb=getindex.(pb.tangent,2)
-        #sb=@. sqrt(dXb^2+dYb^2)
         pa=pts[a]
         pb=pts[b]
         Na=length(pa.xy)
@@ -831,19 +807,6 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
             cb=panel_to_comp[b]
             ca!=0 && ca==cb && continue
         end
-        #pa=pts[a]
-        #pb=pts[b]
-        #Na=length(pa.xy)
-        #Nb=length(pb.xy)
-        #ra=offs[a]:(offs[a+1]-1)
-        #rb=offs[b]:(offs[b+1]-1)
-        #Xa=getindex.(pa.xy,1)
-        #Ya=getindex.(pa.xy,2)
-        #Xb=getindex.(pb.xy,1)
-        #Yb=getindex.(pb.xy,2)
-        #dXb=getindex.(pb.tangent,1)
-        #dYb=getindex.(pb.tangent,2)
-        #sb=@. sqrt(dXb^2+dYb^2)
         pa=pts[a]
         pb=pts[b]
         Na=length(pa.xy)
