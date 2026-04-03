@@ -86,6 +86,10 @@ struct CFIEAlpertBlockSystemCache{T<:Real}
     offsets::Vector{Int}
     rmin::Float64
     rmax::Float64
+    Xs::Vector{Vector{T}}
+    Ys::Vector{Vector{T}}
+    dXs::Vector{Vector{T}}
+    dYs::Vector{Vector{T}}
 end
 
 function build_cfie_alpert_cheb_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
@@ -158,7 +162,11 @@ function build_cfie_alpert_cheb_block_caches(comps::Vector{BoundaryPointsCFIE{T}
             end
         end
     end
-    return CFIEAlpertBlockSystemCache{T}(blocks,offs,Float64(global_rmin),Float64(global_rmax))
+    Xs=[getindex.(c.xy,1) for c in comps]
+    Ys=[getindex.(c.xy,2) for c in comps]
+    dXs=[getindex.(c.tangent,1) for c in comps]
+    dYs=[getindex.(c.tangent,2) for c in comps]
+    return CFIEAlpertBlockSystemCache{T}(blocks,offs,Float64(global_rmin),Float64(global_rmax),Xs,Ys,dXs,dYs)
 end
 
 ##########################
@@ -215,7 +223,7 @@ end
 #### SELF-ALPERT ASSEMBLY, CHEBYSHEV, MULTI-k ONLY #####
 ########################################################
 
-function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},X::Vector{T},Y::Vector{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     khalf=Vector{ComplexF64}(undef,Mk)
@@ -223,8 +231,8 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{Comple
         αD[m]=0.5im*ks[m]
         khalf[m]=0.5*ks[m]
     end
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
+    #X=getindex.(pts.xy,1)
+    #Y=getindex.(pts.xy,2)
     N=length(pts.ts)
     a=rule.a
     jcorr=rule.j
@@ -296,7 +304,7 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{Comple
     return nothing
 end
 
-function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},X::Vector{T},Y::Vector{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     khalf=Vector{ComplexF64}(undef,Mk)
@@ -304,8 +312,8 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
         αD[m]=0.5im*ks[m]
         khalf[m]=0.5*ks[m]
     end
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
+    #X=getindex.(pts.xy,1)
+    #Y=getindex.(pts.xy,2)
     N=length(X)
     h=pts.ws[1]
     a=rule.a
@@ -395,15 +403,17 @@ function _scatter_local4_multi!(As::Vector{<:AbstractMatrix{ComplexF64}},gi::Int
     return nothing
 end
 
-function _assemble_self_alpert_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
-    return pts.is_periodic ? _assemble_self_alpert_periodic_cheb!(As,pts,G,C,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded) : _assemble_self_alpert_smooth_panel_cheb!(solver,As,pts,G,C,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
+function _assemble_self_alpert_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,X::Vector{T},Y::Vector{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+    return pts.is_periodic ?
+        _assemble_self_alpert_periodic_cheb!(As,pts,G,C,X,Y,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded) :
+        _assemble_self_alpert_smooth_panel_cheb!(solver,As,pts,G,C,X,Y,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
 end
 
 ##################################################################
 #### COMPOSITE SELF-ASSEMBLY + IMAGE BLOCKS, CHEB, MULTI-k #######
 ##################################################################
 
-function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int},block_cache::CFIEAlpertBlockSystemCache{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     khalf=Vector{ComplexF64}(undef,Mk)
@@ -419,8 +429,10 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
         Ga=Gs[aidx]
         Ca=Cs[aidx]
         ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
+        #Xa=getindex.(pa.xy,1)
+        #Ya=getindex.(pa.xy,2)
+        Xa=block_cache.Xs[aidx]
+        Ya=block_cache.Ys[aidx]
         Na=length(pa.xy)
         ha=pa.ws[1]
         left_smooth=topo.left_kind[l]===:smooth
@@ -452,11 +464,16 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
                 bidx=gmap[sidx]
                 pb=pts[bidx]
                 rb=offs[bidx]:(offs[bidx+1]-1)
-                Xb=getindex.(pb.xy,1)
-                Yb=getindex.(pb.xy,2)
-                dXb=getindex.(pb.tangent,1)
-                dYb=getindex.(pb.tangent,2)
-                sb=@. sqrt(dXb^2+dYb^2)
+                #Xb=getindex.(pb.xy,1)
+                #Yb=getindex.(pb.xy,2)
+                #dXb=getindex.(pb.tangent,1)
+                #dYb=getindex.(pb.tangent,2)
+                #sb=@. sqrt(dXb^2+dYb^2)
+                Xb=block_cache.Xs[bidx]
+                Yb=block_cache.Ys[bidx]
+                dXb=block_cache.dXs[bidx]
+                dYb=block_cache.dYs[bidx]
+                sb=Gs[bidx].speed
                 Nb=length(pb.xy)
                 for j in 1:Nb
                     gj=rb[j]
@@ -572,15 +589,15 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
     return nothing
 end
 
-function _assemble_all_self_alpert_composite_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+function _assemble_all_self_alpert_composite_cheb!(solver::CFIE_alpert{T},As::Vector{<:AbstractMatrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},topos::Vector{AlpertCompositeTopology{T}},gmaps::Vector{Vector{Int}},block_cache::CFIEAlpertBlockSystemCache{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     @inbounds for c in eachindex(gmaps)
         gmap=gmaps[c]
         if length(gmap)==1 && pts[gmap[1]].is_periodic
             a=gmap[1]
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],block_cache.Xs[a],block_cache.Ys[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         else
-            _assemble_self_alpert_composite_component_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos[c],gmap,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_composite_component_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos[c],gmap,block_cache,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     end
     return nothing
@@ -590,7 +607,7 @@ end
 #### IMAGE / SYMMETRY BLOCKS ####
 ################################
 
-function _add_image_block_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},qfun,tfun,weight;multithreaded::Bool=true) where {T<:Real}
+function _add_image_block_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},a::Int,b::Int,ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},block_cache::CFIEAlpertBlockSystemCache{T},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},qfun,tfun,weight;multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     iks=Vector{ComplexF64}(undef,Mk)
@@ -601,8 +618,10 @@ function _add_image_block_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},ra::Uni
     end
     Na=length(pa.xy)
     Nb=length(pb.xy)
-    Xa=getindex.(pa.xy,1)
-    Ya=getindex.(pa.xy,2)
+    #Xa=getindex.(pa.xy,1)
+    #Ya=getindex.(pa.xy,2)
+    Xa=block_cache.Xs[a]
+    Ya=block_cache.Ys[a]
     @use_threads multithreading=multithreaded for j in 1:Nb
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
@@ -638,28 +657,28 @@ function _add_image_block_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},ra::Uni
     return nothing
 end
 
-function _assemble_reflection_images_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},solver::CFIE_alpert{T},billiard::Bi,ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},sym::Reflection;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function _assemble_reflection_images_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},a::Int,b::Int,ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},block_cache::CFIEAlpertBlockSystemCache{T},solver::CFIE_alpert{T},billiard::Bi,ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},sym::Reflection;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     if sym.axis==:y_axis
-        _add_image_block_cheb!(As,ra,rb,pa,pb,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_x(q,billiard),t->image_tangent_x(t),image_weight(sym);multithreaded=multithreaded)
+        _add_image_block_cheb!(As,a,b,ra,rb,pa,pb,block_cache,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_x(q,billiard),t->image_tangent_x(t),image_weight(sym);multithreaded=multithreaded)
     elseif sym.axis==:x_axis
-        _add_image_block_cheb!(As,ra,rb,pa,pb,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_y(q,billiard),t->image_tangent_y(t),image_weight(sym);multithreaded=multithreaded)
+        _add_image_block_cheb!(As,a,b,ra,rb,pa,pb,block_cache,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_y(q,billiard),t->image_tangent_y(t),image_weight(sym);multithreaded=multithreaded)
     elseif sym.axis==:origin
         σx=image_weight_x(sym)
         σy=image_weight_y(sym)
         σxy=image_weight_xy(sym)
-        _add_image_block_cheb!(As,ra,rb,pa,pb,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_x(q,billiard),t->image_tangent_x(t),σx;multithreaded=multithreaded)
-        _add_image_block_cheb!(As,ra,rb,pa,pb,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_y(q,billiard),t->image_tangent_y(t),σy;multithreaded=multithreaded)
-        _add_image_block_cheb!(As,ra,rb,pa,pb,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_xy(q,billiard),t->image_tangent_xy(t),σxy;multithreaded=multithreaded)
+        _add_image_block_cheb!(As,a,b,ra,rb,pa,pb,block_cache,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_x(q,billiard),t->image_tangent_x(t),σx;multithreaded=multithreaded)
+        _add_image_block_cheb!(As,a,b,ra,rb,pa,pb,block_cache,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_y(q,billiard),t->image_tangent_y(t),σy;multithreaded=multithreaded)
+        _add_image_block_cheb!(As,a,b,ra,rb,pa,pb,block_cache,ks,plans0,plans1,h0_tls,h1_tls,q->image_point_xy(q,billiard),t->image_tangent_xy(t),σxy;multithreaded=multithreaded)
     else
         error("Unknown reflection axis $(sym.axis)")
     end
     return nothing
 end
 
-function _assemble_rotation_images_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},sym::Rotation,costab,sintab,χ;multithreaded::Bool=true) where {T<:Real}
+function _assemble_rotation_images_cheb!(As::Vector{<:AbstractMatrix{ComplexF64}},a::Int,b::Int,ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},block_cache::CFIEAlpertBlockSystemCache{T},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},sym::Rotation,costab,sintab,χ;multithreaded::Bool=true) where {T<:Real}
     for l in 1:(sym.n-1)
         phase=χ[l+1]
-        _add_image_block_cheb!(As,ra,rb,pa,pb,ks,plans0,plans1,h0_tls,h1_tls,q->image_point(sym,q,l,costab,sintab),t->image_tangent(sym,t,l,costab,sintab),phase;multithreaded=multithreaded)
+        _add_image_block_cheb!(As,a,b,ra,rb,pa,pb,block_cache,ks,plans0,plans1,h0_tls,h1_tls,q->image_point(sym,q,l,costab,sintab),t->image_tangent(sym,t,l,costab,sintab),phase;multithreaded=multithreaded)
     end
     return nothing
 end
@@ -687,6 +706,7 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMat
     h0_tls=ws.bessel_ws.h0_tls
     h1_tls=ws.bessel_ws.h1_tls
     coeff_tls=ws.bessel_ws.coeff_tls
+    block_cache=ws.block_cache
     nc=length(pts)
     if topos===nothing
         @inbounds for a in 1:nc
@@ -694,7 +714,7 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMat
             _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     else
-        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
+        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,block_cache,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
     end
     αD=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
@@ -707,19 +727,32 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{<:AbstractMat
             cb=panel_to_comp[b]
             ca!=0 && ca==cb && continue
         end
+        #pa=pts[a]
+        #pb=pts[b]
+        #Na=length(pa.xy)
+        #Nb=length(pb.xy)
+        #ra=offs[a]:(offs[a+1]-1)
+        #rb=offs[b]:(offs[b+1]-1)
+        #Xa=getindex.(pa.xy,1)
+        #Ya=getindex.(pa.xy,2)
+        #Xb=getindex.(pb.xy,1)
+        #Yb=getindex.(pb.xy,2)
+        #dXb=getindex.(pb.tangent,1)
+        #dYb=getindex.(pb.tangent,2)
+        #sb=@. sqrt(dXb^2+dYb^2)
         pa=pts[a]
         pb=pts[b]
         Na=length(pa.xy)
         Nb=length(pb.xy)
         ra=offs[a]:(offs[a+1]-1)
         rb=offs[b]:(offs[b+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Xb=getindex.(pb.xy,1)
-        Yb=getindex.(pb.xy,2)
-        dXb=getindex.(pb.tangent,1)
-        dYb=getindex.(pb.tangent,2)
-        sb=@. sqrt(dXb^2+dYb^2)
+        Xa=block_cache.Xs[a]
+        Ya=block_cache.Ys[a]
+        Xb=block_cache.Xs[b]
+        Yb=block_cache.Ys[b]
+        dXb=block_cache.dXs[b]
+        dYb=block_cache.dYs[b]
+        sb=Gs[b].speed
         @use_threads multithreading=multithreaded for j in 1:Nb
             tid=Threads.threadid()
             h0vals=h0_tls[tid]
@@ -777,14 +810,15 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
     h0_tls=ws.bessel_ws.h0_tls
     h1_tls=ws.bessel_ws.h1_tls
     coeff_tls=ws.bessel_ws.coeff_tls
+    block_cache=ws.block_cache
     nc=length(pts)
     if topos===nothing
         @inbounds for a in 1:nc
             ra=offs[a]:(offs[a+1]-1)
-            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
+            _assemble_self_alpert_cheb!(solver,As,pts[a],Gs[a],Cs[a],block_cache.Xs[a],block_cache.Ys[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     else
-        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
+        _assemble_all_self_alpert_composite_cheb!(solver,As,pts,Gs,Cs,offs,ks,rule,topos,gmaps,block_cache,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
     end
     αD=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
@@ -797,19 +831,32 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
             cb=panel_to_comp[b]
             ca!=0 && ca==cb && continue
         end
+        #pa=pts[a]
+        #pb=pts[b]
+        #Na=length(pa.xy)
+        #Nb=length(pb.xy)
+        #ra=offs[a]:(offs[a+1]-1)
+        #rb=offs[b]:(offs[b+1]-1)
+        #Xa=getindex.(pa.xy,1)
+        #Ya=getindex.(pa.xy,2)
+        #Xb=getindex.(pb.xy,1)
+        #Yb=getindex.(pb.xy,2)
+        #dXb=getindex.(pb.tangent,1)
+        #dYb=getindex.(pb.tangent,2)
+        #sb=@. sqrt(dXb^2+dYb^2)
         pa=pts[a]
         pb=pts[b]
         Na=length(pa.xy)
         Nb=length(pb.xy)
         ra=offs[a]:(offs[a+1]-1)
         rb=offs[b]:(offs[b+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Xb=getindex.(pb.xy,1)
-        Yb=getindex.(pb.xy,2)
-        dXb=getindex.(pb.tangent,1)
-        dYb=getindex.(pb.tangent,2)
-        sb=@. sqrt(dXb^2+dYb^2)
+        Xa=block_cache.Xs[a]
+        Ya=block_cache.Ys[a]
+        Xb=block_cache.Xs[b]
+        Yb=block_cache.Ys[b]
+        dXb=block_cache.dXs[b]
+        dYb=block_cache.dYs[b]
+        sb=Gs[b].speed
         @use_threads multithreading=multithreaded for j in 1:Nb
             tid=Threads.threadid()
             h0vals=h0_tls[tid]
@@ -846,14 +893,14 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
             for a in 1:nc, b in 1:nc
                 ra=offs[a]:(offs[a+1]-1)
                 rb=offs[b]:(offs[b+1]-1)
-                _assemble_reflection_images_cheb!(As,ra,rb,pts[a],pts[b],solver,solver.billiard,ks,plans0,plans1,h0_tls,h1_tls,sym;multithreaded=multithreaded)
+                _assemble_reflection_images_cheb!(As,a,b,ra,rb,pts[a],pts[b],block_cache,solver,solver.billiard,ks,plans0,plans1,h0_tls,h1_tls,sym;multithreaded=multithreaded)
             end
         elseif sym isa Rotation
             costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
             for a in 1:nc, b in 1:nc
                 ra=offs[a]:(offs[a+1]-1)
                 rb=offs[b]:(offs[b+1]-1)
-                _assemble_rotation_images_cheb!(As,ra,rb,pts[a],pts[b],ks,plans0,plans1,h0_tls,h1_tls,sym,costab,sintab,χ;multithreaded=multithreaded)
+                _assemble_rotation_images_cheb!(As,a,b,ra,rb,pts[a],pts[b],block_cache,ks,plans0,plans1,h0_tls,h1_tls,sym,costab,sintab,χ;multithreaded=multithreaded)
             end
         else
             error("Unknown symmetry type")
