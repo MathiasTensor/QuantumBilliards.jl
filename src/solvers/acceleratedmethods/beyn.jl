@@ -705,7 +705,7 @@ function compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_a
     do_INFO_init && @info "Weyl windows planned" intervals=intervals k0=k0 R=R
     nq<=15 && error("Do not use less than 15 contour nodes")
     all_pts=Vector{Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}}}(undef,length(k0))
-    @time "Point evaluation" for i in eachindex(k0)
+    @benchit timeit=do_per_solve_INFO "Point evaluation" for i in eachindex(k0)
         all_pts[i]=evaluate_points(solver,billiard,real(k0[i]))
     end
     λs=Vector{Vector{Complex{T}}}(undef,length(k0))
@@ -723,7 +723,7 @@ function compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_a
     end
     if do_INFO_init
         mid=cld(length(k0),2)
-        @time "solve_INFO representative disk" begin
+        @benchit timeit=do_INFO_init "solve_INFO representative disk" begin
             _=solve_INFO(solver,basis,all_pts[mid],complex(k0[mid]),R[mid];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M)
         end
     end
@@ -744,7 +744,7 @@ function compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_a
     tens_list=Vector{Vector{T}}(undef,length(k0))
     tensN_list=Vector{Vector{T}}(undef,length(k0))
     phi_list=Vector{Matrix{Complex{T}}}(undef,length(k0))
-    @time "Residuals/tensions pass" begin
+    @benchit timeit=do_per_solve_INFO "Residuals/tensions pass" begin
         @inbounds @showprogress for i in eachindex(k0)
             if isempty(λs[i])
                 ks_list[i]=T[]
