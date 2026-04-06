@@ -141,21 +141,28 @@ macro svd_or_det_solve(A,use_krylov,which,blas_threads)
                 @warn "Krylov method does not support determinant calculation. Falling back to svd."
                 @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
                 return mu[1]
+            elseif $(esc(which))===:det_argmin
+                @warn "Krylov method does not support determinant calculation. Falling back to svd."
+                @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
+                return mu[1]
             elseif $(esc(which))===:svd
                 @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
                 return mu[1]
             else
-                error("Invalid option for `which`. Use :det or :svd.")
+                error("Invalid option for `which`. Use :det, :det_argmin, or :svd.")
             end
         else
             if $(esc(which))===:det
                 @blas_multi_then_1 $(esc(blas_threads)) d=det($(esc(A)))
                 return d
+            elseif $(esc(which))===:det_argmin
+                @blas_multi_then_1 $(esc(blas_threads)) d=det($(esc(A)))
+                return abs(d)
             elseif $(esc(which))===:svd
                 @blas_multi_then_1 $(esc(blas_threads)) s=svdvals($(esc(A)))
                 return s[end]
             else
-                error("Invalid option for `which`. Use :det or :svd.")
+                error("Invalid option for `which`. Use :det, :det_argmin, or :svd.")
             end
         end
     end

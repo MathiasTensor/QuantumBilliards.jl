@@ -345,7 +345,7 @@ function construct_matrices(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}
 end
 
 """
-    solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+    solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem for a single wavenumber. This function constructs the system matrix using the provided R matrix and then computes the smallest singular value (or determinant) corresponding to the eigenvalue of interest.
 
@@ -358,12 +358,12 @@ High-level function to solve the CFIE eigenvalue problem for a single wavenumber
 - `Rmat`: The precomputed R matrix for the CFIE_kress method, which is used in the construction of the system matrix A.
 - `multithreaded`: A boolean flag indicating whether to use multithreading for matrix construction.
 - `use_krylov`: A boolean flag indicating whether to use a Krylov method for computing the smallest singular value (if true) or to compute the full SVD (if false).
-- `which`: A symbol indicating whether to compute the determinant (:det) or the smallest singular value (:svd) for the eigenvalue.
+- `which`: A symbol indicating whether to compute the determinant (:det) or the smallest singular value (:svd) for the eigenvalue. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected. Also there is option :det_argmin which can be used for finding minima.
 
 # Output:
 - The smallest singular value (or determinant) corresponding to the eigenvalue of interest.
 """
-function solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
@@ -448,7 +448,7 @@ function solve_vect(solver::CFIE_kress,basis::Ba,ks::Vector{T};multithreaded::Bo
 end
 
 """
-    solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+    solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem while also providing detailed timing and condition number information. This function constructs the system matrix, computes its condition number, performs the SVD / det, and then reports the time taken for each step as well as the condition number of the matrix.
 # Inputs:
@@ -458,12 +458,12 @@ High-level function to solve the CFIE eigenvalue problem while also providing de
 - `k`: The wavenumber for which the eigenvalue problem is being solved.
 - `multithreaded`: A boolean flag indicating whether to use multithreading for matrix construction.
 - `use_krylov`: A boolean flag indicating whether to use a Krylov method for computing the smallest singular value (if true) or to compute the full SVD (if false).
-- `which`: A symbol indicating whether to compute the determinant (:det) or the smallest singular value (:svd) for the eigenvalue estimation.
+- `which`: A symbol indicating whether to compute the determinant (:det) or the smallest singular value (:svd) for the eigenvalue estimation. Also accepts :det_argmin to compute the determinant at the argument-minimizing wavenumber.
 
 # Output:
 # - The smallest singular value (or determinant) corresponding to the eigenvalue of interest, along with detailed timing information for each step of the computation.
 """
-function solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     t0=time()
     @info "Constructing circulant R matrix..."
     offs=component_offsets(pts)

@@ -390,17 +390,17 @@ Computes the smallest singular value of the Fredholm matrix for a given configur
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
-- `which::Symbol=:det`: Method to compute the smallest singular value. Use `:det` for determinant and `:svd` for singular value decomposition. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected.
+- `which::Symbol=:det`: Method to compute the smallest singular value. Use `:det` for determinant and `:svd` for singular value decomposition. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected. Also there is option :det_argmin which can be used for finding minima.
 
 # Returns
 - `T`: The smallest singular value / determinant of the Fredholm matrix.
 """
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {Ba<:AbstractHankelBasis}
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis}
     @blas_1 A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) 
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {Ba<:AbstractHankelBasis}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis}
     s_constr=time()
     @info "constructing Fredholm matrix A..."
     A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)

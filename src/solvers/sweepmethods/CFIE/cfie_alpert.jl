@@ -1784,7 +1784,7 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
 end
 
 """
-    solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+    solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
 
 # High-level function to solve the CFIE eigenvalue problem using the Alpert-based discretization. This function constructs the system matrix and then computes the smallest singular value, which corresponds to the eigenvalue of interest.
 
@@ -1795,12 +1795,13 @@ end
 - `ws::CFIEAlpertWorkspace{T}` (optional) : The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
 - `k::T` : The real wavenumber.
 - `multithreaded::Bool=true` : Whether to use multithreading for assembly.
-- `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
+- `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive. 
+- `which::Symbol=:det_argmin` : Which method to use for computing the eigenvalue. Options include `:det`, `:svd`, and `:det_argmin`. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected.
 
 # Outputs:
 - The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem.
 """
-function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
@@ -1842,12 +1843,12 @@ High-level function to solve the CFIE eigenvalue problem while also providing de
 - `k::T` : The real wavenumber.
 - `multithreaded::Bool=true` : Whether to use multithreading for assembly.
 - `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
-- `which::Symbol=:det` : Which SVD method to use if `use_krylov` is false. This is passed to the `@svd_or_det_solve` macro to determine the SVD computation method.
+- `which::Symbol=:det_argmin` : Which SVD method to use if `use_krylov` is false. This is passed to the `@svd_or_det_solve` macro to determine the SVD computation method. Options include `:det`, `:svd`, and `:det_argmin`.   
 
 # Outputs:
 - The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem, along with printed information about the condition number of the matrix and the time taken.
 """
-function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -1876,7 +1877,7 @@ end
 #### LEGACY ####
 ################
 
-function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end

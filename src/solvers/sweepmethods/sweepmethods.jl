@@ -194,7 +194,7 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `multithreaded_ks::Bool=false`: Whether to use multithreading for the wavenumber sweep.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers where applicable.
 - `tol::Real=1e-10`: Tolerance for convergence in appropriate solvers (`ParticularSolutionsMethod`).
-- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`).
+- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
 """
 function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:svd)
     return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol,which=which)
@@ -260,7 +260,7 @@ Refines the minima of the tension function around the approximate wavenumbers `k
 - `print_refinement::Bool=true`: Whether to print a summary of the refinement results.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers during the refinement process where applicable.
 - `digits::Int=10`: Number of digits to round the results in the summary table.
-- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement.
+- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`:
