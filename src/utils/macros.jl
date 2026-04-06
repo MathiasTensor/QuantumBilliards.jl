@@ -128,3 +128,30 @@ macro blas_multi_then_1(n,expr)
         LinearAlgebra.BLAS.set_num_threads(1)
     end
 end
+
+macro svd_or_det_solve(A,use_krylov,which,blas_threads)
+    quote
+        if $(esc(use_krylov))
+            if $(esc(which))===:det
+                @warn "Krylov method does not support determinant calculation. Falling back to svd."
+                @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
+                return mu[1]
+            elseif $(esc(which))===:svd
+                @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
+                return mu[1]
+            else
+                error("Invalid option for `which`. Use :det or :svd.")
+            end
+        else
+            if $(esc(which))===:det
+                @blas_multi_then_1 $(esc(blas_threads)) d=exp(logabsdet($(esc(A)))[1])
+                return d
+            elseif $(esc(which))===:svd
+                @blas_multi_then_1 $(esc(blas_threads)) s=svdvals($(esc(A)))
+                return s[end]
+            else
+                error("Invalid option for `which`. Use :det or :svd.")
+            end
+        end
+    end
+end

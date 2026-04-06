@@ -25,16 +25,31 @@ abstract type CFIE<:SweepSolver end
 ################################
 
 struct CFIE_kress{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard} 
-    sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be rescaled
-    pts_scaling_factor::Vector{T}
-    dim_scaling_factor::T
-    eps::T
-    min_dim::Int64
-    min_pts::Int64
-    billiard::Bi
-    symmetry::Union{Nothing,Vector{Any}}
+    sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule can be changed. Not used currently.
+    pts_scaling_factor::Vector{T} # scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
+    dim_scaling_factor::T # UNUSED since no basis. Only for compatibility
+    eps::T # UNUSED, for compatibility
+    min_dim::Int64 # UNUSED, for compatibility
+    min_pts::Int64 # minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation.
+    billiard::Bi # the billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
+    symmetry::Union{Nothing,Vector{Any}} # symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry.
 end
 
+"""
+    CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing)
+
+Constructor for CFIE_kress solver.
+
+# Inputs:
+- `pts_scaling_factor`: A scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
+- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
+- `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Default is 20.
+- `eps`: Unused internally.
+- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or a vector of symmetry operations if symmetries are present. Default is `nothing`.
+
+# Output:
+- An instance of the `CFIE_kress` solver initialized with the provided parameters.
+"""
 function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
     any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_kress only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
@@ -58,6 +73,22 @@ struct CFIE_alpert{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
     alpert_order::Int
 end
 
+"""
+    CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order=16)
+
+Constructor for CFIE_alpert solver.
+
+# Inputs:
+- `pts_scaling_factor`: A scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
+- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
+- `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Default is 20.
+- `eps`: Unused internally.
+- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or a vector of symmetry operations if symmetries are present. Default is `nothing`.
+- `alpert_order`: The order of the Alpert quadrature correction to use for near interactions. Supported values are 2, 3, 4, 5, 6, 8, 10, 12, 14, and 16. Default is 16.
+
+# Output:
+- An instance of the `CFIE_alpert` solver initialized with the provided parameters.
+"""
 function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     _=alpert_log_rule(T,alpert_order)
@@ -118,7 +149,22 @@ end
 #### KRESS ####
 ###############
 
-# single crv that builds either the outer or inner boundary (disambigued by idx). For example we can have for billiard.full_boundary = [outer, inner_1, inner_2, ...] where each is a separate crv <:AbsCurve
+"""
+    _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+
+Helper function to evaluate the boundary points, tangents, and weights for a single curve component of the billiard. This function is called by `evaluate_points` for each component of the boundary and constructs the `BoundaryPointsCFIE` struct for that component.
+
+billiard.full_boundary is expected to be a vector of AbsCurve objects, where each AbsCurve represents a separate boundary component (e.g., outer boundary, hole 1, hole 2, etc.). The `idx` parameter is used to identify which component we are evaluating and to set the `compid` field in the `BoundaryPointsCFIE` struct accordingly.
+
+# Inputs
+- `solver`: The CFIE_kress solver instance containing the boundary discretization and weights.
+- `crv`: The curve component (of type AbsCurve) for which to evaluate the boundary points and tangents.
+- `k`: The wavenumber for which to evaluate the points and tangents.
+- `idx`: The index of the boundary component (1 for outer boundary, 2 for first hole, etc.) which is used to set the `compid` field in the `BoundaryPointsCFIE` struct and to determine the orientation of the tangents and weights.
+
+# Output
+- A `BoundaryPointsCFIE` struct containing the evaluated boundary points, tangents, weights, and other relevant information for the specified curve component.
+"""
 function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
@@ -146,24 +192,24 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
 
-# By default for kress fudamental=false since we need the full set of points for the log split -> for alpert we can use symmetries and can choose fundamental domain
-#=
-function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=billiard.full_boundary
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary)) # the desymmetrized boudnary will contain the same number of pieces as the deymmetrized one, so we can use it for enumeration -> 1 for outer boundary, 2 for first hole, etc
-    for (idx,crv) in enumerate(boundary)
-        pts[idx]= idx==1 ? _evaluate_points(solver,crv,k,idx) : _reverse_component_orientation(solver,_evaluate_points(solver,crv,k,idx))
-    end
-    return pts
-end
-=#
+"""
+    evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
 
-# Kress works componentwise on smooth closed curves only.
-# Accept either:
-#   [outer,hole1,hole2,...]
-# or
-#   [[outer],[hole1],[hole2],...]
-# but reject composite multi-segment components like [[seg1,seg2,...],...].
+Evaluate the boundary points, tangents, and weights for all components of the billiard's boundary using the CFIE_kress method. This function iterates over each component of the boundary, calls the `_evaluate_points` helper function to compute the necessary information for each component, and then assembles the results into a vector of `BoundaryPointsCFIE` structs. The function also handles the orientation of the tangents and weights for holes in the billiard by reversing their order and flipping their signs as needed.
+
+Accepts either:
+- A vector of curve components where each component is a single smooth closed curve (e.g., `[outer, hole1, hole2, ...]`).
+- A vector of vectors where each inner vector contains a single curve component (e.g., `[[outer], [hole1], [hole2], ...]`). This is how Alpet expects the input, but we allow both for flexibility. The function will check the structure of the input and process it accordingly.
+Rejects composite multi-segment components like `[[seg1, seg2, ...], ...]` since CFIE_kress requires each component to be a single smooth closed curve.
+
+# Inputs:
+- `solver`: The CFIE_kress solver instance containing the boundary discretization and weights.
+- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
+- `k`: The wavenumber for which to evaluate the boundary points and tangents.
+
+# Output:
+- A vector of `BoundaryPointsCFIE` structs, where each struct contains the evaluated boundary points, tangents, weights, and other relevant information for each component of the billiard's boundary. The first component corresponds to the outer boundary, and subsequent components correspond to holes in the billiard, with their tangents and weights appropriately oriented.
+"""
 function evaluate_points(solver::CFIE_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=billiard.full_boundary
     if !(boundary[1] isa AbstractVector)
@@ -408,48 +454,23 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
 end
 
-# For alpert quadrature we can have desymmetrized domains already in the kernel construction since we dont need global periodic parametrization
-# Structure: [[outer boundary pieces], [inner boundary 1 pieces], [inner boundary 2 pieces], ...] where each piece is a separate curve segment. 
-#=
-function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-    # case 1: simple closed components [outer,hole1,hole2,...]
-    if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
-        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
-        for (idx,crv) in enumerate(boundary)
-            p=_evaluate_points_periodic(solver,crv,k,idx)
-            pts[idx]=(idx==1) ? p : _reverse_component_orientation(solver,p)
-        end
-        return pts
-    end
-    # case 2: single composite boundary [seg1,seg2,...] (eg stadium)
-    if _is_single_composite_boundary(boundary)
-        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
-        for (idx,crv) in enumerate(boundary)
-            pts[idx]=_evaluate_points_panel(solver,crv,k,idx)
-        end
-        return pts
-    end
-    # case 3: nested composite components [[outer...],[hole1...],...]
-    outer_boundary=boundary[1]
-    inner_boundaries=boundary[2:end]
-    n_outer=length(outer_boundary)
-    n_inner=sum(length(comp) for comp in inner_boundaries)
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,n_outer+n_inner)
-    pos=1
-    for crv in outer_boundary
-        pts[pos]=_evaluate_points_panel(solver,crv,k,pos)
-        pos+=1
-    end
-    for comp in inner_boundaries
-        for crv in comp
-            pts[pos]=_reverse_component_orientation(solver,_evaluate_points_panel(solver,crv,k,pos))
-            pos+=1
-        end
-    end
-    return pts
-end
-=#
+"""
+    evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+
+Evaluate the boundary points, tangents, and weights for all components of the billiard's boundary using the CFIE_alpert method. This function iterates over each component of the boundary, determines whether it is a closed curve or an open panel, and calls the appropriate helper function to compute the necessary information for each component. The results are assembled into a vector of `BoundaryPointsCFIE` structs, with correct orientation for holes in the billiard.
+
+Accepts either:
+- A vector of curve components where each component is a single smooth closed curve (e.g., `[outer, hole1, hole2, ...]`).
+- A vector of vectors where each vector contains multiple curve segments representing a composite boundary (e.g., `[[seg1, seg2, ...], [hole1_seg1, hole1_seg2, ...], ...]`). The function will check the structure of the input and process it accordingly, treating each inner vector as a separate component. For composite boundaries, it will treat each inner vector as a single component and apply open panel discretization to each segment, while for single closed curves, it will apply periodic discretization.
+
+# Inputs:
+- `solver`: The CFIE_alpert solver instance containing the boundary discretization and weights.
+- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
+- `k`: The wavenumber for which to evaluate the boundary points and tangents.   
+
+# Output:
+- A vector of `BoundaryPointsCFIE` structs, where each struct contains the evaluated boundary points, tangents, weights, and other relevant information for each component of the billiard's boundary. The first component corresponds to the outer boundary, and subsequent components correspond to holes in the billiard, with their tangents and weights appropriately oriented. For composite boundaries, each inner vector of curve segments is treated as a single component, and the points are evaluated accordingly.
+"""
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
 

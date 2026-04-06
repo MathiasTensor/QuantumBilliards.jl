@@ -377,12 +377,6 @@ function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::Bounda
     return @blas_1 fredholm_matrix(pts,solver.symmetry,k;multithreaded=multithreaded)
 end
 
-function solve_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A) # Arpack's version of svd for computing only the smallest singular value should be better but is non-reentrant
-    return mu[end]
-end
-
 """
     solve(solver::BoundaryIntegralMethod, basis::Ba, pts::BoundaryPoints{T}, k::T; multithreaded::Bool=true, use_krylov::Bool=true) -> T
 
@@ -395,20 +389,17 @@ Computes the smallest singular value of the Fredholm matrix for a given configur
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 - `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
+- `which::Symbol=:det`: Method to compute the smallest singular value. Use `:det` for determinant and `:svd` for singular value decomposition. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected.
 
 # Returns
-- `T`: The smallest singular value of the Fredholm matrix.
+- `T`: The smallest singular value / determinant of the Fredholm matrix.
 """
-function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
-    if use_krylov
-        return solve_krylov(solver,basis,pts,k,multithreaded=multithreaded)
-    else
-        return solve_full(solver,basis,pts,k,multithreaded=multithreaded)
-    end
+function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {Ba<:AbstractHankelBasis}
+    @blas_1 A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) 
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-# INTERNAL BENCHMARKS
-function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {Ba<:AbstractHankelBasis}
     s_constr=time()
     @info "constructing Fredholm matrix A..."
     A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
@@ -416,7 +407,7 @@ function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryP
     e_constr=time()
     @info "SVD..."
     s_svd=time()
-    @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A)
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
     e_svd=time()
     total_time=(e_svd-s_svd)+(e_constr-s_constr)
     @info "Total solve time for test k: $(total_time)"
@@ -426,24 +417,6 @@ function solve_full_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryP
     println("SVD: $(100*(e_svd-s_svd)/total_time) %")
     println("%%%%%%%%%%%%%%%%%%%")
     return mu[end]
-end
-
-function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
-    if use_krylov
-        return solve_krylov_INFO(solver,basis,pts,k,multithreaded=multithreaded)
-    else
-        return solve_full_INFO(solver,basis,pts,k,multithreaded=multithreaded)
-    end
-end
-
-function solve_vect_full(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A) # do NOT use svd with DivideAndConquer() here b/c singular matrix!!!
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
-    return mu,u_mu
 end
 
 """
@@ -457,46 +430,45 @@ Computes the smallest singular value and its corresponding singular vector for t
 - `pts::BoundaryPoints{T}`: Boundary points structure containing source points, normal vectors, curvatures, and differential arc lengths.
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-- `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
 
 # Returns
 - `Tuple{T, Vector{T}}`: A tuple containing:
   - `T`: The smallest singular value of the Fredholm matrix.
   - `Vector{T}`: The corresponding singular vector.
 """
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true) where {Ba<:AbstractHankelBasis}
-    if use_krylov
-        return solve_vect_krylov(solver,basis,pts,k,multithreaded=multithreaded)
-    else
-        return solve_vect_full(solver,basis,pts,k,multithreaded=multithreaded)
-    end
-    
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    @blas_1 A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    idx=findmin(S)[2]
+    mu=S[idx]
+    u_mu=Vt[idx,:]
+    u_mu=real.(u_mu)
+    return mu,u_mu
 end
 
 """
-    solve_eigenvectors_BIM(solver::BoundaryIntegralMethod, billiard::Bi, basis::Ba, ks::Vector{T}; multithreaded::Bool=true, use_krylov::Bool=true) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPoints}}
+    solve_vect(solver::BoundaryIntegralMethod, billiard::Bi, basis::Ba, ks::Vector{T}; multithreaded::Bool=true) -> Tuple{Vector{Vector{T}}, Vector{BoundaryPoints}}
 
-Computes the eigenvectors of the boundary integral method for a range of wave numbers.
+Computes the right smallest singular vectors of the boundary integral method for a range of wave numbers.
 
 # Arguments
 - `solver::BoundaryIntegralMethod`: The boundary integral method solver.
 - `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
 - `basis::Ba<:AbstractHankelBasis`: The basis function used for solving the eigenvalue problem.
-- `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the eigenvectors.
+- `ks::Vector{T}`: A vector of wave numbers `k` for which to compute the right smallest singular vectors.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-- `use_krylov::Bool=true`: Large speedups in singular value/vector calculation. If anomalies in result are present set this flag to `False`.
 
 # Returns
 - `Tuple{Vector{Vector{T}}, Vector{BoundaryPoints}}`:
-  - `Vector{Vector{T}}`: A vector containing the eigenvectors for each wave number in `ks`.
+  - `Vector{Vector{T}}`: A vector containing the right smallest singular vectors for each wave number in `ks`.
   - `Vector{BoundaryPoints}`: A vector of `BoundaryPoints` objects, representing the boundary points used for each wave number in `ks`.
 """
-function solve_eigenvectors_BIM(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
     for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded,use_krylov=use_krylov)
+        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
         us_all[i]=u
         pts_all[i]=pts
     end

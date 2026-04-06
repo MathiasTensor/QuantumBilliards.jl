@@ -1,6 +1,365 @@
-# Ref: HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999
+# =============================================================================
+#  ALPERT-CORRECTED CFIE ASSEMBLY: OVERVIEW AND IMPLEMENTATION NOTES
+# =============================================================================
+#
+#  Reference:
+#      B. Alpert, "Hybrid Gauss-Trapezoidal Quadrature Rules", SIAM J. Sci. Comput.
+#      20 (1999), 1551–1584.
+#
+#  This file implements an Alpert-corrected assembly of the CFIE boundary matrix
+#  for panelwise smooth 2D billiard boundaries.
+#
+#  The main issue is the self-interaction singular / nearly singular part of the
+#  single-layer potential (SLP). For source and target points that are well
+#  separated, the ordinary trapezoidal rule is highly accurate on smooth periodic
+#  curves. However, when the source point approaches the target point on the same
+#  boundary component, the logarithmic singularity in the kernel destroys the 
+#  the plain trapezoid rule.
+#
+#  Alpert’s idea is:
+#
+#      far interactions     -> use ordinary trapezoidal quadrature
+#      near self interactions -> replace the local trapezoid contribution by a
+#      corrected quadrature rule with shifted nodes
+#
+#  In this implementation, the corrected shifted source locations are not added
+#  as new true boundary unknowns. Instead, each shifted source point is locally
+#  interpolated back onto the native boundary grid by a 4-point stencil.
+#
+# -----------------------------------------------------------------------------
+#  HIGH-LEVEL PICTURE
+# -----------------------------------------------------------------------------
+#
+#  For one target point x_i on the boundary, the self SLP contribution is split:
+#
+#      ∫_Γ K(x_i, y) σ(y) ds(y)
+#        = far part + near part
+#
+#  where:
+#
+#      - the far part is evaluated by the ordinary trapezoid rule over standard
+#        boundary nodes y_j,
+#      - the near part is replaced by an Alpert correction using shifted source
+#        points y_i ± Δ_p near the target.
+#
+#
+#  Sketch: periodic closed curve
+#
+#  For one fixed target row i:
+#
+#  target: x_i = y(θ_i)
+#
+#  source grid on the boundary:
+#
+#      ...  y_{i-1} ---- y_i ---- y_{i+1} ---- y_{i+2}  ...
+#
+#  near-source corrected evaluation point:
+#
+#      y(θ_i + Δ_p) -> *
+#
+#  This star is:
+#      - a SOURCE point
+#      - near y_i
+#      - not one of the grid nodes
+#
+#  So we evaluate the kernel there:
+#
+#      K(x_i, y(θ_i + Δ_p))
+#
+#  and approximate the density there by interpolation (since we dont know it at shifted points):
+#
+#      σ(θ_i + Δ_p) ≈ w0 σ_{i-1} + w1 σ_i + w2 σ_{i+1} + w3 σ_{i+2}
+#
+#  In other words, the shifted source point is used for the quadrature, but its
+#  density value is represented by nearby grid-node unknowns.
+#  Therefore one shifted-source evaluation does not contribute to a single matrix
+#  column. Instead, its contribution is redistributed onto the local 4-point
+#  source stencil with the interpolation weights:
+#
+#      A[i,i-1] += coeff * w0
+#      A[i,i  ] += coeff * w1
+#      A[i,i+1] += coeff * w2
+#      A[i,i+2] += coeff * w3
+#
+#  where `coeff` contains the kernel evaluation, the Alpert quadrature weight,
+#  and the local speed / Jacobian factor at the shifted source point.
+#
+#  Thus, the near integral is approximated by evaluating the kernel at shifted
+#  off-grid source points, then redistributing each shifted-source contribution
+#  back onto the nearby source-grid columns.
+# -----------------------------------------------------------------------------
+#  WHAT IS CORRECTED AND WHAT IS NOT
+# -----------------------------------------------------------------------------
+#
+#   - DLP diagonal / off-diagonal: assembled directly with the existing CFIE formulas
+#
+#    - SLP far part: plain trapezoidal rule
+#
+#    - SLP near self part: Alpert correction
+#
+#  Thus the assembly is a hybrid. This is why the correction logic appears only in the near-self assembly blocks.
+#
+# -----------------------------------------------------------------------------
+#  TWO GEOMETRIC MODES
+# -----------------------------------------------------------------------------
+#
+#  There are two versions of the cache and near-correction logic:
+#
+#      (A) periodic closed boundary: AlpertPeriodicCache
+#
+#      (B) one open smooth panel: AlpertSmoothPanelCache
+#
+#  and a third layer:
+#
+#      (C) composite boundary made of several smooth panels joined together:
+#          _assemble_self_alpert_composite_component!
+#
+# -----------------------------------------------------------------------------
+#  PERIODIC MODE
+# -----------------------------------------------------------------------------
+#
+#  Used when one boundary component is a single smooth periodic curve.
+#
+#  Let the boundary be parametrized by θ ∈ (0,2π], and let the native source/target
+#  quadrature nodes be
+#
+#      θ_j = ts[j],    j = 1,...,N
+#
+#  with corresponding boundary points
+#
+#      y_j = y(θ_j).
+#
+#  Consider one fixed target row i. The target point is
+#
+#      x_i = y(θ_i),   where θ_i = ts[i].
+#
+#  The self SLP row for x_i contains contributions from source points y_j on the
+#  same periodic curve. Away from y_i, the ordinary trapezoidal rule is used.
+#  Near y_i, the trapezoidal rule is replaced by the Alpert correction.
+#
+#  For each Alpert correction node p, we define two shifted SOURCE parameter values:
+#
+#      θ_i^+ = θ_i + h * rule.x[p]
+#      θ_i^- = θ_i - h * rule.x[p]
+#
+#  where:
+#
+#      - rule.x[p] ∈ (0,1) are the Alpert nodes,
+#      - h = 2π / N is the parameter spacing.
+#
+#  These are wrapped periodically back into (0,2π]. In general, θ_i^± do not coincide
+#  with grid nodes, so the geometry must be reconstructed.
+#
+#  In this implementation, the shifted source geometry is obtained by local
+#  4-point periodic interpolation using nearby nodes:
+#
+#      θ_{i-1}, θ_i, θ_{i+1}, θ_{i+2}
+#
+#  yielding:
+#
+#      y(θ_i^±), tangent(θ_i^±), speed(θ_i^±).
+#
+#  These are stored in the periodic cache:
+#
+#      xp, yp, txp, typ, sp   for the + shifts
+#      xm, ym, txm, tym, sm   for the - shifts
+#
+#
+#  The density at the shifted source point is also represented by local interpolation:
+#
+#      σ(θ_i^+) ≈ w0 σ_{i-1} + w1 σ_i + w2 σ_{i+1} + w3 σ_{i+2}
+#
+#  and similarly for σ(θ_i^-).
+#
+#  Therefore, one shifted source evaluation does NOT correspond to a single
+#  source column. Instead, its contribution is distributed over 4 nearby source
+#  columns using interpolation weights.
+#
+#  This information is stored in:
+#
+#      idxp / idxm   = indices of the 4 stencil nodes
+#      wtp  / wtm    = interpolation weights
+#
+#
+#  In summary:
+#
+#      fixed target x_i
+#         → evaluate kernel at shifted source points near y_i
+#         → represent σ at those points via interpolation
+#         → distribute (scatter) the contribution onto 4 source columns
+#
+#
+#  Schematic (for one target row i):
+#
+#      source grid:
+#
+#          ... y_{i-1} ---- y_i ---- y_{i+1} ---- y_{i+2} ...
+#
+#      target:
+#
+#          x_i = y_i
+#
+#      shifted source point:
+#
+#          * = y(θ_i + Δ_p)
+#
+#      interpolation:
+#
+#          σ(*) ≈ w0 σ_{i-1} + w1 σ_i + w2 σ_{i+1} + w3 σ_{i+2}
+#
+#      contribution to matrix row:
+#
+#          coeff = K(x_i, *) * (Alpert weight) * (speed factor)
+#
+#          A[i,i-1] += coeff * w0
+#          A[i,i  ] += coeff * w1
+#          A[i,i+1] += coeff * w2
+#          A[i,i+2] += coeff * w3
+#
+# -----------------------------------------------------------------------------
+#  OPEN SMOOTH PANEL MODE
+# -----------------------------------------------------------------------------
+#
+#  This is similar to the periodic case, but the parameter domain is now u ∈ [0,1]
+#  and there is no periodic wrapping.
+#
+#  The key difference is that shifted source points must remain inside the panel:
+#
+#      use the + correction only if   u_i^+ < 1
+#      use the - correction only if   u_i^- > 0
+#
+#  If a shifted source point leaves the panel, the current panel cannot supply
+#  that correction locally. In the composite-boundary case (next section),
+#  this contribution may instead be handled by a neighboring panel.
+#
+# -----------------------------------------------------------------------------
+#  COMPOSITE PANEL MODE
+# -----------------------------------------------------------------------------
+#
+#  For boundaries composed of multiple smooth panels, each panel is treated locally.
+#  However, near smooth joins, a shifted source point may lie on a neighboring panel.
+#
+#  This is handled by:
+#
+#      _assemble_self_alpert_composite_component!
+#
+#  The topology object determines:
+#
+#      - whether neighboring panels exist,
+#      - whether the join is smooth.
+#
+#
+#  Sketch:
+#
+#      panel a                         panel b
+#      |------------------------------||-----------------------------|
+#         o   o   o   o   o             *   *   *   *   *
+#                          ● target
+#
+#      shifted source crosses interface:
+#
+#          - evaluate geometry on the correct panel
+#          - represent σ via that panel's local stencil
+#          - distribute contribution onto that panel's source columns
+#
+#  In this case:
+#
+#      - far SLP skips overlapping near nodes,
+#      - shifted source is evaluated on the neighboring panel,
+#      - contribution is distributed onto that panel’s local stencil.
+#
+# -----------------------------------------------------------------------------
+#  CACHES
+# -----------------------------------------------------------------------------
+#
+#  The Alpert correction repeatedly requires, for each target i and node p:
+#
+#      - shifted source point y(θ_i ± Δ_p) (or y(u_i ± Δ_p))
+#      - tangent and speed at that point
+#      - local 4-point interpolation stencil
+#      - interpolation weights
+#
+#  Computing these inside the assembly loop would be expensive, so they are
+#  precomputed and stored in caches.
+#
+#
+#  .1 Periodic cache
+#
+#  For each (p,i):
+#
+#      xp[p,i], yp[p,i]     = y(θ_i + Δ_p)
+#      txp[p,i], typ[p,i]   = tangent at θ_i + Δ_p
+#      sp[p,i]              = speed at θ_i + Δ_p
+#
+#      xm[p,i], ym[p,i]     = y(θ_i - Δ_p)
+#      txm[p,i], tym[p,i]   = tangent at θ_i - Δ_p
+#      sm[p,i]              = speed at θ_i - Δ_p
+#
+#      idxp[p,i,1:4]        = stencil indices for +
+#      wtp[p,i,1:4]         = interpolation weights for +
+#
+#      idxm[p,i,1:4]        = stencil indices for -
+#      wtm[p,i,1:4]         = interpolation weights for -
+#
+#
+#  .2 Smooth panel cache
+#
+#  Same structure, but using panel parameter u instead of θ.
+#
+#
+#  .3 Assembly workflow (per target row i)
+#
+#      (1) Add diagonal term
+#      (2) Add DLP off-diagonal terms
+#      (3) Add SLP far terms (skip near region)
+#      (4) Add SLP near correction:
+#
+#              for each Alpert node p:
+#
+#                  - read shifted source from cache
+#                  - evaluate kernel K(x_i, shifted source)
+#                  - distribute contribution onto 4 source columns
+#
+#
+#  .4 Near region definition
+#
+#      periodic:
+#          |j - i| (mod N) < a
+#
+#      panel:
+#          abs(j - i) < a
+#
+#      where a = rule.a (Alpert exclusion width)
+#
+#
+#  CFIEAlpertWorkspace collects:
+#
+#      rule          : Alpert rule
+#      offs          : global offsets
+#      Gs            : geometry caches
+#      Cs            : Alpert caches
+#      topos/gmaps   : topology info
+#      panel_to_comp : component lookup
+#      Ntot          : system size
+#
+#  enabling repeated assembly without recomputing geometry.
+# -----------------------------------------------------------------------------
+#  LIMITATIONS OF THIS IMPLEMENTATION
+# -----------------------------------------------------------------------------
+#
+#  This implementation is designed for:
+#
+#      - smooth boundaries
+#      - periodic closed curves
+#      - smooth open panels
+#      - composite boundaries with smooth joins
+#
+#  It is not a full corner-aware generalized Alpert implementation.
+#
+#  In particular, no corner singularity resolution is included here and 
+#  the interpolation is local 4-point Lagrange.
+# =============================================================================
 
-# Cache for simple billiards where we can use the periodic Alpert rule on the whole boundary. This is not corner-aware and does not support multiple segments.
 struct AlpertPeriodicCache{T<:Real}
     xp::Matrix{T}      # jcorr × N
     yp::Matrix{T}
@@ -437,6 +796,19 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     return A
 end
 
+# _assemble_self_alpert_smooth_panel!
+# Assemble the self-interaction block of the CFIE matrix for a single smooth panel using the panel-based Alpert rule. This includes the standard diagonal and off-diagonal contributions from the DLP and SLP, as well as the near correction using the precomputed shifted interpolation vectors from the AlpertSmoothPanelCache.
+# Inputs:
+#   - A::AbstractMatrix{Complex{T}} : Matrix to assemble into (modified in place).
+#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization (should correspond to a single smooth panel).
+#   - G::CFIEGeomCache{T} : Precomputed geometric quantities for the CFIE assembly.
+#   - C::AlpertSmoothPanelCache{T} : Precomputed cache for the panel-based Alpert rule.
+#   - row_range::UnitRange{Int} : Row indices corresponding to the current panel.
+#   - k::T : Wave number.
+#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
+#   - multithreaded::Bool : Whether to use multithreading for assembly.
+# Outputs:
+#   - A : Modified in place with the self-interaction block assembled using the panel-based Alpert rule.
 function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
@@ -507,6 +879,13 @@ end
 #### COMPOSITE ALPERT HELP ####
 ###############################
 
+# _component_id_of_panel
+# Determine which component a given panel index belongs to based on the provided groupings (gmaps). This is used to identify the correct component for applying the appropriate Alpert correction during assembly.
+# Inputs:
+#   - a::Int : Panel index to check.
+#   - gmaps::Vector{Vector{Int}} : A vector of vectors, where each inner vector contains the panel indices that belong to a particular component.
+# Outputs:
+#   - Int : The index of the component that panel a belongs to, or 0 if it does not belong to any component.
 @inline function _component_id_of_panel(a::Int,gmaps::Vector{Vector{Int}})
     @inbounds for c in eachindex(gmaps)
         a in gmaps[c] && return c
@@ -514,6 +893,12 @@ end
     return 0
 end
 
+# _panel_xy_tangent_arrays
+# Extract the x and y coordinates of the geometry and the tangent vectors from the BoundaryPointsCFIE struct for a given panel. This is used to prepare the data for interpolation when applying the Alpert correction for panel-based rules.
+# Inputs:
+#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization, corresponding to a single panel.
+# Outputs:
+#   - Tuple of vectors (X, Y, dX, dY) where X and Y are the x and y coordinates of the geometry, and dX and dY are the x and y components of the tangent vectors at the sampled points on the panel.
 @inline function _panel_xy_tangent_arrays(pts::BoundaryPointsCFIE{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
@@ -522,6 +907,17 @@ end
     return X,Y,dX,dY
 end
 
+# _scatter_local4!
+# Scatter a contribution from a shifted source point onto the 4-point local stencil of the target point for the panel-based Alpert correction. This is used to apply the near correction from the Alpert rule to the appropriate entries in the matrix during assembly.
+# Inputs:
+#   - A::AbstractMatrix{Complex{T}} : Matrix to scatter into (modified in place).
+#   - gi::Int : Global row index corresponding to the target point.
+#   - col_range::UnitRange{Int} : Column indices corresponding to the current panel component.
+#   - coeff::Complex{T} : Coefficient to scatter (includes the Alpert weight and kernel evaluation).
+#   - idx::NTuple{4,Int} : Tuple of indices corresponding to the 4-point stencil for interpolation.
+#   - wt::NTuple{4,T} : Tuple of weights corresponding to the interpolation stencil.
+# Outputs:
+#   - A : Modified in place with the scattered contributions added to the appropriate entries.
 @inline function _scatter_local4!(A::AbstractMatrix{Complex{T}},gi::Int,col_range::UnitRange{Int},coeff::Complex{T},idx,wt) where {T<:Real}
     @inbounds for m in 1:4
         q=idx[m]
@@ -530,20 +926,59 @@ end
     return nothing
 end
 
+# _right_neighbor_excluded_count
+# Compute the number of points to exclude from the right neighbor panel when applying the Alpert correction for a point near the right endpoint of the current panel. This is used to determine which points in the neighboring panel should be skipped when applying the SLP contribution in the assembly.
+# Inputs:
+#   - i::Int : Local index of the point within the current panel.
+#   - N::Int : Total number of points in the current panel.
+#   - a::Int : Alpert parameter indicating the number of near points to exclude.
+# Outputs:
+#   - Int : The number of points to exclude from the right neighbor panel.
 @inline function _right_neighbor_excluded_count(i::Int,N::Int,a::Int)
     return max(0,i+a-1-N)
 end
 
+# _left_neighbor_excluded_count
+# Compute the number of points to exclude from the left neighbor panel when applying the Alpert correction for a point near the left endpoint of the current panel. This is used to determine which points in the neighboring panel should be skipped when applying the SLP contribution in the assembly.
+# Inputs:
+#   - i::Int : Local index of the point within the current panel.
+#   - a::Int : Alpert parameter indicating the number of near points to exclude.
+# Outputs:
+#   - Int : The number of points to exclude from the left neighbor panel.   
 @inline function _left_neighbor_excluded_count(i::Int,a::Int)
     return max(0,a-i)
 end
 
+# _eval_on_open_panel_local4
+# Evaluate the geometry, tangent, and speed at a shifted source point for a panel-based Alpert correction using a local 4-point stencil. This is used to compute the necessary quantities for the Alpert correction when the target point is on an open panel and the shifted source point is near the panel midpoint.
+# Inputs:
+#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization, corresponding to a single open panel.
+#   - u : Local parameter value for the shifted source point.
+# Outputs:
+#   - x, y : Interpolated x and y coordinates of the geometry at the shifted source point.
+#   - tx, ty : Interpolated x and y components of the tangent vector at the shifted source point.
+#   - s : Interpolated speed (magnitude of the tangent vector) at the shifted source point.
 @inline function _eval_on_open_panel_local4(pts::BoundaryPointsCFIE{T},u::T) where {T<:Real}
     X,Y,dX,dY=_panel_xy_tangent_arrays(pts)
     h=pts.ws[1]
     return _eval_shifted_source_smooth_panel_local4(u,h,X,Y,dX,dY)
 end
 
+# _assemble_self_alpert_composite_component!
+# Assemble the self-interaction block of the CFIE matrix for a composite component consisting of multiple panels, using the appropriate Alpert correction for each point based on its location within the component and its proximity to the panel endpoints. This function handles the logic for determining which points to apply the Alpert correction to, as well as the contributions from neighboring panels when the target point is near a panel endpoint.
+# Inputs:
+#   - A::AbstractMatrix{Complex{T}} : Matrix to assemble into (modified in place).
+#   - pts::Vector{BoundaryPointsCFIE{T}} : Vector of boundary points for each panel in the composite component.
+#   - Gs::Vector{CFIEGeomCache{T}} : Vector of precomputed geometric quantities for each panel.
+#   - Cs : Vector of AlpertComponentCache for each panel, containing the precomputed data for the Alpert correction.
+#   - offs::Vector{Int} : Vector of offsets indicating the global index range for each panel in the composite component.
+#   - k::T : Wave number.
+#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
+#   - topo::AlpertCompositeTopology{T} : Topology information for the composite component, including the types of neighboring panels and their relationships.
+#   - gmap::Vector{Int} : Mapping from global panel indices to the corresponding indices in the pts, Gs, and Cs vectors.
+#   - multithreaded::Bool : Whether to use multithreading for assembly.
+# Outputs:
+#   - A : Modified in place with the self-interaction block for the composite component assembled using the appropriate Alpert corrections.
 function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
@@ -1311,8 +1746,20 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     end
 end
 
-# construct_matrices
-# High-level wrapper to construct the CFIE Alpert system matrix. This function checks for symmetry and dispatches to the appropriate assembly routine. It is mostly legacy since it is better to precompute the workspace.
+"""
+    construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+
+High-level wrapper to construct the CFIE Alpert system matrix. This function checks for symmetry and dispatches to the appropriate assembly routine. It is mostly legacy since it is better to precompute the workspace.
+
+# Inputs:
+- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
+- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
+- `k::T` : The real wavenumber.
+- `multithreaded::Bool=true` : Whether to use multithreading for assembly.
+
+# Outputs:
+- `A::Matrix{Complex{T}}` containing the assembled system matrix for the CFIE Alpert solver.
+"""
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     Ntot=boundary_matrix_size(pts)
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -1320,99 +1767,65 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
     return A
 end
 
-# construct_matrices
-# High-level wrapper to construct the CFIE Alpert system matrix using a precomputed workspace. This is the recommended interface for efficient assembly, as it avoids redundant precomputation of geometry caches and Alpert component caches.
+"""
+    construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+
+High-level wrapper to construct the CFIE Alpert system matrix using a precomputed workspace. This is the recommended interface for efficient assembly, as it avoids redundant precomputation of geometry caches and Alpert component caches.
+
 # Inputs:
-#   - solver::CFIE_alpert{T} :
-#       The CFIE_alpert solver object containing parameters and symmetry information.
-#   - pts::Vector{BoundaryPointsCFIE{T}} :
-#       The boundary points for the entire geometry.
-#   - ws::CFIEAlpertWorkspace{T} :
-#       The precomputed workspace containing all necessary data for assembly.
-#   - k::T :
-#       The real wavenumber.
-#   - multithreaded::Bool=true :
-#       Whether to use multithreading for assembly.
+- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
+- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
+- `ws::CFIEAlpertWorkspace{T}` : The precomputed workspace containing all necessary data for assembly.
+- `k::T` : The real wavenumber.
+- `multithreaded::Bool=true` : Whether to use multithreading for assembly. Whether to use multithreading for assembly.
 # Outputs:
-#   - A::Matrix{Complex{T}} containing the assembled system matrix for the CFIE Alpert solver.
+- `A::Matrix{Complex{T}}` containing the assembled system matrix for the CFIE Alpert solver.
+"""
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     return A
 end
 
-############################
-#### SOLVE WRAPPERS ########
-############################
+"""
+    solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
 
-# check below, legacy
-function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
-    if use_krylov
-        @blas_1 mu,_,_,_=svdsolve(A,1,:SR)
-        return mu[1]
-    else
-        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
-        return s[end]
-    end
-end
-
-# solve
 # High-level function to solve the CFIE eigenvalue problem using the Alpert-based discretization. This function constructs the system matrix and then computes the smallest singular value, which corresponds to the eigenvalue of interest.
+
 # Inputs:
-#   - solver::CFIE_alpert{T} :
-#       The CFIE_alpert solver object containing parameters and symmetry information.
-#   - basis::Ba :
-#       The basis object (not used in this implementation but included for API consistency).
-#   - pts::Vector{BoundaryPointsCFIE{T}} :
-#       The boundary points for the entire geometry.
-#   - ws::CFIEAlpertWorkspace{T} (optional) :
-#       The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
-#   - k::T :
-#       The real wavenumber.
-#   - multithreaded::Bool=true :
-#       Whether to use multithreading for assembly.
-#   - use_krylov::Bool=true :
-#       Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
+- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
+- `basis::Ba` : The basis object (not used in this implementation but included for API consistency).
+- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
+- `ws::CFIEAlpertWorkspace{T}` (optional) : The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
+- `k::T` : The real wavenumber.
+- `multithreaded::Bool=true` : Whether to use multithreading for assembly.
+- `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
+
 # Outputs:
-#   - The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem.
-function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+- The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem.
+"""
+function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
-    if use_krylov
-        mu,_,_,_=svdsolve(A,1,:SR)
-        return mu[1]
-    else
-        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
-        return s[end]
-    end
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-# check below, legacy
-function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
-    idx=findmin(S)[2]
-    return S[idx],conj.(Vt[idx,:])
-end
+"""
+    solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
-# solve_vect
-# High-level function to solve the CFIE eigenvalue problem and return both the smallest singular value and the corresponding right singular vector (eigenfunction). This function constructs the system matrix and then computes the SVD to extract the smallest singular value and its associated singular vector.
+High-level function to solve the CFIE eigenvalue problem and return both the smallest singular value and the corresponding right singular vector (eigenfunction). This function constructs the system matrix and then computes the SVD to extract the smallest singular value and its associated singular vector.
+
 # Inputs:
-#   - solver::CFIE_alpert{T} :
-#       The CFIE_alpert solver object containing parameters and symmetry information.
-#   - basis::Ba :
-#       The basis object (not used in this implementation but included for API consistency).
-#   - pts::Vector{BoundaryPointsCFIE{T}} :
-#       The boundary points for the entire geometry.
-#   - ws::CFIEAlpertWorkspace{T} (optional) :
-#       The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
-#   - k::T :
-#       The real wavenumber.
-#   - multithreaded::Bool=true :
-#       Whether to use multithreading for assembly.
+- `solver::CFIE_alpert{T} : The CFIE_alpert solver object containing parameters and symmetry information.
+- `basis::Ba` : The basis object (not used in this implementation but included for API consistency).
+- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
+- `ws::CFIEAlpertWorkspace{T}` (optional) : The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
+- `k::T` : The real wavenumber.
+- `multithreaded::Bool=true` : Whether to use multithreading for assembly. 
+
 # Outputs:
-#   - A tuple containing the smallest singular value and the corresponding right singular vector (eigenfunction) of the system matrix.
+ - A tuple containing the smallest singular value and the corresponding right singular vector (eigenfunction) of the system matrix.
+"""
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
@@ -1421,9 +1834,24 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     return S[idx],conj.(Vt[idx,:])
 end
 
-# solve_INFO
-# High-level function to solve the CFIE eigenvalue problem while also providing detailed timing and condition number information. This function constructs the system matrix, computes its condition number, performs the SVD, and then reports the time taken for each step as well as the condition number of the matrix. 
-function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
+"""
+    solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+
+High-level function to solve the CFIE eigenvalue problem while also providing detailed timing and condition number information. This function constructs the system matrix, computes its condition number, performs the SVD, and then reports the time taken for each step as well as the condition number of the matrix. 
+
+# Inputs:
+- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
+- `basis::Ba` : The basis object (not used in this implementation but included for API consistency).
+- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
+- `k::T` : The real wavenumber.
+- `multithreaded::Bool=true` : Whether to use multithreading for assembly.
+- `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
+- `which::Symbol=:det` : Which SVD method to use if `use_krylov` is false. This is passed to the `@svd_or_det_solve` macro to determine the SVD computation method.
+
+# Outputs:
+- The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem, along with printed information about the condition number of the matrix and the time taken.
+"""
+function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -1436,12 +1864,7 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     @info "Condition number of A: $(round(cA;sigdigits=4))"
     @info "Performing SVD..."
     t2=time()
-    if use_krylov 
-        @blas_1 s,_,_,_=svdsolve(A,1,:SR)
-        reverse!(s)
-    else
-        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
-    end
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
     t3=time()
     build_A=t1-t0
     svd_time=t3-t2
@@ -1452,4 +1875,20 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     println("(total: ",total," s)")
     println("────────────────────────────────────────")
     return s[end]
+end
+
+################
+#### LEGACY ####
+################
+
+function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
+end
+
+function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    idx=findmin(S)[2]
+    return S[idx],conj.(Vt[idx,:])
 end

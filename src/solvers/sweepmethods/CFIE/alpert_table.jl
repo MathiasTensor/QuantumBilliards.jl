@@ -1,3 +1,18 @@
+"""
+    AlpertLogRule{T<:Real}
+
+Container for one tabulated Alpert quadrature rule for logarithmic singularities.
+
+Fields
+- `order::Int` : formal order of the correction rule
+- `a::Int`     : width of the near region excluded from the plain trapezoidal sum
+- `j::Int`     : number of shifted correction nodes
+- `x::Vector{T}` : shifted node locations, in units of the local mesh spacing
+- `w::Vector{T}` : corresponding quadrature weights
+
+The rule is used to replace the near-singular part of the self SLP integral by
+a weighted sum over shifted source points.
+"""
 struct AlpertLogRule{T<:Real}
     order::Int
     a::Int
@@ -6,7 +21,27 @@ struct AlpertLogRule{T<:Real}
     w::Vector{T}
 end
 
-# Note: 16th order give same SVD sv's minimal value as Kress, so no need to use higher quadrature
+"""
+    alpert_log_rule(::Type{T}, order::Int) where {T<:Real}
+
+Return the tabulated Alpert logarithmic quadrature rule of the requested `order`.
+
+Supported orders are:
+
+`2, 3, 4, 5, 6, 8, 10, 12, 14, 16`
+
+The returned `AlpertLogRule` provides:
+- the shifted correction nodes `x`,
+- the corresponding weights `w`,
+- the correction width `a`,
+- and the number of correction nodes `j`.
+
+These rules are used in the self-interaction correction of logarithmically
+singular kernels: the plain trapezoidal rule is applied away from the target,
+while the near band is removed and replaced by the Alpert correction.
+
+Throws `ArgumentError` if the requested order is not tabulated.
+"""
 @inline function alpert_log_rule(::Type{T},order::Int) where {T<:Real}
     if order==2
         return AlpertLogRule{T}(2,1,1,
