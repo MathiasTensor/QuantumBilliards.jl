@@ -406,7 +406,6 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @info "Condition number of A for svd: $(cond(A))"
     e_constr=time()
-    @info "SVD..."
     s_svd=time()
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
     e_svd=time()

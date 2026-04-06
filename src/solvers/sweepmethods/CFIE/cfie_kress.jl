@@ -476,7 +476,6 @@ function solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{
     t2=time()
     cA=cond(A)
     @info "Condition number of A: $(round(cA;sigdigits=4))"
-    @info "Performing SVD..."
     t3=time()
     s=@svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
     t4=time()
