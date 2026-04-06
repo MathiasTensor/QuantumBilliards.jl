@@ -171,7 +171,7 @@ function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
     rjn=real(ifft(a)) # inverse FFT → rjn[j] = (2/N)*∑_{m=1..n-1} (1/m) cos(2π m (j-1)/N)
     ks=0:(N-1) # build the first column, adding the “alternating” correction
     alt=(-1).^ks # alt[j+1] = (-1)^j
-    @. R0[:,1]=-two_pi*rjn+(2*two_pi/(N^2))*alt # R0[:,1] = -2π*rjn .+ (4π/N^2)*alt, first col is ref
+    @. R0[:,1]=-two_pi*rjn-(2*two_pi/(N^2))*alt # R0[:,1] = -2π*rjn .- (4π/N^2)*alt, first col is ref
     for j in 2:N # fill out the rest circulantly:
         @views R0[:,j].=circshift(R0[:,j-1],1) # shift by +1 wrt previous column
     end
