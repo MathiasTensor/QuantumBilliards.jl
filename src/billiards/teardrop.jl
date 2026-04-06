@@ -75,7 +75,7 @@ end
 
 function make_teardrop_and_basis(;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64),basis_type=:cafb) 
     teardrop_billiard=TeardropBilliard(;x0=x0,y0=y0,rot_angle=rot_angle)
-    symmetry=Vector{Any}([YReflection(-1)])
+    symmetry=YReflection(-1)
     if basis_type==:cafb
         basis=CornerAdaptedFourierBessel(10,Float64(pi),SVector(x0,y0),rot_angle,symmetry)
     elseif basis_type==:rpw

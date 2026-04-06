@@ -197,7 +197,7 @@ with rotation symmetry `Rotation(3, m, (x0,y0))`. If `a` is too large then the b
 function make_c3_and_basis(a::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T),scale::T=one(T),m::Int=0,nbasis::Int=10) where {T<:Real}
     billiard=C3Billiard(a;x0=x0,y0=y0,rot_angle=rot_angle,scale=scale)
     wedge_angle=Float64(2π/3)
-    symmetry=Vector{Any}([Rotation(3,m,(x0,y0))]) # Rotation symmetry centered at (x0,y0)
+    symmetry=Rotation(3,m,(x0,y0)) # Rotation symmetry centered at (x0,y0)
     basis=CornerAdaptedFourierBessel(nbasis,wedge_angle,SVector(x0,y0),rot_angle,symmetry)
     return billiard,basis
 end

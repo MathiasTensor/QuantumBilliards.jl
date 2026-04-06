@@ -1,7 +1,5 @@
 """
-    apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},
-                                        symmetries::Union{Vector{Any},Nothing},
-                                        billiard::Bi; same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries,billiard::Bi; same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
 Extend a desymmetrized set of boundary points by applying reflections/rotations.
 
@@ -12,7 +10,7 @@ Extend a desymmetrized set of boundary points by applying reflections/rotations.
 
 Returns a new `BoundaryPoints{T}` on the full, symmetry-extended boundary.
 """
-function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::Union{Vector{Any},Nothing},billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries,billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     symmetries===nothing && return pts
     bxy=pts.xy
     bn=pts.normal
@@ -50,33 +48,32 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::
         append!(full_ds,rds)
         return nothing
     end
-    for s in symmetries
-        if s isa Reflection
-            if s.axis===:y_axis
-                push_reflection!(:x)
-            elseif s.axis===:x_axis
-                push_reflection!(:y)
-            elseif s.axis===:origin
-                push_reflection!(:x)
-                push_reflection!(:y)
-                push_reflection!(:xy)
-            else
-                error("Unknown reflection axis $(s.axis)")
-            end
-        elseif s isa Rotation
-            n=s.n;cx,cy=s.center
-            Cx=T(cx);Cy=T(cy);θ=T(2π)/T(n)
-            for l in 1:n-1
-                cl=cos(T(l)*θ);sl=sin(T(l)*θ)
-                rxy=[SVector(cl*(p[1]-Cx)-sl*(p[2]-Cy)+Cx,sl*(p[1]-Cx)+cl*(p[2]-Cy)+Cy) for p in bxy]
-                rn =[SVector(cl*nv[1]-sl*nv[2],sl*nv[1]+cl*nv[2]) for nv in bn]
-                append!(full_xy,rxy)
-                append!(full_normal,rn)
-                append!(full_ds,bds)
-            end
+    s=symmetries
+    if s isa Reflection
+        if s.axis===:y_axis
+            push_reflection!(:x)
+        elseif s.axis===:x_axis
+            push_reflection!(:y)
+        elseif s.axis===:origin
+            push_reflection!(:x)
+            push_reflection!(:y)
+            push_reflection!(:xy)
         else
-            error("Unknown symmetry type: $(typeof(s))")
+            error("Unknown reflection axis $(s.axis)")
         end
+    elseif s isa Rotation
+        n=s.n;cx,cy=s.center
+        Cx=T(cx);Cy=T(cy);θ=T(2π)/T(n)
+        for l in 1:n-1
+            cl=cos(T(l)*θ);sl=sin(T(l)*θ)
+            rxy=[SVector(cl*(p[1]-Cx)-sl*(p[2]-Cy)+Cx,sl*(p[1]-Cx)+cl*(p[2]-Cy)+Cy) for p in bxy]
+            rn =[SVector(cl*nv[1]-sl*nv[2],sl*nv[1]+cl*nv[2]) for nv in bn]
+            append!(full_xy,rxy)
+            append!(full_normal,rn)
+            append!(full_ds,bds)
+        end
+    else
+        error("Unknown symmetry type: $(typeof(s))")
     end
     full_s=cumsum(full_ds)
     empty_w=T[]
@@ -87,8 +84,7 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries::
 end
 
 """
-    apply_symmetries_to_boundary_function(u::AbstractVector{U},
-                                          symmetries::Union{Vector{Any},Nothing}) where {U<:Number}
+    apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries) where {U<:Number}
 
 Symmetrize the desymmetrized boundary function `u(s)` for the full boundary.
 Works with real or complex `u`. If any rotation has `m % n ≠ 0`, a complex
@@ -106,47 +102,46 @@ Rotation rules:
 
 Returns the concatenated full-boundary function.
 """
-function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries::Union{Vector{Any},Nothing}) where {U<:Number}
+function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries) where {U<:Number}
     symmetries===nothing && return u
     T=U<:Real ? U : eltype(real(zero(U)))
     has_complex=any(s->(s isa Rotation)&&mod(s.m,s.n)!=0,symmetries)
     S=(U<:Real && has_complex) ? Complex{T} : U
     full_u=S.(u)
     base_u=copy(full_u) # not alias for rotations
-    for sym in symmetries
-        if sym isa Reflection
-            if sym.axis==:y_axis
-            p=S(sym.parity)
-            append!(full_u,p.*reverse(base_u))     # matches :x block in points
-        elseif sym.axis==:x_axis
-            p=S(sym.parity)
-            append!(full_u,p.*reverse(base_u))     # matches :y block in points
-        elseif sym.axis==:origin
-            pY=S(sym.parity[1])  # parity for y-axis reflection (vertical)
-            pX=S(sym.parity[2])  # parity for x-axis reflection (horizontal)
-            uY=pY.*reverse(base_u)               #  :x block in points (y-axis reflection)
-            uX=pX.*reverse(base_u)               #  :y block in points (x-axis reflection)
-            uXY=(pX*pY).*base_u                   #  :xy block (no reverse!)
-            append!(full_u,uY)
-            append!(full_u,uX)
-            append!(full_u,uXY)
+    sym=symmetries
+    if sym isa Reflection
+        if sym.axis==:y_axis
+        p=S(sym.parity)
+        append!(full_u,p.*reverse(base_u))     # matches :x block in points
+    elseif sym.axis==:x_axis
+        p=S(sym.parity)
+        append!(full_u,p.*reverse(base_u))     # matches :y block in points
+    elseif sym.axis==:origin
+        pY=S(sym.parity[1])  # parity for y-axis reflection (vertical)
+        pX=S(sym.parity[2])  # parity for x-axis reflection (horizontal)
+        uY=pY.*reverse(base_u)               #  :x block in points (y-axis reflection)
+        uX=pX.*reverse(base_u)               #  :y block in points (x-axis reflection)
+        uXY=(pX*pY).*base_u                   #  :xy block (no reverse!)
+        append!(full_u,uY)
+        append!(full_u,uX)
+        append!(full_u,uXY)
+    else
+        error("Unknown reflection axis $(sym.axis)")
+    end
+    elseif sym isa Rotation
+        n=sym.n; m=mod(sym.m,n)
+        if m==0
+            for l in 1:(n-1); append!(full_u,base_u); end # χ(m=0) = 1
         else
-            error("Unknown reflection axis $(sym.axis)")
-        end
-        elseif sym isa Rotation
-            n=sym.n; m=mod(sym.m,n)
-            if m==0
-                for l in 1:(n-1); append!(full_u,base_u); end # χ(m=0) = 1
-            else
-                for l in 1:(n-1)
-                    θ=T(2π)*T(m*l)/T(n)
-                    χ=Complex{T}(cos(θ),sin(θ))
-                    append!(full_u,χ.*base_u)
-                end
+            for l in 1:(n-1)
+                θ=T(2π)*T(m*l)/T(n)
+                χ=Complex{T}(cos(θ),sin(θ))
+                append!(full_u,χ.*base_u)
             end
-        else
-            error("Unknown symmetry type: $(typeof(sym))")
         end
+    else
+        error("Unknown symmetry type: $(typeof(sym))")
     end
     return full_u
 end

@@ -56,12 +56,12 @@ Compute the derivative of the cylindrical wave expansion term with respect to th
 """
 ca_fb_dk(nu,k,r,phi)=r*Jvp(nu,k*r)*sin(nu*phi)
 
-struct CornerAdaptedFourierBessel{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
+struct CornerAdaptedFourierBessel{T<:Real,Sym}<:AbsBasis  
     cs::PolarCS{T}
     dim::Int64 #using concrete type
     corner_angle::T
     nu::T #order constant, order=nu*i
-    symmetries::Union{Vector{Any},Nothing}
+    symmetries::Sym
     rotation_angle_discontinuity::T
 end
 
@@ -84,15 +84,17 @@ function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,origin::SVector{2
     return CornerAdaptedFourierBessel{Float64,Nothing}(cs,dim,corner_angle,nu,nothing,rotation_angle_discontinuity)
 end
 
-function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,cs::CoordinateSystem,symmetry::Union{Vector{Any},Nothing};rotation_angle_discontinuity=zero(T)) where {T<:Real}
+function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,cs::CoordinateSystem,symmetry::Union{AbsSymmetry,Nothing};rotation_angle_discontinuity=zero(T)) where {T<:Real}
     nu=pi/corner_angle
-    return CornerAdaptedFourierBessel{Float64,Nothing}(cs,dim,corner_angle,nu,symmetry,rotation_angle_discontinuity)
+    Sym=typeof(symmetry)
+    return CornerAdaptedFourierBessel{Float64,Sym}(cs,dim,corner_angle,nu,symmetry,rotation_angle_discontinuity)
 end
 
-function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,origin::SVector{2,T},rot_angle::T,symmetry::Union{Vector{Any},Nothing};rotation_angle_discontinuity=zero(T)) where {T<:Real}
+function CornerAdaptedFourierBessel(dim::Int64,corner_angle::T,origin::SVector{2,T},rot_angle::T,symmetry::Union{AbsSymmetry,Nothing};rotation_angle_discontinuity=zero(T)) where {T<:Real}
     cs=PolarCS(origin,rot_angle)
     nu=pi/corner_angle
-    return CornerAdaptedFourierBessel{Float64,Nothing}(cs,dim,corner_angle,nu,symmetry,rotation_angle_discontinuity)
+    Sym=typeof(symmetry)
+    return CornerAdaptedFourierBessel{Float64,Sym}(cs,dim,corner_angle,nu,symmetry,rotation_angle_discontinuity)
 end
 
 """

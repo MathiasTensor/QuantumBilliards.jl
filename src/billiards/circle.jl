@@ -14,7 +14,7 @@ Constructs a quarter circle from a given radius
   - `boundary::Vector{Union{CircleSegment{T}, VirtualLineSegment{T}}}`: The boundary segments of the quarter circle.
   - `center::SVector{2,T}`: The center point of the quarter circle.
 """
-function make_quarter_circle(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
+function make_quarter_circle(radius::T;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
     origin = SVector(x0, y0)
     center = SVector(x0, y0)
     start_point_qCircle = SVector(zero(T), radius)
@@ -131,14 +131,14 @@ end
 
 
 function make_circle_and_basis(radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T), basis_type=:rpw) :: Tuple{CircleBilliard{T}, Union{RealPlaneWaves, CornerAdaptedFourierBessel}} where {T<:Real}
-    billiard = CircleBilliard(radius; x0=x0, y0=y0, rot_angle=rot_angle)
-    symmetry = Vector{Any}([XYReflection(-1, -1)])
-    if basis_type == :rpw
-        basis = RealPlaneWaves(10, symmetry; angle_arc=Float64(pi/2))
-    elseif basis_type == :bessel
-        basis = CornerAdaptedFourierBessel(10, pi/2, SVector(0.0, 0.0), 0.0, symmetry)
+    billiard=CircleBilliard(radius; x0=x0, y0=y0, rot_angle=rot_angle)
+    symmetry=XYReflection(-1, -1)
+    if basis_type==:rpw
+        basis=RealPlaneWaves(10,symmetry;angle_arc=Float64(pi/2))
+    elseif basis_type==:bessel
+        basis=CornerAdaptedFourierBessel(10,pi/2,SVector(0.0, 0.0),0.0,symmetry)
     else
         @error "Non-valid basis"
     end
-    return billiard, basis 
+    return billiard,basis 
 end

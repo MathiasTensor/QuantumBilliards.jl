@@ -175,7 +175,7 @@ function hyperbolic_area_fundamental(solver::BIM_hyperbolic,billiard::Bi;tol::Re
     !ok && return error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     symmetry=solver.symmetry
     isnothing(symmetry) && return A
-    sym=symmetry[1]
+    sym=symmetry
     if sym isa Reflection
         l=sym.parity isa Integer ? 1 : length(sym.parity)
         return A/(2*l)
@@ -337,8 +337,8 @@ function symmetry_adapted_hyperbolic_arclength(solver::BIM_hyperbolic,billiard::
     Lphys=_physical_LH_fundamental(solver,billiard;kref=kref)
     symm=solver.symmetry
     isnothing(symm) && return Lphys
-    sym=symm[1]
-    par=symm[1].parity
+    sym=symm
+    par=symm.parity
     !(sym isa Reflection) && return Lphys # Rotation already has the correct wedge handling
     #get a closed polyline of the FULL boundary (no symmetry),to locate axis intersections
     solver0=BIM_hyperbolic(10.0,symmetry=nothing)

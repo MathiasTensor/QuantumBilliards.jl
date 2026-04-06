@@ -406,16 +406,16 @@ end
 # Inputs:
 #   Ks: vector of matrices to fill, one for each complex k in plans. This should be preallocated outside
 #   bp: BoundaryPoints containing the boundary points and normals  
-#   symmetry: either nothing, or a vector of symmetry objects (Reflection or Rotation)
+#   symmetry: either nothing, or a symmetry object (Reflection or Rotation)
 #   plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
 #   multithreaded: whether to use multhreading or not
 #################################################################################
-function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
         return compute_kernel_matrices_DLP_chebyshev!(Ks,bp,plans;multithreaded)
     else
         try 
-            compute_kernel_matrices_DLP_chebyshev!(Ks,bp,symmetry[1],plans;multithreaded)
+            compute_kernel_matrices_DLP_chebyshev!(Ks,bp,symmetry,plans;multithreaded)
         catch _
             error("Error computing kernel matrices with symmetry $(symmetry): ")
             
@@ -504,13 +504,13 @@ end
 # Estimate suitable rmin and rmax for BIM based on boundary points and symmetry.
 # Inputs:
 #   bp: BoundaryPoints containing the boundary points
-#   sym: either nothing or a vector of symmetry objects (Reflection or Rotation) 
+#   sym: either nothing or a symmetry object (Reflection or Rotation) 
 #   pad: tuple of (rmin_pad,rmax_pad) to pad the estimated rmin and rmax
 #   rmax_factor: factor to multiply the estimated rmax by
 # Outputs:
 #   rmin,rmax: estimated minimum and maximum distances between boundary points considering symmetry
 ##################################################################################
-function estimate_rmin_rmax(bp::BoundaryPoints{T},sym::Union{Nothing,Vector{Any}}=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=3.0) where {T<:Real}
+function estimate_rmin_rmax(bp::BoundaryPoints{T},sym=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=3.0) where {T<:Real}
     N=length(bp.xy);@assert N>1
     tol2=(eps(T))^2
     nth=Threads.nthreads()
@@ -530,34 +530,33 @@ function estimate_rmin_rmax(bp::BoundaryPoints{T},sym::Union{Nothing,Vector{Any}
                     if d2>lmax2;lmax2=d2;end
                 end
             end
-            if sym!==nothing
-                @inbounds for s in sym
-                    if s isa Reflection
-                        if s.axis===:y_axis
-                            x_reflect_point!(pt,xj,yj,bp.shift_x)
-                        elseif s.axis===:x_axis
-                            y_reflect_point!(pt,xj,yj,bp.shift_y)
-                        else
-                            xy_reflect_point!(pt,xj,yj,bp.shift_x,bp.shift_y)
-                        end
+            if !isnothing(sym)
+                if sym isa Reflection
+                    if sym.axis===:y_axis
+                        x_reflect_point!(pt,xj,yj,bp.shift_x)
+                    elseif sym.axis===:x_axis
+                        y_reflect_point!(pt,xj,yj,bp.shift_y)
+                    else
+                        xy_reflect_point!(pt,xj,yj,bp.shift_x,bp.shift_y)
+                    end
+                    dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
+                    if d2>tol2
+                        if d2<lmin2;lmin2=d2;end
+                        if d2>lmax2;lmax2=d2;end
+                    end
+                elseif sym isa Rotation
+                    cx,cy=s.center
+                    ctab,stab,_χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+                    @inbounds for l in 2:sym.n
+                        rot_point!(pt,xj,yj,cx,cy,ctab[l],stab[l])
                         dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
                         if d2>tol2
                             if d2<lmin2;lmin2=d2;end
                             if d2>lmax2;lmax2=d2;end
                         end
-                    elseif s isa Rotation
-                        cx,cy=s.center
-                        ctab,stab,_χ=_rotation_tables(T,s.n,mod(s.m,s.n))
-                        @inbounds for l in 2:s.n
-                            rot_point!(pt,xj,yj,cx,cy,ctab[l],stab[l])
-                            dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
-                            if d2>tol2
-                                if d2<lmin2;lmin2=d2;end
-                                if d2>lmax2;lmax2=d2;end
-                            end
-                        end
                     end
                 end
+                
             end
         end
         if lmin2<min2_tls[tid];min2_tls[tid]=lmin2;end

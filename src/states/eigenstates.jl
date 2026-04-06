@@ -1,4 +1,3 @@
-
 struct Eigenstate{K,T,Ba,Bi} <: StationaryState
     k::K
     k_basis::K

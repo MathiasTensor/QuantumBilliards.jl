@@ -356,7 +356,7 @@ Arguments:
 """
 function make_generalized_sinai_and_basis(half_height::T=0.8, half_width::T=0.6, theta_right::T=pi/2-0.7, theta_top::T=0.4, basis_type=:cafb, x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
     billiard=GeneralizedSinai(half_height,half_width,theta_right,theta_top)
-    symmetry=Vector{Any}([XYReflection(-1,-1)])
+    symmetry=XYReflection(-1,-1)
     if basis_type==:cafb
         basis=CornerAdaptedFourierBessel(10,Float64(pi/2),SVector(x0,y0),rot_angle,symmetry)
     elseif basis_type==:rpw

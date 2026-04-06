@@ -24,7 +24,7 @@ abstract type CFIE<:SweepSolver end
 #### CONSTRUCTOR CFIE_kress ####
 ################################
 
-struct CFIE_kress{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard} 
+struct CFIE_kress{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule can be changed. Not used currently.
     pts_scaling_factor::Vector{T} # scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
     dim_scaling_factor::T # UNUSED since no basis. Only for compatibility
@@ -32,11 +32,11 @@ struct CFIE_kress{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
     min_dim::Int64 # UNUSED, for compatibility
     min_pts::Int64 # minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation.
     billiard::Bi # the billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
-    symmetry::Union{Nothing,Vector{Any}} # symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry.
+    symmetry::Sym # symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry.
 end
 
 """
-    CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing)
+    CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Sym=nothing)
 
 Constructor for CFIE_kress solver.
 
@@ -45,23 +45,24 @@ Constructor for CFIE_kress solver.
 - `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
 - `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Default is 20.
 - `eps`: Unused internally.
-- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or a vector of symmetry operations if symmetries are present. Default is `nothing`.
+- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
 
 # Output:
 - An instance of the `CFIE_kress` solver initialized with the provided parameters.
 """
-function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:AbsBilliard}
     any([!((boundary isa PolarSegment) || (boundary isa CircleSegment)) for boundary in billiard.full_boundary]) && error("CFIE_kress only works with polar curves")
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_kress{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
+    Sym=typeof(symmetry)
+    return CFIE_kress{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
 #################################
 #### CONSTRUCTOR CFIE_alpert ####
 #################################
 
-struct CFIE_alpert{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
+struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     sampler::Vector{LinearNodes}
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
@@ -69,12 +70,12 @@ struct CFIE_alpert{T,Bi}<:CFIE where {T<:Real,Bi<:AbsBilliard}
     min_dim::Int64
     min_pts::Int64
     billiard::Bi
-    symmetry::Union{Nothing,Vector{Any}}
+    symmetry::Sym
     alpert_order::Int
 end
 
 """
-    CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order=16)
+    CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,S}=nothing,alpert_order=16)
 
 Constructor for CFIE_alpert solver.
 
@@ -83,18 +84,19 @@ Constructor for CFIE_alpert solver.
 - `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
 - `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Default is 20.
 - `eps`: Unused internally.
-- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or a vector of symmetry operations if symmetries are present. Default is `nothing`.
+- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
 - `alpert_order`: The order of the Alpert quadrature correction to use for near interactions. Supported values are 2, 3, 4, 5, 6, 8, 10, 12, 14, and 16. Default is 16.
 
 # Output:
 - An instance of the `CFIE_alpert` solver initialized with the provided parameters.
 """
-function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,Vector{Any}}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     _=alpert_log_rule(T,alpert_order)
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return CFIE_alpert{T,Bi}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order)
+    Sym=typeof(symmetry)
+    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order)
 end
 
 #############################
@@ -170,11 +172,10 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
     needed=2 # need it to. be even number of points for reflections and at same type divisible by rotation order for rotations. A bit hacky but valid for reflections/rotations
-    if solver.symmetry!==nothing
-        for sym in solver.symmetry
-            if sym isa Rotation
-                needed=lcm(needed,sym.n)
-            end
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        if sym isa Rotation
+            needed=lcm(needed,sym.n)
         end
     end
     remN=mod(N,needed)
@@ -473,7 +474,6 @@ Accepts either:
 """
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
-
     if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
@@ -482,7 +482,6 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
         end
         return pts
     end
-
     if _is_single_composite_boundary(boundary)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
@@ -490,11 +489,9 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
         end
         return pts
     end
-
     ncomps=length(boundary)
     npanels=sum(length(comp) for comp in boundary)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,npanels)
-
     pos=1
     for compid in 1:ncomps
         comp=boundary[compid]
@@ -763,9 +760,7 @@ end
 # Inputs:
 #   - pts::Vector{<:BoundaryPointsCFIE{T}} :
 #       Full CFIE_kress boundary components.
-#   - sym :
-#       Currently expected to be a vector containing exactly one symmetry
-#       object (`Reflection` or `Rotation`).
+#   - sym : Symmetry object, either a Reflection or a Rotation.
 #   - tol::T=T(1e-10) :
 #       Matching tolerance for reflection maps, and lower bound for the
 #       rotation-component matcher.
@@ -779,7 +774,6 @@ end
 #         * `:χ`   : character table for the chosen irrep
 function build_symmetry_maps(pts::Vector{<:BoundaryPointsCFIE{T}},sym;tol::T=T(1e-10)) where {T<:Real}
     xy,_=flatten_points(pts)
-    sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
     if sym isa Reflection
         maps=Dict{Symbol,Any}()
         if sym.axis==:y_axis
@@ -814,7 +808,7 @@ end
 #   - maps::Dict{Symbol,Any} :
 #       Symmetry maps produced by `build_symmetry_maps`.
 #   - sym :
-#       Currently expected to be a vector containing exactly one symmetry object.
+#       Symmetry object, either a Reflection or a Rotation.
 #
 # Outputs:
 #   - Returns `V`, modified in-place to contain the projected vectors.
@@ -833,7 +827,6 @@ end
 function apply_projection!(V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}},maps::Dict{Symbol,Any},sym) where {T<:Real}
     isnothing(sym) && return V
     N,r=size(V)
-    sym=sym[1] #FIXME Stupid hack, get rid of this and keep only the fundamental domain's symmetry
     @assert size(W)==size(V)
     if sym isa Reflection
         if sym.axis==:y_axis
@@ -1135,95 +1128,94 @@ end
 #If `same_direction=true`, single reflections reverse point order so that the
 #reflected copy has the same physical boundary orientation as the original.
 #Double reflection and rotations preserve orientation and are not reversed.
-function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing},billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
-    symmetries===nothing && return pts
+function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{AbsSymmetry,Nothing},billiard::Bi;same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    isnothing(symmetries) && return pts
     full=copy(pts)
     sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
     sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
-    for sym in symmetries
-        new_parts=BoundaryPointsCFIE{T}[]
-        if sym isa Reflection
-            if sym.axis===:y_axis || sym.axis===:origin
-                for c in pts
-                    n=length(c.xy)
-                    rxy=Vector{SVector{2,T}}(undef,n)
-                    rt=Vector{SVector{2,T}}(undef,n)
-                    @inbounds for j in 1:n
-                        p=c.xy[j]
-                        t=c.tangent[j]
-                        rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),p[2])
-                        tx,ty=_x_reflect_tangent(t[1],t[2])
-                        rt[j]=same_direction ? SVector{2,T}(-tx,-ty) : SVector{2,T}(tx,ty)
-                    end
-                    xy2=same_direction ? reverse(rxy) : rxy
-                    t2=same_direction ? reverse(rt) : rt
-                    ds2=same_direction ? reverse(c.ds) : copy(c.ds)
-                    push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
+    sym=symmetries
+    new_parts=BoundaryPointsCFIE{T}[]
+    if sym isa Reflection
+        if sym.axis===:y_axis || sym.axis===:origin
+            for c in pts
+                n=length(c.xy)
+                rxy=Vector{SVector{2,T}}(undef,n)
+                rt=Vector{SVector{2,T}}(undef,n)
+                @inbounds for j in 1:n
+                    p=c.xy[j]
+                    t=c.tangent[j]
+                    rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),p[2])
+                    tx,ty=_x_reflect_tangent(t[1],t[2])
+                    rt[j]=same_direction ? SVector{2,T}(-tx,-ty) : SVector{2,T}(tx,ty)
                 end
+                xy2=same_direction ? reverse(rxy) : rxy
+                t2=same_direction ? reverse(rt) : rt
+                ds2=same_direction ? reverse(c.ds) : copy(c.ds)
+                push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
             end
-
-            if sym.axis===:x_axis || sym.axis===:origin
-                for c in pts
-                    n=length(c.xy)
-                    rxy=Vector{SVector{2,T}}(undef,n)
-                    rt=Vector{SVector{2,T}}(undef,n)
-                    @inbounds for j in 1:n
-                        p=c.xy[j]
-                        t=c.tangent[j]
-                        rxy[j]=SVector{2,T}(p[1],_y_reflect(p[2],sy))
-                        tx,ty=_y_reflect_tangent(t[1],t[2])
-                        rt[j]=same_direction ? SVector{2,T}(-tx,-ty) : SVector{2,T}(tx,ty)
-                    end
-                    xy2=same_direction ? reverse(rxy) : rxy
-                    t2=same_direction ? reverse(rt) : rt
-                    ds2=same_direction ? reverse(c.ds) : copy(c.ds)
-                    push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
-                end
-            end
-            if sym.axis===:origin
-                for c in pts
-                    n=length(c.xy)
-                    rxy=Vector{SVector{2,T}}(undef,n)
-                    rt=Vector{SVector{2,T}}(undef,n)
-                    @inbounds for j in 1:n
-                        p=c.xy[j]
-                        t=c.tangent[j]
-                        rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),_y_reflect(p[2],sy))
-                        tx,ty=_xy_reflect_tangent(t[1],t[2])
-                        rt[j]=SVector{2,T}(tx,ty)
-                    end
-                    push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
-                end
-            end
-        elseif sym isa Rotation
-            cx=T(sym.center[1])
-            cy=T(sym.center[2])
-            for l in 1:sym.n-1
-                θ=T(2π*l/sym.n)
-                cθ=cos(θ)
-                sθ=sin(θ)
-                for c in pts
-                    n=length(c.xy)
-                    rxy=Vector{SVector{2,T}}(undef,n)
-                    rt=Vector{SVector{2,T}}(undef,n)
-                    @inbounds for j in 1:n
-                        p=c.xy[j]
-                        t=c.tangent[j]
-                        x=cθ*(p[1]-cx)-sθ*(p[2]-cy)+cx
-                        y=sθ*(p[1]-cx)+cθ*(p[2]-cy)+cy
-                        tx=cθ*t[1]-sθ*t[2]
-                        ty=sθ*t[1]+cθ*t[2]
-                        rxy[j]=SVector{2,T}(x,y)
-                        rt[j]=SVector{2,T}(tx,ty)
-                    end
-                    push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
-                end
-            end
-        else
-            error("Unknown symmetry type $(typeof(sym))")
         end
-        append!(full,new_parts)
+
+        if sym.axis===:x_axis || sym.axis===:origin
+            for c in pts
+                n=length(c.xy)
+                rxy=Vector{SVector{2,T}}(undef,n)
+                rt=Vector{SVector{2,T}}(undef,n)
+                @inbounds for j in 1:n
+                    p=c.xy[j]
+                    t=c.tangent[j]
+                    rxy[j]=SVector{2,T}(p[1],_y_reflect(p[2],sy))
+                    tx,ty=_y_reflect_tangent(t[1],t[2])
+                    rt[j]=same_direction ? SVector{2,T}(-tx,-ty) : SVector{2,T}(tx,ty)
+                end
+                xy2=same_direction ? reverse(rxy) : rxy
+                t2=same_direction ? reverse(rt) : rt
+                ds2=same_direction ? reverse(c.ds) : copy(c.ds)
+                push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
+            end
+        end
+        if sym.axis===:origin
+            for c in pts
+                n=length(c.xy)
+                rxy=Vector{SVector{2,T}}(undef,n)
+                rt=Vector{SVector{2,T}}(undef,n)
+                @inbounds for j in 1:n
+                    p=c.xy[j]
+                    t=c.tangent[j]
+                    rxy[j]=SVector{2,T}(_x_reflect(p[1],sx),_y_reflect(p[2],sy))
+                    tx,ty=_xy_reflect_tangent(t[1],t[2])
+                    rt[j]=SVector{2,T}(tx,ty)
+                end
+                push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
+            end
+        end
+    elseif sym isa Rotation
+        cx=T(sym.center[1])
+        cy=T(sym.center[2])
+        for l in 1:sym.n-1
+            θ=T(2π*l/sym.n)
+            cθ=cos(θ)
+            sθ=sin(θ)
+            for c in pts
+                n=length(c.xy)
+                rxy=Vector{SVector{2,T}}(undef,n)
+                rt=Vector{SVector{2,T}}(undef,n)
+                @inbounds for j in 1:n
+                    p=c.xy[j]
+                    t=c.tangent[j]
+                    x=cθ*(p[1]-cx)-sθ*(p[2]-cy)+cx
+                    y=sθ*(p[1]-cx)+cθ*(p[2]-cy)+cy
+                    tx=cθ*t[1]-sθ*t[2]
+                    ty=sθ*t[1]+cθ*t[2]
+                    rxy[j]=SVector{2,T}(x,y)
+                    rt[j]=SVector{2,T}(tx,ty)
+                end
+                push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
+            end
+        end
+    else
+        error("Unknown symmetry type $(typeof(sym))")
     end
+    append!(full,new_parts)
     return full
 end
 
@@ -1233,7 +1225,7 @@ end
 # Inputs:
 #   u           : values on flattened fundamental boundary
 #   pts         : corresponding vector of BoundaryPointsCFIE (fundamental domain)
-#   symmetries  : Vector of symmetry ops or nothing
+#   symmetries  : AbsSymmetry or nothing
 #
 # Output:
 #   u_full      : expanded vector consistent with geometry expansion
@@ -1242,7 +1234,7 @@ end
 #   - Mirrors apply_symmetries_to_boundary_points.
 #   - Reflection reverses ordering; rotation multiplies by character χ.
 #   - Promotes to Complex if required by rotational irreps.
-function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{Vector{Any},Nothing}) where {U<:Number,T<:Real}
+function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{BoundaryPointsCFIE{T}},symmetries::Union{AbsSymmetry,Nothing}) where {U<:Number,T<:Real}
     symmetries===nothing && return u
     lengths=[length(c.xy) for c in pts]
     offs=Vector{Int}(undef,length(lengths)+1)
@@ -1255,41 +1247,40 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{
     S=(U<:Real && has_complex) ? Complex{T} : U
     compsS=[S.(c) for c in comps]
     full=copy(compsS)
-    for sym in symmetries
-        new_parts=Vector{Vector{S}}()
-        if sym isa Reflection
-            if sym.axis===:y_axis || sym.axis===:origin
-                p=S(sym.axis===:origin ? sym.parity[1] : sym.parity)
-                for c in compsS
-                    push!(new_parts,p.*reverse(c))
-                end
+    sym=symmetries
+    new_parts=Vector{Vector{S}}()
+    if sym isa Reflection
+        if sym.axis===:y_axis || sym.axis===:origin
+            p=S(sym.axis===:origin ? sym.parity[1] : sym.parity)
+            for c in compsS
+                push!(new_parts,p.*reverse(c))
             end
-            if sym.axis===:x_axis || sym.axis===:origin
-                p=S(sym.axis===:origin ? sym.parity[2] : sym.parity)
-                for c in compsS
-                    push!(new_parts,p.*reverse(c))
-                end
-            end
-            if sym.axis===:origin
-                pxy=S(sym.parity[1]*sym.parity[2])
-                for c in compsS
-                    push!(new_parts,pxy.*c)
-                end
-            end
-        elseif sym isa Rotation
-            n=sym.n
-            m=mod(sym.m,n)
-            for l in 1:n-1
-                χ = m==0 ? one(Complex{T}) :
-                    Complex{T}(cos(T(2π)*T(m*l)/T(n)),sin(T(2π)*T(m*l)/T(n)))
-                for c in compsS
-                    push!(new_parts,S.(χ.*c))
-                end
-            end
-        else
-            error("Unknown symmetry type $(typeof(sym))")
         end
-        append!(full,new_parts)
+        if sym.axis===:x_axis || sym.axis===:origin
+            p=S(sym.axis===:origin ? sym.parity[2] : sym.parity)
+            for c in compsS
+                push!(new_parts,p.*reverse(c))
+            end
+        end
+        if sym.axis===:origin
+            pxy=S(sym.parity[1]*sym.parity[2])
+            for c in compsS
+                push!(new_parts,pxy.*c)
+            end
+        end
+    elseif sym isa Rotation
+        n=sym.n
+        m=mod(sym.m,n)
+        for l in 1:n-1
+            χ = m==0 ? one(Complex{T}) :
+                Complex{T}(cos(T(2π)*T(m*l)/T(n)),sin(T(2π)*T(m*l)/T(n)))
+            for c in compsS
+                push!(new_parts,S.(χ.*c))
+            end
+        end
+    else
+        error("Unknown symmetry type $(typeof(sym))")
     end
+    append!(full,new_parts)
     return vcat(full...)
 end

@@ -14,16 +14,16 @@ Represents the configuration for the boundary integral method.
 - `eps::T`: Numerical tolerance.
 - `min_dim::Int64`: Minimum dimensions (compatibility field).
 - `min_pts::Int64`: Minimum points for evaluation.
-- `symmetry::Union{Vector{Any},Nothing}`: Symmetry for the configuration.
+- `symmetry::Sym`: Symmetry for the configuration - nothing,Reflection,Rotation
 """
-struct BoundaryIntegralMethod{T} <: SweepSolver where {T<:Real}
+struct BoundaryIntegralMethod{T<:Real,Sym}<:SweepSolver 
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
     eps::T
     min_dim::Int64 
     min_pts::Int64
-    symmetry::Union{Vector{Any},Nothing}
+    symmetry::Sym
 end
 
 """
@@ -59,19 +59,21 @@ Creates a boundary integral method solver configuration.
 # Returns
 - `BoundaryIntegralMethod`: Constructed solver configuration.
 """
-function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real, Bi<:AbsBilliard}
+function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real, Bi<:AbsBilliard}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return BoundaryIntegralMethod{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
+    Sym=typeof(symmetry)
+    return BoundaryIntegralMethod{T,Sym}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
 end
 
-function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real, Bi<:AbsBilliard} 
+function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts=20,symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real, Bi<:AbsBilliard} 
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    return BoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,symmetry)
+    Sym=typeof(symmetry)
+    return BoundaryIntegralMethod{T,Sym}(1.0,bs,samplers,eps(T),min_pts,min_pts,symmetry)
 end
 
 function _boundary_curves_for_solver(billiard::Bi,solver::BoundaryIntegralMethod) where {Bi<:AbsBilliard}
-    if solver.symmetry === nothing
+    if isnothing(solver.symmetry)
         hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
     end
     hasproperty(billiard,:desymmetrized_full_boundary) && return getfield(billiard,:desymmetrized_full_boundary)
@@ -230,14 +232,14 @@ Computes the kernel matrix for the given boundary points with symmetry reflectio
 
 # Arguments
 - `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
-- `symmetry::Vector{Any}`: Symmetry to apply.
+- `symmetry::Sym`: Symmetry to apply.
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: The computed kernel matrix with symmetry reflections applied.
 """
-function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     nrm=bp.normal
     κ=bp.curvature
@@ -258,30 +260,29 @@ function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;
     mrot=0
     cx=zero(T)
     cy=zero(T)
-    @inbounds for s in symmetry
-        if hasproperty(s,:axis)
-            if s.axis==:y_axis
-                add_x=true
-                sxgn=(s.parity==-1 ? -one(T) : one(T))
-            end
-            if s.axis==:x_axis
-                add_y=true
-                sygn=(s.parity==-1 ? -one(T) : one(T))
-            end
-            if s.axis==:origin
-                add_x=true
-                add_y=true
-                add_xy=true
-                sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
-                sygn=(s.parity[2]==-1 ? -one(T) : one(T))
-                sxy=sxgn*sygn
-            end
-        elseif s isa Rotation
-            have_rot=true
-            nrot=s.n
-            mrot=mod(s.m,nrot)
-            cx,cy=s.center
+    s=symmetry
+    if hasproperty(s,:axis)
+        if s.axis==:y_axis
+            add_x=true
+            sxgn=(s.parity==-1 ? -one(T) : one(T))
         end
+        if s.axis==:x_axis
+            add_y=true
+            sygn=(s.parity==-1 ? -one(T) : one(T))
+        end
+        if s.axis==:origin
+            add_x=true
+            add_y=true
+            add_xy=true
+            sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+            sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+            sxy=sxgn*sygn
+        end
+    elseif s isa Rotation
+        have_rot=true
+        nrot=s.n
+        mrot=mod(s.m,nrot)
+        cx,cy=s.center
     end
     if have_rot
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
@@ -336,14 +337,14 @@ Constructs the Fredholm matrix for the boundary integral method using the comput
 
 # Arguments
 - `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, curvatures, and differential arc lengths.
-- `symmetry::Vector{Any}`: Symmetry to apply.
+- `symmetry`: Symmetry to apply.
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Matrix{Complex{T}}`: The constructed Fredholm matrix, incorporating differential arc lengths and symmetry reflections.
 """
-function fredholm_matrix(bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},k::T;multithreaded::Bool=true) where {T<:Real}
+function fredholm_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     K=isnothing(symmetry) ?
         compute_kernel_matrix(bp,k;multithreaded=multithreaded) :
         compute_kernel_matrix(bp,symmetry,k;multithreaded=multithreaded)
@@ -593,7 +594,7 @@ end
 #
 # Output:
 #   K::Matrix{Complex{T}} fully populated with symmetry images included.
-function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Vector{Any},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::Complex{T};multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
     nrm=bp.normal
     κ=bp.curvature 
@@ -606,22 +607,21 @@ function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoin
     have_rot=false
     nrot=1;mrot=0
     cx=zero(T);cy=zero(T)
-    @inbounds for s in symmetry # symmetry here is always != nothing
-        if hasproperty(s,:axis)
-            if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
-            if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
-            if s.axis==:origin
-                add_x=true;add_y=true;add_xy=true
-                sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
-                sygn=(s.parity[2]==-1 ? -one(T) : one(T))
-                sxy=sxgn*sygn
-            end
-        elseif s isa Rotation
-            have_rot=true
-            nrot=s.n
-            mrot=mod(s.m,nrot)
-            cx,cy=s.center
+    s=symmetry
+    if hasproperty(s,:axis)
+        if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:origin
+            add_x=true;add_y=true;add_xy=true
+            sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+            sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+            sxy=sxgn*sygn
         end
+    elseif s isa Rotation
+        have_rot=true
+        nrot=s.n
+        mrot=mod(s.m,nrot)
+        cx,cy=s.center
     end
     if have_rot
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
@@ -663,7 +663,7 @@ end
 # Inputs:
 #   K          - Matrix{Complex}: working buffer Fredholm matrix for reuse, constructed from the kernel
 #   bp        – BoundaryPoints (xy, normals, curvature, panel lengths ds, symmetry shifts)
-#   symmetry  – nothing -> no images; Vector -> include symmetry images in K(k)
+#   symmetry  – nothing -> no images; otherwise, a Rotation or Reflection
 #   k         – complex wavenumber
 #   multithreaded, kernel_fun – passed to compute_kernel_matrix_complex_k(...)
 #
@@ -675,7 +675,7 @@ end
 #
 # Output:
 #   A::Matrix{Complex{T}} ready for use in Beyn contour solves (T(z) ≡ A(z)).
-function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::Complex{T};multithreaded::Bool=true) where {T<:Real}
     if isnothing(symmetry)
         compute_kernel_matrix_complex_k!(K,bp,k;multithreaded=multithreaded)
     else

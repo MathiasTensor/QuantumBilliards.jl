@@ -1,8 +1,8 @@
 
-struct RealPlaneWaves{T,Sa} <: AbsBasis where  {T<:Real, Sa<:AbsSampler}
+struct RealPlaneWaves{T<:Real,Sa<:AbsSampler,Sym}<:AbsBasis
     #cs::PolarCS{T} #not fully implemented
     dim::Int64 #using concrete type
-    symmetries::Union{Vector{Any},Nothing}
+    symmetries::Sym
     angle_arc::T
     angle_shift::T
     angles::Vector{T}
@@ -12,12 +12,12 @@ struct RealPlaneWaves{T,Sa} <: AbsBasis where  {T<:Real, Sa<:AbsSampler}
 end
 
 """
-     parity_pattern(symmetries::Vector{Any})
+     parity_pattern(symmetries::Sym)
 
 Helper function to determine the parity in the x and y direction wrt symmetry. This is neccesery since it determines the sign of the wavefunction in each quadrant.
 
 # Arguments
-- `symmetries::Vector{Any}`: Contains symmetry information to be transformed into quadrant rules.
+- `symmetries::Sym`: Contains symmetry information to be transformed into quadrant rules.
 
 # Returns
 - `(parity_x,parity_y)::Tuple{Vector{Int},Vector{Int}}`: Quadrant rules in the x and y direction.
@@ -32,22 +32,21 @@ function parity_pattern(symmetries)
     xy_reflected=false
     # Loop over the symmetries
     if !isnothing(symmetries)
-        for sym in symmetries
-            if sym.axis==:y_axis
-                # X-axis reflection: constrain parity_x
-                parity_x=[sym.parity,sym.parity]
-                x_reflected=true
-            elseif sym.axis==:x_axis
-                # Y-axis reflection: constrain parity_y
-                parity_y=[sym.parity,sym.parity]
-                y_reflected=true
-            elseif sym.axis==:origin
-                # XYReflection: constrain both axes to the same parity
-                parity_x=[sym.parity[1]]
-                parity_y=[sym.parity[2]]
-                xy_reflected=true
-                break  # Once XYReflection is applied, we must exit as there is nothing more to be done
-            end
+        sym=symmetries
+        if sym.axis==:y_axis
+            # X-axis reflection: constrain parity_x
+            parity_x=[sym.parity,sym.parity]
+            x_reflected=true
+        elseif sym.axis==:x_axis
+            # Y-axis reflection: constrain parity_y
+            parity_y=[sym.parity,sym.parity]
+            y_reflected=true
+        elseif sym.axis==:origin
+            # XYReflection: constrain both axes to the same parity
+            parity_x=[sym.parity[1]]
+            parity_y=[sym.parity[2]]
+            xy_reflected=true
+            break  # Once XYReflection is applied, we must exit as there is nothing more to be done
         end
     end
     if xy_reflected

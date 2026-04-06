@@ -204,7 +204,7 @@ Returns `(billiard,basis)`.
 """
 function make_elliptic_flower_and_basis(n::Int;Rb=1.0,b=0.4,hole=false,hole_radius=nothing,hole_scale=0.35,θ0=0.0,m::Int=0)
     billiard=EllipticFlowerWithOptionalHole(n;Rb=Rb,b=b,hole=hole,hole_radius=hole_radius,hole_scale=hole_scale,θ0=θ0)
-    symmetry=Vector{Any}([Rotation(n,m,(0.0,0.0))])
+    symmetry=Rotation(n,m,(0.0,0.0))
     basis=AbstractHankelBasis()
     return billiard,basis
 end

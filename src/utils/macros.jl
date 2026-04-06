@@ -129,6 +129,11 @@ macro blas_multi_then_1(n,expr)
     end
 end
 
+"""
+    svd_or_det_solve(A,use_krylov,which,blas_threads)
+
+Solve for either the smallest singular value or the determinant of A, using either a Krylov method or a direct BLAS call, depending on `use_krylov`. The `which` argument specifies whether to compute the determinant (`:det`) or the smallest singular value (`:svd`). The `blas_threads` argument controls the number of threads used for BLAS operations when not using Krylov methods.
+"""
 macro svd_or_det_solve(A,use_krylov,which,blas_threads)
     quote
         if $(esc(use_krylov))

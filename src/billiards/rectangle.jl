@@ -189,7 +189,7 @@ Constructs a rectangle billiard and a symmetry-adapted basis of real plane waves
 """
 function make_rectangle_and_basis(width::T, height::T; x0=zero(T), y0=zero(T), rot_angle=zero(T))  :: Tuple{RectangleBilliard{T}, RealPlaneWaves} where {T<:Real}
     rectangle = RectangleBilliard(width, height; x0=x0, y0=y0, rot_angle=rot_angle)
-    symmetry = Vector{Any}([XYReflection(-1, -1)])
+    symmetry = XYReflection(-1, -1)
     basis = RealPlaneWaves(10, symmetry; angle_arc=pi/2.0)
     return rectangle, basis
 end

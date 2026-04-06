@@ -172,35 +172,6 @@ function boundary_coords(billiard::Bi,sampler::S,N) where {Bi<:AbsBilliard,S<:Ab
     end
 end
 
-#### LEGACY / UNUSED ####
-"""
-    dilated_boundary_points(billiard::Bi, sampler::S, N::Int, k::T) :: Vector{SVector{2,T}} 
-    where {Bi<:AbsBilliard, S<:AbsSampler, T<:Real}
-
-Based on Barnett's thesis: https://users.flatironinstitute.org/~ahb/thesis_html/node73.html
-Compute a “dilated” set of boundary points, offset outward by one wavelength `λ = 2π / k` along the normal.
-First sample `N` points on the true boundary, then shift each `(x,y)` by `λ * normal(x,y)`.
-
-# Arguments
-- `billiard::Bi<:AbsBilliard`: Billiard containing `full_boundary`.
-- `sampler::S<:AbsSampler`: Sampler for boundary points.
-- `N::Int`: Total number of boundary points.
-- `k::T<:Real`: Wavenumber (used to compute λ = 2π / k).
-
-# Returns
-- `Vector{SVector{2,T}}`: Dilated boundary coordinates.
-"""
-function dilated_boundary_points(billiard::Bi,sampler::S,N,k) where {Bi<:AbsBilliard, S<:AbsSampler}
-    lam=2*pi/k #wavelength
-    pts=boundary_coords(billiard,sampler,N)
-    xy=pts.xy 
-    n=pts.normal
-    return xy.+lam.*n
-end
-
-
-#### ADDITION FOR BOUNDARY FUNCTIONS #####
-# Since the default one just uses the full boundary
 """
     boundary_coords_desymmetrized_full_boundary(billiard::Bi, sampler::FourierNodes, N) where {Bi<:AbsBilliard}
 

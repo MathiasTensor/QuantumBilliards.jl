@@ -176,7 +176,7 @@ Constructs an equilateral triangle billiard and a symmetry-adapted CornerAdapted
 """
 function make_equilateral_triangle_and_basis(h::T;x0::T=zero(T),y0::T=zero(T),rot_angle::T=zero(T))::Tuple{EquilateralTriangleBilliard,CornerAdaptedFourierBessel} where {T<:Real}
     triangle=EquilateralTriangleBilliard(h;x0=x0,y0=y0,rot_angle=rot_angle)
-    symmetry=Vector{Any}([Rotation(3,-1)])  # C3 rotational symmetry
+    symmetry=Rotation(3,-1)  # C3 rotational symmetry
     basis=CornerAdaptedFourierBessel(10,2*pi/3,SVector(zero(T),zero(T)),zero(T),symmetry) # just the origin, rotation angle and symmetry for correct rotations
     return triangle,basis
 end

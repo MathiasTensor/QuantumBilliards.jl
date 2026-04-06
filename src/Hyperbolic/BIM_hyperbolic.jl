@@ -97,14 +97,14 @@
 #
 # ==============================================================================
 
-struct BIM_hyperbolic{T} <: SweepSolver where {T<:Real}
+struct BIM_hyperbolic{T<:Real,Sym}<:SweepSolver 
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
     eps::T
     min_dim::Int64 
     min_pts::Int64
-    symmetry::Union{Vector{Any},Nothing}
+    symmetry::Sym
 end
 
 #------------------------------------------------------------------------------
@@ -122,16 +122,17 @@ end
 # KEYWORDS
 #   min_pts::Int
 #     Minimum points per real curve.
-#   symmetry::Union{Vector{Any},Nothing}
+#   symmetry::Union{S,Nothing}
 #     Symmetry specification forwarded into solver.symmetry.
 #
 # OUTPUTS
-#   solver::BIM_hyperbolic{T}
+#   solver::BIM_hyperbolic{T,S}
 #------------------------------------------------------------------------------
-function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real}
+function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,S<:AbsSymmetry}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[Hyperbolic()]
-    return BIM_hyperbolic{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
+    Sym=typeof(symmetry)
+    return BIM_hyperbolic{T,Sym}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
 end
 
 # ==============================================================================
@@ -520,8 +521,8 @@ function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::
         x=xy[i][1];y=xy[i][2]
         ρ=max(ρ,hypot(x,y))
     end
-    if symmetry!==nothing
-        s=symmetry[1]
+    if !isnothing(symmetry)
+        s=symmetry
         if s isa Rotation
             cx=s.center[1];cy=s.center[2];n=s.n
             ctab,stab,_=_rotation_tables(T,n,mod(s.m,n))
@@ -543,7 +544,7 @@ function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::
         (d>zero(T) && d<dmin) && (dmin=d)
         return nothing
     end
-    if symmetry===nothing
+    if isnothing(symmetry)
         @inbounds for i in 1:N
             xi=xy[i][1];yi=xy[i][2]
             @inbounds for t in 1:K
@@ -553,7 +554,7 @@ function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::
         end
         return max(dmin_floor,dmin),dmax
     end
-    s=symmetry[1]
+    s=symmetry
     if s isa Reflection
         ops=_reflect_ops_and_scales(T,s)
         @inbounds for i in 1:N

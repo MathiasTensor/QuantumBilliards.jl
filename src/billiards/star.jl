@@ -73,7 +73,7 @@ end
 
 function make_star_and_basis(n::Int64;x0=zero(Float64),y0=zero(Float64),rot_angle=zero(Float64),m::Int64=0) 
     star_billiard=StarBilliard(n::Int64;x0=x0,y0=y0,rot_angle=rot_angle)
-    symmetry=Vector{Any}([Rotation(n,m,(x0,y0))]) # not yet implemented
+    symmetry=Rotation(n,m,(x0,y0))
     basis=CornerAdaptedFourierBessel(10,Float64(2*pi/n),SVector(x0,y0),rot_angle,symmetry)
     return star_billiard,basis
 end

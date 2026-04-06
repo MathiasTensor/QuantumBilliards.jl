@@ -1,6 +1,3 @@
-using FFTW, SpecialFunctions, JLD2, ProgressMeter
-
-#this takes care of singular points
 """
     regularize!(u::Vector{T}) where {T<:Real}
 
@@ -122,10 +119,10 @@ Helper/hack function to rescaled the dimension of RealPlaneWaves struct b/c due 
 @inline function rescale_dimension(basis::Ba,dim::Integer) where {Ba<:AbsBasis}
     main_basis=basis isa CompositeBasis ? basis.main : basis
     if main_basis isa RealPlaneWaves # hack since RealPlaneWaves have problems
-        if isnothing(main_basis.symmetries[1])
+        if isnothing(main_basis.symmetries)
             dim=Int(dim/4) # always works by construction of parity_pattern
-        elseif (main_basis.symmetries[1] isa Reflection)
-            if (main_basis.symmetries[1].axis==:x_axis) || (main_basis.symmetries[1].axis==:y_axis)
+        elseif (main_basis.symmetries isa Reflection)
+            if (main_basis.symmetries.axis==:x_axis) || (main_basis.symmetries.axis==:y_axis)
                 dim=Int(dim/2) # always works by construction of parity_pattern
             end
         end
@@ -355,155 +352,6 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
     us_all=us_all[valid_indices]
     pts_all=pts_all[valid_indices]
     return ks,us_all,pts_all
-end
-
-### BIM ###
-
-"""
-    boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPointsBIM{T},billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{U}} where {T<:Real, Bi<:AbsBilliard, U<:Number}
-
-Process a boundary function and its points: convert BIM points, regularize `u` (NaNs filled),
-apply symmetries (which may promote `u` to complex if a non-trivial rotational irrep is present),
-and shift the arclength origin if the billiard requests it.
-
-# Arguments
-- `solver::BoundaryIntegralMethod{T}`: Holds symmetry info.
-- `u::AbstractVector{U}`: Boundary data on the desymmetrized boundary (real or complex).
-- `pts::BoundaryPoints{T}`: Boundary points.
-- `billiard::Bi`: Geometry (may carry `shift_s` for arclength origin).
-
-# Returns
-- `BoundaryPoints{T}`: Symmetry-extended (and possibly shifted) boundary points.
-- `Vector{U}`: Symmetry-extended (and shifted) boundary function; element type matches input
-  unless a non-trivial rotation forces complex characters.
-"""
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T},u::AbstractVector{U},pts::BoundaryPoints{T},billiard::Bi) where {T<:Real,Bi<:AbsBilliard,U<:Number}
-    symmetries=solver.symmetry
-    regularize!(u)
-    pts=apply_symmetries_to_boundary_points(pts,symmetries,billiard)
-    u_full=apply_symmetries_to_boundary_function(u,symmetries)
-    pts,u_full=shift_starting_arclength(billiard,u_full,pts)
-    return pts,u_full
-end
-
-"""
-    boundary_function_BIM(solver::BoundaryIntegralMethod{T},us_all::Vector{<:AbstractVector},pts_all::Vector{BoundaryPointsBIM{T}},billiard::Bi) -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{<:Number}}}
-       where {T<:Real, Bi<:AbsBilliard}
-
-Batch version of `boundary_function_BIM`. Each `u` may be real or complex; if any rotation
-has `m % n ≠ 0`, the corresponding symmetry application produces complex boundary data.
-
-# Arguments
-- `solver::BoundaryIntegralMethod{T}`: Holds symmetry info.
-- `us_all::Vector{<:AbstractVector}`: Boundary data (each real or complex).
-- `pts_all::Vector{BoundaryPoints{T}}`: Matching boundary points.
-- `billiard::Bi`: Geometry.
-
-# Returns
-- `Vector{BoundaryPoints{T}}`: Processed boundary points for each input.
-- `Vector{Vector{<:Number}}`: Processed boundary functions; element types match per case.
-"""
-function boundary_function_BIM(solver::BoundaryIntegralMethod{T},us_all::Vector{<:AbstractVector},pts_all::Vector{BoundaryPoints{T}},billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
-    sym=solver.symmetry
-    needs_complex=!isnothing(sym) && any(s->(s isa Rotation) && mod(s.m,s.n)!=0,sym)
-    n=length(us_all)
-    pts_ret=Vector{BoundaryPoints{T}}(undef,n)
-    us_tmp=Vector{Vector}(undef,n) # type-erased
-    @showprogress for i in 1:n
-        pts_i,u_i=boundary_function_BIM(solver,us_all[i],pts_all[i],billiard)
-        pts_ret[i]=pts_i
-        us_tmp[i]=u_i
-    end
-    us_ret=needs_complex ? [u isa AbstractVector{<:Complex} ? u : complex.(u) for u in us_tmp] : us_tmp
-    return pts_ret,us_ret
-end
-
-"""
-    save_boundary_function!(ks, us, s_vals; filename::String="boundary_values.jld2")
-
-Saves the results of the boundary_function with the `StateData` input. Primarly useful for creating efficient input to the husimi function constructor.
-
-# Arguments
-- `ks::Vector{Float64}`: A vector of the wave numbers.
-- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
-- `s_vals::Vector{Vector}`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
-- `filename::String`: The name of the jld2 file to save the boundary values to. Default is "boundary_values.jld2".
-
-# Returns
-- `Nothing`
-"""
-function save_boundary_function!(ks, us, s_vals; filename::String="boundary_values.jld2")
-    @save filename ks us s_vals
-end
-
-"""
-     save_BoundaryPoints(ks::Vector, vec_bd_points::Vector{BoundaryPoints}, us::Vector{Vector}; filename::String="boundary_points.jld2") where {Bi<:AbsBilliard}
-
-Saves the Vector of BoundaryPoints structs together us and with ks for convenience. This makes it easier to construct the wavefunction via the boundary integral for which we need the boundary points, the arclength differences and the arclengths. For this it needs to construct the BoundaryPoints via the Scaling Method.
-
-```julia
-struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
-    xy::Vector{SVector{2, T}}
-    normal::Vector{SVector{2, T}}
-    s::Vector{T}
-    ds::Vector{T}
-end
-```
-
-# Arguments
-- `ks::Vector{Float64}`: A vector of the eigenvalues.
-- `vec_bd_points::Vector{BoundaryPoints}`: A vector of BoundaryPoints structs. Each BoundaryPoints struct corresponds to a wave number `ks[i]`.
-- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
-
-# Returns
-- `Nothing`
-"""
-function save_BoundaryPoints!(ks::Vector{T}, vec_bd_points::Vector{BoundaryPoints{T}}, us::Vector{Vector{T}}; filename::String="boundary_points.jld2") where {T<:Real}
-    @save filename ks vec_bd_points us
-end
-
-"""
-    read_BoundaryPoints(filename::String="boundary_points.jld2")
-
-Read the saved Vector{BoundaryPoints} for later construction of the wavefunction.
-
-```julia
-struct BoundaryPoints{T} <: (AbsPoints where T <: Real)
-    xy::Vector{SVector{2, T}}
-    normal::Vector{SVector{2, T}}
-    s::Vector{T}
-    ds::Vector{T}
-end
-```
-
-# Arguments
-- `filename::String`: The name of the jld2 file to load the boundary points from. Default is "boundary_points.jld2".
-
-# Returns
-- `ks::Vector{<:Real}`: A vector of the wave numbers.
-- `vec_bd_points::Vector{BoundaryPoints}`: A vector of BoundaryPoints structs. Each BoundaryPoints struct corresponds to a wave number `ks[i]`.
-- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
-"""
-function read_BoundaryPoints(filename::String="boundary_points.jld2")
-    @load filename ks vec_bd_points us
-    return ks, vec_bd_points, us
-end
-
-"""
-    read_boundary_function(filename::String="boundary_values.jld2")
-
-Load the boundary function from a jld2 file.
-# Arguments
-- `filename::String`: The name of the jld2 file to load the boundary values from. Default is "boundary_values.jld2".
-
-# Returns
-- `ks::Vector{Float64}`: A vector of the wave numbers. 
-- `us::Vector{Vector}`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
-- `s_vals::Vector{Vector}`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
-"""
-function read_boundary_function(filename::String="boundary_values.jld2")
-    @load filename ks us s_vals
-    return ks, us, s_vals
 end
 
 """

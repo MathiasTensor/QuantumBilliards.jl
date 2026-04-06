@@ -30,7 +30,7 @@ export sample_points
 # boundary
 include("billiards/boundarypoints.jl")
 export BoundaryPoints
-export boundary_coords, dilated_boundary_points
+export boundary_coords
 
 #basis
 include("basis/planewaves/realplanewaves.jl")
@@ -51,7 +51,6 @@ export PolarSegment, VirtualPolarSegment, PolarSegments
 export curve, arc_length, tangent, tangent_vec, normal_vec, curvature, symmetry_accounted_fundamental_boundary_length
 include("billiards/stadium.jl")
 include("billiards/lemon.jl")
-include("billiards/sinai.jl")
 include("billiards/triangle.jl")
 include("billiards/circle.jl")
 include("billiards/ellipse.jl")
@@ -156,7 +155,6 @@ export boundary_function, momentum_function, husimi_function, husimi_functions_f
 export billiard_polygon
 export wavefunctions
 export read_boundary_function, save_boundary_function!
-export save_husimi_functions!, load_husimi_functions, save_vec_from_StateData!, load_vec_from_file, save_BoundaryPoints!, read_BoundaryPoints
 export ϕ, wavefunction_multi, wavefunction_multi_with_husimi, plot_wavefunctions, plot_wavefunctions_with_husimi
 export momentum_representation_of_wavefunction, computeRadiallyIntegratedDensity, computeAngularIntegratedMomentumDensity
 
@@ -164,8 +162,6 @@ include("utils/benchmarkutils.jl")
 export BenchmarkInfo
 export benchmark_solver, compute_benchmarks
 
-include("utils/savingutils.jl")
-export save_numerical_ks_and_tensions!, read_numerical_ks_and_tensions, compute_and_save_closest_pairs!, save_numerical_ks!, read_numerical_ks, filter_and_save_ks_and_tensions!, plot_Z!, dynamical_solver_construction, save_ks_and_husimi_functions!, read_ks_and_husimi_functions
 include("utils/rotationutils.jl")
 include("spectra/m_index.jl")
 export visualize_overlap, compute_M, shift_s_vals_poincare_birkhoff, classical_phase_space_matrix, visualize_quantum_classical_overlap_of_levels!, plot_hist_M_distribution!, compute_overlaps, separate_ks_by_classical_indices, fraction_of_mixed_states, get_mixed_states, coefficient_of_fraction_of_mixed_eigenstates_vs_k, plot_fraction_of_mixed_eigenstates_vs_k, separate_Hs_by_classical_indices, separate_by_classical_indices, separate_ks_and_Hs_by_classical_indices, compute_fractions_of_mixed_eigenstates, plot_fraction_mixed_states, visualize_husimi_and_wavefunction!, save_separation_parameters!, load_separation_parameters, get_mixed_states_boolean_mask

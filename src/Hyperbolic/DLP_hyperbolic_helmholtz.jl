@@ -676,8 +676,7 @@ end
 # INPUTS (MULTI-k)
 #   Ks::Vector{Matrix{Complex{T}}}
 #   bp::BoundaryPoints{T}
-#   symmetry::Union{Vector{Any},Nothing}
-#       - nothing or Vector with one symmetry element (Reflection or Rotation)
+#   symmetry::Union{AbsSymmetry,Nothing} nothing or a symmetry element (Reflection or Rotation)
 #   tabs::Vector{QTaylorTable}
 #
 # KEYWORD INPUTS
@@ -686,12 +685,12 @@ end
 # OUTPUTS
 #   nothing (fills Ks)
 ################################################################################
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
         return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     else
         try
-            s=symmetry[1]
+            s=symmetry
             if s isa Reflection
                 return _all_k_reflection_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
             elseif s isa Rotation
@@ -705,12 +704,12 @@ function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},
     end
 end
 
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
     if symmetry===nothing
         return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     else
         try
-            s=symmetry[1]
+            s=symmetry
             if s isa Reflection
                 return _one_k_reflection_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
             elseif s isa Rotation

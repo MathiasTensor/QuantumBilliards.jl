@@ -449,7 +449,7 @@ end
 @inline function symmetrize_epw(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
     syms=basis.symmetries
     isnothing(syms) && return f(basis,i,k,pts)  # No symmetry applied
-    sym=syms[1]
+    sym=syms
     origin=basis.cs.origin
     fval=f(pts,i,basis.params,k)
     if sym.axis==:y_axis # XReflection
@@ -475,7 +475,7 @@ end
 @inline function symmetrize_epw_grad(f::F,basis::EvanescentPlaneWaves{T},i::Int,k::T,pts::Vector{SVector{2,T}}) where {F<:Function,T<:Real}
     syms=basis.symmetries
     isnothing(syms) && return f(pts,i,basis.params,k)
-    sym=syms[1]
+    sym=syms
     origin=basis.cs.origin
     fval=f(pts,i,basis.params,k)
     if sym.axis==:y_axis # XReflection

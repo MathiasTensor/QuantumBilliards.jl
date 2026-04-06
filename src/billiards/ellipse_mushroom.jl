@@ -214,7 +214,7 @@ A tuple `(ellipse_mushroom, basis)` where
 function make_ellipse_mushroom_and_basis(stem_width::T,stem_height::T,ellipse_cap_height::T,ellipse_cap_width::T;x0=zero(T),y0=zero(T),rot_angle=zero(T),triangle_stem::Bool=false) :: Tuple{EllipseMushroom,CornerAdaptedFourierBessel} where {T<:Real}
     x_axis=stem_width/2
     ellipse_mushroom=EllipseMushroom(stem_width,stem_height,ellipse_cap_height,ellipse_cap_width;x0=x0,y0=y0,rot_angle=rot_angle,x_axis_reflection=x_axis,triangle_stem=triangle_stem)
-    symmetry=Vector{Any}([XReflection(-1)])
+    symmetry=XReflection(-1)
     α=ifelse(triangle_stem,3*pi/2-atan((stem_width/2)/stem_height),3*pi/2)
     basis=CornerAdaptedFourierBessel(10,α,SVector(zero(T),zero(T)),Float64(pi),symmetry;rotation_angle_discontinuity=Float64(3*pi/4))
     return ellipse_mushroom,basis

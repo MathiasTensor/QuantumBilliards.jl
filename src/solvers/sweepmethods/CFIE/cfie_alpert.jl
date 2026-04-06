@@ -1453,23 +1453,21 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
             end
         end
     end
-    for sym in symmetry
-        if sym isa Reflection
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
-            end
-        elseif sym isa Rotation
-            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,sym,costab,sintab,χ;multithreaded=multithreaded)
-            end
-        else
-            error("Unknown symmetry type $(typeof(sym))")
+    if symmetry isa Reflection
+        for a in 1:nc, b in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
         end
+    elseif symmetry isa Rotation
+        costab,sintab,χ=_rotation_tables(T,symmetry.n,symmetry.m)
+        for a in 1:nc, b in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,symmetry,costab,sintab,χ;multithreaded=multithreaded)
+        end
+    else
+        error("Unknown symmetry type $(typeof(symmetry))")
     end
     return A
 end
@@ -1559,23 +1557,21 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
             end
         end
     end
-    for sym in symmetry
-        if sym isa Reflection
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,sym;multithreaded=multithreaded)
-            end
-        elseif sym isa Rotation
-            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,sym,costab,sintab,χ;multithreaded=multithreaded)
-            end
-        else
-            error("Unknown symmetry type $(typeof(sym))")
+    if symmetry isa Reflection
+        for a in 1:nc, b in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
         end
+    elseif symmetry isa Rotation
+        costab,sintab,χ=_rotation_tables(T,symmetry.n,symmetry.m)
+        for a in 1:nc, b in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,symmetry,costab,sintab,χ;multithreaded=multithreaded)
+        end
+    else
+        error("Unknown symmetry type $(typeof(symmetry))")
     end
     return A
 end

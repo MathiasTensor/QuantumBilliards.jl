@@ -137,7 +137,7 @@ Construct a stadium-with-optional-hole billiard together with a symmetry-adapted
 """
 function make_stadium_with_optional_hole_and_basis(outer_half_width;outer_radius=one(outer_half_width),inner_half_width=nothing,inner_radius=nothing,x0=zero(outer_half_width),y0=zero(outer_half_width),basis_type=:cafb)
     billiard=StadiumWithOptionalHole(outer_half_width;outer_radius=outer_radius,inner_half_width=inner_half_width,inner_radius=inner_radius,x0=x0,y0=y0)
-    symmetry=Vector{Any}([XYReflection(-1,-1)])
+    symmetry=XYReflection(-1,-1)
     if basis_type==:rpw
         basis=RealPlaneWaves(10,symmetry;angle_arc=Float64(pi/2))
     elseif basis_type==:cafb

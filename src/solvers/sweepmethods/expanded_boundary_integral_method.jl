@@ -14,27 +14,29 @@ Represents the configuration for the expanded boundary integral method.
 - `eps::T`: Numerical tolerance.
 - `min_dim::Int64`: Minimum dimensions (compatibility field).
 - `min_pts::Int64`: Minimum points for evaluation.
-- `symmetry::Union{Vector{Any},Nothing}`: Symmetry for the configuration.
+- `symmetry::Union{AbsSymmetry,Nothing}`: Symmetry for the configuration.
 """
-struct ExpandedBoundaryIntegralMethod{T} <: AcceleratedSolver where {T<:Real}
+struct ExpandedBoundaryIntegralMethod{T<:Real,Sym}<:AcceleratedSolver 
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
     eps::T
     min_dim::Int64 
     min_pts::Int64
-    symmetry::Union{Vector{Any},Nothing}
+    symmetry::Sym
 end
 
-function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real,Bi<:AbsBilliard}
+function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetry::Union{AbsSymmetry,Nothing}=nothing) where {T<:Real,Bi<:AbsBilliard}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
-    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
+    Sym=typeof(symmetry)
+    return ExpandedBoundaryIntegralMethod{T,Sym}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
 end
 
-function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts=20,symmetry::Union{Vector{Any},Nothing}=nothing) where {T<:Real,Bi<:AbsBilliard} 
+function ExpandedBoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers::Vector,billiard::Bi;min_pts=20,symmetry::Union{AbsSymmetry,Nothing}=nothing) where {T<:Real,Bi<:AbsBilliard} 
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    return ExpandedBoundaryIntegralMethod{T}(1.0,bs,samplers,eps(T),min_pts,min_pts,symmetry)
+    Sym=typeof(symmetry)
+    return ExpandedBoundaryIntegralMethod{T,Sym}(1.0,bs,samplers,eps(T),min_pts,min_pts,symmetry)
 end
 
 #### NEW MATRIX APPROACH FOR FASTER CODE #### 
@@ -298,7 +300,7 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},k::T;multi
 end
 
 """
-    compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true) where {T<:Real} -> Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}
+    compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::Sym,k::T;multithreaded::Bool=true) where {T<:Real, Sym<:AbsSymmetry} -> Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}
 
 Build the kernel matrix `K` and its first/second derivatives w.r.t. `k` **including symmetry images**. Supported
 symmetries are:
@@ -314,7 +316,7 @@ normal). For **custom** kernels, the image source normal is reflected/rotated be
 # Arguments
 - `bp`: `BoundaryPoints{T}` – boundary data (points `xy`, normals, curvature `κ`, arc-length weights `ds`,
   and shifts `shift_x`, `shift_y` for reflection axes).
-- `symmetry`: `Vector{Any}` – list of symmetry descriptors (reflections and/or `Rotation`).
+- `symmetry`: `Sym` – symmetry descriptor (reflections and/or `Rotation`).
 - `k`: `T` – wavenumber.
 - `multithreaded`: `Bool` – enable threaded assembly.
 
@@ -327,7 +329,7 @@ Notes:
 - Image self-pairs are **not** given curvature; if an image falls within `tol2` the contribution is skipped.
 - Reflection scales are real (`±1`); rotation scales are unit-modulus complex characters `χ_l`.
 """
-function compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::Vector{Any},k::T;multithreaded::Bool=true) where {T<:Real}
+function compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
     K=zeros(Complex{T},N,N)
     dK=zeros(Complex{T},N,N)
@@ -342,22 +344,21 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::
     have_rot=false
     nrot=1;mrot=0
     cx=zero(T);cy=zero(T)
-    @inbounds for s in symmetry # symmetry here is always != nothing
-        if hasproperty(s,:axis)
-            if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
-            if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
-            if s.axis==:origin
-                add_x=true;add_y=true;add_xy=true
-                sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
-                sygn=(s.parity[2]==-1 ? -one(T) : one(T))
-                sxy=sxgn*sygn
-            end
-        elseif s isa Rotation
-            have_rot=true
-            nrot=s.n
-            mrot=mod(s.m,nrot)
-            cx,cy=s.center
+    s=symmetry
+    if hasproperty(s,:axis)
+        if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:origin
+            add_x=true;add_y=true;add_xy=true
+            sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+            sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+            sxy=sxgn*sygn
         end
+    elseif s isa Rotation
+        have_rot=true
+        nrot=s.n
+        mrot=mod(s.m,nrot)
+        cx,cy=s.center
     end
     if have_rot
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
@@ -397,20 +398,20 @@ function compute_kernel_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::
 end
 
 """
-    fredholm_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},k::T;multithreaded::Bool=true) where {T<:Real}
+    fredholm_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::Union{Nothing,AbsSymmetry},k::T;multithreaded::Bool=true) where {T<:Real}
 
 Build the Fredholm matrix `A` and it's derivative matrices `dA/dk & d^2A/dk^2`.
 
 # Arguments
 - `bp::BoundaryPoints{T}`: Boundary points with `(x,y)`, normals, and `ds`.
-- `symmetry::Vector{Any}`: Symmetry to apply.
+- `symmetry::Sym`: Symmetry to apply.
 - `k::T`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
 # Returns
 - `Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}`: The 3`N×N` matrices representing the Fredholm matrix and it's first and second derivative, respectively.
 """
-function fredholm_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry::Union{Vector{Any},Nothing},k::T;multithreaded::Bool=true) where {T<:Real}
+function fredholm_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(symmetry)
         K,dK,ddK=compute_kernel_matrix_with_derivatives(bp,k;multithreaded=multithreaded)
     else

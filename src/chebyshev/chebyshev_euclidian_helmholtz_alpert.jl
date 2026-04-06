@@ -767,8 +767,8 @@ end
 ############################################################
 
 function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:AbstractMatrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertChebWorkspace{T},ks::Vector{ComplexF64};multithreaded::Bool=true) where {T<:Real}
-    symmetry=solver.symmetry
-    isnothing(symmetry) && error("called symmetry version without symmetry")
+    sym=solver.symmetry
+    isnothing(sym) && error("called symmetry version without symmetry")
     Mk=length(ks)
     for m in 1:Mk
         fill!(As[m],0.0+0im)
@@ -851,23 +851,21 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev_symmetry!(As::Vector{<:Ab
             end
         end
     end
-    for sym in symmetry
-        if sym isa Reflection
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_reflection_images_cheb!(As,a,b,ra,rb,pts[a],pts[b],block_cache,solver,solver.billiard,ks,plans0,plans1,h0_tls,h1_tls,sym;multithreaded=multithreaded)
-            end
-        elseif sym isa Rotation
-            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
-            for a in 1:nc, b in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                rb=offs[b]:(offs[b+1]-1)
-                _assemble_rotation_images_cheb!(As,a,b,ra,rb,pts[a],pts[b],block_cache,ks,plans0,plans1,h0_tls,h1_tls,sym,costab,sintab,χ;multithreaded=multithreaded)
-            end
-        else
-            error("Unknown symmetry type")
+    if sym isa Reflection
+        for a in 1:nc, b in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            _assemble_reflection_images_cheb!(As,a,b,ra,rb,pts[a],pts[b],block_cache,solver,solver.billiard,ks,plans0,plans1,h0_tls,h1_tls,sym;multithreaded=multithreaded)
         end
+    elseif sym isa Rotation
+        costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
+        for a in 1:nc, b in 1:nc
+            ra=offs[a]:(offs[a+1]-1)
+            rb=offs[b]:(offs[b+1]-1)
+            _assemble_rotation_images_cheb!(As,a,b,ra,rb,pts[a],pts[b],block_cache,ks,plans0,plans1,h0_tls,h1_tls,sym,costab,sintab,χ;multithreaded=multithreaded)
+        end
+    else
+        error("Unknown symmetry type")
     end
     return nothing
 end
@@ -1012,85 +1010,83 @@ function estimate_cfie_alpert_cheb_rbounds(solver::CFIE_alpert{T},pts::Vector{Bo
     #-------------------------------------------------------
     # 4. Symmetry image distances
     #-------------------------------------------------------
-    symmetry=solver.symmetry
-    if !isnothing(symmetry)
-        for sym in symmetry
-            if sym isa Reflection
-                for a in 1:nc, b in 1:nc
-                    pa=pts[a]
-                    pb=pts[b]
-                    Xa=getindex.(pa.xy,1)
-                    Ya=getindex.(pa.xy,2)
-                    Na=length(pa.xy)
-                    Nb=length(pb.xy)
-                    if sym.axis==:y_axis
-                        @inbounds for j in 1:Nb
-                            qimg=image_point_x(pb.xy[j],solver.billiard)
-                            xj=qimg[1]
-                            yj=qimg[2]
-                            for i in 1:Na
-                                dx=Xa[i]-xj
-                                dy=Ya[i]-yj
-                                _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
-                            end
-                        end
-                    elseif sym.axis==:x_axis
-                        @inbounds for j in 1:Nb
-                            qimg=image_point_y(pb.xy[j],solver.billiard)
-                            xj=qimg[1]
-                            yj=qimg[2]
-                            for i in 1:Na
-                                dx=Xa[i]-xj
-                                dy=Ya[i]-yj
-                                _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
-                            end
-                        end
-                    elseif sym.axis==:origin
-                        @inbounds for j in 1:Nb
-                            qx=image_point_x(pb.xy[j],solver.billiard)
-                            qy=image_point_y(pb.xy[j],solver.billiard)
-                            qxy=image_point_xy(pb.xy[j],solver.billiard)
-                            for i in 1:Na
-                                dx=Xa[i]-qx[1]
-                                dy=Ya[i]-qx[2]
-                                _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
-                                dx=Xa[i]-qy[1]
-                                dy=Ya[i]-qy[2]
-                                _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
-                                dx=Xa[i]-qxy[1]
-                                dy=Ya[i]-qxy[2]
-                                _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
-                            end
-                        end
-                    else
-                        error("Unknown reflection axis $(sym.axis)")
-                    end
-                end
-            elseif sym isa Rotation
-                costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
-                for a in 1:nc, b in 1:nc
-                    pa=pts[a]
-                    pb=pts[b]
-                    Xa=getindex.(pa.xy,1)
-                    Ya=getindex.(pa.xy,2)
-                    Na=length(pa.xy)
-                    Nb=length(pb.xy)
-                    for l in 1:(sym.n-1)
-                        @inbounds for j in 1:Nb
-                            qimg=image_point(sym,pb.xy[j],l,costab,sintab)
-                            xj=qimg[1]
-                            yj=qimg[2]
-                            for i in 1:Na
-                                dx=Xa[i]-xj
-                                dy=Ya[i]-yj
-                                _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
-                            end
+    sym=solver.symmetry
+    if !isnothing(sym)
+        if sym isa Reflection
+            for a in 1:nc, b in 1:nc
+                pa=pts[a]
+                pb=pts[b]
+                Xa=getindex.(pa.xy,1)
+                Ya=getindex.(pa.xy,2)
+                Na=length(pa.xy)
+                Nb=length(pb.xy)
+                if sym.axis==:y_axis
+                    @inbounds for j in 1:Nb
+                        qimg=image_point_x(pb.xy[j],solver.billiard)
+                        xj=qimg[1]
+                        yj=qimg[2]
+                        for i in 1:Na
+                            dx=Xa[i]-xj
+                            dy=Ya[i]-yj
+                            _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
                         end
                     end
+                elseif sym.axis==:x_axis
+                    @inbounds for j in 1:Nb
+                        qimg=image_point_y(pb.xy[j],solver.billiard)
+                        xj=qimg[1]
+                        yj=qimg[2]
+                        for i in 1:Na
+                            dx=Xa[i]-xj
+                            dy=Ya[i]-yj
+                            _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
+                        end
+                    end
+                elseif sym.axis==:origin
+                    @inbounds for j in 1:Nb
+                        qx=image_point_x(pb.xy[j],solver.billiard)
+                        qy=image_point_y(pb.xy[j],solver.billiard)
+                        qxy=image_point_xy(pb.xy[j],solver.billiard)
+                        for i in 1:Na
+                            dx=Xa[i]-qx[1]
+                            dy=Ya[i]-qx[2]
+                            _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
+                            dx=Xa[i]-qy[1]
+                            dy=Ya[i]-qy[2]
+                            _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
+                            dx=Xa[i]-qxy[1]
+                            dy=Ya[i]-qxy[2]
+                            _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
+                        end
+                    end
+                else
+                    error("Unknown reflection axis $(sym.axis)")
                 end
-            else
-                error("Unknown symmetry type $(typeof(sym))")
             end
+        elseif sym isa Rotation
+            costab,sintab,χ=_rotation_tables(T,sym.n,sym.m)
+            for a in 1:nc, b in 1:nc
+                pa=pts[a]
+                pb=pts[b]
+                Xa=getindex.(pa.xy,1)
+                Ya=getindex.(pa.xy,2)
+                Na=length(pa.xy)
+                Nb=length(pb.xy)
+                for l in 1:(sym.n-1)
+                    @inbounds for j in 1:Nb
+                        qimg=image_point(sym,pb.xy[j],l,costab,sintab)
+                        xj=qimg[1]
+                        yj=qimg[2]
+                        for i in 1:Na
+                            dx=Xa[i]-xj
+                            dy=Ya[i]-yj
+                            _rbounds_update!(rminmax,sqrt(dx*dx+dy*dy))
+                        end
+                    end
+                end
+            end
+        else
+            error("Unknown symmetry type $(typeof(sym))")
         end
     end
     rmin,rmax=rminmax[]
