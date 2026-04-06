@@ -39,7 +39,13 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    which==:svd && (res=similar(ks)) : which==:det && (res=zeros(eltype(ks),length(ks)))
+    if which==:svd
+        res=similar(ks)
+    elseif which==:det
+        res=zeros(eltype(ks),length(ks))
+    else
+        error("Invalid value for 'which': expected :svd or :det, got $(which)")
+    end
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
@@ -64,7 +70,13 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    which==:svd && (res=similar(ks)) : which==:det && (res=zeros(eltype(ks),length(ks)))
+    if which==:svd
+        res=similar(ks)
+    elseif which==:det
+        res=zeros(eltype(ks),length(ks))
+    else
+        error("Invalid value for 'which': expected :svd or :det, got $(which)")
+    end
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
@@ -91,7 +103,13 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_alpert_workspace(solver,pts)
-    which==:svd && (res=similar(ks)) : which==:det && (res=zeros(eltype(ks),length(ks)))
+    if which==:svd
+        res=similar(ks)
+    elseif which==:det
+        res=zeros(eltype(ks),length(ks))
+    else
+        error("Invalid value for 'which': expected :svd or :det, got $(which)")
+    end
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
