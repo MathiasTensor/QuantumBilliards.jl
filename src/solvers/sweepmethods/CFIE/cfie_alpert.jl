@@ -519,8 +519,8 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLo
     @inbounds for p in 1:jcorr
         Δt=h*rule.x[p]
         for i in 1:N
-            θp=wrap_angle(ts[i] + Δt)
-            x,y,tx,ty,s,idx,wt = _eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
+            θp=wrap_angle(ts[i]+Δt)
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
             xp[p,i]=x
             yp[p,i]=y
             txp[p,i]=tx
