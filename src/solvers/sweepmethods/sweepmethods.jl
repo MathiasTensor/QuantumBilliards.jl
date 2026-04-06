@@ -39,7 +39,7 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    res=similar(ks)
+    which==:svd && (res=similar(ks)) : which==:det && (res=zeros(eltype(ks),length(ks)))
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
@@ -64,7 +64,7 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    res=similar(ks)
+    which==:svd && (res=similar(ks)) : which==:det && (res=zeros(eltype(ks),length(ks)))
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
@@ -91,7 +91,7 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_alpert_workspace(solver,pts)
-    res=similar(ks)
+    which==:svd && (res=similar(ks)) : which==:det && (res=zeros(eltype(ks),length(ks)))
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
@@ -176,9 +176,9 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `multithreaded_ks::Bool=false`: Whether to use multithreading for the wavenumber sweep.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers where applicable.
 - `tol::Real=1e-10`: Tolerance for convergence in appropriate solvers (`ParticularSolutionsMethod`).
-- `which::Symbol=:det`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`).
+- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`).
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:svd)
     return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol,which=which)
 end
 
@@ -186,21 +186,21 @@ end
 
 # For BIM/CFIE_kress, refinement is controlled by boundary discretization (pts_scaling_factor).
 # dim_scaling_factor is only relevant for basis-type solvers and is ignored by some dispatches below.
-function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:det)
+function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
         solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     end
 end
 
-function _refine_objective(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:det)
+function _refine_objective(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
         solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     end
 end
 
-function _refine_objective(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:det)
+function _refine_objective(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
         solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
@@ -242,14 +242,14 @@ Refines the minima of the tension function around the approximate wavenumbers `k
 - `print_refinement::Bool=true`: Whether to print a summary of the refinement results.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers during the refinement process where applicable.
 - `digits::Int=10`: Number of digits to round the results in the summary table.
-- `which::Symbol=:det`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement.
+- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`:
   - `sols`: Vector of refined wavenumbers corresponding to the minima of the tension function.
   - `tens_refined`: Vector of tension values corresponding to the refined wavenumbers.
 """
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:det) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
