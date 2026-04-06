@@ -34,7 +34,7 @@ function _sweep_dim(solver::SweepSolver,billiard::AbsBilliard,ks)
     return max(solver.min_dim,round(Int,billiard.length*kmax*solver.dim_scaling_factor/(2*pi)))
 end
 
-function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -42,13 +42,13 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     res=similar(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     next!(p)
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         is_calculating=true
         while is_calculating
             try
-                res[i]=solve(solver,new_basis,pts,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+                res[i]=solve(solver,new_basis,pts,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
                 is_calculating=false
             catch e
                 @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
@@ -59,7 +59,7 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     return res
 end
 
-function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -67,14 +67,14 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     res=similar(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     next!(p)
     Rmat=build_Rmat_CFIE(pts)
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         is_calculating=true 
         while is_calculating
             try
-                res[i]=solve(solver,new_basis,pts,ks[i],Rmat;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+                res[i]=solve(solver,new_basis,pts,ks[i],Rmat;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
                 is_calculating=false
             catch e
                 @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
@@ -85,7 +85,7 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     return res
 end
 
-function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -94,13 +94,13 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     res=similar(ks)
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     next!(p)
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         is_calculating=true 
         while is_calculating
             try
-                res[i]=solve(solver,new_basis,pts,ws,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+                res[i]=solve(solver,new_basis,pts,ws,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
                 is_calculating=false
             catch e
                 @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
@@ -111,7 +111,7 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     return res
 end
 
-function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -135,7 +135,7 @@ function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::Ab
     return res
 end
 
-function _k_sweep(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
+function _k_sweep(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -176,33 +176,34 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `multithreaded_ks::Bool=false`: Whether to use multithreading for the wavenumber sweep.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers where applicable.
 - `tol::Real=1e-10`: Tolerance for convergence in appropriate solvers (`ParticularSolutionsMethod`).
+- `which::Symbol=:det`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`).
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10)
-    return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+    return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol,which=which)
 end
 
 ############ REFINEMENT ############
 
 # For BIM/CFIE_kress, refinement is controlled by boundary discretization (pts_scaling_factor).
 # dim_scaling_factor is only relevant for basis-type solvers and is ignored by some dispatches below.
-function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
+function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:det)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     end
 end
 
-function _refine_objective(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
+function _refine_objective(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:det)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     end
 end
 
-function _refine_objective(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true)
+function _refine_objective(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:det)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     end
 end
 
@@ -225,7 +226,7 @@ function _refine_objective(solver::ParticularSolutionsMethod,basis::AbsBasis,bil
 end
 
 """
-    refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10) where {T<:Real}
+    refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:det) where {T<:Real}
 
 Refines the minima of the tension function around the approximate wavenumbers `ks` using local optimization. The function identifies the approximate minima in `tens` that are below a specified `threshold`, and then performs a local optimization around each corresponding `k` to find a more accurate wavenumber with lower tension. The results are printed in a summary table if `print_refinement` is set to true.
 
@@ -240,14 +241,15 @@ Refines the minima of the tension function around the approximate wavenumbers `k
 - `threshold::Real=200.0`: Threshold for identifying which minima to refine based on their tension values.
 - `print_refinement::Bool=true`: Whether to print a summary of the refinement results.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers during the refinement process where applicable.
-- `digits::Int=10`: Number of digits to round the results in the summary table
+- `digits::Int=10`: Number of digits to round the results in the summary table.
+- `which::Symbol=:det`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement.
 
 # Returns
 - `Tuple{Vector{T}, Vector{T}}`:
   - `sols`: Vector of refined wavenumbers corresponding to the minima of the tension function.
   - `tens_refined`: Vector of tension values corresponding to the refined wavenumbers.
 """
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:det) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
@@ -256,7 +258,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         solver_new=update_field(solver_new,:dim_scaling_factor,1.5*solver.dim_scaling_factor)
     catch _
     end
-    f_min=_refine_objective(solver_new,basis,billiard;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov)
+    f_min=_refine_objective(solver_new,basis,billiard;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,which=which)
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     dk=ks[2]-ks[1]
