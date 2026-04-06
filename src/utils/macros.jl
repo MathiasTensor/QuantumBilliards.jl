@@ -149,7 +149,8 @@ macro svd_or_det_solve(A,use_krylov,which,blas_threads)
             end
         else
             if $(esc(which))===:det
-                @blas_multi_then_1 $(esc(blas_threads)) d=exp(logabsdet($(esc(A)))[1])
+                #@blas_multi_then_1 $(esc(blas_threads)) d=exp(logabsdet($(esc(A)))[1])
+                @blas_multi_then_1 $(esc(blas_threads)) d=real(det($(esc(A))))
                 return d
             elseif $(esc(which))===:svd
                 @blas_multi_then_1 $(esc(blas_threads)) s=svdvals($(esc(A)))
