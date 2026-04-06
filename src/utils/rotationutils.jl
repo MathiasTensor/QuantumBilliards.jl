@@ -109,8 +109,7 @@ Returns the concatenated full-boundary function.
 function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries) where {U<:Number}
     symmetries===nothing && return u
     T=U<:Real ? U : eltype(real(zero(U)))
-    has_complex=
-    !isnothing(symmetries) && symmetries isa Rotation && mod(symmetries.m,symmetries.n)!=0
+    has_complex=!isnothing(symmetries) && symmetries isa Rotation && mod(symmetries.m,symmetries.n)!=0
     S=(U<:Real && has_complex) ? Complex{T} : U
     full_u=S.(u)
     base_u=copy(full_u) # not alias for rotations

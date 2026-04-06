@@ -269,7 +269,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     end
     if print_refinement
         println("\n===== Refinement summary =====")
-        println(rpad(" #",4),rpad("k_approx",12),rpad("k_ref",12),rpad("Δk",12),rpad("t_approx",12),rpad("t_ref",12),"Δt")
+        println(rpad(" #",4),rpad("k_approx",digits+6),rpad("k_ref",digits+6),rpad("Δk",digits+6),rpad("t_approx",digits+6),rpad("t_ref",digits+6),"Δt")
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
@@ -278,11 +278,11 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             dk_i=k_ref-k_app
             dt=t_ref-t_app
             println(rpad("$(i)",4),
-                    rpad("$(round(k_app,digits=digits))",12),
-                    rpad("$(round(k_ref,digits=digits))",12),
-                    rpad("$(round(dk_i,digits=digits))",12),
-                    rpad("$(round(t_app,digits=digits))",12),
-                    rpad("$(round(t_ref,digits=digits))",12),
+                    rpad("$(round(k_app,digits=digits))",digits+6),
+                    rpad("$(round(k_ref,digits=digits))",digits+6),
+                    rpad("$(round(dk_i,digits=digits))",digits+6),
+                    rpad("$(round(t_app,digits=digits))",digits+6),
+                    rpad("$(round(t_ref,digits=digits))",digits+6),
                     "$(round(dt,digits=digits))")
         end
         println("================================\n")

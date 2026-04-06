@@ -1243,7 +1243,7 @@ function apply_symmetries_to_boundary_function(u::AbstractVector{U},pts::Vector{
         offs[i+1]=offs[i]+lengths[i]
     end
     comps=[u[offs[i]:(offs[i+1]-1)] for i in eachindex(lengths)]
-    has_complex=any(s->(s isa Rotation) && mod(s.m,s.n)!=0,symmetries)
+    has_complex=!isnothing(symmetries) && symmetries isa Rotation && mod(symmetries.m,symmetries.n)!=0
     S=(U<:Real && has_complex) ? Complex{T} : U
     compsS=[S.(c) for c in comps]
     full=copy(compsS)
