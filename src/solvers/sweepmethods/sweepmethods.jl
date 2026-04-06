@@ -34,17 +34,15 @@ function _sweep_dim(solver::SweepSolver,billiard::AbsBilliard,ks)
     return max(solver.min_dim,round(Int,billiard.length*kmax*solver.dim_scaling_factor/(2*pi)))
 end
 
-function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    if which==:svd
-        res=similar(ks)
-    elseif which==:det
+    if which==:det
         res=zeros(eltype(Complex{eltype(ks)}),length(ks))
     else
-        error("Invalid value for 'which': expected :svd or :det, got $(which)")
+        res=similar(ks)
     end
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
@@ -65,17 +63,15 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     return res
 end
 
-function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    if which==:svd
-        res=similar(ks)
-    elseif which==:det
+    if which==:det
         res=zeros(eltype(Complex{eltype(ks)}),length(ks))
     else
-        error("Invalid value for 'which': expected :svd or :det, got $(which)")
+        res=similar(ks)
     end
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
@@ -97,18 +93,16 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     return res
 end
 
-function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_alpert_workspace(solver,pts)
-    if which==:svd
-        res=similar(ks)
-    elseif which==:det
+    if which==:det
         res=zeros(eltype(Complex{eltype(ks)}),length(ks))
     else
-        error("Invalid value for 'which': expected :svd or :det, got $(which)")
+        res=similar(ks)
     end
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
@@ -129,7 +123,7 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     return res
 end
 
-function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -153,7 +147,7 @@ function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::Ab
     return res
 end
 
-function _k_sweep(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det)
+function _k_sweep(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
     new_basis=resize_basis(basis,billiard,dim,kmax)
@@ -194,9 +188,9 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `multithreaded_ks::Bool=false`: Whether to use multithreading for the wavenumber sweep.
 - `use_krylov::Bool=true`: Whether to use Krylov solvers where applicable.
 - `tol::Real=1e-10`: Tolerance for convergence in appropriate solvers (`ParticularSolutionsMethod`).
-- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
+- `which::Symbol=:det_argmin`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:svd)
+function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol,which=which)
 end
 
