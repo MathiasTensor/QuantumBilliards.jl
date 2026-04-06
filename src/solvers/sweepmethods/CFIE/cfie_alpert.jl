@@ -1316,7 +1316,7 @@ end
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     Ntot=boundary_matrix_size(pts)
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
+    @blas_1 construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
     return A
 end
 
@@ -1347,12 +1347,12 @@ end
 
 # check below, legacy
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
+    @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     if use_krylov
-        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        @blas_1 mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
     else
-        s=svdvals(A)
+        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
         return s[end]
     end
 end
@@ -1378,20 +1378,20 @@ end
 #   - The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem.
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     if use_krylov
-        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
     else
-        s=svdvals(A)
+        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
         return s[end]
     end
 end
 
 # check below, legacy
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])
 end
@@ -1415,8 +1415,8 @@ end
 #   - A tuple containing the smallest singular value and the corresponding right singular vector (eigenfunction) of the system matrix.
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])
 end
@@ -1429,7 +1429,7 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     t0=time()
     @info "Building boundary operator A..."
-    construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
+    @blas_1 construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
     any(isnan.(A)) && error("NaN detected in system matrix A; check geometry and quadrature.")
     t1=time()
     cA=cond(A)
@@ -1437,10 +1437,10 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     @info "Performing SVD..."
     t2=time()
     if use_krylov 
-        @blas_multi_then_1 MAX_BLAS_THREADS s,_,_,_=svdsolve(A,1,:SR)
+        @blas_1 s,_,_,_=svdsolve(A,1,:SR)
         reverse!(s)
     else
-        s=svdvals(A)
+        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
     end
     t3=time()
     build_A=t1-t0

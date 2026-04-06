@@ -5,7 +5,7 @@
 
 # Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
 # Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
-# Alex Barnett's idea to use ifft to get the circulant vector kernel and construct the circulant with circshift, .
+# Alex Barnett's code via ifft to get the circulant vector kernel and construct the circulant with circshift.
 function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
     N=size(R0,1)
     n=N÷2 # integer division
@@ -162,18 +162,18 @@ function construct_matrices(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    Rmat=build_Rmat_CFIE(pts)
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_1 Rmat=build_Rmat_CFIE(pts)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     return A
 end
 
 function solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     if use_krylov 
-        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        @blas_1 mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
     else
-        mu=svdvals(A)
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A)
         return mu[end]
     end 
 end
@@ -182,13 +182,13 @@ function solve(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    Rmat=build_Rmat_CFIE(pts)
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_1 Rmat=build_Rmat_CFIE(pts)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     if use_krylov 
-        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        @blas_1 mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
-    else
-        mu=svdvals(A)
+    else 
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A)
         return mu[end]
     end 
 end
@@ -197,19 +197,19 @@ function solve(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
    if use_krylov 
-        @blas_multi_then_1 MAX_BLAS_THREADS mu,_,_,_=svdsolve(A,1,:SR)
+        @blas_1 mu,_,_,_=svdsolve(A,1,:SR)
         return mu[1]
     else
-        mu=svdvals(A)
+        @blas_multi_then_1 MAX_BLAS_THREADS mu=svdvals(A)
         return mu[end]
     end 
 end
 
 function solve_vect(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=conj.(Vt[idx,:])
@@ -220,9 +220,9 @@ function solve_vect(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    Rmat=build_Rmat_CFIE(pts)
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_1 Rmat=build_Rmat_CFIE(pts)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=conj.(Vt[idx,:])
@@ -250,7 +250,7 @@ function solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{
     Rmat=build_Rmat_CFIE(pts)
     t1=time()
     @info "Building boundary operator A..."
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     t2=time()
     cA=cond(A)
     @info "Condition number of A: $(round(cA;sigdigits=4))"
@@ -260,7 +260,7 @@ function solve_INFO(solver::CFIE_kress,basis::Ba,pts::Vector{BoundaryPointsCFIE{
         @blas_multi_then_1 MAX_BLAS_THREADS s,_,_,_=svdsolve(A,1,:SR)
         reverse!(s)
     else
-        s=svdvals(A)
+        @blas_multi_then_1 MAX_BLAS_THREADS s=svdvals(A)
     end
     t4=time()
     build_R=t1-t0
