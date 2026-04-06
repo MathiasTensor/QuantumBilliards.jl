@@ -42,7 +42,7 @@ function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBi
     if which==:svd
         res=similar(ks)
     elseif which==:det
-        res=zeros(eltype(ks),length(ks))
+        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
     else
         error("Invalid value for 'which': expected :svd or :det, got $(which)")
     end
@@ -73,7 +73,7 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     if which==:svd
         res=similar(ks)
     elseif which==:det
-        res=zeros(eltype(ks),length(ks))
+        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
     else
         error("Invalid value for 'which': expected :svd or :det, got $(which)")
     end
@@ -106,7 +106,7 @@ function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;m
     if which==:svd
         res=similar(ks)
     elseif which==:det
-        res=zeros(eltype(ks),length(ks))
+        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
     else
         error("Invalid value for 'which': expected :svd or :det, got $(which)")
     end
