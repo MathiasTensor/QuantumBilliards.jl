@@ -84,7 +84,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
         end
         verbose && @info "BIM Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err=maximum(max_errs)
         all(err->err<tol,max_errs) && return n_panels,M,plans,max_errs
-        if it%3==0
+        if it%5==0
             M+=grow_M
         else
             n_panels=ceil(Int,grow_panels*n_panels)
@@ -209,7 +209,7 @@ function chebyshev_params(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},
         end
         verbose && @info "CFIE_kress Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3)
         (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)) && return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
-        if it%3==0
+        if it%5==0
             M+=grow_M
         else
             n_panels=ceil(Int,grow_panels*n_panels)
@@ -309,7 +309,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
             return n_panels,M,plans0,plans1,max_errs0,max_errs1
         end
-        if it%3==0
+        if it%5==0
             M+=grow_M
         else
             n_panels=ceil(Int,grow_panels*n_panels)
