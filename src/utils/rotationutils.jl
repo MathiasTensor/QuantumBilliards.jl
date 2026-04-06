@@ -18,8 +18,12 @@ function apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries,b
     full_xy=copy(bxy)
     full_normal=copy(bn)
     full_ds=copy(bds)
-    # rough size hint
-    copies=1+sum(s-> s isa Reflection ? (s.axis===:origin ? 3 : 1) : s isa Rotation ? (s.n-1) : 0,symmetries)
+    copies=1+(
+        isnothing(symmetries) ? 0 :
+        symmetries isa Reflection ? (symmetries.axis===:origin ? 3 : 1) :
+        symmetries isa Rotation   ? (symmetries.n-1) :
+        0
+    )
     sizehint!(full_xy,length(bxy)*copies)
     sizehint!(full_normal,length(bn)*copies)
     sizehint!(full_ds,length(bds)*copies)
@@ -105,7 +109,8 @@ Returns the concatenated full-boundary function.
 function apply_symmetries_to_boundary_function(u::AbstractVector{U},symmetries) where {U<:Number}
     symmetries===nothing && return u
     T=U<:Real ? U : eltype(real(zero(U)))
-    has_complex=any(s->(s isa Rotation)&&mod(s.m,s.n)!=0,symmetries)
+    has_complex=
+    !isnothing(symmetries) && symmetries isa Rotation && mod(symmetries.m,symmetries.n)!=0
     S=(U<:Real && has_complex) ? Complex{T} : U
     full_u=S.(u)
     base_u=copy(full_u) # not alias for rotations
