@@ -246,8 +246,8 @@ end
 function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
-    N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
-    needed=1 # need it to be odd for the Kress grading (ref!). be even number of points for reflections and at same type divisible by rotation order for rotations. A bit hacky but valid for reflections/rotations. If we dont do this build_rotation_maps_components crashes
+    N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
+    needed=1
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
@@ -257,14 +257,17 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    iseven(N) && (N+=needed) # preserve divisibility, make odd for Kress grading
-    σ,ts,jac,jac2,ws=kress_graded_nodes_weights(T,N;q=solver.kressq) # graded nodes for corners, also from 0 to 2*pi and the corresponding weights 
-    ts=ts./two_pi
-    xy=curve(crv,ts)
-    γu=tangent(crv,ts)
-    γuu=tangent_2(crv,ts)
-    tangent_1st=[γu[i]*(jac[i]/two_pi) for i in eachindex(ts)]
-    tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2+γu[i]*(jac2[i]/two_pi) for i in eachindex(ts)]
+    iseven(N) && (N+=needed)
+    σ,ts,jac,jac2,ws=kress_graded_nodes_data(T,N;q=solver.kressq)
+    u=ts./two_pi
+    xy=curve(crv,u)
+    γu=tangent(crv,u)
+    γuu=tangent_2(crv,u)
+    tangent_1st=[γu[i]*(jac[i]/two_pi) for i in eachindex(u)]
+    tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2 + γu[i]*(jac2[i]/two_pi) for i in eachindex(u)]
+    ss=arc_length(crv,u)
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
     ws_der=jac2
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
