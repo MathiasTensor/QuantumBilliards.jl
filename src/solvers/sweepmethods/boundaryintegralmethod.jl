@@ -107,7 +107,7 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
         crv=curves[i]
         if typeof(crv)<:AbsRealCurve
             L=crv.length
-            N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi))) #TODO preallocate cheap for loop for non-dynamic allocation
+            N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi)))
             sampler=samplers[i]
             if crv isa PolarSegment
                 if sampler isa PolarSampler
@@ -340,6 +340,30 @@ function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded
 end
 
 """
+    weighted_matrix!(M::AbstractMatrix{Complex{T}},ds::AbstractVector{T}) -> Nothing
+
+Weights the matrix `M` in-place by the square root of the weights (differential arc lengths).
+
+# Arguments
+- `M::AbstractMatrix{Complex{T}}`: The kernel matrix to be weighted.
+- `ds::AbstractVector{T}`: The vector of differential arc lengths corresponding to the boundary points.
+
+# Returns
+- `Nothing`: The function modifies the matrix `M` in-place.
+"""
+function weighted_matrix!(M::AbstractMatrix{Complex{T}},ds::AbstractVector{T}) where {T<:Real}
+    ws=sqrt.(ds)
+    Winv=1.0./ws
+    for i in axes(M,1) # left multiply by W
+        @views M[i,:].*=ws[i]
+    end
+    for j in axes(M,2) # right multiply by W^{-1}
+        @views M[:,j].*=Winv[j]
+    end
+    return M
+end
+
+"""
     fredholm_matrix(bp::BoundaryPoints{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; multithreaded::Bool=true) -> Matrix{Complex{T}}
 
 Constructs the Fredholm matrix for the boundary integral method using the computed kernel matrix.
@@ -361,6 +385,7 @@ function fredholm_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool
     @inbounds for j in 1:length(ds)
         @views K[:,j].*=ds[j]
     end
+    weighted_matrix!(K,ds)
     K.*=-one(T)
     @inbounds for i in axes(K,1)
         K[i,i]+=one(T)
@@ -699,6 +724,7 @@ function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},
         compute_kernel_matrix_complex_k!(K,bp,symmetry,k,multithreaded=multithreaded)
     end
     ds=bp.ds
+    weighted_matrix!(K,ds)
     oneK=one(eltype(K)) 
     @inbounds for j in axes(K,2) 
         @views K[:,j].*=-ds[j] 
