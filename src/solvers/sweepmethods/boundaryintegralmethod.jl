@@ -162,7 +162,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreade
     nx=getindex.(normals,1)
     ny=getindex.(normals,2)
     tol=eps(T)
-    pref=Complex{T}(zero(T),-k/2) # -im*k/2
+    pref=Complex{T}(zero(T),k/2) # im*k/2
     @use_threads multithreading=multithreaded for i in 1:N
         xi=xs[i];yi=ys[i]
         nxi=nx[i];nyi=ny[i]
@@ -247,7 +247,7 @@ function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded
     N=length(xy)
     K=zeros(Complex{T},N,N)
     tol2=(eps(T))^2
-    pref=Complex{T}(0,-k/2)
+    pref=Complex{T}(0,k/2)
     add_x=false
     add_y=false
     add_xy=false
@@ -557,7 +557,7 @@ end
 function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy;nrm=bp.normal;κ=bp.curvature;N=length(xy)
     xs=getindex.(xy,1);ys=getindex.(xy,2);nx=getindex.(nrm,1);ny=getindex.(nrm,2)
-    tol2=(eps(T))^2;pref=-im*k/2
+    tol2=(eps(T))^2;pref=im*k/2
     @use_threads multithreading=multithreaded for i in 1:N
         xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
         @inbounds for j in 1:i
@@ -609,7 +609,7 @@ function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoin
     κ=bp.curvature 
     N=length(xy)
     tol2=(eps(T))^2
-    pref=-im*k/2
+    pref=im*k/2
     add_x=false;add_y=false;add_xy=false # true if the symmetry is present
     sxgn=one(T);sygn=one(T);sxy=one(T) # the scalings +/- depending on the symmetry considerations
     shift_x=bp.shift_x;shift_y=bp.shift_y # the reflection axes shifts from billiard geometry
