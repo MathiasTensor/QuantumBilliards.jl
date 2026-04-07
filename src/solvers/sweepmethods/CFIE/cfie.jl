@@ -258,15 +258,14 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
     iseven(N) && (N+=needed) # preserve divisibility, make odd for Kress grading
-    ts,ws=kress_graded_nodes_weights(T,N;q=solver.kressq) # graded nodes for corners, also from 0 to 2*pi and the corresponding weights 
-    ts_rescaled=ts./two_pi # b/c our curves and tangents are defined on [0,1]
-    xy=curve(crv,ts_rescaled) 
-    tangent_1st=tangent(crv,ts_rescaled)./(two_pi) # ! Rescaled tangents due to chain rule ∂γ/∂θ = ∂γ/∂u * ∂u/∂θ = ∂γ/∂u * 1/(2π)
-    tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi)^2 # ! Rescaled tangents due to chain rule ∂²γ/∂θ² = ∂²γ/∂u² * (∂u/∂θ)² + ∂γ/∂u * ∂²u/∂θ² = ∂²γ/∂u² * 1/(2π)^2 + ∂γ/∂u * 0 = ∂²γ/∂u² * 1/(2π)^2
-    ss=arc_length(crv,ts_rescaled)
-    ds=diff(ss)
-    append!(ds,L+ss[1]-ss[end])
-    ws_der=ones(T,N) # unused, legacy
+    σ,ts,jac,jac2,ws=kress_graded_nodes_weights(T,N;q=solver.kressq) # graded nodes for corners, also from 0 to 2*pi and the corresponding weights 
+    ts=ts./two_pi
+    xy=curve(crv,ts)
+    γu=tangent(crv,ts)
+    γuu=tangent_2(crv,ts)
+    tangent_1st=[γu[i]*(jac[i]/two_pi) for i in eachindex(ts)]
+    tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2+γu[i]*(jac2[i]/two_pi) for i in eachindex(ts)]
+    ws_der=jac2
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
 
