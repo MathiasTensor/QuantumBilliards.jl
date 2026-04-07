@@ -258,17 +258,27 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
     iseven(N) && (N+=needed)
-    σ,ts,jac,jac2,ws=kress_graded_nodes_weights(T,N;q=solver.kressq)
-    u=ts./two_pi
+
+    σ,tmap,jac,jac2,_=kress_graded_nodes_data(T,N;q=solver.kressq)
+
+    u=tmap./two_pi
     xy=curve(crv,u)
     γu=tangent(crv,u)
     γuu=tangent_2(crv,u)
+
     tangent_1st=[γu[i]*(jac[i]/two_pi) for i in eachindex(u)]
     tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2 + γu[i]*(jac2[i]/two_pi) for i in eachindex(u)]
+
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    ws_der=jac2
+
+    h=pi/T((N+1)÷2)
+
+    ts=σ
+    ws=fill(h,N)
+    ws_der=jac
+
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
 end
 

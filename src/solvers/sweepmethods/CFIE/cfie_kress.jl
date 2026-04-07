@@ -345,61 +345,72 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p,true) for p in pts]
     nc=length(pts)
+
     for a in 1:nc
         pa=pts[a]
         Ga=Gs[a]
         Na=length(pa.xy)
         ra=offs[a]:(offs[a+1]-1)
-        nloc=(Na+1)÷2
-        fac=T(nloc/pi)
+
         @inbounds for i in 1:Na
             gi=ra[i]
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            jac_i=fac*wi
+            jac_i=pa.ws_der[i]
+
             dval=Complex{T}(wi*κi,zero(T))
+
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2)+2*inv_two_pi*log(jac_i))*si
-            sval=Complex{T}(jac_i*Rmat[gi,gi]*m1,zero(T))+wi*m2
+            sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
+
             A[gi,gi]=one(Complex{T})-(dval+ik*sval)
         end
+
         @use_threads multithreading=multithreaded for j in 2:Na
             gj=ra[j]
             sj=Ga.speed[j]
             wj=pa.ws[j]
-            aj=fac*wj
+
             @inbounds for i in 1:(j-1)
                 gi=ra[i]
                 si=Ga.speed[i]
                 wi=pa.ws[i]
-                ai=fac*wi
+
                 rij=Ga.R[i,j]
                 invr=Ga.invR[i,j]
                 lt=Ga.logterm[i,j]
+
                 h1=H(1,k*rij)
                 h0=H(0,k*rij)
                 j1=real(h1)
                 j0=real(h0)
+
                 inn_ij=Ga.inner[i,j]
                 inn_ji=Ga.inner[j,i]
+
                 l1_ij=αL1*inn_ij*j1*invr
                 l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
-                dval_ij=aj*Rmat[gi,gj]*l1_ij+wj*l2_ij
+                dval_ij=Rmat[gi,gj]*l1_ij+wj*l2_ij
+
                 m1_ij=αM1*j0*sj
                 m2_ij=αM2*h0*sj-m1_ij*lt
-                sval_ij=aj*Rmat[gi,gj]*m1_ij+wj*m2_ij
+                sval_ij=Rmat[gi,gj]*m1_ij+wj*m2_ij
                 A[gi,gj]=-(dval_ij+ik*sval_ij)
+
                 l1_ji=αL1*inn_ji*j1*invr
                 l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
-                dval_ji=ai*Rmat[gj,gi]*l1_ji+wi*l2_ji
+                dval_ji=Rmat[gj,gi]*l1_ji+wi*l2_ji
+
                 m1_ji=αM1*j0*si
                 m2_ji=αM2*h0*si-m1_ji*lt
-                sval_ji=ai*Rmat[gj,gi]*m1_ji+wi*m2_ji
+                sval_ji=Rmat[gj,gi]*m1_ji+wi*m2_ji
                 A[gj,gi]=-(dval_ji+ik*sval_ji)
             end
         end
     end
+
     for a in 1:nc, b in 1:nc
         a==b && continue
         pa=pts[a]
@@ -415,6 +426,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
         dXb=getindex.(pb.tangent,1)
         dYb=getindex.(pb.tangent,2)
         sb=@. sqrt(dXb^2+dYb^2)
+
         @use_threads multithreading=multithreaded for j in 1:Nb
             gj=rb[j]
             xj=Xb[j]
@@ -423,6 +435,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             tyj=dYb[j]
             sj=sb[j]
             wj=pb.ws[j]
+
             @inbounds for i in 1:Na
                 gi=ra[i]
                 dx=Xa[i]-xj
@@ -440,6 +453,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             end
         end
     end
+
     return A
 end
 
