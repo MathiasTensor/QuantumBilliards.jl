@@ -258,7 +258,7 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
     iseven(N) && (N+=needed)
-    σ,ts,jac,jac2,ws=kress_graded_nodes_data(T,N;q=solver.kressq)
+    σ,ts,jac,jac2,ws=kress_graded_nodes_weights(T,N;q=solver.kressq)
     u=ts./two_pi
     xy=curve(crv,u)
     γu=tangent(crv,u)
