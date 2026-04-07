@@ -345,78 +345,49 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p,true) for p in pts]
     nc=length(pts)
-
     for a in 1:nc
         pa=pts[a]
         Ga=Gs[a]
         Na=length(pa.xy)
         ra=offs[a]:(offs[a+1]-1)
-
         @inbounds for i in 1:Na
-            #=
             gi=ra[i]
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            jac_i=pa.ws_der[i]
-
             dval=Complex{T}(wi*κi,zero(T))
-
-            m1=αM1*si
-            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2)+2*inv_two_pi*log(jac_i))*si
-            sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
-
-            A[gi,gi]=one(Complex{T})-(dval+ik*sval)
-            =#
-            gi=ra[i]
-            si=Ga.speed[i]
-            κi=Ga.kappa[i]
-            wi=pa.ws[i]
-
-            dval=Complex{T}(wi*κi,zero(T))
-
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
-
             A[gi,gi]=one(Complex{T})-(dval+ik*sval)
         end
-
         @use_threads multithreading=multithreaded for j in 2:Na
             gj=ra[j]
             sj=Ga.speed[j]
             wj=pa.ws[j]
-
             @inbounds for i in 1:(j-1)
                 gi=ra[i]
                 si=Ga.speed[i]
                 wi=pa.ws[i]
-
                 rij=Ga.R[i,j]
                 invr=Ga.invR[i,j]
                 lt=Ga.logterm[i,j]
-
                 h1=H(1,k*rij)
                 h0=H(0,k*rij)
                 j1=real(h1)
                 j0=real(h0)
-
                 inn_ij=Ga.inner[i,j]
                 inn_ji=Ga.inner[j,i]
-
                 l1_ij=αL1*inn_ij*j1*invr
                 l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
                 dval_ij=Rmat[gi,gj]*l1_ij+wj*l2_ij
-
                 m1_ij=αM1*j0*sj
                 m2_ij=αM2*h0*sj-m1_ij*lt
                 sval_ij=Rmat[gi,gj]*m1_ij+wj*m2_ij
                 A[gi,gj]=-(dval_ij+ik*sval_ij)
-
                 l1_ji=αL1*inn_ji*j1*invr
                 l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
                 dval_ji=Rmat[gj,gi]*l1_ji+wi*l2_ji
-
                 m1_ji=αM1*j0*si
                 m2_ji=αM2*h0*si-m1_ji*lt
                 sval_ji=Rmat[gj,gi]*m1_ji+wi*m2_ji
@@ -424,7 +395,6 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             end
         end
     end
-
     for a in 1:nc, b in 1:nc
         a==b && continue
         pa=pts[a]
@@ -440,7 +410,6 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
         dXb=getindex.(pb.tangent,1)
         dYb=getindex.(pb.tangent,2)
         sb=@. sqrt(dXb^2+dYb^2)
-
         @use_threads multithreading=multithreaded for j in 1:Nb
             gj=rb[j]
             xj=Xb[j]
@@ -449,7 +418,6 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             tyj=dYb[j]
             sj=sb[j]
             wj=pb.ws[j]
-
             @inbounds for i in 1:Na
                 gi=ra[i]
                 dx=Xa[i]-xj
@@ -658,33 +626,50 @@ end
 # Output:
 # - A figure object containing the visualizations of the boundary points, weights, and their derivatives
 function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CFIE_kress_corners};k=20.0,markersize=5) where {Bi<:AbsBilliard}
-    f=Figure(resolution=(1200,1200))
-    ax=Axis(f[1,1],title="boundary + point‐wise weights",aspect=DataAspect())
     pts_all=evaluate_points(solver,billiard,k)
-    N=length(pts_all)
-    for i in 1:N
+    ncomp=length(pts_all)
+    f=Figure(resolution=(1200,400+300*ncomp))
+    ax=Axis(f[1,1],title="boundary + point-wise weights",aspect=DataAspect())
+    cbslot=f[1,2]
+    sc=nothing
+    for i in 1:ncomp
         pts=pts_all[i]
         xs=getindex.(pts.xy,1)
         ys=getindex.(pts.xy,2)
         ws_pts=pts.ws
-        scatter!(ax,xs,ys;markersize=markersize,color=ws_pts,colormap=:viridis,strokewidth=0)
-        nxs=getindex.(pts.tangent,2)
-        nys=-getindex.(pts.tangent,1)
-        arrows!(ax,xs,ys,nxs,nys,color=:black,lengthscale=0.1)
-        ws_funs=[v->fill(one(eltype(v)),length(v))]
-        ws_der_funs=[v->fill(zero(eltype(v)),length(v))]
-        panels=length(ws_funs)
-        for j in 1:panels
-            row=2+div(j-1,2)
-            col=1+((j-1) % 2)
-            tloc=collect(range(0,1,length=200))
-            wline=ws_funs[j](tloc)
-            wderline=ws_der_funs[j](tloc)
-            a1=Axis(f[row,2*col-1],title="panel $j w(u)",xlabel="u",ylabel="w")
+        sc=scatter!(ax,xs,ys;markersize=markersize,color=ws_pts,colormap=:viridis,strokewidth=0)
+        tx=getindex.(pts.tangent,1)
+        ty=getindex.(pts.tangent,2)
+        arrows!(ax,xs,ys,tx,ty;color=:black,lengthscale=0.08,linewidth=1)
+    end
+    !isnothing(sc) && Colorbar(cbslot,sc,label="quadrature weight")
+    hidespines!(ax,:t,:r)
+    for j in 1:ncomp
+        pts=pts_all[j]
+        row=1+j
+        a1=Axis(f[row,1],title="component $j: ws",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws")
+        a2=Axis(f[row,2],title="component $j: ws_der",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws_der")
+        ts=pts.ts
+        ws=pts.ws
+        ws_der=pts.ws_der
+        scatter!(a1,ts,ws,markersize=7)
+        scatter!(a2,ts,ws_der,markersize=7)
+        if solver isa CFIE_kress
+            h=length(ts) > 1 ? ts[2]-ts[1] : 0.0
+            lines!(a1,ts,fill(h,length(ts)),linewidth=2)
+            lines!(a2,ts,fill(one(eltype(ts)),length(ts)),linewidth=2)
+        elseif solver isa CFIE_kress_corners
+            T=eltype(ts)
+            qT=T(solver.kressq)
+            tloc=collect(range(zero(T),T(2pi),length=800))
+            h=T(pi/((length(ts)+1)÷2))
+            wline=@. h*_kress_wprime(tloc,qT)
+            wderline=@. _kress_wprime(tloc,qT)
             lines!(a1,tloc,wline,linewidth=2)
-            a2=Axis(f[row,2*col],title="panel $j w′(u)",xlabel="u",ylabel="w′")
             lines!(a2,tloc,wderline,linewidth=2)
         end
+        hidespines!(a1,:t,:r)
+        hidespines!(a2,:t,:r)
     end
     return f
 end
