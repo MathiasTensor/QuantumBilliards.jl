@@ -353,6 +353,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
         ra=offs[a]:(offs[a+1]-1)
 
         @inbounds for i in 1:Na
+            #=
             gi=ra[i]
             si=Ga.speed[i]
             κi=Ga.kappa[i]
@@ -363,6 +364,19 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
 
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2)+2*inv_two_pi*log(jac_i))*si
+            sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
+
+            A[gi,gi]=one(Complex{T})-(dval+ik*sval)
+            =#
+            gi=ra[i]
+            si=Ga.speed[i]
+            κi=Ga.kappa[i]
+            wi=pa.ws[i]
+
+            dval=Complex{T}(wi*κi,zero(T))
+
+            m1=αM1*si
+            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
 
             A[gi,gi]=one(Complex{T})-(dval+ik*sval)
