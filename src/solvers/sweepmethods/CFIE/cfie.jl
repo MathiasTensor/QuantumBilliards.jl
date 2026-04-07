@@ -509,7 +509,8 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) wh
     invR[diagind(invR)].=zero(T)
     dX_row=reshape(dX,1,N)
     dY_row=reshape(dY,1,N)
-    inner=@. dY_row*ΔX-dX_row*ΔY
+    #inner=@. dY_row*ΔX-dX_row*ΔY
+    inner=@. dX_row*ΔY-dY_row*ΔX
     original_ts=Vector{T}(undef,N) # we need original ts before the grading for the log correction term,so we need to reconstruct them
     if corner_kress
         n=(N+1)÷2 # N is odd for Kress grading, so this is ok
