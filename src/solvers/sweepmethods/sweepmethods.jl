@@ -228,7 +228,7 @@ end
 
 # For BIM/CFIE_kress, refinement is controlled by boundary discretization (pts_scaling_factor).
 # dim_scaling_factor is only relevant for basis-type solvers and is ignored by some dispatches below.
-function _refine_objective(solver::UUnion{CFIE_kress,CFIE_kress_corners,BoundaryIntegralMethod,CFIE_alpert},basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
+function _refine_objective(solver::Union{CFIE_kress,CFIE_kress_corners,BoundaryIntegralMethod,CFIE_alpert},basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
         solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
