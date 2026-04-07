@@ -398,42 +398,6 @@ end
     return mod(t+T(pi),two_pi)-T(pi)
 end
 
-# trig_cardinal_weights!
-# Compute the trigonometric cardinal weights for a given query angle and periodic nodes. This is used to construct the shifted interpolation vectors for the periodic Alpert rule. The output vector `l` is modified in place.
-# Inputs:
-#   - l::AbstractVector{T} : Output vector to store the weights (length N).
-#   - θ::T : Angle for which to compute the weights.
-#   - ts::AbstractVector{T} : Periodic nodes on [0,1] mapped to angles (length N).
-# Outputs:
-#   - l : Modified in place to contain the trigonometric cardinal weights for interpolation at angle θ.
-function trig_cardinal_weights!(l::AbstractVector{T}, θ::T, ts::AbstractVector{T}) where {T<:Real}
-    N=length(ts)
-    fill!(l,zero(T))
-    @inbounds for j in 1:N
-        δ=wrap_diff(θ-ts[j])
-        if abs(δ)<=64*eps(T)
-            l[j]=one(T)
-            return l
-        end
-    end
-    invN=inv(T(N))
-    if isodd(N)
-        @inbounds for j in 1:N
-            δ=wrap_diff(θ-ts[j])
-            l[j]=invN*sin(T(N)*δ/2)/sin(δ/2)
-        end
-    else
-        @inbounds for j in 1:N
-            δ=wrap_diff(θ-ts[j])
-            l[j]=invN*sin(T(N)*δ/2)*cot(δ/2)
-        end
-    end
-    ssum=sum(l)
-    abs(ssum)>0 && (@. l=l/ssum)
-    return l
-end
-
-
 # 4-point equispaced Lagrange weights on local coordinate η ∈ [0,1),
 # using nodes at offsets -1, 0, 1, 2 relative to the local left node.
 #
@@ -493,7 +457,7 @@ end
 #   - rule::AlpertLogRule{T} : Alpert quadrature rule.
 # Outputs:
 #   - AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
-function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}) where {T<:Real}
+function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
@@ -752,7 +716,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         si=G.speed[i]
         κi=G.kappa[i]
         # diagonal
-        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T)) #TODO Check curvaature limit
         # DLP off-diagonal
         @inbounds for j in 1:N
             j==i && continue
@@ -825,7 +789,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T)) #TODO Check curvature limit
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -1012,7 +976,7 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             ui=Ca.us[i]
-            A[gi,gi]+=one(Complex{T})-Complex{T}(ha*si*κi,zero(T))
+            A[gi,gi]+=one(Complex{T})-Complex{T}(ha*si*κi,zero(T)) #TODO Check curvature on diagonal
             for m in eachindex(gmap)
                 bidx=gmap[m]
                 pb=pts[bidx]

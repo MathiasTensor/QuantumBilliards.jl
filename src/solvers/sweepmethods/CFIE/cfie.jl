@@ -547,7 +547,7 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T}) where {T<:Real}
     speed=@. sqrt(dX^2+dY^2)
     κnum=dX.*ddY.-dY.*ddX
     κden=dX.^2 .+ dY.^2
-    kappa=inv_two_pi.*(κnum./κden)
+    kappa=inv_two_pi.*(κnum./κden) #TODO Check limit, should ti be 1/(4*pi) ?
     return CFIEGeomCache(R,invR,inner,logterm,speed,kappa)
 end
 

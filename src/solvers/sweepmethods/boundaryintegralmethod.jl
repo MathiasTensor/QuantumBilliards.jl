@@ -1,6 +1,7 @@
 using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
 const TO=TimerOutput()
 const TWO_PI=2*pi
+const FOUR_PI=4*pi
 
 """
     struct BoundaryIntegralMethod{T<:Real}
@@ -169,15 +170,15 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreade
             dx=xi-xs[j];dy=yi-ys[j]
             d=sqrt(muladd(dx,dx,dy*dy)) # an efficient dy^2+dx*dx
             if d<tol
-                M[i,j]=Complex(curvatures[i]/TWO_PI)
+                M[i,j]=Complex(-curvatures[i]/TWO_PI) 
             else
                 invd=inv(d)
-                cos_phi=(nxi*dx+nyi*dy)*invd
+                cos_phi=(nx[j]*dx+ny[j]*dy)*invd
                 hankel=pref*Bessels.hankelh1(1,k*d)
                 M[i,j]=cos_phi*hankel
             end
             if i!=j
-                cos_phi_symmetric=(nx[j]*(-dx)+ny[j]*(-dy))*invd # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+                cos_phi_symmetric=(nx[i]*(-dx)+ny[i]*(-dy))*invd # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
                 M[j,i]=cos_phi_symmetric*hankel
             end
         end
@@ -220,7 +221,7 @@ if the pair was non-singular (distance² > tol2), `false` otherwise.
     invd=inv(d)
     h=pref*Bessels.hankelh1(1,k*d)
     @inbounds begin
-        M[i,j]+=scale*((nxi*dx+nyi*dy)*invd)*h
+       M[i,j]+=scale*((nxj*dx+nyj*dy)*invd)*h
     end
     return true
 end
@@ -299,30 +300,38 @@ function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded
             nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
             if !ok
-                K[i,j]+=Complex(κ[i]/TWO_PI)
+                K[i,j]+=Complex(-κ[i]/TWO_PI) 
             end
             if add_x
                 xr=_x_reflect(xj,shift_x)
                 yr=yj
-                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
+                nxr=-nxj
+                nyr=nyj
+                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sxgn)
             end
             if add_y
                 xr=xj
                 yr=_y_reflect(yj,shift_y)
-                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
+                nxr=nxj
+                nyr=-nyj
+                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sygn)
             end
             if add_xy
                 xr=_x_reflect(xj,shift_x)
                 yr=_y_reflect(yj,shift_y)
-                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
+                nxr=-nxj
+                nyr=-nyj
+                _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sxy)
             end
             if have_rot
                 @inbounds for l in 1:nrot-1
                     cl=ctab[l+1]
                     sl=stab[l+1]
                     xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
+                    nxr=cl*nxj-sl*nyj
+                    nyr=sl*nxj+cl*nyj
                     phase=χ[l+1]
-                    _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
+                    _add_pair_default!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=phase)
                 end
             end
         end
@@ -396,7 +405,7 @@ Computes the smallest singular value of the Fredholm matrix for a given configur
 - `T`: The smallest singular value / determinant of the Fredholm matrix.
 """
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis}
-    @blas_1 A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) 
+    A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) 
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
@@ -441,8 +450,7 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
-    u_mu=Vt[idx,:]
-    u_mu=real.(u_mu)
+    u_mu=conj.(Vt[idx,:])
     return mu,u_mu
 end
 
@@ -474,6 +482,8 @@ function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Ve
     end
     return us_all,pts_all
 end
+
+# FOR TESTING BELOW #
 
 #########################################################
 #### CONSTRUCTORS FOR COMPLEX ks - FOR BEYN's METHOD ####
@@ -514,7 +524,7 @@ end
     invd=inv(d)
     h=pref*SpecialFunctions.hankelh1(1,k*d)
     @inbounds begin
-        M[i,j]+=scale*((nxi*dx+nyi*dy)*invd)*h
+        M[i,j]+=scale*((nxj*dx+nyj*dy)*invd)*h
     end
     return true
 end
@@ -553,12 +563,12 @@ function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoin
         @inbounds for j in 1:i
             dx=xi-xs[j];dy=yi-ys[j];d2=muladd(dx,dx,dy*dy)
             if d2≤tol2
-                K[i,j]=Complex{T}(κ[i]/TWO_PI)
+                K[i,j]=Complex{T}(-κ[i]/TWO_PI)
             else
                 d=sqrt(d2);invd=inv(d);h=pref*SpecialFunctions.hankelh1(1,k*d)
-                K[i,j]=(nxi*dx+nyi*dy)*invd*h
+                K[i,j]=(nx[j]*dx+ny[j]*dy)*invd*h
                 if i!=j
-                    K[j,i]=(nx[j]*(-dx)+ny[j]*(-dy))*invd*h
+                    K[j,i]=(nx[i]*(-dx)+ny[i]*(-dy))*invd*h
                 end
             end
         end
@@ -630,25 +640,33 @@ function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoin
         @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
             xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
             ok=_add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
-            if !ok; K[i,j]+=Complex(κ[i]/TWO_PI); end
+            if !ok; K[i,j]+=Complex(-κ[i]/TWO_PI); end
             if add_x # reflect only over the x axis
                 xr=_x_reflect(xj,shift_x);yr=yj
-                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxgn)
+                nxr=-nxj
+                nyr=nyj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sxgn)
             end
             if add_y # reflect only over the y axis
                 xr=xj;yr=_y_reflect(yj,shift_y)
-                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sygn)
+                nxr=nxj
+                nyr=-nyj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sygn)
             end
             if add_xy # reflect over both the axes
                 xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
-                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=sxy)
+                nxr=-nxj
+                nyr=-nyj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sxy)
             end
             if have_rot
                 @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
                     cl=ctab[l+1];sl=stab[l+1]
                     xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
+                    nxr=cl*nxj-sl*nyj
+                    nyr=sl*nxj+cl*nyj
                     phase=χ[l+1]  # e^{i 2π m l / n}, rotations due to being 1d-irreps have real characters
-                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxj,nyj,k,tol2,pref;scale=phase)
+                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=phase)
                 end
             end
         end
