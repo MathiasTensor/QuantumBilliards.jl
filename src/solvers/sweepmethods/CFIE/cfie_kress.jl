@@ -630,7 +630,6 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CF
     ncomp=length(pts_all)
     f=Figure(resolution=(1200,400+300*ncomp))
     ax=Axis(f[1,1],title="boundary + point-wise weights",aspect=DataAspect())
-    cbslot=f[1,2]
     sc=nothing
     for i in 1:ncomp
         pts=pts_all[i]
@@ -642,13 +641,12 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CF
         ty=getindex.(pts.tangent,2)
         arrows!(ax,xs,ys,tx,ty;color=:black,lengthscale=0.08,linewidth=1)
     end
-    !isnothing(sc) && Colorbar(cbslot,sc,label="quadrature weight")
     hidespines!(ax,:t,:r)
     for j in 1:ncomp
         pts=pts_all[j]
-        row=1+j
+        row=2+j
         a1=Axis(f[row,1],title="component $j: ws",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws")
-        a2=Axis(f[row,2],title="component $j: ws_der",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws_der")
+        a2=Axis(f[row+1,1],title="component $j: ws_der",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws_der")
         ts=pts.ts
         ws=pts.ws
         ws_der=pts.ws_der
