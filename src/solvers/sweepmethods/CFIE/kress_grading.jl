@@ -61,7 +61,7 @@ end
     return T(TWO_PI*(nump*den-2*num*denp)/den^3)
 end
 # Computes the Kress graded nodes and weights for a given number of points `N` and grading parameter `q`.
-function kress_graded_nodes_data(::Type{T},N::Int;q=8) where {T<:Real}
+function kress_graded_nodes_weights(::Type{T},N::Int;q=8) where {T<:Real}
     isodd(N) || error("Use odd N = 2n-1 for the Kress corner grading formula.")
     n=(N+1)÷2 # ok
     qT=T(q)
