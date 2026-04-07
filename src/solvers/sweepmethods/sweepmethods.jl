@@ -77,7 +77,37 @@ function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;mu
     p=Progress(length(ks),1)
     res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     next!(p)
-    Rmat=build_Rmat_CFIE(pts)
+    Rmat=build_Rmat_kress(solver,pts)
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
+        is_calculating=true 
+        while is_calculating
+            try
+                res[i]=solve(solver,new_basis,pts,ks[i],Rmat;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+                is_calculating=false
+            catch e
+                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
+            end
+        end
+        next!(p)
+    end
+    return res
+end
+
+function _k_sweep(solver::CFIE_kress_corners,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+    kmax=maximum(ks)
+    dim=_sweep_dim(solver,billiard,ks)
+    new_basis=resize_basis(basis,billiard,dim,kmax)
+    pts=evaluate_points(solver,billiard,kmax)
+    if which==:det
+        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
+    else
+        res=similar(ks)
+    end
+    println("$(nameof(typeof(solver))) sweep...")
+    p=Progress(length(ks),1)
+    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    next!(p)
+    Rmat=build_Rmat_kress(solver,pts)
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
         is_calculating=true 
         while is_calculating
@@ -198,21 +228,7 @@ end
 
 # For BIM/CFIE_kress, refinement is controlled by boundary discretization (pts_scaling_factor).
 # dim_scaling_factor is only relevant for basis-type solvers and is ignored by some dispatches below.
-function _refine_objective(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
-    return k->begin
-        pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    end
-end
-
-function _refine_objective(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
-    return k->begin
-        pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    end
-end
-
-function _refine_objective(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
+function _refine_objective(solver::UUnion{CFIE_kress,CFIE_kress_corners,BoundaryIntegralMethod,CFIE_alpert},basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
     return k->begin
         pts=evaluate_points(solver,billiard,k)
         solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)

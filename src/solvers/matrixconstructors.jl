@@ -100,6 +100,30 @@ function dk_matrix(basis::Ba,k,pts::Vector{SVector{2,T}};multithreaded::Bool=tru
     return filter_matrix!(dB_dk)
 end
 
+"""
+    weighted_matrix!(M::AbstractMatrix{Complex{T}},ds::AbstractVector{T}) -> Nothing
+
+Weights the matrix `M` in-place by the square root of the weights.
+
+# Arguments
+- `M::AbstractMatrix{Complex{T}}`: The kernel matrix to be weighted.
+- `ws::AbstractVector{T}`: The vector of weights at each boundary point.
+
+# Returns
+- `Nothing`: The function modifies the matrix `M` in-place.
+"""
+function weighted_matrix!(M::AbstractMatrix{Complex{T}},ws::AbstractVector{T}) where {T<:Real}
+    ws=sqrt.(ws)
+    Winv=1.0./ws
+    for i in axes(M,1) # left multiply by W
+        @views M[i,:].*=ws[i]
+    end
+    for j in axes(M,2) # right multiply by W^{-1}
+        @views M[:,j].*=Winv[j]
+    end
+    return M
+end
+
 # INTERNAL FUNCTIONS
 ###################################################
 #### INPLACE FUNCTIONS FOR MATRIX CONSTRUCTION ####
