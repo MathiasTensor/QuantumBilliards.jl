@@ -244,7 +244,7 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{<:AbstractMatrix{Comple
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        diagv=1.0-(h*si*κi)
+        diagv=1.0+h*si*κi
         @inbounds for m in 1:Mk
             As[m][gi,gi]+=diagv
         end
@@ -324,7 +324,7 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
         si=G.speed[i]
         κi=G.kappa[i]
         ui=C.us[i]
-        diagv=1.0-(h*si*κi)
+        diagv=1.0+h*si*κi
         @inbounds for m in 1:Mk
             As[m][gi,gi]+=diagv
         end
@@ -425,8 +425,6 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
         Ga=Gs[aidx]
         Ca=Cs[aidx]
         ra=offs[aidx]:(offs[aidx+1]-1)
-        #Xa=getindex.(pa.xy,1)
-        #Ya=getindex.(pa.xy,2)
         Xa=block_cache.Xs[aidx]
         Ya=block_cache.Ys[aidx]
         Na=length(pa.xy)
@@ -452,7 +450,7 @@ function _assemble_self_alpert_composite_component_cheb!(solver::CFIE_alpert{T},
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             ui=Ca.us[i]
-            diagv=1.0-(ha*si*κi)
+            diagv=1.0+ha*si*κi
             @inbounds for m in 1:Mk
                 As[m][gi,gi]+=diagv
             end

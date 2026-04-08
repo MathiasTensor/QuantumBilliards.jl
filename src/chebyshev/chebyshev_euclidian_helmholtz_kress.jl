@@ -264,7 +264,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         gi=ro+j-1;κj=blk.kappa_i[j];rjj=blk.Rkress[j,j]
         @inbounds for m in 1:Mk
             km=ks[m]
-            dval=ComplexF64(wj*κj,0.0)
+            dval= -ComplexF64(wj*κj,0.0)
             m1=αM1*sj
             m2=((0.5im-_EULER_OVER_PI)-_INV_TWO_PI*log((km^2/4)*(sj^2)))*sj
             sval=ComplexF64(rjj*m1,0.0)+wj*m2
