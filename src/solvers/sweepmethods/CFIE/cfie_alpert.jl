@@ -430,6 +430,38 @@ end
     return w
 end
 
+@inline function _fft_freqs(T::Type,N::Int)
+    k=Vector{Int}(undef,N)
+    n2=N÷2
+    @inbounds for j in 1:N
+        m=j-1
+        k[j]=(m<=n2) ? m : (m-N)
+    end
+    return k
+end
+
+function _trig_coeffs(vals::AbstractVector{T}) where {T<:Real}
+    N=length(vals)
+    return fft(complex.(vals))./T(N)
+end
+
+@inline function _eval_trig_series(c::AbstractVector{Complex{T}},ks::AbstractVector{Int},θ::T) where {T<:Real}
+    s=zero(Complex{T})
+    @inbounds for j in eachindex(c)
+        s+=c[j]*exp(im*T(ks[j])*θ)
+    end
+    return s
+end
+
+function _eval_shifted_source_periodic_trig(θ::T,Xhat::AbstractVector{Complex{T}},Yhat::AbstractVector{Complex{T}},dXhat::AbstractVector{Complex{T}},dYhat::AbstractVector{Complex{T}},ks::AbstractVector{Int}) where {T<:Real}
+    x=real(_eval_trig_series(Xhat,ks,θ))
+    y=real(_eval_trig_series(Yhat,ks,θ))
+    tx=real(_eval_trig_series(dXhat,ks,θ))
+    ty=real(_eval_trig_series(dYhat,ks,θ))
+    s=sqrt(tx*tx+ty*ty)
+    return x,y,tx,ty,s
+end
+
 # Build a symmetric local stencil of size p around the interval anchor.
 # For p even, this returns offsets:
 #   -(p÷2-1), ..., -1, 0, 1, ..., p÷2
@@ -440,6 +472,24 @@ end
     iseven(p) || error("Interpolation stencil size p must be even.")
     q=p÷2
     return collect(-(q-1):q)
+end
+
+@inline function _periodic_localp_stencil_weights(θ::T,h::T,N::Int,p::Int,Tp::Type{T}) where {T<:Real}
+    u=θ/h-one(T)
+    u<zero(T) && (u+=T(N))
+    u>=T(N) && (u-=T(N))
+    i0=floor(Int,u)
+    η=u-T(i0)
+    i=i0+1
+    i>N && (i-=N)
+    offs=_local_offsets(p)
+    nodes=T.(offs)
+    wt=_lagrange_weights(η,nodes)
+    idx=Vector{Int}(undef,p)
+    @inbounds for m in 1:p
+        idx[m]=mod1(i+offs[m],N)
+    end
+    return idx,wt
 end
 
 # Periodic local-p interpolation of shifted source data.
@@ -491,13 +541,6 @@ end
     return x,y,tx,ty,s,idx,wt
 end
 
-# _build_alpert_periodic_cache
-# Precompute the necessary data for applying the periodic Alpert rule to a simple billiard boundary. This includes the shifted interpolation vectors and the corresponding geometry for the shifted points. This cache is used to efficiently apply the periodic Alpert correction during matrix assembly.
-# Inputs:
-#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization.
-#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
-# Outputs:
-#   - AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
 function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
     iseven(p) || error("Periodic Alpert interpolation stencil size p must be even.")
     X=getindex.(pts.xy,1)
@@ -509,6 +552,11 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     p<=N || error("Periodic Alpert interpolation stencil size p must satisfy p <= N.")
     jcorr=rule.j
     h=pts.ws[1]
+    Xhat=_trig_coeffs(X)
+    Yhat=_trig_coeffs(Y)
+    dXhat=_trig_coeffs(dX)
+    dYhat=_trig_coeffs(dY)
+    ks=_fft_freqs(T,N)
     xp=Matrix{T}(undef,jcorr,N)
     yp=similar(xp)
     txp=similar(xp)
@@ -527,23 +575,25 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
         Δt=h*rule.x[q]
         for i in 1:N
             θp=wrap_angle(ts[i]+Δt)
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_localp(θp,ts,h,X,Y,dX,dY,p)
+            x,y,tx,ty,s=_eval_shifted_source_periodic_trig(θp,Xhat,Yhat,dXhat,dYhat,ks)
             xp[q,i]=x
             yp[q,i]=y
             txp[q,i]=tx
             typ[q,i]=ty
             sp[q,i]=s
+            idx,wt=_periodic_localp_stencil_weights(θp,h,N,p,T)
             for m in 1:p
                 idxp[q,i,m]=idx[m]
                 wtp[q,i,m]=wt[m]
             end
             θm=wrap_angle(ts[i]-Δt)
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_localp(θm,ts,h,X,Y,dX,dY,p)
+            x,y,tx,ty,s=_eval_shifted_source_periodic_trig(θm,Xhat,Yhat,dXhat,dYhat,ks)
             xm[q,i]=x
             ym[q,i]=y
             txm[q,i]=tx
             tym[q,i]=ty
             sm[q,i]=s
+            idx,wt=_periodic_localp_stencil_weights(θm,h,N,p,T)
             for m in 1:p
                 idxm[q,i,m]=idx[m]
                 wtm[q,i,m]=wt[m]
