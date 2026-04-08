@@ -784,7 +784,7 @@ end
 
 function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}, p::Int) where {T<:Real}
     if pts.is_periodic
-        return _build_alpert_periodic_cache(pts, rule)   # no p needed
+        return _build_alpert_periodic_cache(pts, rule, p)   # no p needed
     else
         return _build_alpert_smooth_panel_cache(pts, rule, p)
     end
