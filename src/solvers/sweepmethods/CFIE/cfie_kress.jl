@@ -238,7 +238,8 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
     αL2=k/2*im
     αM1=-inv_two_pi
     αM2=Complex{T}(0,one(T)/2)
-    ik=k*im
+    #ik=k*im
+    ik=im*2*k
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p) for p in pts]
     nc=length(pts)
