@@ -226,8 +226,44 @@ end
 
 ############ REFINEMENT ############
 
+function _refine_objective(solver::Union{CFIE_kress,CFIE_kress_corners,BoundaryIntegralMethod,CFIE_alpert},
+    basis::AbsBasis,billiard::AbsBilliard;
+    multithreaded_matrices::Bool=true,
+    use_krylov::Bool=true,
+    which::Symbol=:svd)
+    return k->begin
+        pts=evaluate_points(solver,billiard,k)
+        solve(solver,basis,pts,k;
+            multithreaded=multithreaded_matrices,
+            use_krylov=use_krylov,
+            which=which)
+    end
+end
+
+function _refine_objective(solver::DecompositionMethod,
+    basis::AbsBasis,billiard::AbsBilliard;
+    multithreaded_matrices::Bool=true)
+    return k->begin
+        dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+        new_basis=resize_basis(basis,billiard,dim,k)
+        pts=evaluate_points(solver,billiard,k)
+        solve(solver,new_basis,pts,k;multithreaded=multithreaded_matrices)
+    end
+end
+
+function _refine_objective(solver::ParticularSolutionsMethod,
+    basis::AbsBasis,billiard::AbsBilliard;
+    multithreaded_matrices::Bool=true)
+    return k->begin
+        dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
+        new_basis=resize_basis(basis,billiard,dim,k)
+        pts=evaluate_points(solver,billiard,k)
+        solve(solver,new_basis,pts,k;multithreaded=multithreaded_matrices)
+    end
+end
+
 # Helper function to scale a field of the solver if it exists, otherwise return the solver unchanged. This basically disambigues PSM and DM from BIE type solvers since the latter dont have the associated basis to scale.
-function _maybe_scale_field(obj,field::Symbol,factor)
+function _try_scaling_field(obj,field::Symbol,factor)
     try
         return update_field(obj,field,factor*getfield(obj,field))
     catch _
@@ -236,8 +272,8 @@ function _maybe_scale_field(obj,field::Symbol,factor)
 end
 
 function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
-    s=_maybe_scale_field(solver,:pts_scaling_factor,pts_factor)
-    s=_maybe_scale_field(s,:dim_scaling_factor,dim_factor)
+    s=_try_scaling_field(solver,:pts_scaling_factor,pts_factor)
+    s=_try_scaling_field(s,:dim_scaling_factor,dim_factor)
     return s
 end
 
