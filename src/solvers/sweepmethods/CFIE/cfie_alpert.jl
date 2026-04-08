@@ -794,15 +794,12 @@ function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::Alper
     return AlpertSmoothPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
-# _build_alpert_component_cache
-# Dispatch to the appropriate cache builder based on whether the boundary is periodic or panelized.
-# Inputs:
-#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization.
-#   - rule::AlpertLogRule{T} : Alpert quadrature rule.
-# Outputs:
-#   - AlpertComponentCache{T} : Precomputed cache for the Alpert rule, either periodic or panel-based.
-function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
-    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule,p) : _build_alpert_smooth_panel_cache(pts,rule,p)
+function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}, p::Int) where {T<:Real}
+    if pts.is_periodic
+        return _build_alpert_periodic_cache(pts, rule)   # no p needed
+    else
+        return _build_alpert_smooth_panel_cache(pts, rule, p)
+    end
 end
 
 ###########################################################
