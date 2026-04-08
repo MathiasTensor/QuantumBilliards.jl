@@ -1430,7 +1430,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     fill!(A,zero(Complex{T}))
     rule=alpert_log_rule(T,solver.alpert_order)
     Gs=[cfie_geom_cache(p) for p in pts]
-    pinterp=solver.alpert_order
+    pinterp=max(8,solver.alpert_order)
     Cs=[_build_alpert_component_cache(pts[a],rule,pinterp) for a in eachindex(pts)]
     nc=length(pts)
     topo_data=build_join_topology(pts)
@@ -1630,7 +1630,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         fill!(A,zero(Complex{T}))
         Gs=[cfie_geom_cache(p) for p in pts]
         rule=alpert_log_rule(T,solver.alpert_order)
-        pinterp=solver.alpert_order
+        pinterp=max(8,solver.alpert_order)
         Cs=[_build_alpert_component_cache(pts[a],rule,pinterp) for a in eachindex(pts)]
         nc=length(pts)
         topo_data=build_join_topology(pts)
