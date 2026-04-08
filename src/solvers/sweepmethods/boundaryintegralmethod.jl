@@ -406,7 +406,6 @@ Computes the smallest singular value of the Fredholm matrix for a given configur
 """
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis}
     A=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded) 
-    weighted_matrix!(A,pts.ds)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 

@@ -257,7 +257,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
-            A[gi,gi]=one(Complex{T})-(dval-ik*sval) #
+            A[gi,gi]=one(Complex{T})-(dval+ik*sval)
         end
         @use_threads multithreading=multithreaded for j in 2:Na
             gj=ra[j]
@@ -281,7 +281,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
                 m1_ij=αM1*j0*sj
                 m2_ij=αM2*h0*sj-m1_ij*lt
                 sval_ij=Rmat[gi,gj]*m1_ij+wj*m2_ij
-                A[gi,gj]=-(dval_ij-ik*sval_ij) #
+                A[gi,gj]=-(dval_ij+ik*sval_ij)
                 wi=pa.ws[i]
                 l1_ji=αL1*inn_ji*j1*invr
                 l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
@@ -289,7 +289,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
                 m1_ji=αM1*j0*si
                 m2_ji=αM2*h0*si-m1_ji*lt
                 sval_ji=Rmat[gj,gi]*m1_ji+wi*m2_ji
-                A[gj,gi]=-(dval_ji-ik*sval_ji) #
+                A[gj,gi]=-(dval_ji+ik*sval_ji)
             end
         end
     end
@@ -329,7 +329,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
                 h0=H(0,k*r)
                 dval=wj*(αL2*inn*h1*invr)
                 sval=wj*(αM2*h0*sj)
-                A[gi,gj]=-(dval-ik*sval) #
+                A[gi,gj]=-(dval+ik*sval)
             end
         end
     end
