@@ -277,7 +277,7 @@ function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
     return s
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
@@ -295,7 +295,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     histories=Vector{Vector{NamedTuple}}(undef,nk)
     dk0=(N>=2) ? abs(ks[2]-ks[1]) : T(initial_refinement_interval) # set initial window based on spacing of ks, or a default small value if only one k is given
     p=Progress(nk;desc="Refining minima (multilevel)...")
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx)
+    for i in eachindex(ks_approx)
         kcur=ks_approx[i]
         window=dk0
         hist=NamedTuple[]
