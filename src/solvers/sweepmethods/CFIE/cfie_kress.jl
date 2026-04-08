@@ -237,6 +237,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
             gi=ra[i]
             si=Ga.speed[i]
             κi=Ga.kappa[i]
+            println(κi)
             wi=pa.ws[i]
             dval= Complex{T}(wi*κi,zero(T)) # +/- horrible diabmiguity here due to how we construct the final matrix. Took forever to debug this
             m1=αM1*si
