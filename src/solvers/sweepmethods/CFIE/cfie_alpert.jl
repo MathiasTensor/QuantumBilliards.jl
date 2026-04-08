@@ -361,7 +361,7 @@
 # =============================================================================
 
 struct AlpertPeriodicCache{T<:Real}
-    xp::Matrix{T}        # jcorr × N
+    xp::Matrix{T}
     yp::Matrix{T}
     txp::Matrix{T}
     typ::Matrix{T}
@@ -371,8 +371,10 @@ struct AlpertPeriodicCache{T<:Real}
     txm::Matrix{T}
     tym::Matrix{T}
     sm::Matrix{T}
-    Wp::Array{T,3}       # jcorr × N × N   density interp weights for +
-    Wm::Array{T,3}       # jcorr × N × N   density interp weights for -
+    idxp::Array{Int,3}
+    wtp::Array{T,3}
+    idxm::Array{Int,3}
+    wtm::Array{T,3}
 end
 
 @inline function _scatter_localp!(A::AbstractMatrix{Complex{T}},gi::Int,col_range::UnitRange{Int},coeff::Complex{T},idx,wt) where {T<:Real}
@@ -427,7 +429,7 @@ end
     return w
 end
 
-@inline function _fft_freqs(::Type{T}, N::Int) where {T<:Real}
+@inline function _fft_freqs(::Type{T},N::Int) where {T<:Real}
     k=Vector{Int}(undef,N)
     if iseven(N)
         n2=N÷2
@@ -464,7 +466,7 @@ end
 
 function _trig_coeffs(vals::AbstractVector{T}) where {T<:Real}
     N=length(vals)
-    vals0=circshift(vals,1)   # [f(0), f(h), ..., f((N-1)h)]
+    vals0=circshift(vals,1)
     return fft(complex.(vals0))./T(N)
 end
 
@@ -476,7 +478,7 @@ end
     return s
 end
 
-function _eval_shifted_source_periodic_trig(θ::T,Xhat::AbstractVector{Complex{T}},Yhat::AbstractVector{Complex{T}},dXhat::AbstractVector{Complex{T}},dYhat::AbstractVector{Complex{T}},ks::AbstractVector{Int}) where {T<:Real}
+@inline function _eval_shifted_source_periodic_trig(θ::T,Xhat::AbstractVector{Complex{T}},Yhat::AbstractVector{Complex{T}},dXhat::AbstractVector{Complex{T}},dYhat::AbstractVector{Complex{T}},ks::AbstractVector{Int}) where {T<:Real}
     x=real(_eval_trig_series(Xhat,ks,θ))
     y=real(_eval_trig_series(Yhat,ks,θ))
     tx=real(_eval_trig_series(dXhat,ks,θ))
@@ -497,7 +499,9 @@ end
     return collect(-(q-1):q)
 end
 
-@inline function _periodic_localp_stencil_weights(θ::T,h::T,N::Int,p::Int,Tp::Type{T}) where {T<:Real}
+@inline function _periodic_localp_stencil_weights(θ::T,h::T,N::Int,p::Int) where {T<:Real}
+    iseven(p) || error("p must be even.")
+    p<=N || error("p must satisfy p <= N.")
     u=θ/h-one(T)
     u<zero(T) && (u+=T(N))
     u>=T(N) && (u-=T(N))
@@ -564,74 +568,58 @@ end
     return x,y,tx,ty,s,idx,wt
 end
 
-function _build_alpert_periodic_cache(
-    pts::BoundaryPointsCFIE{T},
-    rule::AlpertLogRule{T}
-) where {T<:Real}
-
-    X  = getindex.(pts.xy, 1)
-    Y  = getindex.(pts.xy, 2)
-    dX = getindex.(pts.tangent, 1)
-    dY = getindex.(pts.tangent, 2)
-
-    ts = pts.ts
-    N  = length(ts)
-    jcorr = rule.j
-    h = pts.ws[1]
-
-    Xhat  = _trig_coeffs(X)
-    Yhat  = _trig_coeffs(Y)
-    dXhat = _trig_coeffs(dX)
-    dYhat = _trig_coeffs(dY)
-    ks    = _fft_freqs(T, N)
-
-    xp  = Matrix{T}(undef, jcorr, N)
-    yp  = similar(xp)
-    txp = similar(xp)
-    typ = similar(xp)
-    sp  = similar(xp)
-
-    xm  = similar(xp)
-    ym  = similar(xp)
-    txm = similar(xp)
-    tym = similar(xp)
-    sm  = similar(xp)
-
-    Wp = Array{T,3}(undef, jcorr, N, N)
-    Wm = Array{T,3}(undef, jcorr, N, N)
-
+function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
+    iseven(p) || error("Periodic interpolation stencil size p must be even.")
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    dX=getindex.(pts.tangent,1)
+    dY=getindex.(pts.tangent,2)
+    ts=pts.ts
+    N=length(ts)
+    p<=N || error("Periodic interpolation stencil size p must satisfy p<=N.")
+    jcorr=rule.j
+    h=pts.ws[1]
+    Xhat=_trig_coeffs(X)
+    Yhat=_trig_coeffs(Y)
+    dXhat=_trig_coeffs(dX)
+    dYhat=_trig_coeffs(dY)
+    ks=_fft_freqs(T,N)
+    xp=Matrix{T}(undef,jcorr,N)
+    yp=similar(xp)
+    txp=similar(xp)
+    typ=similar(xp)
+    sp=similar(xp)
+    xm=similar(xp)
+    ym=similar(xp)
+    txm=similar(xp)
+    tym=similar(xp)
+    sm=similar(xp)
+    idxp=Array{Int,3}(undef,jcorr,N,p)
+    idxm=Array{Int,3}(undef,jcorr,N,p)
+    wtp=Array{T,3}(undef,jcorr,N,p)
+    wtm=Array{T,3}(undef,jcorr,N,p)
     @inbounds for q in 1:jcorr
-        Δ = h * rule.x[q]
+        Δt=h*rule.x[q]
         for i in 1:N
-            θp = wrap_angle(ts[i] + Δ)
-            x,y,tx,ty,s = _eval_shifted_source_periodic_trig(θp, Xhat, Yhat, dXhat, dYhat, ks)
-            xp[q,i]  = x
-            yp[q,i]  = y
-            txp[q,i] = tx
-            typ[q,i] = ty
-            sp[q,i]  = s
-
-            wp = periodic_trig_weights(T, θp, N)
-            for j in 1:N
-                Wp[q,i,j] = wp[j]
+            θp=wrap_angle(ts[i]+Δt)
+            x,y,tx,ty,s=_eval_shifted_source_periodic_trig(θp,Xhat,Yhat,dXhat,dYhat,ks)
+            xp[q,i]=x;yp[q,i]=y;txp[q,i]=tx;typ[q,i]=ty;sp[q,i]=s
+            idx,wt=_periodic_localp_stencil_weights(θp,h,N,p)
+            for m in 1:p
+                idxp[q,i,m]=idx[m]
+                wtp[q,i,m]=wt[m]
             end
-
-            θm = wrap_angle(ts[i] - Δ)
-            x,y,tx,ty,s = _eval_shifted_source_periodic_trig(θm, Xhat, Yhat, dXhat, dYhat, ks)
-            xm[q,i]  = x
-            ym[q,i]  = y
-            txm[q,i] = tx
-            tym[q,i] = ty
-            sm[q,i]  = s
-
-            wm = periodic_trig_weights(T, θm, N)
-            for j in 1:N
-                Wm[q,i,j] = wm[j]
+            θm=wrap_angle(ts[i]-Δt)
+            x,y,tx,ty,s=_eval_shifted_source_periodic_trig(θm,Xhat,Yhat,dXhat,dYhat,ks)
+            xm[q,i]=x;ym[q,i]=y;txm[q,i]=tx;tym[q,i]=ty;sm[q,i]=s
+            idx,wt=_periodic_localp_stencil_weights(θm,h,N,p)
+            for m in 1:p
+                idxm[q,i,m]=idx[m]
+                wtm[q,i,m]=wt[m]
             end
         end
     end
-
-    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,Wp,Wm)
+    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
 ###########################################
@@ -806,88 +794,69 @@ end
 ################ SELF ALPERT ASSEMBLY #####################
 ###########################################################
 
-function _assemble_self_alpert_periodic!(
-    A::AbstractMatrix{Complex{T}},
-    pts::BoundaryPointsCFIE{T},
-    G::CFIEGeomCache{T},
-    C::AlpertPeriodicCache{T},
-    row_range::UnitRange{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true
-) where {T<:Real}
-    @info "in here"
-    αD = Complex{T}(0, k/2)
-    αS = Complex{T}(0, one(T)/2)
-    ik = Complex{T}(0, k)
-
-    X = getindex.(pts.xy,1)
-    Y = getindex.(pts.xy,2)
-
-    N = length(pts.ts)
-    a = rule.a
-    jcorr = rule.j
-    h = pts.ws[1]
-
+function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    N=length(pts.ts)
+    a=rule.a
+    jcorr=rule.j
+    h=pts.ws[1]
+    pinterp=size(C.idxp,3)
     @use_threads multithreading=multithreaded for i in 1:N
-        gi = row_range[i]
-        xi = X[i]
-        yi = Y[i]
-        si = G.speed[i]
-        κi = G.kappa[i]
+        gi=row_range[i]
+        xi=X[i]
+        yi=Y[i]
+        si=G.speed[i]
+        κi=G.kappa[i]
 
-        # diagonal
-        A[gi,gi] += one(Complex{T}) - Complex{T}(h*si*κi, zero(T))
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
 
-        # DLP off-diagonal
         @inbounds for j in 1:N
-            j == i && continue
-            gj = row_range[j]
-            rij  = G.R[i,j]
-            inn  = G.inner[i,j]
-            invr = G.invR[i,j]
-            A[gi,gj] -= h * (αD * inn * H(1, k*rij) * invr)
+            j==i && continue
+            gj=row_range[j]
+            rij=G.R[i,j]
+            inn=G.inner[i,j]
+            invr=G.invR[i,j]
+            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
 
-        # SLP far trapezoid
         @inbounds for j in 1:N
-            j == i && continue
-            m = j - i
-            m >  N÷2 && (m -= N)
-            m < -N÷2 && (m += N)
-            abs(m) < a && continue
-            gj = row_range[j]
-            A[gi,gj] -= ik * (h * (αS * H(0, k*G.R[i,j]) * G.speed[j]))
+            j==i && continue
+            m=j-i
+            m>N÷2 && (m-=N)
+            m<-N÷2 && (m+=N)
+            abs(m)<a && continue
+            gj=row_range[j]
+            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
 
-        # SLP near Alpert replacement
         @inbounds for q in 1:jcorr
-            fac = h * rule.w[q]
+            fac=h*rule.w[q]
 
-            # plus auxiliary node
-            dx = xi - C.xp[q,i]
-            dy = yi - C.yp[q,i]
-            r  = sqrt(dx*dx + dy*dy)
-            if isfinite(r) && r > sqrt(eps(T))
-                coeff = -ik * (fac * (αS * H(0, k*r) * C.sp[q,i]))
-                for j in 1:N
-                    A[gi,row_range[j]] += coeff * C.Wp[q,i,j]
+            dx=xi-C.xp[q,i]
+            dy=yi-C.yp[q,i]
+            r=sqrt(dx*dx+dy*dy)
+            if isfinite(r) && r>sqrt(eps(T))
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[q,i]))
+                for m in 1:pinterp
+                    A[gi,row_range[C.idxp[q,i,m]]]+=coeff*C.wtp[q,i,m]
                 end
             end
 
-            # minus auxiliary node
-            dx = xi - C.xm[q,i]
-            dy = yi - C.ym[q,i]
-            r  = sqrt(dx*dx + dy*dy)
-            if isfinite(r) && r > sqrt(eps(T))
-                coeff = -ik * (fac * (αS * H(0, k*r) * C.sm[q,i]))
-                for j in 1:N
-                    A[gi,row_range[j]] += coeff * C.Wm[q,i,j]
+            dx=xi-C.xm[q,i]
+            dy=yi-C.ym[q,i]
+            r=sqrt(dx*dx+dy*dy)
+            if isfinite(r) && r>sqrt(eps(T))
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[q,i]))
+                for m in 1:pinterp
+                    A[gi,row_range[C.idxm[q,i,m]]]+=coeff*C.wtm[q,i,m]
                 end
             end
         end
     end
-
     return A
 end
 
@@ -1276,7 +1245,7 @@ end
 #   - CFIEAlpertWorkspace containing all precomputed data for assembly.
 function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     rule=alpert_log_rule(T,solver.alpert_order)
-    pinterp=solver.alpert_order
+    pinterp=max(8,solver.alpert_order)
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
     Cs=[_build_alpert_component_cache(p,rule,pinterp) for p in pts]
@@ -1288,7 +1257,7 @@ function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{Boundary
     else
         topos,gmaps=topo_data
         panel_to_comp=zeros(Int,length(pts))
-        @inbounds for c in eachindex(gmaps), a in gmaps[c]
+        @inbounds for c in eachindex(gmaps),a in gmaps[c]
             panel_to_comp[a]=c
         end
     end
