@@ -801,6 +801,7 @@ end
 # Outputs:
 #   - A : Modified in place with the self-interaction block assembled using the periodic Alpert rule.
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
+    @info "Assembling self-interaction block with periodic Alpert correction..."
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
