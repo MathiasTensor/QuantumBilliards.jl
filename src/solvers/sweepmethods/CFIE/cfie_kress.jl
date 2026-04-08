@@ -238,8 +238,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
     αL2=k/2*im
     αM1=-inv_two_pi
     αM2=Complex{T}(0,one(T)/2)
-    #ik=k*im
-    ik=im*2*k
+    ik=k*im
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p) for p in pts]
     nc=length(pts)
@@ -253,7 +252,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            dval=Complex{T}(wi*κi,zero(T))
+            dval= -Complex{T}(wi*κi,zero(T))
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
@@ -342,7 +341,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
     αL2=Complex{T}(0,k/2)
     αM1=-inv_two_pi
     αM2=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
+    ik=im*k
     fill!(A,zero(Complex{T}))
     Gs=[cfie_geom_cache(p,true) for p in pts]
     nc=length(pts)
@@ -356,7 +355,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            dval=Complex{T}(wi*κi,zero(T))
+            dval= -Complex{T}(wi*κi,zero(T))
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
@@ -436,7 +435,6 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             end
         end
     end
-
     return A
 end
 

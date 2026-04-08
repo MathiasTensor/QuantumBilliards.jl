@@ -22,7 +22,10 @@
 # estimate_rmin_rmax - helper function to estimate suitable rmin and rmax values for Chebyshev plans based on geometry size.
 #      Critical to evaluate the chebyshev tables with enough panels and polynomial degree to reach high accuracy in the highly 
 #      oscillatory regime of large k*r values.
-# M0/30/10/25
+# M0/8/4/26
+
+const TWO_PI=2*pi
+const INV_TWO_PI=inv(TWO_PI)
 
 #################################################################################
 # Evaluate unscaled hankel functions hankelh1(...) for multiple complex k values hidden (used) in plans at a given r.
@@ -67,11 +70,11 @@ end
 # is well-behaved and does not need special treatment.
 #################################################################################
 @inline function _accum_dlp_default_nosym!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,nxi::T,nyi::T,nxj::T,nyj::T,dx::T,dy::T,invr::T,h::Complex{T}) where {T<:Real}
-    dot_i=(nxi*dx+nyi*dy)*invr
-    @inbounds K[i,j]+=dot_i*h
+    dot_src_j=(nxj*dx+nyj*dy)*invr
+    @inbounds K[i,j]+=dot_src_j*h
     if i!=j
-        dot_j=(nxj*(-dx)+nyj*(-dy))*invr
-        @inbounds K[j,i]+=dot_j*h
+        dot_src_i=(nxi*(-dx)+nyi*(-dy))*invr
+        @inbounds K[j,i]+=dot_src_i*h
     end
     return nothing
 end
@@ -95,8 +98,8 @@ end
 # is well-behaved and does not need special treatment.
 #################################################################################
 @inline function _accum_dlp_default_sym!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,nxi::T,nyi::T,nxj::T,nyj::T,dx::T,dy::T,invr::T,h::Complex{T}) where {T<:Real}
-    dot_i=(nxi*dx+nyi*dy)*invr
-    @inbounds K[i,j]+=dot_i*h
+    dot_src_j=(nxj*dx+nyj*dy)*invr
+    @inbounds K[i,j]+=dot_src_j*h
     return nothing
 end
 
@@ -150,7 +153,7 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
     pref=Vector{Complex{T}}(undef,Mk);ab=Vector{NTuple{2,Float64}}(undef,Mk)
     @inbounds for m in 1:Mk
         km=plans[m].k
-        pref[m]=Complex{T}(0,-0.5)*km
+        pref[m]=Complex{T}(0,0.5)*km
         ab[m]=(Float64(real(km)),Float64(imag(km)))
     end
     nth=Threads.nthreads()
@@ -164,7 +167,7 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
             xj,yj=bp.xy[j];nxj,nyj=bp.normal[j] # no temporaries
             dx=xi-xj;dy=yi-yj;d2=muladd(dx,dx,dy*dy) # this is the hypotenuse squared
             if d2≤tol2
-                val=Complex{T}(bp.curvature[i]/(2π)) # diagonal limit for non-symmetric DLP
+                val= -Complex{T}(bp.curvature[i]*INV_TWO_PI) # diagonal limit for non-symmetric DLP
                 @inbounds begin
                     @inbounds for m in 1:Mk
                         Ks[m][i,j]=val
@@ -195,14 +198,19 @@ end
 #   multithreaded: whether to use multithreading or not
 #################################################################################
 function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
-    N=length(bp.xy);tol2=(eps(T))^2;k=plan.k;pref=Complex{T}(0,-0.5)*k;a,b=Float64(real(k)),Float64(imag(k));pans=plan.panels
+    N=length(bp.xy)
+    tol2=(eps(T))^2
+    k=plan.k
+    pref=Complex{T}(0,0.5)*k
+    a,b=Float64(real(k)),Float64(imag(k))
+    pans=plan.panels
     fill!(K,zero(eltype(K)))
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
         @inbounds for j in 1:i
             xj,yj=bp.xy[j];nxj,nyj=bp.normal[j];dx=xi-xj;dy=yi-yj;d2=muladd(dx,dx,dy*dy)
             if d2≤tol2
-                val=Complex{T}(bp.curvature[i]/(2π));K[i,j]=val;if i!=j;K[j,i]=val;end
+                val= -Complex{T}(bp.curvature[i]*INV_TWO_PI);K[i,j]=val;if i!=j;K[j,i]=val;end
             else
                 r=sqrt(d2);invr=inv(r)
                 p=_find_panel(plan,r)
@@ -230,13 +238,18 @@ end
 #   multithreaded: whether to use multhreading or not
 #################################################################################
 function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,plans::Vector{ChebHankelPlanH1x};multithreaded::Bool=true) where {T<:Real}
-    _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded)  # direct only
-    Mk=length(plans);N=length(bp.xy);tol2=(eps(T))^2;shift_x=bp.shift_x;shift_y=bp.shift_y;ops=_reflect_ops_and_scales(T,sym)
+    _all_k_nosymm_DLP_chebyshev!(Ks,bp,plans;multithreaded)
+    Mk=length(plans)
+    N=length(bp.xy)
+    tol2=(eps(T))^2
+    shift_x=bp.shift_x
+    shift_y=bp.shift_y
+    ops=_reflect_ops_and_scales(T,sym)
     pref=Vector{Complex{T}}(undef,Mk)
     ab=Vector{NTuple{2,Float64}}(undef,Mk)
     @inbounds for m in 1:Mk
         km=plans[m].k
-        pref[m]=Complex{T}(0,-0.5)*km
+        pref[m]=Complex{T}(0,0.5)*km
         ab[m]=(Float64(real(km)),Float64(imag(km)))
     end
     nth=Threads.nthreads()
@@ -245,28 +258,43 @@ function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bou
     pt_tls=[zeros(T,2) for _ in 1:nth]
     pans_ref=plans[1].panels
     @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        tid=Threads.threadid();phases=phases_tls[tid];hvals=hvals_tls[tid];pt=pt_tls[tid]
+        xi,yi=bp.xy[i]
+        nxi,nyi=bp.normal[i]
+        tid=Threads.threadid()
+        phases=phases_tls[tid]
+        hvals=hvals_tls[tid]
+        pt=pt_tls[tid]
         @inbounds for j in 1:N
+            xj,yj=bp.xy[j]
+            nxj,nyj=bp.normal[j]
             @inbounds for (op,scale) in ops
                 if op==1
-                    x_reflect_point!(pt,bp.xy[j][1],bp.xy[j][2],shift_x)
+                    x_reflect_point!(pt,xj,yj,shift_x)
+                    nxr=-nxj
+                    nyr=nyj
                 elseif op==2
-                    y_reflect_point!(pt,bp.xy[j][1],bp.xy[j][2],shift_y)
+                    y_reflect_point!(pt,xj,yj,shift_y)
+                    nxr=nxj
+                    nyr=-nyj
                 else
-                    xy_reflect_point!(pt,bp.xy[j][1],bp.xy[j][2],shift_x,shift_y)
+                    xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
+                    nxr=-nxj
+                    nyr=-nyj
                 end
-                dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
+                dx=xi-pt[1]
+                dy=yi-pt[2]
+                d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
-                    r=sqrt(d2);invr=inv(r)
+                    r=sqrt(d2)
+                    invr=inv(r)
                     p=_find_panel(plans[1],r)
-                    P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
-                    t=(2*r-(P.b+P.a))/(P.b-P.a) # compute local chebyshev coordinate and 1/sqrt(r) needed for hankel evaluation
+                    P=pans_ref[p]
+                    t=(2*r-(P.b+P.a))/(P.b-P.a)
                     invsqrt=inv(sqrt(r))
-                    h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab) # evaluate hankel functions for all ks at this r efficiently
-                    @inbounds for m in 1:Mk # accumulate into each matrix on the contour the respective contribution
+                    h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab)
+                    @inbounds for m in 1:Mk
                         h=scale*pref[m]*hvals[m]
-                        _accum_dlp_default_sym!(Ks[m],i,j,nxi,nyi,bp.normal[j][1],bp.normal[j][2],dx,dy,invr,h)
+                        _accum_dlp_default_sym!(Ks[m],i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                     end
                 end
             end
@@ -286,19 +314,43 @@ end
 #################################################################################
 function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
     _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded)
-    N=length(bp.xy);tol2=(eps(T))^2;k=plan.k;pref=Complex{T}(0,-0.5)*k;a,b=Float64(real(k)),Float64(imag(k));pans=plan.panels
-    shift_x=bp.shift_x;shift_y=bp.shift_y;ops=_reflect_ops_and_scales(T,sym);pt=[zero(T),zero(T)]
+    N=length(bp.xy)
+    tol2=(eps(T))^2
+    k=plan.k
+    pref=Complex{T}(0,0.5)*k
+    a,b=Float64(real(k)),Float64(imag(k))
+    pans=plan.panels
+    shift_x=bp.shift_x
+    shift_y=bp.shift_y
+    ops=_reflect_ops_and_scales(T,sym)
+    pt=[zero(T),zero(T)]
     @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i];pt_local=pt
+        xi,yi=bp.xy[i]
+        nxi,nyi=bp.normal[i]
+        pt_local=pt
         @inbounds for j in 1:N
-            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
+            xj,yj=bp.xy[j]
+            nxj,nyj=bp.normal[j]
             @inbounds for (op,scale_r) in ops
-                if op==1;x_reflect_point!(pt_local,xj,yj,shift_x)
-                elseif op==2;y_reflect_point!(pt_local,xj,yj,shift_y)
-                else;xy_reflect_point!(pt_local,xj,yj,shift_x,shift_y);end
-                dx=xi-pt_local[1];dy=yi-pt_local[2];d2=muladd(dx,dx,dy*dy)
+                if op==1
+                    x_reflect_point!(pt_local,xj,yj,shift_x)
+                    nxr=-nxj
+                    nyr=nyj
+                elseif op==2
+                    y_reflect_point!(pt_local,xj,yj,shift_y)
+                    nxr=nxj
+                    nyr=-nyj
+                else
+                    xy_reflect_point!(pt_local,xj,yj,shift_x,shift_y)
+                    nxr=-nxj
+                    nyr=-nyj
+                end
+                dx=xi-pt_local[1]
+                dy=yi-pt_local[2]
+                d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
-                    r=sqrt(d2);invr=inv(r)
+                    r=sqrt(d2)
+                    invr=inv(r)
                     p=_find_panel(plan,r)
                     P=pans[p]
                     t=(2*r-(P.b+P.a))/(P.b-P.a)
@@ -306,7 +358,7 @@ function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boun
                     phase=_exp_ikr(a,b,r)
                     h1x=_cheb_clenshaw(P.c1,t)
                     h=Complex{T}(scale_r,zero(T))*pref*(phase*h1x*invsqrt)
-                    _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,h)
+                    _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                 end
             end
         end
@@ -335,30 +387,45 @@ function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bound
     ab=Vector{NTuple{2,Float64}}(undef,Mk)
     @inbounds for m in 1:Mk
         km=plans[m].k
-        pref[m]=Complex{T}(0,-0.5)*km
+        pref[m]=Complex{T}(0,0.5)*km
         ab[m]=(Float64(real(km)),Float64(imag(km)))
     end
     nth=Threads.nthreads()
     phases_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth]
-    hvals_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth];pt_tls=[zeros(T,2) for _ in 1:nth]
+    hvals_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth]
+    pt_tls=[zeros(T,2) for _ in 1:nth]
     pans_ref=plans[1].panels
     @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
-        tid=Threads.threadid();phases=phases_tls[tid];hvals=hvals_tls[tid];pt=pt_tls[tid]
+        xi,yi=bp.xy[i]
+        nxi,nyi=bp.normal[i]
+        tid=Threads.threadid()
+        phases=phases_tls[tid]
+        hvals=hvals_tls[tid]
+        pt=pt_tls[tid]
         @inbounds for j in 1:N
+            xj,yj=bp.xy[j]
+            nxj,nyj=bp.normal[j]
             @inbounds for l in 2:sym.n
-                rot_point!(pt,bp.xy[j][1],bp.xy[j][2],cx,cy,ctab[l],stab[l])
-                dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
+                cl=ctab[l]
+                sl=stab[l]
+                rot_point!(pt,xj,yj,cx,cy,cl,sl)
+                nxr=cl*nxj-sl*nyj
+                nyr=sl*nxj+cl*nyj
+                dx=xi-pt[1]
+                dy=yi-pt[2]
+                d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
-                    r=sqrt(d2);invr=inv(r)
-                    p=_find_panel(plans[1],r);P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
-                    t=(2*r-(P.b+P.a))/(P.b-P.a) # compute local chebyshev coordinate and 1/sqrt(r) needed for hankel evaluation
+                    r=sqrt(d2)
+                    invr=inv(r)
+                    p=_find_panel(plans[1],r)
+                    P=pans_ref[p]
+                    t=(2*r-(P.b+P.a))/(P.b-P.a)
                     invsqrt=inv(sqrt(r))
-                    h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab) # evaluate hankel functions for all ks at this r efficiently
-                    χl=χ[l] # rotation phase for this image
-                    @inbounds for m in 1:Mk # accumulate into each matrix on the contour the respective contribution
+                    h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab)
+                    χl=χ[l]
+                    @inbounds for m in 1:Mk
                         h=χl*pref[m]*hvals[m]
-                        _accum_dlp_default_sym!(Ks[m],i,j,nxi,nyi,bp.normal[j][1],bp.normal[j][2],dx,dy,invr,h)
+                        _accum_dlp_default_sym!(Ks[m],i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                     end
                 end
             end
@@ -378,27 +445,47 @@ end
 #################################################################################
 function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
     _one_k_nosymm_DLP_chebyshev!(K,bp,plan;multithreaded)
-    N=length(bp.xy);tol2=(eps(T))^2;k=plan.k;pref=Complex{T}(0,-0.5)*k;a,b=Float64(real(k)),Float64(imag(k));pans=plan.panels
-    cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n));pt=[zero(T),zero(T)]
+    N=length(bp.xy)
+    tol2=(eps(T))^2
+    k=plan.k
+    pref=Complex{T}(0,0.5)*k
+    a,b=Float64(real(k)),Float64(imag(k))
+    pans=plan.panels
+    cx,cy=sym.center
+    ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+    pt=[zero(T),zero(T)]
     @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i];pt_local=pt
+        xi,yi=bp.xy[i]
+        nxi,nyi=bp.normal[i]
+        pt_local=pt
         @inbounds for j in 1:N
+            xj,yj=bp.xy[j]
             nxj,nyj=bp.normal[j]
             @inbounds for l in 2:sym.n
-                rot_point!(pt_local,bp.xy[j][1],bp.xy[j][2],cx,cy,ctab[l],stab[l])
-                dx=xi-pt_local[1];dy=yi-pt_local[2];d2=muladd(dx,dx,dy*dy)
+                cl=ctab[l]
+                sl=stab[l]
+                rot_point!(pt_local,xj,yj,cx,cy,cl,sl)
+                nxr=cl*nxj-sl*nyj
+                nyr=sl*nxj+cl*nyj
+                dx=xi-pt_local[1]
+                dy=yi-pt_local[2]
+                d2=muladd(dx,dx,dy*dy)
                 if d2>tol2
-                    r=sqrt(d2);invr=inv(r)
-                    p=_find_panel(plan,r);P=pans[p]
-                    t=(2*r-(P.b+P.a))/(P.b-P.a);invsqrt=inv(sqrt(r))
+                    r=sqrt(d2)
+                    invr=inv(r)
+                    p=_find_panel(plan,r)
+                    P=pans[p]
+                    t=(2*r-(P.b+P.a))/(P.b-P.a)
+                    invsqrt=inv(sqrt(r))
                     phase=_exp_ikr(a,b,r)
-                    h1x=_cheb_clenshaw(P.c1,t);h=χ[l]*pref*(phase*h1x*invsqrt)
-                    _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,h)
+                    h1x=_cheb_clenshaw(P.c1,t)
+                    h=χ[l]*pref*(phase*h1x*invsqrt)
+                    _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                 end
             end
         end
     end
-    return nothing
+    return K
 end
 
 #################################################################################
