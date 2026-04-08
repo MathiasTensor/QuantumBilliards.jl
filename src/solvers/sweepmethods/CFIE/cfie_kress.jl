@@ -241,7 +241,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
             dval= -Complex{T}(wi*κi,zero(T)) # +/- horrible diabmiguity here due to how we construct the final matrix. Took forever to debug this
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
-            sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
+            sval= -Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
             A[gi,gi]=one(Complex{T})-(dval+ik*sval)
         end
         @use_threads multithreading=multithreaded for j in 2:Na
@@ -344,7 +344,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             dval= -Complex{T}(wi*κi,zero(T))
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
-            sval= -Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
+            sval= Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
             A[gi,gi]=one(Complex{T})-(dval+ik*sval)
         end
         @use_threads multithreading=multithreaded for j in 2:Na
