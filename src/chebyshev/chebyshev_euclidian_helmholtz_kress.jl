@@ -182,7 +182,7 @@ function build_cfie_kress_block_caches(comps::Vector{BoundaryPointsCFIE{T}};npan
             ΔT=reshape(ts,Ni,1).-reshape(ts,1,Ni)
             logterm=log.(4 .*sin.(ΔT./ 2).^2)
             logterm[diagind(logterm)].=zero(T)
-            κnum=dXa.*ddYa.-dYa.*ddXa
+            κnum= -(dXa.*ddYa.-dYa.*ddXa)
             κden=dXa.^2 .+dYa.^2
             kappa_i=_INV_TWO_PI.*(κnum./κden)
             Rkress=zeros(T,Ni,Ni)
@@ -247,7 +247,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
     @inbounds for m in 1:Mk
         km=ComplexF64(plans1[m].k)
         ks[m]=km
-        αL1[m]=km*_INV_TWO_PI
+        αL1[m]= -km*_INV_TWO_PI
         αL2[m]=0.5im*km
         iks[m]=1im*km
         fill!(As[m],0)
@@ -264,7 +264,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         gi=ro+j-1;κj=blk.kappa_i[j];rjj=blk.Rkress[j,j]
         @inbounds for m in 1:Mk
             km=ks[m]
-            dval= -ComplexF64(wj*κj,0.0)
+            dval= ComplexF64(wj*κj,0.0)
             m1=αM1*sj
             m2=((0.5im-_EULER_OVER_PI)-_INV_TWO_PI*log((km^2/4)*(sj^2)))*sj
             sval=ComplexF64(rjj*m1,0.0)+wj*m2

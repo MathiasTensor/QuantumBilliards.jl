@@ -220,7 +220,6 @@ end
 # - The constructed system matrix A for the CFIE_kress method, modified in place.
 function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
-    #αL1=k*inv_two_pi
     αL1= -k*inv_two_pi
     αL2=k/2*im
     αM1=-inv_two_pi
@@ -239,7 +238,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            dval= -Complex{T}(wi*κi,zero(T))
+            dval= Complex{T}(wi*κi,zero(T))
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval= Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
@@ -324,7 +323,7 @@ end
 
 function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
-    αL1=k*inv_two_pi
+    αL1= -k*inv_two_pi
     αL2=Complex{T}(0,k/2)
     αM1=-inv_two_pi
     αM2=Complex{T}(0,one(T)/2)
@@ -342,7 +341,7 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            dval= -Complex{T}(wi*κi,zero(T))
+            dval= Complex{T}(wi*κi,zero(T))
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval= Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2

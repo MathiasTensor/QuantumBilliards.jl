@@ -521,7 +521,7 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) wh
     logterm=log.(4 .*sin.(ΔT./2).^2)
     logterm[diagind(logterm)].=zero(T)
     speed=@. sqrt(dX^2+dY^2)
-    κnum= (dX.*ddY.-dY.*ddX)
+    κnum= -(dX.*ddY.-dY.*ddX)
     κden=dX.^2 .+dY.^2
     kappa=inv_two_pi.*(κnum./κden)
     return CFIEGeomCache(R,invR,inner,logterm,speed,kappa,original_ts)

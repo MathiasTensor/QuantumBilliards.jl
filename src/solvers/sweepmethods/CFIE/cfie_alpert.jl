@@ -716,7 +716,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         si=G.speed[i]
         κi=G.kappa[i]
         # diagonal
-        A[gi,gi]+=one(Complex{T})+Complex{T}(h*si*κi,zero(T)) 
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T)) 
         # DLP off-diagonal
         @inbounds for j in 1:N
             j==i && continue
@@ -789,7 +789,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})+Complex{T}(h*si*κi,zero(T)) #TODO Check curvature limit
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T)) 
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -976,7 +976,7 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             ui=Ca.us[i]
-            A[gi,gi]+=one(Complex{T})+Complex{T}(ha*si*κi,zero(T)) 
+            A[gi,gi]+=one(Complex{T})-Complex{T}(ha*si*κi,zero(T)) 
             for m in eachindex(gmap)
                 bidx=gmap[m]
                 pb=pts[bidx]
