@@ -802,8 +802,7 @@ end
 #   - A : Modified in place with the self-interaction block assembled using the periodic Alpert rule.
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     @info "Assembling self-interaction block with periodic Alpert correction..."
-    #αD=Complex{T}(0,k/2)
-    αD=0 # TESTING
+    αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
     X=getindex.(pts.xy,1)
@@ -819,7 +818,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         si=G.speed[i]
         κi=G.kappa[i]
         # diagonal
-        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T)) 
+        A[gi,gi]+=one(Complex{T})+Complex{T}(h*si*κi,zero(T)) 
         # DLP off-diagonal
         @inbounds for j in 1:N
             j==i && continue
@@ -849,7 +848,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
                 coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
                 for m in axes(C.idxp,3)
                     q=C.idxp[p,i,m]
-                    A[gi,row_range[q]] += coeff*C.wtp[p,i,m]
+                    A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
                 end
             end
             dx=xi-C.xm[p,i]
@@ -859,7 +858,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
                 coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
                 for m in axes(C.idxm,3)
                     q=C.idxm[p,i,m]
-                    A[gi,row_range[q]] += coeff*C.wtm[p,i,m]
+                    A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
                 end
             end
         end
