@@ -141,20 +141,6 @@
 #
 #  If source and target lie on different smooth closed components, the kernel is
 #  smooth. No split is needed there.
-#
-# -----------------------------------------------------------------------------
-#  LIMITATIONS
-# -----------------------------------------------------------------------------
-#
-#  This implementation is designed for:
-#
-#      - smooth closed periodic boundary components,
-#      - possibly several disconnected components / holes,
-#      - no corners.
-#
-#  It is not a corner-adapted Kress implementation with graded meshes.
-#  If true corners were introduced, one would need Kress's corner machinery or
-#  some other corner-aware discretization.  [oai_citation:2‡Kress_Nystrom.pdf](sediment://file_000000004384720aaeabe95a080dec45)
 # =============================================================================
 
 # Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
@@ -252,7 +238,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
             si=Ga.speed[i]
             κi=Ga.kappa[i]
             wi=pa.ws[i]
-            dval= -Complex{T}(wi*κi,zero(T)) # +/- horrible diabmiguity here due to how we construct the final matrix. Took forever to debug this
+            dval= Complex{T}(wi*κi,zero(T)) # +/- horrible diabmiguity here due to how we construct the final matrix. Took forever to debug this
             m1=αM1*si
             m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
