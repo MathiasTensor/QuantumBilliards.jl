@@ -430,19 +430,28 @@ end
     return w
 end
 
-@inline function _fft_freqs(T::Type,N::Int)
+@inline function _fft_freqs(::Type{T}, N::Int) where {T<:Real}
     k=Vector{Int}(undef,N)
-    n2=N÷2
-    @inbounds for j in 1:N
-        m=j-1
-        k[j]=(m<=n2) ? m : (m-N)
+    if iseven(N)
+        n2=N÷2
+        @inbounds for j in 1:N
+            m=j-1
+            k[j]=(m<n2) ? m : (m==n2 ? -n2 : m-N)
+        end
+    else
+        n2=(N-1)÷2
+        @inbounds for j in 1:N
+            m=j-1
+            k[j]=(m<=n2) ? m : m-N
+        end
     end
     return k
 end
 
 function _trig_coeffs(vals::AbstractVector{T}) where {T<:Real}
     N=length(vals)
-    return fft(complex.(vals))./T(N)
+    vals0=circshift(vals,1)   # [f(0), f(h), ..., f((N-1)h)]
+    return fft(complex.(vals0))./T(N)
 end
 
 @inline function _eval_trig_series(c::AbstractVector{Complex{T}},ks::AbstractVector{Int},θ::T) where {T<:Real}
