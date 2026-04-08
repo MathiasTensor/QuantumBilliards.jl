@@ -138,11 +138,9 @@ macro svd_or_det_solve(A,use_krylov,which,blas_threads)
     quote
         if $(esc(use_krylov))
             if $(esc(which))===:det
-                @warn "Krylov method does not support determinant calculation. Falling back to svd."
                 @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
                 return mu[1]
             elseif $(esc(which))===:det_argmin
-                @warn "Krylov method does not support determinant calculation. Falling back to svd."
                 @blas_1 mu,_,_,_=svdsolve($(esc(A)),1,:SR)
                 return mu[1]
             elseif $(esc(which))===:svd
