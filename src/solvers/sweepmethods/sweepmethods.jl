@@ -257,14 +257,14 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,nk)
-    dk0=(N>=2) ? abs(ks[2]-ks[1]) : initial_refinement_interval # set initial window based on spacing of ks, or a default small value if only one k is given
+    dk0=(N>=2) ? abs(ks[2]-ks[1]) : T(initial_refinement_interval) # set initial window based on spacing of ks, or a default small value if only one k is given
     p=Progress(nk;desc="Refining minima (multilevel)...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx)
         kcur=ks_approx[i]
         window=dk0
         hist=NamedTuple[]
-        tprev=oftype(T,NaN)
-        kprev=oftype(T,NaN)
+        tprev=T(NaN)
+        kprev=T(NaN)
         for lev in eachindex(pts_refinement_factors)
             pf=pts_refinement_factors[lev]
             df=dim_refinement_factors[lev]
