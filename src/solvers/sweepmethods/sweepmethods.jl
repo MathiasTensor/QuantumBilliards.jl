@@ -245,7 +245,14 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     N=length(tens)
     @assert N==length(ks)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
-    ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
+    if length(ks)==1
+        ks_approx=collect(ks)
+    else
+        ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
+    end
+    if isempty(ks_approx)
+        return T[],T[],Vector{Vector{NamedTuple}}()
+    end
     nk=length(ks_approx)
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
