@@ -371,10 +371,17 @@ struct AlpertPeriodicCache{T<:Real}
     txm::Matrix{T}
     tym::Matrix{T}
     sm::Matrix{T}
-    idxp::Array{Int,3} # jcorr × N × 4
-    wtp::Array{T,3}    # jcorr × N × 4
-    idxm::Array{Int,3} # jcorr × N × 4
-    wtm::Array{T,3}    # jcorr × N × 4
+    idxp::Array{Int,3} # jcorr × N × p
+    wtp::Array{T,3}    # jcorr × N × p
+    idxm::Array{Int,3} # jcorr × N × p
+    wtm::Array{T,3}    # jcorr × N × p
+end
+
+@inline function _scatter_localp!(A::AbstractMatrix{Complex{T}},gi::Int,col_range::UnitRange{Int},coeff::Complex{T},idx,wt) where {T<:Real}
+    @inbounds for m in eachindex(idx)
+        A[gi,col_range[idx[m]]] += coeff*wt[m]
+    end
+    return nothing
 end
 
 # wrap_angle
@@ -398,55 +405,89 @@ end
     return mod(t+T(pi),two_pi)-T(pi)
 end
 
-# 4-point equispaced Lagrange weights on local coordinate η ∈ [0,1),
-# using nodes at offsets -1, 0, 1, 2 relative to the local left node.
-#
-# So if θ lies between ts[i] and ts[i+1], we interpolate using:
-#   ts[i-1], ts[i], ts[i+1], ts[i+2]
-#
-# with local coordinate η = (θ - ts[i]) / h.
-@inline function _lagrange4_weights(η::T) where {T<:Real}
-    w0=-(η)*(η-one(T))*(η-T(2))/T(6) # node -1
-    w1=(η+one(T))*(η-one(T))*(η-T(2))/T(2) # node  0
-    w2=-(η+one(T))*(η)*(η-T(2))/T(2) # node  1
-    w3=(η+one(T))*(η)*(η-one(T))/T(6) # node  2
-    return w0,w1,w2,w3
+
+# Generic Lagrange weights on arbitrary local nodes.
+# Inputs:
+#   η     : local coordinate where interpolation is evaluated
+#   nodes : interpolation nodes in the same local coordinate system
+# Output:
+#   w     : Lagrange weights so that f(η) ≈ sum_j w[j] f(nodes[j])
+@inline function _lagrange_weights(η::T,nodes::AbstractVector{T}) where {T<:Real}
+    m=length(nodes)
+    w=Vector{T}(undef,m)
+    @inbounds for j in 1:m
+        num=one(T)
+        den=one(T)
+        xj=nodes[j]
+        for l in 1:m
+            l==j && continue
+            xl=nodes[l]
+            num*=η-xl
+            den*=xj-xl
+        end
+        w[j]=num/den
+    end
+    return w
 end
 
-# Evaluate one periodic shifted source point/tangent/speed using a local
-# 4-point periodic stencil.
+# Build a symmetric local stencil of size p around the interval anchor.
+# For p even, this returns offsets:
+#   -(p÷2-1), ..., -1, 0, 1, ..., p÷2
+# Example:
+#   p=4  -> (-1,0,1,2)
+#   p=8  -> (-3,-2,-1,0,1,2,3,4)
+@inline function _local_offsets(p::Int)
+    iseven(p) || error("Interpolation stencil size p must be even.")
+    q=p÷2
+    return collect(-(q-1):q)
+end
+
+# Periodic local-p interpolation of shifted source data.
 #
 # Inputs:
-#   θ  : target shifted angle in (0, 2π]
-#   ts : equispaced periodic nodes
-#   h  : angular step = 2π/N
-#   X,Y,dX,dY : sampled geometry/tangent arrays at ts
+#   θ      : shifted angle in (0,2π]
+#   ts     : equispaced periodic nodes
+#   h      : angular step = 2π/N
+#   X,Y    : sampled geometry arrays
+#   dX,dY  : sampled tangent arrays
+#   p      : even stencil size
 #
-# Output:
-#   x,y,tx,ty,s : interpolated point, tangent, and speed at angle θ
-@inline function _eval_shifted_source_periodic_local4(θ::T,ts::AbstractVector{T},h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
-    N = length(ts)
-    # Convert θ to fractional grid coordinate in [0, N)
+# Outputs:
+#   x,y,tx,ty,s,idx,wt
+# where:
+#   idx is a Vector{Int} of length p with periodic source indices
+#   wt  is a Vector{T}   of length p with interpolation weights
+@inline function _eval_shifted_source_periodic_localp(θ::T,ts::AbstractVector{T},h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T},p::Int) where {T<:Real}
+    N=length(ts)
+    iseven(p) || error("p must be even.")
+    p<=N || error("p must satisfy p <= N.")
     u=θ/h-one(T)
     u<zero(T) && (u+=T(N))
     u>=T(N) && (u-=T(N))
-    # With ts[j] = j*h for j=1..N, the interval [ts[i], ts[i+1]) corresponds to i = floor(u)
     i0=floor(Int,u)
-    η=u-T(i0) # local coordinate in [0,1)
+    η=u-T(i0)
     i=i0+1
     i>N && (i-=N)
-    im1=mod1(i-1,N)
-    i0j=i
-    ip1=mod1(i+1,N)
-    ip2=mod1(i+2,N)
-    w0,w1,w2,w3=_lagrange4_weights(η)
-    x=w0*X[im1]+w1*X[i0j]+w2*X[ip1]+w3*X[ip2]
-    y=w0*Y[im1]+w1*Y[i0j]+w2*Y[ip1]+w3*Y[ip2]
-    tx=w0*dX[im1]+w1*dX[i0j]+w2*dX[ip1]+w3*dX[ip2]
-    ty=w0*dY[im1]+w1*dY[i0j]+w2*dY[ip1]+w3*dY[ip2]
+    offs=_local_offsets(p)
+    nodes=T.(offs)
+    wt=_lagrange_weights(η,nodes)
+    idx=Vector{Int}(undef,p)
+    @inbounds for m in 1:p
+        idx[m]=mod1(i+offs[m],N)
+    end
+    x=zero(T)
+    y=zero(T)
+    tx=zero(T)
+    ty=zero(T)
+    @inbounds for m in 1:p
+        q=idx[m]
+        wm=wt[m]
+        x+=wm*X[q]
+        y+=wm*Y[q]
+        tx+=wm*dX[q]
+        ty+=wm*dY[q]
+    end
     s=sqrt(tx*tx+ty*ty)
-    idx=(im1,i0j,ip1,ip2)
-    wt=(w0,w1,w2,w3)
     return x,y,tx,ty,s,idx,wt
 end
 
@@ -457,13 +498,15 @@ end
 #   - rule::AlpertLogRule{T} : Alpert quadrature rule.
 # Outputs:
 #   - AlpertPeriodicCache{T} : Precomputed cache for the periodic Alpert rule.
-function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
+    iseven(p) || error("Periodic Alpert interpolation stencil size p must be even.")
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
     ts=pts.ts
     N=length(ts)
+    p<=N || error("Periodic Alpert interpolation stencil size p must satisfy p <= N.")
     jcorr=rule.j
     h=pts.ws[1]
     xp=Matrix{T}(undef,jcorr,N)
@@ -476,43 +519,35 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     txm=similar(xp)
     tym=similar(xp)
     sm=similar(xp)
-    idxp=Array{Int,3}(undef,jcorr,N,4)
-    idxm=Array{Int,3}(undef,jcorr,N,4)
-    wtp=Array{T,3}(undef,jcorr,N,4)
-    wtm=Array{T,3}(undef,jcorr,N,4)
-    @inbounds for p in 1:jcorr
-        Δt=h*rule.x[p]
+    idxp=Array{Int,3}(undef,jcorr,N,p)
+    idxm=Array{Int,3}(undef,jcorr,N,p)
+    wtp=Array{T,3}(undef,jcorr,N,p)
+    wtm=Array{T,3}(undef,jcorr,N,p)
+    @inbounds for q in 1:jcorr
+        Δt=h*rule.x[q]
         for i in 1:N
             θp=wrap_angle(ts[i]+Δt)
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_local4(θp,ts,h,X,Y,dX,dY)
-            xp[p,i]=x
-            yp[p,i]=y
-            txp[p,i]=tx
-            typ[p,i]=ty
-            sp[p,i]=s
-            idxp[p,i,1]=idx[1]
-            idxp[p,i,2]=idx[2]
-            idxp[p,i,3]=idx[3]
-            idxp[p,i,4]=idx[4]
-            wtp[p,i,1]=wt[1]
-            wtp[p,i,2]=wt[2]
-            wtp[p,i,3]=wt[3]
-            wtp[p,i,4]=wt[4]
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_localp(θp,ts,h,X,Y,dX,dY,p)
+            xp[q,i]=x
+            yp[q,i]=y
+            txp[q,i]=tx
+            typ[q,i]=ty
+            sp[q,i]=s
+            for m in 1:p
+                idxp[q,i,m]=idx[m]
+                wtp[q,i,m]=wt[m]
+            end
             θm=wrap_angle(ts[i]-Δt)
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_local4(θm,ts,h,X,Y,dX,dY)
-            xm[p,i]=x
-            ym[p,i]=y
-            txm[p,i]=tx
-            tym[p,i]=ty
-            sm[p,i]=s
-            idxm[p,i,1]=idx[1]
-            idxm[p,i,2]=idx[2]
-            idxm[p,i,3]=idx[3]
-            idxm[p,i,4]=idx[4]
-            wtm[p,i,1]=wt[1]
-            wtm[p,i,2]=wt[2]
-            wtm[p,i,3]=wt[3]
-            wtm[p,i,4]=wt[4]
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_periodic_localp(θm,ts,h,X,Y,dX,dY,p)
+            xm[q,i]=x
+            ym[q,i]=y
+            txm[q,i]=tx
+            tym[q,i]=ty
+            sm[q,i]=s
+            for m in 1:p
+                idxm[q,i,m]=idx[m]
+                wtm[q,i,m]=wt[m]
+            end
         end
     end
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
@@ -551,50 +586,63 @@ end
     return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
 
-# _panel_smooth_local4_midpoint_data
-# Compute the indices and weights for a local 4-point stencil centered at the midpoint of a panel. This is used for applying the Alpert correction at the panel midpoints.
-# Inputs:
-#   - u : Local parameter value for which to compute the stencil (should be in [0,1] for a panel).
-#   - h : Step size (length of the panel divided by N).
-#   - N : Number of points in the panel.
+
+# Smooth open-panel local-p midpoint interpolation metadata.
+#
+# Local panel nodes are midpoint-indexed. If
+#   s = u/h - 1/2
+# and j0 = floor(s)+1,
+# then η = s - floor(s) ∈ [0,1)
+# and we interpolate on offsets centered around j0.
+#
 # Outputs:
-#   - Tuple of indices (jm1, j, jp1, jp2) corresponding to the points used in the stencil.
-#   - Tuple of weights (w0, w1, w2, w3) corresponding to the Lagrange interpolation weights for the local coordinate η.
-@inline function _panel_smooth_local4_midpoint_data(u::T,h::T,N::Int) where {T<:Real}
+#   idx : Vector{Int} of length p
+#   wt  : Vector{T}   of length p
+@inline function _panel_smooth_localp_midpoint_data(u::T,h::T,N::Int,p::Int) where {T<:Real}
+    iseven(p) || error("p must be even.")
+    p<=N || error("p must satisfy p <= N.")
+    q=p÷2
     s=u/h-T(1)/2
     j0=floor(Int,s)+1
     η=s-floor(T,s)
-    j0=clamp(j0,2,N-2)
-    jm1=j0-1
-    j=j0
-    jp1=j0+1
-    jp2=j0+2
-    w0,w1,w2,w3=_lagrange4_weights(η)
-    return (jm1,j,jp1,jp2),(w0,w1,w2,w3)
+    j0=clamp(j0,q,N-q)
+    offs=_local_offsets(p)
+    nodes=T.(offs)
+    wt=_lagrange_weights(η,nodes)
+    idx=Vector{Int}(undef,p)
+    @inbounds for m in 1:p
+        idx[m]=j0+offs[m]
+    end
+    return idx,wt
 end
 
-# _eval_shifted_source_smooth_panel_local4
-# Evaluate the geometry, tangent, and speed at a shifted source point using a local 4-point stencil for a panel. This is used to compute the Alpert correction for points near the panel midpoints.
+
+# Smooth open-panel local-p interpolation of shifted source data.
+#
 # Inputs:
-#   - u : Local parameter value for the shifted source point.
-#   - h : Step size (length of the panel divided by N).
-#   - X, Y : Vectors containing the x and y coordinates of the geometry at the sampled points on the panel.
-#   - dX, dY : Vectors containing the x and y components of the tangent vectors at the sampled points on the panel.
+#   u      : shifted local panel parameter
+#   h      : panel midpoint spacing
+#   X,Y    : sampled geometry arrays
+#   dX,dY  : sampled tangent arrays
+#   p      : even stencil size
+#
 # Outputs:
-#   - x, y : Interpolated x and y coordinates of the geometry at the shifted source point.
-#   - tx, ty : Interpolated x and y components of the tangent vector at the shifted source point.
-#   - s : Interpolated speed (magnitude of the tangent vector) at the shifted source point.
-#   - idx : Tuple of indices used for the interpolation stencil.
-#   - wt : Tuple of weights used for the interpolation.
-@inline function _eval_shifted_source_smooth_panel_local4(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T}) where {T<:Real}
+#   x,y,tx,ty,s,idx,wt
+@inline function _eval_shifted_source_smooth_panel_localp(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T},p::Int) where {T<:Real}
     N=length(X)
-    idx,wt=_panel_smooth_local4_midpoint_data(u,h,N)
-    i1,i2,i3,i4=idx
-    w1,w2,w3,w4=wt
-    x=w1*X[i1]+w2*X[i2]+w3*X[i3]+w4*X[i4]
-    y=w1*Y[i1]+w2*Y[i2]+w3*Y[i3]+w4*Y[i4]
-    tx=w1*dX[i1]+w2*dX[i2]+w3*dX[i3]+w4*dX[i4]
-    ty=w1*dY[i1]+w2*dY[i2]+w3*dY[i3]+w4*dY[i4]
+    idx,wt=_panel_smooth_localp_midpoint_data(u,h,N,p)
+    x=zero(T)
+    y=zero(T)
+    tx=zero(T)
+    ty=zero(T)
+    @inbounds for m in eachindex(idx)
+        q=idx[m]
+        wm=wt[m]
+        x+=wm*X[q]
+        y+=wm*Y[q]
+        tx+=wm*dX[q]
+        ty+=wm*dY[q]
+    end
     s=sqrt(tx*tx+ty*ty)
     return x,y,tx,ty,s,idx,wt
 end
@@ -610,12 +658,14 @@ end
 #
 # Outputs:
 #   - C::AlpertComponentCache{T} : Cache storing interpolation metadata and endpoint rules.
-function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
+function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
+    iseven(p) || error("Smooth-panel Alpert interpolation stencil size p must be even.")
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     dX=getindex.(pts.tangent,1)
     dY=getindex.(pts.tangent,2)
     N=length(X)
+    p<=N || error("Smooth-panel Alpert interpolation stencil size p must satisfy p <= N.")
     h=pts.ws[1]
     jcorr=rule.j
     xp=Matrix{T}(undef,jcorr,N)
@@ -628,44 +678,36 @@ function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::Alper
     txm=similar(xp)
     tym=similar(xp)
     sm=similar(xp)
-    idxp=Array{Int,3}(undef,jcorr,N,4)
-    idxm=Array{Int,3}(undef,jcorr,N,4)
-    wtp=Array{T,3}(undef,jcorr,N,4)
-    wtm=Array{T,3}(undef,jcorr,N,4)
+    idxp=Array{Int,3}(undef,jcorr,N,p)
+    idxm=Array{Int,3}(undef,jcorr,N,p)
+    wtp=Array{T,3}(undef,jcorr,N,p)
+    wtm=Array{T,3}(undef,jcorr,N,p)
     us=_panel_us(T,N)
-    @inbounds for p in 1:jcorr
-        Δu=h*rule.x[p]
+    @inbounds for q in 1:jcorr
+        Δu=h*rule.x[q]
         for i in 1:N
             up=us[i]+Δu
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_local4(up,h,X,Y,dX,dY)
-            xp[p,i]=x
-            yp[p,i]=y
-            txp[p,i]=tx
-            typ[p,i]=ty
-            sp[p,i]=s
-            idxp[p,i,1]=idx[1]
-            idxp[p,i,2]=idx[2]
-            idxp[p,i,3]=idx[3]
-            idxp[p,i,4]=idx[4]
-            wtp[p,i,1]=wt[1]
-            wtp[p,i,2]=wt[2]
-            wtp[p,i,3]=wt[3]
-            wtp[p,i,4]=wt[4]
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_localp(up,h,X,Y,dX,dY,p)
+            xp[q,i]=x
+            yp[q,i]=y
+            txp[q,i]=tx
+            typ[q,i]=ty
+            sp[q,i]=s
+            for m in 1:p
+                idxp[q,i,m]=idx[m]
+                wtp[q,i,m]=wt[m]
+            end
             um=us[i]-Δu
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_local4(um,h,X,Y,dX,dY)
-            xm[p,i]=x
-            ym[p,i]=y
-            txm[p,i]=tx
-            tym[p,i]=ty
-            sm[p,i]=s
-            idxm[p,i,1]=idx[1]
-            idxm[p,i,2]=idx[2]
-            idxm[p,i,3]=idx[3]
-            idxm[p,i,4]=idx[4]
-            wtm[p,i,1]=wt[1]
-            wtm[p,i,2]=wt[2]
-            wtm[p,i,3]=wt[3]
-            wtm[p,i,4]=wt[4]
+            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_localp(um,h,X,Y,dX,dY,p)
+            xm[q,i]=x
+            ym[q,i]=y
+            txm[q,i]=tx
+            tym[q,i]=ty
+            sm[q,i]=s
+            for m in 1:p
+                idxm[q,i,m]=idx[m]
+                wtm[q,i,m]=wt[m]
+            end
         end
     end
     return AlpertSmoothPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
@@ -678,8 +720,8 @@ end
 #   - rule::AlpertLogRule{T} : Alpert quadrature rule.
 # Outputs:
 #   - AlpertComponentCache{T} : Precomputed cache for the Alpert rule, either periodic or panel-based.
-function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
-    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule) : _build_alpert_smooth_panel_cache(pts,rule)
+function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
+    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule,p) : _build_alpert_smooth_panel_cache(pts,rule,p)
 end
 
 ###########################################################
@@ -742,18 +784,22 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-            for m in 1:4
-                q=C.idxp[p,i,m]
-                A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
+            if isfinite(r) && r > sqrt(eps(T))
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+                for m in axes(C.idxp,3)
+                    q=C.idxp[p,i,m]
+                    A[gi,row_range[q]] += coeff*C.wtp[p,i,m]
+                end
             end
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
             r=sqrt(dx*dx+dy*dy)
-            coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-            for m in 1:4
-                q=C.idxm[p,i,m]
-                A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
+            if isfinite(r) && r > sqrt(eps(T))
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+                for m in axes(C.idxm,3)
+                    q=C.idxm[p,i,m]
+                    A[gi,row_range[q]] += coeff*C.wtm[p,i,m]
+                end
             end
         end
     end
@@ -815,7 +861,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
                 r=sqrt(dx*dx+dy*dy)
                 if isfinite(r) && r>sqrt(eps(T))
                     coeff= -ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-                    for m in 1:4
+                    for m in axes(C.idxp,3)
                         q=C.idxp[p,i,m]
                         A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
                     end
@@ -828,7 +874,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
                 r=sqrt(dx*dx+dy*dy)
                 if isfinite(r) && r>sqrt(eps(T))
                     coeff= -ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                    for m in 1:4
+                    for m in axes(C.idxp,3)
                         q=C.idxm[p,i,m]
                         A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
                     end
@@ -871,25 +917,6 @@ end
     return X,Y,dX,dY
 end
 
-# _scatter_local4!
-# Scatter a contribution from a shifted source point onto the 4-point local stencil of the target point for the panel-based Alpert correction. This is used to apply the near correction from the Alpert rule to the appropriate entries in the matrix during assembly.
-# Inputs:
-#   - A::AbstractMatrix{Complex{T}} : Matrix to scatter into (modified in place).
-#   - gi::Int : Global row index corresponding to the target point.
-#   - col_range::UnitRange{Int} : Column indices corresponding to the current panel component.
-#   - coeff::Complex{T} : Coefficient to scatter (includes the Alpert weight and kernel evaluation).
-#   - idx::NTuple{4,Int} : Tuple of indices corresponding to the 4-point stencil for interpolation.
-#   - wt::NTuple{4,T} : Tuple of weights corresponding to the interpolation stencil.
-# Outputs:
-#   - A : Modified in place with the scattered contributions added to the appropriate entries.
-@inline function _scatter_local4!(A::AbstractMatrix{Complex{T}},gi::Int,col_range::UnitRange{Int},coeff::Complex{T},idx,wt) where {T<:Real}
-    @inbounds for m in 1:4
-        q=idx[m]
-        A[gi,col_range[q]]+=coeff*wt[m]
-    end
-    return nothing
-end
-
 # _right_neighbor_excluded_count
 # Compute the number of points to exclude from the right neighbor panel when applying the Alpert correction for a point near the right endpoint of the current panel. This is used to determine which points in the neighboring panel should be skipped when applying the SLP contribution in the assembly.
 # Inputs:
@@ -913,19 +940,10 @@ end
     return max(0,a-i)
 end
 
-# _eval_on_open_panel_local4
-# Evaluate the geometry, tangent, and speed at a shifted source point for a panel-based Alpert correction using a local 4-point stencil. This is used to compute the necessary quantities for the Alpert correction when the target point is on an open panel and the shifted source point is near the panel midpoint.
-# Inputs:
-#   - pts::BoundaryPointsCFIE{T} : Boundary points for the CFIE discretization, corresponding to a single open panel.
-#   - u : Local parameter value for the shifted source point.
-# Outputs:
-#   - x, y : Interpolated x and y coordinates of the geometry at the shifted source point.
-#   - tx, ty : Interpolated x and y components of the tangent vector at the shifted source point.
-#   - s : Interpolated speed (magnitude of the tangent vector) at the shifted source point.
-@inline function _eval_on_open_panel_local4(pts::BoundaryPointsCFIE{T},u::T) where {T<:Real}
+@inline function _eval_on_open_panel_localp(pts::BoundaryPointsCFIE{T},u::T,p::Int) where {T<:Real}
     X,Y,dX,dY=_panel_xy_tangent_arrays(pts)
     h=pts.ws[1]
-    return _eval_shifted_source_smooth_panel_local4(u,h,X,Y,dX,dY)
+    return _eval_shifted_source_smooth_panel_localp(u,h,X,Y,dX,dY,p)
 end
 
 # _assemble_self_alpert_composite_component!
@@ -1030,9 +1048,9 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                     r=sqrt(dx*dx+dy*dy)
                     if isfinite(r) && r>sqrt(eps(T))
                         coeff=-ik*(fac*(αS*H(0,k*r)*Ca.sp[p,i]))
-                        for m4 in 1:4
-                            q=Ca.idxp[p,i,m4]
-                            A[gi,ra[q]]+=coeff*Ca.wtp[p,i,m4]
+                        for m in axes(Ca.idxp,3)
+                            q=Ca.idxp[p,i,m]
+                            A[gi,ra[q]]+=coeff*Ca.wtp[p,i,m]
                         end
                     end
                 end
@@ -1042,26 +1060,27 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                     r=sqrt(dx*dx+dy*dy)
                     if isfinite(r) && r>sqrt(eps(T))
                         coeff=-ik*(fac*(αS*H(0,k*r)*Ca.sm[p,i]))
-                        for m4 in 1:4
-                            q=Ca.idxm[p,i,m4]
-                            A[gi,ra[q]]+=coeff*Ca.wtm[p,i,m4]
+                        for m in axes(Ca.idxm,3)
+                            q=Ca.idxm[p,i,m]
+                            A[gi,ra[q]]+=coeff*Ca.wtm[p,i,m]
                         end
                     end
                 end
             end
+            pinterp=size(Ca.idxp,3)
             if right_smooth && next_idx!=0
                 for p in 1:jcorr
                     Δu=ha*rule.x[p]
                     if ui+Δu>=one(T)
                         u2=ui+Δu-one(T)
-                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_local4(next_pts,u2)
+                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(next_pts,u2,pinterp)
                         dx=xi-x
                         dy=yi-y
                         r=sqrt(dx*dx+dy*dy)
                         if isfinite(r) && r>sqrt(eps(T))
                             fac=ha*rule.w[p]
                             coeff=-ik*(fac*(αS*H(0,k*r)*s2))
-                            _scatter_local4!(A,gi,next_ra,coeff,idx2,wt2)
+                            _scatter_localp!(A,gi,next_ra,coeff,idx2,wt2)
                         end
                     end
                 end
@@ -1071,14 +1090,14 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                     Δu=ha*rule.x[p]
                     if ui-Δu<=zero(T)
                         u2=one(T)+ui-Δu
-                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_local4(prev_pts,u2)
+                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(prev_pts,u2,pinterp)
                         dx=xi-x
                         dy=yi-y
                         r=sqrt(dx*dx+dy*dy)
                         if isfinite(r) && r>sqrt(eps(T))
                             fac=ha*rule.w[p]
                             coeff=-ik*(fac*(αS*H(0,k*r)*s2))
-                            _scatter_local4!(A,gi,prev_ra,coeff,idx2,wt2)
+                            _scatter_localp!(A,gi,prev_ra,coeff,idx2,wt2)
                         end
                     end
                 end
@@ -1172,9 +1191,10 @@ end
 #   - CFIEAlpertWorkspace containing all precomputed data for assembly.
 function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     rule=alpert_log_rule(T,solver.alpert_order)
+    pinterp=solver.alpert_order
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
-    Cs=[_build_alpert_component_cache(p,rule) for p in pts]
+    Cs=[_build_alpert_component_cache(p,rule,pinterp) for p in pts]
     topo_data=build_join_topology(pts)
     if topo_data===nothing
         topos=nothing
@@ -1356,7 +1376,8 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     fill!(A,zero(Complex{T}))
     rule=alpert_log_rule(T,solver.alpert_order)
     Gs=[cfie_geom_cache(p) for p in pts]
-    Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
+    pinterp=solver.alpert_order
+    Cs=[_build_alpert_component_cache(pts[a],rule,pinterp) for a in eachindex(pts)]
     nc=length(pts)
     topo_data=build_join_topology(pts)
     gmaps=topo_data===nothing ? nothing : topo_data[2]
@@ -1555,7 +1576,8 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         fill!(A,zero(Complex{T}))
         Gs=[cfie_geom_cache(p) for p in pts]
         rule=alpert_log_rule(T,solver.alpert_order)
-        Cs=[_build_alpert_component_cache(pts[a],rule) for a in eachindex(pts)]
+        pinterp=solver.alpert_order
+        Cs=[_build_alpert_component_cache(pts[a],rule,pinterp) for a in eachindex(pts)]
         nc=length(pts)
         topo_data=build_join_topology(pts)
         gmaps=topo_data===nothing ? nothing : topo_data[2]
