@@ -170,7 +170,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreade
             dx=xi-xs[j];dy=yi-ys[j]
             d=sqrt(muladd(dx,dx,dy*dy)) # an efficient dy^2+dx*dx
             if d<tol
-                M[i,j]=Complex(curvatures[i]/TWO_PI) 
+                M[i,j]=-Complex(curvatures[i]/TWO_PI) 
             else
                 invd=inv(d)
                 cos_phi=(nx[j]*dx+ny[j]*dy)*invd
@@ -300,7 +300,7 @@ function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded
             nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
             if !ok
-                K[i,j]+=Complex(κ[i]/TWO_PI) 
+                K[i,j]+= -Complex(κ[i]/TWO_PI) 
             end
             if add_x
                 xr=_x_reflect(xj,shift_x)
