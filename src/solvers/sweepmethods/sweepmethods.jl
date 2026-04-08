@@ -226,96 +226,89 @@ end
 
 ############ REFINEMENT ############
 
-# For BIM/CFIE_kress, refinement is controlled by boundary discretization (pts_scaling_factor).
-# dim_scaling_factor is only relevant for basis-type solvers and is ignored by some dispatches below.
-function _refine_objective(solver::Union{CFIE_kress,CFIE_kress_corners,BoundaryIntegralMethod,CFIE_alpert},basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true,use_krylov::Bool=true,which::Symbol=:svd)
-    return k->begin
-        pts=evaluate_points(solver,billiard,k)
-        solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+# Helper function to scale a field of the solver if it exists, otherwise return the solver unchanged. This basically disambigues PSM and DM from BIE type solvers since the latter dont have the associated basis to scale.
+function _maybe_scale_field(obj,field::Symbol,factor)
+    try
+        return update_field(obj,field,factor*getfield(obj,field))
+    catch _
+        return obj
     end
 end
 
-function _refine_objective(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true)
-    return k->begin
-        dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
-        new_basis=resize_basis(basis,billiard,dim,k)
-        pts=evaluate_points(solver,billiard,k)
-        solve(solver,new_basis,pts,k;multithreaded=multithreaded_matrices)
-    end
+function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
+    s=_maybe_scale_field(solver,:pts_scaling_factor,pts_factor)
+    s=_maybe_scale_field(s,:dim_scaling_factor,dim_factor)
+    return s
 end
 
-function _refine_objective(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard;multithreaded_matrices::Bool=true)
-    return k->begin
-        dim=max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
-        new_basis=resize_basis(basis,billiard,dim,k)
-        pts=evaluate_points(solver,billiard,k)
-        solve(solver,new_basis,pts,k;multithreaded=multithreaded_matrices)
-    end
-end
-
-"""
-    refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:det) where {T<:Real}
-
-Refines the minima of the tension function around the approximate wavenumbers `ks` using local optimization. The function identifies the approximate minima in `tens` that are below a specified `threshold`, and then performs a local optimization around each corresponding `k` to find a more accurate wavenumber with lower tension. The results are printed in a summary table if `print_refinement` is set to true.
-
-# Inputs
-- `solver::SweepSolver`: The solver configuration for performing the sweep.
-- `basis::AbsBasis`: The basis to be used. Can use also the AbstractHankelBasis() when solver is `BoundaryIntegralMethod`.
-- `billiard::AbsBilliard`: The billiard configuration.
-- `ks::AbstractVector{T}`: Vector of approximate wavenumbers corresponding to the minima of the tension function.
-- `tens::AbstractVector{T}`: Vector of tension values corresponding to the wavenumbers in `ks`.
-- `multithreaded_matrices::Bool=true`: Whether to use multithreading for matrix construction during refinement.
-- `multithreaded_ks::Bool=false`: Whether to use multithreading for the local optimization of wavenumbers.
-- `threshold::Real=200.0`: Threshold for identifying which minima to refine based on their tension values.
-- `print_refinement::Bool=true`: Whether to print a summary of the refinement results.
-- `use_krylov::Bool=true`: Whether to use Krylov solvers during the refinement process where applicable.
-- `digits::Int=10`: Number of digits to round the results in the summary table.
-- `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
-
-# Returns
-- `Tuple{Vector{T}, Vector{T}}`:
-  - `sols`: Vector of refined wavenumbers corresponding to the minima of the tension function.
-  - `tens_refined`: Vector of tension values corresponding to the refined wavenumbers.
-"""
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
+    @assert length(pts_refinement_factors)==length(dim_refinement_factors)
     ks_approx=get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
-    solver_new=update_field(solver,:pts_scaling_factor,2*solver.pts_scaling_factor)
-    try
-        solver_new=update_field(solver_new,:dim_scaling_factor,1.5*solver.dim_scaling_factor)
-    catch _
-    end
-    f_min=_refine_objective(solver_new,basis,billiard;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    nk=length(ks_approx)
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
-    dk=ks[2]-ks[1]
-    p=Progress(length(ks_approx);desc="Refining approximate ks...")
+    histories=Vector{Vector{NamedTuple}}(undef,nk)
+    dk0=(N>=2) ? abs(ks[2]-ks[1]) : T(1e-3)
+    p=Progress(nk;desc="Refining minima (multilevel)...")
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks_approx)
-        res=optimize(f_min,ks_approx[i]-dk,ks_approx[i]+dk)
-        sols[i]=res.minimizer
-        tens_refined[i]=res.minimum
+        kcur=ks_approx[i]
+        window=dk0
+        hist=NamedTuple[]
+        tprev=oftype(T,NaN)
+        kprev=oftype(T,NaN)
+        for lev in eachindex(pts_refinement_factors)
+            pf=pts_refinement_factors[lev]
+            df=dim_refinement_factors[lev]
+            solver_cur=_refined_solver(solver,pf,df)
+            fcur=_refine_objective(solver_cur,basis,billiard;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,which=which)
+            a=kcur-window
+            b=kcur+window
+            res=isempty(optimizer_kwargs) ? optimize(fcur,a,b) : optimize(fcur,a,b;optimizer_kwargs...)
+            knew=res.minimizer
+            tnew=res.minimum
+            push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
+            if lev>1
+                kconv=(stop_k_tol>0) && (abs(knew-kprev)<=stop_k_tol)
+                tconv=(stop_t_tol>0) && (abs(tnew-tprev)<=stop_t_tol)
+                if kconv || tconv
+                    kcur=knew
+                    tprev=tnew
+                    break
+                end
+            end
+            kprev=kcur
+            tprev=tnew
+            kcur=knew
+            window=max(window/window_shrink,dk0*final_window_factor)
+        end
+        sols[i]=kcur
+        tens_refined[i]=tprev
+        histories[i]=hist
         next!(p)
     end
     if print_refinement
-        println("\n===== Refinement summary =====")
-        println(rpad(" #",4),rpad("k_approx",digits+6),rpad("k_ref",digits+6),rpad("Δk",digits+6),rpad("t_approx",digits+6),rpad("t_ref",digits+6),"Δt")
+        println("\n================ Multilevel refinement summary ================")
+        println(rpad("#",4),rpad("k_approx",digits+8),rpad("k_ref",digits+8),
+                rpad("Δk",digits+8),rpad("log10|t_app|",digits+10),
+                rpad("log10|t_ref|",digits+10),"levels")
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
-            t_app=log10(abs(f_min(k_app)))
+            f0=_refine_objective(solver,basis,billiard;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,which=which)
+            t_app=log10(abs(f0(k_app)))
             t_ref=log10(abs(tens_refined[i]))
             dk_i=k_ref-k_app
-            dt=t_ref-t_app
             println(rpad("$(i)",4),
-                    rpad("$(round(k_app,digits=digits))",digits+6),
-                    rpad("$(round(k_ref,digits=digits))",digits+6),
-                    rpad("$(round(dk_i,digits=digits))",digits+6),
-                    rpad("$(round(t_app,digits=digits))",digits+6),
-                    rpad("$(round(t_ref,digits=digits))",digits+6),
-                    "$(round(dt,digits=digits))")
+                    rpad("$(round(k_app,digits=digits))",digits+8),
+                    rpad("$(round(k_ref,digits=digits))",digits+8),
+                    rpad("$(round(dk_i,digits=digits))",digits+8),
+                    rpad("$(round(t_app,digits=digits))",digits+10),
+                    rpad("$(round(t_ref,digits=digits))",digits+10),
+                    "$(length(histories[i]))")
         end
-        println("================================\n")
+        println("==============================================================\n")
     end
-    return sols,tens_refined
+    return sols,tens_refined,histories
 end
