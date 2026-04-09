@@ -467,8 +467,13 @@ end
 
 function _trig_coeffs(vals::AbstractVector{T}) where {T<:Real}
     N=length(vals)
-    vals0=circshift(vals,1)
-    return fft(complex.(vals0))./T(N)
+    ks=_fft_freqs(T,N)
+    c=fft(complex.(vals))./T(N)
+    phase=T(pi)/T(N) # h/2 with h=2π/N
+    @inbounds for j in eachindex(c)
+        c[j]*=exp(-im*T(ks[j])*phase)
+    end
+    return c
 end
 
 @inline function _eval_trig_series(c::AbstractVector{Complex{T}},ks::AbstractVector{Int},θ::T) where {T<:Real}
