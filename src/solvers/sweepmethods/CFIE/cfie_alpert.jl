@@ -1523,8 +1523,9 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         fill!(A,zero(Complex{T}))
         Gs=[cfie_geom_cache(p) for p in pts]
         rule=alpert_log_rule(T,solver.alpert_order)
-        pinterp=max(8,solver.alpert_order)
-        Cs=[_build_alpert_component_cache(solver,billiard.full_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
+        boundary=solver.billiard.full_boundary
+        flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
+        Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
         nc=length(pts)
         topo_data=build_join_topology(pts)
         gmaps=topo_data===nothing ? nothing : topo_data[2]
