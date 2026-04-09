@@ -927,11 +927,7 @@ end
     error("Unknown reflection image kind $kind")
 end
 
-function _build_reflected_open_panel_data(
-    pb::BoundaryPointsCFIE{T},
-    qfun,tfun;
-    reverse_param::Bool=false
-) where {T<:Real}
+function _build_reflected_open_panel_data(pb::BoundaryPointsCFIE{T},qfun,tfun;reverse_param::Bool=false) where {T<:Real}
     Nb=length(pb.xy)
     X=Vector{T}(undef,Nb)
     Y=Vector{T}(undef,Nb)
@@ -980,13 +976,10 @@ function _add_image_block!(
 
     Na=length(pa.xy)
     Nb=length(pb.xy)
-
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
 
-    Ximg,Yimg,TXimg,TYimg,Simg,Wimg=_build_reflected_open_panel_data(
-        pb,qfun,tfun;reverse_param=reverse_param
-    )
+    Ximg,Yimg,TXimg,TYimg,Simg,Wimg=_build_reflected_open_panel_data(pb,qfun,tfun;reverse_param=reverse_param)
 
     @use_threads multithreading=multithreaded for j in 1:Nb
         gj=rb[j]
@@ -1149,10 +1142,14 @@ function _assemble_reflection_images!(
     end
 
     if sym.axis===:y_axis
+        reverse_param=_reflection_reverses_parameter(:x)
         do_one_image!(:x;joined_ok=false)
     elseif sym.axis===:x_axis
+        reverse_param=_reflection_reverses_parameter(:y)
         do_one_image!(:y;joined_ok=false)
     elseif sym.axis===:origin
+        reverse_param=_reflection_reverses_parameter(:x)
+        reverse_param=_reflection_reverses_parameter(:y)
         do_one_image!(:x;joined_ok=false)
         do_one_image!(:y;joined_ok=false)
         do_one_image!(:xy;joined_ok=false)
