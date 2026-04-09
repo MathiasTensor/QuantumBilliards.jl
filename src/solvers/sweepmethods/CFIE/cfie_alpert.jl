@@ -488,6 +488,14 @@ end
     return x,y,tx,ty,s
 end
 
+@inline function _eval_shifted_source_periodic_trig(θ::T,Xhat::AbstractVector{Complex{T}},Yhat::AbstractVector{Complex{T}},dXhat::AbstractVector{Complex{T}},dYhat::AbstractVector{Complex{T}},ks::AbstractVector{Int}) where {T<:Real}
+    x=real(_eval_trig_series(Xhat,ks,θ))
+    y=real(_eval_trig_series(Yhat,ks,θ))
+    tx=real(_eval_trig_series(dXhat,ks,θ))
+    ty=real(_eval_trig_series(dYhat,ks,θ))
+    s=sqrt(tx*tx+ty*ty)
+    return x,y,tx,ty,s
+end
 
 function _alpert_interp_offsets_weights(ξ::T,ninterp::Int) where {T<:Real}
     j0=floor(Int,ξ-T(ninterp)/2+one(T))
@@ -508,107 +516,6 @@ end
     return collect(-(q-1):q)
 end
 
-function _build_periodic_trig_interp_weights(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T}) where {T<:Real}
-    ts=pts.ts
-    N=length(ts)
-    jcorr=rule.j
-    h=pts.ws[1]
-    ks=_fft_freqs(T,N)
-
-    F=Matrix{Complex{T}}(undef,N,N)
-    @inbounds for m in 1:N
-        θm=ts[m]
-        for j in 1:N
-            F[m,j]=exp(-im*T(ks[j])*θm)
-        end
-    end
-    Finv=inv(F)
-
-    Wp=Array{Complex{T},3}(undef,jcorr,N,N)
-    Wm=Array{Complex{T},3}(undef,jcorr,N,N)
-
-    v=Vector{Complex{T}}(undef,N)
-
-    @inbounds for p in 1:jcorr
-        Δt=h*rule.x[p]
-        for i in 1:N
-            θp=wrap_angle(ts[i]+Δt)
-            for j in 1:N
-                v[j]=exp(im*T(ks[j])*θp)
-            end
-            for n in 1:N
-                s=zero(Complex{T})
-                for j in 1:N
-                    s+=v[j]*Finv[j,n]
-                end
-                Wp[p,i,n]=s
-            end
-
-            θm=wrap_angle(ts[i]-Δt)
-            for j in 1:N
-                v[j]=exp(im*T(ks[j])*θm)
-            end
-            for n in 1:N
-                s=zero(Complex{T})
-                for j in 1:N
-                    s+=v[j]*Finv[j,n]
-                end
-                Wm[p,i,n]=s
-            end
-        end
-    end
-    return Wp,Wm
-end
-
-# Periodic local-p interpolation of shifted source data.
-#
-# Inputs:
-#   θ      : shifted angle in (0,2π]
-#   ts     : equispaced periodic nodes
-#   h      : angular step = 2π/N
-#   X,Y    : sampled geometry arrays
-#   dX,dY  : sampled tangent arrays
-#   p      : even stencil size
-#
-# Outputs:
-#   x,y,tx,ty,s,idx,wt
-# where:
-#   idx is a Vector{Int} of length p with periodic source indices
-#   wt  is a Vector{T}   of length p with interpolation weights
-@inline function _eval_shifted_source_periodic_localp(θ::T,ts::AbstractVector{T},h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T},p::Int) where {T<:Real}
-    N=length(ts)
-    iseven(p) || error("p must be even.")
-    p<=N || error("p must satisfy p <= N.")
-    u=θ/h-one(T)
-    u<zero(T) && (u+=T(N))
-    u>=T(N) && (u-=T(N))
-    i0=floor(Int,u)
-    η=u-T(i0)
-    i=i0+1
-    i>N && (i-=N)
-    offs=_local_offsets(p)
-    nodes=T.(offs)
-    wt=_lagrange_weights(η,nodes)
-    idx=Vector{Int}(undef,p)
-    @inbounds for m in 1:p
-        idx[m]=mod1(i+offs[m],N)
-    end
-    x=zero(T)
-    y=zero(T)
-    tx=zero(T)
-    ty=zero(T)
-    @inbounds for m in 1:p
-        q=idx[m]
-        wm=wt[m]
-        x+=wm*X[q]
-        y+=wm*Y[q]
-        tx+=wm*dX[q]
-        ty+=wm*dY[q]
-    end
-    s=sqrt(tx*tx+ty*ty)
-    return x,y,tx,ty,s,idx,wt
-end
-
 function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
@@ -619,11 +526,13 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     h=pts.ws[1]
     jcorr=rule.j
     ninterp=ord+3
+
     Xhat=_trig_coeffs(X)
     Yhat=_trig_coeffs(Y)
     dXhat=_trig_coeffs(dX)
     dYhat=_trig_coeffs(dY)
     ks=_fft_freqs(T,N)
+
     xp=Matrix{T}(undef,jcorr,N)
     yp=similar(xp)
     txp=similar(xp)
@@ -634,22 +543,23 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     txm=similar(xp)
     tym=similar(xp)
     sm=similar(xp)
+
     offsp=Matrix{Int}(undef,jcorr,ninterp)
     wtp=Matrix{T}(undef,jcorr,ninterp)
     offsm=Matrix{Int}(undef,jcorr,ninterp)
     wtm=Matrix{T}(undef,jcorr,ninterp)
+
     @inbounds for p in 1:jcorr
-        ξp=rule.x[p]
-        ξm=-rule.x[p]
-        op,wp=_alpert_interp_offsets_weights(ξp,ninterp)
-        om,wm=_alpert_interp_offsets_weights(ξm,ninterp)
+        op,wp=_alpert_interp_offsets_weights(rule.x[p],ninterp)
+        om,wm=_alpert_interp_offsets_weights(-rule.x[p],ninterp)
         for m in 1:ninterp
             offsp[p,m]=op[m]
             wtp[p,m]=wp[m]
             offsm[p,m]=om[m]
             wtm[p,m]=wm[m]
         end
-        Δt=h*ξp
+
+        Δt=h*rule.x[p]
         for i in 1:N
             θp=wrap_angle(ts[i]+Δt)
             x,y,tx,ty,s=_eval_shifted_source_periodic_trig(θp,Xhat,Yhat,dXhat,dYhat,ks)
@@ -658,6 +568,7 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
             txp[p,i]=tx
             typ[p,i]=ty
             sp[p,i]=s
+
             θm=wrap_angle(ts[i]-Δt)
             x,y,tx,ty,s=_eval_shifted_source_periodic_trig(θm,Xhat,Yhat,dXhat,dYhat,ks)
             xm[p,i]=x
@@ -667,6 +578,7 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
             sm[p,i]=s
         end
     end
+
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
@@ -842,56 +754,78 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
+
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     N=length(pts.ts)
+    h=pts.ws[1]
     nskip=rule.a
     jcorr=rule.j
     ninterp=C.ninterp
+
     @use_threads multithreading=multithreaded for i in 1:N
-        wi=pts.ws[1]
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
+
+        # explicit diagonal term
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
+
+        # naive periodic self block: DLP offdiag + SLP offdiag
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            A[gi,gj]-=wi*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]-=ik*(h*(αS*H(0,k*rij)*G.speed[j]))
         end
-        @inbounds for j in 1:N
-            j==i && continue
-            gj=row_range[j]
-            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-        end
+
+        # remove wrapped near band of naive DLP+SLP
         @inbounds for m in (-nskip+1):(nskip-1)
             m==0 && continue
             j=mod1(i+m,N)
             gj=row_range[j]
-            A[gi,gj]+=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            rij=G.R[i,j]
+            inn=G.inner[i,j]
+            invr=G.invR[i,j]
+            A[gi,gj]+=h*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]+=ik*(h*(αS*H(0,k*rij)*G.speed[j]))
         end
+
+        # add Alpert near correction: plus shifts
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
+
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            if isfinite(r) && r>sqrt(eps(T))
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                invr=inv(r)
+                innp=C.typ[p,i]*dx-C.txp[p,i]*dy
+                coeffD=-(fac*(αD*innp*H(1,k*r)*invr))
+                coeffS=-(ik*(fac*(αS*H(0,k*r)*C.sp[p,i])))
+                coeff=coeffD+coeffS
                 for m in 1:ninterp
                     q=mod1(i+C.offsp[p,m],N)
                     A[gi,row_range[q]]+=coeff*C.wtp[p,m]
                 end
             end
+
             dx=xi-C.xm[p,i]
             dy=yi-C.ym[p,i]
-            r=sqrt(dx*dx+dy*dy)
-            if isfinite(r) && r>sqrt(eps(T))
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                invr=inv(r)
+                innm=C.tym[p,i]*dx-C.txm[p,i]*dy
+                coeffD=-(fac*(αD*innm*H(1,k*r)*invr))
+                coeffS=-(ik*(fac*(αS*H(0,k*r)*C.sm[p,i])))
+                coeff=coeffD+coeffS
                 for m in 1:ninterp
                     q=mod1(i+C.offsm[p,m],N)
                     A[gi,row_range[q]]+=coeff*C.wtm[p,m]
@@ -899,6 +833,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             end
         end
     end
+
     return A
 end
 
