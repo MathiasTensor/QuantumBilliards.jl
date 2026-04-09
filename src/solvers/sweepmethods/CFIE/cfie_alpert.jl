@@ -1112,14 +1112,14 @@ function _assemble_reflection_images!(
     end
 
     if sym.axis===:y_axis
-        do_one_image!(:x;joined_ok=true)
+        do_one_image!(:x;joined_ok=false)
         return A
     elseif sym.axis===:x_axis
-        do_one_image!(:y;joined_ok=true)
+        do_one_image!(:y;joined_ok=false)
         return A
     elseif sym.axis===:origin
-        do_one_image!(:x;joined_ok=true)
-        do_one_image!(:y;joined_ok=true)
+        do_one_image!(:x;joined_ok=false)
+        do_one_image!(:y;joined_ok=false)
         do_one_image!(:xy;joined_ok=false)
         return A
     else
