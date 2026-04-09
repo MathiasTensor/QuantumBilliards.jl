@@ -241,32 +241,55 @@ function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
     return s
 end
 
-function newton_refine_safe(f::Function,k0,a,b;h=1e-6,maxiter=8,tol=1e-12,improve_tol=1.0)
-    k=clamp(k0,a,b)
-    fbest=f(k)
+function newton_refine_safe(f::Function,k0,a,b;h=1e-6,maxiter=8,tol=1e-12,max_backtrack=8)
+    k = clamp(k0,a,b)
+    fbest = f(k)
+
     for _ in 1:maxiter
-        hk=h*max(1.0,abs(k))
-        km=max(a,k-hk)
-        kp=min(b,k+hk)
+        hk = h*max(1.0,abs(k))
+        km = max(a,k-hk)
+        kp = min(b,k+hk)
+
         isapprox(km,k,atol=1e-15) && return k
         isapprox(kp,k,atol=1e-15) && return k
-        fm=f(km)
-        f0=fbest
-        fp=f(kp)
-        f1=(fp-fm)/(kp-km)
-        halfspan=0.5*(kp-km)
-        abs(halfspan)<1e-16 && return k
-        f2=(fp-2*f0+fm)/(halfspan^2)
-        abs(f2)<1e-14 && return k
-        k_new=k-f1/f2
-        if !(a<=k_new<=b)
-            return k
+
+        fm = f(km)
+        f0 = fbest
+        fp = f(kp)
+
+        f1 = (fp-fm)/(kp-km)
+        halfspan = 0.5*(kp-km)
+        abs(halfspan) < 1e-16 && return k
+        f2 = (fp - 2f0 + fm)/(halfspan^2)
+        abs(f2) < 1e-14 && return k
+
+        step = -f1/f2
+        abs(step) < tol && return k
+
+        accepted = false
+        knew = k
+        fnew = fbest
+
+        for bt in 0:max_backtrack
+            α = 0.5^bt
+            ktrial = clamp(k + α*step,a,b)
+            abs(ktrial-k) < tol && continue
+            ft = f(ktrial)
+            if isfinite(ft) && ft <= fbest
+                knew = ktrial
+                fnew = ft
+                accepted = true
+                break
+            end
         end
-        f_new=f(k_new)
-        abs(k_new-k)<tol && return k_new
-        k=k_new
-        fbest=f_new
+
+        accepted || return k
+        abs(knew-k) < tol && return knew
+
+        k = knew
+        fbest = fnew
     end
+
     return k
 end
 
@@ -301,9 +324,12 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             res=isempty(optimizer_kwargs) ? optimize(fcur,a,b) : optimize(fcur,a,b;optimizer_kwargs...)
             knew=res.minimizer
             tnew=res.minimum
-            if lev==length(pts_refinement_factors)
-                knew=newton_refine_safe(fcur,knew,a,b;h=newton_h,maxiter=newton_maxiter,tol=newton_tol,improve_tol=newton_improve_tol)
-                tnew=fcur(knew)
+            if lev == length(pts_refinement_factors)
+                knew = newton_refine_safe(fcur,knew,a,b;
+                    h=newton_h,
+                    maxiter=newton_maxiter,
+                    tol=newton_tol)
+                tnew = fcur(knew)
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
             if lev>1
