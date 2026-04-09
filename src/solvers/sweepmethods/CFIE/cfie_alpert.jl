@@ -364,6 +364,9 @@ struct AlpertPeriodicCache{T<:Real}
     xp::Matrix{T}
     yp::Matrix{T}
     sp::Matrix{T}
+    xm::Matrix{T}
+    ym::Matrix{T}
+    sm::Matrix{T}
     offsp::Matrix{Int}
     wtp::Matrix{T}
     offsm::Matrix{Int}
@@ -544,7 +547,7 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
         end
     end
 
-    return AlpertPeriodicCache(xp,yp,sp,offsp,wtp,offsm,wtm,ninterp)
+    return AlpertPeriodicCache(xp,yp,sp,xm,ym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
 ###########################################
@@ -719,7 +722,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
-
+    @info "self alpert periodic"
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     N=length(pts.ts)
@@ -735,10 +738,8 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         si=G.speed[i]
         κi=G.kappa[i]
 
-        # DLP diagonal in your existing convention
         A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
 
-        # DLP off-diagonal: assemble directly, no Alpert correction
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -748,7 +749,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
 
-        # SLP far/offdiag: assemble naively away from near band
         @inbounds for j in 1:N
             m=j-i
             m>N÷2 && (m-=N)
@@ -758,7 +758,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
 
-        # SLP near replacement by Alpert
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
 
@@ -811,6 +810,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     N=length(X)
+    @info "self alpert smooth panel"
     h=pts.ws[1]
     a=rule.a
     jcorr=rule.j
@@ -950,6 +950,7 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
+    @info "self alpert composite component"
     a=rule.a
     jcorr=rule.j
     @inbounds for l in eachindex(gmap)
