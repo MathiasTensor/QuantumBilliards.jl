@@ -161,6 +161,10 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     ds::Vector{T} # diffs between crv lengths at ts
     compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
     is_periodic::Bool # true = closed periodic curve, false = open panel
+    xL::SVector{2,T} # left endpoint of the curve component, only used for panels
+    xR::SVector{2,T} # right endpoint of the curve component, only used for panels
+    tL::SVector{2,T} # tangent at left endpoint of the curve component, only used for panels
+    tR::SVector{2,T} # tangent at right endpoint of the curve component, only used for panels
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
@@ -179,7 +183,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     ws=copy(pts.ws)
     ws_der=copy(pts.ws_der)
     ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic,pts.xL,pts.xR,pts.tL,pts.tR)
 end
 =#
 function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
@@ -190,7 +194,11 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     ws=reverse(pts.ws)
     ws_der=reverse(pts.ws_der)
     ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic)
+    xL=pts.xR
+    xR=pts.xL
+    tL=-pts.tR
+    tR=-pts.tL
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
 end
 
 ###############
@@ -236,7 +244,7 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # unused, legacy
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,crv(zero(T)),crv(one(T)),tangent(crv,zero(T)),tangent(crv,one(T)))
 end
 
 #######################
@@ -258,28 +266,21 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
     iseven(N) && (N+=needed)
-
     σ,tmap,jac,jac2,_=kress_graded_nodes_data(T,N;q=solver.kressq)
-
     u=tmap./two_pi
     xy=curve(crv,u)
     γu=tangent(crv,u)
     γuu=tangent_2(crv,u)
-
     tangent_1st=[γu[i]*(jac[i]/two_pi) for i in eachindex(u)]
-    tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2 + γu[i]*(jac2[i]/two_pi) for i in eachindex(u)]
-
+    tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2+γu[i]*(jac2[i]/two_pi) for i in eachindex(u)]
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-
     h=pi/T((N+1)÷2)
-
     ts=σ
     ws=fill(h,N)
     ws_der=jac
-
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,crv(zero(T)),crv(one(T)),tangent(crv,zero(T)),tangent(crv,one(T)))
 end
 
 ####################
@@ -391,7 +392,7 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,crv(zero(T)),crv(one(T)),tangent(crv,zero(T)),tangent(crv,one(T)))
 end
 
 # _evaluate_points_panel
@@ -412,17 +413,20 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
     N<2 && (N=2)
-    ts=[T(two_pi)*(j-T(1)/2)/T(N) for j in 1:N]
-    ts=ts./two_pi
+    ts=[(j-T(1)/2)/T(N) for j in 1:N]
     xy=curve(crv,ts)
-    tangent_1st=tangent(crv,ts)./(two_pi)
-    tangent_2nd=tangent_2(crv,ts)./(two_pi)^2
+    tangent_1st=tangent(crv,ts)
+    tangent_2nd=tangent_2(crv,ts)
     ss=arc_length(crv,ts)
     ds=_open_panel_weights(ss)
     h=inv(T(N))   # midpoint spacing
     ws=fill(h,N)
     ws_der=ones(T,N)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false)
+    xL=curve(crv,zero(T))
+    xR=curve(crv,one(T))
+    tL=tangent(crv,zero(T))
+    tR=tangent(crv,one(T))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
 end
 
 """

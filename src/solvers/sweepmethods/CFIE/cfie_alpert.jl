@@ -781,27 +781,40 @@ end
     return qfun,tfun,w
 end
 
-@inline function _endpoint_point_tangent(p::BoundaryPointsCFIE{T},side::Symbol) where {T<:Real}
+@inline function _curve_endpoint_point_tangent(crv::AbsCurve,side::Symbol,::Type{T}) where {T<:Real}
     if side===:left
-        return p.xy[1],p.tangent[1]
+        u=zero(T)
     elseif side===:right
-        n=length(p.xy)
-        return p.xy[n],p.tangent[n]
+        u=one(T)
     else
         error("side must be :left or :right")
     end
+    q=curve(crv,u)
+    t=tangent(crv,u)
+    return q,t
 end
 
 @inline function _join_angle_min(t1::SVector{2,T},t2::SVector{2,T}) where {T<:Real}
     min(_join_angle(t1,t2),_join_angle(t1,-t2))
 end
 
-function _reflection_join_data(pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},qfun,tfun;xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real}
-    pla,tla=_endpoint_point_tangent(pa,:left)
-    pra,tra=_endpoint_point_tangent(pa,:right)
-
-    plb,tlb=_endpoint_point_tangent(pb,:left)
-    prb,trb=_endpoint_point_tangent(pb,:right)
+function _reflection_join_data(
+    crva,
+    crvb,
+    pa::BoundaryPointsCFIE{T},
+    pb::BoundaryPointsCFIE{T},
+    qfun,
+    tfun;
+    xtol::T=T(1e-10),
+    angtol::T=T(1e-8)
+) where {T<:Real}
+    if pa.is_periodic || pb.is_periodic
+        return nothing
+    end
+    pla,tla=_curve_endpoint_point_tangent(crva,:left,T)
+    pra,tra=_curve_endpoint_point_tangent(crva,:right,T)
+    plb,tlb=_curve_endpoint_point_tangent(crvb,:left,T)
+    prb,trb=_curve_endpoint_point_tangent(crvb,:right,T)
 
     qlb=qfun(plb)
     qrb=qfun(prb)
@@ -835,7 +848,7 @@ function _reflection_join_data(pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{
     end
 
     isempty(hits) && return nothing
-    length(hits)==1 || error("Ambiguous reflected join detection.")
+    length(hits)>1 && error("Ambiguous reflected join detection.")
     return hits[1]
 end
 
@@ -921,7 +934,7 @@ function _add_image_block_alpert_joined!(
 
     Na=length(pa.xy)
     Nb=length(pb.xy)
-    ha=pa.ws[1]
+    h=pa.is_periodic ? inv(T(length(pa.ts))) : pa.ws[1]
     a=rule.a
     pinterp=rule.order+3
 
@@ -932,7 +945,7 @@ function _add_image_block_alpert_joined!(
         gi=ra[i]
         xi=Xa[i]
         yi=Ya[i]
-        ui=pa.ts[i]
+        ui=pa.is_periodic ? pa.ts[i]/two_pi : pa.ts[i]
 
         nskip=_target_excluded_count(i,Na,a,tside)
 
@@ -956,7 +969,7 @@ function _add_image_block_alpert_joined!(
         end
 
         for p in 1:rule.j
-            Δu=ha*rule.x[p]
+            Δu=h*rule.x[p]
             e=_overflow_excess(ui,Δu,tside)
             e<=zero(T) && continue
 
@@ -974,7 +987,7 @@ function _add_image_block_alpert_joined!(
             r2<=(eps(T))^2 && continue
             r=sqrt(r2)
             inn=_dinner(dx,dy,t[1],t[2])
-            fac=ha*rule.w[p]
+            fac=(pa.is_periodic ? pa.ws[1] : h)*rule.w[p]
 
             coeffD=-weight*(fac*(αD*inn*H(1,k*r)/r))
             coeffS=-weight*(ik*(fac*(αS*H(0,k*r)*sj)))
@@ -993,6 +1006,8 @@ function _assemble_reflection_images!(
     rb::UnitRange{Int},
     pa::BoundaryPointsCFIE{T},
     pb::BoundaryPointsCFIE{T},
+    crva,
+    crvb,
     solver::CFIE_alpert{T},
     billiard::Bi,
     k::T,
@@ -1003,7 +1018,7 @@ function _assemble_reflection_images!(
 
     if sym.axis===:y_axis
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:x)
-        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
@@ -1014,7 +1029,7 @@ function _assemble_reflection_images!(
 
     if sym.axis===:x_axis
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:y)
-        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
@@ -1025,7 +1040,7 @@ function _assemble_reflection_images!(
 
     if sym.axis===:origin
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:x)
-        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
@@ -1033,7 +1048,7 @@ function _assemble_reflection_images!(
         end
 
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:y)
-        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
@@ -1141,7 +1156,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
         for a in 1:nc, b in 1:nc
             ra=offs[a]:(offs[a+1]-1)
             rb=offs[b]:(offs[b+1]-1)
-            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
+            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],flat_boundary[a],flat_boundary[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
         end
     elseif symmetry isa Rotation
         costab,sintab,χ=_rotation_tables(T,symmetry.n,symmetry.m)
@@ -1167,6 +1182,8 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     topos=ws.topos
     gmaps=ws.gmaps
     panel_to_comp=ws.panel_to_comp
+    boundary=solver.billiard.desymmetrized_full_boundary
+    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
     nc=length(pts)
     if isnothing(topos)
         @inbounds for a in 1:nc
@@ -1228,7 +1245,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
         for a in 1:nc, b in 1:nc
             ra=offs[a]:(offs[a+1]-1)
             rb=offs[b]:(offs[b+1]-1)
-            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
+            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],flat_boundary[a],flat_boundary[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
         end
     elseif symmetry isa Rotation
         costab,sintab,χ=_rotation_tables(T,symmetry.n,symmetry.m)
