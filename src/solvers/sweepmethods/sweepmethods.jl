@@ -263,9 +263,6 @@ function newton_refine_safe(f::Function,k0,a,b;h=1e-6,maxiter=8,tol=1e-12,improv
             return k
         end
         f_new=f(k_new)
-        if !isfinite(f_new) || f_new>improve_tol*fbest
-            return k
-        end
         abs(k_new-k)<tol && return k_new
         k=k_new
         fbest=f_new
