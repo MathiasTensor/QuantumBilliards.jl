@@ -762,42 +762,86 @@ end
 
 
 
-@inline function _reflection_qfun_tfun_weight(sym::Reflection,billiard,kind::Symbol)
-    if kind===:x
-        qfun=q->image_point_x(q,billiard)
-        tfun=t->image_tangent_x(t)
-        w=sym.axis===:origin ? sym.parity[1] : sym.parity
-    elseif kind===:y
-        qfun=q->image_point_y(q,billiard)
-        tfun=t->image_tangent_y(t)
-        w=sym.axis===:origin ? sym.parity[2] : sym.parity
-    elseif kind===:xy
-        qfun=q->image_point_xy(q,billiard)
-        tfun=t->image_tangent_xy(t)
-        w=sym.parity[1]*sym.parity[2]
+# -------------------------------------------------------------------
+# Reflection image descriptor
+# -------------------------------------------------------------------
+
+"""
+    _reflection_image_data(sym::Reflection, billiard, kind::Symbol)
+
+Return the point map, tangent map, symmetry weight, and whether the reflected
+image reverses the source-panel parameterization.
+
+`kind`:
+- `:x`  -> reflection across y-axis
+- `:y`  -> reflection across x-axis
+- `:xy` -> double reflection
+
+For single reflections the image curve has reversed parameter direction relative
+to the original source panel, so `reverse_param = true`.
+For the double reflection the parameter direction is preserved.
+"""
+@inline function _reflection_image_data(sym::Reflection, billiard, kind::Symbol)
+    if kind === :x
+        qfun = q -> image_point_x(q, billiard)
+        tfun = t -> image_tangent_x(t)
+        w    = sym.axis === :origin ? sym.parity[1] : sym.parity
+        reverse_param = true
+    elseif kind === :y
+        qfun = q -> image_point_y(q, billiard)
+        tfun = t -> image_tangent_y(t)
+        w    = sym.axis === :origin ? sym.parity[2] : sym.parity
+        reverse_param = true
+    elseif kind === :xy
+        qfun = q -> image_point_xy(q, billiard)
+        tfun = t -> image_tangent_xy(t)
+        w    = sym.parity[1] * sym.parity[2]
+        reverse_param = false
     else
         error("Unknown reflection image kind $kind")
     end
-    return qfun,tfun,w
+    return qfun, tfun, w, reverse_param
 end
 
-@inline function _curve_endpoint_point_tangent(crv::AbsCurve,side::Symbol,::Type{T}) where {T<:Real}
-    if side===:left
-        u=zero(T)
-    elseif side===:right
-        u=one(T)
-    else
+
+# -------------------------------------------------------------------
+# Endpoint helpers
+# -------------------------------------------------------------------
+
+@inline function _curve_endpoint_point_tangent(crv::AbsCurve, side::Symbol, ::Type{T}) where {T<:Real}
+    u = side === :left  ? zero(T) :
+        side === :right ? one(T)  :
         error("side must be :left or :right")
-    end
-    q=curve(crv,u)
-    t=tangent(crv,u)
-    return q,t
+    return curve(crv, u), tangent(crv, u)
 end
 
-@inline function _join_angle_min(t1::SVector{2,T},t2::SVector{2,T}) where {T<:Real}
-    min(_join_angle(t1,t2),_join_angle(t1,-t2))
+@inline function _join_angle_min(t1::SVector{2,T}, t2::SVector{2,T}) where {T<:Real}
+    min(_join_angle(t1, t2), _join_angle(t1, -t2))
 end
 
+
+# -------------------------------------------------------------------
+# Detect whether a reflected source panel joins a target panel smoothly
+# -------------------------------------------------------------------
+
+"""
+    _reflection_join_data(crva, crvb, pa, pb, qfun, tfun; xtol, angtol)
+
+Detect whether the reflected image of panel `crvb` joins panel `crva` at one
+of its endpoints.
+
+Returns either `nothing` or a named tuple
+
+    (target_side = :left/:right,
+     source_side = :left/:right,
+     angle       = θ)
+
+where:
+- `target_side` is the endpoint of target panel `a` where the join occurs
+- `source_side` is the endpoint of the *image panel* that meets it
+
+This routine is only used for open panels. Periodic pieces return `nothing`.
+"""
 function _reflection_join_data(
     crva,
     crvb,
@@ -805,107 +849,140 @@ function _reflection_join_data(
     pb::BoundaryPointsCFIE{T},
     qfun,
     tfun;
-    xtol::T=T(1e-10),
-    angtol::T=T(1e-8)
+    xtol::T = T(1e-10),
+    angtol::T = T(1e-8),
 ) where {T<:Real}
-    if pa.is_periodic || pb.is_periodic
-        return nothing
-    end
-    pla,tla=_curve_endpoint_point_tangent(crva,:left,T)
-    pra,tra=_curve_endpoint_point_tangent(crva,:right,T)
-    plb,tlb=_curve_endpoint_point_tangent(crvb,:left,T)
-    prb,trb=_curve_endpoint_point_tangent(crvb,:right,T)
 
-    qlb=qfun(plb)
-    qrb=qfun(prb)
-    tlbi=tfun(tlb)
-    trbi=tfun(trb)
+    (pa.is_periodic || pb.is_periodic) && return nothing
 
-    hits=NamedTuple[]
+    pla, tla = _curve_endpoint_point_tangent(crva, :left,  T)
+    pra, tra = _curve_endpoint_point_tangent(crva, :right, T)
 
-    d=_endpoint_distance(pla,qlb)
-    if d<=xtol
-        θ=_join_angle_min(tla,tlbi)
-        θ<=angtol && push!(hits,(target_side=:left,source_side=:left,angle=θ))
-    end
+    plb, tlb = _curve_endpoint_point_tangent(crvb, :left,  T)
+    prb, trb = _curve_endpoint_point_tangent(crvb, :right, T)
 
-    d=_endpoint_distance(pla,qrb)
-    if d<=xtol
-        θ=_join_angle_min(tla,trbi)
-        θ<=angtol && push!(hits,(target_side=:left,source_side=:right,angle=θ))
+    qlb  = qfun(plb)
+    qrb  = qfun(prb)
+    tlbi = tfun(tlb)
+    trbi = tfun(trb)
+
+    hits = NamedTuple[]
+
+    d = _endpoint_distance(pla, qlb)
+    if d <= xtol
+        θ = _join_angle_min(tla, tlbi)
+        θ <= angtol && push!(hits, (target_side = :left,  source_side = :left,  angle = θ))
     end
 
-    d=_endpoint_distance(pra,qlb)
-    if d<=xtol
-        θ=_join_angle_min(tra,tlbi)
-        θ<=angtol && push!(hits,(target_side=:right,source_side=:left,angle=θ))
+    d = _endpoint_distance(pla, qrb)
+    if d <= xtol
+        θ = _join_angle_min(tla, trbi)
+        θ <= angtol && push!(hits, (target_side = :left,  source_side = :right, angle = θ))
     end
 
-    d=_endpoint_distance(pra,qrb)
-    if d<=xtol
-        θ=_join_angle_min(tra,trbi)
-        θ<=angtol && push!(hits,(target_side=:right,source_side=:right,angle=θ))
+    d = _endpoint_distance(pra, qlb)
+    if d <= xtol
+        θ = _join_angle_min(tra, tlbi)
+        θ <= angtol && push!(hits, (target_side = :right, source_side = :left,  angle = θ))
     end
 
-    isempty(hits) && return nothing
+    d = _endpoint_distance(pra, qrb)
+    if d <= xtol
+        θ = _join_angle_min(tra, trbi)
+        θ <= angtol && push!(hits, (target_side = :right, source_side = :right, angle = θ))
+    end
+
+    isempty(hits)  && return nothing
     length(hits)>1 && error("Ambiguous reflected join detection.")
     return hits[1]
 end
 
-@inline function _source_skip_by_side(j::Int,N::Int,nskip::Int,side::Symbol)
-    if nskip<=0
-        return false
-    elseif side===:left
-        return j<=nskip
-    elseif side===:right
-        return j>N-nskip
-    else
-        error("side must be :left or :right")
-    end
+
+# -------------------------------------------------------------------
+# Small side utilities
+# -------------------------------------------------------------------
+
+@inline function _swap_side(side::Symbol)
+    side === :left  && return :right
+    side === :right && return :left
+    error("side must be :left or :right")
 end
 
-@inline function _target_excluded_count(i::Int,N::Int,a::Int,target_side::Symbol)
-    if target_side===:right
-        return max(0,i+a-1-N)
-    elseif target_side===:left
-        return max(0,a-i)
+"""
+    _swap_joininfo_source(joininfo)
+
+Single reflections reverse the image-panel parameterization. If `_reflection_join_data`
+reports that the reflected *image endpoint* touching the target is, say, `:left`,
+then the corresponding endpoint on the original source panel is actually `:right`.
+
+So before evaluating the source panel locally, we swap `source_side`.
+"""
+@inline function _swap_joininfo_source(joininfo)
+    return (
+        target_side = joininfo.target_side,
+        source_side = _swap_side(joininfo.source_side),
+        angle       = joininfo.angle,
+    )
+end
+
+@inline function _target_excluded_count(i::Int, N::Int, a::Int, target_side::Symbol)
+    if target_side === :right
+        return max(0, i + a - 1 - N)
+    elseif target_side === :left
+        return max(0, a - i)
     else
         error("target_side must be :left or :right")
     end
 end
 
-@inline function _skip_source_node(j::Int,N::Int,nskip::Int,source_side::Symbol)
-    if nskip<=0
-        return false
-    elseif source_side===:left
-        return j<=nskip
-    elseif source_side===:right
-        return j>N-nskip
+@inline function _skip_source_node(j::Int, N::Int, nskip::Int, source_side::Symbol)
+    nskip <= 0 && return false
+    if source_side === :left
+        return j <= nskip
+    elseif source_side === :right
+        return j > N - nskip
     else
         error("source_side must be :left or :right")
     end
 end
 
-@inline function _overflow_excess(ui::T,Δu::T,target_side::Symbol) where {T<:Real}
-    if target_side===:right
-        return ui+Δu-one(T)
-    elseif target_side===:left
-        return Δu-ui
+@inline function _overflow_excess(ui::T, Δu::T, target_side::Symbol) where {T<:Real}
+    if target_side === :right
+        return ui + Δu - one(T)
+    elseif target_side === :left
+        return Δu - ui
     else
         error("target_side must be :left or :right")
     end
 end
 
-@inline function _source_param_from_excess(e::T,source_side::Symbol) where {T<:Real}
-    if source_side===:left
+@inline function _source_param_from_excess(e::T, source_side::Symbol) where {T<:Real}
+    if source_side === :left
         return e
-    elseif source_side===:right
-        return one(T)-e
+    elseif source_side === :right
+        return one(T) - e
     else
         error("source_side must be :left or :right")
     end
 end
 
+
+# -------------------------------------------------------------------
+# Joined reflected-image Alpert correction
+# -------------------------------------------------------------------
+
+"""
+    _add_image_block_alpert_joined!(...)
+
+Add the reflected image interaction when the image source panel joins the target
+panel smoothly at an endpoint, so that the near-singular strip must be handled
+with an Alpert correction instead of a plain far-block quadrature.
+
+Important:
+- `joininfo.source_side` refers to the ORIGINAL source panel side
+- `reverse_param=true` for single reflections (`:x`, `:y`)
+- `reverse_param=false` for double reflection (`:xy`)
+"""
 function _add_image_block_alpert_joined!(
     A::AbstractMatrix{Complex{T}},
     ra::UnitRange{Int},
@@ -918,102 +995,128 @@ function _add_image_block_alpert_joined!(
     qfun,
     tfun,
     weight;
-    multithreaded::Bool=true
+    reverse_param::Bool,
+    multithreaded::Bool = true,
 ) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
 
-    Xa=getindex.(pa.xy,1)
-    Ya=getindex.(pa.xy,2)
+    αD = Complex{T}(0, k/2)
+    αS = Complex{T}(0, one(T)/2)
+    ik = Complex{T}(0, k)
 
-    Xb=getindex.(pb.xy,1)
-    Yb=getindex.(pb.xy,2)
-    dXb=getindex.(pb.tangent,1)
-    dYb=getindex.(pb.tangent,2)
+    Xa = getindex.(pa.xy, 1)
+    Ya = getindex.(pa.xy, 2)
 
-    Na=length(pa.xy)
-    Nb=length(pb.xy)
-    h=pa.is_periodic ? inv(T(length(pa.ts))) : pa.ws[1]
-    a=rule.a
-    pinterp=iseven(rule.order+3) ? rule.order+3 : rule.order+4
+    Xb  = getindex.(pb.xy, 1)
+    Yb  = getindex.(pb.xy, 2)
+    dXb = getindex.(pb.tangent, 1)
+    dYb = getindex.(pb.tangent, 2)
 
-    tside=joininfo.target_side
-    sside=joininfo.source_side
+    Na = length(pa.xy)
+    Nb = length(pb.xy)
+
+    # Open-panel local parameter spacing
+    h = pa.ws[1]
+
+    a = rule.a
+
+    # local interpolation stencil must be even
+    pinterp = iseven(rule.order + 3) ? (rule.order + 3) : (rule.order + 4)
+
+    tside = joininfo.target_side
+    sside = joininfo.source_side
 
     @use_threads multithreading=multithreaded for i in 1:Na
-        gi=ra[i]
-        xi=Xa[i]
-        yi=Ya[i]
-        ui=pa.is_periodic ? pa.ts[i]/two_pi : pa.ts[i]
+        gi = ra[i]
+        xi = Xa[i]
+        yi = Ya[i]
+        ui = pa.ts[i]   # open panel parameter in [0,1]
 
-        nskip=_target_excluded_count(i,Na,a,tside)
+        # number of near nodes on the target side excluded from plain far summation
+        nskip = _target_excluded_count(i, Na, a, tside)
 
+        # ------------------------------------------------------------
+        # far part: reflected source nodes away from joined singular strip
+        # ------------------------------------------------------------
         for j in 1:Nb
-            _skip_source_node(j,Nb,nskip,sside) && continue
+            _skip_source_node(j, Nb, nskip, sside) && continue
 
-            qj=qfun(SVector{2,T}(Xb[j],Yb[j]))
-            tj=tfun(SVector{2,T}(dXb[j],dYb[j]))
-            sj=sqrt(tj[1]^2+tj[2]^2)
+            qj = qfun(SVector{2,T}(Xb[j], Yb[j]))
+            tj = tfun(SVector{2,T}(dXb[j], dYb[j]))
+            sj = sqrt(tj[1]^2 + tj[2]^2)
 
-            dx=xi-qj[1]
-            dy=yi-qj[2]
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2 && continue
-            r=sqrt(r2)
-            invr=inv(r)
-            inn=_dinner(dx,dy,tj[1],tj[2])
+            dx = xi - qj[1]
+            dy = yi - qj[2]
+            r2 = muladd(dx, dx, dy*dy)
+            r2 <= (eps(T))^2 && continue
 
-            A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
-            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*sj)))
+            r    = sqrt(r2)
+            invr = inv(r)
+            inn  = _dinner(dx, dy, tj[1], tj[2])
+
+            A[gi, rb[j]] -= weight * (pb.ws[j] * (αD * inn * H(1, k*r) * invr))
+            A[gi, rb[j]] -= weight * (ik * (pb.ws[j] * (αS * H(0, k*r) * sj)))
         end
 
+        # ------------------------------------------------------------
+        # near joined part: Alpert correction using local interpolation
+        # ------------------------------------------------------------
         for p in 1:rule.j
-            Δu=h*rule.x[p]
-            e=_overflow_excess(ui,Δu,tside)
-            e<=zero(T) && continue
+            Δu = h * rule.x[p]
+            e  = _overflow_excess(ui, Δu, tside)
+            e <= zero(T) && continue
 
-            u2=_source_param_from_excess(e,sside)
-            (u2<=zero(T) || u2>=one(T)) && continue
+            usrc = _source_param_from_excess(e, sside)
 
-            x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(pb,u2,pinterp)
-            q=qfun(SVector{2,T}(x,y))
-            t=tfun(SVector{2,T}(tx,ty))
-            sj=sqrt(t[1]^2+t[2]^2)
+            # single reflections reverse the original source parameterization
+            uorig = reverse_param ? (one(T) - usrc) : usrc
+            (uorig <= zero(T) || uorig >= one(T)) && continue
 
-            dx=xi-q[1]
-            dy=yi-q[2]
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2 && continue
-            r=sqrt(r2)
-            inn=_dinner(dx,dy,t[1],t[2])
-            fac=(pa.is_periodic ? pa.ws[1] : h)*rule.w[p]
+            x, y, tx, ty, _, idx2, wt2 = _eval_on_open_panel_localp(pb, uorig, pinterp)
 
-            coeffD=-weight*(fac*(αD*inn*H(1,k*r)/r))
-            coeffS=-weight*(ik*(fac*(αS*H(0,k*r)*sj)))
+            q = qfun(SVector{2,T}(x, y))
+            t = tfun(SVector{2,T}(tx, ty))
+            sj = sqrt(t[1]^2 + t[2]^2)
 
-            _scatter_localp!(A,gi,rb,coeffD,idx2,wt2)
-            _scatter_localp!(A,gi,rb,coeffS,idx2,wt2)
+            dx = xi - q[1]
+            dy = yi - q[2]
+            r2 = muladd(dx, dx, dy*dy)
+            r2 <= (eps(T))^2 && continue
+
+            r   = sqrt(r2)
+            inn = _dinner(dx, dy, t[1], t[2])
+            fac = h * rule.w[p]
+
+            coeffD = -weight * (fac * (αD * inn * H(1, k*r) / r))
+            coeffS = -weight * (ik * (fac * (αS * H(0, k*r) * sj)))
+
+            _scatter_localp!(A, gi, rb, coeffD, idx2, wt2)
+            _scatter_localp!(A, gi, rb, coeffS, idx2, wt2)
         end
     end
 
     return A
 end
 
-@inline function _swap_side(s::Symbol)
-    s===:left && return :right
-    s===:right && return :left
-    error("side must be :left or :right")
-end
 
-@inline function _swap_joininfo_source(joininfo)
-    (
-        target_side=joininfo.target_side,
-        source_side=_swap_side(joininfo.source_side),
-        angle=joininfo.angle
-    )
-end
+# -------------------------------------------------------------------
+# Reflection image assembly driver
+# -------------------------------------------------------------------
 
+"""
+    _assemble_reflection_images!(...)
+
+Assemble reflected image interactions for Alpert CFIE.
+
+For single reflections:
+- far interactions use direct reflected-node quadrature
+- smooth endpoint joins use the joined Alpert correction
+- the source side in `joininfo` must be swapped before the correction
+- parameterization is reversed (`reverse_param=true`)
+
+For double reflection:
+- no parameter reversal
+- currently handled by far block only
+"""
 function _assemble_reflection_images!(
     A::AbstractMatrix{Complex{T}},
     ra::UnitRange{Int},
@@ -1026,60 +1129,49 @@ function _assemble_reflection_images!(
     billiard::Bi,
     k::T,
     sym::Reflection;
-    multithreaded::Bool=true
+    multithreaded::Bool = true,
 ) where {T<:Real,Bi<:AbsBilliard}
-    rule=alpert_log_rule(T,solver.alpert_order)
 
-    if sym.axis===:y_axis
-        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:x)
-        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
-        if isnothing(joininfo)
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+    rule = alpert_log_rule(T, solver.alpert_order)
+
+    function handle_one_image!(kind::Symbol; allow_joined::Bool)
+        qfun, tfun, w, reverse_param = _reflection_image_data(sym, billiard, kind)
+
+        if allow_joined
+            joininfo = _reflection_join_data(crva, crvb, pa, pb, qfun, tfun)
+            if isnothing(joininfo)
+                _add_image_block!(A, ra, rb, pa, pb, k, qfun, tfun, w;
+                                  multithreaded = multithreaded)
+            else
+                # convert image-endpoint side -> original-source-panel side
+                joininfo2 = reverse_param ? _swap_joininfo_source(joininfo) : joininfo
+                _add_image_block_alpert_joined!(
+                    A, ra, rb, pa, pb, k, rule, joininfo2, qfun, tfun, w;
+                    reverse_param = reverse_param,
+                    multithreaded = multithreaded,
+                )
+            end
         else
-            joininfo=_swap_joininfo_source(joininfo)
-            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
+            _add_image_block!(A, ra, rb, pa, pb, k, qfun, tfun, w;
+                              multithreaded = multithreaded)
         end
-        return A
+        return nothing
     end
 
-    if sym.axis===:x_axis
-        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:y)
-        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
-        if isnothing(joininfo)
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
-        else
-            joininfo=_swap_joininfo_source(joininfo)
-            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
-        end
+    if sym.axis === :y_axis
+        handle_one_image!(:x; allow_joined = true)
         return A
-    end
-
-    if sym.axis===:origin
-        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:x)
-        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
-        if isnothing(joininfo)
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
-        else
-            joininfo=_swap_joininfo_source(joininfo)
-            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
-        end
-
-        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:y)
-        joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
-        if isnothing(joininfo)
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
-        else
-            joininfo=_swap_joininfo_source(joininfo)
-            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
-        end
-
-        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:xy)
-        _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
-
+    elseif sym.axis === :x_axis
+        handle_one_image!(:y; allow_joined = true)
         return A
+    elseif sym.axis === :origin
+        handle_one_image!(:x;  allow_joined = true)
+        handle_one_image!(:y;  allow_joined = true)
+        handle_one_image!(:xy; allow_joined = false)
+        return A
+    else
+        error("Unknown reflection axis $(sym.axis)")
     end
-
-    error("Unknown reflection axis $(sym.axis)")
 end
 
 
