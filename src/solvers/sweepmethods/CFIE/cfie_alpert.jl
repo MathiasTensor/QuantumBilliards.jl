@@ -837,7 +837,7 @@ end
 ###########################################################
 ################ SELF ALPERT ASSEMBLY #####################
 ###########################################################
-#=
+
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
@@ -847,36 +847,36 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     N=length(pts.ts)
     nskip=rule.a
     jcorr=rule.j
-    h=pts.ws[1]
     ninterp=C.ninterp
     @use_threads multithreading=multithreaded for i in 1:N
+        wi=pts.ws[1]
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
+        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]-=wi*(αD*inn*H(1,k*rij)*invr)
         end
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
-            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            A[gi,gj]-=ik*(wi*(αS*H(0,k*G.R[i,j])))
         end
         @inbounds for m in (-nskip+1):(nskip-1)
             m==0 && continue
             j=mod1(i+m,N)
             gj=row_range[j]
-            A[gi,gj]+=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+            A[gi,gj]+=ik*(wi*(αS*H(0,k*G.R[i,j])))
         end
         @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
+            fac=wi*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
@@ -892,81 +892,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             r=sqrt(dx*dx+dy*dy)
             if isfinite(r) && r>sqrt(eps(T))
                 coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                for m in 1:ninterp
-                    q=mod1(i+C.offsm[p,m],N)
-                    A[gi,row_range[q]]+=coeff*C.wtm[p,m]
-                end
-            end
-        end
-    end
-    return A
-end
-=#
-function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    N=length(pts.ts)
-    nskip=rule.a
-    jcorr=rule.j
-    h=pts.ws[1]
-    ninterp=C.ninterp
-    @use_threads multithreading=multithreaded for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
-        si=G.speed[i]
-        κi=G.kappa[i]
-
-        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
-
-        @inbounds for j in 1:N
-            j==i && continue
-            m=j-i
-            m>N÷2 && (m-=N)
-            m<-N÷2 && (m+=N)
-            abs(m)<nskip && continue
-
-            gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-
-            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
-            A[gi,gj]-=ik*(h*(αS*H(0,k*rij)*G.speed[j]))
-        end
-
-        @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
-
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                invr=inv(r)
-                inn=C.typ[p,i]*dx-C.txp[p,i]*dy
-                coeffD=fac*(αD*inn*H(1,k*r)*invr)
-                coeffS=ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-                coeff=-(coeffD+coeffS)
-                for m in 1:ninterp
-                    q=mod1(i+C.offsp[p,m],N)
-                    A[gi,row_range[q]]+=coeff*C.wtp[p,m]
-                end
-            end
-
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                invr=inv(r)
-                inn=C.tym[p,i]*dx-C.txm[p,i]*dy
-                coeffD=fac*(αD*inn*H(1,k*r)*invr)
-                coeffS=ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                coeff=-(coeffD+coeffS)
                 for m in 1:ninterp
                     q=mod1(i+C.offsm[p,m],N)
                     A[gi,row_range[q]]+=coeff*C.wtm[p,m]
