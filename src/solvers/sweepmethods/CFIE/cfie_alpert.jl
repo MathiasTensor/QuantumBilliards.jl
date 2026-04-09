@@ -781,7 +781,7 @@ end
     return qfun,tfun,w
 end
 
-inline function _endpoint_point_tangent(p::BoundaryPointsCFIE{T},side::Symbol) where {T<:Real}
+@inline function _endpoint_point_tangent(p::BoundaryPointsCFIE{T},side::Symbol) where {T<:Real}
     if side===:left
         return p.xy[1],p.tangent[1]
     elseif side===:right
