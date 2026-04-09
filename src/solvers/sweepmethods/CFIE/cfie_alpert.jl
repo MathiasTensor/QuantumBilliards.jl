@@ -860,7 +860,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             j==i && continue
             gj=row_range[j]
             rij=G.R[i,j]
-            inn=G.inner[i,j]
+            inn=-G.inner[i,j]
             invr=G.invR[i,j]
             A[gi,gj]-=wi*(αD*inn*H(1,k*rij)*invr)
         end
