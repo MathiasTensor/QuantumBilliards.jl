@@ -805,12 +805,19 @@ end
 @inline function _reflection_qfun_tfun_weight(sym::Reflection, billiard, kind::Symbol)
     if kind === :x
         qfun = q -> image_point_x(q, billiard)
-        tfun = t -> image_tangent_x_raw(t)
+        tfun = t -> begin
+            tx,ty = _x_reflect_tangent(t[1],t[2])
+            SVector{2,eltype(t)}(tx,ty)
+        end
         w = sym.axis === :origin ? sym.parity[1] : sym.parity
         reverse_param = true
+
     elseif kind === :y
         qfun = q -> image_point_y(q, billiard)
-        tfun = t -> image_tangent_y_raw(t)
+        tfun = t -> begin
+            tx,ty = _y_reflect_tangent(t[1],t[2])
+            SVector{2,eltype(t)}(tx,ty)
+        end
         w = sym.axis === :origin ? sym.parity[2] : sym.parity
         reverse_param = true
     elseif kind === :xy
