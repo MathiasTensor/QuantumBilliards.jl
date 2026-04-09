@@ -707,8 +707,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         κi=G.kappa[i]
 
         # diagonal: I - D_diag
-        #A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
-        A[gi,gi]+=one(Complex{T})
+        A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
         # DLP off-diagonal: keep naive everywhere
         #=
         @inbounds for j in 1:N
