@@ -834,45 +834,43 @@ end
 function _reflection_join_data(
     crva,crvb,
     pa::BoundaryPointsCFIE{T},
-    pb::BoundaryPointsCFIE{T},
-    qfun,tfun;
-    xtol::T=T(1e-10),
-    angtol::T=T(1e-8)
+    pb_img_x::AbstractVector{T},pb_img_y::AbstractVector{T},
+    pb_img_tx::AbstractVector{T},pb_img_ty::AbstractVector{T};
+    xtol::T=T(1e-10),angtol::T=T(1e-8)
 ) where {T<:Real}
-    (pa.is_periodic || pb.is_periodic) && return nothing
+    pa.is_periodic && return nothing
+
     pla,tla=_curve_endpoint_point_tangent(crva,:left,T)
     pra,tra=_curve_endpoint_point_tangent(crva,:right,T)
-    plb,tlb=_curve_endpoint_point_tangent(crvb,:left,T)
-    prb,trb=_curve_endpoint_point_tangent(crvb,:right,T)
 
-    qlb=qfun(plb)
-    qrb=qfun(prb)
-    tlbi=tfun(tlb)
-    trbi=tfun(trb)
+    plb=SVector{2,T}(pb_img_x[1],pb_img_y[1])
+    prb=SVector{2,T}(pb_img_x[end],pb_img_y[end])
+    tlb=SVector{2,T}(pb_img_tx[1],pb_img_ty[1])
+    trb=SVector{2,T}(pb_img_tx[end],pb_img_ty[end])
 
     hits=NamedTuple[]
 
-    d=_endpoint_distance(pla,qlb)
+    d=_endpoint_distance(pla,plb)
     if d<=xtol
-        θ=_join_angle_min(tla,tlbi)
+        θ=_join_angle_min(tla,tlb)
         θ<=angtol && push!(hits,(target_side=:left,source_side=:left,angle=θ))
     end
 
-    d=_endpoint_distance(pla,qrb)
+    d=_endpoint_distance(pla,prb)
     if d<=xtol
-        θ=_join_angle_min(tla,trbi)
+        θ=_join_angle_min(tla,trb)
         θ<=angtol && push!(hits,(target_side=:left,source_side=:right,angle=θ))
     end
 
-    d=_endpoint_distance(pra,qlb)
+    d=_endpoint_distance(pra,plb)
     if d<=xtol
-        θ=_join_angle_min(tra,tlbi)
+        θ=_join_angle_min(tra,tlb)
         θ<=angtol && push!(hits,(target_side=:right,source_side=:left,angle=θ))
     end
 
-    d=_endpoint_distance(pra,qrb)
+    d=_endpoint_distance(pra,prb)
     if d<=xtol
-        θ=_join_angle_min(tra,trbi)
+        θ=_join_angle_min(tra,trb)
         θ<=angtol && push!(hits,(target_side=:right,source_side=:right,angle=θ))
     end
 
@@ -922,6 +920,30 @@ end
     end
 end
 
+function _build_reflected_open_panel_data(
+    pb::BoundaryPointsCFIE{T},
+    qfun,tfun
+) where {T<:Real}
+    Nb=length(pb.xy)
+    X=Vector{T}(undef,Nb)
+    Y=Vector{T}(undef,Nb)
+    TX=Vector{T}(undef,Nb)
+    TY=Vector{T}(undef,Nb)
+    S=Vector{T}(undef,Nb)
+
+    @inbounds for j in 1:Nb
+        q=qfun(pb.xy[j])
+        t=tfun(pb.tangent[j])
+        X[j]=q[1]
+        Y[j]=q[2]
+        TX[j]=t[1]
+        TY[j]=t[2]
+        S[j]=sqrt(t[1]^2+t[2]^2)
+    end
+
+    return X,Y,TX,TY,S
+end
+
 function _add_image_block!(
     A::AbstractMatrix{Complex{T}},
     ra::UnitRange{Int},
@@ -929,9 +951,7 @@ function _add_image_block!(
     pa::BoundaryPointsCFIE{T},
     pb::BoundaryPointsCFIE{T},
     k::T,
-    qfun,
-    tfun,
-    weight;
+    qfun,tfun,weight;
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
@@ -943,20 +963,16 @@ function _add_image_block!(
 
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
-    Xb=getindex.(pb.xy,1)
-    Yb=getindex.(pb.xy,2)
-    dXb=getindex.(pb.tangent,1)
-    dYb=getindex.(pb.tangent,2)
+
+    Ximg,Yimg,TXimg,TYimg,Simg=_build_reflected_open_panel_data(pb,qfun,tfun)
 
     @use_threads multithreading=multithreaded for j in 1:Nb
         gj=rb[j]
-        qimg=qfun(SVector{2,T}(Xb[j],Yb[j]))
-        timg=tfun(SVector{2,T}(dXb[j],dYb[j]))
-        xj=qimg[1]
-        yj=qimg[2]
-        txj=timg[1]
-        tyj=timg[2]
-        sj=sqrt(txj*txj+tyj*tyj)
+        xj=Ximg[j]
+        yj=Yimg[j]
+        txj=TXimg[j]
+        tyj=TYimg[j]
+        sj=Simg[j]
         wd=pb.ws[j]
         ws=pb.ws[j]*sj
 
@@ -974,6 +990,7 @@ function _add_image_block!(
             A[gi,gj]-=dval+ik*sval
         end
     end
+
     return A
 end
 
@@ -986,36 +1003,21 @@ function _add_image_block_alpert_joined!(
     k::T,
     rule::AlpertLogRule{T},
     joininfo,
-    qfun,
-    tfun,
-    weight;
+    qfun,tfun,weight;
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
 
+    Na=length(pa.xy)
+    Nb=length(pb.xy)
+
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
 
-    Nb=length(pb.xy)
-    Ximg=Vector{T}(undef,Nb)
-    Yimg=Vector{T}(undef,Nb)
-    TXimg=Vector{T}(undef,Nb)
-    TYimg=Vector{T}(undef,Nb)
-    Simg=Vector{T}(undef,Nb)
+    Ximg,Yimg,TXimg,TYimg,Simg=_build_reflected_open_panel_data(pb,qfun,tfun)
 
-    @inbounds for j in 1:Nb
-        q=qfun(pb.xy[j])
-        t=tfun(pb.tangent[j])
-        Ximg[j]=q[1]
-        Yimg[j]=q[2]
-        TXimg[j]=t[1]
-        TYimg[j]=t[2]
-        Simg[j]=sqrt(t[1]^2+t[2]^2)
-    end
-
-    Na=length(pa.xy)
     h=pa.ws[1]
     hsrc=pb.ws[1]
     a=rule.a
@@ -1034,6 +1036,7 @@ function _add_image_block_alpert_joined!(
 
         for j in 1:Nb
             _skip_source_node(j,Nb,nskip,sside) && continue
+
             dx=xi-Ximg[j]
             dy=yi-Yimg[j]
             r2=muladd(dx,dx,dy*dy)
@@ -1041,6 +1044,7 @@ function _add_image_block_alpert_joined!(
             r=sqrt(r2)
             invr=inv(r)
             inn=_dinner(dx,dy,TXimg[j],TYimg[j])
+
             A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
             A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*Simg[j])))
         end
@@ -1053,7 +1057,9 @@ function _add_image_block_alpert_joined!(
             usrc=_source_param_from_excess(e,sside)
             (usrc<=zero(T) || usrc>=one(T)) && continue
 
-            x,y,tx,ty,s,idx,wt=_eval_on_open_panel_localp_arrays(usrc,hsrc,Ximg,Yimg,TXimg,TYimg,pinterp)
+            x,y,tx,ty,s,idx,wt=_eval_on_open_panel_localp_arrays(
+                usrc,hsrc,Ximg,Yimg,TXimg,TYimg,pinterp
+            )
 
             dx=xi-x
             dy=yi-y
@@ -1080,8 +1086,7 @@ function _assemble_reflection_images!(
     rb::UnitRange{Int},
     pa::BoundaryPointsCFIE{T},
     pb::BoundaryPointsCFIE{T},
-    crva,
-    crvb,
+    crva,crvb,
     solver::CFIE_alpert{T},
     billiard::Bi,
     k::T,
@@ -1092,8 +1097,10 @@ function _assemble_reflection_images!(
 
     function do_one_image!(kind::Symbol;joined_ok::Bool)
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,kind)
-        if joined_ok
-            joininfo=_reflection_join_data(crva,crvb,pa,pb,qfun,tfun)
+
+        if joined_ok && !pa.is_periodic && !pb.is_periodic
+            Ximg,Yimg,TXimg,TYimg,_=_build_reflected_open_panel_data(pb,qfun,tfun)
+            joininfo=_reflection_join_data(crva,crvb,pa,Ximg,Yimg,TXimg,TYimg)
             if isnothing(joininfo)
                 _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
             else
