@@ -242,18 +242,23 @@ function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
 end
 
 function parabolic_refine(f::Function,k0;h,maxiter::Int=6,tol::Float64=1e-13)
-    k=k0
+    k=clamp(k0,a,b)
     hk=h
     for _ in 1:maxiter
-        km=k-hk
-        kp=k+hk
+        km=max(a,k-hk)
+        kp=min(b,k+hk)
+        km==k && return k
+        kp==k && return k
         fm=f(km)
         f0=f(k)
         fp=f(kp)
         denom=fm-2*f0+fp
         abs(denom)<1e-16 && return k
-        δ=0.5*hk*(fm-fp)/denom
+        δ=0.5*(kp-km)*(fm-fp)/(2*denom)
         knew=k+δ
+        if !(a<=knew<=b)
+            return k
+        end
         abs(knew-k)<tol && return knew
         k=knew
         hk*=0.5
@@ -291,17 +296,20 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             knew=res.minimizer
             tnew=res.minimum
             if lev==length(pts_refinement_factors) && final_parabolic_polish
-                hloc=max(window*T(polish_window_fraction),T(1e-12)*max(one(T),abs(knew)))
-                knew=parabolic_refine(fcur,knew;h=hloc,maxiter=polish_maxiter,tol=polish_tol)
-                tnew=fcur(knew)
+                aw=max(window*T(polish_window_fraction),dk0*final_window_factor)
+                a2=knew-aw
+                b2=knew+aw
+                res2=isempty(optimizer_kwargs) ? optimize(fcur,a2,b2) : optimize(fcur,a2,b2;optimizer_kwargs...)
+                knew=res2.minimizer
+                tnew=res2.minimum
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
             if lev>1
                 kconv= (stop_k_tol>0) && (abs(knew-kprev)<=stop_k_tol)
                 tconv= (stop_t_tol>0) && (abs(tnew-tprev)<=stop_t_tol)
                 if kconv || tconv
-                    kcur = knew
-                    tprev = tnew
+                    kcur=knew
+                    tprev=tnew
                     break
                 end
             end
