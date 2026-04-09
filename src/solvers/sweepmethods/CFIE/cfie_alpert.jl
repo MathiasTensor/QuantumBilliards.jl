@@ -169,9 +169,8 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     wtm=Matrix{T}(undef,jcorr,ninterp)
     @inbounds for p in 1:jcorr
         ξ=rule.x[p]
-        ξidx=T(σ)*ξ
-        op,wp=_alpert_interp_offsets_weights( ξidx,ninterp)
-        om,wm=_alpert_interp_offsets_weights(-ξidx,ninterp)
+        op,wp=_alpert_interp_offsets_weights( ξ,ninterp)
+        om,wm=_alpert_interp_offsets_weights(-ξ,ninterp)
         for m in 1:ninterp
             offsp[p,m]=op[m]
             wtp[p,m]=wp[m]
