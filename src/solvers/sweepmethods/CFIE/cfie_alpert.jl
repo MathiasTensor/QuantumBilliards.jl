@@ -936,7 +936,7 @@ function _add_image_block_alpert_joined!(
     Nb=length(pb.xy)
     h=pa.is_periodic ? inv(T(length(pa.ts))) : pa.ws[1]
     a=rule.a
-    pinterp=rule.order+3
+    pinterp=iseven(rule.order+3) ? rule.order+3 : rule.order+4
 
     tside=joininfo.target_side
     sside=joininfo.source_side
