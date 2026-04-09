@@ -178,12 +178,12 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
             offsm[p,m]=om[m]
             wtm[p,m]=wm[m]
         end
-        δu=ξ/T(N)
+        δu=T(σ)*ξ/T(N)
         for i in 1:N
             ui=pts.ts[i]/T(two_pi)
             up=_wrap01(ui+δu)
             qp=curve(crv,up)
-            tp=tangent(crv,up)/T(two_pi)
+            tp=T(σ)*tangent(crv,up)/T(two_pi)
             xp[p,i]=qp[1]
             yp[p,i]=qp[2]
             txp[p,i]=tp[1]
@@ -191,7 +191,7 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
             sp[p,i]=sqrt(tp[1]^2+tp[2]^2)
             um=_wrap01(ui-δu)
             qm=curve(crv,um)
-            tm=tangent(crv,um)/T(two_pi)
+            tm=T(σ)*tangent(crv,um)/T(two_pi)
             xm[p,i]=qm[1]
             ym[p,i]=qm[2]
             txm[p,i]=tm[1]
