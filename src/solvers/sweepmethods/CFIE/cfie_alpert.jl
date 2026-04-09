@@ -762,20 +762,26 @@ end
 
 
 
-@inline function _reflection_qfun_tfun(sym::Reflection,billiard)
-    if sym.axis==:y_axis
+@inline function _reflection_qfun_tfun_weight(sym::Reflection,billiard,kind::Symbol)
+    if kind===:x
         qfun=q->image_point_x(q,billiard)
         tfun=t->image_tangent_x(t)
-    elseif sym.axis==:x_axis
+        w=sym.axis===:origin ? sym.parity[1] : sym.parity
+    elseif kind===:y
         qfun=q->image_point_y(q,billiard)
         tfun=t->image_tangent_y(t)
+        w=sym.axis===:origin ? sym.parity[2] : sym.parity
+    elseif kind===:xy
+        qfun=q->image_point_xy(q,billiard)
+        tfun=t->image_tangent_xy(t)
+        w=sym.parity[1]*sym.parity[2]
     else
-        error("Use split x/y/xy handling for origin reflection.")
+        error("Unknown reflection image kind $kind")
     end
-    return qfun,tfun
+    return qfun,tfun,w
 end
 
-@inline function _endpoint_side_point_tangent(p::BoundaryPointsCFIE{T},side::Symbol) where {T<:Real}
+inline function _endpoint_point_tangent(p::BoundaryPointsCFIE{T},side::Symbol) where {T<:Real}
     if side===:left
         return p.xy[1],p.tangent[1]
     elseif side===:right
@@ -787,52 +793,50 @@ end
 end
 
 @inline function _join_angle_min(t1::SVector{2,T},t2::SVector{2,T}) where {T<:Real}
-    θ1=_join_angle(t1,t2)
-    θ2=_join_angle(t1,-t2)
-    return min(θ1,θ2)
+    min(_join_angle(t1,t2),_join_angle(t1,-t2))
 end
 
 function _reflection_join_data(pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},qfun,tfun;xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real}
-    pLl,tLl=_endpoint_side_point_tangent(pa,:left)
-    pLr,tLr=_endpoint_side_point_tangent(pa,:right)
+    pla,tla=_endpoint_point_tangent(pa,:left)
+    pra,tra=_endpoint_point_tangent(pa,:right)
 
-    pbl,tbl=_endpoint_side_point_tangent(pb,:left)
-    pbr,tbr=_endpoint_side_point_tangent(pb,:right)
+    plb,tlb=_endpoint_point_tangent(pb,:left)
+    prb,trb=_endpoint_point_tangent(pb,:right)
 
-    qbl=qfun(pbl)
-    qbr=qfun(pbr)
-    tbli=tfun(tbl)
-    tbri=tfun(tbr)
+    qlb=qfun(plb)
+    qrb=qfun(prb)
+    tlbi=tfun(tlb)
+    trbi=tfun(trb)
 
-    candidates=NamedTuple[]
+    hits=NamedTuple[]
 
-    d=_endpoint_distance(pLl,qbl)
+    d=_endpoint_distance(pla,qlb)
     if d<=xtol
-        θ=_join_angle_min(tLl,tbli)
-        θ<=angtol && push!(candidates,(target_side=:left,source_side=:left,angle=θ,dist=d))
+        θ=_join_angle_min(tla,tlbi)
+        θ<=angtol && push!(hits,(target_side=:left,source_side=:left,angle=θ))
     end
 
-    d=_endpoint_distance(pLl,qbr)
+    d=_endpoint_distance(pla,qrb)
     if d<=xtol
-        θ=_join_angle_min(tLl,tbri)
-        θ<=angtol && push!(candidates,(target_side=:left,source_side=:right,angle=θ,dist=d))
+        θ=_join_angle_min(tla,trbi)
+        θ<=angtol && push!(hits,(target_side=:left,source_side=:right,angle=θ))
     end
 
-    d=_endpoint_distance(pLr,qbl)
+    d=_endpoint_distance(pra,qlb)
     if d<=xtol
-        θ=_join_angle_min(tLr,tbli)
-        θ<=angtol && push!(candidates,(target_side=:right,source_side=:left,angle=θ,dist=d))
+        θ=_join_angle_min(tra,tlbi)
+        θ<=angtol && push!(hits,(target_side=:right,source_side=:left,angle=θ))
     end
 
-    d=_endpoint_distance(pLr,qbr)
+    d=_endpoint_distance(pra,qrb)
     if d<=xtol
-        θ=_join_angle_min(tLr,tbri)
-        θ<=angtol && push!(candidates,(target_side=:right,source_side=:right,angle=θ,dist=d))
+        θ=_join_angle_min(tra,trbi)
+        θ<=angtol && push!(hits,(target_side=:right,source_side=:right,angle=θ))
     end
 
-    isempty(candidates) && return nothing
-    length(candidates)>1 && error("Ambiguous reflection join detection.")
-    return candidates[1]
+    isempty(hits) && return nothing
+    length(hits)==1 || error("Ambiguous reflected join detection.")
+    return hits[1]
 end
 
 @inline function _source_skip_by_side(j::Int,N::Int,nskip::Int,side::Symbol)
@@ -847,33 +851,45 @@ end
     end
 end
 
-@inline function _target_excluded_count(i::Int,N::Int,a::Int,side::Symbol)
-    if side===:right
+@inline function _target_excluded_count(i::Int,N::Int,a::Int,target_side::Symbol)
+    if target_side===:right
         return max(0,i+a-1-N)
-    elseif side===:left
+    elseif target_side===:left
         return max(0,a-i)
     else
-        error("side must be :left or :right")
+        error("target_side must be :left or :right")
     end
 end
 
-@inline function _overflow_excess(ui::T,Δu::T,side::Symbol) where {T<:Real}
-    if side===:right
+@inline function _skip_source_node(j::Int,N::Int,nskip::Int,source_side::Symbol)
+    if nskip<=0
+        return false
+    elseif source_side===:left
+        return j<=nskip
+    elseif source_side===:right
+        return j>N-nskip
+    else
+        error("source_side must be :left or :right")
+    end
+end
+
+@inline function _overflow_excess(ui::T,Δu::T,target_side::Symbol) where {T<:Real}
+    if target_side===:right
         return ui+Δu-one(T)
-    elseif side===:left
+    elseif target_side===:left
         return Δu-ui
     else
-        error("side must be :left or :right")
+        error("target_side must be :left or :right")
     end
 end
 
-@inline function _source_u_from_excess(e::T,side::Symbol) where {T<:Real}
-    if side===:left
+@inline function _source_param_from_excess(e::T,source_side::Symbol) where {T<:Real}
+    if source_side===:left
         return e
-    elseif side===:right
+    elseif source_side===:right
         return one(T)-e
     else
-        error("side must be :left or :right")
+        error("source_side must be :left or :right")
     end
 end
 
@@ -887,7 +903,8 @@ function _add_image_block_alpert_joined!(
     rule::AlpertLogRule{T},
     joininfo,
     qfun,
-    tfun;
+    tfun,
+    weight;
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
@@ -901,15 +918,12 @@ function _add_image_block_alpert_joined!(
     Yb=getindex.(pb.xy,2)
     dXb=getindex.(pb.tangent,1)
     dYb=getindex.(pb.tangent,2)
-    sb=@. sqrt(dXb^2+dYb^2)
 
     Na=length(pa.xy)
     Nb=length(pb.xy)
     ha=pa.ws[1]
     a=rule.a
-    jcorr=rule.j
     pinterp=rule.order+3
-    us=pb.ts
 
     tside=joininfo.target_side
     sside=joininfo.source_side
@@ -923,11 +937,11 @@ function _add_image_block_alpert_joined!(
         nskip=_target_excluded_count(i,Na,a,tside)
 
         for j in 1:Nb
-            _source_skip_by_side(j,Nb,nskip,sside) && continue
+            _skip_source_node(j,Nb,nskip,sside) && continue
 
-            gj=rb[j]
-            qj=qfun(pb.xy[j])
-            tj=tfun(pb.tangent[j])
+            qj=qfun(SVector{2,T}(Xb[j],Yb[j]))
+            tj=tfun(SVector{2,T}(dXb[j],dYb[j]))
+            sj=sqrt(tj[1]^2+tj[2]^2)
 
             dx=xi-qj[1]
             dy=yi-qj[2]
@@ -937,16 +951,16 @@ function _add_image_block_alpert_joined!(
             invr=inv(r)
             inn=_dinner(dx,dy,tj[1],tj[2])
 
-            A[gi,gj]-=pb.ws[j]*(αD*inn*H(1,k*r)*invr)
-            A[gi,gj]-=ik*(pb.ws[j]*(αS*H(0,k*r)*sqrt(tj[1]^2+tj[2]^2)))
+            A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
+            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*sj)))
         end
 
-        for p in 1:jcorr
+        for p in 1:rule.j
             Δu=ha*rule.x[p]
             e=_overflow_excess(ui,Δu,tside)
             e<=zero(T) && continue
 
-            u2=_source_u_from_excess(e,sside)
+            u2=_source_param_from_excess(e,sside)
             (u2<=zero(T) || u2>=one(T)) && continue
 
             x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(pb,u2,pinterp)
@@ -959,11 +973,11 @@ function _add_image_block_alpert_joined!(
             r2=muladd(dx,dx,dy*dy)
             r2<=(eps(T))^2 && continue
             r=sqrt(r2)
-            fac=ha*rule.w[p]
             inn=_dinner(dx,dy,t[1],t[2])
+            fac=ha*rule.w[p]
 
-            coeffD=-(fac*(αD*inn*H(1,k*r)/r))
-            coeffS=-ik*(fac*(αS*H(0,k*r)*sj))
+            coeffD=-weight*(fac*(αD*inn*H(1,k*r)/r))
+            coeffS=-weight*(ik*(fac*(αS*H(0,k*r)*sj)))
 
             _scatter_localp!(A,gi,rb,coeffD,idx2,wt2)
             _scatter_localp!(A,gi,rb,coeffS,idx2,wt2)
@@ -985,48 +999,54 @@ function _assemble_reflection_images!(
     sym::Reflection;
     multithreaded::Bool=true
 ) where {T<:Real,Bi<:AbsBilliard}
-    if sym.axis==:origin
-        σx=image_weight_x(sym)
-        σy=image_weight_y(sym)
-        σxy=image_weight_xy(sym)
+    rule=alpert_log_rule(T,solver.alpert_order)
 
-        qfun,tfun=_reflection_qfun_tfun(Reflection(:y_axis,σx),billiard)
+    if sym.axis===:y_axis
+        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:x)
         joininfo=_reflection_join_data(pa,pb,qfun,tfun)
         if isnothing(joininfo)
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,σx;multithreaded=multithreaded)
+            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
-            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,alpert_log_rule(T,solver.alpert_order),joininfo,qfun,tfun;multithreaded=multithreaded)
-            if σx!=one(T)
-                A[ra,rb].*=σx
-            end
+            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
         end
-
-        qfun,tfun=_reflection_qfun_tfun(Reflection(:x_axis,σy),billiard)
-        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
-        if isnothing(joininfo)
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,σy;multithreaded=multithreaded)
-        else
-            B=zeros(Complex{T},length(ra),length(rb))
-            _add_image_block_alpert_joined!(B,1:length(ra),1:length(rb),pa,pb,k,alpert_log_rule(T,solver.alpert_order),joininfo,qfun,tfun;multithreaded=multithreaded)
-            @views A[ra,rb].+=σy.*B
-        end
-
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_xy(q,billiard),t->image_tangent_xy(t),σxy;multithreaded=multithreaded)
         return A
     end
 
-    qfun,tfun=_reflection_qfun_tfun(sym,billiard)
-    joininfo=_reflection_join_data(pa,pb,qfun,tfun)
-
-    if isnothing(joininfo)
-        _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,image_weight(sym);multithreaded=multithreaded)
-    else
-        B=zeros(Complex{T},length(ra),length(rb))
-        _add_image_block_alpert_joined!(B,1:length(ra),1:length(rb),pa,pb,k,alpert_log_rule(T,solver.alpert_order),joininfo,qfun,tfun;multithreaded=multithreaded)
-        @views A[ra,rb].+=image_weight(sym).*B
+    if sym.axis===:x_axis
+        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:y)
+        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        if isnothing(joininfo)
+            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+        else
+            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
+        end
+        return A
     end
 
-    return A
+    if sym.axis===:origin
+        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:x)
+        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        if isnothing(joininfo)
+            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+        else
+            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
+        end
+
+        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:y)
+        joininfo=_reflection_join_data(pa,pb,qfun,tfun)
+        if isnothing(joininfo)
+            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+        else
+            _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
+        end
+
+        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,:xy)
+        _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+
+        return A
+    end
+
+    error("Unknown reflection axis $(sym.axis)")
 end
 
 
