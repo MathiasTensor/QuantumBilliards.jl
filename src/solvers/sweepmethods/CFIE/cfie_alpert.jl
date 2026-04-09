@@ -722,7 +722,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
-    @info "self alpert periodic"
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     N=length(pts.ts)
@@ -738,8 +737,10 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         si=G.speed[i]
         κi=G.kappa[i]
 
+        # diagonal: I - D_diag
         A[gi,gi]+=one(Complex{T})-Complex{T}(h*si*κi,zero(T))
 
+        # DLP off-diagonal: keep naive everywhere
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -749,15 +750,22 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
 
+        # SLP off-diagonal: start from naive everywhere
         @inbounds for j in 1:N
-            m=j-i
-            m>N÷2 && (m-=N)
-            m<-N÷2 && (m+=N)
-            abs(m)<nskip && continue
+            j==i && continue
             gj=row_range[j]
             A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
 
+        # remove only the wrapped near band of the naive SLP
+        @inbounds for m in (-nskip+1):(nskip-1)
+            m==0 && continue
+            j=mod1(i+m,N)
+            gj=row_range[j]
+            A[gi,gj]+=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
+        end
+
+        # add only the Alpert SLP correction
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
 
@@ -786,7 +794,6 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
             end
         end
     end
-
     return A
 end
 
