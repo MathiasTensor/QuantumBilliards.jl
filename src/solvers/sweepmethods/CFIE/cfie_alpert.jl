@@ -1057,10 +1057,12 @@ function _add_image_block_alpert_joined!(
             e = _overflow_excess(ui, Δu, tside)
             e <= zero(T) && continue
 
-            usrc = _source_param_from_excess(e, sside)
-            (usrc <= zero(T) || usrc >= one(T)) && continue
+            uimg = _source_param_from_excess(e, sside)
+(uimg <= zero(T) || uimg >= one(T)) && continue
 
-            x, y, tx, ty, _, idx2, wt2 = _eval_on_open_panel_localp(pb, usrc, pinterp)
+uorig = reverse_param ? (one(T) - uimg) : uimg
+
+x, y, tx, ty, _, idx2, wt2 = _eval_on_open_panel_localp(pb, uorig, pinterp)
 
             q = qfun(SVector{2,T}(x, y))
             t = tfun(SVector{2,T}(tx, ty))
