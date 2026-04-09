@@ -241,73 +241,67 @@ function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
     return s
 end
 
-function parabolic_refine(f::Function,k0;h,maxiter::Int=6,tol::Float64=1e-13)
-    k=clamp(k0,a,b)
-    hk=h
+function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
+    k=k0
     for _ in 1:maxiter
-        km=max(a,k-hk)
-        kp=min(b,k+hk)
-        km==k && return k
-        kp==k && return k
-        fm=f(km)
         f0=f(k)
-        fp=f(kp)
-        denom=fm-2*f0+fp
-        abs(denom)<1e-16 && return k
-        δ=0.5*(kp-km)*(fm-fp)/(2*denom)
-        knew=k+δ
-        if !(a<=knew<=b)
+        fp=f(k+h)
+        fm=f(k-h)
+        f1=(fp-fm)/(2*h)
+        f2=(fp-2*f0+fm)/(h^2)
+        if abs(f2)<1e-14
             return k
         end
-        abs(knew-k)<tol && return knew
-        k=knew
-        hk*=0.5
+        k_new=k-f1/f2
+        if abs(k_new-k)<tol
+            return k_new
+        end
+        k=k_new
     end
     return k
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,final_parabolic_polish::Bool=true,polish_window_fraction=0.1,polish_maxiter::Int=6,polish_tol::Float64=1e-13) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
-    ks_approx= length(ks)==1 ? collect(ks) : get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
-    isempty(ks_approx) && return T[],T[],Vector{Vector{NamedTuple}}()
+    ks_approx=length(ks)==1 ? collect(ks) : get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
+    if isempty(ks_approx)
+        return T[],T[],Vector{Vector{NamedTuple}}()
+    end
     nk=length(ks_approx)
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,nk)
-    dk0= (N>=2) ? abs(ks[2]-ks[1]) : T(initial_refinement_interval)
-    p = Progress(nk;desc="Refining minima (optimize)...")
+    dk0=(N>=2) ? abs(ks[2]-ks[1]) : T(initial_refinement_interval)
+    p=Progress(nk;desc="Refining minima (Newton)...")
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
         window=dk0
         hist=NamedTuple[]
-        kprev=T(NaN)
         tprev=T(NaN)
+        kprev=T(NaN)
         for lev in eachindex(pts_refinement_factors)
             pf=pts_refinement_factors[lev]
             df=dim_refinement_factors[lev]
             solver_cur=_refined_solver(solver,pf,df)
             pts=evaluate_points(solver_cur,billiard,kcur)
-            fcur= k->solve(solver_cur,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+            fcur=k->solve(solver_cur,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
             a=kcur-window
             b=kcur+window
             res=isempty(optimizer_kwargs) ? optimize(fcur,a,b) : optimize(fcur,a,b;optimizer_kwargs...)
             knew=res.minimizer
             tnew=res.minimum
-            if lev==length(pts_refinement_factors) && final_parabolic_polish
-                aw=max(window*T(polish_window_fraction),dk0*final_window_factor)
-                a2=knew-aw
-                b2=knew+aw
-                res2=isempty(optimizer_kwargs) ? optimize(fcur,a2,b2) : optimize(fcur,a2,b2;optimizer_kwargs...)
-                knew=res2.minimizer
-                tnew=res2.minimum
+            if lev==length(pts_refinement_factors)
+                h=1e-6*max(1.0,abs(knew))
+                knew=newton_refine(fcur,knew;h=h)
+                tnew=fcur(knew)
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
             if lev>1
-                kconv= (stop_k_tol>0) && (abs(knew-kprev)<=stop_k_tol)
-                tconv= (stop_t_tol>0) && (abs(tnew-tprev)<=stop_t_tol)
-                if kconv || tconv
+                kconv=(stop_k_tol>0)&&(abs(knew-kprev)<=stop_k_tol)
+                tconv=(stop_t_tol>0)&&(abs(tnew-tprev)<=stop_t_tol)
+                if kconv||tconv
                     kcur=knew
                     tprev=tnew
                     break
@@ -324,14 +318,11 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         next!(p)
     end
     if print_refinement
-        println("\n================ refinement summary ================")
-        println(rpad("#",4),
-                rpad("k_approx",digits+8),
-                rpad("k_ref",digits+8),
-                rpad("Δk",digits+8),
+        println("\n================ Newton refinement summary ================")
+        println(rpad("#",4),rpad("k_approx",digits+8),
+                rpad("k_ref",digits+8),rpad("Δk",digits+8),
                 rpad("log10|t_app|",digits+10),
-                rpad("log10|t_ref|",digits+10),
-                "levels")
+                rpad("log10|t_ref|",digits+10),"levels")
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
@@ -346,7 +337,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
                     rpad("$(round(t_ref,digits=digits))",digits+10),
                     "$(length(histories[i]))")
         end
-        println("===================================================\n")
+        println("==========================================================\n")
     end
-    sols,tens_refined,histories
+    return sols,tens_refined,histories
 end
