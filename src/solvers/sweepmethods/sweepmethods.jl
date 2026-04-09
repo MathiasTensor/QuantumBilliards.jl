@@ -244,26 +244,31 @@ end
 function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
     k=k0
     for _ in 1:maxiter
-        hk=h*max(1.0,abs(k))
         f0=f(k)
-        fp=f(k+hk)
-        fm=f(k-hk)
-        f1=(fp-fm)/(2hk)
-        f2=(fp-2f0+fm)/(hk^2)
-        abs(f2)<1e-14&&return k
+        fp=f(k+h)
+        fm=f(k-h)
+        f1=(fp-fm)/(2*h)
+        f2=(fp-2*f0+fm)/(h^2)
+        if abs(f2)<1e-14
+            return k
+        end
         k_new=k-f1/f2
-        abs(k_new-k)<tol&&return k_new
+        if abs(k_new-k)<tol
+            return k_new
+        end
         k=k_new
     end
     return k
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,newton_h=1e-6,newton_maxiter=8,newton_tol=1e-12) where{T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
     ks_approx=length(ks)==1 ? collect(ks) : get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
-    isempty(ks_approx)&&return T[],T[],Vector{Vector{NamedTuple}}()
+    if isempty(ks_approx)
+        return T[],T[],Vector{Vector{NamedTuple}}()
+    end
     nk=length(ks_approx)
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
@@ -288,15 +293,9 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             knew=res.minimizer
             tnew=res.minimum
             if lev==length(pts_refinement_factors)
-                try
-                    knew2=newton_refine(fcur,knew;h=newton_h,maxiter=newton_maxiter,tol=newton_tol)
-                    t2=fcur(knew2)
-                    if isfinite(t2)
-                        knew=knew2
-                        tnew=t2
-                    end
-                catch _
-                end
+                h=1e-6*max(1.0,abs(knew))
+                knew=newton_refine(fcur,knew;h=h)
+                tnew=fcur(knew)
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
             if lev>1
@@ -320,13 +319,10 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     end
     if print_refinement
         println("\n================ Newton refinement summary ================")
-        println(rpad("#",4),
-                rpad("k_approx",digits+8),
-                rpad("k_ref",digits+8),
-                rpad("Δk",digits+8),
+        println(rpad("#",4),rpad("k_approx",digits+8),
+                rpad("k_ref",digits+8),rpad("Δk",digits+8),
                 rpad("log10|t_app|",digits+10),
-                rpad("log10|t_ref|",digits+10),
-                "levels")
+                rpad("log10|t_ref|",digits+10),"levels")
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
