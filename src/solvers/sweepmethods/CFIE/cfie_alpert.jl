@@ -788,6 +788,21 @@ end
 
 
 
+
+
+
+
+
+
+@inline function _eval_on_open_panel_localp_arrays(
+    u::T,h::T,
+    X::AbstractVector{T},Y::AbstractVector{T},
+    dX::AbstractVector{T},dY::AbstractVector{T},
+    p::Int
+) where {T<:Real}
+    _eval_shifted_source_smooth_panel_localp(u,h,X,Y,dX,dY,p)
+end
+
 @inline function _reflection_qfun_tfun_weight(sym::Reflection,billiard,kind::Symbol)
     if kind===:x
         qfun=q->image_point_x(q,billiard)
@@ -933,67 +948,105 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
     return A
 end
 
-function _add_image_block_alpert_joined!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},k::T,rule::AlpertLogRule{T},joininfo,qfun,tfun,weight;multithreaded::Bool=true) where {T<:Real}
+function _add_image_block_alpert_joined!(
+    A::AbstractMatrix{Complex{T}},
+    ra::UnitRange{Int},
+    rb::UnitRange{Int},
+    pa::BoundaryPointsCFIE{T},
+    pb::BoundaryPointsCFIE{T},
+    k::T,
+    rule::AlpertLogRule{T},
+    joininfo,
+    qfun,
+    tfun,
+    weight;
+    multithreaded::Bool=true
+) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
+
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
-    Xb=getindex.(pb.xy,1)
-    Yb=getindex.(pb.xy,2)
-    dXb=getindex.(pb.tangent,1)
-    dYb=getindex.(pb.tangent,2)
-    Na=length(pa.xy)
+
     Nb=length(pb.xy)
+    Ximg=Vector{T}(undef,Nb)
+    Yimg=Vector{T}(undef,Nb)
+    TXimg=Vector{T}(undef,Nb)
+    TYimg=Vector{T}(undef,Nb)
+    Simg=Vector{T}(undef,Nb)
+
+    @inbounds for j in 1:Nb
+        q=qfun(pb.xy[j])
+        t=tfun(pb.tangent[j])
+        Ximg[j]=q[1]
+        Yimg[j]=q[2]
+        TXimg[j]=t[1]
+        TYimg[j]=t[2]
+        Simg[j]=sqrt(t[1]^2+t[2]^2)
+    end
+
+    Na=length(pa.xy)
     h=pa.ws[1]
+    hsrc=pb.ws[1]
     a=rule.a
     pinterp=iseven(rule.order+3) ? rule.order+3 : rule.order+4
+
     tside=joininfo.target_side
     sside=joininfo.source_side
+
     @use_threads multithreading=multithreaded for i in 1:Na
         gi=ra[i]
         xi=Xa[i]
         yi=Ya[i]
         ui=pa.ts[i]
+
         nskip=_target_excluded_count(i,Na,a,tside)
+
+        # far part on image panel
         for j in 1:Nb
             _skip_source_node(j,Nb,nskip,sside) && continue
-            qj=qfun(SVector{2,T}(Xb[j],Yb[j]))
-            tj=tfun(SVector{2,T}(dXb[j],dYb[j]))
-            sj=sqrt(tj[1]^2+tj[2]^2)
-            dx=xi-qj[1]
-            dy=yi-qj[2]
+            dx=xi-Ximg[j]
+            dy=yi-Yimg[j]
             r2=muladd(dx,dx,dy*dy)
             r2<=(eps(T))^2 && continue
             r=sqrt(r2)
             invr=inv(r)
-            inn=_dinner(dx,dy,tj[1],tj[2])
+            inn=_dinner(dx,dy,TXimg[j],TYimg[j])
+
             A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
-            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*sj)))
+            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*Simg[j])))
         end
+
+        # joined near correction on image panel
         for p in 1:rule.j
             Δu=h*rule.x[p]
             e=_overflow_excess(ui,Δu,tside)
             e<=zero(T) && continue
+
             usrc=_source_param_from_excess(e,sside)
             (usrc<=zero(T) || usrc>=one(T)) && continue
-            x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(pb,usrc,pinterp)
-            q=qfun(SVector{2,T}(x,y))
-            t=tfun(SVector{2,T}(tx,ty))
-            sj=sqrt(t[1]^2+t[2]^2)
-            dx=xi-q[1]
-            dy=yi-q[2]
+
+            x,y,tx,ty,s,idx,wt=_eval_on_open_panel_localp_arrays(
+                usrc,hsrc,Ximg,Yimg,TXimg,TYimg,pinterp
+            )
+
+            dx=xi-x
+            dy=yi-y
             r2=muladd(dx,dx,dy*dy)
             r2<=(eps(T))^2 && continue
             r=sqrt(r2)
-            inn=_dinner(dx,dy,t[1],t[2])
+            inn=_dinner(dx,dy,tx,ty)
             fac=h*rule.w[p]
+
             coeffD=-weight*(fac*(αD*inn*H(1,k*r)/r))
-            coeffS=-weight*(ik*(fac*(αS*H(0,k*r)*sj)))
-            _scatter_localp!(A,gi,rb,coeffD,idx2,wt2)
-            _scatter_localp!(A,gi,rb,coeffS,idx2,wt2)
+            coeffS=-weight*(ik*(fac*(αS*H(0,k*r)*s)))
+
+            _scatter_localp!(A,gi,rb,coeffD,idx,wt)
+            _scatter_localp!(A,gi,rb,coeffS,idx,wt)
         end
     end
+
     return A
 end
 
