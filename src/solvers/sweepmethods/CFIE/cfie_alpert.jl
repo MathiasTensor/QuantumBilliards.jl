@@ -1000,6 +1000,20 @@ function _add_image_block_alpert_joined!(
     return A
 end
 
+@inline function _swap_side(s::Symbol)
+    s===:left && return :right
+    s===:right && return :left
+    error("side must be :left or :right")
+end
+
+@inline function _swap_joininfo_source(joininfo)
+    (
+        target_side=joininfo.target_side,
+        source_side=_swap_side(joininfo.source_side),
+        angle=joininfo.angle
+    )
+end
+
 function _assemble_reflection_images!(
     A::AbstractMatrix{Complex{T}},
     ra::UnitRange{Int},
@@ -1022,6 +1036,7 @@ function _assemble_reflection_images!(
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
+            joininfo=_swap_joininfo_source(joininfo)
             _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
         end
         return A
@@ -1033,6 +1048,7 @@ function _assemble_reflection_images!(
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
+            joininfo=_swap_joininfo_source(joininfo)
             _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
         end
         return A
@@ -1044,6 +1060,7 @@ function _assemble_reflection_images!(
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
+            joininfo=_swap_joininfo_source(joininfo)
             _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
         end
 
@@ -1052,6 +1069,7 @@ function _assemble_reflection_images!(
         if isnothing(joininfo)
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         else
+            joininfo=_swap_joininfo_source(joininfo)
             _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
         end
 
