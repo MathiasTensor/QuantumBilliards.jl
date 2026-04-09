@@ -519,16 +519,62 @@ end
     return SVector{2,T}(_x_reflect(q[1],sx),_y_reflect(q[2],sy))
 end
 
+# image_tangent_x
+# Tangent map for a y-axis reflection image used in the desymmetrized CFIE assembly.
+#
+# Inputs:
+#   - t::SVector{2,T} :
+#       Source tangent on the fundamental boundary.
+#
+# Outputs:
+#   - timg::SVector{2,T} :
+#       Tangent of the reflected image curve with the correct full-boundary orientation.
+#
+# Notes:
+#   - A single reflection reverses orientation.
+#   - Therefore we must negate the reflected tangent.
+#   - Reflection across the y-axis sends (tx,ty) -> (-tx,ty), and restoring the
+#     physical CCW orientation gives -( -tx,ty ) = (tx,-ty).
 @inline function image_tangent_x(t::SVector{2,T}) where {T<:Real}
     tx,ty=_x_reflect_normal(t[1],t[2])
-    return SVector{2,T}(tx,ty)
+    return SVector{2,T}(-tx,-ty)
 end
 
+# image_tangent_y
+# Tangent map for an x-axis reflection image used in the desymmetrized CFIE assembly.
+#
+# Inputs:
+#   - t::SVector{2,T} :
+#       Source tangent on the fundamental boundary.
+#
+# Outputs:
+#   - timg::SVector{2,T} :
+#       Tangent of the reflected image curve with the correct full-boundary orientation.
+#
+# Notes:
+#   - A single reflection reverses orientation.
+#   - Therefore we must negate the reflected tangent.
+#   - Reflection across the x-axis sends (tx,ty) -> (tx,-ty), and restoring the
+#     physical CCW orientation gives -( tx,-ty ) = (-tx,ty).
 @inline function image_tangent_y(t::SVector{2,T}) where {T<:Real}
     tx,ty=_y_reflect_normal(t[1],t[2])
-    return SVector{2,T}(tx,ty)
+    return SVector{2,T}(-tx,-ty)
 end
 
+# image_tangent_xy
+# Tangent map for the double reflection (origin / XY image).
+#
+# Inputs:
+#   - t::SVector{2,T} :
+#       Source tangent on the fundamental boundary.
+#
+# Outputs:
+#   - timg::SVector{2,T} :
+#       Tangent of the doubly reflected image curve.
+#
+# Notes:
+#   - The double reflection has determinant +1, so orientation is preserved.
+#   - Hence no additional minus sign is needed here.
 @inline function image_tangent_xy(t::SVector{2,T}) where {T<:Real}
     tx,ty=_xy_reflect_normal(t[1],t[2])
     return SVector{2,T}(tx,ty)
