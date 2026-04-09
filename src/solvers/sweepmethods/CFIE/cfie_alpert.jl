@@ -951,7 +951,7 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
     return A
 end
 
-ffunction _add_image_block_alpert_joined!(
+function _add_image_block_alpert_joined!(
     A::AbstractMatrix{Complex{T}},
     ra::UnitRange{Int},
     rb::UnitRange{Int},
