@@ -855,7 +855,7 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi*two_pi,zero(T))
+        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -867,16 +867,16 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
-            A[gi,gj]-=ik*(wi*(αS*H(0,k*G.R[i,j])))
+            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
         @inbounds for m in (-nskip+1):(nskip-1)
             m==0 && continue
             j=mod1(i+m,N)
             gj=row_range[j]
-            A[gi,gj]+=ik*(wi*(αS*H(0,k*G.R[i,j])))
+            A[gi,gj]+=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
         @inbounds for p in 1:jcorr
-            fac=wi*rule.w[p]
+            fac=h*rule.w[p]
             dx=xi-C.xp[p,i]
             dy=yi-C.yp[p,i]
             r=sqrt(dx*dx+dy*dy)
