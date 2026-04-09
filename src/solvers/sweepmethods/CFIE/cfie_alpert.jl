@@ -808,18 +808,21 @@ end
         qfun=q->image_point_x(q,billiard)
         tfun=t->image_tangent_x(t)
         w=sym.axis===:origin ? sym.parity[1] : sym.parity
+        reverse_param=true
     elseif kind===:y
         qfun=q->image_point_y(q,billiard)
         tfun=t->image_tangent_y(t)
         w=sym.axis===:origin ? sym.parity[2] : sym.parity
+        reverse_param=true
     elseif kind===:xy
         qfun=q->image_point_xy(q,billiard)
         tfun=t->image_tangent_xy(t)
         w=sym.parity[1]*sym.parity[2]
+        reverse_param=false
     else
         error("Unknown reflection image kind $kind")
     end
-    return qfun,tfun,w
+    return qfun,tfun,w,reverse_param
 end
 
 @inline function _curve_endpoint_point_tangent(crv::AbsCurve,side::Symbol,::Type{T}) where {T<:Real}
@@ -948,7 +951,7 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
     return A
 end
 
-function _add_image_block_alpert_joined!(
+ffunction _add_image_block_alpert_joined!(
     A::AbstractMatrix{Complex{T}},
     ra::UnitRange{Int},
     rb::UnitRange{Int},
@@ -959,7 +962,8 @@ function _add_image_block_alpert_joined!(
     joininfo,
     qfun,
     tfun,
-    weight;
+    weight,
+    reverse_param::Bool;
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
@@ -974,16 +978,17 @@ function _add_image_block_alpert_joined!(
     Yimg=Vector{T}(undef,Nb)
     TXimg=Vector{T}(undef,Nb)
     TYimg=Vector{T}(undef,Nb)
-    Simg=Vector{T}(undef,Nb)
+    Wimg=Vector{T}(undef,Nb)
 
     @inbounds for j in 1:Nb
-        q=qfun(pb.xy[j])
-        t=tfun(pb.tangent[j])
+        js=reverse_param ? (Nb-j+1) : j
+        q=qfun(pb.xy[js])
+        t=tfun(pb.tangent[js])
         Ximg[j]=q[1]
         Yimg[j]=q[2]
         TXimg[j]=t[1]
         TYimg[j]=t[2]
-        Simg[j]=sqrt(t[1]^2+t[2]^2)
+        Wimg[j]=pb.ws[js]
     end
 
     Na=length(pa.xy)
@@ -995,7 +1000,7 @@ function _add_image_block_alpert_joined!(
     tside=joininfo.target_side
     sside=joininfo.source_side
 
-    @use_threads multithreading=multithreaded for i in 1:Na
+    @use_threads multithreading=multithed for i in 1:Na
         gi=ra[i]
         xi=Xa[i]
         yi=Ya[i]
@@ -1003,7 +1008,6 @@ function _add_image_block_alpert_joined!(
 
         nskip=_target_excluded_count(i,Na,a,tside)
 
-        # far part on image panel
         for j in 1:Nb
             _skip_source_node(j,Nb,nskip,sside) && continue
             dx=xi-Ximg[j]
@@ -1013,12 +1017,12 @@ function _add_image_block_alpert_joined!(
             r=sqrt(r2)
             invr=inv(r)
             inn=_dinner(dx,dy,TXimg[j],TYimg[j])
+            sj=sqrt(TXimg[j]^2+TYimg[j]^2)
 
-            A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
-            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*Simg[j])))
+            A[gi,rb[j]]-=weight*(Wimg[j]*(αD*inn*H(1,k*r)*invr))
+            A[gi,rb[j]]-=weight*(ik*(Wimg[j]*(αS*H(0,k*r)*sj)))
         end
 
-        # joined near correction on image panel
         for p in 1:rule.j
             Δu=h*rule.x[p]
             e=_overflow_excess(ui,Δu,tside)
@@ -1027,9 +1031,7 @@ function _add_image_block_alpert_joined!(
             usrc=_source_param_from_excess(e,sside)
             (usrc<=zero(T) || usrc>=one(T)) && continue
 
-            x,y,tx,ty,s,idx,wt=_eval_on_open_panel_localp_arrays(
-                usrc,hsrc,Ximg,Yimg,TXimg,TYimg,pinterp
-            )
+            x,y,tx,ty,s,idx,wt=_eval_on_open_panel_localp_arrays(usrc,hsrc,Ximg,Yimg,TXimg,TYimg,pinterp)
 
             dx=xi-x
             dy=yi-y
