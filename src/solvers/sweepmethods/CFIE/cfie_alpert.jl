@@ -855,12 +855,12 @@ function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::Boun
         yi=Y[i]
         si=G.speed[i]
         κi=G.kappa[i]
-        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi,zero(T))
+        A[gi,gi]+=one(Complex{T})-Complex{T}(wi*κi*two_pi,zero(T))
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
             rij=G.R[i,j]
-            inn=-G.inner[i,j]
+            inn=G.inner[i,j]
             invr=G.invR[i,j]
             A[gi,gj]-=wi*(αD*inn*H(1,k*rij)*invr)
         end
