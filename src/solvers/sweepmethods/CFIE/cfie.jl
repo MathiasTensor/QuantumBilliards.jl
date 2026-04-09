@@ -244,7 +244,7 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # unused, legacy
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,crv(zero(T)),crv(one(T)),tangent(crv,zero(T)),tangent(crv,one(T)))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 #######################
@@ -280,7 +280,7 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     ts=σ
     ws=fill(h,N)
     ws_der=jac
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,crv(zero(T)),crv(one(T)),tangent(crv,zero(T)),tangent(crv,one(T)))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 ####################
@@ -392,7 +392,7 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,crv(zero(T)),crv(one(T)),tangent(crv,zero(T)),tangent(crv,one(T)))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 # _evaluate_points_panel
