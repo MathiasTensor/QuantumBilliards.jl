@@ -243,6 +243,8 @@ end
 
 function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
     k=k0
+    k=clamp(k0,a,b)
+    fbest=f(k)
     for _ in 1:maxiter
         f0=f(k)
         fp=f(k+h)
@@ -253,10 +255,16 @@ function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
             return k
         end
         k_new=k-f1/f2
-        if abs(k_new-k)<tol
-            return k_new
+        if !(a<=k_new<=b)
+            return k
         end
+        f_new=f(k_new)
+        if !(isfinite(f_new)) || f_new>improve_tol*fbest
+            return k
+        end
+        abs(k_new-k)<tol && return k_new
         k=k_new
+        fbest=f_new
     end
     return k
 end
