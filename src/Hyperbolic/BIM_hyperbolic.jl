@@ -128,7 +128,7 @@ end
 # OUTPUTS
 #   solver::BIM_hyperbolic{T,S}
 #------------------------------------------------------------------------------
-function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,S<:AbsSymmetry}
+function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[Hyperbolic()]
     Sym=typeof(symmetry)
