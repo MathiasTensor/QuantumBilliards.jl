@@ -808,21 +808,18 @@ end
         qfun=q->image_point_x(q,billiard)
         tfun=t->image_tangent_x(t)
         w=sym.axis===:origin ? sym.parity[1] : sym.parity
-        reverse_param=true
     elseif kind===:y
         qfun=q->image_point_y(q,billiard)
         tfun=t->image_tangent_y(t)
         w=sym.axis===:origin ? sym.parity[2] : sym.parity
-        reverse_param=true
     elseif kind===:xy
         qfun=q->image_point_xy(q,billiard)
         tfun=t->image_tangent_xy(t)
         w=sym.parity[1]*sym.parity[2]
-        reverse_param=false
     else
         error("Unknown reflection image kind $kind")
     end
-    return qfun,tfun,w,reverse_param
+    return qfun,tfun,w
 end
 
 @inline function _curve_endpoint_point_tangent(crv::AbsCurve,side::Symbol,::Type{T}) where {T<:Real}
@@ -834,37 +831,51 @@ end
     min(_join_angle(t1,t2),_join_angle(t1,-t2))
 end
 
-function _reflection_join_data(crva,crvb,pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},qfun,tfun;xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real}
+function _reflection_join_data(
+    crva,crvb,
+    pa::BoundaryPointsCFIE{T},
+    pb::BoundaryPointsCFIE{T},
+    qfun,tfun;
+    xtol::T=T(1e-10),
+    angtol::T=T(1e-8)
+) where {T<:Real}
     (pa.is_periodic || pb.is_periodic) && return nothing
     pla,tla=_curve_endpoint_point_tangent(crva,:left,T)
     pra,tra=_curve_endpoint_point_tangent(crva,:right,T)
     plb,tlb=_curve_endpoint_point_tangent(crvb,:left,T)
     prb,trb=_curve_endpoint_point_tangent(crvb,:right,T)
+
     qlb=qfun(plb)
     qrb=qfun(prb)
     tlbi=tfun(tlb)
     trbi=tfun(trb)
+
     hits=NamedTuple[]
+
     d=_endpoint_distance(pla,qlb)
     if d<=xtol
         θ=_join_angle_min(tla,tlbi)
         θ<=angtol && push!(hits,(target_side=:left,source_side=:left,angle=θ))
     end
+
     d=_endpoint_distance(pla,qrb)
     if d<=xtol
         θ=_join_angle_min(tla,trbi)
         θ<=angtol && push!(hits,(target_side=:left,source_side=:right,angle=θ))
     end
+
     d=_endpoint_distance(pra,qlb)
     if d<=xtol
         θ=_join_angle_min(tra,tlbi)
         θ<=angtol && push!(hits,(target_side=:right,source_side=:left,angle=θ))
     end
+
     d=_endpoint_distance(pra,qrb)
     if d<=xtol
         θ=_join_angle_min(tra,trbi)
         θ<=angtol && push!(hits,(target_side=:right,source_side=:right,angle=θ))
     end
+
     isempty(hits) && return nothing
     length(hits)>1 && error("Ambiguous reflected join detection.")
     return hits[1]
@@ -911,18 +922,32 @@ end
     end
 end
 
-function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},k::T,qfun,tfun,weight;multithreaded::Bool=true) where {T<:Real}
+function _add_image_block!(
+    A::AbstractMatrix{Complex{T}},
+    ra::UnitRange{Int},
+    rb::UnitRange{Int},
+    pa::BoundaryPointsCFIE{T},
+    pb::BoundaryPointsCFIE{T},
+    k::T,
+    qfun,
+    tfun,
+    weight;
+    multithreaded::Bool=true
+) where {T<:Real}
     αD=Complex{T}(0,k/2)
     αS=Complex{T}(0,one(T)/2)
     ik=Complex{T}(0,k)
+
     Na=length(pa.xy)
     Nb=length(pb.xy)
+
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
     Xb=getindex.(pb.xy,1)
     Yb=getindex.(pb.xy,2)
     dXb=getindex.(pb.tangent,1)
     dYb=getindex.(pb.tangent,2)
+
     @use_threads multithreading=multithreaded for j in 1:Nb
         gj=rb[j]
         qimg=qfun(SVector{2,T}(Xb[j],Yb[j]))
@@ -934,6 +959,7 @@ function _add_image_block!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::
         sj=sqrt(txj*txj+tyj*tyj)
         wd=pb.ws[j]
         ws=pb.ws[j]*sj
+
         @inbounds for i in 1:Na
             gi=ra[i]
             dx=Xa[i]-xj
@@ -962,8 +988,7 @@ function _add_image_block_alpert_joined!(
     joininfo,
     qfun,
     tfun,
-    weight,
-    reverse_param::Bool;
+    weight;
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
@@ -978,17 +1003,16 @@ function _add_image_block_alpert_joined!(
     Yimg=Vector{T}(undef,Nb)
     TXimg=Vector{T}(undef,Nb)
     TYimg=Vector{T}(undef,Nb)
-    Wimg=Vector{T}(undef,Nb)
+    Simg=Vector{T}(undef,Nb)
 
     @inbounds for j in 1:Nb
-        js=reverse_param ? (Nb-j+1) : j
-        q=qfun(pb.xy[js])
-        t=tfun(pb.tangent[js])
+        q=qfun(pb.xy[j])
+        t=tfun(pb.tangent[j])
         Ximg[j]=q[1]
         Yimg[j]=q[2]
         TXimg[j]=t[1]
         TYimg[j]=t[2]
-        Wimg[j]=pb.ws[js]
+        Simg[j]=sqrt(t[1]^2+t[2]^2)
     end
 
     Na=length(pa.xy)
@@ -1000,7 +1024,7 @@ function _add_image_block_alpert_joined!(
     tside=joininfo.target_side
     sside=joininfo.source_side
 
-    @use_threads multithreading=multithed for i in 1:Na
+    @use_threads multithreading=multithreaded for i in 1:Na
         gi=ra[i]
         xi=Xa[i]
         yi=Ya[i]
@@ -1017,10 +1041,8 @@ function _add_image_block_alpert_joined!(
             r=sqrt(r2)
             invr=inv(r)
             inn=_dinner(dx,dy,TXimg[j],TYimg[j])
-            sj=sqrt(TXimg[j]^2+TYimg[j]^2)
-
-            A[gi,rb[j]]-=weight*(Wimg[j]*(αD*inn*H(1,k*r)*invr))
-            A[gi,rb[j]]-=weight*(ik*(Wimg[j]*(αS*H(0,k*r)*sj)))
+            A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
+            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*Simg[j])))
         end
 
         for p in 1:rule.j
@@ -1052,8 +1074,22 @@ function _add_image_block_alpert_joined!(
     return A
 end
 
-function _assemble_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},crva,crvb,solver::CFIE_alpert{T},billiard::Bi,k::T,sym::Reflection;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function _assemble_reflection_images!(
+    A::AbstractMatrix{Complex{T}},
+    ra::UnitRange{Int},
+    rb::UnitRange{Int},
+    pa::BoundaryPointsCFIE{T},
+    pb::BoundaryPointsCFIE{T},
+    crva,
+    crvb,
+    solver::CFIE_alpert{T},
+    billiard::Bi,
+    k::T,
+    sym::Reflection;
+    multithreaded::Bool=true
+) where {T<:Real,Bi<:AbsBilliard}
     rule=alpert_log_rule(T,solver.alpert_order)
+
     function do_one_image!(kind::Symbol;joined_ok::Bool)
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,kind)
         if joined_ok
@@ -1067,6 +1103,7 @@ function _assemble_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRang
             _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
         end
     end
+
     if sym.axis===:y_axis
         do_one_image!(:x;joined_ok=true)
         return A
@@ -1082,6 +1119,16 @@ function _assemble_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRang
         error("Unknown reflection axis $(sym.axis)")
     end
 end
+
+
+
+
+
+
+
+
+
+
 
 
 
