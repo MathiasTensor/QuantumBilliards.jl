@@ -363,9 +363,13 @@
 struct AlpertPeriodicCache{T<:Real}
     xp::Matrix{T}
     yp::Matrix{T}
+    txp::Matrix{T}
+    typ::Matrix{T}
     sp::Matrix{T}
     xm::Matrix{T}
     ym::Matrix{T}
+    txm::Matrix{T}
+    tym::Matrix{T}
     sm::Matrix{T}
     offsp::Matrix{Int}
     wtp::Matrix{T}
@@ -380,6 +384,11 @@ end
         A[gi,col_range[idx[m]]] += coeff*wt[m]
     end
     return nothing
+end
+
+@inline function _wrap01(u::T) where {T<:Real}
+    v=mod(u,one(T))
+    return v<zero(T) ? v+one(T) : v
 end
 
 # wrap_angle
@@ -409,7 +418,7 @@ end
 #   nodes : interpolation nodes in the same local coordinate system
 # Output:
 #   w     : Lagrange weights so that f(η) ≈ sum_j w[j] f(nodes[j])
-@inline function _lagrange_weights(x::T,nodes::AbstractVector{T}) where {T<:Real}
+@inline function _lagrange_weights(ξ::T,nodes::AbstractVector{T}) where {T<:Real}
     m=length(nodes)
     w=Vector{T}(undef,m)
     @inbounds for j in 1:m
@@ -419,7 +428,7 @@ end
         for l in 1:m
             l==j && continue
             xl=nodes[l]
-            num*=x-xl
+            num*=ξ-xl
             den*=xj-xl
         end
         w[j]=num/den
@@ -427,53 +436,7 @@ end
     return w
 end
 
-@inline function _fft_freqs(::Type{T},N::Int) where {T<:Real}
-    k=Vector{Int}(undef,N)
-    if iseven(N)
-        n2=N÷2
-        @inbounds for j in 1:N
-            m=j-1
-            k[j]=(m<n2) ? m : (m==n2 ? -n2 : m-N)
-        end
-    else
-        n2=(N-1)÷2
-        @inbounds for j in 1:N
-            m=j-1
-            k[j]=(m<=n2) ? m : m-N
-        end
-    end
-    return k
-end
-
-function _trig_coeffs_midpoint(vals::AbstractVector{T}) where {T<:Real}
-    N=length(vals)
-    ks=_fft_freqs(T,N)
-    c=fft(complex.(vals))./T(N)
-    shift=T(pi)/T(N)
-    @inbounds for j in eachindex(c)
-        c[j]*=exp(-im*T(ks[j])*shift)
-    end
-    return c
-end
-
-@inline function _eval_trig_series(c::AbstractVector{Complex{T}},ks::AbstractVector{Int},t::T) where {T<:Real}
-    s=zero(Complex{T})
-    @inbounds for j in eachindex(c)
-        s+=c[j]*exp(im*T(ks[j])*t)
-    end
-    return s
-end
-
-@inline function _eval_shifted_source_periodic(t::T,Xhat::AbstractVector{Complex{T}},Yhat::AbstractVector{Complex{T}},dXhat::AbstractVector{Complex{T}},dYhat::AbstractVector{Complex{T}},ks::AbstractVector{Int}) where {T<:Real}
-    x=real(_eval_trig_series(Xhat,ks,t))
-    y=real(_eval_trig_series(Yhat,ks,t))
-    tx=real(_eval_trig_series(dXhat,ks,t))
-    ty=real(_eval_trig_series(dYhat,ks,t))
-    s=sqrt(tx*tx+ty*ty)
-    return x,y,s
-end
-
-function _alpert_interp_offsets_weights(ξ::T,ninterp::Int) where {T<:Real}
+@inline function _alpert_interp_offsets_weights(ξ::T,ninterp::Int) where {T<:Real}
     j0=floor(Int,ξ-T(ninterp)/2+one(T))
     offs=collect(j0:(j0+ninterp-1))
     wt=_lagrange_weights(ξ,T.(offs))
@@ -492,29 +455,23 @@ end
     return collect(-(q-1):q)
 end
 
-function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    ts=pts.ts
-    N=length(ts)
+function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real,C<:AbsCurve}
+    N=length(pts.xy)
     h=pts.ws[1]
     jcorr=rule.j
     ninterp=ord+3
 
-    Xhat=_trig_coeffs_midpoint(X)
-    Yhat=_trig_coeffs_midpoint(Y)
-    dXhat=_trig_coeffs_midpoint(dX)
-    dYhat=_trig_coeffs_midpoint(dY)
-    ks=_fft_freqs(T,N)
-
     xp=Matrix{T}(undef,jcorr,N)
     yp=similar(xp)
+    txp=similar(xp)
+    typ=similar(xp)
     sp=similar(xp)
-    xm=similar(xp)
-    ym=similar(xp)
-    sm=similar(xp)
+
+    xm=Matrix{T}(undef,jcorr,N)
+    ym=similar(xm)
+    txm=similar(xm)
+    tym=similar(xm)
+    sm=similar(xm)
 
     offsp=Matrix{Int}(undef,jcorr,ninterp)
     wtp=Matrix{T}(undef,jcorr,ninterp)
@@ -522,8 +479,11 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
     wtm=Matrix{T}(undef,jcorr,ninterp)
 
     @inbounds for p in 1:jcorr
-        op,wp=_alpert_interp_offsets_weights(rule.x[p],ninterp)
-        om,wm=_alpert_interp_offsets_weights(-rule.x[p],ninterp)
+        ξ=rule.x[p]
+
+        op,wp=_alpert_interp_offsets_weights(ξ,ninterp)
+        om,wm=_alpert_interp_offsets_weights(-ξ,ninterp)
+
         for m in 1:ninterp
             offsp[p,m]=op[m]
             wtp[p,m]=wp[m]
@@ -531,23 +491,32 @@ function _build_alpert_periodic_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLog
             wtm[p,m]=wm[m]
         end
 
-        Δt=h*rule.x[p]
-        for i in 1:N
-            tp=wrap_angle(ts[i]+Δt)
-            x,y,s=_eval_shifted_source_periodic(tp,Xhat,Yhat,dXhat,dYhat,ks)
-            xp[p,i]=x
-            yp[p,i]=y
-            sp[p,i]=s
+        δu=ξ/T(N)
 
-            tm=wrap_angle(ts[i]-Δt)
-            x,y,s=_eval_shifted_source_periodic(tm,Xhat,Yhat,dXhat,dYhat,ks)
-            xm[p,i]=x
-            ym[p,i]=y
-            sm[p,i]=s
+        for i in 1:N
+            ui=(T(i)-T(1)/2)/T(N)
+
+            up=_wrap01(ui+δu)
+            qp=curve(crv,up)
+            tp=tangent(crv,up)/T(two_pi)
+            xp[p,i]=qp[1]
+            yp[p,i]=qp[2]
+            txp[p,i]=tp[1]
+            typ[p,i]=tp[2]
+            sp[p,i]=sqrt(tp[1]^2+tp[2]^2)
+
+            um=_wrap01(ui-δu)
+            qm=curve(crv,um)
+            tm=tangent(crv,um)/T(two_pi)
+            xm[p,i]=qm[1]
+            ym[p,i]=qm[2]
+            txm[p,i]=tm[1]
+            tym[p,i]=tm[2]
+            sm[p,i]=sqrt(tm[1]^2+tm[2]^2)
         end
     end
 
-    return AlpertPeriodicCache(xp,yp,sp,xm,ym,sm,offsp,wtp,offsm,wtm,ninterp)
+    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
 ###########################################
@@ -710,8 +679,8 @@ function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::Alper
     return AlpertSmoothPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
-function _build_alpert_component_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
-    return pts.is_periodic ? _build_alpert_periodic_cache(pts,rule,ord) : _build_alpert_smooth_panel_cache(pts,rule,ord)
+function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
+    return pts.is_periodic ? _build_alpert_periodic_cache(solver,crv,pts,rule,ord) : _build_alpert_smooth_panel_cache(pts,rule,ord)
 end
 
 ###########################################################
@@ -1164,10 +1133,14 @@ end
 #   - CFIEAlpertWorkspace containing all precomputed data for assembly.
 function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     rule=alpert_log_rule(T,solver.alpert_order)
-    pinterp=max(8,solver.alpert_order)
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
-    Cs=[_build_alpert_component_cache(p,rule,solver.alpert_order) for p in pts]
+
+    boundary=isnothing(solver.symmetry) ? solver.billiard.full_boundary : solver.billiard.desymmetrized_full_boundary
+    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
+
+    Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
+
     topo_data=build_join_topology(pts)
     if topo_data===nothing
         topos=nothing
@@ -1349,7 +1322,9 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     fill!(A,zero(Complex{T}))
     rule=alpert_log_rule(T,solver.alpert_order)
     Gs=[cfie_geom_cache(p) for p in pts]
-    Cs=[_build_alpert_component_cache(p,rule,solver.alpert_order) for p in pts]
+    boundary=solver.billiard.desymmetrized_full_boundary
+    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
+    Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
     nc=length(pts)
     topo_data=build_join_topology(pts)
     gmaps=topo_data===nothing ? nothing : topo_data[2]
@@ -1549,7 +1524,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         Gs=[cfie_geom_cache(p) for p in pts]
         rule=alpert_log_rule(T,solver.alpert_order)
         pinterp=max(8,solver.alpert_order)
-        Cs=[_build_alpert_component_cache(pts[a],rule,pinterp) for a in eachindex(pts)]
+        Cs=[_build_alpert_component_cache(solver,billiard.full_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
         nc=length(pts)
         topo_data=build_join_topology(pts)
         gmaps=topo_data===nothing ? nothing : topo_data[2]
