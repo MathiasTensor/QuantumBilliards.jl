@@ -34,17 +34,6 @@ struct AlpertSmoothPanelCache{T<:Real}
     wtm::Array{T,3}
 end
 
-struct CFIEAlpertWorkspace{T<:Real,C}
-    rule::AlpertLogRule{T}
-    offs::Vector{Int}
-    Gs::Vector{CFIEGeomCache{T}}
-    Cs::Vector{C}
-    topos::Union{Nothing,Vector{AlpertCompositeTopology{T}}}
-    gmaps::Union{Nothing,Vector{Vector{Int}}}
-    panel_to_comp::Union{Nothing,Vector{Int}}
-    Ntot::Int
-end
-
 @inline function _scatter_localp!(A::AbstractMatrix{Complex{T}},gi::Int,col_range::UnitRange{Int},coeff::Complex{T},idx,wt) where {T<:Real}
     @inbounds for m in eachindex(idx)
         A[gi,col_range[idx[m]]]+=coeff*wt[m]

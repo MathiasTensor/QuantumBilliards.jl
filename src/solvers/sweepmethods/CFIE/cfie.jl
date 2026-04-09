@@ -412,10 +412,11 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
     N<2 && (N=2)
-    ts=collect(midpoints(range(zero(T),one(T),length=(N+1))))
+    ts=[T(two_pi)*(j-T(1)/2)/T(N) for j in 1:N]
+    ts=ts./two_pi
     xy=curve(crv,ts)
-    tangent_1st=tangent(crv,ts)
-    tangent_2nd=tangent_2(crv,ts)
+    tangent_1st=tangent(crv,ts)./(two_pi)
+    tangent_2nd=tangent_2(crv,ts)./(two_pi)^2
     ss=arc_length(crv,ts)
     ds=_open_panel_weights(ss)
     h=inv(T(N))   # midpoint spacing
