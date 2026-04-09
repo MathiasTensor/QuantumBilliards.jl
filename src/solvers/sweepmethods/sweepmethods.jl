@@ -258,7 +258,7 @@ function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
     return k
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,newton_h=1e-6,newton_maxiter=8,newton_tol=1e-12,max_abs_step=Inf,min_k=0.0)where{T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,newton_h=1e-6,newton_maxiter=8,newton_tol=1e-12) where{T<:Real}
     N=length(tens)
     @assert N==length(ks)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
@@ -288,26 +288,14 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             knew=res.minimizer
             tnew=res.minimum
             if lev==length(pts_refinement_factors)
-                hk=newton_h*max(1.0,abs(knew))
-                fp=fcur(knew+hk)
-                fm=fcur(knew-hk)
-                f0=tnew
-                f1=(fp-fm)/(2hk)
-                f2=(fp-2f0+fm)/(hk^2)
-                if isfinite(f1)&&isfinite(f2)&&abs(f2)>=1e-14
-                    step=-f1/f2
-                    if isfinite(step)
-                        isfinite(max_abs_step)&&(step=clamp(step,-max_abs_step,max_abs_step))
-                        ktrial=knew+step
-                        if ktrial>min_k&&isfinite(ktrial)
-                            try
-                                knew2=newton_refine(fcur,ktrial;h=newton_h,maxiter=newton_maxiter,tol=newton_tol)
-                                t2=fcur(knew2)
-                                isfinite(t2)&&(knew=knew2;tnew=t2)
-                            catch _
-                            end
-                        end
+                try
+                    knew2=newton_refine(fcur,knew;h=newton_h,maxiter=newton_maxiter,tol=newton_tol)
+                    t2=fcur(knew2)
+                    if isfinite(t2)
+                        knew=knew2
+                        tnew=t2
                     end
+                catch _
                 end
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
