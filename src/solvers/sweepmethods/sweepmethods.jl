@@ -284,7 +284,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             fcur=k->solve(solver_cur,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
             a=kcur-window
             b=kcur+window
-            res=isempty(optimizer_kwargs)?optimize(fcur,a,b):optimize(fcur,a,b;optimizer_kwargs...)
+            res=isempty(optimizer_kwargs) ? optimize(fcur,a,b) : optimize(fcur,a,b;optimizer_kwargs...)
             knew=res.minimizer
             tnew=res.minimum
             if lev==length(pts_refinement_factors)
