@@ -920,9 +920,17 @@ end
     end
 end
 
+@inline function _reflection_reverses_parameter(kind::Symbol)
+    kind===:x && return true
+    kind===:y && return true
+    kind===:xy && return false
+    error("Unknown reflection image kind $kind")
+end
+
 function _build_reflected_open_panel_data(
     pb::BoundaryPointsCFIE{T},
-    qfun,tfun
+    qfun,tfun;
+    reverse_param::Bool=false
 ) where {T<:Real}
     Nb=length(pb.xy)
     X=Vector{T}(undef,Nb)
@@ -930,6 +938,7 @@ function _build_reflected_open_panel_data(
     TX=Vector{T}(undef,Nb)
     TY=Vector{T}(undef,Nb)
     S=Vector{T}(undef,Nb)
+    W=Vector{T}(undef,Nb)
 
     @inbounds for j in 1:Nb
         q=qfun(pb.xy[j])
@@ -939,9 +948,19 @@ function _build_reflected_open_panel_data(
         TX[j]=t[1]
         TY[j]=t[2]
         S[j]=sqrt(t[1]^2+t[2]^2)
+        W[j]=pb.ws[j]
     end
 
-    return X,Y,TX,TY,S
+    if reverse_param
+        reverse!(X)
+        reverse!(Y)
+        reverse!(TX)
+        reverse!(TY)
+        reverse!(S)
+        reverse!(W)
+    end
+
+    return X,Y,TX,TY,S,W
 end
 
 function _add_image_block!(
@@ -952,6 +971,7 @@ function _add_image_block!(
     pb::BoundaryPointsCFIE{T},
     k::T,
     qfun,tfun,weight;
+    reverse_param::Bool=false,
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
@@ -964,7 +984,9 @@ function _add_image_block!(
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
 
-    Ximg,Yimg,TXimg,TYimg,Simg=_build_reflected_open_panel_data(pb,qfun,tfun)
+    Ximg,Yimg,TXimg,TYimg,Simg,Wimg=_build_reflected_open_panel_data(
+        pb,qfun,tfun;reverse_param=reverse_param
+    )
 
     @use_threads multithreading=multithreaded for j in 1:Nb
         gj=rb[j]
@@ -973,8 +995,8 @@ function _add_image_block!(
         txj=TXimg[j]
         tyj=TYimg[j]
         sj=Simg[j]
-        wd=pb.ws[j]
-        ws=pb.ws[j]*sj
+        wd=Wimg[j]
+        ws=wd*sj
 
         @inbounds for i in 1:Na
             gi=ra[i]
@@ -990,7 +1012,6 @@ function _add_image_block!(
             A[gi,gj]-=dval+ik*sval
         end
     end
-
     return A
 end
 
@@ -1004,6 +1025,7 @@ function _add_image_block_alpert_joined!(
     rule::AlpertLogRule{T},
     joininfo,
     qfun,tfun,weight;
+    reverse_param::Bool=false,
     multithreaded::Bool=true
 ) where {T<:Real}
     αD=Complex{T}(0,k/2)
@@ -1016,10 +1038,12 @@ function _add_image_block_alpert_joined!(
     Xa=getindex.(pa.xy,1)
     Ya=getindex.(pa.xy,2)
 
-    Ximg,Yimg,TXimg,TYimg,Simg=_build_reflected_open_panel_data(pb,qfun,tfun)
+    Ximg,Yimg,TXimg,TYimg,Simg,Wimg=_build_reflected_open_panel_data(
+        pb,qfun,tfun;reverse_param=reverse_param
+    )
 
     h=pa.ws[1]
-    hsrc=pb.ws[1]
+    hsrc=Wimg[1]
     a=rule.a
     pinterp=iseven(rule.order+3) ? rule.order+3 : rule.order+4
 
@@ -1036,7 +1060,6 @@ function _add_image_block_alpert_joined!(
 
         for j in 1:Nb
             _skip_source_node(j,Nb,nskip,sside) && continue
-
             dx=xi-Ximg[j]
             dy=yi-Yimg[j]
             r2=muladd(dx,dx,dy*dy)
@@ -1044,9 +1067,8 @@ function _add_image_block_alpert_joined!(
             r=sqrt(r2)
             invr=inv(r)
             inn=_dinner(dx,dy,TXimg[j],TYimg[j])
-
-            A[gi,rb[j]]-=weight*(pb.ws[j]*(αD*inn*H(1,k*r)*invr))
-            A[gi,rb[j]]-=weight*(ik*(pb.ws[j]*(αS*H(0,k*r)*Simg[j])))
+            A[gi,rb[j]]-=weight*(Wimg[j]*(αD*inn*H(1,k*r)*invr))
+            A[gi,rb[j]]-=weight*(ik*(Wimg[j]*(αS*H(0,k*r)*Simg[j])))
         end
 
         for p in 1:rule.j
@@ -1097,34 +1119,47 @@ function _assemble_reflection_images!(
 
     function do_one_image!(kind::Symbol;joined_ok::Bool)
         qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,kind)
+        reverse_param=_reflection_reverses_parameter(kind)
 
         if joined_ok && !pa.is_periodic && !pb.is_periodic
-            Ximg,Yimg,TXimg,TYimg,_=_build_reflected_open_panel_data(pb,qfun,tfun)
+            Ximg,Yimg,TXimg,TYimg,_,_=_build_reflected_open_panel_data(
+                pb,qfun,tfun;reverse_param=reverse_param
+            )
             joininfo=_reflection_join_data(crva,crvb,pa,Ximg,Yimg,TXimg,TYimg)
             if isnothing(joininfo)
-                _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+                _add_image_block!(
+                    A,ra,rb,pa,pb,k,qfun,tfun,w;
+                    reverse_param=reverse_param,
+                    multithreaded=multithreaded
+                )
             else
-                _add_image_block_alpert_joined!(A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;multithreaded=multithreaded)
+                _add_image_block_alpert_joined!(
+                    A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;
+                    reverse_param=reverse_param,
+                    multithreaded=multithreaded
+                )
             end
         else
-            _add_image_block!(A,ra,rb,pa,pb,k,qfun,tfun,w;multithreaded=multithreaded)
+            _add_image_block!(
+                A,ra,rb,pa,pb,k,qfun,tfun,w;
+                reverse_param=reverse_param,
+                multithreaded=multithreaded
+            )
         end
     end
 
     if sym.axis===:y_axis
-        do_one_image!(:x;joined_ok=false)
-        return A
+        do_one_image!(:x;joined_ok=true)
     elseif sym.axis===:x_axis
-        do_one_image!(:y;joined_ok=false)
-        return A
+        do_one_image!(:y;joined_ok=true)
     elseif sym.axis===:origin
-        do_one_image!(:x;joined_ok=false)
-        do_one_image!(:y;joined_ok=false)
+        do_one_image!(:x;joined_ok=true)
+        do_one_image!(:y;joined_ok=true)
         do_one_image!(:xy;joined_ok=false)
-        return A
     else
         error("Unknown reflection axis $(sym.axis)")
     end
+    return A
 end
 
 
