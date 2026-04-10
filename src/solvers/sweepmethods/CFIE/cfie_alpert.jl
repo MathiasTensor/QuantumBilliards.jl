@@ -261,16 +261,16 @@ function _add_corner_neighbor_endpoint_correction!(
         idx2, wt2 = _interp_density_data_on_panel(u, hnb, Nnb, pinterp)
 
         dx = xi - x
-        dy = yi - y
-        r2 = muladd(dx, dx, dy*dy)
-        r2 <= (eps(T))^2 && continue
-        r = sqrt(r2)
-        inn = _dinner(dx, dy, tx, ty)
+dy = yi - y
+r2 = muladd(dx, dx, dy*dy)
+r2 <= (eps(T))^2 && continue
+r = sqrt(r2)
 
-        τx = tx / s2
+τx = tx / s2
 τy = ty / s2
-inns = _dinner(dx,dy,τx,τy)
-fac = hs_ref * rule.w[p]
+inns = _dinner(dx, dy, τx, τy)
+
+fac = hsrc_ref * rule.w[p]
 coeffD = -(fac * (αD * inns * H(1, k*r) / r))
 coeffS = -ik * (fac * (αS * H(0, k*r)))
 
@@ -1265,18 +1265,20 @@ function _assemble_self_alpert_composite_corner_component!(
 
             if next_idx != 0
                 nr = max(0, i + a - 1 - Na)
-                _add_corner_neighbor_endpoint_correction!(
-                    A, gi, xi, yi, next_ra, next_C, :left, nr, next_pts.ws[1],
-                    k, αD, αS, ik, rule
-                )
+                hs_next = next_pts.ws[1] * _speed(next_pts.tL)
+_add_corner_neighbor_endpoint_correction!(
+    A, gi, xi, yi, next_ra, next_C, :left, nr, hs_next,
+    k, αD, αS, ik, rule
+)
             end
 
             if prev_idx != 0
                 nl = max(0, a - i)
-                _add_corner_neighbor_endpoint_correction!(
-                    A, gi, xi, yi, prev_ra, prev_C, :right, nl, prev_pts.ws[1],
-                    k, αD, αS, ik, rule
-                )
+                hs_prev = prev_pts.ws[1] * _speed(prev_pts.tR)
+_add_corner_neighbor_endpoint_correction!(
+    A, gi, xi, yi, prev_ra, prev_C, :right, nl, hs_prev,
+    k, αD, αS, ik, rule
+)
             end
         end
     end
