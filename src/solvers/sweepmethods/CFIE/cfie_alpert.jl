@@ -667,7 +667,7 @@ function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{Boundary
     rule=alpert_log_rule(T,solver.alpert_order)
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
-    boundary= isnothing(solver.symmetry) ? solver.billiard.full_boundary : solver.billiard.desymmetrized_full_boundary
+    boundary=solver.billiard.full_boundary
     flat_boundary= boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
     Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
     topo_data=build_join_topology(pts)
@@ -834,20 +834,6 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     return A
 end
 
-"""
-    construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-
-High-level wrapper to construct the CFIE Alpert system matrix. This function checks for symmetry and dispatches to the appropriate assembly routine. It is mostly legacy since it is better to precompute the workspace.
-
-# Inputs:
-- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
-- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
-- `k::T` : The real wavenumber.
-- `multithreaded::Bool=true` : Whether to use multithreading for assembly.
-
-# Outputs:
-- `A::Matrix{Complex{T}}` containing the assembled system matrix for the CFIE Alpert solver.
-"""
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     Ntot=boundary_matrix_size(pts)
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -855,66 +841,18 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
     return A
 end
 
-"""
-    construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-
-High-level wrapper to construct the CFIE Alpert system matrix using a precomputed workspace. This is the recommended interface for efficient assembly, as it avoids redundant precomputation of geometry caches and Alpert component caches.
-
-# Inputs:
-- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
-- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
-- `ws::CFIEAlpertWorkspace{T}` : The precomputed workspace containing all necessary data for assembly.
-- `k::T` : The real wavenumber.
-- `multithreaded::Bool=true` : Whether to use multithreading for assembly. Whether to use multithreading for assembly.
-# Outputs:
-- `A::Matrix{Complex{T}}` containing the assembled system matrix for the CFIE Alpert solver.
-"""
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     return A
 end
 
-"""
-    solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
-
-# High-level function to solve the CFIE eigenvalue problem using the Alpert-based discretization. This function constructs the system matrix and then computes the smallest singular value, which corresponds to the eigenvalue of interest.
-
-# Inputs:
-- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
-- `basis::Ba` : The basis object (not used in this implementation but included for API consistency).
-- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
-- `ws::CFIEAlpertWorkspace{T}` (optional) : The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
-- `k::T` : The real wavenumber.
-- `multithreaded::Bool=true` : Whether to use multithreading for assembly.
-- `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive. 
-- `which::Symbol=:det_argmin` : Which method to use for computing the eigenvalue. Options include `:det`, `:svd`, and `:det_argmin`. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected.
-
-# Outputs:
-- The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem.
-"""
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-"""
-    solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-
-High-level function to solve the CFIE eigenvalue problem and return both the smallest singular value and the corresponding right singular vector (eigenfunction). This function constructs the system matrix and then computes the SVD to extract the smallest singular value and its associated singular vector.
-
-# Inputs:
-- `solver::CFIE_alpert{T} : The CFIE_alpert solver object containing parameters and symmetry information.
-- `basis::Ba` : The basis object (not used in this implementation but included for API consistency).
-- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
-- `ws::CFIEAlpertWorkspace{T}` (optional) : The precomputed workspace containing all necessary data for assembly. If not provided, the system matrix will be constructed without using a workspace, which may be less efficient.
-- `k::T` : The real wavenumber.
-- `multithreaded::Bool=true` : Whether to use multithreading for assembly. 
-
-# Outputs:
- - A tuple containing the smallest singular value and the corresponding right singular vector (eigenfunction) of the system matrix.
-"""
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
@@ -923,23 +861,6 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     return S[idx],conj.(Vt[idx,:])
 end
 
-"""
-    solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
-
-High-level function to solve the CFIE eigenvalue problem while also providing detailed timing and condition number information. This function constructs the system matrix, computes its condition number, performs the SVD, and then reports the time taken for each step as well as the condition number of the matrix. 
-
-# Inputs:
-- `solver::CFIE_alpert{T}` : The CFIE_alpert solver object containing parameters and symmetry information.
-- `basis::Ba` : The basis object (not used in this implementation but included for API consistency).
-- `pts::Vector{BoundaryPointsCFIE{T}}` : The boundary points for the entire geometry.
-- `k::T` : The real wavenumber.
-- `multithreaded::Bool=true` : Whether to use multithreading for assembly.
-- `use_krylov::Bool=true` : Whether to use a Krylov method (svdsolve) to compute the smallest singular value, which can be more efficient for large systems. If false, it will compute the full SVD and return the smallest singular value, which is more expensive.
-- `which::Symbol=:det_argmin` : Which SVD method to use if `use_krylov` is false. This is passed to the `@svd_or_det_solve` macro to determine the SVD computation method. Options include `:det`, `:svd`, and `:det_argmin`.   
-
-# Outputs:
-- The smallest singular value of the system matrix, which corresponds to the eigenvalue of interest for the CFIE problem, along with printed information about the condition number of the matrix and the time taken.
-"""
 function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
@@ -952,7 +873,7 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     cA=cond(A)
     @info "Condition number of A: $(round(cA;sigdigits=4))"
     t2=time()
-    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
+    s=@svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
     t3=time()
     build_A=t1-t0
     svd_time=t3-t2
