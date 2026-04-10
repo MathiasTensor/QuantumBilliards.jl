@@ -531,10 +531,10 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                     skip_near=false
                     if bidx==aidx
                         skip_near= abs(j-i)<a
-                    elseif right_smooth && bidx==next_idx
+                    elseif next_idx!=0 && bidx==next_idx
                         nr=_right_neighbor_excluded_count(i,Na,a)
                         skip_near= j<=nr
-                    elseif left_smooth && bidx==prev_idx
+                    elseif prev_idx!=0 && bidx==prev_idx
                         nl=_left_neighbor_excluded_count(i,a)
                         skip_near = j>Nb-nl
                     end
@@ -587,7 +587,7 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                 end
             end
             pinterp=size(Ca.idxp,3)
-            if right_smooth && next_idx!=0
+            if next_idx!=0
                 for p in 1:jcorr
                     Δu=ha*rule.x[p]
                     if ui+Δu>=one(T)
@@ -607,7 +607,7 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                     end
                 end
             end
-            if left_smooth && prev_idx != 0
+            if next_idx!=0
                 for p in 1:jcorr
                     Δu=ha*rule.x[p]
                     if ui-Δu<=zero(T)
