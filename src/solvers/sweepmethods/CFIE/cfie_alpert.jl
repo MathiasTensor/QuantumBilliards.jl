@@ -224,11 +224,10 @@ function _add_corner_neighbor_endpoint_correction!(
     A::AbstractMatrix{Complex{T}},
     gi::Int, xi::T, yi::T,
     rnb::UnitRange{Int},
-    pnb::BoundaryPointsCFIE{T},
+    Cnb::AlpertSmoothPanelCache{T},
     endpoint::Symbol,           # :left or :right
-    pinterp::Int,
     nfix::Int,
-    hsrc::T,
+    hsrc_ref::T,
     k::T,
     αD::Complex{T},
     αS::Complex{T},
@@ -237,17 +236,30 @@ function _add_corner_neighbor_endpoint_correction!(
 ) where {T<:Real}
 
     nfix <= 0 && return A
-    X, Y, dX, dY = _panel_xy_tangent_arrays(pnb)
+
+    crv_nb = Cnb.crv
+    Nnb = length(Cnb.us)
+    pinterp = size(Cnb.idxp, 3)
+    hnb = one(T) / T(Nnb)
     jcorr = min(rule.j, nfix)
 
     @inbounds for p in 1:jcorr
         ξ = rule.x[p]
-        fac = hsrc * rule.w[p]
+        ds = hsrc_ref * ξ
 
-        u = endpoint === :left ? (hsrc * ξ) : (one(T) - hsrc * ξ)
+        u = if endpoint === :left
+            _invert_panel_arc_from_left(crv_nb, ds)
+        elseif endpoint === :right
+            _invert_panel_arc_from_right(crv_nb, ds)
+        else
+            error("endpoint must be :left or :right")
+        end
+
         (u <= zero(T) || u >= one(T)) && continue
 
-        x, y, tx, ty, s2, idx2, wt2 = _eval_shifted_source_smooth_panel_localp(u, hsrc, X, Y, dX, dY, pinterp)
+        x, y, tx, ty, s2 = _eval_open_panel_geom_exact(crv_nb, u)
+        idx2, wt2 = _interp_density_data_on_panel(u, hnb, Nnb, pinterp)
+
         dx = xi - x
         dy = yi - y
         r2 = muladd(dx, dx, dy*dy)
@@ -255,6 +267,7 @@ function _add_corner_neighbor_endpoint_correction!(
         r = sqrt(r2)
         inn = _dinner(dx, dy, tx, ty)
 
+        fac = hsrc_ref * rule.w[p]
         coeffD = -(fac * (αD * inn * H(1, k*r) / r))
         coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
 
@@ -1061,13 +1074,15 @@ function _assemble_self_alpert_composite_smooth_component!(
         Ya = getindex.(pa.xy,2)
         Na = length(pa.xy)
         ha = pa.ws[1]
-        pinterp = size(Ca.idxp,3)
 
         prev_idx = topo.prev[l] == 0 ? 0 : gmap[topo.prev[l]]
         next_idx = topo.next[l] == 0 ? 0 : gmap[topo.next[l]]
 
         prev_pts = prev_idx == 0 ? nothing : pts[prev_idx]
         next_pts = next_idx == 0 ? nothing : pts[next_idx]
+
+        prev_C = prev_idx == 0 ? nothing : Cs[prev_idx]
+        next_C = next_idx == 0 ? nothing : Cs[next_idx]
 
         prev_ra = prev_idx == 0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
         next_ra = next_idx == 0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
@@ -1080,13 +1095,11 @@ function _assemble_self_alpert_composite_smooth_component!(
 
             A[gi,gi] += one(Complex{T})
 
-            # same panel: naive away from diagonal-near zone
             _add_naive_panel_interaction!(
                 A, gi, xi, yi, ra, pa, k, αD, αS, ik;
                 skip_pred = j -> (j == i || abs(j-i) < a)
             )
 
-            # previous smooth neighbor: omit tail near join, replace by smooth corrected continuation
             if prev_idx != 0
                 Nb = length(prev_pts.xy)
                 nl = max(0, a - i)
@@ -1096,7 +1109,6 @@ function _assemble_self_alpert_composite_smooth_component!(
                 )
             end
 
-            # next smooth neighbor: omit head near join, replace by smooth corrected continuation
             if next_idx != 0
                 nr = max(0, i + a - 1 - Na)
                 _add_naive_panel_interaction!(
@@ -1105,7 +1117,6 @@ function _assemble_self_alpert_composite_smooth_component!(
                 )
             end
 
-            # all other panels in same component
             for m in eachindex(gmap)
                 bidx = gmap[m]
                 (bidx == aidx || bidx == prev_idx || bidx == next_idx) && continue
@@ -1114,24 +1125,23 @@ function _assemble_self_alpert_composite_smooth_component!(
                 _add_naive_panel_interaction!(A, gi, xi, yi, rb, pb, k, αD, αS, ik)
             end
 
-            # corrected same-panel self
             _add_same_panel_self_correction!(
-    A, gi, xi, yi, i, ui, ra, Ca, ha, k, rule, αD, αS, ik
-)
+                A, gi, xi, yi, i, ui, ra, Ca, ha, k, rule, αD, αS, ik
+            )
 
             if next_idx != 0
-    _add_smooth_neighbor_correction!(
-        A, gi, xi, yi, ui, pa, next_pts, next_ra, pinterp, :right,
-        ha, k, αD, αS, ik, rule
-    )
-end
+                _add_smooth_neighbor_correction!(
+                    A, gi, xi, yi, ui, pa, next_C, next_ra, :right,
+                    ha, k, αD, αS, ik, rule
+                )
+            end
 
-if prev_idx != 0
-    _add_smooth_neighbor_correction!(
-        A, gi, xi, yi, ui, pa, prev_pts, prev_ra, pinterp, :left,
-        ha, k, αD, αS, ik, rule
-    )
-end
+            if prev_idx != 0
+                _add_smooth_neighbor_correction!(
+                    A, gi, xi, yi, ui, pa, prev_C, prev_ra, :left,
+                    ha, k, αD, αS, ik, rule
+                )
+            end
         end
     end
 
@@ -1167,13 +1177,15 @@ function _assemble_self_alpert_composite_corner_component!(
         Ya = getindex.(pa.xy,2)
         Na = length(pa.xy)
         ha = pa.ws[1]
-        pinterp = size(Ca.idxp,3)
 
         prev_idx = topo.prev[l] == 0 ? 0 : gmap[topo.prev[l]]
         next_idx = topo.next[l] == 0 ? 0 : gmap[topo.next[l]]
 
         prev_pts = prev_idx == 0 ? nothing : pts[prev_idx]
         next_pts = next_idx == 0 ? nothing : pts[next_idx]
+
+        prev_C = prev_idx == 0 ? nothing : Cs[prev_idx]
+        next_C = next_idx == 0 ? nothing : Cs[next_idx]
 
         prev_ra = prev_idx == 0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
         next_ra = next_idx == 0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
@@ -1182,16 +1194,15 @@ function _assemble_self_alpert_composite_corner_component!(
             gi = ra[i]
             xi = Xa[i]
             yi = Ya[i]
+            ui = Ca.us[i]
 
             A[gi,gi] += one(Complex{T})
 
-            # same panel: naive away from self-near zone
             _add_naive_panel_interaction!(
                 A, gi, xi, yi, ra, pa, k, αD, αS, ik;
                 skip_pred = j -> (j == i || abs(j-i) < a)
             )
 
-            # previous adjacent panel: omit near-corner tail
             if prev_idx != 0
                 Nb = length(prev_pts.xy)
                 nl = max(0, a - i)
@@ -1201,7 +1212,6 @@ function _assemble_self_alpert_composite_corner_component!(
                 )
             end
 
-            # next adjacent panel: omit near-corner head
             if next_idx != 0
                 nr = max(0, i + a - 1 - Na)
                 _add_naive_panel_interaction!(
@@ -1210,7 +1220,6 @@ function _assemble_self_alpert_composite_corner_component!(
                 )
             end
 
-            # all other panels in component
             for m in eachindex(gmap)
                 bidx = gmap[m]
                 (bidx == aidx || bidx == prev_idx || bidx == next_idx) && continue
@@ -1219,65 +1228,24 @@ function _assemble_self_alpert_composite_corner_component!(
                 _add_naive_panel_interaction!(A, gi, xi, yi, rb, pb, k, αD, αS, ik)
             end
 
-            # corrected same-panel self
             _add_same_panel_self_correction!(
-    A, gi, xi, yi, i, Ca.us[i], ra, Ca, ha, k, rule, αD, αS, ik
-)
+                A, gi, xi, yi, i, ui, ra, Ca, ha, k, rule, αD, αS, ik
+            )
 
-            # one-sided endpoint replacement on next panel
             if next_idx != 0
                 nr = max(0, i + a - 1 - Na)
-                nfix = min(rule.j, nr)
-                if nfix > 0
-                    X, Y, dX, dY = _panel_xy_tangent_arrays(next_pts)
-                    hsrc = next_pts.ws[1]
-                    for p in 1:nfix
-                        ξ = rule.x[p]
-                        u = hsrc * ξ   # near left endpoint only
-                        (u <= zero(T) || u >= one(T)) && continue
-                        x,y,tx,ty,s2,idx2,wt2 =
-                            _eval_shifted_source_smooth_panel_localp(u, hsrc, X, Y, dX, dY, pinterp)
-                        dx = xi - x
-                        dy = yi - y
-                        r2 = muladd(dx,dx,dy*dy)
-                        r2 <= (eps(T))^2 && continue
-                        r = sqrt(r2)
-                        fac = hsrc * rule.w[p]
-                        inn = _dinner(dx,dy,tx,ty)
-                        coeffD = -(fac * (αD * inn * H(1,k*r) / r))
-                        coeffS = -ik * (fac * (αS * H(0,k*r) * s2))
-                        _scatter_localp!(A, gi, next_ra, coeffD, idx2, wt2)
-                        _scatter_localp!(A, gi, next_ra, coeffS, idx2, wt2)
-                    end
-                end
+                _add_corner_neighbor_endpoint_correction!(
+                    A, gi, xi, yi, next_ra, next_C, :left, nr, next_pts.ws[1],
+                    k, αD, αS, ik, rule
+                )
             end
 
-            # one-sided endpoint replacement on previous panel
             if prev_idx != 0
                 nl = max(0, a - i)
-                nfix = min(rule.j, nl)
-                if nfix > 0
-                    X, Y, dX, dY = _panel_xy_tangent_arrays(prev_pts)
-                    hsrc = prev_pts.ws[1]
-                    for p in 1:nfix
-                        ξ = rule.x[p]
-                        u = one(T) - hsrc * ξ   # near right endpoint only
-                        (u <= zero(T) || u >= one(T)) && continue
-                        x,y,tx,ty,s2,idx2,wt2 =
-                            _eval_shifted_source_smooth_panel_localp(u, hsrc, X, Y, dX, dY, pinterp)
-                        dx = xi - x
-                        dy = yi - y
-                        r2 = muladd(dx,dx,dy*dy)
-                        r2 <= (eps(T))^2 && continue
-                        r = sqrt(r2)
-                        fac = hsrc * rule.w[p]
-                        inn = _dinner(dx,dy,tx,ty)
-                        coeffD = -(fac * (αD * inn * H(1,k*r) / r))
-                        coeffS = -ik * (fac * (αS * H(0,k*r) * s2))
-                        _scatter_localp!(A, gi, prev_ra, coeffD, idx2, wt2)
-                        _scatter_localp!(A, gi, prev_ra, coeffS, idx2, wt2)
-                    end
-                end
+                _add_corner_neighbor_endpoint_correction!(
+                    A, gi, xi, yi, prev_ra, prev_C, :right, nl, prev_pts.ws[1],
+                    k, αD, αS, ik, rule
+                )
             end
         end
     end
