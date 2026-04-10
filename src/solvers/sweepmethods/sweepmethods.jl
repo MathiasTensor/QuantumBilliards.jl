@@ -213,11 +213,13 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             res=isempty(optimizer_kwargs) ? optimize(fcur,a,b) : optimize(fcur,a,b;optimizer_kwargs...)
             knew=res.minimizer
             tnew=res.minimum
-            if lev==length(pts_refinement_factors)
+            if lev==length(pts_refinement_factors) && isfinite(tnew) && abs(tnew)>1e-10
                 h=1e-6*max(1.0,abs(knew))
-                #knew=newton_refine(fcur,knew;h=h)
-                knew=newton_refine(fcur,knew;a=max(zero(T),a),b=b,h=h)
-                tnew=fcur(knew)
+                knew=newton_refine(fcur,knew;a=a,b=b;h=h)
+                ttry=fcur(knew)
+                if isfinite(ttry)
+                    tnew=ttry
+                end
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
             if lev>1
