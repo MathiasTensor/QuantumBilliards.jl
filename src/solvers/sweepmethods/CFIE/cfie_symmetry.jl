@@ -96,7 +96,7 @@ function build_join_topology(pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10)
         right_kind=Vector{Symbol}(undef,n)
         left_angle=Vector{T}(undef,n)
         right_angle=Vector{T}(undef,n)
-        periodic=_endpoint_distance(pts[gmap[end]].xy[end],pts[gmap[1]].xy[1])<=xtol
+        periodic=pts[gmap[1]].is_periodic || _endpoint_distance(pts[gmap[end]].xR,pts[gmap[1]].xL)<=xtol
         for l in 1:n
             prev[l]=(l==1) ? (periodic ? n : 0) : l-1
             next[l]=(l==n) ? (periodic ? 1 : 0) : l+1
@@ -108,9 +108,9 @@ function build_join_topology(pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10)
                 left_angle[l]=T(NaN)
             else
                 ap=gmap[prev[l]]
-                d=_endpoint_distance(pts[ap].xy[end],pts[a].xy[1])
+                d=_endpoint_distance(pts[ap].xR,pts[a].xL)
                 d>xtol && error("Boundary ordering mismatch at left join of segment $l in component $c: distance = $d")
-                θ=_join_angle(pts[ap].tangent[end],pts[a].tangent[1])
+                θ=_join_angle(pts[ap].tR,pts[a].tL)
                 left_angle[l]=θ
                 left_kind[l]=(θ<=angtol) ? :smooth : :corner
             end
@@ -119,9 +119,9 @@ function build_join_topology(pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10)
                 right_angle[l]=T(NaN)
             else
                 an=gmap[next[l]]
-                d=_endpoint_distance(pts[a].xy[end],pts[an].xy[1])
+                d=_endpoint_distance(pts[a].xR,pts[an].xL)
                 d>xtol && error("Boundary ordering mismatch at right join of segment $l in component $c: distance = $d")
-                θ=_join_angle(pts[a].tangent[end],pts[an].tangent[1])
+                θ=_join_angle(pts[a].tR,pts[an].tL)
                 right_angle[l]=θ
                 right_kind[l]=(θ<=angtol) ? :smooth : :corner
             end
