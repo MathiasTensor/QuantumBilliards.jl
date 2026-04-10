@@ -96,7 +96,9 @@ end
 @inline function _dinner(dx,dy,tx,ty)
     ty*dx-tx*dy
 end
-
+@inline function _speed(v::SVector{2,T}) where {T<:Real}
+    sqrt(v[1]^2+v[2]^2)
+end
 @inline function _panel_us(::Type{T},N::Int) where {T<:Real}
     return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
@@ -133,7 +135,7 @@ end
         tx+=wm*dX[q]
         ty+=wm*dY[q]
     end
-    s=sqrt(tx*tx+ty*ty)
+    s=_speed(SVector{2,T}(tx,ty))
     return x,y,tx,ty,s,idx,wt
 end
 
@@ -587,42 +589,58 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
                 end
             end
             pinterp=size(Ca.idxp,3)
-            if next_idx!=0
+            if next_idx != 0
+                sR_cur = _speed(pa.tR)
+                sL_next = _speed(next_pts.tL)
+
                 for p in 1:jcorr
-                    Δu=ha*rule.x[p]
-                    if ui+Δu>=one(T)
-                        u2=ui+Δu-one(T)
-                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(next_pts,u2,pinterp)
-                        dx=xi-x
-                        dy=yi-y
-                        r=sqrt(dx*dx+dy*dy)
-                        if isfinite(r) && r>sqrt(eps(T))
-                            fac=ha*rule.w[p]
-                            inn=_dinner(dx,dy,tx,ty)
-                            coeffD= -(fac*(αD*inn*H(1,k*r)/r))
-                            coeffS= -ik*(fac*(αS*H(0,k*r)*s2))
-                            _scatter_localp!(A,gi,next_ra,coeffD,idx2,wt2)
-                            _scatter_localp!(A,gi,next_ra,coeffS,idx2,wt2)
+                    Δu = ha * rule.x[p]
+                    e = ui + Δu - one(T)
+                    if e > zero(T)
+                        ds = e * sR_cur
+                        u2 = ds / sL_next
+
+                        if zero(T) < u2 < one(T)
+                            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(next_pts,u2,pinterp)
+                            dx = xi - x
+                            dy = yi - y
+                            r = sqrt(dx*dx + dy*dy)
+                            if isfinite(r) && r > sqrt(eps(T))
+                                fac = ha * rule.w[p]
+                                inn = _dinner(dx,dy,tx,ty)
+                                coeffD = -(fac*(αD*inn*H(1,k*r)/r))
+                                coeffS = -ik*(fac*(αS*H(0,k*r)*s2))
+                                _scatter_localp!(A,gi,next_ra,coeffD,idx2,wt2)
+                                _scatter_localp!(A,gi,next_ra,coeffS,idx2,wt2)
+                            end
                         end
                     end
                 end
             end
-            if next_idx!=0
+            if prev_idx != 0
+                sL_cur = _speed(pa.tL)
+                sR_prev = _speed(prev_pts.tR)
+
                 for p in 1:jcorr
-                    Δu=ha*rule.x[p]
-                    if ui-Δu<=zero(T)
-                        u2=one(T)+ui-Δu
-                        x,y,tx,ty,s2,idx2,wt2=_eval_on_open_panel_localp(prev_pts,u2,pinterp)
-                        dx=xi-x
-                        dy=yi-y
-                        r=sqrt(dx*dx+dy*dy)
-                        if isfinite(r) && r>sqrt(eps(T))
-                            fac=ha*rule.w[p]
-                            inn=_dinner(dx,dy,tx,ty)
-                            coeffD= -(fac*(αD*inn*H(1,k*r)/r))
-                            coeffS= -ik*(fac*(αS*H(0,k*r)*s2))
-                            _scatter_localp!(A,gi,prev_ra,coeffD,idx2,wt2)
-                            _scatter_localp!(A,gi,prev_ra,coeffS,idx2,wt2)
+                    Δu = ha * rule.x[p]
+                    e = Δu - ui
+                    if e > zero(T)
+                        ds = e * sL_cur
+                        u2 = one(T) - ds / sR_prev
+
+                        if zero(T) < u2 < one(T)
+                            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(prev_pts,u2,pinterp)
+                            dx = xi - x
+                            dy = yi - y
+                            r = sqrt(dx*dx + dy*dy)
+                            if isfinite(r) && r > sqrt(eps(T))
+                                fac = ha * rule.w[p]
+                                inn = _dinner(dx,dy,tx,ty)
+                                coeffD = -(fac*(αD*inn*H(1,k*r)/r))
+                                coeffS = -ik*(fac*(αS*H(0,k*r)*s2))
+                                _scatter_localp!(A,gi,prev_ra,coeffD,idx2,wt2)
+                                _scatter_localp!(A,gi,prev_ra,coeffS,idx2,wt2)
+                            end
                         end
                     end
                 end
@@ -883,7 +901,7 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     println("SVD: ",100*svd_time/total," %")
     println("(total: ",total," s)")
     println("────────────────────────────────────────")
-    return s[end]
+    return s
 end
 
 ################
