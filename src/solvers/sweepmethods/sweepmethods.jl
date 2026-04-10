@@ -216,7 +216,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             if lev==length(pts_refinement_factors)
                 h=1e-6*max(1.0,abs(knew))
                 #knew=newton_refine(fcur,knew;h=h)
-                knew=newton_refine(fcur,knew;a=max(zero(T),a),b=b;h=h)
+                knew=newton_refine(fcur,knew;a=max(zero(T),a),b=b,h=h)
                 tnew=fcur(knew)
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
