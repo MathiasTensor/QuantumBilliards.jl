@@ -96,6 +96,23 @@ function _build_single_component_topology(
     n = length(gmap)
     n == 0 && error("Empty component in _build_single_component_topology.")
 
+    # Special case: one periodic panel = already a smooth closed component.
+    if n == 1 && pts[gmap[1]].is_periodic
+        prev = [1]
+        next = [1]
+        left_kind  = [:smooth]
+        right_kind = [:smooth]
+        left_angle  = [zero(T)]
+        right_angle = [zero(T)]
+        return AlpertCompositeTopology(
+            prev, next,
+            left_kind, right_kind,
+            left_angle, right_angle,
+            true,   # is_closed
+            true    # all_smooth
+        )
+    end
+
     prev = Vector{Int}(undef, n)
     next = Vector{Int}(undef, n)
     left_kind  = Vector{Symbol}(undef, n)
