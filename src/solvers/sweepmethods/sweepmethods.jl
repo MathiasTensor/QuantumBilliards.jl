@@ -182,7 +182,7 @@ function newton_refine(f::Function,k0;a=0.0,b=Inf,h=1e-6,maxiter=8,tol=1e-12)
     return k
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,final_window_factor=1e-3,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false) where {T<:Real}
     N=length(tens)
     @assert N==length(ks)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
@@ -194,7 +194,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,nk)
-    p=Progress(nk;desc="Refining minima")
+    show_progress && (p=Progress(nk;desc="Refining minima"))
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
         dk_grid= length(ks)>=2 ? abs(ks[mod(i+1,length(ks))]-ks[i]) : T(initial_refinement_interval)
@@ -231,7 +231,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         sols[i]=kcur
         tens_refined[i]=tprev
         histories[i]=hist
-        next!(p)
+        show_progress && next!(p)
     end
     if print_refinement
         println("\n================ Newton refinement summary ================")
