@@ -411,7 +411,7 @@ end
 
 
 @inline function _arc_length_scalar(crv, u)
-    s = arc_length(crv, u)
+    s = arc_length(crv, [u])
     return s isa AbstractVector ? s[1] : s
 end
 
