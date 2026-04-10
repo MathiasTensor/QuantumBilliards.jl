@@ -135,6 +135,7 @@ function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
     return s
 end
 
+#=
 function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
     k=k0
     for _ in 1:maxiter
@@ -147,6 +148,32 @@ function newton_refine(f::Function,k0;h=1e-6,maxiter=8,tol=1e-12)
             return k
         end
         k_new=k-f1/f2
+        if abs(k_new-k)<tol
+            return k_new
+        end
+        k=k_new
+    end
+    return k
+end
+=#
+function newton_refine(f::Function,k0;a=0.0,b=Inf,h=1e-6,maxiter=8,tol=1e-12)
+    k=clamp(k0,a,b)
+    for _ in 1:maxiter
+        hp=min(h,0.5*(b-k))
+        hm=min(h,0.5*(k-a))
+        if hm<=0 || hp<=0
+            return k
+        end
+        f0=f(k)
+        fp=f(k+hp)
+        fm=f(k-hm)
+        f1=(fp-fm)/(hp+hm)
+        f2=2*((fp-f0)/hp-(f0-fm)/hm)/(hp+hm)
+        if !isfinite(f1) || !isfinite(f2) || abs(f2)<1e-14
+            return k
+        end
+        k_new=k-f1/f2
+        k_new=clamp(k_new,a,b)
         if abs(k_new-k)<tol
             return k_new
         end
@@ -188,7 +215,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             tnew=res.minimum
             if lev==length(pts_refinement_factors)
                 h=1e-6*max(1.0,abs(knew))
-                knew=newton_refine(fcur,knew;h=h)
+                #knew=newton_refine(fcur,knew;h=h)
+                knew=newton_refine(fcur,knew;a=max(zero(T),a),b=b;h=h)
                 tnew=fcur(knew)
             end
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))

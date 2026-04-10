@@ -385,7 +385,7 @@ end
 #   3. converts first and second derivatives from the local segment parameter u
 #      to derivatives with respect to the global periodic parameter t.
 # If γ_u and γ_uu are derivatives of the segment parameterization with respect to
-# u ∈ [0,1], then since du/dt = 2π / (Ltot * length(seg_j)), we obtain γ_t  = γ_u  * du/dt,
+# u ∈ [0,1], then since du/dt = Ltot / (2π * length(seg_j)), we obtain γ_t  = γ_u  * du/dt,
 # γ_tt = γ_uu * (du/dt)^2, because the map from t to u is affine on each segment interior.
 #
 # Returns:
