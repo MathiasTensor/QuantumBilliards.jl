@@ -34,174 +34,50 @@ function _sweep_dim(solver::SweepSolver,billiard::AbsBilliard,ks)
     return max(solver.min_dim,round(Int,billiard.length*kmax*solver.dim_scaling_factor/(2*pi)))
 end
 
-function _k_sweep(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+# The _k_sweep_prepare function is responsible for preparing the necessary data and functions for performing the k-sweep. It evaluates the points on the billiard boundary for the maximum wavenumber, and sets up the solve functions that will be used in the sweep. This allows us to separate the preparation phase from the actual sweeping, which can help with code organization.
+function _k_sweep_prepare(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
-    dim=_sweep_dim(solver,billiard,ks)
-    new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    if which==:det
-        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
-    else
-        res=similar(ks)
-    end
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    next!(p)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        is_calculating=true
-        while is_calculating
-            try
-                res[i]=solve(solver,new_basis,pts,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-                is_calculating=false
-            catch e
-                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
-            end
-        end
-        next!(p)
-    end
-    return res
+    solve_first(k)=solve_INFO(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one(k)=solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    return solve_first,solve_one
 end
-
-function _k_sweep(solver::CFIE_kress,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
-    dim=_sweep_dim(solver,billiard,ks)
-    new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    if which==:det
-        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
-    else
-        res=similar(ks)
-    end
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    next!(p)
     Rmat=build_Rmat_kress(solver,pts)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        is_calculating=true 
-        while is_calculating
-            try
-                res[i]=solve(solver,new_basis,pts,ks[i],Rmat;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-                is_calculating=false
-            catch e
-                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
-            end
-        end
-        next!(p)
-    end
-    return res
+    solve_first(k)=solve_INFO(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one(k)=solve(solver,basis,pts,k,Rmat;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    return solve_first,solve_one
 end
-
-function _k_sweep(solver::CFIE_kress_corners,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
-    dim=_sweep_dim(solver,billiard,ks)
-    new_basis=resize_basis(basis,billiard,dim,kmax)
-    pts=evaluate_points(solver,billiard,kmax)
-    if which==:det
-        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
-    else
-        res=similar(ks)
-    end
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    next!(p)
-    Rmat=build_Rmat_kress(solver,pts)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        is_calculating=true 
-        while is_calculating
-            try
-                res[i]=solve(solver,new_basis,pts,ks[i],Rmat;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-                is_calculating=false
-            catch e
-                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
-            end
-        end
-        next!(p)
-    end
-    return res
-end
-
-function _k_sweep(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
-    kmax=maximum(ks)
-    dim=_sweep_dim(solver,billiard,ks)
-    new_basis=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_alpert_workspace(solver,pts)
-    if which==:det
-        res=zeros(eltype(Complex{eltype(ks)}),length(ks))
-    else
-        res=similar(ks)
-    end
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    next!(p)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        is_calculating=true 
-        while is_calculating
-            try
-                res[i]=solve(solver,new_basis,pts,ws,ks[i];multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-                is_calculating=false
-            catch e
-                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
-            end
-        end
-        next!(p)
-    end
-    return res
+    solve_first(k)=solve_INFO(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one(k)=solve(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    return solve_first,solve_one
 end
-
-function _k_sweep(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+function _k_sweep_prepare(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
-    new_basis=resize_basis(basis,billiard,dim,kmax)
+    basis_max=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    res=similar(ks)
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices,tol=tol)
-    next!(p)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        pts_i=evaluate_points(solver,billiard,ks[i])
-        basis_i=resize_basis(basis,billiard,dim,ks[i])
-        try
-            res[i]=solve(solver,basis_i,pts_i,ks[i];multithreaded=multithreaded_matrices,tol=tol)
-        catch e
-            @warn "Error in k_sweep for k=$(ks[i]): $(e), skipping this k"
-            continue
-        end
-        next!(p)
-    end
-    return res
+    solve_first(k)=solve_INFO(solver,basis_max,pts,k;multithreaded=multithreaded_matrices,tol=tol)
+    solve_one(k)=solve(solver,basis_max,pts,k;multithreaded=multithreaded_matrices,tol=tol)
+    return solve_first,solve_one
 end
-
-function _k_sweep(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+function _k_sweep_prepare(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
-    new_basis=resize_basis(basis,billiard,dim,kmax)
+    basis_max=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    res=similar(ks)
-    println("$(nameof(typeof(solver))) sweep...")
-    p=Progress(length(ks),1)
-    res[end]=solve_INFO(solver,new_basis,pts,ks[end];multithreaded=multithreaded_matrices)
-    next!(p)
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        is_calculating=true
-        pts_i=evaluate_points(solver,billiard,ks[i])
-        basis_i=resize_basis(basis,billiard,dim,ks[i])
-        while is_calculating
-            try
-                res[i]=solve(solver,basis_i,pts_i,ks[i];multithreaded=multithreaded_matrices)
-                is_calculating=false
-            catch e
-                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
-            end
-        end
-        next!(p)
-    end
-    return res
+    solve_first(k)=solve_INFO(solver,basis_max,pts,k;multithreaded=multithreaded_matrices)
+    solve_one(k)=solve(solver,basis_max,pts,k;multithreaded=multithreaded_matrices)
+    return solve_first,solve_one
+end
+@inline function _k_sweep_result_container(ks;which::Symbol=:det_argmin)
+    which==:det ? zeros(eltype(Complex{eltype(ks)}),length(ks)) : similar(ks)
 end
 
 """
@@ -220,8 +96,26 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `tol::Real=1e-10`: Tolerance for convergence in appropriate solvers (`ParticularSolutionsMethod`).
 - `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
 """
-function k_sweep(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:svd)
-    return _k_sweep(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol,which=which)
+function k_sweep(solver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+    solve_first,solve_one=_k_sweep_prepare(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,tol=tol,which=which)
+    res=_k_sweep_result_container(ks;which=which)
+    println("$(nameof(typeof(solver))) sweep...")
+    p=Progress(length(ks),1)
+    res[end]=solve_first(ks[end])
+    next!(p)
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
+        is_calculating=true
+        while is_calculating
+            try
+                res[i]=solve_one(ks[i])
+                is_calculating=false
+            catch e
+                @warn "Error in k_sweep for k=$(ks[i]): $(e), retrying..."
+            end
+        end
+        next!(p)
+    end
+    return res
 end
 
 ############ REFINEMENT ############
