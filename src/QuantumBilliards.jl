@@ -112,7 +112,7 @@ include("solvers/sweepmethods/CFIE/alpert_table.jl")
 include("solvers/sweepmethods/CFIE/kress_grading_single_corner.jl")
 include("solvers/sweepmethods/CFIE/kress_grading_global_multi_corner.jl")
 include("solvers/sweepmethods/CFIE/cfie.jl")
-include("solvers/sweepmethods/CFIE/cfie_symmetry.jl")
+include("solvers/sweepmethods/CFIE/cfie_geometry_helpers.jl")
 include("solvers/sweepmethods/CFIE/cfie_kress.jl")
 include("solvers/sweepmethods/CFIE/cfie_alpert.jl")
 

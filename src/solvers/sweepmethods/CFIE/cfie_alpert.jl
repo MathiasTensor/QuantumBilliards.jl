@@ -96,9 +96,262 @@ end
 @inline function _dinner(dx,dy,tx,ty)
     ty*dx-tx*dy
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
 @inline function _speed(v::SVector{2,T}) where {T<:Real}
-    sqrt(v[1]^2+v[2]^2)
+    sqrt(v[1]^2 + v[2]^2)
 end
+
+@inline function _panel_arrays(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    X  = getindex.(pts.xy, 1)
+    Y  = getindex.(pts.xy, 2)
+    dX = getindex.(pts.tangent, 1)
+    dY = getindex.(pts.tangent, 2)
+    s  = @. sqrt(dX^2 + dY^2)
+    return X, Y, dX, dY, s
+end
+
+@inline function _panel_near_skip(j::Int, i::Int, a::Int)
+    abs(j - i) < a
+end
+
+@inline function _right_neighbor_excluded_count(i::Int, N::Int, a::Int)
+    max(0, i + a - 1 - N)
+end
+
+@inline function _left_neighbor_excluded_count(i::Int, a::Int)
+    max(0, a - i)
+end
+
+function _add_naive_panel_block!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int, xi::T, yi::T,
+    rb::UnitRange{Int},
+    pb::BoundaryPointsCFIE{T},
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T};
+    skip_pred = (j->false),
+) where {T<:Real}
+
+    Xb, Yb, dXb, dYb, sb = _panel_arrays(pb)
+    Nb = length(Xb)
+
+    @inbounds for j in 1:Nb
+        skip_pred(j) && continue
+        gj = rb[j]
+        dx = xi - Xb[j]
+        dy = yi - Yb[j]
+        r2 = muladd(dx, dx, dy*dy)
+        r2 <= (eps(T))^2 && continue
+        r = sqrt(r2)
+        invr = inv(r)
+        inn = _dinner(dx, dy, dXb[j], dYb[j])
+        dval = pb.ws[j] * (αD * inn * H(1, k*r) * invr)
+        sval = pb.ws[j] * sb[j] * (αS * H(0, k*r))
+        A[gi, gj] -= dval + ik*sval
+    end
+
+    return A
+end
+
+function _add_self_panel_alpert_correction!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int, xi::T, yi::T, i::Int,
+    ra::UnitRange{Int},
+    Ca::AlpertSmoothPanelCache{T},
+    ha::T,
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T},
+    rule::AlpertLogRule{T},
+) where {T<:Real}
+
+    jcorr = rule.j
+    @inbounds for p in 1:jcorr
+        fac = ha * rule.w[p]
+
+        dx = xi - Ca.xp[p,i]
+        dy = yi - Ca.yp[p,i]
+        r2 = muladd(dx, dx, dy*dy)
+        if isfinite(r2) && r2 > (eps(T))^2
+            r = sqrt(r2)
+            inn = _dinner(dx, dy, Ca.txp[p,i], Ca.typ[p,i])
+            coeffD = -(fac * (αD * inn * H(1, k*r) / r))
+            coeffS = -ik * (fac * (αS * H(0, k*r) * Ca.sp[p,i]))
+            for m in axes(Ca.idxp, 3)
+                q = Ca.idxp[p,i,m]
+                w = Ca.wtp[p,i,m]
+                A[gi, ra[q]] += coeffD*w + coeffS*w
+            end
+        end
+
+        dx = xi - Ca.xm[p,i]
+        dy = yi - Ca.ym[p,i]
+        r2 = muladd(dx, dx, dy*dy)
+        if isfinite(r2) && r2 > (eps(T))^2
+            r = sqrt(r2)
+            inn = _dinner(dx, dy, Ca.txm[p,i], Ca.tym[p,i])
+            coeffD = -(fac * (αD * inn * H(1, k*r) / r))
+            coeffS = -ik * (fac * (αS * H(0, k*r) * Ca.sm[p,i]))
+            for m in axes(Ca.idxm, 3)
+                q = Ca.idxm[p,i,m]
+                w = Ca.wtm[p,i,m]
+                A[gi, ra[q]] += coeffD*w + coeffS*w
+            end
+        end
+    end
+
+    return A
+end
+
+function _add_corner_neighbor_endpoint_correction!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int, xi::T, yi::T,
+    rnb::UnitRange{Int},
+    pnb::BoundaryPointsCFIE{T},
+    endpoint::Symbol,           # :left or :right
+    pinterp::Int,
+    nfix::Int,
+    hsrc::T,
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T},
+    rule::AlpertLogRule{T},
+) where {T<:Real}
+
+    nfix <= 0 && return A
+    X, Y, dX, dY = _panel_xy_tangent_arrays(pnb)
+    jcorr = min(rule.j, nfix)
+
+    @inbounds for p in 1:jcorr
+        ξ = rule.x[p]
+        fac = hsrc * rule.w[p]
+
+        u = endpoint === :left ? (hsrc * ξ) : (one(T) - hsrc * ξ)
+        (u <= zero(T) || u >= one(T)) && continue
+
+        x, y, tx, ty, s2, idx2, wt2 = _eval_shifted_source_smooth_panel_localp(u, hsrc, X, Y, dX, dY, pinterp)
+        dx = xi - x
+        dy = yi - y
+        r2 = muladd(dx, dx, dy*dy)
+        r2 <= (eps(T))^2 && continue
+        r = sqrt(r2)
+        inn = _dinner(dx, dy, tx, ty)
+
+        coeffD = -(fac * (αD * inn * H(1, k*r) / r))
+        coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
+
+        _scatter_localp!(A, gi, rnb, coeffD, idx2, wt2)
+        _scatter_localp!(A, gi, rnb, coeffS, idx2, wt2)
+    end
+
+    return A
+end
+
+function _add_smooth_neighbor_correction!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int, xi::T, yi::T,
+    ui::T,
+    pa::BoundaryPointsCFIE{T},
+    pnb::BoundaryPointsCFIE{T},
+    rnb::UnitRange{Int},
+    pinterp::Int,
+    side::Symbol,               # :right or :left relative to current panel
+    ha::T,
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T},
+    rule::AlpertLogRule{T},
+) where {T<:Real}
+
+    jcorr = rule.j
+
+    if side === :right
+        s_cur = _speed(pa.tR)
+        s_nb  = _speed(pnb.tL)
+        @inbounds for p in 1:jcorr
+            Δu = ha * rule.x[p]
+            e = ui + Δu - one(T)
+            e <= zero(T) && continue
+            ds = e * s_cur
+            u2 = ds / s_nb
+            (u2 <= zero(T) || u2 >= one(T)) && continue
+
+            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(pnb, u2, pinterp)
+            dx = xi - x
+            dy = yi - y
+            r2 = muladd(dx, dx, dy*dy)
+            r2 <= (eps(T))^2 && continue
+            r = sqrt(r2)
+            inn = _dinner(dx,dy,tx,ty)
+            fac = ha * rule.w[p]
+            coeffD = -(fac * (αD * inn * H(1, k*r) / r))
+            coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
+            _scatter_localp!(A, gi, rnb, coeffD, idx2, wt2)
+            _scatter_localp!(A, gi, rnb, coeffS, idx2, wt2)
+        end
+    elseif side === :left
+        s_cur = _speed(pa.tL)
+        s_nb  = _speed(pnb.tR)
+        @inbounds for p in 1:jcorr
+            Δu = ha * rule.x[p]
+            e = Δu - ui
+            e <= zero(T) && continue
+            ds = e * s_cur
+            u2 = one(T) - ds / s_nb
+            (u2 <= zero(T) || u2 >= one(T)) && continue
+
+            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(pnb, u2, pinterp)
+            dx = xi - x
+            dy = yi - y
+            r2 = muladd(dx, dx, dy*dy)
+            r2 <= (eps(T))^2 && continue
+            r = sqrt(r2)
+            inn = _dinner(dx,dy,tx,ty)
+            fac = ha * rule.w[p]
+            coeffD = -(fac * (αD * inn * H(1, k*r) / r))
+            coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
+            _scatter_localp!(A, gi, rnb, coeffD, idx2, wt2)
+            _scatter_localp!(A, gi, rnb, coeffS, idx2, wt2)
+        end
+    else
+        error("Unknown side = $side")
+    end
+
+    return A
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @inline function _panel_us(::Type{T},N::Int) where {T<:Real}
     return collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
@@ -481,172 +734,120 @@ end
     _eval_shifted_source_smooth_panel_localp(u,h,X,Y,dX,dY,p)
 end
 
-function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    a=rule.a
-    jcorr=rule.j
+function _assemble_self_alpert_composite_component!(
+    solver::CFIE_alpert{T},
+    A::AbstractMatrix{Complex{T}},
+    pts::Vector{BoundaryPointsCFIE{T}},
+    Gs::Vector{CFIEGeomCache{T}},
+    Cs,
+    offs::Vector{Int},
+    k::T,
+    rule::AlpertLogRule{T},
+    topo::AlpertCompositeTopology{T},
+    gmap::Vector{Int};
+    multithreaded::Bool=true
+) where {T<:Real}
+
+    αD = Complex{T}(0, k/2)
+    αS = Complex{T}(0, one(T)/2)
+    ik = Complex{T}(0, k)
+    a = rule.a
+
     @inbounds for l in eachindex(gmap)
-        aidx=gmap[l]
-        pa=pts[aidx]
-        Ga=Gs[aidx]
-        Ca=Cs[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Na=length(pa.xy)
-        ha=pa.ws[1]
-        ui_list=Ca.us
-        left_smooth=topo.left_kind[l] === :smooth
-        right_smooth=topo.right_kind[l] === :smooth
-        lprev=topo.prev[l]
-        lnext=topo.next[l]
-        prev_idx=lprev == 0 ? 0 : gmap[lprev]
-        next_idx=lnext == 0 ? 0 : gmap[lnext]
-        prev_pts=prev_idx == 0 ? nothing : pts[prev_idx]
-        next_pts=next_idx == 0 ? nothing : pts[next_idx]
-        prev_ra=prev_idx == 0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
-        next_ra=next_idx == 0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
+        aidx = gmap[l]
+        pa   = pts[aidx]
+        Ga   = Gs[aidx]
+        Ca   = Cs[aidx]
+        ra   = offs[aidx]:(offs[aidx+1]-1)
+
+        Xa = getindex.(pa.xy, 1)
+        Ya = getindex.(pa.xy, 2)
+        Na = length(pa.xy)
+        ha = pa.ws[1]
+
+        prev_idx = topo.prev[l] == 0 ? 0 : gmap[topo.prev[l]]
+        next_idx = topo.next[l] == 0 ? 0 : gmap[topo.next[l]]
+
+        prev_pts = prev_idx == 0 ? nothing : pts[prev_idx]
+        next_pts = next_idx == 0 ? nothing : pts[next_idx]
+
+        prev_ra = prev_idx == 0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
+        next_ra = next_idx == 0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
+
+        left_kind  = topo.left_kind[l]
+        right_kind = topo.right_kind[l]
+
+        pinterp = size(Ca.idxp, 3)
+
         @use_threads multithreading=multithreaded for i in 1:Na
-            gi=ra[i]
-            xi=Xa[i]
-            yi=Ya[i]
-            ui=ui_list[i]
+            gi = ra[i]
+            xi = Xa[i]
+            yi = Ya[i]
+            ui = Ca.us[i]
+
             A[gi,gi] += one(Complex{T})
+
+            # 1) Add naive interactions from all panels in this composite component,
+            #    but exclude bad local zones to be replaced by corrected pieces.
             for m in eachindex(gmap)
-                bidx=gmap[m]
-                pb=pts[bidx]
-                rb=offs[bidx]:(offs[bidx+1]-1)
-                Xb=getindex.(pb.xy,1)
-                Yb=getindex.(pb.xy,2)
-                dXb=getindex.(pb.tangent,1)
-                dYb=getindex.(pb.tangent,2)
-                sb=@. sqrt(dXb^2 + dYb^2)
-                Nb=length(pb.xy)
-                for j in 1:Nb
-                    gj=rb[j]
-                    dx=xi-Xb[j]
-                    dy=yi-Yb[j]
-                    r2=muladd(dx,dx,dy*dy)
-                    same_self=(bidx==aidx && j==i)
-                    skip_near=false
-                    if bidx==aidx
-                        skip_near= abs(j-i)<a
-                    elseif next_idx!=0 && bidx==next_idx
-                        nr=_right_neighbor_excluded_count(i,Na,a)
-                        skip_near= j<=nr
-                    elseif prev_idx!=0 && bidx==prev_idx
-                        nl=_left_neighbor_excluded_count(i,a)
-                        skip_near = j>Nb-nl
-                    end
-                    if !same_self && !skip_near && r2>(eps(T))^2
-                        r=sqrt(r2)
-                        invr=inv(r)
-                        inn=_dinner(dx,dy,dXb[j],dYb[j])
-                        A[gi,gj] -= pb.ws[j]*(αD*inn*H(1,k*r)*invr)
-                    end
-                    if !same_self && !skip_near && r2>(eps(T))^2
-                        r=sqrt(r2)
-                        A[gi,gj] -= ik*(pb.ws[j]*(αS*H(0,k*r)*sb[j]))
-                    end
+                bidx = gmap[m]
+                pb = pts[bidx]
+                rb = offs[bidx]:(offs[bidx+1]-1)
+
+                if bidx == aidx
+                    _add_naive_panel_block!(A, gi, xi, yi, rb, pb, k, αD, αS, ik;
+                        skip_pred = j -> (j == i || _panel_near_skip(j, i, a)))
+                elseif next_idx != 0 && bidx == next_idx
+                    nr = _right_neighbor_excluded_count(i, Na, a)
+                    _add_naive_panel_block!(A, gi, xi, yi, rb, pb, k, αD, αS, ik;
+                        skip_pred = j -> (j <= nr))
+                elseif prev_idx != 0 && bidx == prev_idx
+                    Nb = length(pb.xy)
+                    nl = _left_neighbor_excluded_count(i, a)
+                    _add_naive_panel_block!(A, gi, xi, yi, rb, pb, k, αD, αS, ik;
+                        skip_pred = j -> (j > Nb - nl))
+                else
+                    _add_naive_panel_block!(A, gi, xi, yi, rb, pb, k, αD, αS, ik)
                 end
             end
-            for p in 1:jcorr
-                fac=ha*rule.w[p]
-                Δu=ha*rule.x[p]
-                if ui+Δu<one(T)
-                    dx=xi-Ca.xp[p,i]
-                    dy=yi-Ca.yp[p,i]
-                    r=sqrt(dx*dx+dy*dy)
-                    if isfinite(r) && r>sqrt(eps(T))
-                        inn=_dinner(dx,dy,Ca.txp[p,i],Ca.typ[p,i])
-                        coeffD= -(fac*(αD*inn*H(1,k*r)/r))
-                        coeffS= -ik*(fac*(αS*H(0,k*r)*Ca.sp[p,i]))
-                        for m in axes(Ca.idxp,3)
-                            q=Ca.idxp[p,i,m]
-                            w=Ca.wtp[p,i,m]
-                            A[gi,ra[q]] += coeffD*w
-                            A[gi,ra[q]] += coeffS*w
-                        end
-                    end
-                end
-                if ui-Δu>zero(T)
-                    dx=xi-Ca.xm[p,i]
-                    dy=yi-Ca.ym[p,i]
-                    r=sqrt(dx*dx+dy*dy)
-                    if isfinite(r) && r>sqrt(eps(T))
-                        inn=_dinner(dx,dy,Ca.txm[p,i],Ca.tym[p,i])
-                        coeffD= -(fac*(αD*inn*H(1,k*r)/r))
-                        coeffS= -ik*(fac*(αS*H(0,k*r)*Ca.sm[p,i]))
-                        for m in axes(Ca.idxm,3)
-                            q=Ca.idxm[p,i,m]
-                            w=Ca.wtm[p,i,m]
-                            A[gi,ra[q]] += coeffD*w
-                            A[gi,ra[q]] += coeffS*w
-                        end
-                    end
-                end
-            end
-            pinterp=size(Ca.idxp,3)
+
+            # 2) Add corrected same-panel self contribution
+            _add_self_panel_alpert_correction!(A, gi, xi, yi, i, ra, Ca, ha, k, αD, αS, ik, rule)
+
+            # 3) Add corrected right-neighbor contribution
             if next_idx != 0
-                sR_cur = _speed(pa.tR)
-                sL_next = _speed(next_pts.tL)
-
-                for p in 1:jcorr
-                    Δu = ha * rule.x[p]
-                    e = ui + Δu - one(T)
-                    if e > zero(T)
-                        ds = e * sR_cur
-                        u2 = ds / sL_next
-
-                        if zero(T) < u2 < one(T)
-                            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(next_pts,u2,pinterp)
-                            dx = xi - x
-                            dy = yi - y
-                            r = sqrt(dx*dx + dy*dy)
-                            if isfinite(r) && r > sqrt(eps(T))
-                                fac = ha * rule.w[p]
-                                inn = _dinner(dx,dy,tx,ty)
-                                coeffD = -(fac*(αD*inn*H(1,k*r)/r))
-                                coeffS = -ik*(fac*(αS*H(0,k*r)*s2))
-                                _scatter_localp!(A,gi,next_ra,coeffD,idx2,wt2)
-                                _scatter_localp!(A,gi,next_ra,coeffS,idx2,wt2)
-                            end
-                        end
-                    end
+                nr = _right_neighbor_excluded_count(i, Na, a)
+                if right_kind === :smooth
+                    _add_smooth_neighbor_correction!(
+                        A, gi, xi, yi, ui, pa, next_pts, next_ra, pinterp, :right,
+                        ha, k, αD, αS, ik, rule
+                    )
+                elseif right_kind === :corner
+                    _add_corner_neighbor_endpoint_correction!(
+                        A, gi, xi, yi, next_ra, next_pts, :left, pinterp, nr,
+                        next_pts.ws[1], k, αD, αS, ik, rule
+                    )
                 end
             end
+
+            # 4) Add corrected left-neighbor contribution
             if prev_idx != 0
-                sL_cur = _speed(pa.tL)
-                sR_prev = _speed(prev_pts.tR)
-
-                for p in 1:jcorr
-                    Δu = ha * rule.x[p]
-                    e = Δu - ui
-                    if e > zero(T)
-                        ds = e * sL_cur
-                        u2 = one(T) - ds / sR_prev
-
-                        if zero(T) < u2 < one(T)
-                            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(prev_pts,u2,pinterp)
-                            dx = xi - x
-                            dy = yi - y
-                            r = sqrt(dx*dx + dy*dy)
-                            if isfinite(r) && r > sqrt(eps(T))
-                                fac = ha * rule.w[p]
-                                inn = _dinner(dx,dy,tx,ty)
-                                coeffD = -(fac*(αD*inn*H(1,k*r)/r))
-                                coeffS = -ik*(fac*(αS*H(0,k*r)*s2))
-                                _scatter_localp!(A,gi,prev_ra,coeffD,idx2,wt2)
-                                _scatter_localp!(A,gi,prev_ra,coeffS,idx2,wt2)
-                            end
-                        end
-                    end
+                nl = _left_neighbor_excluded_count(i, a)
+                if left_kind === :smooth
+                    _add_smooth_neighbor_correction!(
+                        A, gi, xi, yi, ui, pa, prev_pts, prev_ra, pinterp, :left,
+                        ha, k, αD, αS, ik, rule
+                    )
+                elseif left_kind === :corner
+                    _add_corner_neighbor_endpoint_correction!(
+                        A, gi, xi, yi, prev_ra, prev_pts, :right, pinterp, nl,
+                        prev_pts.ws[1], k, αD, αS, ik, rule
+                    )
                 end
             end
         end
     end
+
     return A
 end
 
@@ -681,6 +882,7 @@ struct CFIEAlpertWorkspace{T<:Real,C}
     Ntot::Int
 end
 
+#=
 function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     rule=alpert_log_rule(T,solver.alpert_order)
     offs=component_offsets(pts)
@@ -702,6 +904,29 @@ function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{Boundary
     end
     Ntot=offs[end]-1
     CFIEAlpertWorkspace(rule,offs,Gs,Cs,topos,gmaps,panel_to_comp,Ntot)
+end
+=#
+
+function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    rule = alpert_log_rule(T, solver.alpert_order)
+    offs = component_offsets(pts)
+    Gs = [cfie_geom_cache(p) for p in pts]
+
+    boundary = solver.billiard.full_boundary
+    flat_boundary = boundary[1] isa AbstractVector ? reduce(vcat, boundary) : boundary
+
+    Cs = [_build_alpert_component_cache(solver, flat_boundary[a], pts[a], rule, solver.alpert_order)
+          for a in eachindex(pts)]
+
+    topos, gmaps = build_join_topology(pts)
+
+    panel_to_comp = zeros(Int, length(pts))
+    @inbounds for c in eachindex(gmaps), a in gmaps[c]
+        panel_to_comp[a] = c
+    end
+
+    Ntot = offs[end] - 1
+    return CFIEAlpertWorkspace(rule, offs, Gs, Cs, topos, gmaps, panel_to_comp, Ntot)
 end
 
 @inline function _check_r(r,name,i,j)
@@ -785,6 +1010,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     return A
 end
 
+#=
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     offs=ws.offs
@@ -849,6 +1075,82 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
             end
         end
     end
+    return A
+end
+=#
+
+function construct_matrices!(
+    solver::CFIE_alpert{T},
+    A::Matrix{Complex{T}},
+    pts::Vector{BoundaryPointsCFIE{T}},
+    ws::CFIEAlpertWorkspace{T},
+    k::T;
+    multithreaded::Bool=true
+) where {T<:Real}
+
+    fill!(A, zero(Complex{T}))
+    offs = ws.offs
+    Gs = ws.Gs
+    Cs = ws.Cs
+    rule = ws.rule
+    topos = ws.topos
+    gmaps = ws.gmaps
+    panel_to_comp = ws.panel_to_comp
+
+    αD = Complex{T}(0, k/2)
+    αS = Complex{T}(0, one(T)/2)
+    ik = Complex{T}(0, k)
+
+    _assemble_all_self_alpert_composite!(solver, A, pts, Gs, Cs, offs, k, rule, topos, gmaps;
+                                         multithreaded=multithreaded)
+
+    for a in eachindex(pts), b in eachindex(pts)
+        a == b && continue
+        ca = panel_to_comp[a]
+        cb = panel_to_comp[b]
+        ca != 0 && ca == cb && continue
+
+        pa = pts[a]
+        pb = pts[b]
+        Na = length(pa.xy)
+        Nb = length(pb.xy)
+        ra = offs[a]:(offs[a+1]-1)
+        rb = offs[b]:(offs[b+1]-1)
+
+        Xa = getindex.(pa.xy,1)
+        Ya = getindex.(pa.xy,2)
+        Xb = getindex.(pb.xy,1)
+        Yb = getindex.(pb.xy,2)
+        dXb = getindex.(pb.tangent,1)
+        dYb = getindex.(pb.tangent,2)
+        sb = @. sqrt(dXb^2 + dYb^2)
+
+        @use_threads multithreading=multithreaded for j in 1:Nb
+            gj = rb[j]
+            xj = Xb[j]
+            yj = Yb[j]
+            txj = dXb[j]
+            tyj = dYb[j]
+            sj = sb[j]
+            wd = pb.ws[j]
+            wsj = pb.ws[j] * sj
+
+            @inbounds for i in 1:Na
+                gi = ra[i]
+                dx = Xa[i] - xj
+                dy = Ya[i] - yj
+                r2 = muladd(dx, dx, dy*dy)
+                r2 <= (eps(T))^2 && continue
+                r = sqrt(r2)
+                invr = inv(r)
+                inn = _dinner(dx, dy, txj, tyj)
+                dval = wd * (αD * inn * H(1, k*r) * invr)
+                sval = wsj * (αS * H(0, k*r))
+                A[gi,gj] -= dval + ik*sval
+            end
+        end
+    end
+
     return A
 end
 
