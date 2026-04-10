@@ -17,6 +17,7 @@ struct AlpertPeriodicCache{T<:Real}
 end
 
 struct AlpertSmoothPanelCache{T<:Real}
+    crv::Any
     us::Vector{T}
     xp::Matrix{T}
     yp::Matrix{T}
@@ -269,9 +270,8 @@ function _add_smooth_neighbor_correction!(
     gi::Int, xi::T, yi::T,
     ui::T,
     pa::BoundaryPointsCFIE{T},
-    pnb::BoundaryPointsCFIE{T},
+    Cnb::AlpertSmoothPanelCache{T},
     rnb::UnitRange{Int},
-    pinterp::Int,
     side::Symbol,               # :right or :left relative to current panel
     ha::T,
     k::T,
@@ -282,19 +282,25 @@ function _add_smooth_neighbor_correction!(
 ) where {T<:Real}
 
     jcorr = rule.j
+    crv_nb = Cnb.crv
+    Nnb = length(Cnb.us)
+    pinterp = size(Cnb.idxp, 3)
+    hnb = one(T) / T(Nnb)
 
     if side === :right
         s_cur = _speed(pa.tR)
-        s_nb  = _speed(pnb.tL)
         @inbounds for p in 1:jcorr
             Δu = ha * rule.x[p]
             e = ui + Δu - one(T)
             e <= zero(T) && continue
+
             ds = e * s_cur
-            u2 = ds / s_nb
+            u2 = _invert_panel_arc_from_left(crv_nb, ds)
             (u2 <= zero(T) || u2 >= one(T)) && continue
 
-            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(pnb, u2, pinterp)
+            x,y,tx,ty,s2 = _eval_open_panel_geom_exact(crv_nb, u2)
+            idx2, wt2 = _interp_density_data_on_panel(u2, hnb, Nnb, pinterp)
+
             dx = xi - x
             dy = yi - y
             r2 = muladd(dx, dx, dy*dy)
@@ -309,16 +315,18 @@ function _add_smooth_neighbor_correction!(
         end
     elseif side === :left
         s_cur = _speed(pa.tL)
-        s_nb  = _speed(pnb.tR)
         @inbounds for p in 1:jcorr
             Δu = ha * rule.x[p]
             e = Δu - ui
             e <= zero(T) && continue
+
             ds = e * s_cur
-            u2 = one(T) - ds / s_nb
+            u2 = _invert_panel_arc_from_right(crv_nb, ds)
             (u2 <= zero(T) || u2 >= one(T)) && continue
 
-            x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(pnb, u2, pinterp)
+            x,y,tx,ty,s2 = _eval_open_panel_geom_exact(crv_nb, u2)
+            idx2, wt2 = _interp_density_data_on_panel(u2, hnb, Nnb, pinterp)
+
             dx = xi - x
             dy = yi - y
             r2 = muladd(dx, dx, dy*dy)
@@ -373,6 +381,128 @@ end
     end
     return idx,wt
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@inline function _arc_length_scalar(crv, u)
+    s = arc_length(crv, u)
+    return s isa AbstractVector ? s[1] : s
+end
+
+@inline function _eval_open_panel_geom_exact(crv, u::T) where {T<:Real}
+    q = curve(crv, u)
+    t = tangent(crv, u)
+    s = sqrt(t[1]^2 + t[2]^2)
+    return q[1], q[2], t[1], t[2], s
+end
+
+@inline function _panel_arc_from_left(crv, u::T) where {T<:Real}
+    _arc_length_scalar(crv, u)
+end
+
+@inline function _panel_total_length(crv)
+    crv.length
+end
+
+@inline function _panel_arc_from_right(crv, u::T) where {T<:Real}
+    _panel_total_length(crv) - _arc_length_scalar(crv, u)
+end
+
+function _invert_panel_arc_from_left(crv, ds::T; tol::T=T(1e-13), maxiter::Int=80) where {T<:Real}
+    ds <= zero(T) && return zero(T)
+    L = T(_panel_total_length(crv))
+    ds >= L && return one(T)
+
+    a = zero(T)
+    b = one(T)
+    fa = -ds
+    fb = L - ds
+
+    for _ in 1:maxiter
+        m = (a + b) / 2
+        fm = _panel_arc_from_left(crv, m) - ds
+        abs(fm) <= tol && return m
+        if signbit(fm) == signbit(fa)
+            a = m
+            fa = fm
+        else
+            b = m
+            fb = fm
+        end
+    end
+    return (a + b) / 2
+end
+
+function _invert_panel_arc_from_right(crv, ds::T; tol::T=T(1e-13), maxiter::Int=80) where {T<:Real}
+    ds <= zero(T) && return one(T)
+    L = T(_panel_total_length(crv))
+    ds >= L && return zero(T)
+
+    a = zero(T)
+    b = one(T)
+    fa = _panel_arc_from_right(crv, a) - ds
+    fb = _panel_arc_from_right(crv, b) - ds
+
+    for _ in 1:maxiter
+        m = (a + b) / 2
+        fm = _panel_arc_from_right(crv, m) - ds
+        abs(fm) <= tol && return m
+        if signbit(fm) == signbit(fa)
+            a = m
+            fa = fm
+        else
+            b = m
+            fb = fm
+        end
+    end
+    return (a + b) / 2
+end
+
+@inline function _interp_density_data_on_panel(u::T, h::T, N::Int, p::Int) where {T<:Real}
+    idx, wt = _panel_smooth_localp_midpoint_data(u, h, N, p)
+    return idx, wt
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @inline function _eval_shifted_source_smooth_panel_localp(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T},p::Int) where {T<:Real}
     N=length(X)
@@ -446,63 +576,83 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
-function _build_alpert_smooth_panel_cache(pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
+function _build_alpert_smooth_panel_cache(crv, pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}, p::Int) where {T<:Real}
     iseven(p) || error("Smooth-panel Alpert interpolation stencil size p must be even.")
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    N=length(X)
-    p<=N || error("Smooth-panel Alpert interpolation stencil size p must satisfy p <= N.")
-    h=pts.ws[1]
-    jcorr=rule.j
-    xp=Matrix{T}(undef,jcorr,N)
-    yp=similar(xp)
-    txp=similar(xp)
-    typ=similar(xp)
-    sp=similar(xp)
-    xm=similar(xp)
-    ym=similar(xp)
-    txm=similar(xp)
-    tym=similar(xp)
-    sm=similar(xp)
-    idxp=Array{Int,3}(undef,jcorr,N,p)
-    idxm=Array{Int,3}(undef,jcorr,N,p)
-    wtp=Array{T,3}(undef,jcorr,N,p)
-    wtm=Array{T,3}(undef,jcorr,N,p)
-    us=_panel_us(T,N)
+
+    N = length(pts.xy)
+    p <= N || error("Smooth-panel Alpert interpolation stencil size p must satisfy p <= N.")
+
+    h = pts.ws[1]
+    jcorr = rule.j
+    us = _panel_us(T, N)
+
+    xp   = Matrix{T}(undef, jcorr, N)
+    yp   = similar(xp)
+    txp  = similar(xp)
+    typ  = similar(xp)
+    sp   = similar(xp)
+
+    xm   = similar(xp)
+    ym   = similar(xp)
+    txm  = similar(xp)
+    tym  = similar(xp)
+    sm   = similar(xp)
+
+    idxp = Array{Int,3}(undef, jcorr, N, p)
+    idxm = Array{Int,3}(undef, jcorr, N, p)
+    wtp  = Array{T,3}(undef, jcorr, N, p)
+    wtm  = Array{T,3}(undef, jcorr, N, p)
+
     @inbounds for q in 1:jcorr
-        Δu=h*rule.x[q]
+        Δu = h * rule.x[q]
         for i in 1:N
-            up=us[i]+Δu
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_localp(up,h,X,Y,dX,dY,p)
-            xp[q,i]=x
-            yp[q,i]=y
-            txp[q,i]=tx
-            typ[q,i]=ty
-            sp[q,i]=s
-            for m in 1:p
-                idxp[q,i,m]=idx[m]
-                wtp[q,i,m]=wt[m]
+            up = us[i] + Δu
+            if up < one(T)
+                x, y, tx, ty, s = _eval_open_panel_geom_exact(crv, up)
+                idx, wt = _interp_density_data_on_panel(up, h, N, p)
+            else
+                x = y = tx = ty = s = T(NaN)
+                idx = fill(1, p)
+                wt  = fill(zero(T), p)
             end
-            um=us[i] - Δu
-            x,y,tx,ty,s,idx,wt=_eval_shifted_source_smooth_panel_localp(um,h,X,Y,dX,dY,p)
-            xm[q,i]=x
-            ym[q,i]=y
-            txm[q,i]=tx
-            tym[q,i]=ty
-            sm[q,i]=s
+            xp[q,i] = x
+            yp[q,i] = y
+            txp[q,i] = tx
+            typ[q,i] = ty
+            sp[q,i] = s
             for m in 1:p
-                idxm[q,i,m]=idx[m]
-                wtm[q,i,m]=wt[m]
+                idxp[q,i,m] = idx[m]
+                wtp[q,i,m] = wt[m]
+            end
+
+            um = us[i] - Δu
+            if um > zero(T)
+                x, y, tx, ty, s = _eval_open_panel_geom_exact(crv, um)
+                idx, wt = _interp_density_data_on_panel(um, h, N, p)
+            else
+                x = y = tx = ty = s = T(NaN)
+                idx = fill(1, p)
+                wt  = fill(zero(T), p)
+            end
+            xm[q,i] = x
+            ym[q,i] = y
+            txm[q,i] = tx
+            tym[q,i] = ty
+            sm[q,i] = s
+            for m in 1:p
+                idxm[q,i,m] = idx[m]
+                wtm[q,i,m] = wt[m]
             end
         end
     end
-    return AlpertSmoothPanelCache(us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
+
+    return AlpertSmoothPanelCache(crv, us, xp, yp, txp, typ, sp, xm, ym, txm, tym, sm, idxp, wtp, idxm, wtm)
 end
 
-function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
-    pts.is_periodic ? _build_alpert_periodic_cache(solver,crv,pts,rule,ord) : _build_alpert_smooth_panel_cache(pts,rule,ord)
+function _build_alpert_component_cache(solver::CFIE_alpert{T}, crv, pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}, ord::Int) where {T<:Real}
+    pts.is_periodic ?
+        _build_alpert_periodic_cache(solver, crv, pts, rule, ord) :
+        _build_alpert_smooth_panel_cache(crv, pts, rule, ord)
 end
 
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
