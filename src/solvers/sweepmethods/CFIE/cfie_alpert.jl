@@ -632,7 +632,6 @@ function _assemble_self_alpert_composite_component!(solver::CFIE_alpert{T},A::Ab
     return A
 end
 
-
 function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     pts.is_periodic ?
         _assemble_self_alpert_periodic!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded) :
@@ -698,504 +697,16 @@ end
     pts.ws[j]*sj
 end
 
-function _add_image_block!(
-    A::AbstractMatrix{Complex{T}},
-    ra::UnitRange{Int},
-    rb::UnitRange{Int},
-    pa::BoundaryPointsCFIE{T},
-    pb::BoundaryPointsCFIE{T},
-    k::T,
-    qfun,
-    tfun,
-    weight;
-    reverse_param::Bool = false,
-    multithreaded::Bool = true
-) where {T<:Real}
-
-    αD = Complex{T}(0, k/2)
-    αS = Complex{T}(0, one(T)/2)
-    ik = Complex{T}(0, k)
-
-    Na = length(pa.xy)
-    Nb = length(pb.xy)
-
-    Xa = getindex.(pa.xy, 1)
-    Ya = getindex.(pa.xy, 2)
-
-    Xb  = getindex.(pb.xy, 1)
-    Yb  = getindex.(pb.xy, 2)
-    dXb = getindex.(pb.tangent, 1)
-    dYb = getindex.(pb.tangent, 2)
-
-    @use_threads multithreading=multithreaded for j in 1:Nb
-        js = reverse_param ? (Nb - j + 1) : j
-        gj = rb[js]
-
-        qimg = qfun(SVector{2,T}(Xb[js], Yb[js]))
-        timg = tfun(SVector{2,T}(dXb[js], dYb[js]))
-
-        xj, yj = qimg
-        txj, tyj = timg
-        sj = sqrt(txj*txj + tyj*tyj)
-
-        wd = pb.ws[js]
-        ws = pb.ws[js] * sj
-
-        @inbounds for i in 1:Na
-            gi = ra[i]
-            dx = Xa[i] - xj
-            dy = Ya[i] - yj
-            r2 = muladd(dx, dx, dy*dy)
-            r2 <= (eps(T))^2 && continue
-
-            r = sqrt(r2)
-            invr = inv(r)
-            inn = _dinner(dx, dy, txj, tyj)
-
-            dval = weight * wd * (αD * inn * H(1, k*r) * invr)
-            sval = weight * ws * (αS * H(0, k*r))
-            A[gi, gj] -= dval + ik*sval
-        end
-    end
-
-    return A
-end
-
-#=
-function _assemble_reflection_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},solver::CFIE_alpert{T},billiard::Bi,k::T,sym::Reflection;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
-    if sym.axis==:y_axis
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_x(q,billiard),t->image_tangent_x(t),image_weight(sym);multithreaded=multithreaded)
-    elseif sym.axis==:x_axis
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_y(q,billiard),t->image_tangent_y(t),image_weight(sym);multithreaded=multithreaded)
-    elseif sym.axis==:origin
-        σx=image_weight_x(sym)
-        σy=image_weight_y(sym)
-        σxy=image_weight_xy(sym)
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_x(q,billiard),t->image_tangent_x(t),σx;multithreaded=multithreaded)
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_y(q,billiard),t->image_tangent_y(t),σy;multithreaded=multithreaded)
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point_xy(q,billiard),t->image_tangent_xy(t),σxy;multithreaded=multithreaded)
-    else
-        error("Unknown reflection axis $(sym.axis)")
-    end
-    return A
-end
-=#
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@inline function _eval_on_open_panel_localp_arrays(
-    u::T,h::T,
-    X::AbstractVector{T},Y::AbstractVector{T},
-    dX::AbstractVector{T},dY::AbstractVector{T},
-    p::Int
-) where {T<:Real}
-    _eval_shifted_source_smooth_panel_localp(u,h,X,Y,dX,dY,p)
-end
-
-@inline function _reflection_qfun_tfun_weight(sym::Reflection,billiard,kind::Symbol)
-    if kind===:x
-        qfun=q->image_point_x(q,billiard)
-        tfun=t->image_tangent_x(t)
-        w=sym.axis===:origin ? sym.parity[1] : sym.parity
-    elseif kind===:y
-        qfun=q->image_point_y(q,billiard)
-        tfun=t->image_tangent_y(t)
-        w=sym.axis===:origin ? sym.parity[2] : sym.parity
-    elseif kind===:xy
-        qfun=q->image_point_xy(q,billiard)
-        tfun=t->image_tangent_xy(t)
-        w=sym.parity[1]*sym.parity[2]
-    else
-        error("Unknown reflection image kind $kind")
-    end
-    return qfun,tfun,w
-end
-
-@inline function _curve_endpoint_point_tangent(crv::AbsCurve,side::Symbol,::Type{T}) where {T<:Real}
-    u=side===:left ? zero(T) : side===:right ? one(T) : error("side must be :left or :right")
-    return curve(crv,u),tangent(crv,u)
-end
-
-@inline function _join_angle_min(t1::SVector{2,T},t2::SVector{2,T}) where {T<:Real}
-    min(_join_angle(t1,t2),_join_angle(t1,-t2))
-end
-
-function _reflection_join_data(
-    crva,crvb,
-    pa::BoundaryPointsCFIE{T},
-    pb_img_x::AbstractVector{T},pb_img_y::AbstractVector{T},
-    pb_img_tx::AbstractVector{T},pb_img_ty::AbstractVector{T};
-    xtol::T=T(1e-10),angtol::T=T(1e-8)
-) where {T<:Real}
-    pa.is_periodic && return nothing
-
-    pla,tla=_curve_endpoint_point_tangent(crva,:left,T)
-    pra,tra=_curve_endpoint_point_tangent(crva,:right,T)
-
-    plb=SVector{2,T}(pb_img_x[1],pb_img_y[1])
-    prb=SVector{2,T}(pb_img_x[end],pb_img_y[end])
-    tlb=SVector{2,T}(pb_img_tx[1],pb_img_ty[1])
-    trb=SVector{2,T}(pb_img_tx[end],pb_img_ty[end])
-
-    hits=NamedTuple[]
-
-    d=_endpoint_distance(pla,plb)
-    if d<=xtol
-        θ=_join_angle_min(tla,tlb)
-        θ<=angtol && push!(hits,(target_side=:left,source_side=:left,angle=θ))
-    end
-
-    d=_endpoint_distance(pla,prb)
-    if d<=xtol
-        θ=_join_angle_min(tla,trb)
-        θ<=angtol && push!(hits,(target_side=:left,source_side=:right,angle=θ))
-    end
-
-    d=_endpoint_distance(pra,plb)
-    if d<=xtol
-        θ=_join_angle_min(tra,tlb)
-        θ<=angtol && push!(hits,(target_side=:right,source_side=:left,angle=θ))
-    end
-
-    d=_endpoint_distance(pra,prb)
-    if d<=xtol
-        θ=_join_angle_min(tra,trb)
-        θ<=angtol && push!(hits,(target_side=:right,source_side=:right,angle=θ))
-    end
-
-    isempty(hits) && return nothing
-    length(hits)>1 && error("Ambiguous reflected join detection.")
-    return hits[1]
-end
-
-@inline function _target_excluded_count(i::Int,N::Int,a::Int,target_side::Symbol)
-    if target_side===:right
-        return max(0,i+a-1-N)
-    elseif target_side===:left
-        return max(0,a-i)
-    else
-        error("target_side must be :left or :right")
-    end
-end
-
-@inline function _skip_source_node(j::Int,N::Int,nskip::Int,source_side::Symbol)
-    nskip<=0 && return false
-    if source_side===:left
-        return j<=nskip
-    elseif source_side===:right
-        return j>N-nskip
-    else
-        error("source_side must be :left or :right")
-    end
-end
-
-@inline function _overflow_excess(ui::T,Δu::T,target_side::Symbol) where {T<:Real}
-    if target_side===:right
-        return ui+Δu-one(T)
-    elseif target_side===:left
-        return Δu-ui
-    else
-        error("target_side must be :left or :right")
-    end
-end
-
-@inline function _source_param_from_excess(e::T,source_side::Symbol) where {T<:Real}
-    if source_side===:left
-        return e
-    elseif source_side===:right
-        return one(T)-e
-    else
-        error("source_side must be :left or :right")
-    end
-end
-
-@inline function _reflection_reverses_parameter(kind::Symbol)
-    kind===:x && return true
-    kind===:y && return true
-    kind===:xy && return false
-    error("Unknown reflection image kind $kind")
-end
-
-function _build_reflected_open_panel_data(pb::BoundaryPointsCFIE{T},qfun,tfun;reverse_param::Bool=false) where {T<:Real}
-    Nb=length(pb.xy)
-    X=Vector{T}(undef,Nb)
-    Y=Vector{T}(undef,Nb)
-    TX=Vector{T}(undef,Nb)
-    TY=Vector{T}(undef,Nb)
-    S=Vector{T}(undef,Nb)
-    W=Vector{T}(undef,Nb)
-
-    @inbounds for j in 1:Nb
-        q=qfun(pb.xy[j])
-        t=tfun(pb.tangent[j])
-        X[j]=q[1]
-        Y[j]=q[2]
-        TX[j]=t[1]
-        TY[j]=t[2]
-        S[j]=sqrt(t[1]^2+t[2]^2)
-        W[j]=pb.ws[j]
-    end
-
-    if reverse_param
-        reverse!(X)
-        reverse!(Y)
-        reverse!(TX)
-        reverse!(TY)
-        reverse!(S)
-        reverse!(W)
-    end
-
-    return X,Y,TX,TY,S,W
-end
-
-function _add_image_block!(
-    A::AbstractMatrix{Complex{T}},
-    ra::UnitRange{Int},
-    rb::UnitRange{Int},
-    pa::BoundaryPointsCFIE{T},
-    pb::BoundaryPointsCFIE{T},
-    k::T,
-    qfun,tfun,weight;
-    reverse_param::Bool=false,
-    multithreaded::Bool=true
-) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-
-    Na=length(pa.xy)
-    Nb=length(pb.xy)
-    Xa=getindex.(pa.xy,1)
-    Ya=getindex.(pa.xy,2)
-
-    Ximg,Yimg,TXimg,TYimg,Simg,Wimg=_build_reflected_open_panel_data(pb,qfun,tfun;reverse_param=reverse_param)
-
-    @use_threads multithreading=multithreaded for j in 1:Nb
-        gj=rb[j]
-        xj=Ximg[j]
-        yj=Yimg[j]
-        txj=TXimg[j]
-        tyj=TYimg[j]
-        sj=Simg[j]
-        wd=Wimg[j]
-        ws=wd*sj
-
-        @inbounds for i in 1:Na
-            gi=ra[i]
-            dx=Xa[i]-xj
-            dy=Ya[i]-yj
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2 && continue
-            r=sqrt(r2)
-            invr=inv(r)
-            inn=_dinner(dx,dy,txj,tyj)
-            dval=weight*wd*(αD*inn*H(1,k*r)*invr)
-            sval=weight*ws*(αS*H(0,k*r))
-            A[gi,gj]-=dval+ik*sval
-        end
-    end
-    return A
-end
-
-function _add_image_block_alpert_joined!(
-    A::AbstractMatrix{Complex{T}},
-    ra::UnitRange{Int},
-    rb::UnitRange{Int},
-    pa::BoundaryPointsCFIE{T},
-    pb::BoundaryPointsCFIE{T},
-    k::T,
-    rule::AlpertLogRule{T},
-    joininfo,
-    qfun,tfun,weight;
-    reverse_param::Bool=false,
-    multithreaded::Bool=true
-) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-
-    Na=length(pa.xy)
-    Nb=length(pb.xy)
-
-    Xa=getindex.(pa.xy,1)
-    Ya=getindex.(pa.xy,2)
-
-    Ximg,Yimg,TXimg,TYimg,Simg,Wimg=_build_reflected_open_panel_data(
-        pb,qfun,tfun;reverse_param=reverse_param
-    )
-
-    h=pa.ws[1]
-    hsrc=Wimg[1]
-    a=rule.a
-    pinterp=iseven(rule.order+3) ? rule.order+3 : rule.order+4
-
-    tside=joininfo.target_side
-    sside=joininfo.source_side
-
-    @use_threads multithreading=multithreaded for i in 1:Na
-        gi=ra[i]
-        xi=Xa[i]
-        yi=Ya[i]
-        ui=pa.ts[i]
-
-        nskip=_target_excluded_count(i,Na,a,tside)
-
-        for j in 1:Nb
-            _skip_source_node(j,Nb,nskip,sside) && continue
-            dx=xi-Ximg[j]
-            dy=yi-Yimg[j]
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2 && continue
-            r=sqrt(r2)
-            invr=inv(r)
-            inn=_dinner(dx,dy,TXimg[j],TYimg[j])
-            A[gi,rb[j]]-=weight*(Wimg[j]*(αD*inn*H(1,k*r)*invr))
-            A[gi,rb[j]]-=weight*(ik*(Wimg[j]*(αS*H(0,k*r)*Simg[j])))
-        end
-
-        for p in 1:rule.j
-            Δu=h*rule.x[p]
-            e=_overflow_excess(ui,Δu,tside)
-            e<=zero(T) && continue
-
-            usrc=_source_param_from_excess(e,sside)
-            (usrc<=zero(T) || usrc>=one(T)) && continue
-
-            x,y,tx,ty,s,idx,wt=_eval_on_open_panel_localp_arrays(
-                usrc,hsrc,Ximg,Yimg,TXimg,TYimg,pinterp
-            )
-
-            dx=xi-x
-            dy=yi-y
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2 && continue
-            r=sqrt(r2)
-            inn=_dinner(dx,dy,tx,ty)
-            fac=h*rule.w[p]
-
-            coeffD=-weight*(fac*(αD*inn*H(1,k*r)/r))
-            coeffS=-weight*(ik*(fac*(αS*H(0,k*r)*s)))
-
-            _scatter_localp!(A,gi,rb,coeffD,idx,wt)
-            _scatter_localp!(A,gi,rb,coeffS,idx,wt)
-        end
-    end
-
-    return A
-end
-
-function _assemble_reflection_images!(
-    A::AbstractMatrix{Complex{T}},
-    ra::UnitRange{Int},
-    rb::UnitRange{Int},
-    pa::BoundaryPointsCFIE{T},
-    pb::BoundaryPointsCFIE{T},
-    crva,crvb,
-    solver::CFIE_alpert{T},
-    billiard::Bi,
-    k::T,
-    sym::Reflection;
-    multithreaded::Bool=true
-) where {T<:Real,Bi<:AbsBilliard}
-    rule=alpert_log_rule(T,solver.alpert_order)
-
-    function do_one_image!(kind::Symbol;joined_ok::Bool)
-        qfun,tfun,w=_reflection_qfun_tfun_weight(sym,billiard,kind)
-        reverse_param=_reflection_reverses_parameter(kind)
-
-        if joined_ok && !pa.is_periodic && !pb.is_periodic
-            Ximg,Yimg,TXimg,TYimg,_,_=_build_reflected_open_panel_data(
-                pb,qfun,tfun;reverse_param=reverse_param
-            )
-            joininfo=_reflection_join_data(crva,crvb,pa,Ximg,Yimg,TXimg,TYimg)
-            if isnothing(joininfo)
-                _add_image_block!(
-                    A,ra,rb,pa,pb,k,qfun,tfun,w;
-                    reverse_param=reverse_param,
-                    multithreaded=multithreaded
-                )
-            else
-                _add_image_block_alpert_joined!(
-                    A,ra,rb,pa,pb,k,rule,joininfo,qfun,tfun,w;
-                    reverse_param=reverse_param,
-                    multithreaded=multithreaded
-                )
-            end
-        else
-            _add_image_block!(
-                A,ra,rb,pa,pb,k,qfun,tfun,w;
-                reverse_param=reverse_param,
-                multithreaded=multithreaded
-            )
-        end
-    end
-
-    if sym.axis===:y_axis
-        reverse_param=_reflection_reverses_parameter(:x)
-        do_one_image!(:x;joined_ok=false)
-    elseif sym.axis===:x_axis
-        reverse_param=_reflection_reverses_parameter(:y)
-        do_one_image!(:y;joined_ok=false)
-    elseif sym.axis===:origin
-        reverse_param=_reflection_reverses_parameter(:x)
-        reverse_param=_reflection_reverses_parameter(:y)
-        do_one_image!(:x;joined_ok=false)
-        do_one_image!(:y;joined_ok=false)
-        do_one_image!(:xy;joined_ok=false)
-    else
-        error("Unknown reflection axis $(sym.axis)")
-    end
-    return A
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function _assemble_rotation_images!(A::AbstractMatrix{Complex{T}},ra::UnitRange{Int},rb::UnitRange{Int},pa::BoundaryPointsCFIE{T},pb::BoundaryPointsCFIE{T},k::T,sym::Rotation,costab,sintab,χ;multithreaded::Bool=true) where {T<:Real}
-    for l in 1:(sym.n-1)
-        phase=χ[l+1]
-        _add_image_block!(A,ra,rb,pa,pb,k,q->image_point(sym,q,l,costab,sintab),t->image_tangent(sym,t,l,costab,sintab),phase;multithreaded=multithreaded)
-    end
-    return A
-end
-
-function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    symmetry=solver.symmetry
-    isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
     fill!(A,zero(Complex{T}))
-    rule=alpert_log_rule(T,solver.alpert_order)
     Gs=[cfie_geom_cache(p) for p in pts]
-    boundary=solver.billiard.desymmetrized_full_boundary
-    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
+    rule=alpert_log_rule(T,solver.alpert_order)
+    boundary=solver.billiard.full_boundary
+    flat_boundary= boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
     Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
     nc=length(pts)
     topo_data=build_join_topology(pts)
@@ -1209,12 +720,9 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
         topos,gmaps=topo_data
         _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
     end
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
     for a in 1:nc, b in 1:nc
         a==b && continue
-        if gmaps !== nothing
+        if !isnothing(gmaps)
             ca=_component_id_of_panel(a,gmaps)
             cb=_component_id_of_panel(b,gmaps)
             ca!=0 && ca==cb && continue
@@ -1231,7 +739,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
         Yb=getindex.(pb.xy,2)
         dXb=getindex.(pb.tangent,1)
         dYb=getindex.(pb.tangent,2)
-        sb=@. sqrt(dXb^2+dYb^2)
+        sb=@. sqrt(dXb^2 + dYb^2)
         @use_threads multithreading=multithreaded for j in 1:Nb
             gj=rb[j]
             xj=Xb[j]
@@ -1248,37 +756,18 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
                 r2=muladd(dx,dx,dy*dy)
                 r2<=(eps(T))^2 && continue
                 r=sqrt(r2)
-                _check_r(r,"symmetry before images",i,j)
                 invr=inv(r)
                 inn=_dinner(dx,dy,txj,tyj)
-                dval=wd*(αD*inn*H(1,k*r)*invr)
-                sval=ws*(αS*H(0,k*r))
+                dval= wd*(αD*inn*H(1,k*r)*invr)
+                sval= ws*(αS*H(0,k*r))
                 A[gi,gj] -= dval+ik*sval
             end
         end
     end
-    if symmetry isa Reflection
-        for a in 1:nc, b in 1:nc
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],flat_boundary[a],flat_boundary[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
-        end
-    elseif symmetry isa Rotation
-        costab,sintab,χ=_rotation_tables(T,symmetry.n,symmetry.m)
-        for a in 1:nc, b in 1:nc
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,symmetry,costab,sintab,χ;multithreaded=multithreaded)
-        end
-    else
-        error("Unknown symmetry type $(typeof(symmetry))")
-    end
     return A
 end
 
-function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    symmetry=solver.symmetry
-    isnothing(symmetry) && error("construct_matrices_symmetry! called with symmetry = nothing")
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     offs=ws.offs
     Gs=ws.Gs
@@ -1287,23 +776,20 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
     topos=ws.topos
     gmaps=ws.gmaps
     panel_to_comp=ws.panel_to_comp
-    boundary=solver.billiard.desymmetrized_full_boundary
-    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
-    nc=length(pts)
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
     if isnothing(topos)
-        @inbounds for a in 1:nc
+        @inbounds for a in eachindex(pts)
             ra=offs[a]:(offs[a+1]-1)
             _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
         end
     else
         _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
     end
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    for a in 1:nc, b in 1:nc
+    for a in eachindex(pts), b in eachindex(pts)
         a==b && continue
-        if !isnothing(panel_to_comp)
+        if panel_to_comp !== nothing
             ca=panel_to_comp[a]
             cb=panel_to_comp[b]
             ca!=0 && ca==cb && continue
@@ -1337,7 +823,6 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
                 r2=muladd(dx,dx,dy*dy)
                 r2<=(eps(T))^2 && continue
                 r=sqrt(r2)
-                _check_r(r,"symmetry before images",i,j)
                 invr=inv(r)
                 inn=_dinner(dx,dy,txj,tyj)
                 dval= wd*(αD*inn*H(1,k*r)*invr)
@@ -1346,168 +831,7 @@ function construct_matrices_symmetry!(solver::CFIE_alpert{T},A::Matrix{Complex{T
             end
         end
     end
-    if symmetry isa Reflection
-        for a in 1:nc, b in 1:nc
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            _assemble_reflection_images!(A,ra,rb,pts[a],pts[b],flat_boundary[a],flat_boundary[b],solver,solver.billiard,k,symmetry;multithreaded=multithreaded)
-        end
-    elseif symmetry isa Rotation
-        costab,sintab,χ=_rotation_tables(T,symmetry.n,symmetry.m)
-        for a in 1:nc, b in 1:nc
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            _assemble_rotation_images!(A,ra,rb,pts[a],pts[b],k,symmetry,costab,sintab,χ;multithreaded=multithreaded)
-        end
-    else
-        error("Unknown symmetry type $(typeof(symmetry))")
-    end
     return A
-end
-
-function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    if isnothing(solver.symmetry)
-        offs=component_offsets(pts)
-        αD=Complex{T}(0,k/2)
-        αS=Complex{T}(0,one(T)/2)
-        ik=Complex{T}(0,k)
-        fill!(A,zero(Complex{T}))
-        Gs=[cfie_geom_cache(p) for p in pts]
-        rule=alpert_log_rule(T,solver.alpert_order)
-        boundary=solver.billiard.full_boundary
-        flat_boundary= boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
-        Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
-        nc=length(pts)
-        topo_data=build_join_topology(pts)
-        gmaps= isnothing(topo_data) ? nothing : topo_data[2]
-        if isnothing(topo_data)
-            for a in 1:nc
-                ra=offs[a]:(offs[a+1]-1)
-                _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-            end
-        else
-            topos,gmaps=topo_data
-            _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
-        end
-        for a in 1:nc, b in 1:nc
-            a==b && continue
-            if !isnothing(gmaps)
-                ca=_component_id_of_panel(a,gmaps)
-                cb=_component_id_of_panel(b,gmaps)
-                ca!=0 && ca==cb && continue
-            end
-            pa=pts[a]
-            pb=pts[b]
-            Na=length(pa.xy)
-            Nb=length(pb.xy)
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            Xa=getindex.(pa.xy,1)
-            Ya=getindex.(pa.xy,2)
-            Xb=getindex.(pb.xy,1)
-            Yb=getindex.(pb.xy,2)
-            dXb=getindex.(pb.tangent,1)
-            dYb=getindex.(pb.tangent,2)
-            sb=@. sqrt(dXb^2 + dYb^2)
-            @use_threads multithreading=multithreaded for j in 1:Nb
-                gj=rb[j]
-                xj=Xb[j]
-                yj=Yb[j]
-                txj=dXb[j]
-                tyj=dYb[j]
-                sj=sb[j]
-                wd=dlp_weight(pb,j)
-                ws=slp_weight(pb,j,sj)
-                @inbounds for i in 1:Na
-                    gi=ra[i]
-                    dx=Xa[i]-xj
-                    dy=Ya[i]-yj
-                    r2=muladd(dx,dx,dy*dy)
-                    r2<=(eps(T))^2 && continue
-                    r=sqrt(r2)
-                    invr=inv(r)
-                    inn=_dinner(dx,dy,txj,tyj)
-                    dval= wd*(αD*inn*H(1,k*r)*invr)
-                    sval= ws*(αS*H(0,k*r))
-                    A[gi,gj] -= dval+ik*sval
-                end
-            end
-        end
-        return A
-    else
-        construct_matrices_symmetry!(solver,A,pts,k;multithreaded=multithreaded)
-    end
-end
-
-function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    if isnothing(solver.symmetry)
-        fill!(A,zero(Complex{T}))
-        offs=ws.offs
-        Gs=ws.Gs
-        Cs=ws.Cs
-        rule=ws.rule
-        topos=ws.topos
-        gmaps=ws.gmaps
-        panel_to_comp=ws.panel_to_comp
-        αD=Complex{T}(0,k/2)
-        αS=Complex{T}(0,one(T)/2)
-        ik=Complex{T}(0,k)
-        if isnothing(topos)
-            @inbounds for a in eachindex(pts)
-                ra=offs[a]:(offs[a+1]-1)
-                _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-            end
-        else
-            _assemble_all_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule,topos,gmaps;multithreaded=multithreaded)
-        end
-        for a in eachindex(pts), b in eachindex(pts)
-            a==b && continue
-            if panel_to_comp !== nothing
-                ca=panel_to_comp[a]
-                cb=panel_to_comp[b]
-                ca!=0 && ca==cb && continue
-            end
-            pa=pts[a]
-            pb=pts[b]
-            Na=length(pa.xy)
-            Nb=length(pb.xy)
-            ra=offs[a]:(offs[a+1]-1)
-            rb=offs[b]:(offs[b+1]-1)
-            Xa=getindex.(pa.xy,1)
-            Ya=getindex.(pa.xy,2)
-            Xb=getindex.(pb.xy,1)
-            Yb=getindex.(pb.xy,2)
-            dXb=getindex.(pb.tangent,1)
-            dYb=getindex.(pb.tangent,2)
-            sb=@. sqrt(dXb^2+dYb^2)
-            @use_threads multithreading=multithreaded for j in 1:Nb
-                gj=rb[j]
-                xj=Xb[j]
-                yj=Yb[j]
-                txj=dXb[j]
-                tyj=dYb[j]
-                sj=sb[j]
-                wd=pb.ws[j]
-                wsj=pb.ws[j]*sj
-                @inbounds for i in 1:Na
-                    gi=ra[i]
-                    dx=Xa[i]-xj
-                    dy=Ya[i]-yj
-                    r2=muladd(dx,dx,dy*dy)
-                    r2<=(eps(T))^2 && continue
-                    r=sqrt(r2)
-                    invr=inv(r)
-                    inn=_dinner(dx,dy,txj,tyj)
-                    dval= wd*(αD*inn*H(1,k*r)*invr)
-                    sval= wsj*(αS*H(0,k*r))
-                    A[gi,gj] -= dval+ik*sval
-                end
-            end
-        end
-        return A
-    else
-        construct_matrices_symmetry!(solver,A,pts,ws,k;multithreaded=multithreaded)
-    end
 end
 
 """

@@ -105,6 +105,19 @@ function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;
     return CFIE_kress_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
 end
 
+"""
+    CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=8)
+
+Constructor for CFIE_kress_global_corners solver, which is designed to handle billiards with corners by using a global Kress grading technique. This method clusters the discretization points near the corners based on a global grading function that takes into account all corner locations simultaneously. Therefore one can reuse the circulant R matrix logic.
+
+# Inputs:
+- `pts_scaling_factor`: A scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
+- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
+- `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Practically irrelevant since we will always be above this value. Default is 20.
+- `eps`: Unused internally.
+- `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
+- `kressq`: The grading parameter q in the global Kress grading technique, which controls the clustering of discretization points near the corners. Default is 8.
+"""
 function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
@@ -205,23 +218,6 @@ end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
 # this function is really tricky since we need to reverse the order of the points but also flip the tangents and ds to maintain the correct orientation for the holes. We also need to be careful with the periodicity and the weights. The compid should remain unchanged since we are just reversing the order of points within the same component. Closed periodic polar curves ts behave differently from open panels due to the definiiton of the log analytic split for Kress needing [s(j,N) for j in 1:N] while for Alpert we chose midpoints.
-#=
-function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
-    N=length(pts.xy)
-    xy=reverse(pts.xy)
-    tangent=reverse(-pts.tangent)
-    tangent_2=reverse(pts.tangent_2)
-    ts=if pts.is_periodic
-        [s(j,N) for j in 1:N]
-    else
-        collect(midpoints(range(zero(T),one(T),length=N+1)))
-    end
-    ws=copy(pts.ws)
-    ws_der=copy(pts.ws_der)
-    ds=reverse(pts.ds)
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic,pts.xL,pts.xR,pts.tL,pts.tR)
-end
-=#
 function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
