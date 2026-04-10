@@ -662,10 +662,30 @@ function _build_alpert_smooth_panel_cache(crv, pts::BoundaryPointsCFIE{T}, rule:
     return AlpertSmoothPanelCache(crv, us, xp, yp, txp, typ, sp, xm, ym, txm, tym, sm, idxp, wtp, idxm, wtm)
 end
 
+#=
 function _build_alpert_component_cache(solver::CFIE_alpert{T}, crv, pts::BoundaryPointsCFIE{T}, rule::AlpertLogRule{T}, ord::Int) where {T<:Real}
     pts.is_periodic ?
         _build_alpert_periodic_cache(solver, crv, pts, rule, ord) :
         _build_alpert_smooth_panel_cache(crv, pts, rule, ord)
+end
+=#
+
+function _build_alpert_component_cache(
+    solver::CFIE_alpert{T},
+    crv,
+    pts::BoundaryPointsCFIE{T},
+    rule::AlpertLogRule{T},
+    ord::Int
+) where {T<:Real}
+    if pts.is_periodic
+        return _build_alpert_periodic_cache(solver, crv, pts, rule, ord)
+    else
+        pinterp = 6
+        isodd(pinterp) && (pinterp -= 1)
+        pinterp < 4 && (pinterp = min(length(pts.xy), 4))
+        isodd(pinterp) && (pinterp -= 1)
+        return _build_alpert_smooth_panel_cache(crv, pts, rule, pinterp)
+    end
 end
 
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
