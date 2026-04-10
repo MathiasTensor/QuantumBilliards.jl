@@ -197,8 +197,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     p=Progress(nk;desc="Refining minima")
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
-        idx_app=argmin(abs.(ks.-kcur))
-        dk0=abs(tens[idx_app])*10 # heuristic initial window size based on the tension value, good proxy for number of good digits
+        dk_grid= length(ks)>=2 ? abs(ks[mod(i+1,length(ks))]-ks[i]) : T(initial_refinement_interval)
+        dk0=max(3*dk_grid,T(initial_refinement_interval))
         window=dk0
         hist=NamedTuple[]
         tprev=T(NaN)
@@ -227,7 +227,6 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             kprev=kcur
             tprev=tnew
             kcur=knew
-            #window=max(window/window_shrink,dk0*final_window_factor)
         end
         sols[i]=kcur
         tens_refined[i]=tprev
