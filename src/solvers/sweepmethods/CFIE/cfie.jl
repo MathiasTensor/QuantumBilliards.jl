@@ -364,7 +364,7 @@ end
 #   u = local parameter on comp[j]
 # Special care is taken at the periodic seam so that t near 2π maps back to the first segment with u=0.
 function _global_t_to_segment_u(::Type{T},comp::Vector,t::T) where {T<:Real}
-    lens,cum,Ltot=_component_lengths(comp)
+    lens,cum,Ltot=component_lengths(comp)
     s=(t/T(two_pi))*Ltot
     s>=Ltot && return 1,zero(T)
     j=searchsortedlast(cum,s)
@@ -393,7 +393,7 @@ end
 #   γt   = first derivative with respect to global parameter t
 #   γtt  = second derivative with respect to global parameter t
 function _eval_composite_geom_global_t(::Type{T},comp::Vector,t::T) where {T<:Real}
-    lens,_,Ltot=_component_lengths(comp)
+    lens,_,Ltot=component_lengths(comp)
     j,u=_global_t_to_segment_u(T,comp,t)
     crv=comp[j]
     xy=curve(crv,u)
