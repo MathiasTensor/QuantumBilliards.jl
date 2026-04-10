@@ -43,7 +43,7 @@ export EvanescentPlaneWaves
 include("basis/compositebasis.jl")
 export CompositeBasis
 
-#billiards
+# billiards
 export LineSegment, VirtualLineSegment
 export CircleSegment, VirtualCircleSegment
 export DispersingCircleSegment, VirtualDispersingCircleSegment
@@ -86,36 +86,55 @@ export EquilateralTriangleBilliard, make_fundamental_equilateral_triangle, make_
 export adapt_basis, triangle_corners, make_triangle_and_basis
 export GeneralizedSinai, make_quarter_generalized_sinai, make_full_boundary_generalized_sinai, make_desymmetrized_full_generalized_sinai, make_generalized_sinai_and_basis
 
+# general matrix helpers
 include("solvers/fulldecompositions.jl")
 include("solvers/gen_cholesky_rank_red.jl")
 include("solvers/matrixconstructors.jl")
 include("states/gradients.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
+# Vergini-Saraceno
 include("solvers/acceleratedmethods/scalingmethod.jl")
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 
+# Standard sweep methods
 include("solvers/sweepmethods/particularsolutionsmethod.jl")
 include("solvers/sweepmethods/decompositionmethod.jl")
 include("solvers/sweepmethods/boundaryintegralmethod.jl")
+
+# Chebyshev machinery - general
+include("chebyshev/chebyshev_core.jl")
+include("chebyshev/chebyshev_point_symmetry.jl")
+include("chebyshev/chebyshev_hankel.jl")
+
+# CFIE
 include("solvers/sweepmethods/CFIE/alpert_table.jl")
-include("solvers/sweepmethods/CFIE/kress_grading.jl")
+include("solvers/sweepmethods/CFIE/kress_grading_single_corner.jl")
+include("solvers/sweepmethods/CFIE/kress_grading_multi_corner.jl")
 include("solvers/sweepmethods/CFIE/cfie.jl")
 include("solvers/sweepmethods/CFIE/cfie_symmetry.jl")
 include("solvers/sweepmethods/CFIE/cfie_kress.jl")
 include("solvers/sweepmethods/CFIE/cfie_alpert.jl")
-include("chebyshev/chebyshev_core.jl")
-include("chebyshev/chebyshev_point_symmetry.jl")
-include("chebyshev/chebyshev_hankel.jl")
+
+# Chebyshev machinery - applied to specific kernels
 include("chebyshev/chebyshev_euclidian_helmholtz_dlp.jl")
 include("chebyshev/chebyshev_euclidian_helmholtz_kress.jl")
 include("chebyshev/chebyshev_euclidian_helmholtz_alpert.jl")
 include("chebyshev/chebyshev_optimal_panelization.jl")
+
+# Expanded BIM
 include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
+
+# Krylov methods
 include("solvers/krylovsolvers.jl")
+
+# Beyn's method
 include("solvers/acceleratedmethods/beyn.jl")
+
+# General sweep methods high level interface
 include("solvers/sweepmethods/sweepmethods.jl")
 
+# Hyperbolic kernels and solvers
 include("Hyperbolic/patched_taylor_series_Q.jl")
 include("Hyperbolic/DLP_hyperbolic_helmholtz.jl")
 include("Hyperbolic/BIM_hyperbolic.jl")

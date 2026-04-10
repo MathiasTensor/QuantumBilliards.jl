@@ -48,6 +48,19 @@ struct CFIE_kress_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     kressq::Int # the grading parameter q in the Kress grading formula, which controls how strongly the nodes are clustered near the corners. A larger value of q results in stronger clustering, which can improve accuracy for problems with sharp corners. Typical values are in the range of 4 to 16, with 8 being a common choice for many problems.
 end
 
+# same as above comments
+struct CFIE_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
+    sampler::Vector{LinearNodes}
+    pts_scaling_factor::Vector{T}
+    dim_scaling_factor::T
+    eps::T
+    min_dim::Int64
+    min_pts::Int64
+    billiard::Bi
+    symmetry::Sym
+    kressq::Int
+end
+
 """
     CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Sym=nothing)
 
@@ -90,6 +103,13 @@ function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
     return CFIE_kress_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
+end
+
+function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
+    bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
+    sampler=[LinearNodes()]
+    Sym=typeof(symmetry)
+    return CFIE_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
 end
 
 #################################
@@ -137,6 +157,9 @@ end
 #### BOUNDARY EVALUATION ####
 #############################
 
+#### use N even for the algorithm - equidistant parameters ####
+s(k::Int,N::Int)=two_pi*k/N
+
 # helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE_kress method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
 function component_offsets(comps::Vector)
     nc=length(comps)
@@ -148,8 +171,21 @@ function component_offsets(comps::Vector)
     return offs
 end
 
-#### use N even for the algorithm - equidistant parameters ####
-s(k::Int,N::Int)=two_pi*k/N
+# NECESSERY DUE TO LEGACY GEOMETRY CONVENTIONS
+# Convert boundary into canonical form:
+# comps = [comp1, comp2, ...]
+# where each comp is a Vector of curves/segments forming one closed component.
+function _boundary_components(boundary)
+    if isempty(boundary)
+        error("Boundary cannot be empty.")
+    end
+    if boundary[1] isa AbstractVector
+        comps=boundary
+    else
+        comps=[[crv] for crv in boundary]
+    end
+    return comps
+end
 
 struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
@@ -247,9 +283,9 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
-#######################
-#### KRESS CORNERS ####
-#######################
+#############################
+#### KRESS SINGLE CORNER ####
+#############################
 
 function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
@@ -283,47 +319,188 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
+############################
+#### KRESS MULTI CORNER ####
+############################
+
+# Compute segment lengths, cumulative lengths, and total length
+# comp = [seg₁, seg₂, ..., seg_m] forming one closed component
+# global arc-length parametrization used to  map the global parameter t ∈ [0,2π) to segments.
+function component_lengths(comp::Vector)
+    lens=[crv.length for crv in comp]
+    cum=Vector{eltype(lens)}(undef,length(lens)+1)
+    cum[1]=zero(eltype(lens))
+    for j in 1:length(lens)
+        cum[j+1]=cum[j]+lens[j]
+    end
+    return lens,cum,cum[end]
+end
+
+# Build global corner locations in σ ∈ [0,2π)
+# Each segment junction is treated as a "corner" for grading.
+# If segment j ends at arc-length s = cum[j+1], then its σ-location is:
+# σ = 2π * (cum[j+1]/Ltot)
+# We include σ=0 explicitly (periodic corner).
+function _component_corner_locations(::Type{T},comp::Vector) where {T<:Real}
+    lens,cum,Ltot=component_lengths(comp)
+    corners=T[zero(T)]
+    for j in 1:length(comp)-1
+        push!(corners,T(two_pi)*(cum[j+1]/Ltot))
+    end
+    return corners
+end
+
+# Map global periodic parameter t ∈ [0,2π) to:
+# (j,u) where
+# j = index of the segment in the composite component
+# u ∈ [0,1] = local parameter on that segment
+#
+# The composite component comp=[seg₁,seg₂,...,seg_m] is viewed as one closed
+# boundary with total length Ltot. The global parameter t is first converted to
+# an arc-length coordinate s = (t / 2π) * Ltot, and then we determine which segment contains this arc-length position.
+#
+# Returns:
+#   j = segment index
+#   u = local parameter on comp[j]
+# Special care is taken at the periodic seam so that t near 2π maps back to the first segment with u=0.
+function _global_t_to_segment_u(::Type{T},comp::Vector,t::T) where {T<:Real}
+    lens,cum,Ltot=_component_lengths(comp)
+    s=(t/T(two_pi))*Ltot
+    s>=Ltot && return 1,zero(T)
+    j=searchsortedlast(cum,s)
+    j=clamp(j,1,length(comp))
+    while j<length(comp) && s>=cum[j+1]
+        j+=1
+    end
+    slocal=s-cum[j]
+    u=lens[j]==zero(T) ? zero(T) : slocal/lens[j]
+    return j,clamp(u,zero(T),one(T))
+end
+
+# Evaluate the composite boundary geometry at global parameter t ∈ [0,2π).
+# The boundary component is given as an ordered list of smooth segments
+# comp=[seg₁,seg₂,...,seg_m]. This helper:
+#   1. maps t to the appropriate segment j and local parameter u,
+#   2. evaluates the point γ(u) on that segment,
+#   3. converts first and second derivatives from the local segment parameter u
+#      to derivatives with respect to the global periodic parameter t.
+# If γ_u and γ_uu are derivatives of the segment parameterization with respect to
+# u ∈ [0,1], then since du/dt = 2π / (Ltot * length(seg_j)), we obtain γ_t  = γ_u  * du/dt,
+# γ_tt = γ_uu * (du/dt)^2, because the map from t to u is affine on each segment interior.
+#
+# Returns:
+#   xy   = boundary point γ(t)
+#   γt   = first derivative with respect to global parameter t
+#   γtt  = second derivative with respect to global parameter t
+function _eval_composite_geom_global_t(::Type{T},comp::Vector,t::T) where {T<:Real}
+    lens,_,Ltot=_component_lengths(comp)
+    j,u=_global_t_to_segment_u(T,comp,t)
+    crv=comp[j]
+    xy=curve(crv,u)
+    du_dt=lens[j]==zero(T) ? zero(T) : T(two_pi)/(Ltot*lens[j])
+    γu=tangent(crv,u)
+    γuu=tangent_2(crv,u)
+    γt=γu*du_dt
+    γtt=γuu*(du_dt^2)
+    return xy,γt,γtt
+end
+
+# Evaluate one closed composite boundary component using
+# global multi-corner Kress grading.
+#
+# Steps:
+#   1. Compute total boundary length Ltot
+#   2. Choose total number of nodes N ~ k * Ltot
+#   3. Build corner locations from segment joins
+#   4. Generate graded nodes σ_k and map s = w(σ)
+#   5. Evaluate geometry at each s_k via segment mapping
+#   6. Apply chain rule to combine geometry + grading
+#   7. Compute arc-length increments ds
+#   8. Return BoundaryPointsCFIE object
+#
+# Output:
+#   One BoundaryPointsCFIE representing the entire component - flag is_periodic=true since it's a closed curve.
+#
+# This replaces per-segment discretization with a single
+# global discretization, which is required for Kress splitting.
+function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    # total length
+    _,_,Ltot=component_lengths(comp)
+    # choose number of nodes
+    bs=solver.pts_scaling_factor
+    N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
+    # enforce symmetry compatibility - like above 
+    needed=1
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        if sym isa Rotation
+            iseven(sym.n) && error("Incompatible. If sym.n is even, please use reflections.")
+            needed=lcm(needed,sym.n)
+        end
+    end
+    remN=mod(N,needed)
+    remN!=0 && (N+=needed-remN)
+    iseven(N) && (N+=needed)  # enforce odd N
+    # build corner locations
+    corners=_component_corner_locations(T,comp)
+    # global graded nodes
+    σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq)
+    # allocate outputs
+    xy=Vector{SVector{2,T}}(undef,N)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    @inbounds for i in 1:N
+        q,γt,γtt=_eval_composite_geom_global_t(T,comp,tmap[i])
+        # combine geometry derivatives with grading derivatives
+        xy[i]=q
+        tangent_1st[i]=γt*jac[i]
+        tangent_2nd[i]=γtt*(jac[i]^2)+γt*jac2[i]
+    end
+    # compute arc-length increments ds
+    ss=zeros(T,N)
+    @inbounds for i in 2:N
+        dx=xy[i][1]-xy[i-1][1]
+        dy=xy[i][2]-xy[i-1][2]
+        ss[i]=ss[i-1]+hypot(dx,dy)
+    end
+    ds=diff(ss)
+    append!(ds,Ltot+ss[1]-ss[end])  # periodic closure
+    # Kress weights
+    h=pi/T((N+1)÷2)
+    ts=σ  # computational nodes
+    ws=fill(h,N) # trapezoidal weights
+    ws_der=jac # w'(σ)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
+end
+
 ####################
 #### HIGH LEVEL ####
 ####################
 
-"""
-    evaluate_points(solver::Union{CFIE_kress{T},CFIE_kress_corners{T}},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-
-Evaluate the boundary points, tangents, and weights for all components of the billiard's boundary using the CFIE_kress or CFIE_kress_corners method. This function iterates over each component of the boundary, calls the `_evaluate_points` helper function to compute the necessary information for each component, and then assembles the results into a vector of `BoundaryPointsCFIE` structs. The function also handles the orientation of the tangents and weights for holes in the billiard by reversing their order and flipping their signs as needed.
-
-Accepts either:
-- A vector of curve components where each component is a single smooth closed curve (e.g., `[outer, hole1, hole2, ...]`).
-- A vector of vectors where each inner vector contains a single curve component (e.g., `[[outer], [hole1], [hole2], ...]`). This is how Alpet expects the input, but we allow both for flexibility. The function will check the structure of the input and process it accordingly.
-Rejects composite multi-segment components like `[[seg1, seg2, ...], ...]` since CFIE_kress requires each component to be a single smooth closed curve.
-
-# Inputs:
-- `solver`: The CFIE_kress or CFIE_kress_corners solver instance containing the boundary discretization and weights.
-- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
-- `k`: The wavenumber for which to evaluate the boundary points and tangents.
-
-# Output:
-- A vector of `BoundaryPointsCFIE` structs, where each struct contains the evaluated boundary points, tangents, weights, and other relevant information for each component of the billiard's boundary. The first component corresponds to the outer boundary, and subsequent components correspond to holes in the billiard, with their tangents and weights appropriately oriented.
-"""
 function evaluate_points(solver::Union{CFIE_kress{T},CFIE_kress_corners{T}},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=billiard.full_boundary
-    if !(boundary[1] isa AbstractVector)
-        pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
-        for (idx,crv) in enumerate(boundary)
-            p=_evaluate_points(solver,crv,k,idx)
-            pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
-        end
-        return pts
-    end
-    ncomp=length(boundary)
-    pts=Vector{BoundaryPointsCFIE{T}}(undef,ncomp)
-    for (idx,comp) in enumerate(boundary)
+    comps=_boundary_components(billiard.full_boundary)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(comps))
+    for (idx,comp) in enumerate(comps)
         length(comp)==1 || error("Kress requires each boundary component to be a single smooth closed curve.")
         crv=comp[1]
         p=_evaluate_points(solver,crv,k,idx)
         pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
     end
+    return pts
+end
 
+function evaluate_points(solver::CFIE_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    comps=_boundary_components(billiard.full_boundary)
+    pts=Vector{BoundaryPointsCFIE{T}}(undef,length(comps))
+    for (idx,comp) in enumerate(comps)
+        isempty(comp) && error("Boundary component cannot be empty.")
+        if length(comp)==1
+            p=_evaluate_points(CFIE_kress_corners(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry,kressq=solver.kressq),comp[1],k,idx)
+        else
+            p=_evaluate_points(solver,comp,k,idx)
+        end
+        pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
+    end
     return pts
 end
 

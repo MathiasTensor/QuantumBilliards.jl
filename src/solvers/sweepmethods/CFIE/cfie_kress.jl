@@ -194,7 +194,7 @@ function build_Rmat_kress(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}})
 end
 
 #Build the matrix for the Kress corner case by evaluating the logarithmic kernel on the original ts grid (before grading) for each component of the boundary. This function is used when the Kress grading is applied to handle corners, and it computes the R matrix using the kress_log_corner! function for each component's corresponding block. The resulting R matrix is block diagonal, with each block containing the logarithmic kernel evaluated on the original equispaced grid for that component.
-function build_Rmat_kress(solver::CFIE_kress_corners,pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+function build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     Rmat=zeros(T,Ntot,Ntot)
@@ -204,6 +204,11 @@ function build_Rmat_kress(solver::CFIE_kress_corners,pts::Vector{BoundaryPointsC
     end
     return Rmat
 end
+
+# helpers for construct_matrices! to determine the bool kwarg for cfie_geom_cache to decide whether to include the log(w') correction
+@inline _is_kress_graded(::CFIE_kress)=false
+@inline _is_kress_graded(::CFIE_kress_corners)=true
+@inline _is_kress_graded(::CFIE_kress_global_corners)=true
 
 # construct_matrices!
 # Low-level function to construct the system matrix A for the CFIE_kress method. This function fills in the entries of A based on the boundary points, their weights, and the geometry of the problem, using the provided Kress R matrix for the singularity regularization. The resulting matrix A is modified in place and can then be used for solving the eigenvalue problem.
@@ -218,7 +223,7 @@ end
 #
 # Output:
 # - The constructed system matrix A for the CFIE_kress method, modified in place.
-function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     αL1= -k*inv_two_pi
     αL2=k/2*im
@@ -226,7 +231,7 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
     αM2=Complex{T}(0,one(T)/2)
     ik=k*im
     fill!(A,zero(Complex{T}))
-    Gs=[cfie_geom_cache(p) for p in pts]
+    Gs=_is_kress_graded(solver) ? [cfie_geom_cache(p,true) for p in pts] : [cfie_geom_cache(p,false) for p in pts]
     nc=length(pts)
     for a in 1:nc
         pa=pts[a]
@@ -268,109 +273,6 @@ function construct_matrices!(solver::CFIE_kress,A::Matrix{Complex{T}},pts::Vecto
                 sval_ij=Rmat[gi,gj]*m1_ij+wj*m2_ij
                 A[gi,gj]=-(dval_ij+ik*sval_ij)
                 wi=pa.ws[i]
-                l1_ji=αL1*inn_ji*j1*invr
-                l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
-                dval_ji=Rmat[gj,gi]*l1_ji+wi*l2_ji
-                m1_ji=αM1*j0*si
-                m2_ji=αM2*h0*si-m1_ji*lt
-                sval_ji=Rmat[gj,gi]*m1_ji+wi*m2_ji
-                A[gj,gi]=-(dval_ji+ik*sval_ji)
-            end
-        end
-    end
-    for a in 1:nc, b in 1:nc
-        a==b && continue
-        pa=pts[a]
-        pb=pts[b]
-        Na=length(pa.xy)
-        Nb=length(pb.xy)
-        ra=offs[a]:(offs[a+1]-1)
-        rb=offs[b]:(offs[b+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Xb=getindex.(pb.xy,1)
-        Yb=getindex.(pb.xy,2)
-        dXb=getindex.(pb.tangent,1)
-        dYb=getindex.(pb.tangent,2)
-        sb=@. sqrt(dXb^2+dYb^2)
-        @use_threads multithreading=multithreaded for j in 1:Nb
-            gj=rb[j]
-            xj=Xb[j]
-            yj=Yb[j]
-            txj=dXb[j]
-            tyj=dYb[j]
-            sj=sb[j]
-            wj=pb.ws[j]
-            @inbounds for i in 1:Na
-                gi=ra[i]
-                dx=Xa[i]-xj
-                dy=Ya[i]-yj
-                r2=muladd(dx,dx,dy*dy)
-                r2<=(eps(T))^2 && continue
-                r=sqrt(r2)
-                invr=inv(r)
-                inn=tyj*dx-txj*dy
-                h1=H(1,k*r)
-                h0=H(0,k*r)
-                dval=wj*(αL2*inn*h1*invr)
-                sval=wj*(αM2*h0*sj)
-                A[gi,gj]=-(dval+ik*sval)
-            end
-        end
-    end
-    return A
-end
-
-function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    offs=component_offsets(pts)
-    αL1= -k*inv_two_pi
-    αL2=Complex{T}(0,k/2)
-    αM1=-inv_two_pi
-    αM2=Complex{T}(0,one(T)/2)
-    ik=im*k
-    fill!(A,zero(Complex{T}))
-    Gs=[cfie_geom_cache(p,true) for p in pts]
-    nc=length(pts)
-    for a in 1:nc
-        pa=pts[a]
-        Ga=Gs[a]
-        Na=length(pa.xy)
-        ra=offs[a]:(offs[a+1]-1)
-        @inbounds for i in 1:Na
-            gi=ra[i]
-            si=Ga.speed[i]
-            κi=Ga.kappa[i]
-            wi=pa.ws[i]
-            dval= Complex{T}(wi*κi,zero(T))
-            m1=αM1*si
-            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
-            sval= Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
-            A[gi,gi]=one(Complex{T})-(dval+ik*sval)
-        end
-        @use_threads multithreading=multithreaded for j in 2:Na
-            gj=ra[j]
-            sj=Ga.speed[j]
-            wj=pa.ws[j]
-            @inbounds for i in 1:(j-1)
-                gi=ra[i]
-                si=Ga.speed[i]
-                wi=pa.ws[i]
-                rij=Ga.R[i,j]
-                invr=Ga.invR[i,j]
-                lt=Ga.logterm[i,j]
-                h1=H(1,k*rij)
-                h0=H(0,k*rij)
-                j1=real(h1)
-                j0=real(h0)
-                inn_ij=Ga.inner[i,j]
-                inn_ji=Ga.inner[j,i]
-                l1_ij=αL1*inn_ij*j1*invr
-                l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
-                dval_ij=Rmat[gi,gj]*l1_ij+wj*l2_ij
-                m1_ij=αM1*j0*sj
-                m2_ij=αM2*h0*sj-m1_ij*lt
-                sval_ij=Rmat[gi,gj]*m1_ij+wj*m2_ij
-                A[gi,gj]=-(dval_ij+ik*sval_ij)
                 l1_ji=αL1*inn_ji*j1*invr
                 l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
                 dval_ji=Rmat[gj,gi]*l1_ji+wi*l2_ji
@@ -425,20 +327,20 @@ function construct_matrices!(solver::CFIE_kress_corners,A::Matrix{Complex{T}},pt
 end
 
 """
-    construct_matrices(solver::Union{CFIE_kress,CFIE_kress_corners},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_matrices(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
 
 High-level function to construct the system matrix A for the CFIE_kress methods. This function computes the R matrix using build_Rmat_kress and then calls construct_matrices! to fill in the entries of A based on the boundary points, their weights, and the geometry of the problem. The resulting matrix A is returned, which can then be used for solving the eigenvalue problem.
  
 # Inputs:
-- `solver`: The CFIE_kress / CFIE_kress_corners solver instance containing the boundary discretization and weights.
+- `solver`: The CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners solver instance containing the boundary discretization and weights.
 - `pts`: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
 - `k`: The wavenumber for which to construct the system matrix.
 - `multithreaded`: A boolean flag indicating whether to use multithreading for matrix construction.
 
 # Output:
-- The constructed system matrix A for the CFIE_kress / CFIE_kress_corners methods.
+- The constructed system matrix A for the CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners methods.
 """
-function construct_matrices(solver::Union{CFIE_kress,CFIE_kress_corners},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -448,17 +350,17 @@ function construct_matrices(solver::Union{CFIE_kress,CFIE_kress_corners},pts::Ve
 end
 
 """
-    solve(solver::CFIE_kress,A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+    solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem for a single wavenumber. This function constructs the system matrix using the provided R matrix and then computes the smallest singular value (or determinant) corresponding to the eigenvalue of interest.
 
 # Inputs:
-- `solver`: The CFIE_kress solver instance containing the boundary discretization and weights.
+- `solver`: The CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners solver instance containing the boundary discretization and weights.
 - `A`: The system matrix to be filled in by the construct_matrices! function.
 - `basis`: The basis used for the solution (not utilized in this function but included for consistency with other solve functions).
 - `pts`: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
 - `k`: The wavenumber for which to solve the eigenvalue problem.
-- `Rmat`: The precomputed R matrix for the CFIE_kress method, which is used in the construction of the system matrix A.
+- `Rmat`: The precomputed R matrix for the CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners methods, which is used in the construction of the system matrix A.
 - `multithreaded`: A boolean flag indicating whether to use multithreading for matrix construction.
 - `use_krylov`: A boolean flag indicating whether to use a Krylov method for computing the smallest singular value (if true) or to compute the full SVD (if false).
 - `which`: A symbol indicating whether to compute the determinant (:det) or the smallest singular value (:svd) for the eigenvalue. Note that the Krylov method does not support determinant calculation and will fall back to SVD if `:det` is selected. Also there is option :det_argmin which can be used for finding minima.
@@ -466,28 +368,28 @@ High-level function to solve the CFIE eigenvalue problem for a single wavenumber
 # Output:
 - The smallest singular value (or determinant) corresponding to the eigenvalue of interest.
 """
-function solve(solver::Union{CFIE_kress,CFIE_kress_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
 """
-    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem for a single wavenumber and return both the smallest singular value and the corresponding right singular vector (eigenfunction). This function constructs the system matrix using the provided R matrix and then computes the SVD to extract the smallest singular value and its associated singular vector.
 
 # Inputs:
-- `solver`: The CFIE_kress / CFIE_kress_corners solver instance containing the boundary discretization and weights.
+- `solver`: The CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners solver instance containing the boundary discretization and weights.
 - `basis`: The basis used for the solution (not utilized in this function but included for consistency with other solve functions).
 - `pts`: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
 - `k`: The wavenumber for which to solve the eigenvalue problem.
-- `Rmat`: The precomputed R matrix for the CFIE_kress / CFIE_kress_corners methods, which is used in the construction of the system matrix A.
+- `Rmat`: The precomputed R matrix for the CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners methods, which is used in the construction of the system matrix A.
 - `multithreaded`: A boolean flag indicating whether to use multithreading for matrix construction.
 
 # Output:
  - A tuple containing the smallest singular value (eigenvalue) and the corresponding right singular vector for the given wavenumber.
 """
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
@@ -497,12 +399,12 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},A::Matrix{Compl
 end
 
 """
-    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem for a single wavenumber and return both the smallest singular value and the corresponding right singular vector (eigenfunction).
 
 # Inputs:
-- `solver`: The CFIE_kress / CFIE_kress_corners solver instance containing the boundary discretization and weights.
+- `solver`: The CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners solver instance containing the boundary discretization and weights.
 - `basis`: The basis used for the solution (not utilized in this function but included for consistency with other solve functions).
 - `pts`: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
 - `k`: The wavenumber for which to solve the eigenvalue problem.
@@ -510,7 +412,7 @@ High-level function to solve the CFIE eigenvalue problem for a single wavenumber
 # Output:
 - A tuple containing the smallest singular value (eigenvalue) and the corresponding right singular vector for the given wavenumber.
 """
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -524,12 +426,12 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::
 end
 
 """
-    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem for a vector of wavenumbers. This function iterates over the provided wavenumbers, evaluates the boundary points and weights for each wavenumber, and then calls the solve_vect function to compute the smallest singular value and corresponding singular vector for each wavenumber. The results are collected in vectors and returned as a tuple.
 
 # Inputs:
-- `solver`: The CFIE_kress / CFIE_kress_corners solver instance containing the boundary discretization and weights.
+- `solver`: The CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners solver instance containing the boundary discretization and weights.
 - `basis`: The basis used for the solution (not utilized in this function but included for consistency with other solve functions).
 - `pts`: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
 - `ks`: A vector of wavenumbers for which to solve the eigenvalue problem.
@@ -538,7 +440,7 @@ High-level function to solve the CFIE eigenvalue problem for a vector of wavenum
 # Output:
 - A tuple containing two vectors: the first vector contains the smallest singular values (eigenvalues) for each wavenumber, and the second vector contains the corresponding singular vectors for each wavenumber.
 """
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
     pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks)}}}(undef,length(ks))
     for i in eachindex(ks)
@@ -551,11 +453,11 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,ks::V
 end
 
 """
-    solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+    solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
 
 High-level function to solve the CFIE eigenvalue problem while also providing detailed timing and condition number information. This function constructs the system matrix, computes its condition number, performs the SVD / det, and then reports the time taken for each step as well as the condition number of the matrix.
 # Inputs:
-- `solver`: The CFIE_kress / CFIE_kress_corners solver instance containing the boundary discretization and weights.
+- `solver`: The CFIE_kress / CFIE_kress_corners / CFIE_kress_global_corners solver instance containing the boundary discretization and weights.
 - `basis`: The basis used for the solution (not utilized in this function but included for consistency with other solve functions).
 - `pts`: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
 - `k`: The wavenumber for which the eigenvalue problem is being solved.
@@ -566,7 +468,7 @@ High-level function to solve the CFIE eigenvalue problem while also providing de
 # Output:
 # - The smallest singular value (or determinant) corresponding to the eigenvalue of interest, along with detailed timing information for each step of the computation.
 """
-function solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     t0=time()
     @info "Constructing circulant R matrix..."
     offs=component_offsets(pts)
@@ -599,19 +501,9 @@ end
 #### CFIE_kress UTILS ####
 ##########################
 
-# plot_boundary_with_weight_INFO
-# Utility function to visualize the boundary points along with their associated weights for the CFIE_kress method. This function creates a figure showing the boundary points colored by their weights, as well as arrows indicating the tangential direction at each point. Additionally, it plots the weight functions and their derivatives for each panel in separate subplots. This visualization can help in understanding the distribution of weights and the geometry of the boundary discretization.
-#
-# Inputs:
-# - billiard: The billiard object representing the geometry of the problem.
-# - solver: The CFIE_kress / CFIE_kress_corners solver instance containing the boundary discretization and weights.
-# - k: The wavenumber used in the evaluation of the points and weights.
-# - markersize: The size of the markers used to plot the boundary points.
-#
-# Output:
-# - A figure object containing the visualizations of the boundary points, weights, and their derivatives
-function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CFIE_kress_corners};k=20.0,markersize=5) where {Bi<:AbsBilliard}
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners};k=20.0,markersize=5) where {Bi<:AbsBilliard}
     pts_all=evaluate_points(solver,billiard,k)
+    comps=_boundary_components(billiard.full_boundary)
     ncomp=length(pts_all)
     f=Figure(resolution=(1200,400+300*ncomp))
     ax=Axis(f[1,1],title="boundary + point-wise weights",aspect=DataAspect())
@@ -629,6 +521,7 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CF
     hidespines!(ax,:t,:r)
     for j in 1:ncomp
         pts=pts_all[j]
+        comp=comps[j]
         row=2+j
         a1=Axis(f[row,1],title="component $j: ws",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws")
         a2=Axis(f[row+1,1],title="component $j: ws_der",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws_der")
@@ -638,7 +531,7 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CF
         scatter!(a1,ts,ws,markersize=7)
         scatter!(a2,ts,ws_der,markersize=7)
         if solver isa CFIE_kress
-            h=length(ts) > 1 ? ts[2]-ts[1] : 0.0
+            h=length(ts)>1 ? ts[2]-ts[1] : 0.0
             lines!(a1,ts,fill(h,length(ts)),linewidth=2)
             lines!(a2,ts,fill(one(eltype(ts)),length(ts)),linewidth=2)
         elseif solver isa CFIE_kress_corners
@@ -650,6 +543,14 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CF
             wderline=@. _kress_wprime(tloc,qT)
             lines!(a1,tloc,wline,linewidth=2)
             lines!(a2,tloc,wderline,linewidth=2)
+        elseif solver isa CFIE_kress_global_corners
+            T=eltype(ts)
+            tloc=collect(range(zero(T),T(2pi),length=800))
+            h=T(pi/((length(ts)+1)÷2))
+            corners=length(comp)==1 ? T[zero(T)] : _component_corner_locations(T,comp)
+            _,_,wprime,wdoubleprime,_=multi_kress_graded_nodes_data(T,length(tloc)%2==1 ? length(tloc) : length(tloc)-1,corners;q=solver.kressq)
+            lines!(a1,ts,ws,linewidth=2)
+            lines!(a2,ts,ws_der,linewidth=2)
         end
         hidespines!(a1,:t,:r)
         hidespines!(a2,:t,:r)
@@ -661,7 +562,7 @@ end
 #### LEGACY ####
 ################
 
-function solve(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -670,7 +571,7 @@ function solve(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vecto
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve(solver::Union{CFIE_kress,CFIE_kress_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
