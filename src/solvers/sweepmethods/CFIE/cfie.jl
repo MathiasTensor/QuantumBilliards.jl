@@ -397,7 +397,7 @@ function _eval_composite_geom_global_t(::Type{T},comp::Vector,t::T) where {T<:Re
     j,u=_global_t_to_segment_u(T,comp,t)
     crv=comp[j]
     xy=curve(crv,u)
-    du_dt=lens[j]==zero(T) ? zero(T) : T(two_pi)/(Ltot*lens[j])
+    du_dt=lens[j]==zero(T) ? zero(T) : Ltot/(T(two_pi)*lens[j])
     γu=tangent(crv,u)
     γuu=tangent_2(crv,u)
     γt=γu*du_dt
