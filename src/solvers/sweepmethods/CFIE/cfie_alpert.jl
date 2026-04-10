@@ -969,50 +969,19 @@ function _assemble_self_alpert_composite_smooth_component!(
     A, gi, xi, yi, i, ui, ra, Ca, ha, k, rule, αD, αS, ik
 )
 
-            # corrected smooth right-neighbor continuation
             if next_idx != 0
-                for p in 1:rule.j
-                    Δu = ha * rule.x[p]
-                    e = ui + Δu - one(T)
-                    e <= zero(T) && continue
+    _add_smooth_neighbor_correction!(
+        A, gi, xi, yi, ui, pa, next_pts, next_ra, pinterp, :right,
+        ha, k, αD, αS, ik, rule
+    )
+end
 
-                    x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(next_pts, e, pinterp)
-                    dx = xi - x
-                    dy = yi - y
-                    r2 = muladd(dx,dx,dy*dy)
-                    r2 <= (eps(T))^2 && continue
-                    r = sqrt(r2)
-                    fac = ha * rule.w[p]
-                    inn = _dinner(dx,dy,tx,ty)
-                    coeffD = -(fac * (αD * inn * H(1,k*r) / r))
-                    coeffS = -ik * (fac * (αS * H(0,k*r) * s2))
-                    _scatter_localp!(A, gi, next_ra, coeffD, idx2, wt2)
-                    _scatter_localp!(A, gi, next_ra, coeffS, idx2, wt2)
-                end
-            end
-
-            # corrected smooth left-neighbor continuation
-            if prev_idx != 0
-                for p in 1:rule.j
-                    Δu = ha * rule.x[p]
-                    e = Δu - ui
-                    e <= zero(T) && continue
-
-                    u2 = one(T) - e
-                    x,y,tx,ty,s2,idx2,wt2 = _eval_on_open_panel_localp(prev_pts, u2, pinterp)
-                    dx = xi - x
-                    dy = yi - y
-                    r2 = muladd(dx,dx,dy*dy)
-                    r2 <= (eps(T))^2 && continue
-                    r = sqrt(r2)
-                    fac = ha * rule.w[p]
-                    inn = _dinner(dx,dy,tx,ty)
-                    coeffD = -(fac * (αD * inn * H(1,k*r) / r))
-                    coeffS = -ik * (fac * (αS * H(0,k*r) * s2))
-                    _scatter_localp!(A, gi, prev_ra, coeffD, idx2, wt2)
-                    _scatter_localp!(A, gi, prev_ra, coeffS, idx2, wt2)
-                end
-            end
+if prev_idx != 0
+    _add_smooth_neighbor_correction!(
+        A, gi, xi, yi, ui, pa, prev_pts, prev_ra, pinterp, :left,
+        ha, k, αD, αS, ik, rule
+    )
+end
         end
     end
 
