@@ -215,7 +215,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             tnew=res.minimum
             if lev==length(pts_refinement_factors) && isfinite(tnew) && abs(tnew)>1e-10
                 h=1e-6*max(1.0,abs(knew))
-                knew=newton_refine(fcur,knew;a=a,b=b;h=h)
+                knew=newton_refine(fcur,knew;a=a,b=b,h=h)
                 ttry=fcur(knew)
                 if isfinite(ttry)
                     tnew=ttry
