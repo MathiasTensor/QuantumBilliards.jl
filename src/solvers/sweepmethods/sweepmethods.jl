@@ -248,7 +248,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
-            t_app=log10(abs(tens[i]))
+            idx_app=argmin(abs.(ks.-k_app))
+            t_app=log10(abs(tens[idx_app]))
             t_ref=log10(abs(tens_refined[i]))
             dk_i=k_ref-k_app
             println(rpad("$(i)",4),
