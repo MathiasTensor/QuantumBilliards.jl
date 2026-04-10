@@ -788,6 +788,7 @@ function _add_same_panel_self_correction!(
     xi::T,
     yi::T,
     i::Int,
+    ui::T,
     ra::UnitRange{Int},
     Ca::AlpertSmoothPanelCache{T},
     ha::T,
@@ -801,35 +802,40 @@ function _add_same_panel_self_correction!(
     jcorr = rule.j
 
     @inbounds for p in 1:jcorr
+        Δu = ha * rule.x[p]
         fac = ha * rule.w[p]
 
-        dx = xi - Ca.xp[p,i]
-        dy = yi - Ca.yp[p,i]
-        r2 = muladd(dx, dx, dy*dy)
-        if isfinite(r2) && r2 > (eps(T))^2
-            r = sqrt(r2)
-            inn = _dinner(dx,dy,Ca.txp[p,i],Ca.typ[p,i])
-            coeffD = -(fac * (αD * inn * H(1,k*r) / r))
-            coeffS = -ik * (fac * (αS * H(0,k*r) * Ca.sp[p,i]))
-            for m in axes(Ca.idxp,3)
-                q = Ca.idxp[p,i,m]
-                w = Ca.wtp[p,i,m]
-                A[gi,ra[q]] += coeffD*w + coeffS*w
+        if ui + Δu < one(T)
+            dx = xi - Ca.xp[p,i]
+            dy = yi - Ca.yp[p,i]
+            r2 = muladd(dx, dx, dy*dy)
+            if isfinite(r2) && r2 > (eps(T))^2
+                r = sqrt(r2)
+                inn = _dinner(dx,dy,Ca.txp[p,i],Ca.typ[p,i])
+                coeffD = -(fac * (αD * inn * H(1,k*r) / r))
+                coeffS = -ik * (fac * (αS * H(0,k*r) * Ca.sp[p,i]))
+                for m in axes(Ca.idxp,3)
+                    q = Ca.idxp[p,i,m]
+                    w = Ca.wtp[p,i,m]
+                    A[gi,ra[q]] += coeffD*w + coeffS*w
+                end
             end
         end
 
-        dx = xi - Ca.xm[p,i]
-        dy = yi - Ca.ym[p,i]
-        r2 = muladd(dx, dx, dy*dy)
-        if isfinite(r2) && r2 > (eps(T))^2
-            r = sqrt(r2)
-            inn = _dinner(dx,dy,Ca.txm[p,i],Ca.tym[p,i])
-            coeffD = -(fac * (αD * inn * H(1,k*r) / r))
-            coeffS = -ik * (fac * (αS * H(0,k*r) * Ca.sm[p,i]))
-            for m in axes(Ca.idxm,3)
-                q = Ca.idxm[p,i,m]
-                w = Ca.wtm[p,i,m]
-                A[gi,ra[q]] += coeffD*w + coeffS*w
+        if ui - Δu > zero(T)
+            dx = xi - Ca.xm[p,i]
+            dy = yi - Ca.ym[p,i]
+            r2 = muladd(dx, dx, dy*dy)
+            if isfinite(r2) && r2 > (eps(T))^2
+                r = sqrt(r2)
+                inn = _dinner(dx,dy,Ca.txm[p,i],Ca.tym[p,i])
+                coeffD = -(fac * (αD * inn * H(1,k*r) / r))
+                coeffS = -ik * (fac * (αS * H(0,k*r) * Ca.sm[p,i]))
+                for m in axes(Ca.idxm,3)
+                    q = Ca.idxm[p,i,m]
+                    w = Ca.wtm[p,i,m]
+                    A[gi,ra[q]] += coeffD*w + coeffS*w
+                end
             end
         end
     end
@@ -960,8 +966,8 @@ function _assemble_self_alpert_composite_smooth_component!(
 
             # corrected same-panel self
             _add_same_panel_self_correction!(
-                A, gi, xi, yi, i, ra, Ca, ha, k, rule, αD, αS, ik
-            )
+    A, gi, xi, yi, i, ui, ra, Ca, ha, k, rule, αD, αS, ik
+)
 
             # corrected smooth right-neighbor continuation
             if next_idx != 0
@@ -1096,8 +1102,8 @@ function _assemble_self_alpert_composite_corner_component!(
 
             # corrected same-panel self
             _add_same_panel_self_correction!(
-                A, gi, xi, yi, i, ra, Ca, ha, k, rule, αD, αS, ik
-            )
+    A, gi, xi, yi, i, Ca.us[i], ra, Ca, ha, k, rule, αD, αS, ik
+)
 
             # one-sided endpoint replacement on next panel
             if next_idx != 0
