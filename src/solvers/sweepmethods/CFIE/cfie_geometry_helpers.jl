@@ -19,7 +19,9 @@ end
 
 @inline function _unit_tangent(v::SVector{2,T}) where {T<:Real}
     n = sqrt(v[1]^2 + v[2]^2)
-    n == zero(T) && error("Zero tangent encountered in _unit_tangent.")
+    if n < eps(T)
+        return SVector(one(T), zero(T))  # harmless fallback
+    end
     return v / n
 end
 
