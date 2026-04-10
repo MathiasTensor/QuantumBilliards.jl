@@ -194,10 +194,11 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,nk)
-    p=Progress(nk;desc="Refining minima (Newton)...")
+    p=Progress(nk;desc="Refining minima")
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
-        dk0=tens[i]*10 # heuristic initial window size based on the tension value, good proxy for number of good digits
+        idx_app=argmin(abs.(ks.-kcur))
+        dk0=abs(tens[idx_app])*10 # heuristic initial window size based on the tension value, good proxy for number of good digits
         window=dk0
         hist=NamedTuple[]
         tprev=T(NaN)
