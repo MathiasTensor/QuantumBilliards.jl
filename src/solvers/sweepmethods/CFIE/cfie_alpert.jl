@@ -267,9 +267,12 @@ function _add_corner_neighbor_endpoint_correction!(
         r = sqrt(r2)
         inn = _dinner(dx, dy, tx, ty)
 
-        fac = hsrc_ref * rule.w[p]
-        coeffD = -(fac * (αD * inn * H(1, k*r) / r))
-        coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
+        τx = tx / s2
+τy = ty / s2
+inns = _dinner(dx,dy,τx,τy)
+fac = hs_ref * rule.w[p]
+coeffD = -(fac * (αD * inns * H(1, k*r) / r))
+coeffS = -ik * (fac * (αS * H(0, k*r)))
 
         _scatter_localp!(A, gi, rnb, coeffD, idx2, wt2)
         _scatter_localp!(A, gi, rnb, coeffS, idx2, wt2)
@@ -320,9 +323,13 @@ function _add_smooth_neighbor_correction!(
             r2 <= (eps(T))^2 && continue
             r = sqrt(r2)
             inn = _dinner(dx,dy,tx,ty)
-            fac = ha * rule.w[p]
-            coeffD = -(fac * (αD * inn * H(1, k*r) / r))
-            coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
+            hs_ref = ha * s_cur
+τx = tx / s2
+τy = ty / s2
+inns = _dinner(dx,dy,τx,τy)
+fac = hs_ref * rule.w[p]
+coeffD = -(fac * (αD * inns * H(1, k*r) / r))
+coeffS = -ik * (fac * (αS * H(0, k*r)))
             _scatter_localp!(A, gi, rnb, coeffD, idx2, wt2)
             _scatter_localp!(A, gi, rnb, coeffS, idx2, wt2)
         end
@@ -346,9 +353,13 @@ function _add_smooth_neighbor_correction!(
             r2 <= (eps(T))^2 && continue
             r = sqrt(r2)
             inn = _dinner(dx,dy,tx,ty)
-            fac = ha * rule.w[p]
-            coeffD = -(fac * (αD * inn * H(1, k*r) / r))
-            coeffS = -ik * (fac * (αS * H(0, k*r) * s2))
+            hs_ref = ha * s_cur
+τx = tx / s2
+τy = ty / s2
+inns = _dinner(dx,dy,τx,τy)
+fac = hs_ref * rule.w[p]
+coeffD = -(fac * (αD * inns * H(1, k*r) / r))
+coeffS = -ik * (fac * (αS * H(0, k*r)))
             _scatter_localp!(A, gi, rnb, coeffD, idx2, wt2)
             _scatter_localp!(A, gi, rnb, coeffS, idx2, wt2)
         end
