@@ -157,8 +157,8 @@ macro svd_or_det_solve(A,use_krylov,which,blas_threads)
                 @blas_multi_then_1 $(esc(blas_threads)) d=det($(esc(A)))
                 return abs(d)
             elseif $(esc(which))===:svd
-                @blas_multi_then_1 $(esc(blas_threads)) s=svdvals($(esc(A)))
-                return s[end]
+                @blas_multi_then_1 $(esc(blas_threads)) _,S,_=LinearAlgebra.LAPACK.gesvd!('N','N',A)
+                return S[end]
             else
                 error("Invalid option for `which`. Use :det, :det_argmin, or :svd.")
             end

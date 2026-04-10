@@ -370,10 +370,6 @@ High-level function to solve the CFIE eigenvalue problem for a single wavenumber
 """
 function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::Matrix{Complex{T}},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    if any(z -> !isfinite(real(z)) || !isfinite(imag(z)), A)
-        bad=findfirst(z -> !isfinite(real(z)) || !isfinite(imag(z)), A)
-        error("Non-finite entry in A at index $bad for k=$k")
-    end
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
