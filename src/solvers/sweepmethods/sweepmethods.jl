@@ -227,7 +227,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             kprev=kcur
             tprev=tnew
             kcur=knew
-            window=max(window/window_shrink,dk0*final_window_factor)
+            #window=max(window/window_shrink,dk0*final_window_factor)
         end
         sols[i]=kcur
         tens_refined[i]=tprev
