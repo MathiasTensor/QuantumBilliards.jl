@@ -765,8 +765,20 @@ function _assemble_self_alpert_composite!(
             A[gi,gi] += one(Complex{T})
 
             # same-panel naive contribution, excluding near diagonal band
+            left_repl  = i > a-1
+            right_repl = i < Na-a+2
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;
-                skip_pred=j->(j==i || abs(j-i)<a))
+                
+skip_pred = j -> begin
+    j == i && return true
+    if j < i
+        return left_repl  && (i-j) < a
+    elseif j > i
+        return right_repl && (j-i) < a
+    else
+        return true
+    end
+end)
 
             # same-panel Alpert correction for the removed near-singular band
             _add_self_panel_alpert_correction!(A,gi,xi,yi,i,ra,Ca,hσ,k,αD,αS,ik,rule)
