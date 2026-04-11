@@ -100,6 +100,17 @@ end
     return X,Y,dX,dY,s
 end
 
+@inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
+    s=T(two_pi)*σ
+    ws=_kress_w(s,T(solver.kressq))
+    wsp=_kress_wprime(s,T(solver.kressq))
+    wspp=_kress_wdoubleprime(s,T(solver.kressq))
+    u=ws/T(two_pi)
+    jac=wsp
+    jac2=T(two_pi)*wspp
+    return u,jac,jac2
+end
+
 function _add_naive_panel_block!(
     A::AbstractMatrix{Complex{T}},
     gi::Int,xi::T,yi::T,
@@ -344,26 +355,15 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     return AlpertSmoothPanelCache(crv,sig,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
-function _build_alpert_component_cache(
-    solver::CFIE_alpert{T},
-    crv,
-    pts::BoundaryPointsCFIE{T},
-    rule::AlpertLogRule{T},
-    ord::Int
-) where {T<:Real}
+function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
     if pts.is_periodic
         return _build_alpert_periodic_cache(solver,crv,pts,rule,ord)
     else
-        # Match the rectangle test logic: use order+3 interpolation points
-        pinterp = max(8, ord + 3)
-        iseven(pinterp) || (pinterp += 1)
-
-        # Do not exceed panel size
-        pinterp = min(pinterp, length(pts.xy))
-        isodd(pinterp) && (pinterp -= 1)
-
-        pinterp >= 4 || error("Interpolation stencil too small for Alpert smooth panel cache.")
-
+        pinterp=max(8,ord+3)
+        iseven(pinterp) || (pinterp+=1)
+        pinterp=min(pinterp,length(pts.xy))
+        isodd(pinterp) && (pinterp-=1)
+        pinterp>=4 || error("Interpolation stencil too small for smooth-panel Alpert cache.")
         return _build_alpert_smooth_panel_cache(solver,crv,pts,rule,pinterp)
     end
 end
@@ -623,113 +623,6 @@ function _assemble_self_alpert!(
         _assemble_self_alpert_smooth_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
 end
 
-function _assemble_all_offpanel_naive!(
-    A::AbstractMatrix{Complex{T}},
-    pts::Vector{BoundaryPointsCFIE{T}},
-    offs::Vector{Int},
-    k::T;
-    multithreaded::Bool=true,
-) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-
-    for aidx in eachindex(pts)
-        pa=pts[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Na=length(pa.xy)
-
-        for bidx in eachindex(pts)
-            bidx==aidx && continue
-
-            pb=pts[bidx]
-            rb=offs[bidx]:(offs[bidx+1]-1)
-
-            Xb,Yb,dXb,dYb,sb=_panel_arrays(pb)
-            Nb=length(pb.xy)
-
-            @use_threads multithreading=multithreaded for j in 1:Nb
-                gj=rb[j]
-                xj=Xb[j]
-                yj=Yb[j]
-                txj=dXb[j]
-                tyj=dYb[j]
-                wd=pb.ws[j]
-                ws=pb.ws[j]*sb[j]
-
-                @inbounds for i in 1:Na
-                    gi=ra[i]
-                    dx=Xa[i]-xj
-                    dy=Ya[i]-yj
-                    r2=muladd(dx,dx,dy*dy)
-                    r2<=(eps(T))^2 && continue
-                    r=sqrt(r2)
-                    invr=inv(r)
-                    inn=_dinner(dx,dy,txj,tyj)
-                    dval=wd*(αD*inn*H(1,k*r)*invr)
-                    sval=ws*(αS*H(0,k*r))
-                    A[gi,gj]-=dval+ik*sval
-                end
-            end
-        end
-    end
-
-    return A
-end
-
-#=
-function _assemble_self_alpert_composite!(
-    solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    pts::Vector{BoundaryPointsCFIE{T}},
-    Gs::Vector{CFIEGeomCache{T}},
-    Cs,
-    offs::Vector{Int},
-    k::T,
-    rule::AlpertLogRule{T};
-    multithreaded::Bool=true,
-) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    a=rule.a
-
-    for aidx in eachindex(pts)
-        pa=pts[aidx]
-        pa.is_periodic && continue
-        Ca=Cs[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Na=length(pa.xy)
-        hσ=pa.ws[1]
-
-        @use_threads multithreading=multithreaded for i in 1:Na
-            gi=ra[i]
-            xi=Xa[i]
-            yi=Ya[i]
-            σi=Ca.sig[i]
-
-            A[gi,gi]+=one(Complex{T})
-
-            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;
-                skip_pred=j->(j==i || abs(j-i)<a))
-
-            for bidx in eachindex(pts)
-                bidx==aidx && continue
-                pb=pts[bidx]
-                rb=offs[bidx]:(offs[bidx+1]-1)
-                _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
-            end
-
-            _add_self_panel_alpert_correction!(A,gi,xi,yi,i,ra,Ca,hσ,k,αD,αS,ik,rule)
-        end
-    end
-    return A
-end
-=#
 function _assemble_self_alpert_composite!(
     solver::CFIE_alpert{T},
     A::AbstractMatrix{Complex{T}},
@@ -764,24 +657,67 @@ function _assemble_self_alpert_composite!(
 
             A[gi,gi] += one(Complex{T})
 
-            # same-panel naive contribution, excluding near diagonal band
-            left_repl  = i > a-1
-            right_repl = i < Na-a+2
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;
-                
-skip_pred = j -> begin
-    j == i && return true
-    if j < i
-        return left_repl  && (i-j) < a
-    elseif j > i
-        return right_repl && (j-i) < a
-    else
-        return true
-    end
-end)
+                skip_pred = j -> (j == i || abs(j-i) < a))
 
-            # same-panel Alpert correction for the removed near-singular band
             _add_self_panel_alpert_correction!(A,gi,xi,yi,i,ra,Ca,hσ,k,αD,αS,ik,rule)
+        end
+    end
+
+    return A
+end
+
+function _assemble_all_offpanel_naive!(
+    A::AbstractMatrix{Complex{T}},
+    pts::Vector{BoundaryPointsCFIE{T}},
+    offs::Vector{Int},
+    k::T;
+    multithreaded::Bool=true,
+) where {T<:Real}
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+
+    for aidx in eachindex(pts)
+        pa=pts[aidx]
+        ra=offs[aidx]:(offs[aidx+1]-1)
+        Xa=getindex.(pa.xy,1)
+        Ya=getindex.(pa.xy,2)
+        Na=length(pa.xy)
+
+        for bidx in eachindex(pts)
+            bidx==aidx && continue
+
+            pb=pts[bidx]
+            rb=offs[bidx]:(offs[bidx+1]-1)
+            Xb,Yb,dXb,dYb,sb=_panel_arrays(pb)
+            Nb=length(pb.xy)
+
+            @use_threads multithreading=multithreaded for j in 1:Nb
+                gj=rb[j]
+                xj=Xb[j]
+                yj=Yb[j]
+                txj=dXb[j]
+                tyj=dYb[j]
+                wd=pb.ws[j]
+                ws=pb.ws[j]*sb[j]
+
+                @inbounds for i in 1:Na
+                    gi=ra[i]
+                    dx=Xa[i]-xj
+                    dy=Ya[i]-yj
+                    r2=muladd(dx,dx,dy*dy)
+                    r2<=(eps(T))^2 && continue
+                    r=sqrt(r2)
+                    invr=inv(r)
+                    inn=_dinner(dx,dy,txj,tyj)
+
+                    dval=wd*(αD*inn*H(1,k*r)*invr)
+                    sval=ws*(αS*H(0,k*r))
+
+                    A[gi,gj]-=dval+ik*sval
+                end
+            end
         end
     end
 
@@ -807,7 +743,6 @@ function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{Boundary
     return CFIEAlpertWorkspace(rule,offs,Gs,Cs,Ntot)
 end
 
-#=
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     offs=component_offsets(pts)
@@ -816,53 +751,16 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     boundary=solver.billiard.full_boundary
     flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
     Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
-    @inbounds for a in eachindex(pts)
+     @inbounds for a in eachindex(pts)
         pts[a].is_periodic || continue
         ra=offs[a]:(offs[a+1]-1)
         _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
     end
     _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule;multithreaded=multithreaded)
-    return A
-end
-=#
-function construct_matrices!(
-    solver::CFIE_alpert{T},
-    A::Matrix{Complex{T}},
-    pts::Vector{BoundaryPointsCFIE{T}},
-    k::T;
-    multithreaded::Bool=true,
-) where {T<:Real}
-    fill!(A,zero(Complex{T}))
-
-    offs=component_offsets(pts)
-    Gs=[cfie_geom_cache(p) for p in pts]
-    rule=alpert_log_rule(T,solver.alpert_order)
-
-    boundary=solver.billiard.full_boundary
-    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
-    Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order)
-        for a in eachindex(pts)]
-
-    # periodic components: full self assembly
-    @inbounds for a in eachindex(pts)
-        pts[a].is_periodic || continue
-        ra=offs[a]:(offs[a+1]-1)
-        _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;
-            multithreaded=multithreaded)
-    end
-
-    # open-panel components: same-panel only
-    _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule;
-        multithreaded=multithreaded)
-
-    # all distinct panel/component pairs
-    _assemble_all_offpanel_naive!(A,pts,offs,k;
-        multithreaded=multithreaded)
-
+    _assemble_all_offpanel_naive!(A,pts,offs,k;multithreaded=multithreaded)
     return A
 end
 
-#=
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     offs=ws.offs
@@ -875,40 +773,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
         _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
     end
     _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule;multithreaded=multithreaded)
-    return A
-end
-=#
-function construct_matrices!(
-    solver::CFIE_alpert{T},
-    A::Matrix{Complex{T}},
-    pts::Vector{BoundaryPointsCFIE{T}},
-    ws::CFIEAlpertWorkspace{T},
-    k::T;
-    multithreaded::Bool=true,
-) where {T<:Real}
-    fill!(A,zero(Complex{T}))
-
-    offs=ws.offs
-    Gs=ws.Gs
-    Cs=ws.Cs
-    rule=ws.rule
-
-    # periodic components: full self assembly
-    @inbounds for a in eachindex(pts)
-        pts[a].is_periodic || continue
-        ra=offs[a]:(offs[a+1]-1)
-        _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;
-            multithreaded=multithreaded)
-    end
-
-    # open-panel components: same-panel only
-    _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,k,rule;
-        multithreaded=multithreaded)
-
-    # all distinct panel/component pairs
-    _assemble_all_offpanel_naive!(A,pts,offs,k;
-        multithreaded=multithreaded)
-
+    _assemble_all_offpanel_naive!(A,pts,offs,k;multithreaded=multithreaded)
     return A
 end
 
