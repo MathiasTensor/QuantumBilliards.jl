@@ -323,6 +323,7 @@ function _add_corner_neighbor_endpoint_correction!(
     ik::Complex{T},
     rule::AlpertLogRule{T},
 ) where {T<:Real}
+    #=
     nfix<=0&&return A
     crv_nb=Cnb.crv
     Nnb=length(Cnb.us)
@@ -356,6 +357,7 @@ function _add_corner_neighbor_endpoint_correction!(
         _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
         _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
     end
+    =#
     return A
 end
 
@@ -374,6 +376,7 @@ function _add_smooth_neighbor_correction!(
     ik::Complex{T},
     rule::AlpertLogRule{T},
 ) where {T<:Real}
+    #=
     jcorr=rule.j
     crv_nb=Cnb.crv
     Nnb=length(Cnb.us)
@@ -434,6 +437,7 @@ function _add_smooth_neighbor_correction!(
     else
         error("Unknown side = $side")
     end
+    =#
     return A
 end
 
