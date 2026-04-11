@@ -158,8 +158,8 @@ function _add_naive_panel_block!(
         r=sqrt(r2)
         invr=inv(r)
         inn=_dinner(dx,dy,dXb[j],dYb[j])
-        wd=pb.ws[j]*pb.ws_der[j]
-        ws=wd*sb[j]
+        wd=pb.ws[j]
+        ws=pb.ws[j]*sb[j]
         dval=wd*(αD*inn*H(1,k*r)*invr)
         sval=ws*(αS*H(0,k*r))
         A[gi,gj]-=dval+ik*sval
@@ -711,7 +711,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            wd=pts.ws[j]*pts.ws_der[j]
+            wd=pts.ws[j]
             A[gi,gj]-=wd*(αD*inn*H(1,k*rij)*invr)
         end
         @inbounds for j in 1:N
@@ -721,7 +721,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            wd=pts.ws[j]*pts.ws_der[j]
+            wd=pts.ws[j]
             A[gi,gj]+=wd*(αD*inn*H(1,k*rij)*invr)
         end
         @inbounds for p in 1:jcorr
@@ -758,7 +758,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             j==i&&continue
             gj=row_range[j]
             abs(j-i)<a&&continue
-            wsj=(pts.ws[j]*pts.ws_der[j])*G.speed[j]
+            wsj=pts.ws[j]*G.speed[j]
             A[gi,gj]-=ik*(wsj*(αS*H(0,k*G.R[i,j])))
         end
         @inbounds for p in 1:jcorr
@@ -990,10 +990,9 @@ end
     end
 end
 
-@inline dlp_weight(pts::BoundaryPointsCFIE,j::Int)=pts.ws[j]*pts.ws_der[j]
-
+@inline dlp_weight(pts::BoundaryPointsCFIE,j::Int)=pts.ws[j]
 @inline function slp_weight(pts::BoundaryPointsCFIE{T},j::Int,sj::T) where {T<:Real}
-    pts.ws[j]*pts.ws_der[j]*sj
+    pts.ws[j]*sj
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
