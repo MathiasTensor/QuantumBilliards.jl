@@ -575,6 +575,26 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
+# _panel_sigma_to_u_jac
+# For a single open panel, convert the Kress-graded parameter σ to the uniform parameter u, and compute the Jacobian of this transformation. This is needed for the Alpert method when we treat each curve segment as a separate panel and apply open panel discretization to each segment. The Kress grading provides a non-uniform distribution of points that cluster near the endpoints of the panel, and we need to compute the corresponding uniform parameter values and the Jacobian for the change of variables in the integral equation.
+# Inputs:
+#   - solver::CFIE_alpert{T} : The CFIE_alpert solver instance containing the Kress grading parameter q.
+#   - σ::T : The Kress-graded parameter value for which to compute the uniform parameter and Jacobian.
+# Outputs:
+#   - u::T : The corresponding uniform parameter value in [0,1]
+#   - jac::T : The Jacobian of the transformation from σ to u.
+#   - jac2::T : The second derivative of the transformation.
+@inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
+    s=T(two_pi)*σ
+    ws=_kress_w(s,T(solver.kressq))
+    wsp=_kress_wprime(s,T(solver.kressq))
+    wspp=_kress_wdoubleprime(s,T(solver.kressq))
+    u=ws/T(two_pi)
+    jac=wsp
+    jac2=T(two_pi)*wspp
+    return u,jac,jac2
+end
+
 # _evaluate_points_panel
 # Build one open boundary panel for CFIE_alpert. This is used whenever the billiard boundary is composite of many curves, and we want to treat each curve as a separate panel. E.g for the stadium, we can treat the straight segments as one panel and the circular segments as another.
 #
@@ -592,21 +612,31 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    N<2&&(N=2)
-    ts=[T(j-0.5)/T(N) for j in 1:N]
-    xy=curve(crv,ts)
-    tangent_1st=tangent(crv,ts)
-    tangent_2nd=tangent_2(crv,ts)
-    ss=arc_length(crv,ts)
-    ds=_open_panel_weights(ss)
-    h=inv(T(N))
-    ws=fill(h,N)
+    N<2 && (N=2)
+    hσ=inv(T(N))
+    sig=[T(j-0.5)/T(N) for j in 1:N]
+    xy=Vector{SVector{2,T}}(undef,N)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    ds=Vector{T}(undef,N)
+    @inbounds for j in 1:N
+        σ=sig[j]
+        u,jac,jac2=_panel_sigma_to_u_jac(solver,σ)
+        q=curve(crv,u)
+        tu=tangent(crv,u)
+        t2u=tangent_2(crv,u)
+        xy[j]=q
+        tangent_1st[j]=tu*jac
+        tangent_2nd[j]=t2u*(jac^2)+tu*jac2
+        ds[j]=sqrt((tu[1]*jac)^2+(tu[2]*jac)^2)*hσ
+    end
+    ws=fill(hσ,N)
     ws_der=ones(T,N)
     xL=curve(crv,zero(T))
     xR=curve(crv,one(T))
     tL=tangent(crv,zero(T))
     tR=tangent(crv,one(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,sig,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
 end
 
 """

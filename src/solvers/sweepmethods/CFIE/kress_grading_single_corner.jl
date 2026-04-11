@@ -80,25 +80,4 @@ function kress_graded_nodes_data(::Type{T},N::Int;q=8) where {T<:Real}
     end
     return σ,s,a,a2,wq
 end
-# useful for Alpert panel grading as well, since it has the same form of grading map
-function kress_panel_midpoint_data(::Type{T},N::Int;q=8) where {T<:Real}
-    qT=T(q)
-    σhat=Vector{T}(undef,N)   # computational midpoint grid on [0,1]
-    u=Vector{T}(undef,N)   # graded physical panel parameter on [0,1]
-    jac=Vector{T}(undef,N)   # du/dσhat
-    jac2=Vector{T}(undef,N)   # d²u/dσhat²
-    wq=Vector{T}(undef,N)   # trapezoid weights in σhat, modified by jac if ever needed elsewhere
-    h=inv(T(N))
-    @inbounds for j in 1:N
-        σhat[j]=T((j-0.5)/N)
-        s=TWO_PI*σhat[j]
-        ws=_kress_w(s,qT)
-        wsp=_kress_wprime(s,qT)
-        wspp=_kress_wdoubleprime(s,qT)
-        u[j]=ws/TWO_PI
-        jac[j]=wsp
-        jac2[j]=TWO_PI * wspp
-        wq[j]=h # Alpert trapezoid stays uniform in σhat
-    end
-    return σhat,u,jac,jac2,wq
-end
+
