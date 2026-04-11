@@ -442,41 +442,6 @@ end
     return x,y,tx,ty,s,idx,wt
 end
 
-function _add_naive_panel_interaction!(
-    A::AbstractMatrix{Complex{T}},
-    gi::Int,
-    xi::T,yi::T,
-    rb::UnitRange{Int},
-    pb::BoundaryPointsCFIE{T},
-    k::T,
-    αD::Complex{T},
-    αS::Complex{T},
-    ik::Complex{T};
-    skip_pred=j->false,
-) where {T<:Real}
-    Xb=getindex.(pb.xy,1)
-    Yb=getindex.(pb.xy,2)
-    dXb=getindex.(pb.tangent,1)
-    dYb=getindex.(pb.tangent,2)
-    sb=@. sqrt(dXb^2+dYb^2)
-    Nb=length(Xb)
-    @inbounds for j in 1:Nb
-        skip_pred(j) && continue
-        gj=rb[j]
-        dx=xi-Xb[j]
-        dy=yi-Yb[j]
-        r2=muladd(dx,dx,dy*dy)
-        r2<=(eps(T))^2 && continue
-        r=sqrt(r2)
-        invr=inv(r)
-        inn=_dinner(dx,dy,dXb[j],dYb[j])
-        dval=pb.ws[j]*(αD*inn*H(1,k*r)*invr)
-        sval=pb.ws[j]*sb[j]*(αS*H(0,k*r))
-        A[gi,gj]-=dval+ik*sval
-    end
-    return A
-end
-
 function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real,C<:AbsCurve}
     N=length(pts.xy)
     jcorr=rule.j
@@ -893,22 +858,22 @@ function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T
             yi=Ya[i]
             ui=Ca.sig[i]
             A[gi,gi]+=one(Complex{T})
-            _add_naive_panel_interaction!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
+            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
             if prev_idx!=0
                 Nb=length(prev_pts.xy)
                 nl=max(0,a-i)
-                _add_naive_panel_interaction!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik;skip_pred=j->(j>Nb-nl))
+                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik;skip_pred=j->(j>Nb-nl))
             end
             if next_idx!=0
                 nr=max(0,i+a-1-Na)
-                _add_naive_panel_interaction!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;skip_pred=j->(j<=nr))
+                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;skip_pred=j->(j<=nr))
             end
             for m in eachindex(gmap)
                 bidx=gmap[m]
                 (bidx==aidx||bidx==prev_idx||bidx==next_idx)&&continue
                 pb=pts[bidx]
                 rb=offs[bidx]:(offs[bidx+1]-1)
-                _add_naive_panel_interaction!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
+                _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
             end
             _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,hσ,k,rule,αD,αS,ik)
             if next_idx!=0
@@ -950,22 +915,22 @@ function _assemble_self_alpert_composite_corner_component!(solver::CFIE_alpert{T
             yi=Ya[i]
             ui=Ca.sig[i]
             A[gi,gi]+=one(Complex{T})
-            _add_naive_panel_interaction!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
+            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
             if prev_idx!=0
                 Nb=length(prev_pts.xy)
                 nl=max(0,a-i)
-                _add_naive_panel_interaction!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik;skip_pred=j->(j>Nb-nl))
+                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik;skip_pred=j->(j>Nb-nl))
             end
             if next_idx!=0
                 nr=max(0,i+a-1-Na)
-                _add_naive_panel_interaction!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;skip_pred=j->(j<=nr))
+                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;skip_pred=j->(j<=nr))
             end
             for m in eachindex(gmap)
                 bidx=gmap[m]
                 (bidx==aidx||bidx==prev_idx||bidx==next_idx)&&continue
                 pb=pts[bidx]
                 rb=offs[bidx]:(offs[bidx+1]-1)
-                _add_naive_panel_interaction!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
+                _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
             end
             _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,hσ,k,rule,αD,αS,ik)
             if next_idx!=0
