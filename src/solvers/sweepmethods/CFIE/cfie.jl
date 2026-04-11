@@ -185,6 +185,12 @@ function component_offsets(comps::Vector)
     return offs
 end
 
+# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
+function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    offs=component_offsets(pts)
+    return offs[end]-1
+end
+
 # NECESSERY DUE TO LEGACY GEOMETRY CONVENTIONS
 # Convert boundary into canonical form:
 # comps = [comp1, comp2, ...]
@@ -586,24 +592,21 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    N<2 && (N=2)
-    # choose a panel grading strength; can later expose as solver field
-    qpanel=solver.kressq
-    σhat,u,jac,jac2,_=kress_panel_midpoint_data(T,N;q=qpanel)
-    xy=curve(crv,u)
-    γu=tangent(crv,u)
-    γuu=tangent_2(crv,u)
-    tangent_1st=[γu[i]*jac[i] for i in eachindex(u)]
-    tangent_2nd=[γuu[i]*(jac[i]^2)+γu[i]*jac2[i] for i in eachindex(u)]
-    ds=[norm(tangent_1st[i])/N for i in 1:N] # legacy, probably dont need
-    # trapezoidal grid is uniform in computational variable σhat
-    ws=fill(inv(T(N)),N)
-    ws_der=jac
+    N<2&&(N=2)
+    ts=[(j-T(1)/2)/T(N) for j in 1:N]
+    xy=curve(crv,ts)
+    tangent_1st=tangent(crv,ts)
+    tangent_2nd=tangent_2(crv,ts)
+    ss=arc_length(crv,ts)
+    ds=_open_panel_weights(ss)
+    h=inv(T(N))
+    ws=fill(h,N)
+    ws_der=ones(T,N)
     xL=curve(crv,zero(T))
     xR=curve(crv,one(T))
     tL=tangent(crv,zero(T))
     tR=tangent(crv,one(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σhat,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
 end
 
 """
@@ -653,12 +656,6 @@ function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Rea
         end
     end
     return pts
-end
-
-# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
-function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
-    offs=component_offsets(pts)
-    return offs[end]-1
 end
 
 #########################################

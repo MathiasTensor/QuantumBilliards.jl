@@ -18,7 +18,7 @@ end
 
 struct AlpertSmoothPanelCache{T<:Real}
     crv::Any
-    sig::Vector{T}
+    us::Vector{T}
     xp::Matrix{T}
     yp::Matrix{T}
     txp::Matrix{T}
@@ -64,7 +64,7 @@ end
         den=one(T)
         xj=nodes[j]
         for l in 1:m
-            l==j && continue
+            l==j&&continue
             xl=nodes[l]
             num*=ξ-xl
             den*=xj-xl
@@ -112,27 +112,12 @@ end
     return X,Y,dX,dY,s
 end
 
-@inline function _panel_near_skip(j::Int,i::Int,a::Int)
-    abs(j-i)<a
-end
-
 @inline function _right_neighbor_excluded_count(i::Int,N::Int,a::Int)
     max(0,i+a-1-N)
 end
 
 @inline function _left_neighbor_excluded_count(i::Int,a::Int)
     max(0,a-i)
-end
-
-@inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
-    s=T(two_pi)*σ
-    ws=_kress_w(s,T(solver.kressq))
-    wsp=_kress_wprime(s,T(solver.kressq))
-    wspp=_kress_wdoubleprime(s,T(solver.kressq))
-    u=ws/T(two_pi)
-    jac=wsp
-    jac2=T(two_pi)*wspp
-    return u,jac,jac2
 end
 
 function _add_naive_panel_block!(
@@ -172,7 +157,7 @@ function _add_self_panel_alpert_correction!(
     gi::Int,xi::T,yi::T,i::Int,
     ra::UnitRange{Int},
     Ca::AlpertSmoothPanelCache{T},
-    hσ::T,
+    h::T,
     k::T,
     αD::Complex{T},
     αS::Complex{T},
@@ -181,7 +166,7 @@ function _add_self_panel_alpert_correction!(
 ) where {T<:Real}
     jcorr=rule.j
     @inbounds for p in 1:jcorr
-        fac=hσ*rule.w[p]
+        fac=h*rule.w[p]
         dx=xi-Ca.xp[p,i]
         dy=yi-Ca.yp[p,i]
         r2=muladd(dx,dx,dy*dy)
@@ -214,125 +199,8 @@ function _add_self_panel_alpert_correction!(
     return A
 end
 
-function _add_corner_neighbor_endpoint_correction!(
-    solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    gi::Int,xi::T,yi::T,
-    rnb::UnitRange{Int},
-    Cnb::AlpertSmoothPanelCache{T},
-    endpoint::Symbol,
-    nfix::Int,
-    hσ::T,
-    k::T,
-    αD::Complex{T},
-    αS::Complex{T},
-    ik::Complex{T},
-    rule::AlpertLogRule{T},
-) where {T<:Real}
-    nfix<=0&&return A
-    crv_nb=Cnb.crv
-    Nnb=length(Cnb.sig)
-    pinterp=size(Cnb.idxp,3)
-    hnb=one(T)/T(Nnb)
-    jcorr=min(rule.j,nfix)
-    @inbounds for p in 1:jcorr
-        σ=endpoint===:left ? hσ*rule.x[p] : one(T)-hσ*rule.x[p]
-        (σ<=zero(T)||σ>=one(T))&&continue
-        u,jac,_=_panel_sigma_to_u_jac(solver,σ)
-        x,y,tu,tv,su=_eval_open_panel_geom_exact(crv_nb,u)
-        tx=tu*jac
-        ty=tv*jac
-        s2=su*jac
-        idx2,wt2=_panel_interp_midpoint_data(σ,hnb,Nnb,pinterp)
-        dx=xi-x
-        dy=yi-y
-        r2=muladd(dx,dx,dy*dy)
-        r2<=(eps(T))^2&&continue
-        r=sqrt(r2)
-        coeffD=-(hσ*rule.w[p]*(αD*_dinner(dx,dy,tx,ty)*H(1,k*r)/r))
-        coeffS=-ik*(hσ*rule.w[p]*(αS*H(0,k*r)*s2))
-        _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
-        _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
-    end
-    return A
-end
-
-function _add_smooth_neighbor_correction!(
-    solver::CFIE_alpert{T},
-    A::AbstractMatrix{Complex{T}},
-    gi::Int,xi::T,yi::T,
-    σi::T,
-    pa::BoundaryPointsCFIE{T},
-    Cnb::AlpertSmoothPanelCache{T},
-    rnb::UnitRange{Int},
-    side::Symbol,
-    hσ::T,
-    k::T,
-    αD::Complex{T},
-    αS::Complex{T},
-    ik::Complex{T},
-    rule::AlpertLogRule{T},
-) where {T<:Real}
-    jcorr=rule.j
-    Nnb=length(Cnb.sig)
-    pinterp=size(Cnb.idxp,3)
-    hnb=one(T)/T(Nnb)
-
-    if side===:right
-        @inbounds for p in 1:jcorr
-            Δσ=hσ*rule.x[p]
-            ε=σi+Δσ-one(T)
-            ε<=zero(T)&&continue
-            ε>=one(T)&&continue
-            u2,jac2,_=_panel_sigma_to_u_jac(solver,ε)
-            x,y,tu,tv,su=_eval_open_panel_geom_exact(Cnb.crv,u2)
-            tx=tu*jac2
-            ty=tv*jac2
-            s2=su*jac2
-            idx2,wt2=_panel_interp_midpoint_data(ε,hnb,Nnb,pinterp)
-            dx=xi-x
-            dy=yi-y
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2&&continue
-            r=sqrt(r2)
-            fac=hσ*rule.w[p]
-            coeffD=-(fac*(αD*_dinner(dx,dy,tx,ty)*H(1,k*r)/r))
-            coeffS=-ik*(fac*(αS*H(0,k*r)*s2))
-            _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
-            _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
-        end
-    elseif side===:left
-        @inbounds for p in 1:jcorr
-            Δσ=hσ*rule.x[p]
-            ε=Δσ-σi
-            ε<=zero(T)&&continue
-            ε>=one(T)&&continue
-            σ2=one(T)-ε
-            u2,jac2,_=_panel_sigma_to_u_jac(solver,σ2)
-            x,y,tu,tv,su=_eval_open_panel_geom_exact(Cnb.crv,u2)
-            tx=tu*jac2
-            ty=tv*jac2
-            s2=su*jac2
-            idx2,wt2=_panel_interp_midpoint_data(σ2,hnb,Nnb,pinterp)
-            dx=xi-x
-            dy=yi-y
-            r2=muladd(dx,dx,dy*dy)
-            r2<=(eps(T))^2&&continue
-            r=sqrt(r2)
-            fac=hσ*rule.w[p]
-            coeffD=-(fac*(αD*_dinner(dx,dy,tx,ty)*H(1,k*r)/r))
-            coeffS=-ik*(fac*(αS*H(0,k*r)*s2))
-            _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
-            _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
-        end
-    else
-        error("Unknown side = $side")
-    end
-    return A
-end
-
 @inline function _panel_us(::Type{T},N::Int) where {T<:Real}
-    return collect(midpoints(range(zero(T),one(T),length=N+1)))
+    collect(midpoints(range(zero(T),one(T),length=N+1)))
 end
 
 @inline function _panel_smooth_localp_midpoint_data(u::T,h::T,N::Int,p::Int) where {T<:Real}
@@ -354,7 +222,7 @@ end
 
 @inline function _arc_length_scalar(crv,u)
     s=arc_length(crv,[u])
-    return s isa AbstractVector ? s[1] : s
+    s isa AbstractVector ? s[1] : s
 end
 
 @inline function _eval_open_panel_geom_exact(crv,u::T) where {T<:Real}
@@ -383,7 +251,6 @@ function _invert_panel_arc_from_left(crv,ds::T;tol::T=T(1e-13),maxiter::Int=80) 
     a=zero(T)
     b=one(T)
     fa=-ds
-    fb=L-ds
     for _ in 1:maxiter
         m=(a+b)/2
         fm=_panel_arc_from_left(crv,m)-ds
@@ -393,7 +260,6 @@ function _invert_panel_arc_from_left(crv,ds::T;tol::T=T(1e-13),maxiter::Int=80) 
             fa=fm
         else
             b=m
-            fb=fm
         end
     end
     return (a+b)/2
@@ -406,7 +272,6 @@ function _invert_panel_arc_from_right(crv,ds::T;tol::T=T(1e-13),maxiter::Int=80)
     a=zero(T)
     b=one(T)
     fa=_panel_arc_from_right(crv,a)-ds
-    fb=_panel_arc_from_right(crv,b)-ds
     for _ in 1:maxiter
         m=(a+b)/2
         fm=_panel_arc_from_right(crv,m)-ds
@@ -416,27 +281,13 @@ function _invert_panel_arc_from_right(crv,ds::T;tol::T=T(1e-13),maxiter::Int=80)
             fa=fm
         else
             b=m
-            fb=fm
         end
     end
     return (a+b)/2
 end
 
-@inline function _panel_interp_midpoint_data(σ::T,hσ::T,N::Int,p::Int) where {T<:Real}
-    iseven(p)||error("p must be even.")
-    p<=N||error("p must satisfy p <= N.")
-    q=p÷2
-    s=σ/hσ-T(1)/2
-    j0=floor(Int,s)+1
-    η=s-floor(T,s)
-    j0=clamp(j0,q,N-q)
-    offs=_local_offsets(p)
-    wt=_lagrange_weights(η,T.(offs))
-    idx=Vector{Int}(undef,p)
-    @inbounds for m in 1:p
-        idx[m]=j0+offs[m]
-    end
-    return idx,wt
+@inline function _interp_density_data_on_panel(u::T,h::T,N::Int,p::Int) where {T<:Real}
+    _panel_smooth_localp_midpoint_data(u,h,N,p)
 end
 
 @inline function _eval_shifted_source_smooth_panel_localp(u::T,h::T,X::AbstractVector{T},Y::AbstractVector{T},dX::AbstractVector{T},dY::AbstractVector{T},p::Int) where {T<:Real}
@@ -456,6 +307,134 @@ end
     end
     s=_speed(SVector{2,T}(tx,ty))
     return x,y,tx,ty,s,idx,wt
+end
+
+function _add_corner_neighbor_endpoint_correction!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int,xi::T,yi::T,
+    rnb::UnitRange{Int},
+    Cnb::AlpertSmoothPanelCache{T},
+    endpoint::Symbol,
+    nfix::Int,
+    hsrc_ref::T,
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T},
+    rule::AlpertLogRule{T},
+) where {T<:Real}
+    nfix<=0&&return A
+    crv_nb=Cnb.crv
+    Nnb=length(Cnb.us)
+    pinterp=size(Cnb.idxp,3)
+    hnb=one(T)/T(Nnb)
+    jcorr=min(rule.j,nfix)
+    @inbounds for p in 1:jcorr
+        ξ=rule.x[p]
+        ds=hsrc_ref*ξ
+        u=if endpoint===:left
+            _invert_panel_arc_from_left(crv_nb,ds)
+        elseif endpoint===:right
+            _invert_panel_arc_from_right(crv_nb,ds)
+        else
+            error("endpoint must be :left or :right")
+        end
+        (u<=zero(T)||u>=one(T))&&continue
+        x,y,tx,ty,s2=_eval_open_panel_geom_exact(crv_nb,u)
+        idx2,wt2=_interp_density_data_on_panel(u,hnb,Nnb,pinterp)
+        dx=xi-x
+        dy=yi-y
+        r2=muladd(dx,dx,dy*dy)
+        r2<=(eps(T))^2&&continue
+        r=sqrt(r2)
+        τx=tx/s2
+        τy=ty/s2
+        inns=_dinner(dx,dy,τx,τy)
+        fac=hsrc_ref*rule.w[p]
+        coeffD=-(fac*(αD*inns*H(1,k*r)/r))
+        coeffS=-ik*(fac*(αS*H(0,k*r)))
+        _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
+        _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
+    end
+    return A
+end
+
+function _add_smooth_neighbor_correction!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int,xi::T,yi::T,
+    ui::T,
+    pa::BoundaryPointsCFIE{T},
+    Cnb::AlpertSmoothPanelCache{T},
+    rnb::UnitRange{Int},
+    side::Symbol,
+    ha::T,
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T},
+    rule::AlpertLogRule{T},
+) where {T<:Real}
+    jcorr=rule.j
+    crv_nb=Cnb.crv
+    Nnb=length(Cnb.us)
+    pinterp=size(Cnb.idxp,3)
+    hnb=one(T)/T(Nnb)
+    if side===:right
+        s_cur=_speed(pa.tR)
+        @inbounds for p in 1:jcorr
+            Δu=ha*rule.x[p]
+            e=ui+Δu-one(T)
+            e<=zero(T)&&continue
+            ds=e*s_cur
+            u2=_invert_panel_arc_from_left(crv_nb,ds)
+            (u2<=zero(T)||u2>=one(T))&&continue
+            x,y,tx,ty,s2=_eval_open_panel_geom_exact(crv_nb,u2)
+            idx2,wt2=_interp_density_data_on_panel(u2,hnb,Nnb,pinterp)
+            dx=xi-x
+            dy=yi-y
+            r2=muladd(dx,dx,dy*dy)
+            r2<=(eps(T))^2&&continue
+            r=sqrt(r2)
+            hs_ref=ha*s_cur
+            τx=tx/s2
+            τy=ty/s2
+            inns=_dinner(dx,dy,τx,τy)
+            fac=hs_ref*rule.w[p]
+            coeffD=-(fac*(αD*inns*H(1,k*r)/r))
+            coeffS=-ik*(fac*(αS*H(0,k*r)))
+            _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
+            _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
+        end
+    elseif side===:left
+        s_cur=_speed(pa.tL)
+        @inbounds for p in 1:jcorr
+            Δu=ha*rule.x[p]
+            e=Δu-ui
+            e<=zero(T)&&continue
+            ds=e*s_cur
+            u2=_invert_panel_arc_from_right(crv_nb,ds)
+            (u2<=zero(T)||u2>=one(T))&&continue
+            x,y,tx,ty,s2=_eval_open_panel_geom_exact(crv_nb,u2)
+            idx2,wt2=_interp_density_data_on_panel(u2,hnb,Nnb,pinterp)
+            dx=xi-x
+            dy=yi-y
+            r2=muladd(dx,dx,dy*dy)
+            r2<=(eps(T))^2&&continue
+            r=sqrt(r2)
+            hs_ref=ha*s_cur
+            τx=tx/s2
+            τy=ty/s2
+            inns=_dinner(dx,dy,τx,τy)
+            fac=hs_ref*rule.w[p]
+            coeffD=-(fac*(αD*inns*H(1,k*r)/r))
+            coeffS=-ik*(fac*(αS*H(0,k*r)))
+            _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
+            _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
+        end
+    else
+        error("Unknown side = $side")
+    end
+    return A
 end
 
 function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real,C<:AbsCurve}
@@ -511,13 +490,13 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
-function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
+function _build_alpert_smooth_panel_cache(crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
     iseven(p)||error("Smooth-panel Alpert interpolation stencil size p must be even.")
     N=length(pts.xy)
     p<=N||error("Smooth-panel Alpert interpolation stencil size p must satisfy p <= N.")
-    hσ=pts.ws[1]
+    h=pts.ws[1]
     jcorr=rule.j
-    sig=copy(pts.ts)
+    us=copy(pts.ts)
     xp=Matrix{T}(undef,jcorr,N)
     yp=similar(xp)
     txp=similar(xp)
@@ -533,53 +512,48 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     wtp=Array{T,3}(undef,jcorr,N,p)
     wtm=Array{T,3}(undef,jcorr,N,p)
     @inbounds for q in 1:jcorr
-        Δσ=hσ*rule.x[q]
+        Δu=h*rule.x[q]
         for i in 1:N
-            σp=sig[i]+Δσ
-            if σp<one(T)
-                up,jp,_=_panel_sigma_to_u_jac(solver,σp)
-                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
-                idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
-                xp[q,i]=x
-                yp[q,i]=y
-                txp[q,i]=tu*jp
-                typ[q,i]=tv*jp
-                sp[q,i]=su*jp
-                for m in 1:p
-                    idxp[q,i,m]=idx[m]
-                    wtp[q,i,m]=wt[m]
-                end
+            up=us[i]+Δu
+            if up<one(T)
+                x,y,tx,ty,s=_eval_open_panel_geom_exact(crv,up)
+                idx,wt=_interp_density_data_on_panel(up,h,N,p)
             else
-                xp[q,i]=T(NaN);yp[q,i]=T(NaN);txp[q,i]=T(NaN);typ[q,i]=T(NaN);sp[q,i]=T(NaN)
-                for m in 1:p
-                    idxp[q,i,m]=1
-                    wtp[q,i,m]=zero(T)
-                end
+                x=y=tx=ty=s=T(NaN)
+                idx=fill(1,p)
+                wt=fill(zero(T),p)
             end
-            σm=sig[i]-Δσ
-            if σm>zero(T)
-                um,jm,_=_panel_sigma_to_u_jac(solver,σm)
-                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
-                idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
-                xm[q,i]=x
-                ym[q,i]=y
-                txm[q,i]=tu*jm
-                tym[q,i]=tv*jm
-                sm[q,i]=su*jm
-                for m in 1:p
-                    idxm[q,i,m]=idx[m]
-                    wtm[q,i,m]=wt[m]
-                end
+            xp[q,i]=x
+            yp[q,i]=y
+            txp[q,i]=tx
+            typ[q,i]=ty
+            sp[q,i]=s
+            for m in 1:p
+                idxp[q,i,m]=idx[m]
+                wtp[q,i,m]=wt[m]
+            end
+
+            um=us[i]-Δu
+            if um>zero(T)
+                x,y,tx,ty,s=_eval_open_panel_geom_exact(crv,um)
+                idx,wt=_interp_density_data_on_panel(um,h,N,p)
             else
-                xm[q,i]=T(NaN);ym[q,i]=T(NaN);txm[q,i]=T(NaN);tym[q,i]=T(NaN);sm[q,i]=T(NaN)
-                for m in 1:p
-                    idxm[q,i,m]=1
-                    wtm[q,i,m]=zero(T)
-                end
+                x=y=tx=ty=s=T(NaN)
+                idx=fill(1,p)
+                wt=fill(zero(T),p)
+            end
+            xm[q,i]=x
+            ym[q,i]=y
+            txm[q,i]=tx
+            tym[q,i]=ty
+            sm[q,i]=s
+            for m in 1:p
+                idxm[q,i,m]=idx[m]
+                wtm[q,i,m]=wt[m]
             end
         end
     end
-    return AlpertSmoothPanelCache(crv,sig,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
+    return AlpertSmoothPanelCache(crv,us,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
 function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
@@ -587,9 +561,11 @@ function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryP
         return _build_alpert_periodic_cache(solver,crv,pts,rule,ord)
     else
         pinterp=max(8,solver.alpert_order)
-        iseven(pinterp)|| (pinterp+=1)
+        isodd(pinterp)&&(pinterp+=1)
         pinterp=min(pinterp,length(pts.xy)-(isodd(length(pts.xy)) ? 1 : 0))
-        return _build_alpert_smooth_panel_cache(solver,crv,pts,rule,pinterp)
+        pinterp<4&&(pinterp=min(length(pts.xy),4))
+        isodd(pinterp)&&(pinterp-=1)
+        return _build_alpert_smooth_panel_cache(crv,pts,rule,pinterp)
     end
 end
 
@@ -700,14 +676,14 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
     N=length(X)
-    hσ=pts.ws[1]
+    h=pts.ws[1]
     a=rule.a
     jcorr=rule.j
     @use_threads multithreading=multithreaded for i in 1:N
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
-        ui=C.sig[i]
+        ui=C.us[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i&&continue
@@ -715,8 +691,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            wd=pts.ws[j]
-            A[gi,gj]-=wd*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
         end
         @inbounds for j in 1:N
             j==i&&continue
@@ -725,13 +700,12 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             rij=G.R[i,j]
             inn=G.inner[i,j]
             invr=G.invR[i,j]
-            wd=pts.ws[j]
-            A[gi,gj]+=wd*(αD*inn*H(1,k*rij)*invr)
+            A[gi,gj]+=h*(αD*inn*H(1,k*rij)*invr)
         end
         @inbounds for p in 1:jcorr
-            fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
+            fac=h*rule.w[p]
+            Δu=h*rule.x[p]
+            if ui+Δu<one(T)
                 dx=xi-C.xp[p,i]
                 dy=yi-C.yp[p,i]
                 r=sqrt(dx*dx+dy*dy)
@@ -744,7 +718,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
                     end
                 end
             end
-            if ui-Δσ>zero(T)
+            if ui-Δu>zero(T)
                 dx=xi-C.xm[p,i]
                 dy=yi-C.ym[p,i]
                 r=sqrt(dx*dx+dy*dy)
@@ -762,13 +736,12 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             j==i&&continue
             gj=row_range[j]
             abs(j-i)<a&&continue
-            wsj=pts.ws[j]*G.speed[j]
-            A[gi,gj]-=ik*(wsj*(αS*H(0,k*G.R[i,j])))
+            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
         end
         @inbounds for p in 1:jcorr
-            fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
+            fac=h*rule.w[p]
+            Δu=h*rule.x[p]
+            if ui+Δu<one(T)
                 dx=xi-C.xp[p,i]
                 dy=yi-C.yp[p,i]
                 r=sqrt(dx*dx+dy*dy)
@@ -780,7 +753,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
                     end
                 end
             end
-            if ui-Δσ>zero(T)
+            if ui-Δu>zero(T)
                 dx=xi-C.xm[p,i]
                 dy=yi-C.ym[p,i]
                 r=sqrt(dx*dx+dy*dy)
@@ -841,8 +814,8 @@ function _assemble_all_self_alpert_composite!(solver::CFIE_alpert{T},A::Abstract
     return A
 end
 
-function _add_same_panel_self_correction!(A::AbstractMatrix{Complex{T}},gi::Int,xi::T,yi::T,i::Int,ui::T,ra::UnitRange{Int},Ca::AlpertSmoothPanelCache{T},hσ::T,k::T,rule::AlpertLogRule{T},αD::Complex{T},αS::Complex{T},ik::Complex{T}) where {T<:Real}
-    return _add_self_panel_alpert_correction!(A,gi,xi,yi,i,ra,Ca,hσ,k,αD,αS,ik,rule)
+function _add_same_panel_self_correction!(A::AbstractMatrix{Complex{T}},gi::Int,xi::T,yi::T,i::Int,ui::T,ra::UnitRange{Int},Ca::AlpertSmoothPanelCache{T},h::T,k::T,rule::AlpertLogRule{T},αD::Complex{T},αS::Complex{T},ik::Complex{T}) where {T<:Real}
+    _add_self_panel_alpert_correction!(A,gi,xi,yi,i,ra,Ca,h,k,αD,αS,ik,rule)
 end
 
 function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},k::T,rule::AlpertLogRule{T},topo::AlpertCompositeTopology{T},gmap::Vector{Int};multithreaded::Bool=true) where {T<:Real}
@@ -858,7 +831,7 @@ function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T
         Xa=getindex.(pa.xy,1)
         Ya=getindex.(pa.xy,2)
         Na=length(pa.xy)
-        hσ=pa.ws[1]
+        h=pa.ws[1]
         prev_idx=topo.prev[l]==0 ? 0 : gmap[topo.prev[l]]
         next_idx=topo.next[l]==0 ? 0 : gmap[topo.next[l]]
         prev_pts=prev_idx==0 ? nothing : pts[prev_idx]
@@ -871,7 +844,7 @@ function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T
             gi=ra[i]
             xi=Xa[i]
             yi=Ya[i]
-            ui=Ca.sig[i]
+            ui=Ca.us[i]
             A[gi,gi]+=one(Complex{T})
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
             if prev_idx!=0
@@ -890,12 +863,12 @@ function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T
                 rb=offs[bidx]:(offs[bidx+1]-1)
                 _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
             end
-            _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,hσ,k,rule,αD,αS,ik)
+            _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,h,k,rule,αD,αS,ik)
             if next_idx!=0
-                _add_smooth_neighbor_correction!(solver,A,gi,xi,yi,ui,pa,next_C,next_ra,:right,hσ,k,αD,αS,ik,rule)
+                _add_smooth_neighbor_correction!(A,gi,xi,yi,ui,pa,next_C,next_ra,:right,h,k,αD,αS,ik,rule)
             end
             if prev_idx!=0
-                _add_smooth_neighbor_correction!(solver,A,gi,xi,yi,ui,pa,prev_C,prev_ra,:left,hσ,k,αD,αS,ik,rule)
+                _add_smooth_neighbor_correction!(A,gi,xi,yi,ui,pa,prev_C,prev_ra,:left,h,k,αD,αS,ik,rule)
             end
         end
     end
@@ -915,7 +888,7 @@ function _assemble_self_alpert_composite_corner_component!(solver::CFIE_alpert{T
         Xa=getindex.(pa.xy,1)
         Ya=getindex.(pa.xy,2)
         Na=length(pa.xy)
-        hσ=pa.ws[1]
+        h=pa.ws[1]
         prev_idx=topo.prev[l]==0 ? 0 : gmap[topo.prev[l]]
         next_idx=topo.next[l]==0 ? 0 : gmap[topo.next[l]]
         prev_pts=prev_idx==0 ? nothing : pts[prev_idx]
@@ -928,7 +901,7 @@ function _assemble_self_alpert_composite_corner_component!(solver::CFIE_alpert{T
             gi=ra[i]
             xi=Xa[i]
             yi=Ya[i]
-            ui=Ca.sig[i]
+            ui=Ca.us[i]
             A[gi,gi]+=one(Complex{T})
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
             if prev_idx!=0
@@ -947,14 +920,16 @@ function _assemble_self_alpert_composite_corner_component!(solver::CFIE_alpert{T
                 rb=offs[bidx]:(offs[bidx+1]-1)
                 _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
             end
-            _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,hσ,k,rule,αD,αS,ik)
+            _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,h,k,rule,αD,αS,ik)
             if next_idx!=0
                 nr=max(0,i+a-1-Na)
-                _add_corner_neighbor_endpoint_correction!(solver,A,gi,xi,yi,next_ra,next_C,:left,nr,hσ,k,αD,αS,ik,rule)
+                hs_next=next_pts.ws[1]*_speed(next_pts.tL)
+                _add_corner_neighbor_endpoint_correction!(A,gi,xi,yi,next_ra,next_C,:left,nr,hs_next,k,αD,αS,ik,rule)
             end
             if prev_idx!=0
                 nl=max(0,a-i)
-                _add_corner_neighbor_endpoint_correction!(solver,A,gi,xi,yi,prev_ra,prev_C,:right,nl,hσ,k,αD,αS,ik,rule)
+                hs_prev=prev_pts.ws[1]*_speed(prev_pts.tR)
+                _add_corner_neighbor_endpoint_correction!(A,gi,xi,yi,prev_ra,prev_C,:right,nl,hs_prev,k,αD,αS,ik,rule)
             end
         end
     end
@@ -995,6 +970,7 @@ end
 end
 
 @inline dlp_weight(pts::BoundaryPointsCFIE,j::Int)=pts.ws[j]
+
 @inline function slp_weight(pts::BoundaryPointsCFIE{T},j::Int,sj::T) where {T<:Real}
     pts.ws[j]*sj
 end
