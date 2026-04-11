@@ -243,7 +243,7 @@ function _add_corner_neighbor_endpoint_correction!(
         tx=tu*jac
         ty=tv*jac
         s2=su*jac
-        idx2,wt2=_interp_density_data_on_panel(σ,hnb,Nnb,pinterp)
+        idx2,wt2=_panel_interp_midpoint_data(σ,hnb,Nnb,pinterp)
         dx=xi-x
         dy=yi-y
         r2=muladd(dx,dx,dy*dy)
@@ -287,7 +287,7 @@ function _add_smooth_neighbor_correction!(
             tx=tu*jac2
             ty=tv*jac2
             s2=su*jac2
-            idx2,wt2=_interp_density_data_on_panel(σ2,hnb,Nnb,pinterp)
+            idx2,wt2=_panel_interp_midpoint_data(σ2,hnb,Nnb,pinterp)
             dx=xi-x
             dy=yi-y
             r2=muladd(dx,dx,dy*dy)
@@ -309,7 +309,7 @@ function _add_smooth_neighbor_correction!(
             tx=tu*jac2
             ty=tv*jac2
             s2=su*jac2
-            idx2,wt2=_interp_density_data_on_panel(σ2,hnb,Nnb,pinterp)
+            idx2,wt2=_panel_interp_midpoint_data(σ2,hnb,Nnb,pinterp)
             dx=xi-x
             dy=yi-y
             r2=muladd(dx,dx,dy*dy)
@@ -418,8 +418,20 @@ function _invert_panel_arc_from_right(crv,ds::T;tol::T=T(1e-13),maxiter::Int=80)
     return (a+b)/2
 end
 
-@inline function _interp_density_data_on_panel(u::T,h::T,N::Int,p::Int) where {T<:Real}
-    idx,wt=_panel_smooth_localp_midpoint_data(u,h,N,p)
+@inline function _panel_interp_midpoint_data(σ::T,hσ::T,N::Int,p::Int) where {T<:Real}
+    iseven(p)||error("p must be even.")
+    p<=N||error("p must satisfy p <= N.")
+    q=p÷2
+    s=σ/hσ-T(1)/2
+    j0=floor(Int,s)+1
+    η=s-floor(T,s)
+    j0=clamp(j0,q,N-q)
+    offs=_local_offsets(p)
+    wt=_lagrange_weights(η,T.(offs))
+    idx=Vector{Int}(undef,p)
+    @inbounds for m in 1:p
+        idx[m]=j0+offs[m]
+    end
     return idx,wt
 end
 
@@ -523,7 +535,7 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
             if σp<one(T)
                 up,jp,_=_panel_sigma_to_u_jac(solver,σp)
                 x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
-                idx,wt=_interp_density_data_on_panel(σp,hσ,N,p)
+                idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
                 xp[q,i]=x
                 yp[q,i]=y
                 txp[q,i]=tu*jp
@@ -544,7 +556,7 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
             if σm>zero(T)
                 um,jm,_=_panel_sigma_to_u_jac(solver,σm)
                 x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
-                idx,wt=_interp_density_data_on_panel(σm,hσ,N,p)
+                idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
                 xm[q,i]=x
                 ym[q,i]=y
                 txm[q,i]=tu*jm
@@ -570,10 +582,9 @@ function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryP
     if pts.is_periodic
         return _build_alpert_periodic_cache(solver,crv,pts,rule,ord)
     else
-        pinterp=6
-        isodd(pinterp)&&(pinterp-=1)
-        pinterp<4&&(pinterp=min(length(pts.xy),4))
-        isodd(pinterp)&&(pinterp-=1)
+        pinterp=max(8,solver.alpert_order)
+        iseven(pinterp)|| (pinterp+=1)
+        pinterp=min(pinterp,length(pts.xy)-(isodd(length(pts.xy)) ? 1 : 0))
         return _build_alpert_smooth_panel_cache(solver,crv,pts,rule,pinterp)
     end
 end
