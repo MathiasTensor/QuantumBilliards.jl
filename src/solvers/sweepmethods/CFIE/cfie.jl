@@ -593,7 +593,7 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
     N<2&&(N=2)
-    ts=[(j-T(1)/2)/T(N) for j in 1:N]
+    ts=[T(j-0.5)/T(N) for j in 1:N]
     xy=curve(crv,ts)
     tangent_1st=tangent(crv,ts)
     tangent_2nd=tangent_2(crv,ts)

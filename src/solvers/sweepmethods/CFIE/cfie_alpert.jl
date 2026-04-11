@@ -325,6 +325,47 @@ function _add_corner_neighbor_endpoint_correction!(
     ik::Complex{T},
     rule::AlpertLogRule{T},
 ) where {T<:Real}
+    nfix <= 0 && return A
+    crv_nb = Cnb.crv
+    Nnb = length(Cnb.us)
+    pinterp = size(Cnb.idxp,3)
+    hnb = one(T) / T(Nnb)
+    jcorr = min(rule.j,nfix)
+
+    @inbounds for p in 1:jcorr
+        ξ = rule.x[p]
+        ds = hsrc_ref * ξ
+
+        u = if endpoint === :left
+            _invert_panel_arc_from_left(crv_nb,ds)
+        elseif endpoint === :right
+            _invert_panel_arc_from_right(crv_nb,ds)
+        else
+            error("endpoint must be :left or :right")
+        end
+
+        (u <= zero(T) || u >= one(T)) && continue
+
+        x,y,tx,ty,s2 = _eval_open_panel_geom_exact(crv_nb,u)
+        idx2,wt2 = _interp_density_data_on_panel(u,hnb,Nnb,pinterp)
+
+        dx = xi - x
+        dy = yi - y
+        r2 = muladd(dx,dx,dy*dy)
+        r2 <= (eps(T))^2 && continue
+        r = sqrt(r2)
+
+        τx = tx / s2
+        τy = ty / s2
+        inns = _dinner(dx,dy,τx,τy)
+
+        fac = hsrc_ref * rule.w[p]
+        coeffD = -(fac * (αD * inns * H(1,k*r) / r))
+        coeffS = -ik * (fac * (αS * H(0,k*r)))
+
+        _scatter_localp!(A,gi,rnb,coeffD,idx2,wt2)
+        _scatter_localp!(A,gi,rnb,coeffS,idx2,wt2)
+    end
     return A
 end
 
@@ -831,66 +872,73 @@ function _assemble_self_alpert_composite_smooth_component!(
     gmap::Vector{Int};
     multithreaded::Bool=true,
 ) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    a=rule.a
+    αD = Complex{T}(0,k/2)
+    αS = Complex{T}(0,one(T)/2)
+    ik = Complex{T}(0,k)
+    a = rule.a
 
     @inbounds for l in eachindex(gmap)
-        aidx=gmap[l]
-        pa=pts[aidx]
-        Ca=Cs[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Na=length(pa.xy)
-        h=pa.ws[1]
+        aidx = gmap[l]
+        pa = pts[aidx]
+        Ca = Cs[aidx]
+        ra = offs[aidx]:(offs[aidx+1]-1)
+        Xa = getindex.(pa.xy,1)
+        Ya = getindex.(pa.xy,2)
+        Na = length(pa.xy)
+        h = pa.ws[1]
 
-        prev_idx=topo.prev[l]==0 ? 0 : gmap[topo.prev[l]]
-        next_idx=topo.next[l]==0 ? 0 : gmap[topo.next[l]]
+        prev_idx = topo.prev[l] == 0 ? 0 : gmap[topo.prev[l]]
+        next_idx = topo.next[l] == 0 ? 0 : gmap[topo.next[l]]
 
-        prev_pts=prev_idx==0 ? nothing : pts[prev_idx]
-        next_pts=next_idx==0 ? nothing : pts[next_idx]
-        prev_C=prev_idx==0 ? nothing : Cs[prev_idx]
-        next_C=next_idx==0 ? nothing : Cs[next_idx]
-        prev_ra=prev_idx==0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
-        next_ra=next_idx==0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
+        prev_pts = prev_idx == 0 ? nothing : pts[prev_idx]
+        next_pts = next_idx == 0 ? nothing : pts[next_idx]
+        prev_C   = prev_idx == 0 ? nothing : Cs[prev_idx]
+        next_C   = next_idx == 0 ? nothing : Cs[next_idx]
+        prev_ra  = prev_idx == 0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
+        next_ra  = next_idx == 0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
 
         @use_threads multithreading=multithreaded for i in 1:Na
-            gi=ra[i]
-            xi=Xa[i]
-            yi=Ya[i]
-            ui=Ca.us[i]
-            A[gi,gi]+=one(Complex{T})
+            gi = ra[i]
+            xi = Xa[i]
+            yi = Ya[i]
+            ui = Ca.us[i]
 
-            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
+            A[gi,gi] += one(Complex{T})
 
-            if prev_idx!=0
-                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik)
+            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;
+                skip_pred=j->(j==i || abs(j-i)<a))
+
+            if prev_idx != 0
+                Nb = length(prev_pts.xy)
+                nl = max(0,a-i)
+                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik;
+                    skip_pred=j->(j > Nb-nl))
             end
-            if next_idx!=0
-                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik)
+
+            if next_idx != 0
+                nr = max(0,i+a-1-Na)
+                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;
+                    skip_pred=j->(j <= nr))
             end
 
             for m in eachindex(gmap)
-                bidx=gmap[m]
-                (bidx==aidx || bidx==prev_idx || bidx==next_idx) && continue
-                pb=pts[bidx]
-                rb=offs[bidx]:(offs[bidx+1]-1)
+                bidx = gmap[m]
+                (bidx == aidx || bidx == prev_idx || bidx == next_idx) && continue
+                pb = pts[bidx]
+                rb = offs[bidx]:(offs[bidx+1]-1)
                 _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
             end
 
             _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,h,k,rule,αD,αS,ik)
 
-            if next_idx!=0
+            if next_idx != 0
                 _add_smooth_neighbor_correction!(A,gi,xi,yi,ui,pa,next_C,next_ra,:right,h,k,αD,αS,ik,rule)
             end
-            if prev_idx!=0
+            if prev_idx != 0
                 _add_smooth_neighbor_correction!(A,gi,xi,yi,ui,pa,prev_C,prev_ra,:left,h,k,αD,αS,ik,rule)
             end
         end
     end
-
     return A
 end
 
@@ -907,70 +955,80 @@ function _assemble_self_alpert_composite_corner_component!(
     gmap::Vector{Int};
     multithreaded::Bool=true,
 ) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    a=rule.a
+    αD = Complex{T}(0,k/2)
+    αS = Complex{T}(0,one(T)/2)
+    ik = Complex{T}(0,k)
+    a = rule.a
 
     @inbounds for l in eachindex(gmap)
-        aidx=gmap[l]
-        pa=pts[aidx]
-        Ca=Cs[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=getindex.(pa.xy,1)
-        Ya=getindex.(pa.xy,2)
-        Na=length(pa.xy)
-        h=pa.ws[1]
+        aidx = gmap[l]
+        pa = pts[aidx]
+        Ca = Cs[aidx]
+        ra = offs[aidx]:(offs[aidx+1]-1)
+        Xa = getindex.(pa.xy,1)
+        Ya = getindex.(pa.xy,2)
+        Na = length(pa.xy)
+        h = pa.ws[1]
 
-        prev_idx=topo.prev[l]==0 ? 0 : gmap[topo.prev[l]]
-        next_idx=topo.next[l]==0 ? 0 : gmap[topo.next[l]]
+        prev_idx = topo.prev[l] == 0 ? 0 : gmap[topo.prev[l]]
+        next_idx = topo.next[l] == 0 ? 0 : gmap[topo.next[l]]
 
-        prev_pts=prev_idx==0 ? nothing : pts[prev_idx]
-        next_pts=next_idx==0 ? nothing : pts[next_idx]
-        prev_C=prev_idx==0 ? nothing : Cs[prev_idx]
-        next_C=next_idx==0 ? nothing : Cs[next_idx]
-        prev_ra=prev_idx==0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
-        next_ra=next_idx==0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
+        prev_pts = prev_idx == 0 ? nothing : pts[prev_idx]
+        next_pts = next_idx == 0 ? nothing : pts[next_idx]
+        prev_C   = prev_idx == 0 ? nothing : Cs[prev_idx]
+        next_C   = next_idx == 0 ? nothing : Cs[next_idx]
+        prev_ra  = prev_idx == 0 ? (1:0) : (offs[prev_idx]:(offs[prev_idx+1]-1))
+        next_ra  = next_idx == 0 ? (1:0) : (offs[next_idx]:(offs[next_idx+1]-1))
 
         @use_threads multithreading=multithreaded for i in 1:Na
-            gi=ra[i]
-            xi=Xa[i]
-            yi=Ya[i]
-            ui=Ca.us[i]
-            A[gi,gi]+=one(Complex{T})
+            gi = ra[i]
+            xi = Xa[i]
+            yi = Ya[i]
+            ui = Ca.us[i]
 
-            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
+            A[gi,gi] += one(Complex{T})
 
-            if prev_idx!=0
-                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik)
+            _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;
+                skip_pred=j->(j==i || abs(j-i)<a))
+
+            if prev_idx != 0
+                Nb = length(prev_pts.xy)
+                nl = max(0,a-i)
+                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik;
+                    skip_pred=j->(j > Nb-nl))
             end
-            if next_idx!=0
-                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik)
+
+            if next_idx != 0
+                nr = max(0,i+a-1-Na)
+                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;
+                    skip_pred=j->(j <= nr))
             end
 
             for m in eachindex(gmap)
-                bidx=gmap[m]
-                (bidx==aidx || bidx==prev_idx || bidx==next_idx) && continue
-                pb=pts[bidx]
-                rb=offs[bidx]:(offs[bidx+1]-1)
+                bidx = gmap[m]
+                (bidx == aidx || bidx == prev_idx || bidx == next_idx) && continue
+                pb = pts[bidx]
+                rb = offs[bidx]:(offs[bidx+1]-1)
                 _add_naive_panel_block!(A,gi,xi,yi,rb,pb,k,αD,αS,ik)
             end
 
             _add_same_panel_self_correction!(A,gi,xi,yi,i,ui,ra,Ca,h,k,rule,αD,αS,ik)
 
-            if next_idx!=0
-                nr=max(0,i+a-1-Na)
-                hs_next=next_pts.ws[1]*_speed(next_pts.tL)
-                _add_corner_neighbor_endpoint_correction!(A,gi,xi,yi,next_ra,next_C,:left,nr,hs_next,k,αD,αS,ik,rule)
+            if next_idx != 0
+                nr = max(0,i+a-1-Na)
+                hs_next = next_pts.ws[1] * _speed(next_pts.tL)
+                _add_corner_neighbor_endpoint_correction!(
+                    A,gi,xi,yi,next_ra,next_C,:left,nr,hs_next,k,αD,αS,ik,rule)
             end
-            if prev_idx!=0
-                nl=max(0,a-i)
-                hs_prev=prev_pts.ws[1]*_speed(prev_pts.tR)
-                _add_corner_neighbor_endpoint_correction!(A,gi,xi,yi,prev_ra,prev_C,:right,nl,hs_prev,k,αD,αS,ik,rule)
+
+            if prev_idx != 0
+                nl = max(0,a-i)
+                hs_prev = prev_pts.ws[1] * _speed(prev_pts.tR)
+                _add_corner_neighbor_endpoint_correction!(
+                    A,gi,xi,yi,prev_ra,prev_C,:right,nl,hs_prev,k,αD,αS,ik,rule)
             end
         end
     end
-
     return A
 end
 
