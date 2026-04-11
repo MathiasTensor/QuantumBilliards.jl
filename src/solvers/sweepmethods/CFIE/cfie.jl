@@ -139,6 +139,7 @@ struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     billiard::Bi
     symmetry::Sym
     alpert_order::Int
+    kressq::Int
 end
 
 """
@@ -157,13 +158,13 @@ Constructor for CFIE_alpert solver.
 # Output:
 - An instance of the `CFIE_alpert` solver initialized with the provided parameters.
 """
-function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=16) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=16,kressq::Int=8) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     _=alpert_log_rule(T,alpert_order)
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order)
+    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order,kressq)
 end
 
 #############################
@@ -586,20 +587,23 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
     N<2 && (N=2)
-    ts=[(j-T(1)/2)/T(N) for j in 1:N]
-    xy=curve(crv,ts)
-    tangent_1st=tangent(crv,ts)
-    tangent_2nd=tangent_2(crv,ts)
-    ss=arc_length(crv,ts)
-    ds=_open_panel_weights(ss)
-    h=inv(T(N))   # midpoint spacing
-    ws=fill(h,N)
-    ws_der=ones(T,N)
+    # choose a panel grading strength; can later expose as solver field
+    qpanel=solver.kressq
+    σhat,u,jac,jac2,_=kress_panel_midpoint_data(T,N;q=qpanel)
+    xy=curve(crv,u)
+    γu=tangent(crv,u)
+    γuu=tangent_2(crv,u)
+    tangent_1st=[γu[i]*jac[i] for i in eachindex(u)]
+    tangent_2nd=[γuu[i]*(jac[i]^2)+γu[i]*jac2[i] for i in eachindex(u)]
+    ds=[norm(tangent_1st[i])/N for i in 1:N] # legacy, probably dont need
+    # trapezoidal grid is uniform in computational variable σhat
+    ws=fill(inv(T(N)),N)
+    ws_der=jac
     xL=curve(crv,zero(T))
     xR=curve(crv,one(T))
     tL=tangent(crv,zero(T))
     tR=tangent(crv,one(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σhat,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
 end
 
 """
