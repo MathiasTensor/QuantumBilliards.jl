@@ -344,13 +344,26 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     return AlpertSmoothPanelCache(crv,sig,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
 end
 
-function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
+function _build_alpert_component_cache(
+    solver::CFIE_alpert{T},
+    crv,
+    pts::BoundaryPointsCFIE{T},
+    rule::AlpertLogRule{T},
+    ord::Int
+) where {T<:Real}
     if pts.is_periodic
         return _build_alpert_periodic_cache(solver,crv,pts,rule,ord)
     else
-        pinterp=max(8,solver.alpert_order)
-        iseven(pinterp) || (pinterp+=1)
-        pinterp=min(pinterp,length(pts.xy)-(isodd(length(pts.xy)) ? 1 : 0))
+        # Match the rectangle test logic: use order+3 interpolation points
+        pinterp = max(8, ord + 3)
+        iseven(pinterp) || (pinterp += 1)
+
+        # Do not exceed panel size
+        pinterp = min(pinterp, length(pts.xy))
+        isodd(pinterp) && (pinterp -= 1)
+
+        pinterp >= 4 || error("Interpolation stencil too small for Alpert smooth panel cache.")
+
         return _build_alpert_smooth_panel_cache(solver,crv,pts,rule,pinterp)
     end
 end
