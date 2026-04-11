@@ -139,11 +139,11 @@ struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     billiard::Bi
     symmetry::Sym
     alpert_order::Int
-    kressq::Int
+    alpertq::Int
 end
 
 """
-    CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,S}=nothing,alpert_order=16)
+    CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,S}=nothing,alpert_order=16,alpertq=8) where {T<:Real,Bi<:AbsBilliard,S<:AbsSymmetry}
 
 Constructor for CFIE_alpert solver.
 
@@ -154,17 +154,18 @@ Constructor for CFIE_alpert solver.
 - `eps`: Unused internally.
 - `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
 - `alpert_order`: The order of the Alpert quadrature correction to use for near interactions. Supported values are 2, 3, 4, 5, 6, 8, 10, 12, 14, and 16. Default is 16.
+- `alpertq`: The grading strength parameter for the Alpert quadrature. Default is 8.
 
 # Output:
 - An instance of the `CFIE_alpert` solver initialized with the provided parameters.
 """
-function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=16,kressq::Int=8) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=16,alpertq::Int=8) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     _=alpert_log_rule(T,alpert_order)
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order,kressq)
+    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order,alpertq)
 end
 
 #############################
@@ -577,7 +578,7 @@ end
 
 # σ → (u, du/dσ, d²u/dσ²); map computational nodes to physical nodes and return Jacobian info for transforming geometry derivatives
 @inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
-    q=solver.kressq   # acts as grading strength parameter
+    q=solver.alpertq   # acts as grading strength parameter
     u=_panel_grade_map(σ,q)
     jac=_panel_grade_map_prime(σ,q)
     jac2=_panel_grade_map_doubleprime(σ,q)
