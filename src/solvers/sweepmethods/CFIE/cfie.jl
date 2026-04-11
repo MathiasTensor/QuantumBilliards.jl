@@ -575,23 +575,12 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
-# _panel_sigma_to_u_jac
-# For a single open panel, convert the Kress-graded parameter σ to the uniform parameter u, and compute the Jacobian of this transformation. This is needed for the Alpert method when we treat each curve segment as a separate panel and apply open panel discretization to each segment. The Kress grading provides a non-uniform distribution of points that cluster near the endpoints of the panel, and we need to compute the corresponding uniform parameter values and the Jacobian for the change of variables in the integral equation.
-# Inputs:
-#   - solver::CFIE_alpert{T} : The CFIE_alpert solver instance containing the Kress grading parameter q.
-#   - σ::T : The Kress-graded parameter value for which to compute the uniform parameter and Jacobian.
-# Outputs:
-#   - u::T : The corresponding uniform parameter value in [0,1]
-#   - jac::T : The Jacobian of the transformation from σ to u.
-#   - jac2::T : The second derivative of the transformation.
+# σ → (u, du/dσ, d²u/dσ²); map computational nodes to physical nodes and return Jacobian info for transforming geometry derivatives
 @inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
-    s=T(two_pi)*σ
-    ws=_kress_w(s,T(solver.kressq))
-    wsp=_kress_wprime(s,T(solver.kressq))
-    wspp=_kress_wdoubleprime(s,T(solver.kressq))
-    u=ws/T(two_pi)
-    jac=wsp
-    jac2=T(two_pi)*wspp
+    q=solver.kressq   # acts as grading strength parameter
+    u=_panel_grade_map(σ,q)
+    jac=_panel_grade_map_prime(σ,q)
+    jac2=_panel_grade_map_doubleprime(σ,q)
     return u,jac,jac2
 end
 
