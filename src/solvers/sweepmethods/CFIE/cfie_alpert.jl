@@ -100,17 +100,6 @@ end
     return X,Y,dX,dY,s
 end
 
-@inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
-    s=T(two_pi)*σ
-    ws=_kress_w(s,T(solver.kressq))
-    wsp=_kress_wprime(s,T(solver.kressq))
-    wspp=_kress_wdoubleprime(s,T(solver.kressq))
-    u=ws/T(two_pi)
-    jac=wsp
-    jac2=T(two_pi)*wspp
-    return u,jac,jac2
-end
-
 function _add_naive_panel_block!(
     A::AbstractMatrix{Complex{T}},
     gi::Int,xi::T,yi::T,
