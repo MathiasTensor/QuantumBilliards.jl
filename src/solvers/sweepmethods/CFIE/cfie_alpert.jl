@@ -261,7 +261,7 @@ function _add_smooth_neighbor_correction!(
     solver::CFIE_alpert{T},
     A::AbstractMatrix{Complex{T}},
     gi::Int,xi::T,yi::T,
-    ui::T,
+    σi::T,
     pa::BoundaryPointsCFIE{T},
     Cnb::AlpertSmoothPanelCache{T},
     rnb::UnitRange{Int},
@@ -277,17 +277,19 @@ function _add_smooth_neighbor_correction!(
     Nnb=length(Cnb.sig)
     pinterp=size(Cnb.idxp,3)
     hnb=one(T)/T(Nnb)
+
     if side===:right
         @inbounds for p in 1:jcorr
-            σ2=hσ*rule.x[p]
-            σ2<=zero(T)&&continue
-            σ2>=one(T)&&continue
-            u2,jac2,_=_panel_sigma_to_u_jac(solver,σ2)
+            Δσ=hσ*rule.x[p]
+            ε=σi+Δσ-one(T)
+            ε<=zero(T)&&continue
+            ε>=one(T)&&continue
+            u2,jac2,_=_panel_sigma_to_u_jac(solver,ε)
             x,y,tu,tv,su=_eval_open_panel_geom_exact(Cnb.crv,u2)
             tx=tu*jac2
             ty=tv*jac2
             s2=su*jac2
-            idx2,wt2=_panel_interp_midpoint_data(σ2,hnb,Nnb,pinterp)
+            idx2,wt2=_panel_interp_midpoint_data(ε,hnb,Nnb,pinterp)
             dx=xi-x
             dy=yi-y
             r2=muladd(dx,dx,dy*dy)
@@ -301,9 +303,11 @@ function _add_smooth_neighbor_correction!(
         end
     elseif side===:left
         @inbounds for p in 1:jcorr
-            σ2=one(T)-hσ*rule.x[p]
-            σ2<=zero(T)&&continue
-            σ2>=one(T)&&continue
+            Δσ=hσ*rule.x[p]
+            ε=Δσ-σi
+            ε<=zero(T)&&continue
+            ε>=one(T)&&continue
+            σ2=one(T)-ε
             u2,jac2,_=_panel_sigma_to_u_jac(solver,σ2)
             x,y,tu,tv,su=_eval_open_panel_geom_exact(Cnb.crv,u2)
             tx=tu*jac2
@@ -1103,8 +1107,8 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
             txj=dXb[j]
             tyj=dYb[j]
             sj=sb[j]
-            wd=pb.ws[j]*pb.ws_der[j]
-            wsj=wd*sj
+            wd=pb.ws[j]
+            wsj=pb.ws[j]*sj
             @inbounds for i in 1:Na
                 gi=ra[i]
                 dx=Xa[i]-xj
