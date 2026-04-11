@@ -2,9 +2,21 @@
 ################## Symmetry mapping and projection utilities ##################
 ###############################################################################
 
-####################
-#### CFIE KRESS ####
-####################
+@inline function _endpoint_distance(a::SVector{2,T},b::SVector{2,T}) where {T<:Real}
+    sqrt((a[1]-b[1])^2+(a[2]-b[2])^2)
+end
+
+@inline function _is_closed_curve(crv::C;xtol=1e-10) where {C<:AbsCurve}
+    x0=curve(crv,[0.0])[1]
+    x1=curve(crv,[1.0])[1]
+    _endpoint_distance(x0,x1)<=xtol
+end
+
+@inline _all_closed_curves(boundary)=all(_is_closed_curve,boundary)
+
+@inline function _is_single_composite_boundary(boundary)
+    !(boundary[1] isa AbstractVector)&&!_all_closed_curves(boundary)
+end
 
 # mostly used for CFIE where we need to project onto an irrep since we cant construct with Kress's log split since it needs full domain
 # this allows Beyn's method to handle symmetries even in the case of CFIE_kress.
