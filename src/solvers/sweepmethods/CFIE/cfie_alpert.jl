@@ -851,6 +851,7 @@ function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T
             ui=Ca.us[i]
             A[gi,gi]+=one(Complex{T})
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
+            #=
             if prev_idx!=0
                 Nb=length(prev_pts.xy)
                 nl=max(0,a-i)
@@ -859,6 +860,13 @@ function _assemble_self_alpert_composite_smooth_component!(solver::CFIE_alpert{T
             if next_idx!=0
                 nr=max(0,i+a-1-Na)
                 _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;skip_pred=j->(j<=nr))
+            end
+            =#
+            if prev_idx!=0
+                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik)
+            end
+            if next_idx!=0
+                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik)
             end
             for m in eachindex(gmap)
                 bidx=gmap[m]
@@ -908,6 +916,7 @@ function _assemble_self_alpert_composite_corner_component!(solver::CFIE_alpert{T
             ui=Ca.us[i]
             A[gi,gi]+=one(Complex{T})
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,k,αD,αS,ik;skip_pred=j->(j==i||abs(j-i)<a))
+            #=
             if prev_idx!=0
                 Nb=length(prev_pts.xy)
                 nl=max(0,a-i)
@@ -916,6 +925,13 @@ function _assemble_self_alpert_composite_corner_component!(solver::CFIE_alpert{T
             if next_idx!=0
                 nr=max(0,i+a-1-Na)
                 _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik;skip_pred=j->(j<=nr))
+            end
+            =#
+            if prev_idx!=0
+                _add_naive_panel_block!(A,gi,xi,yi,prev_ra,prev_pts,k,αD,αS,ik)
+            end
+            if next_idx!=0
+                _add_naive_panel_block!(A,gi,xi,yi,next_ra,next_pts,k,αD,αS,ik)
             end
             for m in eachindex(gmap)
                 bidx=gmap[m]
