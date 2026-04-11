@@ -442,6 +442,41 @@ end
     return x,y,tx,ty,s,idx,wt
 end
 
+function _add_naive_panel_interaction!(
+    A::AbstractMatrix{Complex{T}},
+    gi::Int,
+    xi::T,yi::T,
+    rb::UnitRange{Int},
+    pb::BoundaryPointsCFIE{T},
+    k::T,
+    αD::Complex{T},
+    αS::Complex{T},
+    ik::Complex{T};
+    skip_pred=j->false,
+) where {T<:Real}
+    Xb=getindex.(pb.xy,1)
+    Yb=getindex.(pb.xy,2)
+    dXb=getindex.(pb.tangent,1)
+    dYb=getindex.(pb.tangent,2)
+    sb=@. sqrt(dXb^2+dYb^2)
+    Nb=length(Xb)
+    @inbounds for j in 1:Nb
+        skip_pred(j) && continue
+        gj=rb[j]
+        dx=xi-Xb[j]
+        dy=yi-Yb[j]
+        r2=muladd(dx,dx,dy*dy)
+        r2<=(eps(T))^2 && continue
+        r=sqrt(r2)
+        invr=inv(r)
+        inn=_dinner(dx,dy,dXb[j],dYb[j])
+        dval=pb.ws[j]*(αD*inn*H(1,k*r)*invr)
+        sval=pb.ws[j]*sb[j]*(αS*H(0,k*r))
+        A[gi,gj]-=dval+ik*sval
+    end
+    return A
+end
+
 function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real,C<:AbsCurve}
     N=length(pts.xy)
     jcorr=rule.j
