@@ -174,6 +174,28 @@ end
 #### use N even for the algorithm - equidistant parameters ####
 s(k::Int,N::Int)=two_pi*k/N
 
+struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
+    xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
+    tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
+    tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
+    ts::Vector{T} # parametrization that needs to go from [0,2π]
+    ws::Vector{T} # the weights for the quadrature at ts
+    ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
+    ds::Vector{T} # diffs between crv lengths at ts
+    compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
+    is_periodic::Bool # true = closed periodic curve, false = open panel
+    xL::SVector{2,T} # left endpoint of the curve component, only used for panels
+    xR::SVector{2,T} # right endpoint of the curve component, only used for panels
+    tL::SVector{2,T} # tangent at left endpoint of the curve component, only used for panels
+    tR::SVector{2,T} # tangent at right endpoint of the curve component, only used for panels
+end
+
+# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
+function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    offs=component_offsets(pts)
+    return offs[end]-1
+end
+
 # helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE_kress method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
 function component_offsets(comps::Vector)
     nc=length(comps)
@@ -183,12 +205,6 @@ function component_offsets(comps::Vector)
         offs[a+1]=offs[a]+length(comps[a].xy)
     end
     return offs
-end
-
-# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
-function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
-    offs=component_offsets(pts)
-    return offs[end]-1
 end
 
 # NECESSERY DUE TO LEGACY GEOMETRY CONVENTIONS
@@ -205,22 +221,6 @@ function _boundary_components(boundary)
         comps=[[crv] for crv in boundary]
     end
     return comps
-end
-
-struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
-    xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
-    tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
-    tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
-    ts::Vector{T} # parametrization that needs to go from [0,2π]
-    ws::Vector{T} # the weights for the quadrature at ts
-    ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
-    ds::Vector{T} # diffs between crv lengths at ts
-    compid::Int # index of the multi-domain, where the outer boundary is 1, the first inner boundary is 2,... It should be respected since otherwise the tangents/normals will be incorrectly oriented
-    is_periodic::Bool # true = closed periodic curve, false = open panel
-    xL::SVector{2,T} # left endpoint of the curve component, only used for panels
-    xR::SVector{2,T} # right endpoint of the curve component, only used for panels
-    tL::SVector{2,T} # tangent at left endpoint of the curve component, only used for panels
-    tR::SVector{2,T} # tangent at right endpoint of the curve component, only used for panels
 end
 
 # reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
