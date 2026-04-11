@@ -9,7 +9,7 @@
 struct AlpertCompositeTopology{T<:Real}
     prev::Vector{Int}
     next::Vector{Int}
-    left_kind::Vector{Symbol}    # :smooth, :corner, :end
+    left_kind::Vector{Symbol}
     right_kind::Vector{Symbol}
     left_angle::Vector{T}
     right_angle::Vector{T}
@@ -18,182 +18,129 @@ struct AlpertCompositeTopology{T<:Real}
 end
 
 @inline function _unit_tangent(v::SVector{2,T}) where {T<:Real}
-    n = sqrt(v[1]^2 + v[2]^2)
-    if n < eps(T)
-        return SVector(one(T), zero(T))  # harmless fallback
-    end
-    return v / n
+    n=sqrt(v[1]^2+v[2]^2)
+    n<eps(T) && return SVector(one(T),zero(T))
+    return v/n
 end
 
-@inline function _endpoint_distance(a::SVector{2,T}, b::SVector{2,T}) where {T<:Real}
-    sqrt((a[1]-b[1])^2 + (a[2]-b[2])^2)
+@inline function _endpoint_distance(a::SVector{2,T},b::SVector{2,T}) where {T<:Real}
+    sqrt((a[1]-b[1])^2+(a[2]-b[2])^2)
 end
 
-@inline function _join_angle(t1::SVector{2,T}, t2::SVector{2,T}) where {T<:Real}
-    u1 = _unit_tangent(t1)
-    u2 = _unit_tangent(t2)
-    c = clamp(dot(u1, u2), -one(T), one(T))
+@inline function _join_angle(t1::SVector{2,T},t2::SVector{2,T}) where {T<:Real}
+    u1=_unit_tangent(t1)
+    u2=_unit_tangent(t2)
+    c=clamp(dot(u1,u2),-one(T),one(T))
     acos(c)
 end
 
-@inline function _is_closed_curve(crv::C; xtol=1e-10) where {C<:AbsCurve}
-    x0 = curve(crv, [0.0])[1]
-    x1 = curve(crv, [1.0])[1]
-    _endpoint_distance(x0, x1) <= xtol
+@inline function _is_closed_curve(crv::C;xtol=1e-10) where {C<:AbsCurve}
+    x0=curve(crv,[0.0])[1]
+    x1=curve(crv,[1.0])[1]
+    _endpoint_distance(x0,x1)<=xtol
 end
 
-@inline _all_closed_curves(boundary) = all(_is_closed_curve, boundary)
+@inline _all_closed_curves(boundary)=all(_is_closed_curve,boundary)
 
 @inline function _is_single_composite_boundary(boundary)
-    !(boundary[1] isa AbstractVector) && !_all_closed_curves(boundary)
+    !(boundary[1] isa AbstractVector)&&!_all_closed_curves(boundary)
 end
 
-function _is_component_closed(boundary::Vector{C}, xtol::T) where {T<:Real,C<:AbsCurve}
-    xL = curve(boundary[1], [zero(T)])[1]
-    xR = curve(boundary[end], [one(T)])[1]
-    _endpoint_distance(xR, xL) <= xtol
+function _is_component_closed(boundary::Vector{C},xtol::T) where {T<:Real,C<:AbsCurve}
+    xL=curve(boundary[1],[zero(T)])[1]
+    xR=curve(boundary[end],[one(T)])[1]
+    _endpoint_distance(xR,xL)<=xtol
 end
 
-@inline _panel_left_endpoint(p::BoundaryPointsCFIE) = (p.xL, p.tL)
-@inline _panel_right_endpoint(p::BoundaryPointsCFIE) = (p.xR, p.tR)
+@inline _panel_left_endpoint(p::BoundaryPointsCFIE)=(p.xL,p.tL)
+@inline _panel_right_endpoint(p::BoundaryPointsCFIE)=(p.xR,p.tR)
 
-@inline function _classify_join(
-    p_left::BoundaryPointsCFIE{T},
-    p_right::BoundaryPointsCFIE{T};
-    xtol::T,
-    angtol::T,
-    side::Symbol,
-    segidx::Int,
-    compidx::Int,
-) where {T<:Real}
-
-    xL, tL = _panel_right_endpoint(p_left)
-    xR, tR = _panel_left_endpoint(p_right)
-
-    d = _endpoint_distance(xL, xR)
-    d > xtol && error("Boundary ordering mismatch at $side join of segment $segidx in component $compidx: distance = $d")
-
-    θ = _join_angle(tL, tR)
-    kind = (θ <= angtol) ? :smooth : :corner
-    return kind, θ
+@inline function _classify_join(p_left::BoundaryPointsCFIE{T},p_right::BoundaryPointsCFIE{T};xtol::T,angtol::T,side::Symbol,segidx::Int,compidx::Int,) where {T<:Real}
+    xL,tL=_panel_right_endpoint(p_left)
+    xR,tR=_panel_left_endpoint(p_right)
+    d=_endpoint_distance(xL,xR)
+    d>xtol&&error("Boundary ordering mismatch at $side join of segment $segidx in component $compidx: distance = $d")
+    θ=_join_angle(tL,tR)
+    kind=(θ<=angtol) ? :smooth : :corner
+    return kind,θ
 end
 
 @inline function _component_panel_groups(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
-    nc = maximum(p.compid for p in pts)
-    gmaps = Vector{Vector{Int}}(undef, nc)
+    nc=maximum(p.compid for p in pts)
+    gmaps=Vector{Vector{Int}}(undef,nc)
     @inbounds for c in 1:nc
-        gmaps[c] = findall(p -> p.compid == c, pts)
+        gmaps[c]=findall(p->p.compid==c,pts)
     end
     return gmaps
 end
 
-function _build_single_component_topology(
-    pts::Vector{BoundaryPointsCFIE{T}},
-    gmap::Vector{Int},
-    compidx::Int;
-    xtol::T = T(1e-10),
-    angtol::T = T(1e-8),
-) where {T<:Real}
-
-    n = length(gmap)
-    n == 0 && error("Empty component in _build_single_component_topology.")
-
-    # Special case: one periodic panel = already a smooth closed component.
-    if n == 1 && pts[gmap[1]].is_periodic
-        prev = [1]
-        next = [1]
-        left_kind  = [:smooth]
-        right_kind = [:smooth]
-        left_angle  = [zero(T)]
-        right_angle = [zero(T)]
-        return AlpertCompositeTopology(
-            prev, next,
-            left_kind, right_kind,
-            left_angle, right_angle,
-            true,   # is_closed
-            true    # all_smooth
-        )
+function _build_single_component_topology(pts::Vector{BoundaryPointsCFIE{T}},gmap::Vector{Int},compidx::Int;xtol::T=T(1e-10),angtol::T=T(1e-8),) where {T<:Real}
+    n=length(gmap)
+    n==0&&error("Empty component in _build_single_component_topology.")
+    if n==1&&pts[gmap[1]].is_periodic
+        prev=[1]
+        next=[1]
+        left_kind=[:smooth]
+        right_kind=[:smooth]
+        left_angle=[zero(T)]
+        right_angle=[zero(T)]
+        return AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle,true,true)
     end
-
-    prev = Vector{Int}(undef, n)
-    next = Vector{Int}(undef, n)
-    left_kind  = Vector{Symbol}(undef, n)
-    right_kind = Vector{Symbol}(undef, n)
-    left_angle  = Vector{T}(undef, n)
-    right_angle = Vector{T}(undef, n)
-
-    firstp = pts[gmap[1]]
-    lastp  = pts[gmap[end]]
-    is_closed = firstp.is_periodic || (_endpoint_distance(lastp.xR, firstp.xL) <= xtol)
-
+    prev=Vector{Int}(undef,n)
+    next=Vector{Int}(undef,n)
+    left_kind=Vector{Symbol}(undef,n)
+    right_kind=Vector{Symbol}(undef,n)
+    left_angle=Vector{T}(undef,n)
+    right_angle=Vector{T}(undef,n)
+    firstp=pts[gmap[1]]
+    lastp=pts[gmap[end]]
+    is_closed=firstp.is_periodic||(_endpoint_distance(lastp.xR,firstp.xL)<=xtol)
     @inbounds for l in 1:n
-        prev[l] = (l == 1) ? (is_closed ? n : 0) : (l - 1)
-        next[l] = (l == n) ? (is_closed ? 1 : 0) : (l + 1)
+        prev[l]=(l==1) ? (is_closed ? n : 0) : (l-1)
+        next[l]=(l==n) ? (is_closed ? 1 : 0) : (l+1)
     end
-
     @inbounds for l in 1:n
-        a = gmap[l]
-
-        if prev[l] == 0
-            left_kind[l] = :end
-            left_angle[l] = T(NaN)
+        a=gmap[l]
+        if prev[l]==0
+            left_kind[l]=:end
+            left_angle[l]=T(NaN)
         else
-            ap = gmap[prev[l]]
-            left_kind[l], left_angle[l] = _classify_join(
-                pts[ap], pts[a];
-                xtol = xtol,
-                angtol = angtol,
-                side = :left,
-                segidx = l,
-                compidx = compidx,
-            )
+            ap=gmap[prev[l]]
+            left_kind[l],left_angle[l]=_classify_join(pts[ap],pts[a];xtol=xtol,angtol=angtol,side=:left,segidx=l,compidx=compidx)
         end
-
-        if next[l] == 0
-            right_kind[l] = :end
-            right_angle[l] = T(NaN)
+        if next[l]==0
+            right_kind[l]=:end
+            right_angle[l]=T(NaN)
         else
-            an = gmap[next[l]]
-            right_kind[l], right_angle[l] = _classify_join(
-                pts[a], pts[an];
-                xtol = xtol,
-                angtol = angtol,
-                side = :right,
-                segidx = l,
-                compidx = compidx,
-            )
+            an=gmap[next[l]]
+            right_kind[l],right_angle[l]=_classify_join(pts[a],pts[an];xtol=xtol,angtol=angtol,side=:right,segidx=l,compidx=compidx)
         end
     end
-
-    all_smooth = all(k -> k === :smooth, left_kind[left_kind .!= :end]) &&
-                 all(k -> k === :smooth, right_kind[right_kind .!= :end])
-
-    return AlpertCompositeTopology(
-        prev, next,
-        left_kind, right_kind,
-        left_angle, right_angle,
-        is_closed, all_smooth
-    )
+    all_smooth=true
+    @inbounds for k in left_kind
+        if k!==:end&&k!==:smooth
+            all_smooth=false
+            break
+        end
+    end
+    if all_smooth
+        @inbounds for k in right_kind
+            if k!==:end&&k!==:smooth
+                all_smooth=false
+                break
+            end
+        end
+    end
+    return AlpertCompositeTopology(prev,next,left_kind,right_kind,left_angle,right_angle,is_closed,all_smooth)
 end
 
-function build_join_topology(
-    pts::Vector{BoundaryPointsCFIE{T}};
-    xtol::T = T(1e-10),
-    angtol::T = T(1e-8),
-) where {T<:Real}
-
-    gmaps = _component_panel_groups(pts)
-    topos = Vector{AlpertCompositeTopology{T}}(undef, length(gmaps))
-
+function build_join_topology(pts::Vector{BoundaryPointsCFIE{T}};xtol::T=T(1e-10),angtol::T=T(1e-8)) where {T<:Real}
+    gmaps=_component_panel_groups(pts)
+    topos=Vector{AlpertCompositeTopology{T}}(undef,length(gmaps))
     @inbounds for c in eachindex(gmaps)
-        topos[c] = _build_single_component_topology(
-            pts, gmaps[c], c;
-            xtol = xtol,
-            angtol = angtol,
-        )
+        topos[c]=_build_single_component_topology(pts,gmaps[c],c;xtol=xtol,angtol=angtol)
     end
-
-    return topos, gmaps
+    return topos,gmaps
 end
 
 ####################
