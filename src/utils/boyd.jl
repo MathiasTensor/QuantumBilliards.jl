@@ -106,7 +106,7 @@ function interval_roots_boyd(f::Function,a::T,b::T;Ftol::Float64=1e-12,Mmax::Int
         end # not yet converged -> double M
         M*=2
     end
-    print_error && error("No convergence for Mmax = $(Mmax) on [ $(a) , $(b) ] for Fourier coeff tol = $(Ftol)")
+    print_error && println("No convergence for Mmax = $(Mmax) on [ $(a) , $(b) ] for Fourier coeff tol = $(Ftol)")
     return Vector{Complex{T}}()
 end
 
