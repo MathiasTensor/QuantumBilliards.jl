@@ -570,7 +570,6 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
         normalize!(VL)
         κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
         @info "Median eigenvalue condition number: $(median(κ_all))"
-        @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
     else
         @info "Solving Julia's ggev for A, dA"
         s_gev=time()
@@ -595,7 +594,6 @@ function solve_full_INFO(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::B
         normalize!(VL)
         κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
         @info "Median eigenvalue condition number: $(median(κ_all))"
-        @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
     end
     T=eltype(real.(λ))
     valid=(abs.(real.(λ)).<dk) .& (abs.(imag.(λ)).<dk) # use (-dk,dk) × (-dk,dk) instead of disc of radius dk
