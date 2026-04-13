@@ -98,8 +98,8 @@ include("solvers/acceleratedmethods/scalingmethod.jl")
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 
 # Standard sweep methods
-include("solvers/sweepmethods/particularsolutionsmethod.jl")
-include("solvers/sweepmethods/decompositionmethod.jl")
+include("solvers/sweepmethods/BASIS_SWEEP/particularsolutionsmethod.jl")
+include("solvers/sweepmethods/BASIS_SWEEP/decompositionmethod.jl")
 include("solvers/sweepmethods/DLP/boundaryintegralmethod.jl")
 
 # Chebyshev machinery - general
