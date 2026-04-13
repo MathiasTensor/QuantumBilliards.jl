@@ -100,7 +100,7 @@ include("solvers/acceleratedmethods/acceleratedmethods.jl")
 # Standard sweep methods
 include("solvers/sweepmethods/particularsolutionsmethod.jl")
 include("solvers/sweepmethods/decompositionmethod.jl")
-include("solvers/sweepmethods/boundaryintegralmethod.jl")
+include("solvers/sweepmethods/DLP/boundaryintegralmethod.jl")
 
 # Chebyshev machinery - general
 include("chebyshev/chebyshev_core.jl")
@@ -124,7 +124,7 @@ include("chebyshev/chebyshev_euclidian_helmholtz_kress.jl")
 include("chebyshev/chebyshev_optimal_panelization.jl")
 
 # Expanded BIM
-include("solvers/sweepmethods/expanded_boundary_integral_method.jl")
+include("solvers/sweepmethods/DLP/expanded_boundary_integral_method.jl")
 
 # Krylov methods
 include("solvers/krylovsolvers.jl")
