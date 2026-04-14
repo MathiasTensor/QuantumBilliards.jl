@@ -109,19 +109,14 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
             L=crv.length
             N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi)))
             sampler=samplers[i]
-            if crv isa PolarSegment
-                if sampler isa PolarSampler
-                    t,dt=sample_points(sampler,crv,N)
-                else
-                    t,dt=sample_points(sampler,N)
-                end
-                s=arc_length(crv,t)
-                ds=diff(s)
-                append!(ds,L+s[1]-s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
+            if sampler isa PolarSampler
+                t,dt=sample_points(sampler,crv,N)
             else
                 t,dt=sample_points(sampler,N)
-                ds=L.*dt
             end
+            s=arc_length(crv,t)
+            ds=diff(s)
+            append!(ds,L+s[1]-s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
             xy=curve(crv,t)
             normal=normal_vec(crv,t)
             kappa=curvature(crv,t)
