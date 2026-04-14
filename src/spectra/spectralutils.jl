@@ -517,6 +517,13 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
         push!(dks,Δk)
         k+=Δk
     end
+    # estitate the max number of eigenvalues per interval for krylov estimate
+    nevs=Int[]
+    for i in eachindex(ks)
+        k=ks[i]
+        dk=dks[i]
+        push!(nevs,Int(ceil((billiard.area*k/(2*pi)-billiard.length/(4*pi))*dk))+10) # add some padding to be safe
+    end
     isempty(ks) && return T[],T[]
     pts0=evaluate_points(solver,billiard,ks[1])
     println("compute_spectrum...")
@@ -540,7 +547,7 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
         dA=Matrix{Complex{T}}(undef,N,N)
         ddA=Matrix{Complex{T}}(undef,N,N)
         for i in seg_first:seg_last
-            λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+            λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i])
             results[i]=(λs,tens)
             next!(p)
         end

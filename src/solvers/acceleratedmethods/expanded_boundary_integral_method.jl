@@ -308,14 +308,14 @@ function solve_krylov_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA:
     return λ_out,tens
 end
 
-function solve!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real}
+function solve!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true,nev::Int=5) where {T<:Real}
     basis=AbstractHankelBasis()
     fill!(A,Complex{T}(zero(T),zero(T)))
     fill!(dA,Complex{T}(zero(T),zero(T)))
     fill!(ddA,Complex{T}(zero(T),zero(T)))
     @blas_1 construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
     if use_krylov
-        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded)
+        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded,nev=nev)
     else
         return solve_full!(solver,A,dA,ddA,pts,k,dk;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded)
     end
