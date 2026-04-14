@@ -223,6 +223,7 @@ This function merges two sets of wavenumber data (`k_left`, `ten_left`) and (`k_
 # Returns
 - `Nothing`: The function modifies `k_left`, `ten_left`, and `control_left` in place.
 """
+#=
 function overlap_and_merge!(k_left::Vector, ten_left::Vector, k_right::Vector, ten_right::Vector, control_left::Vector{Bool}, kl::T, kr::T; tol=1e-3) where {T<:Real}
     #check if intervals are empty 
     if isempty(k_left)
@@ -252,6 +253,47 @@ function overlap_and_merge!(k_left::Vector, ten_left::Vector, k_right::Vector, t
     append!(k_left,k_right[idx_last:end])
     append!(ten_left,ten_right[idx_last:end])
     append!(control_left,[false for i in idx_last:length(k_right)])
+end
+=#
+function overlap_and_merge!(k_left::Vector{T},ten_left::Vector{T},k_right::Vector{T},ten_right::Vector{T},control_left::Vector{Bool},kl::T,kr::T;tol=1e-3) where {T<:Real}
+    isempty(k_right) && return nothing
+    if isempty(k_left)
+        append!(k_left,k_right)
+        append!(ten_left,ten_right)
+        append!(control_left,fill(false,length(k_right)))
+        p=sortperm(k_left)
+        k_left[:]=k_left[p]
+        ten_left[:]=ten_left[p]
+        control_left[:]=control_left[p]
+        return nothing
+    end
+    @inbounds for j in eachindex(k_right)
+        kj=k_right[j]
+        tj=ten_right[j]
+        if isempty(k_left)
+            push!(k_left,kj)
+            push!(ten_left,tj)
+            push!(control_left,false)
+            continue
+        end
+        d=abs.(k_left .- kj)
+        imin=argmin(d)
+        if d[imin]<=tol
+            if tj<ten_left[imin]
+                k_left[imin]=kj
+                ten_left[imin]=tj
+            end
+        else
+            push!(k_left,kj)
+            push!(ten_left,tj)
+            push!(control_left,false)
+        end
+    end
+    p=sortperm(k_left)
+    k_left[:]=k_left[p]
+    ten_left[:]=ten_left[p]
+    control_left[:]=control_left[p]
+    return nothing
 end
 
 """
