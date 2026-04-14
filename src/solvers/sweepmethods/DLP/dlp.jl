@@ -163,7 +163,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreade
             dx=xi-xs[j];dy=yi-ys[j]
             d=sqrt(muladd(dx,dx,dy*dy)) # an efficient dy^2+dx*dx
             if d<tol
-                M[i,j]= -Complex(curvatures[i]/TWO_PI) 
+                M[i,j]= Complex(curvatures[i]/TWO_PI) 
             else
                 invd=inv(d)
                 cos_phi=(nx[j]*dx+ny[j]*dy)*invd
@@ -410,7 +410,7 @@ See `_add_pair3_no_symmetry_default!` for the exact kernel forms.
 # Returns
 - `Bool`: `true` if the image contribution was added; `false` if it was skipped due to `r^2 ≤ tol2`.
 """
-@inline function _add_pair3_image_default!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xjr::T,yjr::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::Union{T,Complex{T}}=one(Complex{T}))::Bool where {T<:Real}
+@inline function _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxjr,nyjr,κi,k,tol2;scale=one(eltype(K))) 
     dx=xi-xjr
     dy=yi-yjr
     d2=muladd(dx,dx,dy*dy)
@@ -418,18 +418,14 @@ See `_add_pair3_no_symmetry_default!` for the exact kernel forms.
     d=sqrt(d2)
     invd=inv(d)
     kd=k*d
-    cij=(nxi*dx+nyi*dy)*invd
-    H0,H1,H2=Bessels.besselh(0:2,1,kd)  # allocates a 3-vector, but this is the biggest efficiency due to reccurence
-    pref=Complex{T}(zero(T),k/2)  # base: (im*k/2) * H1(kd)
-    pref2=Complex{T}(zero(T),inv(2*k)) # for second derivative prefix
-    hK=pref*H1 # (im*k/2)*H1(kd)
-    hdK=pref*d*H0 # first derivative val (im*k/2)*d*H0(kd)
-    hddK=pref2*((-2+kd*kd)*H1+kd*H2) # second derivative:  im/(2k) * [ (-2 + (kd)^2) H1(kd) + kd H2(kd) ]
-    @inbounds begin
-        K[i,j]+=scale*(cij*hK)
-        dK[i,j]+=scale*(cij*hdK)
-        ddK[i,j]+=scale*(cij*hddK)
-    end
+    cij=(nxjr*dx+nyjr*dy)*invd
+    H0,H1,H2=Bessels.besselh(0:2,1,kd)
+    pref=Complex(zero(k),k/2)
+    pref2=Complex(zero(k),inv(2*k))
+    hK=pref*H1
+    hdK=pref*d*H0
+    hddK=pref2*((-2+kd*kd)*H1+kd*H2)
+    @inbounds(K[i,j]+=scale*(cij*hK);dK[i,j]+=scale*(cij*hdK);ddK[i,j]+=scale*(cij*hddK))
     return true
 end
 
@@ -453,7 +449,7 @@ function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints
             nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
             if !ok
-                K[i,j]+= -Complex(κ[i]/TWO_PI)
+                K[i,j]+= Complex(κ[i]/TWO_PI)
             end
         end
     end
@@ -535,7 +531,7 @@ function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints
             nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
             if !ok
-                K[i,j]+= -Complex(κ[i]/TWO_PI) 
+                K[i,j]+= Complex(κ[i]/TWO_PI) 
             end
             if add_x
                 xr=_x_reflect(xj,shift_x)
