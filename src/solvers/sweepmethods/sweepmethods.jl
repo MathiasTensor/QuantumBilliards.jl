@@ -374,7 +374,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             a=kcur-window
             b=kcur+window
             if solver_cur isa EBIMSolver
-                knew,tnew=newton_refine_svd(solver_cur,basis,billiard,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol,multithreaded_matrices=multithreaded_matrices)
+                @time "Newton" knew,tnew=newton_refine_svd(solver_cur,basis,billiard,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol,multithreaded_matrices=multithreaded_matrices)
             else
                 dim=max(solver_cur.min_dim,round(Int,billiard.length*kcur*solver_cur.dim_scaling_factor/(2*pi)))
                 basis_cur=resize_basis(basis,billiard,dim,kcur)
