@@ -35,27 +35,53 @@ function _sweep_dim(solver::SweepSolver,billiard::AbsBilliard,ks)
 end
 
 # The _k_sweep_prepare function is responsible for preparing the necessary data and functions for performing the k-sweep. It evaluates the points on the billiard boundary for the maximum wavenumber, and sets up the solve functions that will be used in the sweep. This allows us to separate the preparation phase from the actual sweeping, which can help with code organization.
-function _k_sweep_prepare(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+function _k_sweep_prepare(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
+    Ntot=boundary_matrix_size(pts)
     solve_first(k)=solve_INFO(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    solve_one(k)=solve(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    if multithreaded_ks
+        solve_one(k)=begin
+            A=Matrix{Complex{eltype(pts[1].ws)}}(undef,Ntot,Ntot)
+            solve(solver,A,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+        end
+    else
+        A=Matrix{Complex{eltype(pts[1].ws)}}(undef,Ntot,Ntot)
+        solve_one(k)=solve(solver,A,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    end
     return solve_first,solve_one
 end
-function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_kress_workspace(solver,pts)
     solve_first(k)=solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    solve_one(k)=solve(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    if multithreaded_ks
+        solve_one(k)=begin
+            A=Matrix{Complex{eltype(pts[1].ws)}}(undef,ws.Ntot,ws.Ntot)
+            solve(solver,A,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+        end
+    else
+        A=Matrix{Complex{eltype(pts[1].ws)}}(undef,ws.Ntot,ws.Ntot)
+        solve_one(k)=solve(solver,A,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    end
     return solve_first,solve_one
 end
-function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+
+function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_alpert_workspace(solver,pts)
     solve_first(k)=solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    solve_one(k)=solve(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    if multithreaded_ks
+        solve_one(k)=begin
+            A=Matrix{Complex{eltype(pts[1].ws)}}(undef,ws.Ntot,ws.Ntot)
+            solve(solver,A,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+        end
+    else
+        A=Matrix{Complex{eltype(pts[1].ws)}}(undef,ws.Ntot,ws.Ntot)
+        solve_one(k)=solve(solver,A,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    end
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
@@ -97,7 +123,7 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
 """
 function k_sweep(solver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
-    solve_first,solve_one=_k_sweep_prepare(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,tol=tol,which=which)
+    solve_first,solve_one=_k_sweep_prepare(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,multithreaded_ks=multithreaded_ks,use_krylov=use_krylov,tol=tol,which=which)
     res=_k_sweep_result_container(ks;which=which)
     println("$(nameof(typeof(solver))) sweep...")
     p=Progress(length(ks),1)
