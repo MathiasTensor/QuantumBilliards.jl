@@ -331,7 +331,7 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
     end
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false,newton_max_iter::Int=8,newton_tol::Float64=1e-12) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0),dim_refinement_factors=(1.0,1.1,1.25),window_shrink=3.0,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false,newton_max_iter::Int=8,newton_tol::Float64=1e-12) where {T<:Real}
     N=length(ks)
     @assert N==length(tens)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
