@@ -254,7 +254,7 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
     λbest=Inf
     tbest=Inf
 
-    for _ in 1:maxiter
+    @showprogress for _ in 1:maxiter
         pts=evaluate_points(solver,billiard,k)
         N=boundary_matrix_size(pts)
         T=typeof(k)
