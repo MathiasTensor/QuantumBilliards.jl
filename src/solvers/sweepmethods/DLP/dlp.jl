@@ -783,13 +783,6 @@ function fredholm_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::Abs
     return K,dK,ddK
 end
 
-function compute_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    N=length(bp.xy)
-    K=Matrix{Complex{T}}(undef,N,N)
-    compute_kernel_matrix!(K,bp,k;multithreaded=multithreaded)
-    return K
-end
-
 function compute_kernel_matrix(bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
     K=Matrix{Complex{T}}(undef,N,N)

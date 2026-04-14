@@ -906,6 +906,26 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     return A
 end
 
+function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_alpert_workspace(solver,pts)
+    construct_matrices_with_derivatives!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
+    return A,dA,ddA
+end
+
+function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_matrices_with_derivatives!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
+    return A,dA,ddA
+end
+
+function construct_matrices(solver::CFIE_alpert{T},basis::AbstractHankelBasis,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_alpert_workspace(solver,pts)
+    return construct_matrices_with_derivatives(solver,pts,ws,k;multithreaded=multithreaded)
+end
+
+function construct_matrices(solver::CFIE_alpert{T},basis::AbstractHankelBasis,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    return construct_matrices_with_derivatives(solver,pts,ws,k;multithreaded=multithreaded)
+end
+
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     Ntot=boundary_matrix_size(pts)
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
