@@ -163,7 +163,7 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreade
             dx=xi-xs[j];dy=yi-ys[j]
             d=sqrt(muladd(dx,dx,dy*dy)) # an efficient dy^2+dx*dx
             if d<tol
-                M[i,j]= Complex(curvatures[i]/TWO_PI) 
+                M[i,j]= -Complex(curvatures[i]/TWO_PI) 
             else
                 invd=inv(d)
                 cos_phi=(nx[j]*dx+ny[j]*dy)*invd
@@ -364,7 +364,7 @@ where `r = ‖(xi,yi)-(xj,yj)‖` and `cosφ = (nxi,nyi)⋅((xi,yi)-(xj,yj))/r`.
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
     if i==j # when we have no symmetry safely modify the Diagonal elements, otherwise the d^2<tol2 check in the symmetry version 
-        @inbounds K[i,j]+= scale*Complex(κi/TWO_PI)
+        @inbounds K[i,j]+= -scale*Complex(κi/TWO_PI)
         return false
     end
     d=sqrt(d2);invd=inv(d);kd=k*d
@@ -449,7 +449,7 @@ function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints
             nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
             if !ok
-                K[i,j]+= Complex(κ[i]/TWO_PI)
+                K[i,j]+= -Complex(κ[i]/TWO_PI)
             end
         end
     end
@@ -531,7 +531,7 @@ function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints
             nyj=nrm[j][2]
             ok=_add_pair_default!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
             if !ok
-                K[i,j]+= Complex(κ[i]/TWO_PI) 
+                K[i,j]+= -Complex(κ[i]/TWO_PI)
             end
             if add_x
                 xr=_x_reflect(xj,shift_x)
