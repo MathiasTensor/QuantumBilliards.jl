@@ -322,7 +322,7 @@ and `|corr₁ + corr₂|`.
    3. `λ_corrected_2 = k + corr₁ + corr₂` (2nd-order),
    4. `tens_2 = abs(corr₁ + corr₂)`.
 """
-function solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
@@ -391,7 +391,7 @@ scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
 - `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
 - `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
 """
-function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function visualize_ebim_sweep(solver::EBIMSolver,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     k=k1
     bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.symmetry)
     T=eltype(k1)
@@ -439,108 +439,4 @@ function visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,b
     ks_all_1=ks_all_1[idxs1]
     ks_all_2=ks_all_2[idxs2]
     return ks_all_1,logtens_1, ks_all_2,logtens_2
-end
-
-"""
-    visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-
-Useful function to check the conditions numbers of the relevant Fredholm matrix and it's derivatives in the given k-range. This is to check the numerical stability of the method, especially very close to a true eigenvalue. It is quite useful to plot the ks vs. log of the returned results vectors for A, dA, ddA to see deeper insights.
-
-# Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the expanded boundary integral method.
-- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
-- `k1::T`: Starting wavenumber for the spectrum calculation.
-- `k2::T`: Ending wavenumber for the spectrum calculation.
-- `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
-- `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
-- `multithreaded_matrices::Bool=false`: If the Fredholm matrix construction and it's derivatives should be done in parallel.
-- `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
-
-# Returns
-- `(ksA,resultsA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the A matrix where LAPACK did not crash.
-- `(ksdA,resultsdA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the dA matrix where LAPACK did not crash.
-- `(ksddA,resultsddA)::Tuple{Vector{T},Vector{T}}`: The ks and conditions numbers for the ddA matrix where LAPACK did not crash.
-- `(det_ksA,det_resultsA)::Tuple{Vector{T},Vector{T}}`: The ks and det numbers for the A matrix where LAPACK did not crash.
-- `(det_ksdA,det_resultsdA)::Tuple{Vector{T},Vector{T}}`: The ks and det numbers for the dA matrix where LAPACK did not crash.
-- `(det_ksddA,det_resultsddA)::Tuple{Vector{T},Vector{T}}`: The ks and det numbers for the ddA matrix where LAPACK did not crash.
-
-"""
-function visualize_cond_dA_ddA_vs_k(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1::T,k2::T;dk=(k)->(0.05*k^(-1/3)),multithreaded_matrices::Bool=false,multithreaded_ks=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-    basis=AbstractHankelBasis()
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.symmetry)
-    ks=T[]
-    dks=T[]
-    k=k1
-    while k<k2
-        push!(ks,k)
-        kstep=dk(k)
-        k+=kstep
-        push!(dks,kstep)
-    end
-    println("EBIM...")
-    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
-    @showprogress desc="Calculating boundary points EBIM..." Threads.@threads for i in eachindex(ks)
-        all_pts[i]=evaluate_points(deepcopy(bim_solver),billiard,ks[i])
-    end
-    resultsA=Vector{Union{T,Missing}}(missing,length(ks))
-    resultsdA=Vector{Union{T,Missing}}(missing,length(ks))
-    resultsddA=Vector{Union{T,Missing}}(missing,length(ks))
-    det_resultsA=Vector{Union{T,Missing}}(missing,length(ks))
-    det_resultsdA=Vector{Union{T,Missing}}(missing,length(ks))
-    det_resultsddA=Vector{Union{T,Missing}}(missing,length(ks))
-    p=Progress(length(ks),1) # first one finished
-    println("Constructing dA, ddA and evaluating cond...")
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)
-        A,dA,ddA=construct_matrices(solver,basis,all_pts[i],ks[i],multithreaded=multithreaded_matrices)
-        try
-            cA=cond(A)
-            resultsA[i]=cA
-        catch e
-            @warn "cond(A) failed at k = $(ks[i]) with error $e"
-        end
-        try
-            det_cA=logabsdet(A)[1]
-            det_resultsA[i]=det_cA
-        catch e
-            @warn "logabsdet(A) failed at k = $(ks[i]) with error $e"
-        end
-        try
-            cdA=cond(dA)
-            resultsdA[i]=cdA
-        catch e 
-            @warn "cond(dA) failed at k = $(ks[i]) with error $e"
-        end
-        try
-            det_cdA=logabsdet(dA)[1]
-            det_resultsdA[i]=det_cdA
-        catch e
-            @warn "logabsdet(dA) failed at k = $(ks[i]) with error $e"
-        end
-        try # since most cases the LAPACK solver will crash when calculating the condition number of ddA. In those cases it is also useless to compute it since we need to divide by ddA in the 2nd order corrections and it will give unstable results.
-            cddA=cond(ddA)
-            resultsddA[i]=cddA
-        catch e 
-            @warn "cond(ddA) failed at k = $(ks[i]) with error $e"
-        end
-        try
-            det_cddA=logabsdet(ddA)[1]
-            det_resultsddA[i]=det_cddA
-        catch e
-            @warn "logabsdet(ddA) failed at k = $(ks[i]) with error $e"
-        end
-        next!(p)
-    end
-    function filter_valid(xs::Vector{Union{T,Missing}},ks::Vector{T}) where {T}
-        idxs=findall(!ismissing,xs)
-        return xs[idxs],ks[idxs]
-    end
-    # Filter condition numbers and their corresponding ks
-    resultsA,ksA=filter_valid(resultsA,ks)
-    resultsdA,ksdA=filter_valid(resultsdA,ks)
-    resultsddA,ksddA=filter_valid(resultsddA,ks)
-    # Filter determinants and their corresponding ks
-    det_resultsA,det_ksA=filter_valid(det_resultsA,ks)
-    det_resultsdA,det_ksdA=filter_valid(det_resultsdA,ks)
-    det_resultsddA,det_ksddA=filter_valid(det_resultsddA,ks)
-    return (ksA,resultsA),(ksdA,resultsdA),(ksddA,resultsddA),(det_ksA,det_resultsA),(det_ksdA,det_resultsdA),(det_ksddA,det_resultsddA)
 end
