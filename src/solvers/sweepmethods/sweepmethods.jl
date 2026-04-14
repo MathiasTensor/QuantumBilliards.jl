@@ -310,7 +310,7 @@ function newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,
     end
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0),dim_refinement_factors=(1.0,1.1,1.25),window_shrink=3.0,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false,newton_max_iter::Int=8,newton_tol::Float64=1e-12) where {T<:Real}
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0),dim_refinement_factors=(1.0,1.1,1.25),window_shrink=3.0,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false,newton_max_iter::Int=8,newton_tol::Float64=1e-12,progress_info::Bool=false) where {T<:Real}
     N=length(ks)
     @assert N==length(tens)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
@@ -320,6 +320,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,length(ks_approx))
     show_progress && (p=Progress(length(ks_approx);desc="Refining minima"))
+    progress_info && (p=Progress(length(ks_approx);desc="Refining minima",barlen=20,showvalues=[("k",0.0),("tension",0.0)]))
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
         idx0=argmin(abs.(ks.-kcur))
@@ -402,6 +403,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             tprev=tnew
             kcur=knew
             window/=window_shrink
+            progress_info && (next!(p;showvalues=[("k",kcur),("tension",tnew)]))
         end
         sols[i]=kcur
         tens_refined[i]=tprev
