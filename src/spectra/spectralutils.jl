@@ -106,40 +106,41 @@ Match wavenumbers and tensions from two sorted lists (`ks_l` and `ks_r`). The fu
 - `ts::Vector{T}` : List of merged tensions corresponding to the wavenumbers.
 control::Vector{Bool} : A boolean vector indicating whether a merged wavenumber resulted from overlap between `ks_l` and `ks_r`.
 """
-function match_wavenumbers(ks_l::Vector, ts_l::Vector, ks_r::Vector, ts_r::Vector)
-    #vectors ks_l and_ks_r must be sorted
-    i=j=1 #counting index
-    control = Vector{Bool}()#control bits
-    ks = Vector{eltype(ks_l)}()#final wavenumbers
-    ts = Vector{eltype(ts_l)}()#final tensions
-    while i <= length(ks_l) && j <= length(ks_r)
+function match_wavenumbers(ks_l::Vector{T},ts_l::Vector{T},ks_r::Vector{T},ts_r::Vector{T}) where {T<:Real}
+    i=1
+    j=1
+    ks=T[]
+    ts=T[]
+    control=Bool[]
+    while i<=length(ks_l) && j<=length(ks_r)
         x,dx=ks_l[i],ts_l[i]
         y,dy=ks_r[j],ts_r[j]
-        if is_equal(x,dx,y,dy) #check equality with errorbars
-            i+=1 
-            j+=1
+        if is_equal(x,dx,y,dy)
             if dx<dy
-                push!(ks,x)
-                push!(ts,dx)
-                push!(control,true)
+                push!(ks,x); push!(ts,dx)
             else
-                push!(ks,y)
-                push!(ts,dy)
-                push!(control,true)
+                push!(ks,y); push!(ts,dy)
             end
-        elseif x<y
+            push!(control,true)
             i+=1
-            push!(ks,x)
-            push!(ts,dx)
-            push!(control,false)
-        else 
             j+=1
-            push!(ks,y)
-            push!(ts,dy)
-            push!(control,false)
+        elseif x<y
+            push!(ks,x); push!(ts,dx); push!(control,false)
+            i+=1
+        else
+            push!(ks,y); push!(ts,dy); push!(control,false)
+            j+=1
         end
     end
-    return ks,ts,control 
+    while i<=length(ks_l)
+        push!(ks,ks_l[i]); push!(ts,ts_l[i]); push!(control,false)
+        i+=1
+    end
+    while j<=length(ks_r)
+        push!(ks,ks_r[j]); push!(ts,ts_r[j]); push!(control,false)
+        j+=1
+    end
+    return ks,ts,control
 end
 
 """
@@ -161,45 +162,42 @@ ts::Vector{<:Real} : List of merged tensions that
 X_list::Vector{Vector{<:Real}} : List of vectors of vectors of the matched/merged ks
 control::Vector{Bool} : List of boolean values indicating whether there was an overlap and we had to choose based on tension value to merge
 """
-function match_wavenumbers_with_X(ks_l::AbstractVector{T},ts_l::AbstractVector{T},X_l::Vector{Vector{T}},ks_r::AbstractVector{T},ts_r::AbstractVector{T},X_r::Vector{Vector{T}}) where {T<:Real}
-    i=j=1
-    ks=Vector{eltype(ks_l)}() # final wavenumbers
-    ts=Vector{eltype(ts_l)}() # final tensions
-    X_list=Vector{Vector{T}}() # final vectors
+function match_wavenumbers_with_X(ks_l::Vector{T},ts_l::Vector{T},X_l::Vector{Vector{T}},ks_r::Vector{T},ts_r::Vector{T},X_r::Vector{Vector{T}}) where {T<:Real}
+    i=1
+    j=1
+    ks=T[]
+    ts=T[]
+    Xs=Vector{Vector{T}}()
     control=Bool[]
     while i<=length(ks_l) && j<=length(ks_r)
         x,dx,Xx=ks_l[i],ts_l[i],X_l[i]
         y,dy,Xy=ks_r[j],ts_r[j],X_r[j]
         if is_equal(x,dx,y,dy)
-            # Choose which to keep based on tension
+            if dx<dy
+                push!(ks,x); push!(ts,dx); push!(Xs,Xx)
+            else
+                push!(ks,y); push!(ts,dy); push!(Xs,Xy)
+            end
+            push!(control,true)
             i+=1
             j+=1
-            if dx<dy
-                push!(ks,x); 
-                push!(ts,dx); 
-                push!(X_list,Xx); 
-                push!(control,true)
-            else
-                push!(ks,y); 
-                push!(ts,dy); 
-                push!(X_list,Xy); 
-                push!(control,true)
-            end
         elseif x<y
-            push!(ks,x); 
-            push!(ts,dx); 
-            push!(X_list,Xx); 
-            push!(control,false)
+            push!(ks,x); push!(ts,dx); push!(Xs,Xx); push!(control,false)
             i+=1
         else
-            push!(ks,y); 
-            push!(ts,dy); 
-            push!(X_list,Xy); 
-            push!(control,false)
+            push!(ks,y); push!(ts,dy); push!(Xs,Xy); push!(control,false)
             j+=1
         end
     end
-    return ks,ts,X_list,control
+    while i<=length(ks_l)
+        push!(ks,ks_l[i]); push!(ts,ts_l[i]); push!(Xs,X_l[i]); push!(control,false)
+        i+=1
+    end
+    while j<=length(ks_r)
+        push!(ks,ks_r[j]); push!(ts,ts_r[j]); push!(Xs,X_r[j]); push!(control,false)
+        j+=1
+    end
+    return ks,ts,Xs,control
 end
 
 """
@@ -222,35 +220,34 @@ This function merges two sets of wavenumber data (`k_left`, `ten_left`) and (`k_
 # Returns
 - `Nothing`: The function modifies `k_left`, `ten_left`, and `control_left` in place.
 """
-function overlap_and_merge!(k_left::AbstractVector{T},ten_left::Vector{T},k_right::Vector{T},ten_right::Vector{T},control_left::Vector{Bool},kl::T,kr::T;tol=1e-3) where {T<:Real}
-    #check if intervals are empty 
+function overlap_and_merge!(k_left::Vector{T},ten_left::Vector{T},k_right::Vector{T},ten_right::Vector{T},control_left::Vector{Bool},kl::T,kr::T;tol=1e-3) where {T<:Real}
     if isempty(k_left)
         append!(k_left,k_right)
         append!(ten_left,ten_right)
-        append!(control_left,[false for i in 1:length(k_right)])
-        return nothing #return short circuits further evaluation
-    end
-    #if right is empty just skip the mergeing
-    if isempty(k_right)
+        append!(control_left,fill(false,length(k_right)))
         return nothing
     end
-    #find overlaps in interval [k1,k2]
-    idx_l=k_left.>(kl-tol) .&& k_left.<(kr+tol)
-    idx_r=k_right.>(kl-tol) .&& k_right.<(kr+tol)
-    ks_l,ts_l,ks_r,ts_r=k_left[idx_l],ten_left[idx_l],k_right[idx_r],ten_right[idx_r]
-    #check if wavnumbers match in overlap interval
+    isempty(k_right) && return nothing
+    idx_l=(k_left.>(kl-tol)) .& (k_left.<(kr+tol))
+    idx_r=(k_right.>(kl-tol)) .& (k_right.<(kr+tol))
+    ks_l=k_left[idx_l]
+    ts_l=ten_left[idx_l]
+    ks_r=k_right[idx_r]
+    ts_r=ten_right[idx_r]
     ks,ts,control=match_wavenumbers(ks_l,ts_l,ks_r,ts_r)
-    deleteat!(k_left,idx_l)
+    del_l=findall(idx_l)
+    deleteat!(k_left,del_l)
+    deleteat!(ten_left,del_l)
+    deleteat!(control_left,del_l)
     append!(k_left,ks)
-    deleteat!(ten_left,idx_l)
     append!(ten_left,ts)
-    deleteat!(control_left,idx_l)
     append!(control_left,control)
     fl=findlast(idx_r)
-    idx_last=isnothing(fl) ? 1 : fl + 1
+    idx_last=isnothing(fl) ? 1 : fl+1
     append!(k_left,k_right[idx_last:end])
     append!(ten_left,ten_right[idx_last:end])
-    append!(control_left,[false for i in idx_last:length(k_right)])
+    append!(control_left,fill(false,length(k_right[idx_last:end])))
+    return nothing
 end
 
 """
@@ -286,8 +283,8 @@ function overlap_and_merge_state!(k_left::AbstractVector{T},ten_left::AbstractVe
         return nothing
     end
     # Find overlaps in interval [kl - tol, kr + tol]
-    idx_l=k_left.>(kl - tol) .&& k_left.<(kr+tol)
-    idx_r=k_right.>(kl - tol) .&& k_right.<(kr+tol)
+    idx_l=k_left.>(kl - tol) .& (k_left.<(kr+tol))
+    idx_r=k_right.>(kl - tol) .& (k_right.<(kr+tol))
     # Extract overlapping data
     ks_l=k_left[idx_l]
     ts_l=ten_left[idx_l]
@@ -556,6 +553,10 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
     λs_all=T[]
     tensions_all=T[]
     control=Bool[]
+    for i in eachindex(ks)
+        λs,tens=results[i]
+        @info "interval $i  k=$(ks[i])  count=$(length(λs))"
+    end
     for i in eachindex(ks)
         λs,tens=results[i]
         isempty(λs) && continue

@@ -124,7 +124,7 @@ include("chebyshev/chebyshev_euclidian_helmholtz_kress.jl")
 include("chebyshev/chebyshev_optimal_panelization.jl")
 
 # Expanded BIM
-include("solvers/acceleratedmethods/expanded_boundary_integral_method.jl")
+include("solvers/acceleratedmethods/ebim.jl")
 
 # Krylov methods
 include("solvers/krylovsolvers.jl")
