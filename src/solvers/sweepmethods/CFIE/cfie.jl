@@ -13,6 +13,7 @@ H(n::Int,x::Complex{T}) where {T<:Real}=SpecialFunctions.besselh(n,1,x)
 two_pi=2*pi
 inv_two_pi=1/two_pi
 euler_over_pi=MathConstants.eulergamma/pi
+@inline function hankel_pair01(x);h0=H(0,x);h1=H(1,x);return h0,h1;end
 
 ########################################
 #### COMMON STRUCT FOR CFIE METHODS ####
