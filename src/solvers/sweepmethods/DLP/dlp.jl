@@ -364,7 +364,7 @@ where `r = ‖(xi,yi)-(xj,yj)‖` and `cosφ = (nxi,nyi)⋅((xi,yi)-(xj,yj))/r`.
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
     if i==j # when we have no symmetry safely modify the Diagonal elements, otherwise the d^2<tol2 check in the symmetry version 
-        @inbounds K[i,j]+=-scale*Complex(κi/TWO_PI)
+        @inbounds K[i,j]+= scale*Complex(κi/TWO_PI)
         return false
     end
     d=sqrt(d2);invd=inv(d);kd=k*d
