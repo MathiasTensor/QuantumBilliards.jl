@@ -473,6 +473,42 @@ end
 ############### EXPANDED BOUNDARY INTEGRAL METHOD ##############
 ################################################################
 
+function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::Vector{T},ten_right::Vector{T},control_left::Vector{Bool},kl::T,kr::T;tol::T=T(1e-5)) where {T<:Real}
+    isempty(k_right) && return nothing
+    if isempty(k_left)
+        append!(k_left,k_right)
+        append!(ten_left,ten_right)
+        append!(control_left,fill(false,length(k_right)))
+        return nothing
+    end
+    for j in eachindex(k_right)
+        kj=k_right[j]
+        tj=ten_right[j]
+        hit=false
+        for i in eachindex(k_left)
+            if abs(k_left[i]-kj) <= tol
+                hit=true
+                if tj < ten_left[i]
+                    k_left[i]=kj
+                    ten_left[i]=tj
+                end
+                control_left[i]=true
+                break
+            end
+        end
+        if !hit
+            push!(k_left,kj)
+            push!(ten_left,tj)
+            push!(control_left,false)
+        end
+    end
+    p=sortperm(k_left)
+    k_left[:] = k_left[p]
+    ten_left[:] = ten_left[p]
+    control_left[:] = control_left[p]
+    return nothing
+end
+
 """
     compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk=(k)->0.05*k^(-1/3),tol=1e-4,use_lapack_raw=false,multithreaded_matrices=false,use_krylov=true,seg_reuse_frac=0.95) -> Tuple{Vector{T},Vector{T}}
 
@@ -556,7 +592,7 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
     for i in eachindex(ks)
         λs,tens=results[i]
         isempty(λs) && continue
-        overlap_and_merge!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i]+dks[i];tol=tol)
+        overlap_and_merge_ebim!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i]+dks[i];tol=tol)
     end
     isempty(λs_all) && return T[],T[]
     keep=[k1<=λ<=k2 for λ in λs_all]
