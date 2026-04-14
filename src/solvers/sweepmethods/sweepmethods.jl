@@ -272,6 +272,7 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
         (kk->construct_matrices!(solver,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices))
     λbest=T(Inf)
     kbest=k
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
     for _ in 1:maxiter
         assemble!(k)
         mul!(G,adjoint(A),A)
@@ -316,15 +317,16 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
         end
         k=knew
     end
-    assemble!(k)
-    mul!(G,adjoint(A),A)
+    end
+    @blas_1 assemble!(k)
+    @blas_multi_then_1 MAX_BLAS_THREADS mul!(G,adjoint(A),A)
     λ=minimum(eigvals(Hermitian(G)))
     if isfinite(λ) && λ<=λbest
         return k,sqrt(max(zero(T),λ))
     else
-        assemble!(kbest)
-        mul!(G,adjoint(A),A)
-        λ=minimum(eigvals(Hermitian(G)))
+        @blas_1 assemble!(kbest)
+        @blas_multi_then_1 MAX_BLAS_THREADS mul!(G,adjoint(A),A)
+        @blas_multi_then_1 MAX_BLAS_THREADS λ=minimum(eigvals(Hermitian(G)))
         return kbest,sqrt(max(zero(T),λ))
     end
 end
