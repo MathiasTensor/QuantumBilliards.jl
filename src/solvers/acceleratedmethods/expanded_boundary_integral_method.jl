@@ -5,11 +5,6 @@ using LinearMaps
 const EBIMSolver=Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert}
 
 function solve_full!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true) where {T<:Real}
-    fill!(A,Complex{T}(zero(T),zero(T)))
-    fill!(dA,Complex{T}(zero(T),zero(T)))
-    fill!(ddA,Complex{T}(zero(T),zero(T)))
-    basis=AbstractHankelBasis()
-    construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
     if use_lapack_raw
         @blas_multi MAX_BLAS_THREADS λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
     else
@@ -49,11 +44,6 @@ function solve_full!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::Abstra
 end
 
 function solve_krylov!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {T<:Real}
-    fill!(A,Complex{T}(zero(T),zero(T)))
-    fill!(dA,Complex{T}(zero(T),zero(T)))
-    fill!(ddA,Complex{T}(zero(T),zero(T)))
-    basis=AbstractHankelBasis()
-    construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
     CT=eltype(A)
     n=size(A,1)
     @blas_multi MAX_BLAS_THREADS F=lu!(A) # enables fast solves with A (shift–invert) by creating triangular matrices to internally act on vectors. This is an expensive n(O^3) operation. Reuses A's storage; adjoint(F) gives fast solves with A'. We use lu! since A is not reused in this scope 
@@ -319,6 +309,11 @@ function solve_krylov_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA:
 end
 
 function solve!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true) where {T<:Real}
+    basis=AbstractHankelBasis()
+    fill!(A,Complex{T}(zero(T),zero(T)))
+    fill!(dA,Complex{T}(zero(T),zero(T)))
+    fill!(ddA,Complex{T}(zero(T),zero(T)))
+    @blas_1 construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
     if use_krylov
         return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded)
     else
