@@ -136,8 +136,6 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
     return BoundaryPoints{type}(xy_all,normal_all,Vector{type}(),w_all,Vector{type}(),Vector{type}(),kappa_all,Vector{SVector{2,type}}(),shift_x,shift_y)
 end
 
-#### NEW MATRIX CODE, SLIGHTLY FASTER UTILIZING THE DEFAULT KERNEL'S FUNCTION HANKEL FUNCTION SYMMETRY ####
-
 """
     default_helmholtz_kernel_matrix(bp::BoundaryPoints{T}, k::T) -> Matrix{Complex{T}}
 

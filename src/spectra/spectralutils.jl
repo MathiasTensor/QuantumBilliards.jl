@@ -916,7 +916,7 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
             seg_last+=1
         end
         pts=seg_first==1 ? pts0 : evaluate_points(solver,billiard,ks[seg_last])
-        N=length(pts.xy)
+        N=boundary_matrix_size(pts)
         A=Matrix{Complex{T}}(undef,N,N)
         dA=Matrix{Complex{T}}(undef,N,N)
         ddA=Matrix{Complex{T}}(undef,N,N)

@@ -29,6 +29,10 @@ struct BoundaryPoints{T} <: AbsPoints where {T<:Real}
     shift_y::T # used in BIM/EBIM/Beyn to get the correct reflections/rotations wrt new symmetry axes
 end
 
+function boundary_matrix_size(pts::BoundaryPoints{T}) where {T<:Real}
+    return length(pts.xy)
+end
+
 """
     boundary_coords(crv::C, sampler::S, N::Int) :: Tuple{Vector{SVector{2,T}}, Vector{SVector{2,T}}, Vector{T}, Vector{T}} 
     where {C<:AbsCurve, S<:AbsSampler, T<:Real}
