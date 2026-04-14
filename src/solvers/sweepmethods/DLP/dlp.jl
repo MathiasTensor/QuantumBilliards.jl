@@ -826,6 +826,25 @@ function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::Bounda
     return A
 end
 
+function construct_matrices!(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+    @blas_1 fredholm_matrix_with_derivatives!(A,dA,ddA,pts,solver.symmetry,k;multithreaded=multithreaded)
+    return A,dA,ddA
+end
+
+function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k::T,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}};multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+    construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
+    return A,dA,ddA
+end
+
+function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+    N=length(pts.xy)
+    A=Matrix{Complex{T}}(undef,N,N)
+    dA=Matrix{Complex{T}}(undef,N,N)
+    ddA=Matrix{Complex{T}}(undef,N,N)
+    construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
+    return A,dA,ddA
+end
+
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
