@@ -320,7 +320,6 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,length(ks_approx))
     show_progress && (p=Progress(length(ks_approx);desc="Refining minima"))
-    progress_info && (p=Progress(length(ks_approx);desc="Refining minima",barlen=20,showvalues=[("k",0.0),("tension",0.0)]))
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
         idx0=argmin(abs.(ks.-kcur))
@@ -403,7 +402,6 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             tprev=tnew
             kcur=knew
             window/=window_shrink
-            progress_info && (next!(p;showvalues=[("k",kcur),("tension",tnew)]))
         end
         sols[i]=kcur
         tens_refined[i]=tprev
