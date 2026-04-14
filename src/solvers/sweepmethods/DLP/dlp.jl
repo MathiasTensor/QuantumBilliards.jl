@@ -425,7 +425,7 @@ See `_add_pair3_no_symmetry_default!` for the exact kernel forms.
     hK=pref*H1
     hdK=pref*d*H0
     hddK=pref2*((-2+kd*kd)*H1+kd*H2)
-    @inbounds(K[i,j]+=scale*(cij*hK);dK[i,j]+=scale*(cij*hdK);ddK[i,j]+=scale*(cij*hddK))
+    K[i,j]+=scale*(cij*hK);dK[i,j]+=scale*(cij*hdK);ddK[i,j]+=scale*(cij*hddK)
     return true
 end
 
