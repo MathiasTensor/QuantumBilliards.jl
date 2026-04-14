@@ -247,86 +247,65 @@ end
 
 =#
 
-function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilliard,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12,multithreaded_matrices=true)
+function newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12)
+    T=typeof(k0)
     k=clamp(k0,a,b)
-    T=typeof(k)
-    pts=evaluate_points(solver,billiard,k)
-    ws=nothing
-    N=boundary_matrix_size(pts)
-    if solver isa CFIE_alpert
-        ws=build_cfie_alpert_workspace(solver,pts)
-        N=ws.Ntot
-    elseif solver isa Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}
-        ws=build_cfie_kress_workspace(solver,pts)
-        N=ws.Ntot
-    end
-    A=Matrix{Complex{T}}(undef,N,N)
-    dA=Matrix{Complex{T}}(undef,N,N)
-    ddA=Matrix{Complex{T}}(undef,N,N)
-    G=Matrix{Complex{T}}(undef,N,N)
-    H=Matrix{Complex{T}}(undef,N,N)
-    H2=Matrix{Complex{T}}(undef,N,N)
-    W=Matrix{Complex{T}}(undef,N,N)
-    assemble! = isnothing(ws) ?
-        (kk->construct_matrices!(solver,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)) :
-        (kk->construct_matrices!(solver,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices))
-    λbest=T(Inf)
     kbest=k
+    λbest=T(Inf)
     @blas_multi_then_1 MAX_BLAS_THREADS begin
-    for _ in 1:maxiter
-        assemble!(k)
-        mul!(G,adjoint(A),A)
-        mul!(H,adjoint(dA),A)
-        mul!(W,adjoint(A),dA)
-        @. H=H+W
-        mul!(H2,adjoint(ddA),A)
-        mul!(W,adjoint(dA),dA)
-        @. H2=H2+2*W
-        mul!(W,adjoint(A),ddA)
-        @. H2=H2+W
-        F=eigen!(Hermitian(G))
-        vals=F.values
-        vecs=F.vectors
-        idx=argmin(vals)
-        λ=vals[idx]
-        x=@view vecs[:,idx]
-        if isfinite(λ) && λ<λbest
-            λbest=λ
-            kbest=k
-        end
-        gx=H*x
-        λ1=real(dot(x,gx))
-        λ2=real(dot(x,H2*x))
-        @inbounds for j in eachindex(vals)
-            j==idx && continue
-            denom=λ-vals[j]
-            abs(denom)<eps(T) && continue
-            c=dot(view(vecs,:,j),gx)
-            λ2 += 2*abs2(c)/denom
-        end
-        if !isfinite(λ1) || !isfinite(λ2) || abs(λ2)<sqrt(eps(T))
-            break
-        end
-        knew=clamp(k-λ1/λ2,a,b)
-        if !isfinite(knew)
-            break
-        end
-        if abs(knew-k)<tol
+        for _ in 1:maxiter
+            assemble!(k)
+            mul!(G,adjoint(A),A)
+            mul!(H,adjoint(dA),A)
+            mul!(W,adjoint(A),dA)
+            @. H=H+W
+            mul!(H2,adjoint(ddA),A)
+            mul!(W,adjoint(dA),dA)
+            @. H2=H2+2*W
+            mul!(W,adjoint(A),ddA)
+            @. H2=H2+W
+            F=eigen!(Hermitian(G))
+            vals=F.values
+            vecs=F.vectors
+            idx=argmin(vals)
+            λ=vals[idx]
+            x=@view vecs[:,idx]
+            if isfinite(λ) && λ<λbest
+                λbest=λ;kbest=k
+            end
+            gx=H*x
+            λ1=real(dot(x,gx))
+            λ2=real(dot(x,H2*x))
+            @inbounds for j in eachindex(vals)
+                j==idx && continue
+                denom=λ-vals[j]
+                abs(denom)<eps(T) && continue
+                c=dot(view(vecs,:,j),gx)
+                λ2 += 2*abs2(c)/denom
+            end
+            if !isfinite(λ1) || !isfinite(λ2) || abs(λ2)<sqrt(eps(T))
+                break
+            end
+            knew=clamp(k-λ1/λ2,a,b)
+            if !isfinite(knew)
+                break
+            end
+            if abs(knew-k)<tol
+                k=knew
+                break
+            end
             k=knew
-            break
         end
-        k=knew
     end
-    end
-    @blas_1 assemble!(k)
+    assemble!(k)
     @blas_multi_then_1 MAX_BLAS_THREADS mul!(G,adjoint(A),A)
     λ=minimum(eigvals(Hermitian(G)))
     if isfinite(λ) && λ<=λbest
         return k,sqrt(max(zero(T),λ))
     else
-        @blas_1 assemble!(kbest)
+        assemble!(kbest)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(G,adjoint(A),A)
-        @blas_multi_then_1 MAX_BLAS_THREADS λ=minimum(eigvals(Hermitian(G)))
+        λ=minimum(eigvals(Hermitian(G)))
         return kbest,sqrt(max(zero(T),λ))
     end
 end
@@ -373,8 +352,33 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             end
             a=kcur-window
             b=kcur+window
-            if solver_cur isa EBIMSolver
-                @time "Newton" knew,tnew=newton_refine_svd(solver_cur,basis,billiard,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol,multithreaded_matrices=multithreaded_matrices)
+            if solver_cur isa BoundaryIntegralMethod
+                pts=evaluate_points(solver_cur,billiard,kcur)
+                Tc=typeof(kcur)
+                Nloc=boundary_matrix_size(pts)
+                A=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                dA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                ddA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                G=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                H=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                H2=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                W=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                assemble!=kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)
+                knew,tnew=newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
+            elseif solver_cur isa Union{CFIE_alpert,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}
+                pts=evaluate_points(solver_cur,billiard,kcur)
+                ws=solver_cur isa CFIE_alpert ? build_cfie_alpert_workspace(solver_cur,pts) : build_cfie_kress_workspace(solver_cur,pts)
+                Tc=typeof(kcur)
+                Nloc=ws.Ntot
+                A=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                dA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                ddA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                G=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                H=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                H2=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                W=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
+                assemble!=kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
+                knew,tnew=newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
             else
                 dim=max(solver_cur.min_dim,round(Int,billiard.length*kcur*solver_cur.dim_scaling_factor/(2*pi)))
                 basis_cur=resize_basis(basis,billiard,dim,kcur)
@@ -406,9 +410,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
     end
     if print_refinement
         println("\n================ Newton refinement summary ================")
-        println(rpad("#",4),rpad("k_approx",digits+8),rpad("k_ref",digits+8),
-                rpad("Δk",digits+8),rpad("log10|t_app|",digits+10),
-                rpad("log10|t_ref|",digits+10),"levels")
+        println(rpad("#",4),rpad("k_approx",digits+8),rpad("k_ref",digits+8),rpad("Δk",digits+8),rpad("log10|t_app|",digits+10),rpad("log10|t_ref|",digits+10),"levels")
         for i in eachindex(sols)
             k_app=ks_approx[i]
             k_ref=sols[i]
