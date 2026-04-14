@@ -132,6 +132,7 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
     nx=getindex.(normals,1)
     ny=getindex.(normals,2)
     pref=Complex{T}(zero(T),inv(2*k)) # im/(2*k)
+    #=
     @use_threads multithreading=multithreaded for i in 1:N
         xi=xs[i];yi=ys[i]
         nxi=nx[i];nyi=ny[i]
@@ -143,6 +144,24 @@ row `i`, so the matrix is not necessarily symmetric unless the geometry enforces
             hankel=pref*((-2+(k*d)^2)*Bessels.hankelh1(1,k*d)+k*d*Bessels.hankelh1(2,k*d))
             M[i,j]=cos_phi*hankel
             cos_phi_symmetric=(nx[j]*(-dx)+ny[j]*(-dy))*invd # Hankel is symmetric, but cos_phi is not; compute explicitly for M[j, i]
+            M[j,i]=cos_phi_symmetric*hankel
+        end
+    end
+    =#
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i]; yi=ys[i]
+        nxi=nx[i]; nyi=ny[i]
+        @inbounds for j in 1:(i-1)
+            dx=xi-xs[j]
+            dy=yi-ys[j]
+            d=sqrt(muladd(dx,dx,dy*dy))
+            invd=inv(d)
+
+            cos_phi=(nx[j]*dx+ny[j]*dy)*invd
+            hankel=pref*((-2+(k*d)^2)*Bessels.hankelh1(1,k*d)+k*d*Bessels.hankelh1(2,k*d))
+            M[i,j]=cos_phi*hankel
+
+            cos_phi_symmetric=(nxi*(-dx)+nyi*(-dy))*invd
             M[j,i]=cos_phi_symmetric*hankel
         end
     end
@@ -193,14 +212,18 @@ where `r = ‖(xi,yi)-(xj,yj)‖` and `cosφ = (nxi,nyi)⋅((xi,yi)-(xj,yj))/r`.
     dx=xi-xj;dy=yi-yj
     d2=muladd(dx,dx,dy*dy)
     if i==j # when we have no symmetry safely modify the Diagonal elements, otherwise the d^2<tol2 check in the symmetry version 
-        @inbounds K[i,j]+=scale*Complex(κi/TWO_PI)
+        #@inbounds K[i,j]+=scale*Complex(κi/TWO_PI)
+        @inbounds K[i,j]+=-scale*Complex(κi/TWO_PI)
         return false
     end
     d=sqrt(d2);invd=inv(d);kd=k*d
-    c_ij=(nxi*dx+nyi*dy)*invd # cosϕ[i,j]
-    c_ji=(nxj*(-dx)+nyj*(-dy))*invd # cosϕ[j,i]
+    #c_ij=(nxi*dx+nyi*dy)*invd # cosϕ[i,j]
+    #c_ji=(nxj*(-dx)+nyj*(-dy))*invd # cosϕ[j,i]
+    c_ij=(nxj*dx+nyj*dy)*invd
+    c_ji=(nxi*(-dx)+nyi*(-dy))*invd
     H0,H1,H2=Bessels.besselh(0:2,1,kd) # allocates a 3-vector, but this is the biggest efficiency due to reccurence
-    pref=Complex{T}(zero(T),-k/2)  # base: (-im*k/2) * H1(kd)
+    #pref=Complex{T}(zero(T),-k/2)  # base: (-im*k/2) * H1(kd)
+    pref=Complex{T}(zero(T),k/2)
     pref2=Complex{T}(zero(T),inv(2*k)) # second derivative prefix
     hK=pref*H1 # base val (before cosϕ) # (-im*k/2)*H1(kd)
     hdK=pref*d*H0  # first derivative val (-im*k/2)*d*H0(kd)
@@ -240,6 +263,7 @@ See `_add_pair3_no_symmetry_default!` for the exact kernel forms.
 - `Bool`: `true` if the image contribution was added; `false` if it was skipped due to `r^2 ≤ tol2`.
 """
 @inline function _add_pair3_image_default!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xjr::T,yjr::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::Union{T,Complex{T}}=one(Complex{T}))::Bool where {T<:Real}
+    #=
     dx=xi-xjr; dy=yi-yjr
     d2=muladd(dx,dx,dy*dy)
     if d2<=tol2 # For reflections/rotations: if coincident (rare), just skip — no curvature term here. It could happen that one collocation point is very close to the border and the reflected/rotated point is too close to it
@@ -253,6 +277,27 @@ See `_add_pair3_no_symmetry_default!` for the exact kernel forms.
     hK=pref*H1 # base val (before cosϕ) # (-im*k/2)*H1(kd)
     hdK=pref*d*H0  # first derivative val (-im*k/2)*d*H0(kd)
     hddK=pref2*((-2+kd*kd)*H1+kd*H2) # second derivative:  im/(2k) * [ (-2 + (kd)^2) H1(kd) + kd H2(kd) ]
+    @inbounds begin
+        K[i,j]+=scale*(cij*hK)
+        dK[i,j]+=scale*(cij*hdK)
+        ddK[i,j]+=scale*(cij*hddK)
+    end
+    return true
+    =#
+    dx=xi-xjr
+    dy=yi-yjr
+    d2=muladd(dx,dx,dy*dy)
+    d2<=tol2 && return false
+    d=sqrt(d2)
+    invd=inv(d)
+    kd=k*d
+    cij=(nxjr*dx+nyjr*dy)*invd
+    H0,H1,H2=Bessels.besselh(0:2,1,kd)
+    pref=Complex{T}(zero(T),k/2)
+    pref2=Complex{T}(zero(T),-inv(2*k))
+    hK=pref*H1
+    hdK=pref*d*H0
+    hddK=pref2*((-2+kd*kd)*H1+kd*H2)
     @inbounds begin
         K[i,j]+=scale*(cij*hK)
         dK[i,j]+=scale*(cij*hdK)
