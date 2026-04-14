@@ -247,14 +247,14 @@ end
 
 =#
 
-function newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12)
+function newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12)
     T=typeof(k0)
     k=clamp(k0,a,b)
     kbest=k
     λbest=T(Inf)
     @blas_multi_then_1 MAX_BLAS_THREADS begin
         for _ in 1:maxiter
-            assemble!(k)
+            assemble(k)
             mul!(G,adjoint(A),A)
             mul!(H,adjoint(dA),A)
             mul!(W,adjoint(A),dA)
@@ -297,7 +297,7 @@ function newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8
             k=knew
         end
     end
-    assemble!(k)
+    assemble(k)
     @blas_multi_then_1 MAX_BLAS_THREADS mul!(G,adjoint(A),A)
     λ=minimum(eigvals(Hermitian(G)))
     if isfinite(λ) && λ<=λbest
@@ -363,8 +363,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
                 H=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
                 H2=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
                 W=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                assemble!=kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)
-                knew,tnew=newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
+                assemble= kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)
+                knew,tnew=newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
             elseif solver_cur isa Union{CFIE_alpert,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}
                 pts=evaluate_points(solver_cur,billiard,kcur)
                 ws=solver_cur isa CFIE_alpert ? build_cfie_alpert_workspace(solver_cur,pts) : build_cfie_kress_workspace(solver_cur,pts)
@@ -377,8 +377,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
                 H=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
                 H2=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
                 W=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                assemble!=kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
-                knew,tnew=newton_refine_svd!(assemble!,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
+                assemble= kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
+                knew,tnew=newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
             else
                 dim=max(solver_cur.min_dim,round(Int,billiard.length*kcur*solver_cur.dim_scaling_factor/(2*pi)))
                 basis_cur=resize_basis(basis,billiard,dim,kcur)
