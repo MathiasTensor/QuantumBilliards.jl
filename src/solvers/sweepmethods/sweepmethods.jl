@@ -37,8 +37,8 @@ end
 function _k_sweep_prepare(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
-    Ntot=boundary_matrix_size(pts)
-    T=eltype(pts.ws)
+    Ntot=length(pts.xy)
+    T=eltype(pts.xy)
     solve_first(k)=solve_INFO(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     if multithreaded_ks
         solve_one(k)=begin
@@ -56,7 +56,7 @@ function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_kress_workspace(solver,pts)
-    T=eltype(pts[1].ws)
+    T=eltype(pts[1].xy)
     solve_first(k)=solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     if multithreaded_ks
         solve_one(k)=begin
@@ -74,7 +74,7 @@ function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilli
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_cfie_alpert_workspace(solver,pts)
-    T=eltype(pts[1].ws)
+    T=eltype(pts[1].xy)
     solve_first(k)=solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     if multithreaded_ks
         solve_one(k)=begin
