@@ -303,7 +303,7 @@ function newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,
     if isfinite(λ) && λ<=λbest
         return k,sqrt(max(zero(T),λ))
     else
-        assemble!(kbest)
+        assemble(kbest)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(G,adjoint(A),A)
         λ=minimum(eigvals(Hermitian(G)))
         return kbest,sqrt(max(zero(T),λ))
