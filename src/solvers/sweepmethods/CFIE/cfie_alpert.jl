@@ -917,17 +917,42 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             sval=ws*(αS*H(0,k*r))
                             A[gi,gj]-=χ*(dval+ik*sval)
                         elseif sym.axis===:origin
-                            xr=_x_reflect(xj,sx);yr=_y_reflect(yj,sy)
-                            txr,tyr=_xy_reflect_tangent(txj,tyj)
-                            χ=T(sym.parity[1]*sym.parity[2])
+                            χx=T(sym.parity[1])
+                            χy=T(sym.parity[2])
+                            χxy=T(sym.parity[1]*sym.parity[2])
+                            xr=_x_reflect(xj,sx);yr=yj
+                            txr,tyr=_x_reflect_tangent(txj,tyj)
                             dx=xi-xr;dy=yi-yr
                             r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            dval= -wd*(αD*inn*H(1,k*r)*invr)
-                            sval=ws*(αS*H(0,k*r))
-                            A[gi,gj]-=χ*(dval+ik*sval)
+                            if r2>(eps(T))^2
+                                r=sqrt(r2);invr=inv(r)
+                                inn=_dinner(dx,dy,txr,tyr)
+                                dval=-wd*(αD*inn*H(1,k*r)*invr)
+                                sval=ws*(αS*H(0,k*r))
+                                A[gi,gj]-=χx*(dval+ik*sval)
+                            end
+                            xr=xj;yr=_y_reflect(yj,sy)
+                            txr,tyr=_y_reflect_tangent(txj,tyj)
+                            dx=xi-xr;dy=yi-yr
+                            r2=muladd(dx,dx,dy*dy)
+                            if r2>(eps(T))^2
+                                r=sqrt(r2);invr=inv(r)
+                                inn=_dinner(dx,dy,txr,tyr)
+                                dval=-wd*(αD*inn*H(1,k*r)*invr)
+                                sval=ws*(αS*H(0,k*r))
+                                A[gi,gj]-=χy*(dval+ik*sval)
+                            end
+                            xr=_x_reflect(xj,sx);yr=_y_reflect(yj,sy)
+                            txr,tyr=_xy_reflect_tangent(txj,tyj)
+                            dx=xi-xr;dy=yi-yr
+                            r2=muladd(dx,dx,dy*dy)
+                            if r2>(eps(T))^2
+                                r=sqrt(r2);invr=inv(r)
+                                inn=_dinner(dx,dy,txr,tyr)
+                                dval=-wd*(αD*inn*H(1,k*r)*invr)
+                                sval=ws*(αS*H(0,k*r))
+                                A[gi,gj]-=χxy*(dval+ik*sval)
+                            end
                         else
                             error("Unknown reflection axis $(sym.axis)")
                         end
