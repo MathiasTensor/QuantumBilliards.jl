@@ -959,7 +959,7 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
     seg_first=1
     while seg_first<=length(ks)
         seg_last=seg_first
-        while seg_last<length(ks) && ks[seg_first]<seg_reuse_frac*ks[seg_last+1]
+        while seg_last<length(ks) && ks[seg_last+1]<=ks[seg_first]/seg_reuse_frac
             seg_last+=1
         end
         pts=seg_first==1 ? pts0 : evaluate_points(solver,billiard,ks[seg_last])
