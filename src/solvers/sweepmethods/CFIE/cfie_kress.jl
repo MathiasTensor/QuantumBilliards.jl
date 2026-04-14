@@ -353,7 +353,7 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
     return A
 end
 
-function construct_matrices_with_derivatives!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},Gs::Vector{CFIEGeomCache{T}},parr::Vector{CFIEPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},Gs::Vector{CFIEGeomCache{T}},parr::Vector{CFIEPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
     αM1=-inv_two_pi
