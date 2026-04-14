@@ -41,7 +41,7 @@ function _k_sweep_prepare(solver::BoundaryIntegralMethod,basis::AbsBasis,billiar
     T=eltype(pts.ds)
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     solve_first=k->solve_INFO(solver,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    solve_one=k->solve(solver,A,basis,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one=k->solve(solver,basis,A,pts,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
@@ -51,7 +51,7 @@ function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     T=eltype(first(pts).ws)
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     solve_first=k->solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    solve_one=k->solve(solver,A,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
@@ -61,7 +61,7 @@ function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilli
     T=eltype(first(pts).ws)
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     solve_first=k->solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
-    solve_one=k->solve(solver,A,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
