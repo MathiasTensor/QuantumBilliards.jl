@@ -859,75 +859,86 @@ function compute_spectrum_with_state(solver::AbsSolver,basis::AbsBasis,billiard:
 end
 
 ################################################################
-############### EXPANDED BOUNDARY INTEGEAL METHOD###############
+############### EXPANDED BOUNDARY INTEGRAL METHOD ##############
 ################################################################
 
 """
-    compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k) -> (0.05 * k^(-1/3))) -> Tuple{Vector{T}, Vector{T}}
+    compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk=(k)->0.05*k^(-1/3),tol=1e-4,use_lapack_raw=false,multithreaded_matrices=false,use_krylov=true,seg_reuse_frac=0.95) -> Tuple{Vector{T},Vector{T}}
 
-Computes the spectrum of the expanded BIM and their corresponding tensions for a given billiard problem within a specified wavenumber range.
+Compute the spectrum and corresponding tensions of a billiard problem using the expanded boundary integral method (EBIM) over the wavenumber interval `[k1,k2]`.
+
+The interval is partitioned into segments, and for each segment the boundary geometry is constructed only once (at the segment’s upper wavenumber) and reused for all `k` values within that segment. This reduces geometric and allocation overhead while maintaining accuracy.
 
 # Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the expanded boundary integral method.
-- `billiard::Bi`: The billiard configuration, a subtype of `AbsBilliard`.
-- `k1::T`: Starting wavenumber for the spectrum calculation.
-- `k2::T`: Ending wavenumber for the spectrum calculation.
-- `dk::Function`: Custom function to calculate the wavenumber step size. Defaults to a scaling law inspired by Veble's paper.
-- `tol=1e-4`: Tolerance for the overlap_and_merge function that samples a bit outside the merging interval for better results.
-- `use_lapack_raw::Bool=false`: Use the ggev LAPACK function directly without Julia's eigen(A,B) wrapper for it. Might provide speed-up for certain situations (small matrices...)
-- `kernel_fun::Union{Tuple{Symbol,Symbol,Symbol},Tuple{Function,Function,Function}}`: Custom kernel functions for the boundary integral method. The default implementation is given by (:default,:first,:second) for the default hemlhholtz kernel and it's first and second derivative.
-- `multithreaded_matrices::Bool=false`: If the Fredholm matrix construction and it's derivatives should be done in parallel.
-- `multithreaded_ks::Bool=true`: If the k loop is multithreaded. This is usually the best choice since matrix construction for small k is not as costly.
-- `use_krylov::Bool=true`: Large speedups in EPV calculation. If anomalies in result are present set this flag to `False`.
+- `solver::EBIMSolver`: Boundary integral solver (e.g. BIM, Kress, Alpert variants).
+- `billiard::Bi`: Billiard geometry.
+- `k1::T`: Lower bound of the wavenumber interval.
+- `k2::T`: Upper bound of the wavenumber interval.
+
+# Keyword arguments
+- `dk::Function`: Step-size function for generating the `k` grid. Default follows the scaling law `0.05*k^(-1/3)`.
+- `tol::T=1e-4`: Tolerance for merging overlapping eigenvalues.
+- `use_lapack_raw::Bool=false`: Use raw LAPACK `ggev` instead of Julia’s `eigen(A,B)`.
+- `multithreaded_matrices::Bool=false`: Enable multithreading in matrix construction.
+- `use_krylov::Bool=true`: Use Krylov-based shift–invert solver instead of full generalized EVP.
+- `seg_reuse_frac::T=0.95`: Controls segment size; geometry is reused while `k` stays within this fraction of the segment’s upper bound.
 
 # Returns
-- `Tuple{Vector{T}, Vector{T}}`: 
-  - First element is a vector of corrected eigenvalues (`λ`).
-  - Second element is a vector of corresponding tensions.
+- `λs::Vector{T}`: Corrected eigenvalues (wavenumbers).
+- `tensions::Vector{T}`: Corresponding tension values (error estimates).
+
+# Notes
+- The EBIM formulation solves the generalized eigenproblem
+  `A(k₀) v = λ dA(k₀) v` and applies second-order corrections.
+- Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
+- Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum(solver::ExpandedBoundaryIntegralMethod,billiard::Bi,k1::T,k2::T;dk::Function=(k)->(0.05*k^(-1/3)),tol=1e-4,use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,use_krylov::Bool=true) where {T<:Real,Bi<:AbsBilliard}
-    basis=AbstractHankelBasis()
-    bim_solver=BoundaryIntegralMethod(solver.dim_scaling_factor,solver.pts_scaling_factor,solver.sampler,solver.eps,solver.min_dim,solver.min_pts,solver.symmetry)
+function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95)) where {T<:Real,Bi<:AbsBilliard}
     ks=T[]
     dks=T[]
     k=k1
     while k<k2
         push!(ks,k)
-        kstep=dk(k)
-        k+=kstep
-        push!(dks,kstep)
+        Δk=dk(k)
+        push!(dks,Δk)
+        k+=Δk
     end
-    println("EBIM...")
-    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
-    @showprogress desc="Calculating boundary points EBIM..." Threads.@threads for i in eachindex(ks)
-        all_pts[i]=evaluate_points(deepcopy(bim_solver),billiard,ks[i])
-    end
+    isempty(ks) && return T[],T[]
+    pts0=evaluate_points(solver,billiard,ks[1])
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
-    dd=dks[end]
-    λs,tensions=solve_INFO(solver,basis,all_pts[end],ks[end],dd;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
-    results[end]=(λs,tensions)
-    p=Progress(length(ks)-1,1) # first one finished
-    println("Solving EBIM...")
-    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)[1:end-1]
-        dd=dks[i]
-        λs,tensions=solve(solver,basis,all_pts[i],ks[i],dd;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
-        results[i]=(λs, tensions)
+    println("compute_spectrum...")
+    println("Total k points: $(length(ks))")
+    p=Progress(length(ks),1)
+    seg_first=1
+    while seg_first<=length(ks)
+        seg_last=seg_first
+        while seg_last<length(ks) && ks[seg_first]<seg_reuse_frac*ks[seg_last+1]
+            seg_last+=1
+        end
+        pts=seg_first==1 ? pts0 : evaluate_points(solver,billiard,ks[seg_last])
+        N=length(pts.xy)
+        A=Matrix{Complex{T}}(undef,N,N)
+        dA=Matrix{Complex{T}}(undef,N,N)
+        ddA=Matrix{Complex{T}}(undef,N,N)
+        λs,tens=solve_INFO!(solver,A,dA,ddA,pts,ks[seg_first],dks[seg_first];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+        results[seg_first]=(λs,tens)
         next!(p)
+        for i in (seg_first+1):seg_last
+            λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+            results[i]=(λs,tens)
+            next!(p)
+        end
+        seg_first=seg_last+1
     end
-    # Sequential merging step
     λs_all=T[]
     tensions_all=T[]
     control=Bool[]
     for i in eachindex(ks)
-        λs,tensions=results[i]
-        if !isempty(λs)
-            overlap_and_merge!(λs_all,tensions_all,λs,tensions,control,ks[i]-dks[i],ks[i];tol=tol)
-        end
+        λs,tens=results[i]
+        isempty(λs) && continue
+        overlap_and_merge!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i];tol=tol)
     end
-    if isempty(λs_all)
-        λs_all=[NaN] # should not happen
-        tensions_all=[NaN] # should not happen
-    end
+    isempty(λs_all) && return T[],T[]
     return λs_all,tensions_all
 end
 

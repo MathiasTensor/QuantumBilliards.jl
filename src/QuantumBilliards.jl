@@ -98,9 +98,9 @@ include("solvers/acceleratedmethods/scalingmethod.jl")
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
 
 # Standard sweep methods
-include("solvers/sweepmethods/BASIS_SWEEP/particularsolutionsmethod.jl")
-include("solvers/sweepmethods/BASIS_SWEEP/decompositionmethod.jl")
-include("solvers/sweepmethods/DLP/dlp.jl")
+include("solvers/sweepmethods/basis_sweep/particularsolutionsmethod.jl")
+include("solvers/sweepmethods/basis_sweep/decompositionmethod.jl")
+include("solvers/sweepmethods/dlp/dlp.jl")
 
 # Chebyshev machinery - general
 include("chebyshev/chebyshev_core.jl")
@@ -108,14 +108,14 @@ include("chebyshev/chebyshev_point_symmetry.jl")
 include("chebyshev/chebyshev_hankel.jl")
 
 # CFIE
-include("solvers/sweepmethods/CFIE/alpert_table.jl")
-include("solvers/sweepmethods/CFIE/kress_grading_single_corner.jl")
-include("solvers/sweepmethods/CFIE/kress_grading_global_multi_corner.jl")
-include("solvers/sweepmethods/CFIE/alpert_endpoint_grading.jl")
-include("solvers/sweepmethods/CFIE/cfie.jl")
-include("solvers/sweepmethods/CFIE/cfie_geometry_helpers.jl")
-include("solvers/sweepmethods/CFIE/cfie_kress.jl")
-include("solvers/sweepmethods/CFIE/cfie_alpert.jl")
+include("solvers/sweepmethods/cfie/alpert_table.jl")
+include("solvers/sweepmethods/cfie/kress_grading_single_corner.jl")
+include("solvers/sweepmethods/cfie/kress_grading_global_multi_corner.jl")
+include("solvers/sweepmethods/cfie/alpert_endpoint_grading.jl")
+include("solvers/sweepmethods/cfie/cfie.jl")
+include("solvers/sweepmethods/cfie/cfie_geometry_helpers.jl")
+include("solvers/sweepmethods/cfie/cfie_kress.jl")
+include("solvers/sweepmethods/cfie/cfie_alpert.jl")
 
 # Chebyshev machinery - applied to specific kernels
 include("chebyshev/chebyshev_euclidian_helmholtz_dlp.jl")

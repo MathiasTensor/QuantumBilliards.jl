@@ -27,6 +27,233 @@
 const TWO_PI=2*pi
 const INV_TWO_PI=inv(TWO_PI)
 
+###########################
+#### WITHOUT CHEBYSHEV ####
+###########################
+
+# Add the 2D Helmholtz double-layer kernel contribution to M[i,j].
+# Discrete collocation (row = target i, column = source j).
+#
+# Indices / geometry:
+#   i     – target (row / collocation) index
+#   j     – source (column / integration) index
+#   xi,yi – target coordinates (point i)
+#   xj,yj – source  coordinates (point j)
+#   nxi,nyi – unit outward normal at the target point i
+#   nxj,nyj – unit outward normal at the source point j (unused in this kernel)
+#
+# Physics:
+#   k     – complex wavenumber on the contour
+#   pref  – prefactor for the DLP kernel; for 2D Helmholtz with G = (i/4)H0^(1)(kr),
+#           ∂G/∂n = (ik/4) ( (x−y)·n / r ) H1^(1)(kr). Here we use pref = -im*k/2 to match
+#           the BIM’s normalization.
+#
+# Numerics:
+#   tol2  – distance^2 threshold; if |x_i - x_j|^2 ≤ tol2 treat as near-self and
+#           return false so the caller can handle the diagonal/near-singular term.
+#   scale – optional symmetry/sign scaling (default 1).
+#
+# Returns:
+#   true  – contribution added to M[i,j]
+#   false – skipped (caller should add diagonal correction, e.g. κ/(2π), outside)
+@inline function _add_pair_default_complex!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::Complex{T},tol2::T,pref::Complex{T};scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real}
+    dx=xi-xj;dy=yi-yj
+    d2=muladd(dx,dx,dy*dy)
+    if d2<=tol2
+        return false
+    end
+    d=sqrt(d2)
+    invd=inv(d)
+    h=pref*SpecialFunctions.hankelh1(1,k*d)
+    @inbounds begin
+        M[i,j]+=scale*((nxj*dx+nyj*dy)*invd)*h
+    end
+    return true
+end
+
+# Build the complex-k boundary integral operator matrix K for a *single* boundary
+# (no explicit symmetry images). Supports either:
+#   - default double-layer kernel (fast path, triangular fill + mirror),
+#   - or a user-provided `kernel_fun` (full N×N fill).
+#
+# Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm kernel for reuse
+#   bp         – BoundaryPoints{T}: holds xy, normals, curvature κ, and panel ds
+#   k          – complex wavenumber on the Beyn contour
+#   multithreaded – toggle threaded loops (via @use_threads)
+#
+# Numerics/constants:
+#   tol2 = (eps(T))^2 – near-self threshold on squared distance
+#   pref = -im*k/2    – prefactor matching the chosen DLP normalization
+#
+# Strategy (default):
+#   * Upper-triangular loop j=1:i, then mirror to (j,i) to fill the matrix.
+#   * Off-diagonal: add DLP using target normal at i and H1^(1)(k r).
+#   * Diagonal  : when r≈0 (d2≤tol2), insert κ[i]/(2π).
+#
+# Strategy (custom):
+#   * Full N×N loop, each entry via `_add_pair_custom_complex!`.
+#
+# Output:
+#   K::Matrix{Complex{T}} – the assembled kernel (before ds-weighting / identity).
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+    xy=bp.xy;nrm=bp.normal;κ=bp.curvature;N=length(xy)
+    xs=getindex.(xy,1);ys=getindex.(xy,2);nx=getindex.(nrm,1);ny=getindex.(nrm,2)
+    tol2=(eps(T))^2;pref=im*k/2
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi=xs[i];yi=ys[i];nxi=nx[i];nyi=ny[i]
+        @inbounds for j in 1:i
+            dx=xi-xs[j];dy=yi-ys[j];d2=muladd(dx,dx,dy*dy)
+            if d2≤tol2
+                K[i,j]= -Complex{T}(κ[i]/TWO_PI)
+            else
+                d=sqrt(d2);invd=inv(d);h=pref*SpecialFunctions.hankelh1(1,k*d)
+                K[i,j]=(nx[j]*dx+ny[j]*dy)*invd*h
+                if i!=j
+                    K[j,i]=(nx[i]*(-dx)+ny[i]*(-dy))*invd*h
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+# Build the complex-k boundary integral operator matrix K with symmetry images.
+# This augments the direct kernel with reflected source contributions according to
+# the provided symmetry list (x-axis, y-axis, or origin reflections), including the
+# correct parity signs per symmetry.
+#
+# Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm kernel for reuse
+#   bp        – BoundaryPoints{T} (xy, normals, curvature κ, shifts of symmetry axes)
+#   symmetry  – Vector of symmetry descriptors (e.g., X/Y/XYReflection with parity)
+#   k         – complex wavenumber
+#   multithreaded – threading toggle
+#
+# Reflection controls:
+#   add_x,add_y,add_xy – which images to add (x-reflect, y-reflect, both)
+#   sxgn, sygn, sxy    – corresponding parity factors ±1 (from `parity`)
+#   shift_x, shift_y   – axis shifts of the geometry for correct mirror positions
+#
+# Strategy:
+#   For each target i and source j:
+#     - Add direct pair (default/custom).
+#     - If add_x:   add source reflected across y-axis:  x -> 2*shift_x - x, y→y, scaled by sxgn.
+#     - If add_y:   add source reflected across x-axis:  x -> x, y→2*shift_y - y, scaled by sygn.
+#     - If add_xy:  add source reflected across both axes, scaled by sxy.
+#   Near-diagonal handling (default only): if the *direct* pair is near, caller adds κ/(2π).
+#
+# Output:
+#   K::Matrix{Complex{T}} fully populated with symmetry images included.
+function compute_kernel_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+    xy=bp.xy
+    nrm=bp.normal
+    κ=bp.curvature 
+    N=length(xy)
+    tol2=(eps(T))^2
+    pref=im*k/2
+    add_x=false;add_y=false;add_xy=false # true if the symmetry is present
+    sxgn=one(T);sygn=one(T);sxy=one(T) # the scalings +/- depending on the symmetry considerations
+    shift_x=bp.shift_x;shift_y=bp.shift_y # the reflection axes shifts from billiard geometry
+    have_rot=false
+    nrot=1;mrot=0
+    cx=zero(T);cy=zero(T)
+    s=symmetry
+    if hasproperty(s,:axis)
+        if s.axis==:y_axis;add_x=true;sxgn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:x_axis;add_y=true;sygn=(s.parity==-1 ? -one(T) : one(T)); end
+        if s.axis==:origin
+            add_x=true;add_y=true;add_xy=true
+            sxgn=(s.parity[1]==-1 ? -one(T) : one(T))
+            sygn=(s.parity[2]==-1 ? -one(T) : one(T))
+            sxy=sxgn*sygn
+        end
+    elseif s isa Rotation
+        have_rot=true
+        nrot=s.n
+        mrot=mod(s.m,nrot)
+        cx,cy=s.center
+    end
+    if have_rot
+        ctab,stab,χ=_rotation_tables(T,nrot,mrot)
+    end
+    @use_threads multithreading=multithreaded for i in 1:N # make if instead of elseif since can have >1 symmetry
+        xi=xy[i][1]; yi=xy[i][2]; nxi=nrm[i][1]; nyi=nrm[i][2] # i is the target, j is the source
+        @inbounds for j in 1:N # since it has non-trivial symmetry we have to do both loops over all indices, not just the upper triangular
+            xj=xy[j][1];yj=xy[j][2];nxj=nrm[j][1];nyj=nrm[j][2]
+            ok=_add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,k,tol2,pref)
+            if !ok; K[i,j]+= -Complex(κ[i]/TWO_PI); end
+            if add_x # reflect only over the x axis
+                xr=_x_reflect(xj,shift_x);yr=yj
+                nxr=-nxj
+                nyr=nyj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sxgn)
+            end
+            if add_y # reflect only over the y axis
+                xr=xj;yr=_y_reflect(yj,shift_y)
+                nxr=nxj
+                nyr=-nyj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sygn)
+            end
+            if add_xy # reflect over both the axes
+                xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
+                nxr=-nxj
+                nyr=-nyj
+                _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=sxy)
+            end
+            if have_rot
+                @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
+                    cl=ctab[l+1];sl=stab[l+1]
+                    xr,yr=_rot_point(xj,yj,cx,cy,cl,sl)
+                    nxr=cl*nxj-sl*nyj
+                    nyr=sl*nxj+cl*nyj
+                    phase=χ[l+1]  # e^{i 2π m l / n}, rotations due to being 1d-irreps have real characters
+                    _add_pair_default_complex!(K,i,j,xi,yi,nxi,nyi,xr,yr,nxr,nyr,k,tol2,pref;scale=phase)
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+# Assemble the full Fredholm operator A(k) for the DLP formulation at complex k:
+#   A(k) = I - K(k) D,   where D = diag(ds) applies panel quadrature weights (right scaling).
+#
+# Inputs:
+#   K          - Matrix{Complex}: working buffer Fredholm matrix for reuse, constructed from the kernel
+#   bp        – BoundaryPoints (xy, normals, curvature, panel lengths ds, symmetry shifts)
+#   symmetry  – nothing -> no images; otherwise, a Rotation or Reflection
+#   k         – complex wavenumber
+#   multithreaded, kernel_fun – passed to compute_kernel_matrix_complex_k(...)
+#
+# Steps:
+#   1) Build kernel matrix K (with/without symmetry) at k.
+#   2) Right-scale by panel lengths: for each column j, K[:,j] *= ds[j].
+#   3) Form A := -K  and add identity on the diagonal -> A = I - K.
+#   4) Change numerical zeros to 0 via filter_matrix!.
+#
+# Output:
+#   A::Matrix{Complex{T}} ready for use in Beyn contour solves (T(z) ≡ A(z)).
+function fredholm_matrix_complex_k!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::Complex{T};multithreaded::Bool=true) where {T<:Real}
+    if isnothing(symmetry)
+        compute_kernel_matrix_complex_k!(K,bp,k;multithreaded=multithreaded)
+    else
+        compute_kernel_matrix_complex_k!(K,bp,symmetry,k,multithreaded=multithreaded)
+    end
+    ds=bp.ds
+    oneK=one(eltype(K)) 
+    @inbounds for j in axes(K,2) 
+        @views K[:,j].*=-ds[j] 
+        K[j,j]+=oneK
+    end
+    filter_matrix!(K)
+    return nothing
+end
+
+#########################################
+#### CHEBYSHEV PLANS FOR MULTIPLE KS ####
+#########################################
+
 #################################################################################
 # Evaluate unscaled hankel functions hankelh1(...) for multiple complex k values hidden (used) in plans at a given r.
 # invsqrt must be provided to prevent additional calculation in this loop. Internally it calculates the chebyshev interpolation of the scaled and sqrt(r) modified hankel
