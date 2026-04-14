@@ -303,15 +303,15 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
         k=knew
     end
 
-    pts=evaluate_points(solver,billiard,k)
+    @time "pts" pts=evaluate_points(solver,billiard,k)
     N=boundary_matrix_size(pts)
     T=typeof(k)
     A=Matrix{Complex{T}}(undef,N,N)
     dA=Matrix{Complex{T}}(undef,N,N)
     ddA=Matrix{Complex{T}}(undef,N,N)
-    construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded_matrices)
-    G=Hermitian(A' * A)
-    λ=eigmin(G)
+    @time "mat" construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded_matrices)
+    @time "hermitian" G=Hermitian(A' * A)
+    @time "eigmin" λ=eigmin(G)
     return k,sqrt(max(zero(T),λ))
 end
 
