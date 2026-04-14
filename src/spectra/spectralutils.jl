@@ -905,9 +905,14 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
     end
     isempty(ks) && return T[],T[]
     pts0=evaluate_points(solver,billiard,ks[1])
-    results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     println("compute_spectrum...")
     println("Total k points: $(length(ks))")
+    N0=boundary_matrix_size(pts0)
+    A0=Matrix{Complex{T}}(undef,N0,N0)
+    dA0=Matrix{Complex{T}}(undef,N0,N0)
+    ddA0=Matrix{Complex{T}}(undef,N0,N0)
+    solve_INFO!(solver,A0,dA0,ddA0,pts0,ks[1],dks[1];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     p=Progress(length(ks),1)
     seg_first=1
     while seg_first<=length(ks)
@@ -920,10 +925,7 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
         A=Matrix{Complex{T}}(undef,N,N)
         dA=Matrix{Complex{T}}(undef,N,N)
         ddA=Matrix{Complex{T}}(undef,N,N)
-        λs,tens=solve_INFO!(solver,A,dA,ddA,pts,ks[seg_first],dks[seg_first];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
-        results[seg_first]=(λs,tens)
-        next!(p)
-        for i in (seg_first+1):seg_last
+        for i in seg_first:seg_last
             λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
             results[i]=(λs,tens)
             next!(p)
@@ -936,9 +938,12 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
     for i in eachindex(ks)
         λs,tens=results[i]
         isempty(λs) && continue
-        overlap_and_merge!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i];tol=tol)
+        overlap_and_merge!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i]+dks[i];tol=tol)
     end
     isempty(λs_all) && return T[],T[]
+    keep=[k1<=λ<=k2 for λ in λs_all]
+    λs_all=λs_all[keep]
+    tensions_all=tensions_all[keep]
     return λs_all,tensions_all
 end
 
