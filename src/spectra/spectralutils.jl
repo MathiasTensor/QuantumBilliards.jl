@@ -555,10 +555,6 @@ function compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Functi
     control=Bool[]
     for i in eachindex(ks)
         λs,tens=results[i]
-        @info "interval $i  k=$(ks[i])  count=$(length(λs))"
-    end
-    for i in eachindex(ks)
-        λs,tens=results[i]
         isempty(λs) && continue
         overlap_and_merge!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i]+dks[i];tol=tol)
     end
