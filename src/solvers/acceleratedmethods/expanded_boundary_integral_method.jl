@@ -188,7 +188,7 @@ function solve_full_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::A
         κ_all=gev_eigconds(A,dA,λ,VR,VL;p=2)
         @info "Median eigenvalue condition number: $(median(κ_all))"
     end
-    T=eltype(real.(λ))
+    L=eltype(real.(λ))
     valid=(abs.(real.(λ)).<dk).&(abs.(imag.(λ)).<dk)
     if !any(valid)
         total_time=time()-s
@@ -198,13 +198,13 @@ function solve_full_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::A
         println("A,dA,ddA construction: $(100*(e_constr-s_constr)/total_time) %")
         println("Generalized eigen: $(100*(e_gev-s_gev)/total_time) %")
         println("%%%%%%%%%%%%%%%%%%%")
-        return Vector{T}(),Vector{T}()
+        return Vector{L}(),Vector{L}()
     end
     λ=real.(λ[valid])
     VR=VR[:,valid]
     VL=VL[:,valid]
-    corr_1=Vector{T}(undef,length(λ))
-    corr_2=Vector{T}(undef,length(λ))
+    corr_1=Vector{L}(undef,length(λ))
+    corr_2=Vector{L}(undef,length(λ))
     @info "Corrections to the eigenvalues and eigenvectors..."
     s_corr=time()
     @time for i in eachindex(λ)
