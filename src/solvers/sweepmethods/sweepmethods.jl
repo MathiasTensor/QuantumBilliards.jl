@@ -247,16 +247,12 @@ end
 
 =#
 
-function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilliard,k0;
-    a=0.0,b=Inf,maxiter=8,tol=1e-12,multithreaded_matrices=true)
-
+function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilliard,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12,multithreaded_matrices=true)
     k=clamp(k0,a,b)
     T=typeof(k)
-
     pts=evaluate_points(solver,billiard,k)
     ws=nothing
     N=boundary_matrix_size(pts)
-
     if solver isa CFIE_alpert
         ws=build_cfie_alpert_workspace(solver,pts)
         N=ws.Ntot
@@ -264,46 +260,53 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
         ws=build_cfie_kress_workspace(solver,pts)
         N=ws.Ntot
     end
-
     A=Matrix{Complex{T}}(undef,N,N)
     dA=Matrix{Complex{T}}(undef,N,N)
     ddA=Matrix{Complex{T}}(undef,N,N)
-    v=Vector{Complex{T}}(undef,N)
-    tmp1=Vector{Complex{T}}(undef,N)
-    tmp2=Vector{Complex{T}}(undef,N)
-
+    G=Matrix{Complex{T}}(undef,N,N)
+    H=Matrix{Complex{T}}(undef,N,N)
+    H2=Matrix{Complex{T}}(undef,N,N)
+    W=Matrix{Complex{T}}(undef,N,N)
     assemble! = isnothing(ws) ?
         (kk->construct_matrices!(solver,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)) :
         (kk->construct_matrices!(solver,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices))
-
-    σbest=T(Inf)
+    λbest=T(Inf)
     kbest=k
-
     for _ in 1:maxiter
         assemble!(k)
-        F=svd!(A)
-        σ=F.S[end]
-        u=@view F.U[:,end]
-        @inbounds for i in 1:N
-            v[i]=conj(F.Vt[end,i])
-        end
-
-        if isfinite(σ) && σ<σbest
-            σbest=σ
+        mul!(G,adjoint(A),A)
+        mul!(H,adjoint(dA),A)
+        mul!(W,adjoint(A),dA)
+        @. H=H+W
+        mul!(H2,adjoint(ddA),A)
+        mul!(W,adjoint(dA),dA)
+        @. H2=H2+2*W
+        mul!(W,adjoint(A),ddA)
+        @. H2=H2+W
+        F=eigen!(Hermitian(G))
+        vals=F.values
+        vecs=F.vectors
+        idx=argmin(vals)
+        λ=vals[idx]
+        x=@view vecs[:,idx]
+        if isfinite(λ) && λ<λbest
+            λbest=λ
             kbest=k
         end
-        σ==zero(T) && return k,σ
-
-        mul!(tmp1,dA,v)
-        mul!(tmp2,ddA,v)
-        σ1=real(dot(u,tmp1))
-        σ2=real(dot(u,tmp2))
-
-        if !isfinite(σ1) || !isfinite(σ2) || abs(σ2)<sqrt(eps(T))
+        gx=H*x
+        λ1=real(dot(x,gx))
+        λ2=real(dot(x,H2*x))
+        @inbounds for j in eachindex(vals)
+            j==idx && continue
+            denom=λ-vals[j]
+            abs(denom)<eps(T) && continue
+            c=dot(view(vecs,:,j),gx)
+            λ2 += 2*abs2(c)/denom
+        end
+        if !isfinite(λ1) || !isfinite(λ2) || abs(λ2)<sqrt(eps(T))
             break
         end
-
-        knew=clamp(k-σ1/σ2,a,b)
+        knew=clamp(k-λ1/λ2,a,b)
         if !isfinite(knew)
             break
         end
@@ -313,70 +316,50 @@ function newton_refine_svd(solver::EBIMSolver,basis::AbsBasis,billiard::AbsBilli
         end
         k=knew
     end
-
     assemble!(k)
-    σ=svdvals!(A)[end]
-    if isfinite(σ) && σ<=σbest
-        return k,σ
+    mul!(G,adjoint(A),A)
+    λ=minimum(eigvals(Hermitian(G)))
+    if isfinite(λ) && λ<=λbest
+        return k,sqrt(max(zero(T),λ))
     else
         assemble!(kbest)
-        return kbest,svdvals!(A)[end]
+        mul!(G,adjoint(A),A)
+        λ=minimum(eigvals(Hermitian(G)))
+        return kbest,sqrt(max(zero(T),λ))
     end
 end
 
-function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,
-    ks::AbstractVector{T},tens::AbstractVector{T};
-    multithreaded_matrices::Bool=true,
-    threshold=200.0,
-    print_refinement::Bool=true,
-    use_krylov::Bool=true,
-    digits::Int=10,
-    which::Symbol=:svd,
-    pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),
-    dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),
-    window_shrink=3.0,
-    optimizer_kwargs=NamedTuple(),
-    stop_k_tol=0.0,
-    stop_t_tol=0.0,
-    initial_refinement_interval=1e-3,
-    show_progress::Bool=false) where {T<:Real}
-
+function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0,3.0,4.0),dim_refinement_factors=(1.0,1.1,1.25,1.4,1.5),window_shrink=3.0,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false,newton_max_iter::Int=8,newton_tol::Float64=1e-12) where {T<:Real}
     N=length(ks)
     @assert N==length(tens)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
-
     ks_approx=length(ks)==1 ? collect(ks) : get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
     isempty(ks_approx) && return T[],T[],Vector{Vector{NamedTuple}}()
-
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
     histories=Vector{Vector{NamedTuple}}(undef,length(ks_approx))
     show_progress && (p=Progress(length(ks_approx);desc="Refining minima"))
-
     for i in eachindex(ks_approx)
         kcur=ks_approx[i]
+        idx0=argmin(abs.(ks.-kcur))
         dk_grid=T(initial_refinement_interval)
-
         if length(ks)>1
             dmin=T(Inf)
             @inbounds for j in eachindex(ks)
-                d=abs(ks[j]-kcur)
+                d=abs(ks[j]-ks[idx0])
                 if d>zero(T) && d<dmin
                     dmin=d
                 end
             end
             isfinite(dmin) && (dk_grid=dmin)
         end
-
         window=max(3*dk_grid,T(initial_refinement_interval))
         hist=NamedTuple[]
         kprev=T(NaN)
         tprev=T(NaN)
-
         for lev in eachindex(pts_refinement_factors)
             pf=pts_refinement_factors[lev]
             df=dim_refinement_factors[lev]
-
             solver_cur=solver
             try
                 solver_cur=update_field(solver_cur,:pts_scaling_factor,pf*getfield(solver_cur,:pts_scaling_factor))
@@ -386,29 +369,20 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
                 solver_cur=update_field(solver_cur,:dim_scaling_factor,df*getfield(solver_cur,:dim_scaling_factor))
             catch
             end
-
             a=kcur-window
             b=kcur+window
-
             if solver_cur isa EBIMSolver
-                knew,tnew=newton_refine_svd(solver_cur,basis,billiard,kcur;
-                    a=a,b=b,maxiter=8,tol=1e-12,
-                    multithreaded_matrices=multithreaded_matrices)
+                knew,tnew=newton_refine_svd(solver_cur,basis,billiard,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol,multithreaded_matrices=multithreaded_matrices)
             else
                 dim=max(solver_cur.min_dim,round(Int,billiard.length*kcur*solver_cur.dim_scaling_factor/(2*pi)))
                 basis_cur=resize_basis(basis,billiard,dim,kcur)
                 pts=evaluate_points(solver_cur,billiard,kcur)
-                f=kk->solve(solver_cur,basis_cur,pts,kk;
-                    multithreaded=multithreaded_matrices,
-                    use_krylov=use_krylov,
-                    which=which)
+                f=kk->solve(solver_cur,basis_cur,pts,kk;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
                 res=isempty(optimizer_kwargs) ? optimize(f,a,b) : optimize(f,a,b;optimizer_kwargs...)
                 knew=res.minimizer
                 tnew=res.minimum
             end
-
             push!(hist,(level=lev,pts_factor=pf,dim_factor=df,k=knew,tension=tnew,window=window))
-
             if lev>1
                 kconv=(stop_k_tol>0)&&(abs(knew-kprev)<=stop_k_tol)
                 tconv=(stop_t_tol>0)&&(abs(tnew-tprev)<=stop_t_tol)
@@ -418,19 +392,16 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
                     break
                 end
             end
-
             kprev=kcur
             tprev=tnew
             kcur=knew
             window/=window_shrink
         end
-
         sols[i]=kcur
         tens_refined[i]=tprev
         histories[i]=hist
         show_progress && next!(p)
     end
-
     if print_refinement
         println("\n================ Newton refinement summary ================")
         println(rpad("#",4),rpad("k_approx",digits+8),rpad("k_ref",digits+8),
@@ -453,6 +424,5 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
         end
         println("==========================================================\n")
     end
-
     return sols,tens_refined,histories
 end
