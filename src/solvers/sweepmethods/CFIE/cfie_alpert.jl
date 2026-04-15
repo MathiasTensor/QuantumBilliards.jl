@@ -717,17 +717,17 @@ end
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    _construct_matrices_cached!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_cached!(A,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_cfie_alpert_workspace(solver,pts)
-    _construct_matrices_cached!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_cached!(A,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    _construct_matrices_cached!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_cached!(A,pts,ws,k;multithreaded=multithreaded)
     return A
 end
 
@@ -737,21 +737,21 @@ function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFI
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    _construct_matrices_deriv_cached!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_deriv_cached!(A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_cfie_alpert_workspace(solver,pts)
-    _construct_matrices_deriv_cached!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_deriv_cached!(A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    _construct_matrices_deriv_cached!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_deriv_cached!(A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_cfie_alpert_workspace(solver,pts)
-    _construct_matrices_deriv_cached!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+    _construct_matrices_deriv_cached!(A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
