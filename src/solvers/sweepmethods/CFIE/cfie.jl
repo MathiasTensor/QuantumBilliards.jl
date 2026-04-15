@@ -143,6 +143,34 @@ struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     alpertq::Int
 end
 
+# _warn_aggressive_alpert
+# This function checks if the combination of the Alpert quadrature parameters (order and grading strength) and the geometry of the billiard (specifically the lengths of the boundary segments) may lead to under-resolution of the near-correction on the shortest boundary segment. 
+# It calculates a heuristic danger ratio based on these parameters and issues a warning if the ratio exceeds certain thresholds, suggesting adjustments to the Alpert parameters for better accuracy.
+function _warn_aggressive_alpert(pts_scaling_factor,billiard,alpert_order::Int,alpertq::Int)
+    bs=pts_scaling_factor isa AbstractVector ? pts_scaling_factor : [pts_scaling_factor]
+    bmin=minimum(bs)
+    boundary=billiard.full_boundary
+    lens=Float64[]
+    if boundary[1] isa AbstractVector
+        for comp in boundary;append!(lens,[crv.length for crv in comp]);end
+    else;append!(lens,[crv.length for crv in boundary]);end
+    Lmin=minimum(lens) # minimum length is the most problematic since the near-correction will be strongest there and we need to make sure we have enough points to resolve it. 
+    Lavg=sum(lens)/length(lens) # The average length is also relevant since it gives us a sense of the overall discretization density.
+    # heuristic danger ratio:
+    # bigger order, bigger q, smaller b, shorter smallest panel => more dangerous
+    R=(alpert_order*alpertq)/(bmin*max(Lmin/Lavg,sqrt(eps(T))))
+    if R>6.0
+        b_suggest=(alpert_order*alpertq)/(4.0*Lmin/Lavg)
+        q_suggest=(4.0*bmin*Lmin/Lavg)/alpert_order
+        @warn "CFIE_alpert: aggressive grading / near-correction may be under-resolved on the shortest boundary segment." b=bmin alpert_order=alpert_order alpertq=alpertq shortest_segment=Lmin average_segment=Lavg ratio=R suggested_min_b=b_suggest suggested_max_q=q_suggest
+    elseif R>4.0
+        b_suggest=(alpert_order*alpertq)/(4.0*Lmin/Lavg)
+        q_suggest=(4.0*bmin*Lmin/Lavg)/alpert_order
+        @info "CFIE_alpert: borderline grading / correction strength." b=bmin alpert_order=alpert_order alpertq=alpertq shortest_segment=Lmin average_segment=Lavg ratio=R suggested_min_b=b_suggest suggested_max_q=q_suggest
+    end
+    return nothing
+end
+
 """
     CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,S}=nothing,alpert_order=16,alpertq=8) where {T<:Real,Bi<:AbsBilliard,S<:AbsSymmetry}
 
@@ -154,14 +182,15 @@ Constructor for CFIE_alpert solver.
 - `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Default is 20.
 - `eps`: Unused internally.
 - `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
-- `alpert_order`: The order of the Alpert quadrature correction to use for near interactions. Supported values are 2, 3, 4, 5, 6, 8, 10, 12, 14, and 16. Default is 16.
+- `alpert_order`: The order of the Alpert quadrature correction to use for near interactions. Supported values are 2, 3, 4, 5, 6, 8, 10, 12, 14, and 16. Default is 12.
 - `alpertq`: The grading strength parameter for the Alpert quadrature. Default is 4.
 
 # Output:
 - An instance of the `CFIE_alpert` solver initialized with the provided parameters.
 """
-function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=16,alpertq::Int=4) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=12,alpertq::Int=4) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
+    _warn_aggressive_alpert(pts_scaling_factor,billiard,alpert_order,alpertq)
     _=alpert_log_rule(T,alpert_order)
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]

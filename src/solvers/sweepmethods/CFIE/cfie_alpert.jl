@@ -919,7 +919,7 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
     return A
 end
 
-function construct_matrices_with_derivatives!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     fill!(A1,zero(Complex{T}))
     fill!(A2,zero(Complex{T}))
@@ -940,11 +940,11 @@ function construct_matrices_with_derivatives!(solver::CFIE_alpert{T},A::Matrix{C
     return A,A1,A2
 end
 
-function construct_matrices_with_derivatives(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     A1=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     A2=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    construct_matrices_with_derivatives!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+    construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
     return A,A1,A2
 end
 
