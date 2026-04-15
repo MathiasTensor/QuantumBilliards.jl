@@ -922,7 +922,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                 xi=Xa[i]
                 yi=Ya[i]
                 @inbounds for j in 1:Nb
-                    if aidx == bidx && abs(i - j) < rule.a
+                    if aidx == bidx
                         continue
                     end
                     gj=rb[j]
