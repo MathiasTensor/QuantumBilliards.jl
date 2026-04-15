@@ -104,6 +104,7 @@ include("solvers/acceleratedmethods/acceleratedmethods.jl")
 include("solvers/sweepmethods/basis_sweep/particularsolutionsmethod.jl")
 include("solvers/sweepmethods/basis_sweep/decompositionmethod.jl")
 include("solvers/sweepmethods/dlp/dlp.jl")
+include("solvers/sweepmethods/dlp/dlp_kress.jl")
 
 # Chebyshev machinery - general
 include("chebyshev/chebyshev_core.jl")
