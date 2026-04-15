@@ -683,7 +683,7 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
     return A
 end
 
-function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}));fill!(A1,zero(Complex{T}));fill!(A2,zero(Complex{T}))
     offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
     @inbounds for a in eachindex(pts)
