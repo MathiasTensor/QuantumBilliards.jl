@@ -940,6 +940,10 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Ma
     return A,A1,A2
 end
 
+function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+end
+
 function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     A1=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
