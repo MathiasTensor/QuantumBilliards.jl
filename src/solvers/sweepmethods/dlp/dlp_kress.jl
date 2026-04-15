@@ -266,10 +266,10 @@ function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_cor
             j1=real(h1)
             l1_ij=αL1*inn_ij*j1*invr
             l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
-            F[i,j]=-2*(Rmat[i,j]*l1_ij+pts.ws[j]*l2_ij)
+            F[i,j]=-(Rmat[i,j]*l1_ij+pts.ws[j]*l2_ij)
             l1_ji=αL1*inn_ji*j1*invr
             l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
-            F[j,i]=-2*(Rmat[j,i]*l1_ji+pts.ws[i]*l2_ji)
+            F[j,i]=-(Rmat[j,i]*l1_ji+pts.ws[i]*l2_ji)
         end
     end
     return F
