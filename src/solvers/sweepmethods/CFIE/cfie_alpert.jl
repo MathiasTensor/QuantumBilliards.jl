@@ -634,32 +634,9 @@ function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{Boundary
     return CFIEAlpertWorkspace(rule,offs,Gs,Cs,parr,Ntot)
 end
 
-function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    fill!(A,zero(Complex{T}))
-    offs=component_offsets(pts)
-    Gs=[cfie_geom_cache(p) for p in pts]
-    rule=alpert_log_rule(T,solver.alpert_order)
-    boundary=solver.billiard.full_boundary
-    flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
-    Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
-    parr=[_panel_arrays_cache(p) for p in pts]
-    @inbounds for a in eachindex(pts)
-        pts[a].is_periodic || continue
-        ra=offs[a]:(offs[a+1]-1)
-        _assemble_self_alpert!(solver,A,pts[a],Gs[a],Cs[a],ra,k,rule;multithreaded=multithreaded)
-    end
-    _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,parr,k,rule;multithreaded=multithreaded)
-    _assemble_all_offpanel_naive!(A,pts,offs,parr,k;multithreaded=multithreaded)
-    return A
-end
-
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
-    offs=ws.offs
-    Gs=ws.Gs
-    Cs=ws.Cs
-    parr=ws.parr
-    rule=ws.rule
+    offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
     @inbounds for a in eachindex(pts)
         pts[a].is_periodic || continue
         ra=offs[a]:(offs[a+1]-1)
@@ -670,20 +647,23 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     return A
 end
 
-function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    Ntot=boundary_matrix_size(pts)
-    A=Matrix{Complex{T}}(undef,Ntot,Ntot)
-    @blas_1 construct_matrices!(solver,A,pts,k;multithreaded=multithreaded)
-    return A
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_alpert_workspace(solver,pts)
+    construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
 end
 
-function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     return A
 end
 
-function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_alpert_workspace(solver,pts)
+    construct_matrices(solver,pts,ws,k;multithreaded=multithreaded)
+end
+
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}));fill!(A1,zero(Complex{T}));fill!(A2,zero(Complex{T}))
     offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
     @inbounds for a in eachindex(pts)
@@ -698,16 +678,17 @@ function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A
     return A,A1,A2
 end
 
+function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_alpert_workspace(solver,pts)
+    construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
+end
+
 function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
-function construct_matrices(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    A1=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    A2=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
-    construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
-    return A,A1,A2
+function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_matrices!(solver,A,A1,A2,pts,k;multithreaded=multithreaded)
 end
 
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
