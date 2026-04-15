@@ -144,27 +144,18 @@ end
 end
 
 function _add_naive_panel_block!(A::AbstractMatrix{Complex{T}},gi::Int,xi::T,yi::T,rb::UnitRange{Int},pb::BoundaryPointsCFIE{T},Pb::CFIEPanelArrays{T},k::T,αD::Complex{T},αS::Complex{T},ik::Complex{T};skip_pred=(j->false)) where {T<:Real}
-    Xb=Pb.X
-    Yb=Pb.Y
-    dXb=Pb.dX
-    dYb=Pb.dY
-    sb=Pb.s
+    Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s;wb=pb.ws
     Nb=length(Xb)
     @inbounds for j in 1:Nb
         skip_pred(j) && continue
-        gj=rb[j]
-        dx=xi-Xb[j]
-        dy=yi-Yb[j]
+        dx=xi-Xb[j];dy=yi-Yb[j]
         r2=muladd(dx,dx,dy*dy)
         r2<=(eps(T))^2 && continue
-        r=sqrt(r2)
-        invr=inv(r)
+        r=sqrt(r2);invr=inv(r)
         inn=_dinner(dx,dy,dXb[j],dYb[j])
-        wd=pb.ws[j]
-        ws=pb.ws[j]*sb[j]
-        dval=wd*(αD*inn*H(1,k*r)*invr)
-        sval=ws*(αS*H(0,k*r))
-        A[gi,gj]-=dval+ik*sval
+        h0,h1=hankel_pair01(k*r)
+        wd=wb[j];ws=wd*sb[j]
+        A[gi,rb[j]]-=wd*(αD*inn*h1*invr)+ik*(ws*(αS*h0))
     end
     return A
 end
@@ -173,32 +164,26 @@ function _add_self_panel_alpert_correction!(A::AbstractMatrix{Complex{T}},gi::In
     jcorr=rule.j
     @inbounds for p in 1:jcorr
         fac=hσ*rule.w[p]
-        dx=xi-Ca.xp[p,i]
-        dy=yi-Ca.yp[p,i]
+        dx=xi-Ca.xp[p,i];dy=yi-Ca.yp[p,i]
         r2=muladd(dx,dx,dy*dy)
         if isfinite(r2) && r2>(eps(T))^2
             r=sqrt(r2)
             inn=_dinner(dx,dy,Ca.txp[p,i],Ca.typ[p,i])
-            coeffD=-(fac*(αD*inn*H(1,k*r)/r))
-            coeffS=-ik*(fac*(αS*H(0,k*r)*Ca.sp[p,i]))
+            h0,h1=hankel_pair01(k*r)
+            coeff=-(fac*(αD*inn*h1/r))-ik*(fac*(αS*h0*Ca.sp[p,i]))
             for m in axes(Ca.idxp,3)
-                q=Ca.idxp[p,i,m]
-                w=Ca.wtp[p,i,m]
-                A[gi,ra[q]] += coeffD*w+coeffS*w
+                A[gi,ra[Ca.idxp[p,i,m]]]+=coeff*Ca.wtp[p,i,m]
             end
         end
-        dx=xi-Ca.xm[p,i]
-        dy=yi-Ca.ym[p,i]
+        dx=xi-Ca.xm[p,i];dy=yi-Ca.ym[p,i]
         r2=muladd(dx,dx,dy*dy)
         if isfinite(r2) && r2>(eps(T))^2
             r=sqrt(r2)
             inn=_dinner(dx,dy,Ca.txm[p,i],Ca.tym[p,i])
-            coeffD=-(fac*(αD*inn*H(1,k*r)/r))
-            coeffS=-ik*(fac*(αS*H(0,k*r)*Ca.sm[p,i]))
+            h0,h1=hankel_pair01(k*r)
+            coeff=-(fac*(αD*inn*h1/r))-ik*(fac*(αS*h0*Ca.sm[p,i]))
             for m in axes(Ca.idxm,3)
-                q=Ca.idxm[p,i,m]
-                w=Ca.wtm[p,i,m]
-                A[gi,ra[q]] += coeffD*w+coeffS*w
+                A[gi,ra[Ca.idxm[p,i,m]]]+=coeff*Ca.wtm[p,i,m]
             end
         end
     end
@@ -289,64 +274,30 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     hσ=pts.ws[1]
     jcorr=rule.j
     sig=copy(pts.ts)
-    xp=Matrix{T}(undef,jcorr,N)
-    yp=similar(xp)
-    txp=similar(xp)
-    typ=similar(xp)
-    sp=similar(xp)
-    xm=similar(xp)
-    ym=similar(xp)
-    txm=similar(xp)
-    tym=similar(xp)
-    sm=similar(xp)
-    idxp=Array{Int,3}(undef,jcorr,N,p)
-    idxm=Array{Int,3}(undef,jcorr,N,p)
-    wtp=Array{T,3}(undef,jcorr,N,p)
-    wtm=Array{T,3}(undef,jcorr,N,p)
+    xp=Matrix{T}(undef,jcorr,N);yp=similar(xp);txp=similar(xp);typ=similar(xp);sp=similar(xp)
+    xm=similar(xp);ym=similar(xp);txm=similar(xp);tym=similar(xp);sm=similar(xp)
+    idxp=Array{Int,3}(undef,jcorr,N,p);idxm=Array{Int,3}(undef,jcorr,N,p)
+    wtp=Array{T,3}(undef,jcorr,N,p);wtm=Array{T,3}(undef,jcorr,N,p)
     @inbounds for q in 1:jcorr
         Δσ=hσ*rule.x[q]
         for i in 1:N
             σp=sig[i]+Δσ
-            if σp<one(T)
-                up,jp,_=_panel_sigma_to_u_jac(solver,σp)
-                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
-                idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
-                xp[q,i]=x
-                yp[q,i]=y
-                txp[q,i]=tu*jp
-                typ[q,i]=tv*jp
-                sp[q,i]=su*jp
-                for m in 1:p
-                    idxp[q,i,m]=idx[m]
-                    wtp[q,i,m]=wt[m]
-                end
-            else
-                xp[q,i]=T(NaN);yp[q,i]=T(NaN);txp[q,i]=T(NaN);typ[q,i]=T(NaN);sp[q,i]=T(NaN)
-                for m in 1:p
-                    idxp[q,i,m]=1
-                    wtp[q,i,m]=zero(T)
-                end
+            up,jp,_=_panel_sigma_to_u_jac(solver,σp)
+            x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
+            idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
+            xp[q,i]=x;yp[q,i]=y;txp[q,i]=tu*jp;typ[q,i]=tv*jp;sp[q,i]=su*jp
+            for m in 1:p
+                idxp[q,i,m]=idx[m]
+                wtp[q,i,m]=wt[m]
             end
             σm=sig[i]-Δσ
-            if σm>zero(T)
-                um,jm,_=_panel_sigma_to_u_jac(solver,σm)
-                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
-                idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
-                xm[q,i]=x
-                ym[q,i]=y
-                txm[q,i]=tu*jm
-                tym[q,i]=tv*jm
-                sm[q,i]=su*jm
-                for m in 1:p
-                    idxm[q,i,m]=idx[m]
-                    wtm[q,i,m]=wt[m]
-                end
-            else
-                xm[q,i]=T(NaN);ym[q,i]=T(NaN);txm[q,i]=T(NaN);tym[q,i]=T(NaN);sm[q,i]=T(NaN)
-                for m in 1:p
-                    idxm[q,i,m]=1
-                    wtm[q,i,m]=zero(T)
-                end
+            um,jm,_=_panel_sigma_to_u_jac(solver,σm)
+            x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
+            idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
+            xm[q,i]=x;ym[q,i]=y;txm[q,i]=tu*jm;tym[q,i]=tv*jm;sm[q,i]=su*jm
+            for m in 1:p
+                idxm[q,i,m]=idx[m]
+                wtm[q,i,m]=wt[m]
             end
         end
     end
@@ -367,98 +318,47 @@ function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryP
 end
 
 function _assemble_self_alpert_periodic!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    N=length(pts.ts)
-    h=pts.ws[1]
-    a=rule.a
-    jcorr=rule.j
-    ninterp=C.ninterp
+    αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
+    X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2)
+    N=length(pts.ts);h=pts.ws[1];a=rule.a;jcorr=rule.j;ninterp=C.ninterp
     @use_threads multithreading=multithreaded for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
+        gi=row_range[i];xi=X[i];yi=Y[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
-            gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            A[gi,gj]-=h*(αD*inn*H(1,k*rij)*invr)
+            r=G.R[i,j];invr=G.invR[i,j];inn=G.inner[i,j];sj=G.speed[j]
+            h0,h1=hankel_pair01(k*r)
+            A[gi,row_range[j]]-=h*(αD*inn*h1*invr)+ik*(h*(αS*h0*sj))
         end
         @inbounds for m in (-a+1):(a-1)
             m==0 && continue
             j=mod1(i+m,N)
-            gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            A[gi,gj]+=h*(αD*inn*H(1,k*rij)*invr)
+            r=G.R[i,j];invr=G.invR[i,j];inn=G.inner[i,j];sj=G.speed[j]
+            h0,h1=hankel_pair01(k*r)
+            A[gi,row_range[j]]+=h*(αD*inn*h1*invr)+ik*(h*(αS*h0*sj))
         end
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
+            dx=xi-C.xp[p,i];dy=yi-C.yp[p,i]
             r2=muladd(dx,dx,dy*dy)
             if isfinite(r2) && r2>(eps(T))^2
                 r=sqrt(r2)
                 inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
-                coeff=-(fac*(αD*inn*H(1,k*r)/r))
+                h0,h1=hankel_pair01(k*r)
+                coeff=-(fac*(αD*inn*h1/r))-ik*(fac*(αS*h0*C.sp[p,i]))
                 for m in 1:ninterp
-                    q=mod1(i+C.offsp[p,m],N)
-                    A[gi,row_range[q]] += coeff*C.wtp[p,m]
+                    A[gi,row_range[mod1(i+C.offsp[p,m],N)]]+=coeff*C.wtp[p,m]
                 end
             end
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
+            dx=xi-C.xm[p,i];dy=yi-C.ym[p,i]
             r2=muladd(dx,dx,dy*dy)
             if isfinite(r2) && r2>(eps(T))^2
                 r=sqrt(r2)
                 inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
-                coeff=-(fac*(αD*inn*H(1,k*r)/r))
+                h0,h1=hankel_pair01(k*r)
+                coeff=-(fac*(αD*inn*h1/r))-ik*(fac*(αS*h0*C.sm[p,i]))
                 for m in 1:ninterp
-                    q=mod1(i+C.offsm[p,m],N)
-                    A[gi,row_range[q]] += coeff*C.wtm[p,m]
-                end
-            end
-        end
-        @inbounds for j in 1:N
-            j==i && continue
-            gj=row_range[j]
-            A[gi,gj]-=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-        end
-        @inbounds for m in (-a+1):(a-1)
-            m==0 && continue
-            j=mod1(i+m,N)
-            gj=row_range[j]
-            A[gi,gj]+=ik*(h*(αS*H(0,k*G.R[i,j])*G.speed[j]))
-        end
-        @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-                for m in 1:ninterp
-                    q=mod1(i+C.offsp[p,m],N)
-                    A[gi,row_range[q]] += coeff*C.wtp[p,m]
-                end
-            end
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                for m in 1:ninterp
-                    q=mod1(i+C.offsm[p,m],N)
-                    A[gi,row_range[q]] += coeff*C.wtm[p,m]
+                    A[gi,row_range[mod1(i+C.offsm[p,m],N)]]+=coeff*C.wtm[p,m]
                 end
             end
         end
@@ -547,102 +447,46 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
 end
 
 function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    N=length(X)
-    hσ=pts.ws[1]
-    a=rule.a
-    jcorr=rule.j
+    αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
+    X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2)
+    N=length(X);hσ=pts.ws[1];a=rule.a;jcorr=rule.j;w=pts.ws
     @use_threads multithreading=multithreaded for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
-        ui=C.sig[i]
+        gi=row_range[i];xi=X[i];yi=Y[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            wd=pts.ws[j]
-            A[gi,gj]-=wd*(αD*inn*H(1,k*rij)*invr)
-        end
-        @inbounds for j in 1:N
-            j==i && continue
-            abs(j-i)<a || continue
-            gj=row_range[j]
-            rij=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            wd=pts.ws[j]
-            A[gi,gj]+=wd*(αD*inn*H(1,k*rij)*invr)
+            r=G.R[i,j];invr=G.invR[i,j];inn=G.inner[i,j];wj=w[j]
+            if abs(j-i)<a
+                h0,h1=hankel_pair01(k*r)
+                A[gi,gj]+=wj*(αD*inn*h1*invr)
+            else
+                h0,h1=hankel_pair01(k*r)
+                A[gi,gj]-=wj*(αD*inn*h1*invr)+ik*((wj*G.speed[j])*(αS*h0))
+            end
         end
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
-                dx=xi-C.xp[p,i]
-                dy=yi-C.yp[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
-                    coeff=-(fac*(αD*inn*H(1,k*r)/r))
-                    for m in axes(C.idxp,3)
-                        q=C.idxp[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
-                    end
+            dx=xi-C.xp[p,i];dy=yi-C.yp[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
+                h0,h1=hankel_pair01(k*r)
+                coeff=-(fac*(αD*inn*h1/r))-ik*(fac*(αS*h0*C.sp[p,i]))
+                for m in axes(C.idxp,3)
+                    A[gi,row_range[C.idxp[p,i,m]]]+=coeff*C.wtp[p,i,m]
                 end
             end
-            if ui-Δσ>zero(T)
-                dx=xi-C.xm[p,i]
-                dy=yi-C.ym[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
-                    coeff=-(fac*(αD*inn*H(1,k*r)/r))
-                    for m in axes(C.idxm,3)
-                        q=C.idxm[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
-                    end
-                end
-            end
-        end
-        @inbounds for j in 1:N
-            j==i && continue
-            gj=row_range[j]
-            abs(j-i)<a && continue
-            wsj=pts.ws[j]*G.speed[j]
-            A[gi,gj]-=ik*(wsj*(αS*H(0,k*G.R[i,j])))
-        end
-        @inbounds for p in 1:jcorr
-            fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
-                dx=xi-C.xp[p,i]
-                dy=yi-C.yp[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-                    for m in axes(C.idxp,3)
-                        q=C.idxp[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
-                    end
-                end
-            end
-            if ui-Δσ>zero(T)
-                dx=xi-C.xm[p,i]
-                dy=yi-C.ym[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                    for m in axes(C.idxm,3)
-                        q=C.idxm[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
-                    end
+            dx=xi-C.xm[p,i];dy=yi-C.ym[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
+                h0,h1=hankel_pair01(k*r)
+                coeff=-(fac*(αD*inn*h1/r))-ik*(fac*(αS*h0*C.sm[p,i]))
+                for m in axes(C.idxm,3)
+                    A[gi,row_range[C.idxm[p,i,m]]]+=coeff*C.wtm[p,i,m]
                 end
             end
         end
@@ -737,24 +581,14 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex
 end
 
 function _assemble_self_alpert_composite!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Gs::Vector{CFIEGeomCache{T}},Cs,offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    a=rule.a
+    αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k);a=rule.a
     for aidx in eachindex(pts)
         pa=pts[aidx]
         pa.is_periodic && continue
-        Ca=Cs[aidx]
-        Pa=parr[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Xa=Pa.X
-        Ya=Pa.Y
-        Na=length(Xa)
-        hσ=pa.ws[1]
+        Ca=Cs[aidx];Pa=parr[aidx];ra=offs[aidx]:(offs[aidx+1]-1)
+        Xa=Pa.X;Ya=Pa.Y;Na=length(Xa);hσ=pa.ws[1]
         @use_threads multithreading=multithreaded for i in 1:Na
-            gi=ra[i]
-            xi=Xa[i]
-            yi=Ya[i]
+            gi=ra[i];xi=Xa[i];yi=Ya[i]
             A[gi,gi]+=one(Complex{T})
             _add_naive_panel_block!(A,gi,xi,yi,ra,pa,Pa,k,αD,αS,ik;skip_pred=j->(j==i || abs(j-i)<a))
             _add_self_panel_alpert_correction!(A,gi,xi,yi,i,ra,Ca,hσ,k,αD,αS,ik,rule)
@@ -763,46 +597,27 @@ function _assemble_self_alpert_composite!(solver::CFIE_alpert{T},A::AbstractMatr
     return A
 end
 
+
 function _assemble_all_offpanel_naive!(A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
+    αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     for aidx in eachindex(pts)
-        pa=pts[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Pa=parr[aidx]
-        Xa=Pa.X
-        Ya=Pa.Y
-        Na=length(Xa)
+        pa=pts[aidx];ra=offs[aidx]:(offs[aidx+1]-1);Pa=parr[aidx]
+        Xa=Pa.X;Ya=Pa.Y;Na=length(Xa)
         for bidx in eachindex(pts)
             bidx==aidx && continue
-            pb=pts[bidx]
-            rb=offs[bidx]:(offs[bidx+1]-1)
-            Pb=parr[bidx]
-            Xb=Pb.X
-            Yb=Pb.Y
-            dXb=Pb.dX
-            dYb=Pb.dY
-            sb=Pb.s
-            Nb=length(Xb)
+            pb=pts[bidx];rb=offs[bidx]:(offs[bidx+1]-1);Pb=parr[bidx]
+            Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s;wb=pb.ws;Nb=length(Xb)
             @use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-                gi=ra[i]
-                xi=Xa[i]
-                yi=Ya[i]
+                gi=ra[i];xi=Xa[i];yi=Ya[i]
                 @inbounds for j in 1:Nb
-                    gj=rb[j]
-                    dx=xi-Xb[j]
-                    dy=yi-Yb[j]
+                    dx=xi-Xb[j];dy=yi-Yb[j]
                     r2=muladd(dx,dx,dy*dy)
                     r2<=(eps(T))^2 && continue
-                    r=sqrt(r2)
-                    invr=inv(r)
+                    r=sqrt(r2);invr=inv(r)
                     inn=dYb[j]*dx-dXb[j]*dy
-                    wd=pb.ws[j]
-                    ws=pb.ws[j]*sb[j]
-                    dval=wd*(αD*inn*H(1,k*r)*invr)
-                    sval=ws*(αS*H(0,k*r))
-                    A[gi,gj]-=dval+ik*sval
+                    h0,h1=hankel_pair01(k*r)
+                    wd=wb[j];ws=wd*sb[j]
+                    A[gi,rb[j]]-=wd*(αD*inn*h1*invr)+ik*(ws*(αS*h0))
                 end
             end
         end
