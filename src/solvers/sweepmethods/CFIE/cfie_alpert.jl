@@ -858,234 +858,11 @@ function _assemble_all_offpanel_naive_deriv!(A::AbstractMatrix{Complex{T}},A1::A
     return A,A1,A2
 end
 
-function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    sym=solver.symmetry
-    isnothing(sym) && return A
-    αD=Complex{T}(0,k/2)
-    αS=Complex{T}(0,one(T)/2)
-    ik=Complex{T}(0,k)
-    sx=hasproperty(solver.billiard,:x_axis) ? T(getfield(solver.billiard,:x_axis)) : zero(T)
-    sy=hasproperty(solver.billiard,:y_axis) ? T(getfield(solver.billiard,:y_axis)) : zero(T)
-    have_rot=sym isa Rotation
-    if have_rot
-        ctab,stab,χtab=_rotation_tables(T,sym.n,sym.m)
-        cx=T(sym.center[1]);cy=T(sym.center[2])
-    end
-    for aidx in eachindex(pts)
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Pa=parr[aidx]
-        Xa=Pa.X;Ya=Pa.Y
-        Na=length(Xa)
-        for bidx in eachindex(pts)
-            rb=offs[bidx]:(offs[bidx+1]-1)
-            pb=pts[bidx]
-            Pb=parr[bidx]
-            Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s
-            Nb=length(Xb)
-            @use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-                gi=ra[i]
-                xi=Xa[i]
-                yi=Ya[i]
-                @inbounds for j in 1:Nb
-                    gj=rb[j]
-                    wd=pb.ws[j]
-                    ws=pb.ws[j]*sb[j]
-                    xj=Xb[j];yj=Yb[j];txj=dXb[j];tyj=dYb[j]
-                    if sym isa Reflection
-                        if sym.axis===:y_axis
-                            xr=_x_reflect(xj,sx);yr=yj
-                            txr,tyr=_x_reflect_tangent(txj,tyj)
-                            χ=T(sym.parity)
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            dval= -wd*(αD*inn*H(1,k*r)*invr)
-                            sval=ws*(αS*H(0,k*r))
-                            A[gi,gj]-=χ*(dval+ik*sval)
-                        elseif sym.axis===:x_axis
-                            xr=xj;yr=_y_reflect(yj,sy)
-                            txr,tyr=_y_reflect_tangent(txj,tyj)
-                            χ=T(sym.parity)
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            dval= -wd*(αD*inn*H(1,k*r)*invr)
-                            sval=ws*(αS*H(0,k*r))
-                            A[gi,gj]-=χ*(dval+ik*sval)
-                        elseif sym.axis===:origin
-                            χx=T(sym.parity[1])
-                            χy=T(sym.parity[2])
-                            χxy=T(sym.parity[1]*sym.parity[2])
-                            xr=_x_reflect(xj,sx);yr=yj
-                            txr,tyr=_x_reflect_tangent(txj,tyj)
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            if r2>(eps(T))^2
-                                r=sqrt(r2);invr=inv(r)
-                                inn=_dinner(dx,dy,txr,tyr)
-                                dval=-wd*(αD*inn*H(1,k*r)*invr)
-                                sval=ws*(αS*H(0,k*r))
-                                A[gi,gj]-=χx*(dval+ik*sval)
-                            end
-                            xr=xj;yr=_y_reflect(yj,sy)
-                            txr,tyr=_y_reflect_tangent(txj,tyj)
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            if r2>(eps(T))^2
-                                r=sqrt(r2);invr=inv(r)
-                                inn=_dinner(dx,dy,txr,tyr)
-                                dval=-wd*(αD*inn*H(1,k*r)*invr)
-                                sval=ws*(αS*H(0,k*r))
-                                A[gi,gj]-=χy*(dval+ik*sval)
-                            end
-                            xr=_x_reflect(xj,sx);yr=_y_reflect(yj,sy)
-                            txr,tyr=_xy_reflect_tangent(txj,tyj)
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            if r2>(eps(T))^2
-                                r=sqrt(r2);invr=inv(r)
-                                inn=_dinner(dx,dy,txr,tyr)
-                                dval=-wd*(αD*inn*H(1,k*r)*invr)
-                                sval=ws*(αS*H(0,k*r))
-                                A[gi,gj]-=χxy*(dval+ik*sval)
-                            end
-                        else
-                            error("Unknown reflection axis $(sym.axis)")
-                        end
-                    else
-                        @inbounds for l in 2:sym.n
-                            c=ctab[l];s=stab[l]
-                            xr,yr=_rot_point(xj,yj,cx,cy,c,s)
-                            txr,tyr=_rot_vec(txj,tyj,c,s)
-                            χ=χtab[l]
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            dval=wd*(αD*inn*H(1,k*r)*invr)
-                            sval=ws*(αS*H(0,k*r))
-                            A[gi,gj]-=χ*(dval+ik*sval)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return A
-end
-
-function _assemble_all_image_naive_deriv!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    sym=solver.symmetry
-    isnothing(sym) && return A,A1,A2
-    ik=Complex{T}(0,k)
-    sx=hasproperty(solver.billiard,:x_axis) ? T(getfield(solver.billiard,:x_axis)) : zero(T)
-    sy=hasproperty(solver.billiard,:y_axis) ? T(getfield(solver.billiard,:y_axis)) : zero(T)
-    have_rot=sym isa Rotation
-    if have_rot
-        ctab,stab,χtab=_rotation_tables(T,sym.n,sym.m)
-        cx=T(sym.center[1]);cy=T(sym.center[2])
-    end
-    for aidx in eachindex(pts)
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Pa=parr[aidx]
-        Xa=Pa.X;Ya=Pa.Y
-        Na=length(Xa)
-        for bidx in eachindex(pts)
-            rb=offs[bidx]:(offs[bidx+1]-1)
-            pb=pts[bidx]
-            Pb=parr[bidx]
-            Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s
-            Nb=length(Xb)
-            QuantumBilliards.@use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-                gi=ra[i]
-                xi=Xa[i]
-                yi=Ya[i]
-                @inbounds for j in 1:Nb
-                    gj=rb[j]
-                    wd=pb.ws[j]
-                    ws=pb.ws[j]*sb[j]
-                    xj=Xb[j];yj=Yb[j];txj=dXb[j];tyj=dYb[j]
-                    if sym isa Reflection
-                        if sym.axis===:y_axis
-                            xr=_x_reflect(xj,sx);yr=yj
-                            txr,tyr=_x_reflect_tangent(txj,tyj)
-                            χ=Complex{T}(T(sym.parity),zero(T))
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,wd)
-                            s0,s1,s2=_slp_terms(T,k,r,one(T),ws,h0,h1)
-                            A[gi,gj]-=χ*(d0+ik*s0)
-                            A1[gi,gj]-=χ*(d1+Complex{T}(0,1)*s0+ik*s1)
-                            A2[gi,gj]-=χ*(d2+Complex{T}(0,2)*s1+ik*s2)
-                        elseif sym.axis===:x_axis
-                            xr=xj;yr=_y_reflect(yj,sy)
-                            txr,tyr=_y_reflect_tangent(txj,tyj)
-                            χ=Complex{T}(T(sym.parity),zero(T))
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,wd)
-                            s0,s1,s2=_slp_terms(T,k,r,one(T),ws,h0,h1)
-                            A[gi,gj]-=χ*(d0+ik*s0)
-                            A1[gi,gj]-=χ*(d1+Complex{T}(0,1)*s0+ik*s1)
-                            A2[gi,gj]-=χ*(d2+Complex{T}(0,2)*s1+ik*s2)
-                        elseif sym.axis===:origin
-                            xr=_x_reflect(xj,sx);yr=_y_reflect(yj,sy)
-                            txr,tyr=_xy_reflect_tangent(txj,tyj)
-                            χ=Complex{T}(T(sym.parity[1]*sym.parity[2]),zero(T))
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,wd)
-                            s0,s1,s2=_slp_terms(T,k,r,one(T),ws,h0,h1)
-                            A[gi,gj]-=χ*(d0+ik*s0)
-                            A1[gi,gj]-=χ*(d1+Complex{T}(0,1)*s0+ik*s1)
-                            A2[gi,gj]-=χ*(d2+Complex{T}(0,2)*s1+ik*s2)
-                        else
-                            error("Unknown reflection axis $(sym.axis)")
-                        end
-                    else
-                        @inbounds for l in 2:sym.n
-                            c=ctab[l];s=stab[l]
-                            xr,yr=_rot_point(xj,yj,cx,cy,c,s)
-                            txr,tyr=_rot_vec(txj,tyj,c,s)
-                            χ=χtab[l]
-                            dx=xi-xr;dy=yi-yr
-                            r2=muladd(dx,dx,dy*dy)
-                            r2<=(eps(T))^2 && continue
-                            r=sqrt(r2);invr=inv(r)
-                            inn=_dinner(dx,dy,txr,tyr)
-                            d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,wd)
-                            s0,s1,s2=_slp_terms(T,k,r,one(T),ws,h0,h1)
-                            A[gi,gj]-=χ*(d0+ik*s0)
-                            A1[gi,gj]-=χ*(d1+Complex{T}(0,1)*s0+ik*s1)
-                            A2[gi,gj]-=χ*(d2+Complex{T}(0,2)*s1+ik*s2)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return A,A1,A2
-end
-
 function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     rule=alpert_log_rule(T,solver.alpert_order)
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
-    boundary=isnothing(solver.symmetry) ? solver.billiard.full_boundary : solver.billiard.desymmetrized_full_boundary
+    boundary=solver.billiard.full_boundary
     flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
     Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
     parr=[_panel_arrays_cache(p) for p in pts]
@@ -1098,7 +875,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
     rule=alpert_log_rule(T,solver.alpert_order)
-    boundary=isnothing(solver.symmetry) ? solver.billiard.full_boundary : solver.billiard.desymmetrized_full_boundary
+    boundary=solver.billiard.full_boundary
     flat_boundary=boundary[1] isa AbstractVector ? reduce(vcat,boundary) : boundary
     Cs=[_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order) for a in eachindex(pts)]
     parr=[_panel_arrays_cache(p) for p in pts]
@@ -1109,7 +886,6 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     end
     _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,parr,k,rule;multithreaded=multithreaded)
     _assemble_all_offpanel_naive!(A,pts,offs,parr,k;multithreaded=multithreaded)
-    _assemble_all_image_naive!(solver,A,pts,offs,parr,k;multithreaded=multithreaded)
     return A
 end
 
@@ -1127,28 +903,7 @@ function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::V
     end
     _assemble_self_alpert_composite!(solver,A,pts,Gs,Cs,offs,parr,k,rule;multithreaded=multithreaded)
     _assemble_all_offpanel_naive!(A,pts,offs,parr,k;multithreaded=multithreaded)
-    _assemble_all_image_naive!(solver,A,pts,offs,parr,k;multithreaded=multithreaded)
     return A
-end
-
-function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    ws=build_cfie_alpert_workspace(solver,pts)
-    construct_matrices_with_derivatives!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
-    return A,dA,ddA
-end
-
-function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    construct_matrices_with_derivatives!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
-    return A,dA,ddA
-end
-
-function construct_matrices(solver::CFIE_alpert{T},basis::AbstractHankelBasis,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
-    ws=build_cfie_alpert_workspace(solver,pts)
-    return construct_matrices_with_derivatives(solver,pts,ws,k;multithreaded=multithreaded)
-end
-
-function construct_matrices(solver::CFIE_alpert{T},basis::AbstractHankelBasis,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    return construct_matrices_with_derivatives(solver,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
@@ -1182,7 +937,6 @@ function construct_matrices_with_derivatives!(solver::CFIE_alpert{T},A::Matrix{C
         end
     end
     _assemble_all_offpanel_naive_deriv!(A,A1,A2,pts,offs,parr,k;multithreaded=multithreaded)
-    _assemble_all_image_naive_deriv!(solver,A,A1,A2,pts,offs,parr,k;multithreaded=multithreaded)
     return A,A1,A2
 end
 
