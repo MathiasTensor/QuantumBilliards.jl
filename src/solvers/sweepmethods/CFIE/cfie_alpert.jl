@@ -56,9 +56,9 @@ struct AlpertSmoothPanelCache{T<:Real}
     tym::Matrix{T}
     sm::Matrix{T}
     idxp::Array{Int,3}
-    wtp::Array{Complex{T},3}
+    wtp::Array{T,3}
     idxm::Array{Int,3}
-    wtm::Array{Complex{T},3}
+    wtm::Array{T,3}
 end
 
 @inline function _dlp_terms(TT,k,r,inn,invr,w)
@@ -282,78 +282,6 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
-@inline _fold_open_reflection_right(::Type{T},σ::T) where {T<:Real}=T(2)-σ
-@inline _fold_open_reflection_left(::Type{T},σ::T) where {T<:Real}=-σ
-
-@inline function _reflection_character(::Type{T},sym) where {T<:Real}
-    sym isa Reflection || error("Only Reflection supported here.")
-    if sym.axis===:x_axis || sym.axis===:y_axis
-        return Complex{T}(T(sym.parity),zero(T))
-    elseif sym.axis===:origin
-        return Complex{T}(T(sym.parity[1]*sym.parity[2]),zero(T))
-    else
-        error("Unknown reflection axis $(sym.axis)")
-    end
-end
-
-function _continued_panel_interp_data(solver::CFIE_alpert{T},σ::T,N::Int,p::Int) where {T<:Real}
-    if zero(T)<σ<one(T)
-        idx,wt=_panel_interp_midpoint_data(σ,inv(T(N)),N,p)
-        return idx,Complex{T}.(wt),true
-    end
-    isnothing(solver.symmetry) && return fill(1,p),fill(zero(Complex{T}),p),false
-    sym=solver.symmetry
-    sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
-    σred=σ>=one(T) ? _fold_open_reflection_right(T,σ) : _fold_open_reflection_left(T,σ)
-    zero(T)<σred<one(T) || return fill(1,p),fill(zero(Complex{T}),p),false
-    idx,wt=_panel_interp_midpoint_data(σred,inv(T(N)),N,p)
-    χ=_reflection_character(T,sym)
-    cwt=Complex{T}.(wt)
-    cwt .*= χ
-    return idx,cwt,true
-end
-
-function _eval_open_panel_geom_continued(solver::CFIE_alpert{T},crv,uσ::T) where {T<:Real}
-    if zero(T)<uσ<one(T)
-        u,jac,_=_panel_sigma_to_u_jac(solver,uσ)
-        q=curve(crv,u)
-        tu=tangent(crv,u)
-        su=sqrt(tu[1]^2+tu[2]^2)
-        return q[1],q[2],tu[1]*jac,tu[2]*jac,su*jac,true
-    end
-    isnothing(solver.symmetry) && return T(NaN),T(NaN),T(NaN),T(NaN),T(NaN),false
-    sym=solver.symmetry
-    sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
-    σred=uσ>=one(T) ? _fold_open_reflection_right(T,uσ) : _fold_open_reflection_left(T,uσ)
-    if !(zero(T)<σred<one(T))
-        return T(NaN),T(NaN),T(NaN),T(NaN),T(NaN),false
-    end
-    u,jac,_=_panel_sigma_to_u_jac(solver,σred)
-    q=curve(crv,u)
-    tu=tangent(crv,u)
-    su=sqrt(tu[1]^2+tu[2]^2)
-    x=q[1];y=q[2]
-    tx=tu[1]*jac;ty=tu[2]*jac
-    s=su*jac
-    sx=hasproperty(solver.billiard,:x_axis) ? T(getfield(solver.billiard,:x_axis)) : zero(T)
-    sy=hasproperty(solver.billiard,:y_axis) ? T(getfield(solver.billiard,:y_axis)) : zero(T)
-    if sym.axis===:y_axis
-        xr=_x_reflect(x,sx);yr=y
-        txr,tyr=_x_reflect_tangent(tx,ty)
-        return xr,yr,txr,tyr,s,true
-    elseif sym.axis===:x_axis
-        xr=x;yr=_y_reflect(y,sy)
-        txr,tyr=_y_reflect_tangent(tx,ty)
-        return xr,yr,txr,tyr,s,true
-    elseif sym.axis===:origin
-        xr=_x_reflect(x,sx);yr=_y_reflect(y,sy)
-        txr,tyr=_xy_reflect_tangent(tx,ty)
-        return xr,yr,txr,tyr,s,true
-    else
-        error("Unknown reflection axis $(sym.axis)")
-    end
-end
-
 function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
     iseven(p) || error("Smooth-panel Alpert interpolation stencil size p must be even.")
     N=length(pts.xy)
@@ -373,40 +301,51 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     sm=similar(xp)
     idxp=Array{Int,3}(undef,jcorr,N,p)
     idxm=Array{Int,3}(undef,jcorr,N,p)
-    wtp=Array{Complex{T},3}(undef,jcorr,N,p)
-    wtm=Array{Complex{T},3}(undef,jcorr,N,p)
+    wtp=Array{T,3}(undef,jcorr,N,p)
+    wtm=Array{T,3}(undef,jcorr,N,p)
     @inbounds for q in 1:jcorr
         Δσ=hσ*rule.x[q]
         for i in 1:N
             σp=sig[i]+Δσ
-            x,y,tx,ty,s,ok=_eval_open_panel_geom_continued(solver,crv,σp)
-            xp[q,i]=x;yp[q,i]=y;txp[q,i]=tx;typ[q,i]=ty;sp[q,i]=s
-            idx,wt,okwt=_continued_panel_interp_data(solver,σp,N,p)
-            if ok && okwt
+            if σp<one(T)
+                up,jp,_=_panel_sigma_to_u_jac(solver,σp)
+                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
+                idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
+                xp[q,i]=x
+                yp[q,i]=y
+                txp[q,i]=tu*jp
+                typ[q,i]=tv*jp
+                sp[q,i]=su*jp
                 for m in 1:p
                     idxp[q,i,m]=idx[m]
                     wtp[q,i,m]=wt[m]
                 end
             else
+                xp[q,i]=T(NaN);yp[q,i]=T(NaN);txp[q,i]=T(NaN);typ[q,i]=T(NaN);sp[q,i]=T(NaN)
                 for m in 1:p
                     idxp[q,i,m]=1
-                    wtp[q,i,m]=zero(Complex{T})
+                    wtp[q,i,m]=zero(T)
                 end
             end
-
             σm=sig[i]-Δσ
-            x,y,tx,ty,s,ok=_eval_open_panel_geom_continued(solver,crv,σm)
-            xm[q,i]=x;ym[q,i]=y;txm[q,i]=tx;tym[q,i]=ty;sm[q,i]=s
-            idx,wt,okwt=_continued_panel_interp_data(solver,σm,N,p)
-            if ok && okwt
+            if σm>zero(T)
+                um,jm,_=_panel_sigma_to_u_jac(solver,σm)
+                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
+                idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
+                xm[q,i]=x
+                ym[q,i]=y
+                txm[q,i]=tu*jm
+                tym[q,i]=tv*jm
+                sm[q,i]=su*jm
                 for m in 1:p
                     idxm[q,i,m]=idx[m]
                     wtm[q,i,m]=wt[m]
                 end
             else
+                xm[q,i]=T(NaN);ym[q,i]=T(NaN);txm[q,i]=T(NaN);tym[q,i]=T(NaN);sm[q,i]=T(NaN)
                 for m in 1:p
                     idxm[q,i,m]=1
-                    wtm[q,i,m]=zero(Complex{T})
+                    wtm[q,i,m]=zero(T)
                 end
             end
         end
@@ -621,8 +560,8 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
+        ui=C.sig[i]
         A[gi,gi]+=one(Complex{T})
-
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -632,7 +571,6 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             wd=pts.ws[j]
             A[gi,gj]-=wd*(αD*inn*H(1,k*rij)*invr)
         end
-
         @inbounds for j in 1:N
             j==i && continue
             abs(j-i)<a || continue
@@ -643,37 +581,36 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             wd=pts.ws[j]
             A[gi,gj]+=wd*(αD*inn*H(1,k*rij)*invr)
         end
-
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
-                coeff=-(fac*(αD*inn*H(1,k*r)/r))
-                for m in axes(C.idxp,3)
-                    q=C.idxp[p,i,m]
-                    A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
+            Δσ=hσ*rule.x[p]
+            if ui+Δσ<one(T)
+                dx=xi-C.xp[p,i]
+                dy=yi-C.yp[p,i]
+                r=sqrt(dx*dx+dy*dy)
+                if isfinite(r) && r>sqrt(eps(T))
+                    inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
+                    coeff=-(fac*(αD*inn*H(1,k*r)/r))
+                    for m in axes(C.idxp,3)
+                        q=C.idxp[p,i,m]
+                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
+                    end
                 end
             end
-
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
-                coeff=-(fac*(αD*inn*H(1,k*r)/r))
-                for m in axes(C.idxm,3)
-                    q=C.idxm[p,i,m]
-                    A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
+            if ui-Δσ>zero(T)
+                dx=xi-C.xm[p,i]
+                dy=yi-C.ym[p,i]
+                r=sqrt(dx*dx+dy*dy)
+                if isfinite(r) && r>sqrt(eps(T))
+                    inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
+                    coeff=-(fac*(αD*inn*H(1,k*r)/r))
+                    for m in axes(C.idxm,3)
+                        q=C.idxm[p,i,m]
+                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
+                    end
                 end
             end
         end
-
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -681,31 +618,31 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             wsj=pts.ws[j]*G.speed[j]
             A[gi,gj]-=ik*(wsj*(αS*H(0,k*G.R[i,j])))
         end
-
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-                for m in axes(C.idxp,3)
-                    q=C.idxp[p,i,m]
-                    A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
+            Δσ=hσ*rule.x[p]
+            if ui+Δσ<one(T)
+                dx=xi-C.xp[p,i]
+                dy=yi-C.yp[p,i]
+                r=sqrt(dx*dx+dy*dy)
+                if isfinite(r) && r>sqrt(eps(T))
+                    coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+                    for m in axes(C.idxp,3)
+                        q=C.idxp[p,i,m]
+                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
+                    end
                 end
             end
-
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if isfinite(r2) && r2>(eps(T))^2
-                r=sqrt(r2)
-                coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                for m in axes(C.idxm,3)
-                    q=C.idxm[p,i,m]
-                    A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
+            if ui-Δσ>zero(T)
+                dx=xi-C.xm[p,i]
+                dy=yi-C.ym[p,i]
+                r=sqrt(dx*dx+dy*dy)
+                if isfinite(r) && r>sqrt(eps(T))
+                    coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+                    for m in axes(C.idxm,3)
+                        q=C.idxm[p,i,m]
+                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
+                    end
                 end
             end
         end
@@ -950,9 +887,6 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                 xi=Xa[i]
                 yi=Ya[i]
                 @inbounds for j in 1:Nb
-                    if aidx == bidx
-                        continue
-                    end
                     gj=rb[j]
                     wd=pb.ws[j]
                     ws=pb.ws[j]*sb[j]
@@ -967,7 +901,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             r2<=(eps(T))^2 && continue
                             r=sqrt(r2);invr=inv(r)
                             inn=_dinner(dx,dy,txr,tyr)
-                            dval= wd*(αD*inn*H(1,k*r)*invr)
+                            dval= -wd*(αD*inn*H(1,k*r)*invr)
                             sval=ws*(αS*H(0,k*r))
                             A[gi,gj]-=χ*(dval+ik*sval)
                         elseif sym.axis===:x_axis
@@ -979,7 +913,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             r2<=(eps(T))^2 && continue
                             r=sqrt(r2);invr=inv(r)
                             inn=_dinner(dx,dy,txr,tyr)
-                            dval= wd*(αD*inn*H(1,k*r)*invr)
+                            dval= -wd*(αD*inn*H(1,k*r)*invr)
                             sval=ws*(αS*H(0,k*r))
                             A[gi,gj]-=χ*(dval+ik*sval)
                         elseif sym.axis===:origin
@@ -993,7 +927,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             if r2>(eps(T))^2
                                 r=sqrt(r2);invr=inv(r)
                                 inn=_dinner(dx,dy,txr,tyr)
-                                dval= wd*(αD*inn*H(1,k*r)*invr)
+                                dval=-wd*(αD*inn*H(1,k*r)*invr)
                                 sval=ws*(αS*H(0,k*r))
                                 A[gi,gj]-=χx*(dval+ik*sval)
                             end
@@ -1004,7 +938,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             if r2>(eps(T))^2
                                 r=sqrt(r2);invr=inv(r)
                                 inn=_dinner(dx,dy,txr,tyr)
-                                dval= wd*(αD*inn*H(1,k*r)*invr)
+                                dval=-wd*(αD*inn*H(1,k*r)*invr)
                                 sval=ws*(αS*H(0,k*r))
                                 A[gi,gj]-=χy*(dval+ik*sval)
                             end
@@ -1015,7 +949,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             if r2>(eps(T))^2
                                 r=sqrt(r2);invr=inv(r)
                                 inn=_dinner(dx,dy,txr,tyr)
-                                dval= wd*(αD*inn*H(1,k*r)*invr)
+                                dval=-wd*(αD*inn*H(1,k*r)*invr)
                                 sval=ws*(αS*H(0,k*r))
                                 A[gi,gj]-=χxy*(dval+ik*sval)
                             end
