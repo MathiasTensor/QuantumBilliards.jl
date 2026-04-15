@@ -26,6 +26,10 @@ struct AlpertPeriodicCache{T<:Real}
     txm::Matrix{T}
     tym::Matrix{T}
     sm::Matrix{T}
+    rp::Matrix{T}
+    rm::Matrix{T}
+    innp::Matrix{T}
+    innm::Matrix{T}
     offsp::Matrix{Int}
     wtp::Matrix{T}
     offsm::Matrix{Int}
@@ -46,6 +50,10 @@ struct AlpertSmoothPanelCache{T<:Real}
     txm::Matrix{T}
     tym::Matrix{T}
     sm::Matrix{T}
+    rp::Matrix{T}
+    rm::Matrix{T}
+    innp::Matrix{T}
+    innm::Matrix{T}
     idxp::Array{Int,3}
     wtp::Array{T,3}
     idxm::Array{Int,3}
@@ -227,52 +235,57 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     jcorr=rule.j
     ninterp=ord+3
     σ=_periodic_orientation_sign(pts.ts)
-    xp=Matrix{T}(undef,jcorr,N)
-    yp=similar(xp)
-    txp=similar(xp)
-    typ=similar(xp)
-    sp=similar(xp)
-    xm=Matrix{T}(undef,jcorr,N)
-    ym=similar(xm)
-    txm=similar(xm)
-    tym=similar(xm)
-    sm=similar(xm)
-    offsp=Matrix{Int}(undef,jcorr,ninterp)
-    wtp=Matrix{T}(undef,jcorr,ninterp)
-    offsm=Matrix{Int}(undef,jcorr,ninterp)
-    wtm=Matrix{T}(undef,jcorr,ninterp)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
+    xp=Matrix{T}(undef,jcorr,N);yp=similar(xp);txp=similar(xp);typ=similar(xp);sp=similar(xp)
+    xm=Matrix{T}(undef,jcorr,N);ym=similar(xm);txm=similar(xm);tym=similar(xm);sm=similar(xm)
+    rp=Matrix{T}(undef,jcorr,N);rm=similar(rp);innp=similar(rp);innm=similar(rp)
+    offsp=Matrix{Int}(undef,jcorr,ninterp);wtp=Matrix{T}(undef,jcorr,ninterp)
+    offsm=Matrix{Int}(undef,jcorr,ninterp);wtm=Matrix{T}(undef,jcorr,ninterp)
+    bad=T(Inf)
     @inbounds for p in 1:jcorr
         ξ=rule.x[p]
         op,wp=_alpert_interp_offsets_weights(ξ,ninterp)
         om,wm=_alpert_interp_offsets_weights(-ξ,ninterp)
         for m in 1:ninterp
-            offsp[p,m]=op[m]
-            wtp[p,m]=wp[m]
-            offsm[p,m]=om[m]
-            wtm[p,m]=wm[m]
+            offsp[p,m]=op[m];wtp[p,m]=wp[m]
+            offsm[p,m]=om[m];wtm[p,m]=wm[m]
         end
         δu=T(σ)*ξ/T(N)
         for i in 1:N
+            xi=X[i];yi=Y[i]
             ui=pts.ts[i]/T(two_pi)
             up=_wrap01(ui+δu)
             qp=curve(crv,up)
             tp=T(σ)*tangent(crv,up)/T(two_pi)
-            xp[p,i]=qp[1]
-            yp[p,i]=qp[2]
-            txp[p,i]=tp[1]
-            typ[p,i]=tp[2]
-            sp[p,i]=sqrt(tp[1]^2+tp[2]^2)
+            xpi=qp[1];ypi=qp[2];txpi=tp[1];typi=tp[2]
+            xp[p,i]=xpi;yp[p,i]=ypi;txp[p,i]=txpi;typ[p,i]=typi;sp[p,i]=sqrt(txpi^2+typi^2)
+            dx=xi-xpi;dy=yi-ypi
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                rp[p,i]=sqrt(r2)
+                innp[p,i]=typi*dx-txpi*dy
+            else
+                rp[p,i]=bad
+                innp[p,i]=zero(T)
+            end
             um=_wrap01(ui-δu)
             qm=curve(crv,um)
             tm=T(σ)*tangent(crv,um)/T(two_pi)
-            xm[p,i]=qm[1]
-            ym[p,i]=qm[2]
-            txm[p,i]=tm[1]
-            tym[p,i]=tm[2]
-            sm[p,i]=sqrt(tm[1]^2+tm[2]^2)
+            xmi=qm[1];ymi=qm[2];txmi=tm[1];tymi=tm[2]
+            xm[p,i]=xmi;ym[p,i]=ymi;txm[p,i]=txmi;tym[p,i]=tymi;sm[p,i]=sqrt(txmi^2+tymi^2)
+            dx=xi-xmi;dy=yi-ymi
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                rm[p,i]=sqrt(r2)
+                innm[p,i]=tymi*dx-txmi*dy
+            else
+                rm[p,i]=bad
+                innm[p,i]=zero(T)
+            end
         end
     end
-    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
+    return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,rp,rm,innp,innm,offsp,wtp,offsm,wtm,ninterp)
 end
 
 function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
@@ -282,18 +295,33 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     hσ=pts.ws[1]
     jcorr=rule.j
     sig=copy(pts.ts)
+    X=getindex.(pts.xy,1)
+    Y=getindex.(pts.xy,2)
     xp=Matrix{T}(undef,jcorr,N);yp=similar(xp);txp=similar(xp);typ=similar(xp);sp=similar(xp)
     xm=similar(xp);ym=similar(xp);txm=similar(xp);tym=similar(xp);sm=similar(xp)
+    rp=similar(xp);rm=similar(xp);innp=similar(xp);innm=similar(xp)
     idxp=Array{Int,3}(undef,jcorr,N,p);idxm=Array{Int,3}(undef,jcorr,N,p)
     wtp=Array{T,3}(undef,jcorr,N,p);wtm=Array{T,3}(undef,jcorr,N,p)
+    bad=T(Inf)
     @inbounds for q in 1:jcorr
         Δσ=hσ*rule.x[q]
         for i in 1:N
+            xi=X[i];yi=Y[i]
             σp=_panel_sigma_wrap(sig[i]+Δσ)
             up,jp,_=_panel_sigma_to_u_jac(solver,σp)
             x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
             idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
-            xp[q,i]=x;yp[q,i]=y;txp[q,i]=tu*jp;typ[q,i]=tv*jp;sp[q,i]=su*jp
+            tx=tu*jp;ty=tv*jp
+            xp[q,i]=x;yp[q,i]=y;txp[q,i]=tx;typ[q,i]=ty;sp[q,i]=su*jp
+            dx=xi-x;dy=yi-y
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                rp[q,i]=sqrt(r2)
+                innp[q,i]=ty*dx-tx*dy
+            else
+                rp[q,i]=bad
+                innp[q,i]=zero(T)
+            end
             for m in 1:p
                 idxp[q,i,m]=idx[m]
                 wtp[q,i,m]=wt[m]
@@ -302,16 +330,25 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
             um,jm,_=_panel_sigma_to_u_jac(solver,σm)
             x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
             idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
-            xm[q,i]=x;ym[q,i]=y;txm[q,i]=tu*jm;tym[q,i]=tv*jm;sm[q,i]=su*jm
+            tx=tu*jm;ty=tv*jm
+            xm[q,i]=x;ym[q,i]=y;txm[q,i]=tx;tym[q,i]=ty;sm[q,i]=su*jm
+            dx=xi-x;dy=yi-y
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                rm[q,i]=sqrt(r2)
+                innm[q,i]=ty*dx-tx*dy
+            else
+                rm[q,i]=bad
+                innm[q,i]=zero(T)
+            end
             for m in 1:p
                 idxm[q,i,m]=idx[m]
                 wtm[q,i,m]=wt[m]
             end
         end
     end
-    return AlpertSmoothPanelCache(crv,sig,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,idxp,wtp,idxm,wtm)
+    return AlpertSmoothPanelCache(crv,sig,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,rp,rm,innp,innm,idxp,wtp,idxm,wtm)
 end
-
 
 function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
     if pts.is_periodic
@@ -330,14 +367,12 @@ function _assemble_self_alpert_periodic!(A::Matrix{Complex{T}},pts::BoundaryPoin
     αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2)
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    xp=C.xp;yp=C.yp;txp=C.txp;typ=C.typ;sp=C.sp
-    xm=C.xm;ym=C.ym;txm=C.txm;tym=C.tym;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     offsp=C.offsp;wtp=C.wtp;offsm=C.offsm;wtm=C.wtm
     r0=first(row_range)-1
     N=length(X);h=pts.ws[1];a=rule.a;jcorr=rule.j;ninterp=C.ninterp
     @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
         gi=r0+i
-        xi=X[i];yi=Y[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
@@ -354,22 +389,18 @@ function _assemble_self_alpert_periodic!(A::Matrix{Complex{T}},pts::BoundaryPoin
         end
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
-            dx=xi-xp[p,i];dy=yi-yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
+            r=rp[p,i]
+            if isfinite(r)
                 h0,h1=hankel_pair01(k*r)
-                coeff=-(fac*(αD*(typ[p,i]*dx-txp[p,i]*dy)*h1/r))-ik*(fac*(αS*h0*sp[p,i]))
+                coeff=-(fac*(αD*innp[p,i]*h1/r))-ik*(fac*(αS*h0*sp[p,i]))
                 for m in 1:ninterp
                     A[gi,r0+mod1(i+offsp[p,m],N)]+=coeff*wtp[p,m]
                 end
             end
-            dx=xi-xm[p,i];dy=yi-ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
+            r=rm[p,i]
+            if isfinite(r)
                 h0,h1=hankel_pair01(k*r)
-                coeff=-(fac*(αD*(tym[p,i]*dx-txm[p,i]*dy)*h1/r))-ik*(fac*(αS*h0*sm[p,i]))
+                coeff=-(fac*(αD*innm[p,i]*h1/r))-ik*(fac*(αS*h0*sm[p,i]))
                 for m in 1:ninterp
                     A[gi,r0+mod1(i+offsm[p,m],N)]+=coeff*wtm[p,m]
                 end
@@ -383,12 +414,11 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
     ik=Complex{T}(0,k)
     X=P.X;Y=P.Y
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    xp=C.xp;yp=C.yp;txp=C.txp;typ=C.typ;sp=C.sp
-    xm=C.xm;ym=C.ym;txm=C.txm;tym=C.tym;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     offsp=C.offsp;wtp=C.wtp;offsm=C.offsm;wtm=C.wtm
     N=length(X);h=pts.ws[1];a=rule.a;jcorr=rule.j;ninterp=C.ninterp
     QuantumBilliards.@use_threads multithreading=(multithreaded && N>=16) for i in 1:N
-        gi=row_range[i];xi=X[i];yi=Y[i]
+        gi=row_range[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
@@ -410,11 +440,9 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
         end
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
-            dx=xi-xp[p,i];dy=yi-yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
-                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,typ[p,i]*dx-txp[p,i]*dy,inv(r),fac)
+            r=rp[p,i]
+            if isfinite(r)
+                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,innp[p,i],inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,sp[p,i],fac,h0,h1)
                 for m in 1:ninterp
                     gq=row_range[mod1(i+offsp[p,m],N)];ww=wtp[p,m]
@@ -423,11 +451,9 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
                     A2[gi,gq]-=(d2+Complex{T}(0,2)*s1+ik*s2)*ww
                 end
             end
-            dx=xi-xm[p,i];dy=yi-ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
-                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,tym[p,i]*dx-txm[p,i]*dy,inv(r),fac)
+            r=rm[p,i]
+            if isfinite(r)
+                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,innm[p,i],inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,sm[p,i],fac,h0,h1)
                 for m in 1:ninterp
                     gq=row_range[mod1(i+offsm[p,m],N)];ww=wtm[p,m]
@@ -445,14 +471,12 @@ function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::Boundary
     αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2);w=pts.ws
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    xp=C.xp;yp=C.yp;txp=C.txp;typ=C.typ;sp=C.sp
-    xm=C.xm;ym=C.ym;txm=C.txm;tym=C.tym;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
     r0=first(row_range)-1
     N=length(X);hσ=w[1];a=rule.a;jcorr=rule.j;pinterp=size(idxp,3)
     @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
         gi=r0+i
-        xi=X[i];yi=Y[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
@@ -466,22 +490,18 @@ function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::Boundary
         end
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-            dx=xi-xp[p,i];dy=yi-yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
+            r=rp[p,i]
+            if isfinite(r)
                 h0,h1=hankel_pair01(k*r)
-                coeff=-(fac*(αD*(typ[p,i]*dx-txp[p,i]*dy)*h1/r))-ik*(fac*(αS*h0*sp[p,i]))
+                coeff=-(fac*(αD*innp[p,i]*h1/r))-ik*(fac*(αS*h0*sp[p,i]))
                 for m in 1:pinterp
                     A[gi,r0+idxp[p,i,m]]+=coeff*wtp[p,i,m]
                 end
             end
-            dx=xi-xm[p,i];dy=yi-ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
+            r=rm[p,i]
+            if isfinite(r)
                 h0,h1=hankel_pair01(k*r)
-                coeff=-(fac*(αD*(tym[p,i]*dx-txm[p,i]*dy)*h1/r))-ik*(fac*(αS*h0*sm[p,i]))
+                coeff=-(fac*(αD*innm[p,i]*h1/r))-ik*(fac*(αS*h0*sm[p,i]))
                 for m in 1:pinterp
                     A[gi,r0+idxm[p,i,m]]+=coeff*wtm[p,i,m]
                 end
@@ -495,12 +515,11 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
     ik=Complex{T}(0,k)
     X=P.X;Y=P.Y;w=pts.ws
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    xp=C.xp;yp=C.yp;txp=C.txp;typ=C.typ;sp=C.sp
-    xm=C.xm;ym=C.ym;txm=C.txm;tym=C.tym;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
     N=length(X);hσ=w[1];a=rule.a;jcorr=rule.j
     QuantumBilliards.@use_threads multithreading=(multithreaded && N>=16) for i in 1:N
-        gi=row_range[i];xi=X[i];yi=Y[i]
+        gi=row_range[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
@@ -519,11 +538,9 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
         end
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-            dx=xi-xp[p,i];dy=yi-yp[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
-                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,typ[p,i]*dx-txp[p,i]*dy,inv(r),fac)
+            r=rp[p,i]
+            if isfinite(r)
+                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,innp[p,i],inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,sp[p,i],fac,h0,h1)
                 for m in axes(idxp,3)
                     gq=row_range[idxp[p,i,m]];ww=wtp[p,i,m]
@@ -532,11 +549,9 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
                     A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*ww
                 end
             end
-            dx=xi-xm[p,i];dy=yi-ym[p,i]
-            r2=muladd(dx,dx,dy*dy)
-            if r2>(eps(T))^2 && isfinite(r2)
-                r=sqrt(r2)
-                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,tym[p,i]*dx-txm[p,i]*dy,inv(r),fac)
+            r=rm[p,i]
+            if isfinite(r)
+                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,innm[p,i],inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,sm[p,i],fac,h0,h1)
                 for m in axes(idxm,3)
                     gq=row_range[idxm[p,i,m]];ww=wtm[p,i,m]
