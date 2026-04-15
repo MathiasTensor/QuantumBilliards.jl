@@ -368,24 +368,15 @@ end
 
 function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},P::CFIEPanelArrays{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
-    X=P.X
-    Y=P.Y
-    N=length(X)
-    h=pts.ws[1]
-    a=rule.a
-    jcorr=rule.j
-    ninterp=C.ninterp
+    X=P.X;Y=P.Y
+    N=length(X);h=pts.ws[1];a=rule.a;jcorr=rule.j;ninterp=C.ninterp
     QuantumBilliards.@use_threads multithreading=(multithreaded && N>=16) for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
+        gi=row_range[i];xi=X[i];yi=Y[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
-            r=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
+            r=G.R[i,j];inn=G.inner[i,j];invr=G.invR[i,j]
             d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,h)
             s0,s1,s2=_slp_terms(T,k,r,G.speed[j],h,h0,h1)
             A[gi,gj]-=d0+ik*s0
@@ -394,11 +385,8 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
         end
         @inbounds for m in (-a+1):(a-1)
             m==0 && continue
-            j=mod1(i+m,N)
-            gj=row_range[j]
-            r=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
+            j=mod1(i+m,N);gj=row_range[j]
+            r=G.R[i,j];inn=G.inner[i,j];invr=G.invR[i,j]
             d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,h)
             s0,s1,s2=_slp_terms(T,k,r,G.speed[j],h,h0,h1)
             A[gi,gj]+=d0+ik*s0
@@ -407,8 +395,7 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
         end
         @inbounds for p in 1:jcorr
             fac=h*rule.w[p]
-            dx=xi-C.xp[p,i]
-            dy=yi-C.yp[p,i]
+            dx=xi-C.xp[p,i];dy=yi-C.yp[p,i]
             r2=muladd(dx,dx,dy*dy)
             if isfinite(r2) && r2>(eps(T))^2
                 r=sqrt(r2)
@@ -416,16 +403,14 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
                 d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,C.sp[p,i],fac,h0,h1)
                 for m in 1:ninterp
-                    q=mod1(i+C.offsp[p,m],N)
+                    gq=row_range[mod1(i+C.offsp[p,m],N)]
                     w=C.wtp[p,m]
-                    gq=row_range[q]
                     A[gi,gq]-=(d0+ik*s0)*w
                     A1[gi,gq]-=(d1+Complex{T}(0,1)*s0+ik*s1)*w
                     A2[gi,gq]-=(d2+Complex{T}(0,2)*s1+ik*s2)*w
                 end
             end
-            dx=xi-C.xm[p,i]
-            dy=yi-C.ym[p,i]
+            dx=xi-C.xm[p,i];dy=yi-C.ym[p,i]
             r2=muladd(dx,dx,dy*dy)
             if isfinite(r2) && r2>(eps(T))^2
                 r=sqrt(r2)
@@ -433,9 +418,8 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
                 d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,C.sm[p,i],fac,h0,h1)
                 for m in 1:ninterp
-                    q=mod1(i+C.offsm[p,m],N)
+                    gq=row_range[mod1(i+C.offsm[p,m],N)]
                     w=C.wtm[p,m]
-                    gq=row_range[q]
                     A[gi,gq]-=(d0+ik*s0)*w
                     A1[gi,gq]-=(d1+Complex{T}(0,1)*s0+ik*s1)*w
                     A2[gi,gq]-=(d2+Complex{T}(0,2)*s1+ik*s2)*w
@@ -496,32 +480,23 @@ end
 
 function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},P::CFIEPanelArrays{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
-    X=P.X
-    Y=P.Y
-    N=length(X)
-    hσ=pts.ws[1]
-    a=rule.a
-    jcorr=rule.j
+    X=P.X;Y=P.Y
+    N=length(X);hσ=pts.ws[1];a=rule.a;jcorr=rule.j;w=pts.ws
     QuantumBilliards.@use_threads multithreading=(multithreaded && N>=16) for i in 1:N
-        gi=row_range[i]
-        xi=X[i]
-        yi=Y[i]
-        ui=C.sig[i]
+        gi=row_range[i];xi=X[i];yi=Y[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
-            r=G.R[i,j]
-            inn=G.inner[i,j]
-            invr=G.invR[i,j]
-            wd=pts.ws[j]
+            r=G.R[i,j];inn=G.inner[i,j];invr=G.invR[i,j]
+            wd=w[j]
             d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,wd)
             if abs(j-i)<a
                 A[gi,gj]+=d0
                 A1[gi,gj]+=d1
                 A2[gi,gj]+=d2
             else
-                ws=pts.ws[j]*G.speed[j]
+                ws=wd*G.speed[j]
                 s0,s1,s2=_slp_terms(T,k,r,one(T),ws,h0,h1)
                 A[gi,gj]-=d0+ik*s0
                 A1[gi,gj]-=d1+Complex{T}(0,1)*s0+ik*s1
@@ -530,43 +505,34 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
         end
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
-                dx=xi-C.xp[p,i]
-                dy=yi-C.yp[p,i]
-                r2=muladd(dx,dx,dy*dy)
-                if isfinite(r2) && r2>(eps(T))^2
-                    r=sqrt(r2)
-                    inn=C.typ[p,i]*dx-C.txp[p,i]*dy
-                    d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,inv(r),fac)
-                    s0,s1,s2=_slp_terms(T,k,r,C.sp[p,i],fac,h0,h1)
-                    for m in axes(C.idxp,3)
-                        q=C.idxp[p,i,m]
-                        w=C.wtp[p,i,m]
-                        gq=row_range[q]
-                        A[gi,gq]+=(d0-ik*s0)*w
-                        A1[gi,gq]+=(d1-(Complex{T}(0,1)*s0+ik*s1))*w
-                        A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*w
-                    end
+            dx=xi-C.xp[p,i];dy=yi-C.yp[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                inn=C.typ[p,i]*dx-C.txp[p,i]*dy
+                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,inv(r),fac)
+                s0,s1,s2=_slp_terms(T,k,r,C.sp[p,i],fac,h0,h1)
+                for m in axes(C.idxp,3)
+                    gq=row_range[C.idxp[p,i,m]]
+                    ww=C.wtp[p,i,m]
+                    A[gi,gq]+=(d0-ik*s0)*ww
+                    A1[gi,gq]+=(d1-(Complex{T}(0,1)*s0+ik*s1))*ww
+                    A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*ww
                 end
             end
-            if ui-Δσ>zero(T)
-                dx=xi-C.xm[p,i]
-                dy=yi-C.ym[p,i]
-                r2=muladd(dx,dx,dy*dy)
-                if isfinite(r2) && r2>(eps(T))^2
-                    r=sqrt(r2)
-                    inn=C.tym[p,i]*dx-C.txm[p,i]*dy
-                    d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,inv(r),fac)
-                    s0,s1,s2=_slp_terms(T,k,r,C.sm[p,i],fac,h0,h1)
-                    for m in axes(C.idxm,3)
-                        q=C.idxm[p,i,m]
-                        w=C.wtm[p,i,m]
-                        gq=row_range[q]
-                        A[gi,gq]+=(d0-ik*s0)*w
-                        A1[gi,gq]+=(d1-(Complex{T}(0,1)*s0+ik*s1))*w
-                        A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*w
-                    end
+            dx=xi-C.xm[p,i];dy=yi-C.ym[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                inn=C.tym[p,i]*dx-C.txm[p,i]*dy
+                d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,inv(r),fac)
+                s0,s1,s2=_slp_terms(T,k,r,C.sm[p,i],fac,h0,h1)
+                for m in axes(C.idxm,3)
+                    gq=row_range[C.idxm[p,i,m]]
+                    ww=C.wtm[p,i,m]
+                    A[gi,gq]+=(d0-ik*s0)*ww
+                    A1[gi,gq]+=(d1-(Complex{T}(0,1)*s0+ik*s1))*ww
+                    A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*ww
                 end
             end
         end
@@ -625,44 +591,27 @@ function _assemble_all_offpanel_naive!(A::AbstractMatrix{Complex{T}},pts::Vector
     return A
 end
 
-function _assemble_all_offpanel_naive_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true,
-) where {T<:Real}
+function _assemble_all_offpanel_naive_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
     for aidx in eachindex(pts)
-        pa=pts[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        Pa=parr[aidx]
-        Xa=Pa.X
-        Ya=Pa.Y
-        Na=length(Xa)
+        ra=offs[aidx]:(offs[aidx+1]-1);Pa=parr[aidx]
+        Xa=Pa.X;Ya=Pa.Y;Na=length(Xa)
         for bidx in eachindex(pts)
             bidx==aidx && continue
-            pb=pts[bidx]
-            rb=offs[bidx]:(offs[bidx+1]-1)
-            Pb=parr[bidx]
-            Xb=Pb.X
-            Yb=Pb.Y
-            dXb=Pb.dX
-            dYb=Pb.dY
-            sb=Pb.s
-            Nb=length(Xb)
+            pb=pts[bidx];rb=offs[bidx]:(offs[bidx+1]-1);Pb=parr[bidx]
+            Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s;wb=pb.ws;Nb=length(Xb)
             QuantumBilliards.@use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-                gi=ra[i]
-                xi=Xa[i]
-                yi=Ya[i]
+                gi=ra[i];xi=Xa[i];yi=Ya[i]
                 @inbounds for j in 1:Nb
-                    gj=rb[j]
-                    dx=xi-Xb[j]
-                    dy=yi-Yb[j]
+                    dx=xi-Xb[j];dy=yi-Yb[j]
                     r2=muladd(dx,dx,dy*dy)
                     r2<=(eps(T))^2 && continue
-                    r=sqrt(r2)
-                    invr=inv(r)
+                    r=sqrt(r2);invr=inv(r)
                     inn=dYb[j]*dx-dXb[j]*dy
-                    wd=pb.ws[j]
-                    ws=pb.ws[j]*sb[j]
+                    wd=wb[j];ws=wd*sb[j]
                     d0,d1,d2,h0,h1=_dlp_terms(T,k,r,inn,invr,wd)
                     s0,s1,s2=_slp_terms(T,k,r,one(T),ws,h0,h1)
+                    gj=rb[j]
                     A[gi,gj]-=d0+ik*s0
                     A1[gi,gj]-=d1+Complex{T}(0,1)*s0+ik*s1
                     A2[gi,gj]-=d2+Complex{T}(0,2)*s1+ik*s2
@@ -735,14 +684,8 @@ function construct_matrices(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T
 end
 
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    fill!(A,zero(Complex{T}))
-    fill!(A1,zero(Complex{T}))
-    fill!(A2,zero(Complex{T}))
-    offs=ws.offs
-    Gs=ws.Gs
-    Cs=ws.Cs
-    parr=ws.parr
-    rule=ws.rule
+    fill!(A,zero(Complex{T}));fill!(A1,zero(Complex{T}));fill!(A2,zero(Complex{T}))
+    offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
     @inbounds for a in eachindex(pts)
         ra=offs[a]:(offs[a+1]-1)
         if pts[a].is_periodic
