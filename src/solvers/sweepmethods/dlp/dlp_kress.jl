@@ -253,7 +253,7 @@ function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_cor
     fill!(F,zero(Complex{T}))
     N=length(parr.X)
     @inbounds for i in 1:N
-        F[i,i]=one(Complex{T})-2*Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
+        F[i,i]=one(Complex{T})-Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
     end
     @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
         @inbounds for i in 1:j-1
@@ -328,9 +328,9 @@ end
 function construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},F1::AbstractMatrix{Complex{T}},F2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},G::CFIEGeomCache{T},parr::CFIEPanelArrays{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_dlp_matrix_derivatives!(solver,F,F1,F2,pts,Rmat,G,parr,k;multithreaded=multithreaded)
     @inbounds for j in axes(F,2),i in axes(F,1)
-        F[i,j]*=-2
-        F1[i,j]*=-2
-        F2[i,j]*=-2
+        F[i,j]*=-1
+        F1[i,j]*=-1
+        F2[i,j]*=-1
     end
     @inbounds for i in axes(F,1)
         F[i,i]+=one(Complex{T})
