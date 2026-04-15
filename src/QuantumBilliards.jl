@@ -12,8 +12,6 @@ include("utils/geometryutils.jl")
 include("utils/billiardutils.jl")
 include("utils/typeutils.jl")
 include("utils/symmetry.jl")
-include("utils/boyd.jl")
-export companion_matrix, interval_roots_boyd, subdivide_intervals
 export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
 
