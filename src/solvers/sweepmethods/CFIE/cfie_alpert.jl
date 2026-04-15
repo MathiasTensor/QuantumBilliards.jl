@@ -595,8 +595,8 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
         gi=row_range[i]
         xi=X[i]
         yi=Y[i]
-        ui=C.sig[i]
         A[gi,gi]+=one(Complex{T})
+
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -606,6 +606,7 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             wd=pts.ws[j]
             A[gi,gj]-=wd*(αD*inn*H(1,k*rij)*invr)
         end
+
         @inbounds for j in 1:N
             j==i && continue
             abs(j-i)<a || continue
@@ -616,36 +617,37 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             wd=pts.ws[j]
             A[gi,gj]+=wd*(αD*inn*H(1,k*rij)*invr)
         end
+
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
-                dx=xi-C.xp[p,i]
-                dy=yi-C.yp[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
-                    coeff=-(fac*(αD*inn*H(1,k*r)/r))
-                    for m in axes(C.idxp,3)
-                        q=C.idxp[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
-                    end
+
+            dx=xi-C.xp[p,i]
+            dy=yi-C.yp[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                inn=_dinner(dx,dy,C.txp[p,i],C.typ[p,i])
+                coeff=-(fac*(αD*inn*H(1,k*r)/r))
+                for m in axes(C.idxp,3)
+                    q=C.idxp[p,i,m]
+                    A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
                 end
             end
-            if ui-Δσ>zero(T)
-                dx=xi-C.xm[p,i]
-                dy=yi-C.ym[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
-                    coeff=-(fac*(αD*inn*H(1,k*r)/r))
-                    for m in axes(C.idxm,3)
-                        q=C.idxm[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
-                    end
+
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                inn=_dinner(dx,dy,C.txm[p,i],C.tym[p,i])
+                coeff=-(fac*(αD*inn*H(1,k*r)/r))
+                for m in axes(C.idxm,3)
+                    q=C.idxm[p,i,m]
+                    A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
                 end
             end
         end
+
         @inbounds for j in 1:N
             j==i && continue
             gj=row_range[j]
@@ -653,31 +655,31 @@ function _assemble_self_alpert_smooth_panel!(solver::CFIE_alpert{T},A::AbstractM
             wsj=pts.ws[j]*G.speed[j]
             A[gi,gj]-=ik*(wsj*(αS*H(0,k*G.R[i,j])))
         end
+
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
-            Δσ=hσ*rule.x[p]
-            if ui+Δσ<one(T)
-                dx=xi-C.xp[p,i]
-                dy=yi-C.yp[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
-                    for m in axes(C.idxp,3)
-                        q=C.idxp[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
-                    end
+
+            dx=xi-C.xp[p,i]
+            dy=yi-C.yp[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sp[p,i]))
+                for m in axes(C.idxp,3)
+                    q=C.idxp[p,i,m]
+                    A[gi,row_range[q]]+=coeff*C.wtp[p,i,m]
                 end
             end
-            if ui-Δσ>zero(T)
-                dx=xi-C.xm[p,i]
-                dy=yi-C.ym[p,i]
-                r=sqrt(dx*dx+dy*dy)
-                if isfinite(r) && r>sqrt(eps(T))
-                    coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
-                    for m in axes(C.idxm,3)
-                        q=C.idxm[p,i,m]
-                        A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
-                    end
+
+            dx=xi-C.xm[p,i]
+            dy=yi-C.ym[p,i]
+            r2=muladd(dx,dx,dy*dy)
+            if isfinite(r2) && r2>(eps(T))^2
+                r=sqrt(r2)
+                coeff=-ik*(fac*(αS*H(0,k*r)*C.sm[p,i]))
+                for m in axes(C.idxm,3)
+                    q=C.idxm[p,i,m]
+                    A[gi,row_range[q]]+=coeff*C.wtm[p,i,m]
                 end
             end
         end
