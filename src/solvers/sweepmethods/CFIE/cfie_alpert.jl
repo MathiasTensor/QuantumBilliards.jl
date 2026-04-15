@@ -571,62 +571,6 @@ function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex
         _assemble_self_alpert_smooth_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
 end
 
-function _assemble_self_alpert_composite!(A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Cs::Vector{AlpertCache{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k);a=rule.a
-    for aidx in eachindex(pts)
-        pa=pts[aidx]
-        pa.is_periodic && continue
-        Ca=Cs[aidx]::AlpertSmoothPanelCache{T}
-        Pa=parr[aidx]
-        ra=offs[aidx]:(offs[aidx+1]-1)
-        r0=first(ra)-1
-        Xa=Pa.X;Ya=Pa.Y;dXa=Pa.dX;dYa=Pa.dY;sa=Pa.s;wa=pa.ws
-        xp=Ca.xp;yp=Ca.yp;txp=Ca.txp;typ=Ca.typ;sp=Ca.sp
-        xm=Ca.xm;ym=Ca.ym;txm=Ca.txm;tym=Ca.tym;sm=Ca.sm
-        idxp=Ca.idxp;wtp=Ca.wtp;idxm=Ca.idxm;wtm=Ca.wtm
-        Na=length(Xa);hσ=wa[1];jcorr=rule.j;pinterp=size(idxp,3)
-        @use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-            gi=r0+i
-            xi=Xa[i];yi=Ya[i]
-            A[gi,gi]+=one(Complex{T})
-            @inbounds for j in 1:Na
-                (j==i || abs(j-i)<a) && continue
-                dx=xi-Xa[j];dy=yi-Ya[j]
-                r2=muladd(dx,dx,dy*dy)
-                r2<=(eps(T))^2 && continue
-                r=sqrt(r2)
-                h0,h1=hankel_pair01(k*r)
-                wd=wa[j]
-                A[gi,r0+j]-=wd*(αD*(dYa[j]*dx-dXa[j]*dy)*h1/r)+ik*((wd*sa[j])*(αS*h0))
-            end
-            @inbounds for p in 1:jcorr
-                fac=hσ*rule.w[p]
-                dx=xi-xp[p,i];dy=yi-yp[p,i]
-                r2=muladd(dx,dx,dy*dy)
-                if r2>(eps(T))^2 && isfinite(r2)
-                    r=sqrt(r2)
-                    h0,h1=hankel_pair01(k*r)
-                    coeff=-(fac*(αD*(typ[p,i]*dx-txp[p,i]*dy)*h1/r))-ik*(fac*(αS*h0*sp[p,i]))
-                    for m in 1:pinterp
-                        A[gi,r0+idxp[p,i,m]]+=coeff*wtp[p,i,m]
-                    end
-                end
-                dx=xi-xm[p,i];dy=yi-ym[p,i]
-                r2=muladd(dx,dx,dy*dy)
-                if r2>(eps(T))^2 && isfinite(r2)
-                    r=sqrt(r2)
-                    h0,h1=hankel_pair01(k*r)
-                    coeff=-(fac*(αD*(tym[p,i]*dx-txm[p,i]*dy)*h1/r))-ik*(fac*(αS*h0*sm[p,i]))
-                    for m in 1:pinterp
-                        A[gi,r0+idxm[p,i,m]]+=coeff*wtm[p,i,m]
-                    end
-                end
-            end
-        end
-    end
-    return A
-end
-
 function _assemble_all_offpanel_naive!(A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     for aidx in eachindex(pts)
@@ -703,10 +647,13 @@ end
     fill!(A,zero(Complex{T}))
     offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
     @inbounds for a in eachindex(pts)
-        pts[a].is_periodic || continue
-        _assemble_self_alpert_periodic!(A,pts[a],Gs[a],Cs[a]::AlpertPeriodicCache{T},offs[a]:(offs[a+1]-1),k,rule;multithreaded=multithreaded)
+        ra=offs[a]:(offs[a+1]-1)
+        if pts[a].is_periodic
+            _assemble_self_alpert_periodic!(A,pts[a],Gs[a],Cs[a]::AlpertPeriodicCache{T},ra,k,rule;multithreaded=multithreaded)
+        else
+            _assemble_self_alpert_smooth_panel!(A,pts[a],Gs[a],Cs[a]::AlpertSmoothPanelCache{T},ra,k,rule;multithreaded=multithreaded)
+        end
     end
-    _assemble_self_alpert_composite!(A,pts,Cs,offs,parr,k,rule;multithreaded=multithreaded)
     _assemble_all_offpanel_naive!(A,pts,offs,parr,k;multithreaded=multithreaded)
     return A
 end
