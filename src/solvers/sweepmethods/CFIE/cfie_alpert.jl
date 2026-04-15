@@ -54,7 +54,7 @@ end
 
 const AlpertCache{T}=Union{AlpertPeriodicCache{T},AlpertSmoothPanelCache{T}}
 
-struct CFIEAlpertWorkspace{T<:Real,C}
+struct CFIEAlpertWorkspace{T<:Real}
     rule::AlpertLogRule{T}
     offs::Vector{Int}
     Gs::Vector{CFIEGeomCache{T}}
