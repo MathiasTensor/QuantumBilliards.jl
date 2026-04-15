@@ -769,7 +769,7 @@ end
 function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     t0=time()
-    @info "Building boundary operator A (cached Alpert)..."
+    @info "Building boundary operator A..."
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     any(isnan.(A))&&error("NaN detected in system matrix A; check geometry and quadrature.")
     t1=time()
