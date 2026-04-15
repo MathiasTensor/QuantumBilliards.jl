@@ -299,47 +299,56 @@ end
 function _continued_panel_interp_data(solver::CFIE_alpert{T},σ::T,N::Int,p::Int) where {T<:Real}
     if zero(T)<σ<one(T)
         idx,wt=_panel_interp_midpoint_data(σ,inv(T(N)),N,p)
-        return idx,Complex{T}.(wt)
+        return idx,Complex{T}.(wt),true
     end
+    isnothing(solver.symmetry) && return fill(1,p),fill(zero(Complex{T}),p),false
     sym=solver.symmetry
     sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
     σred=σ>=one(T) ? _fold_open_reflection_right(T,σ) : _fold_open_reflection_left(T,σ)
-    zero(T)<σred<one(T) || error("Continuation too far outside panel: σ=$σ mapped to σred=$σred")
+    zero(T)<σred<one(T) || return fill(1,p),fill(zero(Complex{T}),p),false
     idx,wt=_panel_interp_midpoint_data(σred,inv(T(N)),N,p)
     χ=_reflection_character(T,sym)
     cwt=Complex{T}.(wt)
     cwt .*= χ
-    return idx,cwt
+    return idx,cwt,true
 end
 
 function _eval_open_panel_geom_continued(solver::CFIE_alpert{T},crv,uσ::T) where {T<:Real}
-    σcl=clamp(uσ,zero(T),one(T))
-    u,jac,jac2=_panel_sigma_to_u_jac(solver,σcl)
+    if zero(T)<uσ<one(T)
+        u,jac,_=_panel_sigma_to_u_jac(solver,uσ)
+        q=curve(crv,u)
+        tu=tangent(crv,u)
+        su=sqrt(tu[1]^2+tu[2]^2)
+        return q[1],q[2],tu[1]*jac,tu[2]*jac,su*jac,true
+    end
+    isnothing(solver.symmetry) && return T(NaN),T(NaN),T(NaN),T(NaN),T(NaN),false
+    sym=solver.symmetry
+    sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
+    σred=uσ>=one(T) ? _fold_open_reflection_right(T,uσ) : _fold_open_reflection_left(T,uσ)
+    if !(zero(T)<σred<one(T))
+        return T(NaN),T(NaN),T(NaN),T(NaN),T(NaN),false
+    end
+    u,jac,_=_panel_sigma_to_u_jac(solver,σred)
     q=curve(crv,u)
     tu=tangent(crv,u)
     su=sqrt(tu[1]^2+tu[2]^2)
     x=q[1];y=q[2]
     tx=tu[1]*jac;ty=tu[2]*jac
     s=su*jac
-    if zero(T)<uσ<one(T)
-        return x,y,tx,ty,s
-    end
-    sym=solver.symmetry
-    sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
     sx=hasproperty(solver.billiard,:x_axis) ? T(getfield(solver.billiard,:x_axis)) : zero(T)
     sy=hasproperty(solver.billiard,:y_axis) ? T(getfield(solver.billiard,:y_axis)) : zero(T)
     if sym.axis===:y_axis
         xr=_x_reflect(x,sx);yr=y
         txr,tyr=_x_reflect_tangent(tx,ty)
-        return xr,yr,txr,tyr,s
+        return xr,yr,txr,tyr,s,true
     elseif sym.axis===:x_axis
         xr=x;yr=_y_reflect(y,sy)
         txr,tyr=_y_reflect_tangent(tx,ty)
-        return xr,yr,txr,tyr,s
+        return xr,yr,txr,tyr,s,true
     elseif sym.axis===:origin
         xr=_x_reflect(x,sx);yr=_y_reflect(y,sy)
         txr,tyr=_xy_reflect_tangent(tx,ty)
-        return xr,yr,txr,tyr,s
+        return xr,yr,txr,tyr,s,true
     else
         error("Unknown reflection axis $(sym.axis)")
     end
@@ -370,18 +379,35 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
         Δσ=hσ*rule.x[q]
         for i in 1:N
             σp=sig[i]+Δσ
-            xp[q,i],yp[q,i],txp[q,i],typ[q,i],sp[q,i]=_eval_open_panel_geom_continued(solver,crv,σp)
-            idx,wt=_continued_panel_interp_data(solver,σp,N,p)
-            for m in 1:p
-                idxp[q,i,m]=idx[m]
-                wtp[q,i,m]=wt[m]
+            x,y,tx,ty,s,ok=_eval_open_panel_geom_continued(solver,crv,σp)
+            xp[q,i]=x;yp[q,i]=y;txp[q,i]=tx;typ[q,i]=ty;sp[q,i]=s
+            idx,wt,okwt=_continued_panel_interp_data(solver,σp,N,p)
+            if ok && okwt
+                for m in 1:p
+                    idxp[q,i,m]=idx[m]
+                    wtp[q,i,m]=wt[m]
+                end
+            else
+                for m in 1:p
+                    idxp[q,i,m]=1
+                    wtp[q,i,m]=zero(Complex{T})
+                end
             end
+
             σm=sig[i]-Δσ
-            xm[q,i],ym[q,i],txm[q,i],tym[q,i],sm[q,i]=_eval_open_panel_geom_continued(solver,crv,σm)
-            idx,wt=_continued_panel_interp_data(solver,σm,N,p)
-            for m in 1:p
-                idxm[q,i,m]=idx[m]
-                wtm[q,i,m]=wt[m]
+            x,y,tx,ty,s,ok=_eval_open_panel_geom_continued(solver,crv,σm)
+            xm[q,i]=x;ym[q,i]=y;txm[q,i]=tx;tym[q,i]=ty;sm[q,i]=s
+            idx,wt,okwt=_continued_panel_interp_data(solver,σm,N,p)
+            if ok && okwt
+                for m in 1:p
+                    idxm[q,i,m]=idx[m]
+                    wtm[q,i,m]=wt[m]
+                end
+            else
+                for m in 1:p
+                    idxm[q,i,m]=1
+                    wtm[q,i,m]=zero(Complex{T})
+                end
             end
         end
     end
