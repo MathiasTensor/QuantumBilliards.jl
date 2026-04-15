@@ -688,11 +688,8 @@ end
     fill!(A,zero(Complex{T}))
     offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
     @inbounds for a in eachindex(pts)
-        if pts[a].is_periodic
-            _assemble_self_alpert_periodic!(A,pts[a],Gs[a],Cs[a]::AlpertPeriodicCache{T},offs[a]:(offs[a+1]-1),k,rule;multithreaded=multithreaded)
-        else
-            _assemble_self_alpert_smooth_panel!(A,pts[a],Gs[a],Cs[a]::AlpertSmoothPanelCache{T},offs[a]:(offs[a+1]-1),k,rule;multithreaded=multithreaded)
-        end
+        pts[a].is_periodic || continue
+        _assemble_self_alpert_periodic!(A,pts[a],Gs[a],Cs[a]::AlpertPeriodicCache{T},offs[a]:(offs[a+1]-1),k,rule;multithreaded=multithreaded)
     end
     _assemble_self_alpert_composite!(A,pts,Cs,offs,parr,k,rule;multithreaded=multithreaded)
     _assemble_all_offpanel_naive!(A,pts,offs,parr,k;multithreaded=multithreaded)
