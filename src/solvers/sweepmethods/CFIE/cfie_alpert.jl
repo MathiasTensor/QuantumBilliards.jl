@@ -56,9 +56,9 @@ struct AlpertSmoothPanelCache{T<:Real}
     tym::Matrix{T}
     sm::Matrix{T}
     idxp::Array{Int,3}
-    wtp::Array{T,3}
+    wtp::Array{Complex{T},3}
     idxm::Array{Int,3}
-    wtm::Array{T,3}
+    wtm::Array{Complex{T},3}
 end
 
 @inline function _dlp_terms(TT,k,r,inn,invr,w)
@@ -282,6 +282,69 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,offsp,wtp,offsm,wtm,ninterp)
 end
 
+@inline _fold_open_reflection_right(::Type{T},σ::T) where {T<:Real}=T(2)-σ
+@inline _fold_open_reflection_left(::Type{T},σ::T) where {T<:Real}=-σ
+
+@inline function _reflection_character(::Type{T},sym) where {T<:Real}
+    sym isa Reflection || error("Only Reflection supported here.")
+    if sym.axis===:x_axis || sym.axis===:y_axis
+        return Complex{T}(T(sym.parity),zero(T))
+    elseif sym.axis===:origin
+        return Complex{T}(T(sym.parity[1]*sym.parity[2]),zero(T))
+    else
+        error("Unknown reflection axis $(sym.axis)")
+    end
+end
+
+function _continued_panel_interp_data(solver::CFIE_alpert{T},σ::T,N::Int,p::Int) where {T<:Real}
+    if zero(T)<σ<one(T)
+        idx,wt=_panel_interp_midpoint_data(σ,inv(T(N)),N,p)
+        return idx,Complex{T}.(wt)
+    end
+    sym=solver.symmetry
+    sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
+    σred=σ>=one(T) ? _fold_open_reflection_right(T,σ) : _fold_open_reflection_left(T,σ)
+    zero(T)<σred<one(T) || error("Continuation too far outside panel: σ=$σ mapped to σred=$σred")
+    idx,wt=_panel_interp_midpoint_data(σred,inv(T(N)),N,p)
+    χ=_reflection_character(T,sym)
+    cwt=Complex{T}.(wt)
+    cwt .*= χ
+    return idx,cwt
+end
+
+function _eval_open_panel_geom_continued(solver::CFIE_alpert{T},crv,uσ::T) where {T<:Real}
+    σcl=clamp(uσ,zero(T),one(T))
+    u,jac,jac2=_panel_sigma_to_u_jac(solver,σcl)
+    q=curve(crv,u)
+    tu=tangent(crv,u)
+    su=sqrt(tu[1]^2+tu[2]^2)
+    x=q[1];y=q[2]
+    tx=tu[1]*jac;ty=tu[2]*jac
+    s=su*jac
+    if zero(T)<uσ<one(T)
+        return x,y,tx,ty,s
+    end
+    sym=solver.symmetry
+    sym isa Reflection || error("Open-panel continuation currently implemented only for reflections.")
+    sx=hasproperty(solver.billiard,:x_axis) ? T(getfield(solver.billiard,:x_axis)) : zero(T)
+    sy=hasproperty(solver.billiard,:y_axis) ? T(getfield(solver.billiard,:y_axis)) : zero(T)
+    if sym.axis===:y_axis
+        xr=_x_reflect(x,sx);yr=y
+        txr,tyr=_x_reflect_tangent(tx,ty)
+        return xr,yr,txr,tyr,s
+    elseif sym.axis===:x_axis
+        xr=x;yr=_y_reflect(y,sy)
+        txr,tyr=_y_reflect_tangent(tx,ty)
+        return xr,yr,txr,tyr,s
+    elseif sym.axis===:origin
+        xr=_x_reflect(x,sx);yr=_y_reflect(y,sy)
+        txr,tyr=_xy_reflect_tangent(tx,ty)
+        return xr,yr,txr,tyr,s
+    else
+        error("Unknown reflection axis $(sym.axis)")
+    end
+end
+
 function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
     iseven(p) || error("Smooth-panel Alpert interpolation stencil size p must be even.")
     N=length(pts.xy)
@@ -301,52 +364,24 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     sm=similar(xp)
     idxp=Array{Int,3}(undef,jcorr,N,p)
     idxm=Array{Int,3}(undef,jcorr,N,p)
-    wtp=Array{T,3}(undef,jcorr,N,p)
-    wtm=Array{T,3}(undef,jcorr,N,p)
+    wtp=Array{Complex{T},3}(undef,jcorr,N,p)
+    wtm=Array{Complex{T},3}(undef,jcorr,N,p)
     @inbounds for q in 1:jcorr
         Δσ=hσ*rule.x[q]
         for i in 1:N
             σp=sig[i]+Δσ
-            if σp<one(T)
-                up,jp,_=_panel_sigma_to_u_jac(solver,σp)
-                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,up)
-                idx,wt=_panel_interp_midpoint_data(σp,hσ,N,p)
-                xp[q,i]=x
-                yp[q,i]=y
-                txp[q,i]=tu*jp
-                typ[q,i]=tv*jp
-                sp[q,i]=su*jp
-                for m in 1:p
-                    idxp[q,i,m]=idx[m]
-                    wtp[q,i,m]=wt[m]
-                end
-            else
-                xp[q,i]=T(NaN);yp[q,i]=T(NaN);txp[q,i]=T(NaN);typ[q,i]=T(NaN);sp[q,i]=T(NaN)
-                for m in 1:p
-                    idxp[q,i,m]=1
-                    wtp[q,i,m]=zero(T)
-                end
+            xp[q,i],yp[q,i],txp[q,i],typ[q,i],sp[q,i]=_eval_open_panel_geom_continued(solver,crv,σp)
+            idx,wt=_continued_panel_interp_data(solver,σp,N,p)
+            for m in 1:p
+                idxp[q,i,m]=idx[m]
+                wtp[q,i,m]=wt[m]
             end
             σm=sig[i]-Δσ
-            if σm>zero(T)
-                um,jm,_=_panel_sigma_to_u_jac(solver,σm)
-                x,y,tu,tv,su=_eval_open_panel_geom_exact(crv,um)
-                idx,wt=_panel_interp_midpoint_data(σm,hσ,N,p)
-                xm[q,i]=x
-                ym[q,i]=y
-                txm[q,i]=tu*jm
-                tym[q,i]=tv*jm
-                sm[q,i]=su*jm
-                for m in 1:p
-                    idxm[q,i,m]=idx[m]
-                    wtm[q,i,m]=wt[m]
-                end
-            else
-                xm[q,i]=T(NaN);ym[q,i]=T(NaN);txm[q,i]=T(NaN);tym[q,i]=T(NaN);sm[q,i]=T(NaN)
-                for m in 1:p
-                    idxm[q,i,m]=1
-                    wtm[q,i,m]=zero(T)
-                end
+            xm[q,i],ym[q,i],txm[q,i],tym[q,i],sm[q,i]=_eval_open_panel_geom_continued(solver,crv,σm)
+            idx,wt=_continued_panel_interp_data(solver,σm,N,p)
+            for m in 1:p
+                idxm[q,i,m]=idx[m]
+                wtm[q,i,m]=wt[m]
             end
         end
     end
