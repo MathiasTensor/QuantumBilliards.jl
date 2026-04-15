@@ -2,7 +2,7 @@ using LinearAlgebra,StaticArrays,TimerOutputs,Bessels,ProgressMeter
 using KrylovKit
 using LinearMaps
 
-const EBIMSolver=Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert}
+const EBIMSolver=Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert}
 
 function solve_full!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true) where {T<:Real}
     if use_lapack_raw

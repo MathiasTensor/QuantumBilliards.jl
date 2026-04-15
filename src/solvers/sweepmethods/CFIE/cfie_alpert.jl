@@ -1,20 +1,3 @@
-struct CFIEPanelArrays{T<:Real}
-    X::Vector{T}
-    Y::Vector{T}
-    dX::Vector{T}
-    dY::Vector{T}
-    s::Vector{T}
-end
-
-@inline function _panel_arrays_cache(pts::BoundaryPointsCFIE{T}) where {T<:Real}
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    s=@. sqrt(dX^2+dY^2)
-    return CFIEPanelArrays(X,Y,dX,dY,s)
-end
-
 struct AlpertPeriodicCache{T<:Real}
     xp::Matrix{T}
     yp::Matrix{T}

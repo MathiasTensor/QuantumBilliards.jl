@@ -148,23 +148,6 @@
 @inline _is_kress_graded(::CFIE_kress_corners)=true
 @inline _is_kress_graded(::CFIE_kress_global_corners)=true
 
-struct CFIEPanelArrays{T<:Real}
-    X::Vector{T}
-    Y::Vector{T}
-    dX::Vector{T}
-    dY::Vector{T}
-    s::Vector{T}
-end
-
-@inline function _panel_arrays_cache(pts::BoundaryPointsCFIE{T}) where {T<:Real}
-    X=getindex.(pts.xy,1)
-    Y=getindex.(pts.xy,2)
-    dX=getindex.(pts.tangent,1)
-    dY=getindex.(pts.tangent,2)
-    s=@. sqrt(dX^2+dY^2)
-    return CFIEPanelArrays(X,Y,dX,dY,s)
-end
-
 struct CFIEKressWorkspace{T<:Real,M<:AbstractMatrix{T}}
     offs::Vector{Int}
     Rmat::M
@@ -180,39 +163,6 @@ function build_cfie_kress_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,
     parr=[_panel_arrays_cache(p) for p in pts]
     Ntot=offs[end]-1
     return CFIEKressWorkspace(offs,Rmat,Gs,parr,Ntot)
-end
-
-# Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
-# Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
-# Alex Barnett's code via ifft to get the circulant vector kernel and construct the circulant with circshift.
-function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
-    N=size(R0,1)
-    n=N÷2 # integer division
-    a=zeros(Complex{T},N) #  build the spectral vector a (first col)
-    for m in 1:(n-1)
-        a[m+1]=1/m     # positive freq
-        a[N-m+1]=1/m     # negative freq
-    end # leave a[n+1] == 0  (no 1/n term)
-    rjn=real(ifft(a)) # inverse FFT → rjn[j] = (2/N)*∑_{m=1..n-1} (1/m) cos(2π m (j-1)/N)
-    ks=0:(N-1) # build the first column, adding the “alternating” correction
-    alt=(-1).^ks # alt[j+1] = (-1)^j
-    @. R0[:,1]=-two_pi*rjn-(2*two_pi/(N^2))*alt # R0[:,1] = -2π*rjn .- (4π/N^2)*alt, first col is ref
-    for j in 2:N # fill out the rest circulantly:
-        @views R0[:,j].=circshift(R0[:,j-1],1) # shift by +1 wrt previous column
-    end
-    return nothing
-end
-
-function kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
-    Nint=size(R0,1)
-    isodd(Nint) || error("kress_R_corner! expects odd size 2n-1.")
-    n=(Nint+1)÷2
-    Nfull=2*n
-    Rfull=Matrix{T}(undef,Nfull,Nfull)
-    kress_R!(Rfull)
-    # full ts nodes are k=0,...,2n-1; corner uses interior nodes k=1,...,2n-1
-    @views R0.=Rfull[2:end,2:end]
-    return nothing
 end
 
 # Build the R matrix for the CFIE_kress method by assembling the circulant R matrices for each component of the boundary. The function takes a vector of BoundaryPointsCFIE objects, computes the appropriate offsets for each component, and fills in the R matrix using the kress_R! function for each component's corresponding block. It is block diagonal since only for boundary interaction within the same component we have the singularity that needs to be corrected by the R matrix, while for interactions between different components the kernel is smooth and does not require correction.

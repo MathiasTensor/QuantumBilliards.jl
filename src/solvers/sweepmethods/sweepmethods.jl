@@ -54,6 +54,16 @@ function _k_sweep_prepare(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     return solve_first,solve_one
 end
+function _k_sweep_prepare(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+    kmax=maximum(ks)
+    pts=evaluate_points(solver,billiard,kmax)
+    ws=build_dlp_kress_workspace(solver,pts)
+    T=eltype(pts.ws)
+    A=Matrix{Complex{T}}(undef,ws.N,ws.N)
+    solve_first=k->solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    return solve_first,solve_one
+end
 function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
@@ -125,7 +135,6 @@ end
 
 ############ REFINEMENT ############
 
-# Helper function to scale a field of the solver if it exists, otherwise return the solver unchanged. This basically disambigues PSM and DM from BIE type solvers since the latter dont have the associated basis to scale.
 function _try_scaling_field(obj,field::Symbol,factor)
     try
         return update_field(obj,field,factor*getfield(obj,field))
@@ -138,6 +147,47 @@ function _refined_solver(solver::SweepSolver,pts_factor,dim_factor)
     s=_try_scaling_field(solver,:pts_scaling_factor,pts_factor)
     s=_try_scaling_field(s,:dim_scaling_factor,dim_factor)
     return s
+end
+
+@inline _matrix_size(ws::CFIEKressWorkspace)=ws.Ntot
+@inline _matrix_size(ws::CFIEAlpertWorkspace)=ws.Ntot
+@inline _matrix_size(ws::DLPKressWorkspace)=ws.N
+
+function _newton_buffers(::Type{T},N::Int) where {T<:Real}
+    A=Matrix{Complex{T}}(undef,N,N)
+    dA=Matrix{Complex{T}}(undef,N,N)
+    ddA=Matrix{Complex{T}}(undef,N,N)
+    G=Matrix{Complex{T}}(undef,N,N)
+    H=Matrix{Complex{T}}(undef,N,N)
+    H2=Matrix{Complex{T}}(undef,N,N)
+    W=Matrix{Complex{T}}(undef,N,N)
+    return A,dA,ddA,G,H,H2,W
+end
+
+function _prepare_newton_refinement(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,k::T;multithreaded_matrices::Bool=true) where {T<:Real}
+    pts=evaluate_points(solver,billiard,k)
+    N=boundary_matrix_size(pts)
+    A,dA,ddA,G,H,H2,W=_newton_buffers(T,N)
+    assemble=kk->construct_matrices!(solver,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)
+    return assemble,A,dA,ddA,G,H,H2,W
+end
+
+function _prepare_newton_refinement(solver::Union{CFIE_alpert,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,k::T;multithreaded_matrices::Bool=true) where {T<:Real}
+    pts=evaluate_points(solver,billiard,k)
+    ws=solver isa CFIE_alpert ? build_cfie_alpert_workspace(solver,pts) : build_cfie_kress_workspace(solver,pts)
+    N=_matrix_size(ws)
+    A,dA,ddA,G,H,H2,W=_newton_buffers(T,N)
+    assemble=kk->construct_matrices!(solver,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
+    return assemble,A,dA,ddA,G,H,H2,W
+end
+
+function _prepare_newton_refinement(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbsBasis,billiard::AbsBilliard,k::T;multithreaded_matrices::Bool=true) where {T<:Real}
+    pts=evaluate_points(solver,billiard,k)
+    ws=build_dlp_kress_workspace(solver,pts)
+    N=_matrix_size(ws)
+    A,dA,ddA,G,H,H2,W=_newton_buffers(T,N)
+    assemble=kk->construct_matrices!(solver,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
+    return assemble,A,dA,ddA,G,H,H2,W
 end
 
 function newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12)
@@ -245,32 +295,8 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
             end
             a=kcur-window
             b=kcur+window
-            if solver_cur isa BoundaryIntegralMethod
-                pts=evaluate_points(solver_cur,billiard,kcur)
-                Tc=typeof(kcur)
-                Nloc=boundary_matrix_size(pts)
-                A=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                dA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                ddA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                G=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                H=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                H2=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                W=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                assemble= kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,kk;multithreaded=multithreaded_matrices)
-                knew,tnew=newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
-            elseif solver_cur isa Union{CFIE_alpert,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}
-                pts=evaluate_points(solver_cur,billiard,kcur)
-                ws=solver_cur isa CFIE_alpert ? build_cfie_alpert_workspace(solver_cur,pts) : build_cfie_kress_workspace(solver_cur,pts)
-                Tc=typeof(kcur)
-                Nloc=ws.Ntot
-                A=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                dA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                ddA=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                G=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                H=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                H2=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                W=Matrix{Complex{Tc}}(undef,Nloc,Nloc)
-                assemble= kk->construct_matrices!(solver_cur,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
+            if solver_cur isa Union{BoundaryIntegralMethod,CFIE_alpert,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners}
+                assemble,A,dA,ddA,G,H,H2,W=_prepare_newton_refinement(solver_cur,basis,billiard,kcur;multithreaded_matrices=multithreaded_matrices)
                 knew,tnew=newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,kcur;a=a,b=b,maxiter=newton_max_iter,tol=newton_tol)
             else
                 dim=max(solver_cur.min_dim,round(Int,billiard.length*kcur*solver_cur.dim_scaling_factor/(2*pi)))
@@ -291,7 +317,7 @@ function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard
                     break
                 end
             end
-            kprev=kcur
+            kprev=knew
             tprev=tnew
             kcur=knew
             window/=window_shrink

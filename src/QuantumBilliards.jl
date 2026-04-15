@@ -24,13 +24,16 @@ include("billiards/geometry/dispersingcirclesegment.jl")
 include("billiards/geometry/polarsegment.jl")
 include("billiards/geometry/geometry.jl")
 include("solvers/samplers.jl")
+include("billiards/geometry/kress_grading_single_corner.jl")
+include("billiards/geometry/kress_grading_global_multi_corner.jl")
+include("billiards/geometry/alpert_endpoint_grading.jl")
+include("billiards/geometry/boundarypoints.jl")
+export BoundaryPoints
+export boundary_coords
 export GaussLegendreNodes, LinearNodes, FourierNodes, PolarSampler
 export sample_points
 
 # boundary
-include("billiards/boundarypoints.jl")
-export BoundaryPoints
-export boundary_coords
 
 #basis
 include("basis/planewaves/realplanewaves.jl")
@@ -109,9 +112,6 @@ include("chebyshev/chebyshev_hankel.jl")
 
 # CFIE
 include("solvers/sweepmethods/cfie/alpert_table.jl")
-include("solvers/sweepmethods/cfie/kress_grading_single_corner.jl")
-include("solvers/sweepmethods/cfie/kress_grading_global_multi_corner.jl")
-include("solvers/sweepmethods/cfie/alpert_endpoint_grading.jl")
 include("solvers/sweepmethods/cfie/cfie.jl")
 include("solvers/sweepmethods/cfie/cfie_geometry_helpers.jl")
 include("solvers/sweepmethods/cfie/cfie_kress.jl")

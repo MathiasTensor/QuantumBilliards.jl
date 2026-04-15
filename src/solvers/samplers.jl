@@ -89,16 +89,6 @@ function sample_points(sampler::PolarSampler,crv::C,N::Int) where {C<:PolarSegme
     return new_ts,new_dts
 end
 
-#=
-#this one is not working yet
-function chebyshev_nodes(N::Int)
-    x = [cos((2*i-1)/(2*N)*pi) for i in 1:N]
-    t = 0.5 .* x  .+ 0.5
-    dt = ones(N)  #wrong
-    return t, dt
-end
-=#
-
 struct FourierNodes<:AbsSampler where {T<:Real}
     primes::Union{Vector{Int64},Nothing}
     lengths::Union{Vector{Float64},Nothing} 
