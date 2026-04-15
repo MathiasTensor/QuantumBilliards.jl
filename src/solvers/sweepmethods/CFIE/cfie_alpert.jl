@@ -939,7 +939,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             r2<=(eps(T))^2 && continue
                             r=sqrt(r2);invr=inv(r)
                             inn=_dinner(dx,dy,txr,tyr)
-                            dval= -wd*(αD*inn*H(1,k*r)*invr)
+                            dval= wd*(αD*inn*H(1,k*r)*invr)
                             sval=ws*(αS*H(0,k*r))
                             A[gi,gj]-=χ*(dval+ik*sval)
                         elseif sym.axis===:x_axis
@@ -951,7 +951,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             r2<=(eps(T))^2 && continue
                             r=sqrt(r2);invr=inv(r)
                             inn=_dinner(dx,dy,txr,tyr)
-                            dval= -wd*(αD*inn*H(1,k*r)*invr)
+                            dval= wd*(αD*inn*H(1,k*r)*invr)
                             sval=ws*(αS*H(0,k*r))
                             A[gi,gj]-=χ*(dval+ik*sval)
                         elseif sym.axis===:origin
@@ -965,7 +965,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             if r2>(eps(T))^2
                                 r=sqrt(r2);invr=inv(r)
                                 inn=_dinner(dx,dy,txr,tyr)
-                                dval=-wd*(αD*inn*H(1,k*r)*invr)
+                                dval= wd*(αD*inn*H(1,k*r)*invr)
                                 sval=ws*(αS*H(0,k*r))
                                 A[gi,gj]-=χx*(dval+ik*sval)
                             end
@@ -976,7 +976,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             if r2>(eps(T))^2
                                 r=sqrt(r2);invr=inv(r)
                                 inn=_dinner(dx,dy,txr,tyr)
-                                dval=-wd*(αD*inn*H(1,k*r)*invr)
+                                dval= wd*(αD*inn*H(1,k*r)*invr)
                                 sval=ws*(αS*H(0,k*r))
                                 A[gi,gj]-=χy*(dval+ik*sval)
                             end
@@ -987,7 +987,7 @@ function _assemble_all_image_naive!(solver::CFIE_alpert{T},A::AbstractMatrix{Com
                             if r2>(eps(T))^2
                                 r=sqrt(r2);invr=inv(r)
                                 inn=_dinner(dx,dy,txr,tyr)
-                                dval=-wd*(αD*inn*H(1,k*r)*invr)
+                                dval= wd*(αD*inn*H(1,k*r)*invr)
                                 sval=ws*(αS*H(0,k*r))
                                 A[gi,gj]-=χxy*(dval+ik*sval)
                             end
