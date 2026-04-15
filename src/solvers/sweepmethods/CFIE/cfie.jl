@@ -158,7 +158,7 @@ function _warn_aggressive_alpert(pts_scaling_factor,billiard,alpert_order::Int,a
     Lavg=sum(lens)/length(lens) # The average length is also relevant since it gives us a sense of the overall discretization density.
     # heuristic danger ratio:
     # bigger order, bigger q, smaller b, shorter smallest panel => more dangerous
-    R=(alpert_order*alpertq)/(bmin*max(Lmin/Lavg,sqrt(eps(T))))
+    R=(alpert_order*alpertq)/(bmin*Lmin/Lavg)
     if R>6.0
         b_suggest=(alpert_order*alpertq)/(4.0*Lmin/Lavg)
         q_suggest=(4.0*bmin*Lmin/Lavg)/alpert_order
