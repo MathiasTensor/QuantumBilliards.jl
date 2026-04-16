@@ -1,153 +1,58 @@
-
-# =============================================================================
-#  KRESS-CORRECTED CFIE ASSEMBLY: OVERVIEW AND IMPLEMENTATION NOTES
-# =============================================================================
-#
-#  Reference:
-#      R. Kress, "Boundary integral equations in time-harmonic acoustic scattering",
-#      Math. Comput. Modelling 15 (1991), 229–243.
-
-#  This implementation is intended for smooth closed 2D boundary components,
-#  such as smooth polar curves. The full boundary may consist of one or several
-#  disconnected smooth closed components, i.e. the geometry may contain holes.
-#
-#  Therefore:
-#
-#      - each connected boundary component is smooth,
-#      - each connected boundary component is periodic,
-#      - no corner singularities are present,
-#      - Kress's smooth-periodic Nyström treatment applies naturally.
-#
-#  In particular, this code does NOT target the corner case discussed by Kress
-#  via graded meshes and endpoint singularity smoothing. That machinery is not
-#  needed here because the intended boundaries are smooth.
-#
-#  The main difficulty is the self-interaction on the same component:
-#
-#      - the single-layer kernel has a logarithmic singularity,
-#      - the double-layer kernel is only weakly singular,
-#      - interactions between different components are smooth.
-#
-#  Kress's idea is to split the self-interaction kernel into:
-#
-#      singular logarithmic part  +  smooth remainder,
-#
-#  and to treat the singular logarithmic part by a special periodic quadrature.
-#  In the discrete system, that singular part is encoded by the matrix R.
-#
-# -----------------------------------------------------------------------------
-#  HIGH-LEVEL PICTURE
-# -----------------------------------------------------------------------------
-#
-#  For one fixed target point x_i and one source point y_j on the SAME smooth
-#  closed component, the self-interaction entry is decomposed into:
-#
-#      known logarithmic singular structure
-#      + smooth correction.
-#
-#  The logarithmic singular structure is universal on a periodic equispaced
-#  mesh and depends on
-#
-#      -log(4 sin^2((t-s)/2)).
-#
-#  Kress's Nyström method uses this periodic logarithmic kernel explicitly, and
-#  the smooth remainder is then added separately. 
-#
-# -----------------------------------------------------------------------------
-#  R MATRIX
-# -----------------------------------------------------------------------------
-#
-#  The matrix R is the discrete Kress quadrature matrix associated with the
-#  logarithmic kernel
-#
-#      log(4 sin^2((t-s)/2)).
-#
-#  On an equispaced periodic grid, this kernel depends only on the periodic
-#  index difference, so the corresponding discrete matrix is circulant:
-#
-#      R[i,j] = r(i-j mod N).
-#
-#  Therefore, R is completely determined by its first column.
-#
-#  In this implementation:
-#
-#      kress_R!(R0)
-#
-#  constructs that first column from the Fourier representation of the
-#  logarithmic kernel and then fills the rest of the matrix by circular shifts.
-#
-# -----------------------------------------------------------------------------
-#  MULTIPLE COMPONENTS / HOLES
-# -----------------------------------------------------------------------------
-#
-#  If the boundary consists of several disconnected smooth closed components,
-#  each component has its own self-interaction logarithmic singularity.
-#
-#  Therefore, each component receives its own Kress correction block:
-#
-#      R_1, R_2, ..., R_nc
-#
-#  and the global correction matrix is block diagonal:
-#
-#      R = diag(R_1, R_2, ..., R_nc).
-#
-#  Interactions between different components are smooth, so they do not use R.
-#
-#      boundary = Γ_1 ⊔ Γ_2 ⊔ ... ⊔ Γ_nc
-#
-#      R =
-#          [ R_1   0    0   ...   0 ]
-#          [  0   R_2   0   ...   0 ]
-#          [  0    0   R_3  ...   0 ]
-#          [ ...  ...  ...  ...  ...]
-#          [  0    0    0   ...  R_nc ]
-#
-#
-#  In the special case of a single smooth closed curve: R = R_1, i.e. the global correction matrix is just one circulant block.
-#
-# -----------------------------------------------------------------------------
-#  ASSEMBLY OF THE CFIE MATRIX
-# -----------------------------------------------------------------------------
-#
-#  For source and target on the same smooth component, the CFIE entry is built as
-#
-#      A[i,j] = -( DLP contribution + i k SLP contribution ).
-#
-#  Both DLP and SLP are split into:
-#
-#      singular logarithmic coefficient × R[i,j]
-#      + smooth remainder.
-#
-#  In the code:
-#
-#      DLP:
-#          l1 = coefficient multiplying the logarithmic singular part
-#          l2 = smooth remainder
-#
-#          dval = R[i,j] * l1 + w_j * l2
-#
-#      SLP:
-#          m1 = coefficient multiplying the logarithmic singular part
-#          m2 = smooth remainder
-#
-#          sval = R[i,j] * m1 + w_j * m2
-#
-#  and then
-#
-#      A[i,j] = -( dval + i k * sval ).
-#
-#  The diagonal is treated separately, using the known limiting formulas for the
-#  singular terms and the smooth remainder (see Kress's paper, Eq. 2.2 - Eq. 2.9).
-#
-#  If source and target lie on different smooth closed components, the kernel is
-#  smooth. No split is needed there.
-# =============================================================================
-
 # helpers for construct_matrices! to determine the bool kwarg for cfie_geom_cache to decide whether to include the log(w') correction
 @inline _is_kress_graded(::CFIE_kress)=false
 @inline _is_kress_graded(::CFIE_kress_corners)=true
 @inline _is_kress_graded(::CFIE_kress_global_corners)=true
 
+
+"""
+    CFIEKressWorkspace{T,M}
+
+Reusable cache for CFIE-Kress matrix assembly on a fixed set of boundary
+discretization nodes.
+
+This workspace collects all data that depend only on the boundary geometry and
+node placement, but not on the current wavenumber `k`. Since repeated sweeps,
+determinant scans, Newton refinement, and EBIM-style eigensolvers may assemble
+the operator many times for different `k`, it is wasteful to rebuild this
+geometry-dependent information each time.
+
+The workspace therefore stores:
+- the global block-diagonal Kress correction matrix,
+- per-component geometry caches,
+- per-component panel-array views,
+- component offsets into the global matrix,
+- total matrix size.
+
+Mathematical role
+-----------------
+Suppose the boundary has `nc` connected components. For each component `Γ_a`,
+the Kress discretization produces:
+- a local logarithmic correction block `R_a`,
+- a local geometry cache `G_a`,
+- local flat coordinate/tangent arrays `parr_a`.
+
+The full global operator is assembled on the direct sum of all components, so
+the global unknown vector is ordered by component. The workspace defines the
+mapping between local component indices and the global matrix through `offs`.
+
+# Fields
+- `offs::Vector{Int}`:
+  Component offsets into the global matrix. If component `a` occupies rows and
+  columns `offs[a]:(offs[a+1]-1)`, then `offs[end]-1 == Ntot`.
+- `Rmat::M`:
+  Global block-diagonal Kress correction matrix. Each diagonal block is the
+  Kress logarithmic matrix for one component; off-diagonal blocks are zero
+  because the logarithmic singularity is present only in self-interactions.
+- `Gs::Vector{CFIEGeomCache{T}}`:
+  One precomputed geometry cache per boundary component. Each cache stores
+  distances, inverse distances, logarithmic terms, speeds, curvatures, and
+  oriented inner products needed in the CFIE formulas.
+- `parr::Vector{CFIEPanelArrays{T}}`:
+  One flat panel-array cache per component, used for efficient indexed access
+  in the off-diagonal inter-component loops.
+- `Ntot::Int`:
+  Total size of the assembled global matrix.
+"""
 struct CFIEKressWorkspace{T<:Real,M<:AbstractMatrix{T}}
     offs::Vector{Int}
     Rmat::M
@@ -156,6 +61,30 @@ struct CFIEKressWorkspace{T<:Real,M<:AbstractMatrix{T}}
     Ntot::Int
 end
 
+"""
+    build_cfie_kress_workspace(solver, pts)
+
+Build a reusable `CFIEKressWorkspace` for a fixed vector of CFIE boundary
+components.
+
+For each component it builds:
+- the component offsets in the global ordering,
+- the global block-diagonal Kress correction matrix,
+- the per-component geometry cache,
+- the per-component flat panel arrays,
+- the total matrix size.
+
+# Arguments
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`:
+  Determines whether the smooth or graded Kress correction should be used, and
+  whether the geometry cache includes the extra logarithmic correction coming
+  from the grading Jacobian.
+- `pts::Vector{BoundaryPointsCFIE{T}}`:
+  Boundary discretization for all connected components of the billiard.
+
+# Returns
+- `CFIEKressWorkspace{T}`
+"""
 function build_cfie_kress_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Rmat=build_Rmat_kress(solver,pts)
@@ -165,12 +94,33 @@ function build_cfie_kress_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,
     return CFIEKressWorkspace(offs,Rmat,Gs,parr,Ntot)
 end
 
-# Build the R matrix for the CFIE_kress method by assembling the circulant R matrices for each component of the boundary. The function takes a vector of BoundaryPointsCFIE objects, computes the appropriate offsets for each component, and fills in the R matrix using the kress_R! function for each component's corresponding block. It is block diagonal since only for boundary interaction within the same component we have the singularity that needs to be corrected by the R matrix, while for interactions between different components the kernel is smooth and does not require correction.
-# R = [ R_1  0   0  ...  0
-#       0   R_2 0   ...  0
-#       0   0   R_3 ...  0
-#       ... ... ... ...  ...
-#       0   0   0   ...  R_nc ]
+"""
+    build_Rmat_kress(solver::CFIE_kress, pts)
+
+The logarithmic singular part is universal on an equispaced periodic grid and
+depends only on the periodic node difference through the kernel
+
+    log(4 sin²((t-s)/2)).
+
+Its Nyström discretization is encoded by the dense Kress matrix `R`. For a
+boundary with several disconnected smooth closed components, this correction is
+needed only within each component. Therefore the global matrix has block form
+
+    R =
+        [ R₁   0   ...   0 ]
+        [ 0    R₂  ...   0 ]
+        [ ...           ...]
+        [ 0    0   ...  R_nc ].
+
+# Arguments
+- `solver::CFIE_kress`
+- `pts::Vector{BoundaryPointsCFIE{T}}`:
+  One `BoundaryPointsCFIE` per connected smooth closed component.
+
+# Returns
+- `Rmat::Matrix{T}`:
+  Global block-diagonal Kress correction matrix of size `Ntot × Ntot`.
+"""
 function build_Rmat_kress(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
@@ -182,7 +132,36 @@ function build_Rmat_kress(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}})
     return Rmat
 end
 
-#Build the matrix for the Kress corner case by evaluating the logarithmic kernel on the original ts grid (before grading) for each component of the boundary. This function is used when the Kress grading is applied to handle corners, and it computes the R matrix using the kress_log_corner! function for each component's corresponding block. The resulting R matrix is block diagonal, with each block containing the logarithmic kernel evaluated on the original equispaced grid for that component.
+"""
+    build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_corners}, pts)
+
+Build the global block-diagonal Kress logarithmic correction matrix for the
+graded-corner CFIE-Kress formulations.
+
+In the graded-corner versions of the Kress method, the computational nodes are
+not uniform in the physical parameter. Instead, a graded variable is introduced
+so that corner singularities are regularized. The logarithmic singular split
+must therefore be represented on the original graded periodic indexing rather
+than with the plain smooth-periodic Kress matrix.
+
+For each connected boundary component, the singular logarithmic correction is
+therefore encoded by the corner-aware matrix constructed by `kress_R_corner!`.
+As in the smooth case, the global correction matrix is block diagonal:
+
+    R =
+        [ R₁   0   ...   0 ]
+        [ 0    R₂  ...   0 ]
+        [ ...           ...]
+        [ 0    0   ...  R_nc ].
+
+# Arguments
+- `solver::Union{CFIE_kress_corners,CFIE_kress_global_corners}`
+- `pts::Vector{BoundaryPointsCFIE{T}}`
+
+# Returns
+- `Rmat::Matrix{T}`:
+  Global block-diagonal graded Kress correction matrix.
+"""
 function build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
@@ -194,19 +173,44 @@ function build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_cor
     return Rmat
 end
 
-# construct_matrices!
-# Low-level function to construct the system matrix A for the CFIE_kress method. This function fills in the entries of A based on the boundary points, their weights, and the geometry of the problem, using the provided Kress R matrix for the singularity regularization. The resulting matrix A is modified in place and can then be used for solving the eigenvalue problem.
-#
-# Inputs:
-# - solver: The CFIE_kress solver instance containing the boundary discretization and weights.
-# - A: The system matrix to be filled in by this function.
-# - pts: A vector of BoundaryPointsCFIE objects representing the discretized boundary points and their associated weights.
-# - Rmat: The precomputed R matrix for the CFIE_kress method, which is used in the construction of the system matrix A.
-# - k: The wavenumber for which to construct the system matrix.
-# - multithreaded: A boolean flag indicating whether to use multithreading for matrix construction.
-#
-# Output:
-# - The constructed system matrix A for the CFIE_kress method, modified in place.
+
+"""
+    construct_matrices!(solver, A, pts, Rmat, Gs, parr, offs, k; multithreaded=true)
+
+Low-level in-place assembly of the CFIE-Kress system matrix for a full
+multi-component boundary.
+It assembles the global dense matrix
+
+    A(k) = I - ( D(k) + i k S(k) ),
+
+where:
+- `D(k)` is the double-layer operator discretization,
+- `S(k)` is the single-layer operator discretization,
+- both are Kress-corrected on same-component interactions.
+
+# Arguments
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`:
+  Any Kress-based CFIE solver.
+- `A::AbstractMatrix{Complex{T}}`:
+  Preallocated destination matrix of size `Ntot × Ntot`.
+- `pts::Vector{BoundaryPointsCFIE{T}}`:
+  Boundary discretization for all connected components.
+- `Rmat::AbstractMatrix{T}`:
+  Global block-diagonal Kress correction matrix.
+- `Gs::Vector{CFIEGeomCache{T}}`:
+  Per-component geometry caches.
+- `parr::Vector{CFIEPanelArrays{T}}`:
+  Per-component flat geometry arrays.
+- `offs::Vector{Int}`:
+  Component offsets into the global matrix.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Enables threaded assembly on sufficiently large blocks.
+
+# Returns
+- `A`, modified in place.
+"""
 function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},Gs::Vector{CFIEGeomCache{T}},parr::Vector{CFIEPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -303,6 +307,35 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
     return A
 end
 
+"""
+    construct_matrices!(solver, A, A1, A2, pts, Rmat, Gs, parr, offs, k; multithreaded=true)
+
+Low-level in-place assembly of the CFIE-Kress system matrix together with its
+first and second derivatives with respect to the wavenumber `k`.
+
+# Arguments
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`
+- `A::AbstractMatrix{Complex{T}}`:
+  Destination matrix for the operator itself.
+- `A1::AbstractMatrix{Complex{T}}`:
+  Destination matrix for the first derivative with respect to `k`.
+- `A2::AbstractMatrix{Complex{T}}`:
+  Destination matrix for the second derivative with respect to `k`.
+- `pts::Vector{BoundaryPointsCFIE{T}}`
+- `Rmat::AbstractMatrix{T}`
+- `Gs::Vector{CFIEGeomCache{T}}`
+- `parr::Vector{CFIEPanelArrays{T}}`
+- `offs::Vector{Int}`
+- `k::T`
+- `multithreaded::Bool=true`
+
+# Returns
+- `(A, A1, A2)`, modified in place.
+
+# Notes
+This is the derivative-aware low-level assembly kernel. Most users will call one
+of the higher-level `construct_matrices!` wrappers instead.
+"""
 function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},Gs::Vector{CFIEGeomCache{T}},parr::Vector{CFIEPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -442,6 +475,32 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
     return A,A1,A2
 end
 
+"""
+    construct_matrices!(solver, A, pts, ws, k; multithreaded=true)
+    construct_matrices!(solver, A, pts, Rmat, k; multithreaded=true)
+    construct_matrices!(solver, A, A1, A2, pts, ws, k; multithreaded=true)
+    construct_matrices!(solver, A, A1, A2, pts, Rmat, k; multithreaded=true)
+    construct_matrices!(solver, basis, A, dA, ddA, pts, k; multithreaded=true)
+    construct_matrices!(solver, basis, A, dA, ddA, pts, ws, k; multithreaded=true)
+
+High-level CFIE-Kress assembly interface.
+
+# Arguments
+Common arguments:
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`
+- `A::AbstractMatrix{Complex{T}}`
+- `A1::AbstractMatrix{Complex{T}}`, `A2::AbstractMatrix{Complex{T}}`
+- `pts::Vector{BoundaryPointsCFIE{T}}`
+- `ws::CFIEKressWorkspace{T}`
+- `Rmat::AbstractMatrix{T}`
+- `basis::AbstractHankelBasis`
+- `k::T`
+- `multithreaded::Bool=true`
+
+# Returns
+- Matrix-only forms return `A`
+- Derivative forms return `(A, A1, A2)`
+"""
 function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     @blas_1 construct_matrices!(solver,A,pts,ws.Rmat,ws.Gs,ws.parr,ws.offs,k;multithreaded=multithreaded)
 end
@@ -475,6 +534,69 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
     return A,dA,ddA
 end
 
+"""
+    solve(solver, basis, pts, k; multithreaded=true, use_krylov=true, which=:det)
+    solve(solver, basis, pts, ws, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+    solve(solver, basis, A, pts, k, Rmat; multithreaded=true, use_krylov=true, which=:det_argmin)
+    solve(solver, basis, A, pts, ws, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+
+High-level scalar solver interface for the CFIE-Kress family.
+
+Purpose
+-------
+These methods assemble the global CFIE-Kress matrix and then reduce it to a
+single scalar diagnostic, depending on the choice of `which`.
+
+The matrix being analyzed is always
+
+    A(k) = I - ( D(k) + i k S(k) ).
+
+The overloads differ only in how much cached information is reused:
+
+1. `solve(..., pts, k; ...)`
+   - builds `Rmat`,
+   - allocates the matrix,
+   - assembles and reduces.
+
+2. `solve(..., pts, ws, k; ...)`
+   - reuses the full workspace,
+   - allocates the matrix,
+   - assembles and reduces.
+
+3. `solve(..., A, pts, k, Rmat; ...)`
+   - reuses a preallocated matrix and a prebuilt `Rmat`,
+   - still rebuilds geometry caches from `pts`.
+
+4. `solve(..., A, pts, ws, k; ...)`
+   - fastest repeated-use form,
+   - reuses both matrix storage and full workspace.
+
+Meaning of `which`
+------------------
+This keyword is forwarded to the generic backend macro `@svd_or_det_solve`.
+Typical meanings are:
+- `:svd`:
+  smallest singular value of `A(k)`,
+- `:det`:
+  determinant `det(A(k))`,
+- `:det_argmin`:
+  backend-specific scalar useful for determinant-based minimization.
+
+# Arguments
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`
+- `basis::AbsBasis`
+- `pts::Vector{BoundaryPointsCFIE{T}}`
+- `ws::CFIEKressWorkspace{T}`
+- `A::AbstractMatrix{Complex{T}}`
+- `Rmat::AbstractMatrix{T}`
+- `k`
+- `multithreaded::Bool=true`
+- `use_krylov::Bool=true`
+- `which::Symbol`
+
+# Returns
+A scalar whose meaning depends on `which`.
+"""
 function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
@@ -500,6 +622,75 @@ function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_cor
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
+"""
+    solve_vect(solver, basis, A, pts, k, Rmat; multithreaded=true)
+    solve_vect(solver, basis, A, pts, ws, k; multithreaded=true)
+    solve_vect(solver, basis, pts, ws, k; multithreaded=true)
+    solve_vect(solver, basis, pts, k; multithreaded=true)
+    solve_vect(solver, basis, ks::Vector; multithreaded=true)
+
+Compute the smallest singular value of the CFIE-Kress matrix together with the
+corresponding right singular vector.
+
+For a given wavenumber `k`, these methods assemble the global matrix
+
+    A(k) = I - ( D(k) + i k S(k) )
+
+and then compute a full SVD
+
+    A = U Σ V*.
+
+They identify the smallest singular value `μ = σ_min(A)` and return:
+- `μ`,
+- the corresponding right singular vector.
+
+In the code, this right singular vector is extracted from `Vt` as
+
+    u_mu = conj.(Vt[idx, :])
+
+Overloads
+---------
+1. `solve_vect(..., A, pts, k, Rmat)`
+   - reuse matrix buffer and Kress correction matrix
+
+2. `solve_vect(..., A, pts, ws, k)`
+   - reuse matrix buffer and full workspace
+
+3. `solve_vect(..., pts, ws, k)`
+   - reuse full workspace, allocate matrix
+
+4. `solve_vect(..., pts, k)`
+   - fully self-contained form
+
+5. `solve_vect(..., ks::Vector)`
+   - batched convenience form over many wavenumbers;
+     returns both the singular vectors and the boundary discretizations used at
+     each `k`
+
+# Arguments
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`
+- `basis::AbsBasis`
+- `A::AbstractMatrix{Complex{T}}`
+- `pts::Vector{BoundaryPointsCFIE{T}}`
+- `ws::CFIEKressWorkspace{T}`
+- `Rmat::AbstractMatrix{T}`
+- `k`
+- `ks::Vector{T}`
+- `multithreaded::Bool=true`
+
+# Returns
+Single-`k` forms:
+- `mu`:
+  smallest singular value
+- `u_mu`:
+  corresponding right singular vector
+
+Vector-of-`k` form:
+- `us_all`:
+  singular vectors for each `k`
+- `pts_all`:
+  discretizations used at each `k`
+"""
 function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
@@ -553,6 +744,7 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_globa
     return us_all,pts_all
 end
 
+# INTERNAL - for benchmarking and diagnostics only; not a public API
 function solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     t0=time()

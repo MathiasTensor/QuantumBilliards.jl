@@ -125,9 +125,6 @@ include("chebyshev/chebyshev_optimal_panelization.jl")
 # Expanded BIM
 include("solvers/acceleratedmethods/ebim.jl")
 
-# Krylov methods
-include("solvers/krylovsolvers.jl")
-
 # Beyn's method
 include("solvers/acceleratedmethods/beyn.jl")
 

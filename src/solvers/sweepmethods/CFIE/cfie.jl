@@ -4,10 +4,6 @@
 #  - Barnett, A. H., & Betcke, T. (2007). Stability and convergence of the method of fundamental solutions for Helmholtz problems on analytic domains. Journal of Computational Physics, 227(14), 7003-7026.
 #  - Zhao, L., & Barnett, A. (2015). Robust and efficient solution of the drum problem via Nyström approximation of the Fredholm determinant. SIAM Journal on Numerical Analysis, Stable URL: https://www.jstor.org/stable/24512689
 
-##########################
-#### BESSEL FUNCTIONS ####
-##########################
-
 H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
 H(n::Int,x::Complex{T}) where {T<:Real}=SpecialFunctions.besselh(n,1,x)
 two_pi=2*pi
@@ -15,16 +11,87 @@ inv_two_pi=1/two_pi
 euler_over_pi=MathConstants.eulergamma/pi
 @inline function hankel_pair01(x);h0=H(0,x);h1=H(1,x);return h0,h1;end
 
-########################################
-#### COMMON STRUCT FOR CFIE METHODS ####
-########################################
-
-
-
 ################################
 #### CONSTRUCTOR CFIE_kress ####
 ################################
 
+"""
+    CFIE_kress{T,Bi,Sym} <: CFIE
+
+Combined-field integral equation (CFIE) solver using Kress's periodic
+logarithmic splitting on smooth closed boundary components.
+
+This is the smooth-boundary Kress variant of the CFIE Fredholm formulation.
+It is designed for billiards whose boundary components are individually smooth,
+closed, and periodic. The method uses Kress's idea of splitting the singular
+self-interaction kernels into:
+
+    universal logarithmic part + smooth remainder,
+
+and then treating the logarithmic part analytically through a special dense
+correction matrix `R`.
+
+Mathematically, for one smooth component, the discretized operator has the form
+
+    A = I - ( D + i k S ),
+
+where:
+- `D` is the double-layer operator,
+- `S` is the single-layer operator,
+- `i k S` is added to stabilize the Fredholm formulation and remove the
+  spurious-nullspace behavior of the pure double-layer formulation
+  for domains with holes.
+
+In the Kress method, both `D` and `S` are split into:
+- a coefficient multiplying the universal periodic logarithm,
+- a smooth remainder evaluated by ordinary quadrature.
+
+This type is intended for:
+- circles, ellipses, limacons, and other smooth closed curves,
+- multi-component smooth boundaries (e.g. smooth holes), where each component is
+  itself a single smooth closed curve,
+- high-accuracy determinant or singular-value based spectral computation.
+
+# Fields
+- `sampler::Vector{LinearNodes}`:
+  Placeholder field kept for consistency with the common solver interface.
+  In the periodic Kress method, the actual nodes are generated explicitly as
+  equispaced periodic Kress nodes, so this field is not actively used.
+- `pts_scaling_factor::Vector{T}`:
+  Resolution parameter controlling the number of discretization points per
+  wavelength. For a component of length `L`, the node count is chosen roughly as
+
+      N ≈ k * L * b / (2π),
+
+  where `b = pts_scaling_factor[1]` (or the component-specific entry if the
+  logic is extended).
+- `dim_scaling_factor::T`:
+  Compatibility field for the common solver interface. No interior basis is used
+  here, so this field is not mathematically active.
+- `eps::T`:
+  Compatibility / tolerance placeholder.
+- `min_dim::Int64`:
+  Compatibility field, unused mathematically in CFIE-Kress.
+- `min_pts::Int64`:
+  Minimum number of discretization points on each boundary component.
+- `billiard::Bi`:
+  The billiard geometry.
+- `symmetry::Sym`:
+  Optional symmetry descriptor, used by higher-level symmetry-aware logic.
+
+# When to use this type
+Use `CFIE_kress` when:
+- every boundary component is smooth and closed,
+- you want Kress-corrected singular quadrature for both SLP and DLP,
+- you want higher accuracy than the plain BIM on smooth domains.
+
+# When not to use it
+Do not use this type if a boundary component is piecewise smooth with corners.
+For that, use:
+- `CFIE_kress_corners` for single-corner-type grading per closed curve,
+- `CFIE_kress_global_corners` for global multi-corner grading on composite
+  closed boundaries.
+"""
 struct CFIE_kress{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE 
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule can be changed. Not used currently.
     pts_scaling_factor::Vector{T} # scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
@@ -36,7 +103,62 @@ struct CFIE_kress{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     symmetry::Sym # symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry.
 end
 
-# case where we have corners and need to use gradings
+"""
+    CFIE_kress_corners{T,Bi,Sym} <: CFIE
+
+CFIE solver using Kress corner grading on a single smooth closed curve whose
+parameterization contains endpoint singular behavior associated with corners.
+
+This type is the corner-aware counterpart of `CFIE_kress`, but still assumes
+that each boundary component is represented as a single closed parameterized
+curve. The idea is that the underlying geometric curve may have corner-type
+singular behavior in its derivatives, and Kress's grading transformation is used
+to cluster nodes near the problematic locations.
+
+Compared with the smooth periodic Kress method, the computational parameter is
+no longer the physical periodic variable itself. Instead, one introduces a
+graded variable `σ` and a nonlinear map `t = w(σ)` so that the geometric
+singularity is regularized in the new variable.
+
+The resulting discrete CFIE still has the formal structure
+
+    A = I - ( D + i k S ),
+
+but the nodes, weights, and derivative data now incorporate the grading map and
+its Jacobian.
+
+# Fields
+- `sampler::Vector{LinearNodes}`:
+  Placeholder field retained for common API compatibility.
+- `pts_scaling_factor::Vector{T}`:
+  Controls how the total number of nodes grows with the wavenumber.
+- `dim_scaling_factor::T`:
+  Compatibility field, unused mathematically here.
+- `eps::T`:
+  Compatibility / tolerance placeholder.
+- `min_dim::Int64`:
+  Compatibility field.
+- `min_pts::Int64`:
+  Minimum number of discretization points.
+- `billiard::Bi`:
+  Billiard geometry.
+- `symmetry::Sym`:
+  Optional symmetry descriptor.
+- `kressq::Int`:
+  Kress grading strength. Larger values cluster more points near corners/endpoints.
+
+# Important practical note
+For Float64 arithmetic, aggressive grading can become numerically unstable if
+`kressq` is pushed too far. In this implementation, values around 4 are the safe
+default and are generally recommended.
+
+# When to use this type
+Use `CFIE_kress_corners` when:
+- the geometry is represented by a single closed curve,
+- that curve has corner-type singular behavior,
+- you want a Kress-graded discretization without switching to a global
+  multi-segment composite-boundary treatment.
+"""
 struct CFIE_kress_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     sampler::Vector{LinearNodes} # placeholder since the trapezoidal rule will be changed by v(s,q) in kress_graging.jl
     pts_scaling_factor::Vector{T} 
@@ -49,7 +171,69 @@ struct CFIE_kress_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     kressq::Int # the grading parameter q in the Kress grading formula, which controls how strongly the nodes are clustered near the corners. A larger value of q results in stronger clustering, which can improve accuracy for problems with sharp corners. Typical values are in the range of 4 to 16, with 8 being a common choice for many problems.
 end
 
-# same as above comments
+"""
+    CFIE_kress_global_corners{T,Bi,Sym} <: CFIE
+
+CFIE solver using a global multi-corner Kress grading on a closed composite
+boundary component.
+
+This is the most general Kress-based CFIE type in this family. It is designed
+for piecewise smooth boundaries represented as several joined curve segments
+forming one closed component. Typical examples are:
+- rectangles,
+- polygons,
+- stadium-like composite boundaries,
+- general piecewise smooth billiards with finitely many corners.
+
+Unlike `CFIE_kress_corners`, which applies a grading transformation to a single
+closed parameterized curve, this type treats the entire closed composite
+boundary globally:
+- all corner locations are detected,
+- one global graded periodic variable is introduced,
+- geometry is evaluated on the full composite boundary through a segment-aware
+  global map.
+
+The resulting operator is again the CFIE Fredholm matrix
+
+    A = I - ( D + i k S ),
+
+but now assembled on a globally graded periodic mesh.
+
+# Fields
+- `sampler::Vector{LinearNodes}`:
+  Placeholder field for API consistency.
+- `pts_scaling_factor::Vector{T}`:
+  Node-density scaling factor(s).
+- `dim_scaling_factor::T`:
+  Compatibility field.
+- `eps::T`:
+  Compatibility / tolerance placeholder.
+- `min_dim::Int64`:
+  Compatibility field.
+- `min_pts::Int64`:
+  Minimum number of discretization points.
+- `billiard::Bi`:
+  Billiard geometry.
+- `symmetry::Sym`:
+  Optional symmetry descriptor.
+- `kressq::Int`:
+  Global Kress grading strength parameter.
+
+# Why this type exists
+For composite boundaries, the Kress logarithmic splitting only works correctly
+if one treats each closed component as a single periodic object. Segment-by-
+segment treatment would break the periodic singular structure. This type
+therefore:
+- reconstructs a single global periodic variable for the whole component,
+- applies Kress grading relative to all corner locations at once,
+- preserves the periodic framework needed for the `R`-matrix logic.
+
+# When to use this type
+Use `CFIE_kress_global_corners` when:
+- a boundary component consists of multiple segments,
+- the closed component contains corners,
+- you want a Kress-corrected CFIE rather than Alpert panel quadrature.
+"""
 struct CFIE_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     sampler::Vector{LinearNodes}
     pts_scaling_factor::Vector{T}
@@ -87,7 +271,7 @@ end
 """
     CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=8)
 
-Constructor for CFIE_kress_corners solver, which is designed to handle billiards with corners by using Kress's grading technique. This method clusters the discretization points near the corners to improve accuracy. 
+Constructor for CFIE_kress_corners solver. 
 
 # Inputs:
 - `pts_scaling_factor`: A scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
@@ -107,7 +291,7 @@ end
 """
     CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=8)
 
-Constructor for CFIE_kress_global_corners solver, which is designed to handle billiards with corners by using a global Kress grading technique. This method clusters the discretization points near the corners based on a global grading function that takes into account all corner locations simultaneously. Therefore one can reuse the circulant R matrix logic.
+Constructor for CFIE_kress_global_corners solver.
 
 # Inputs:
 - `pts_scaling_factor`: A scaling factor for the number of points per wavelength, which is used to determine the number of discretization points on the boundary based on the wavenumber and the length of the boundary. It can be a single value or a vector of values for different components of the boundary.
@@ -128,6 +312,64 @@ end
 #### CONSTRUCTOR CFIE_alpert ####
 #################################
 
+
+"""
+    CFIE_alpert{T,Bi,Sym} <: CFIE
+
+Combined-field integral equation solver using Alpert hybrid Gauss-trapezoidal
+near-singular quadrature on panelized boundaries.
+
+This type implements the CFIE on boundaries represented panel-wise, with special
+near-singular correction handled by Alpert quadrature rather than Kress
+periodic logarithmic splitting. It is especially useful for:
+- composite boundaries made of multiple smooth segments,
+- cornered geometries,
+- situations where an open-panel viewpoint is more natural than a global
+  periodic Kress discretization.
+
+The underlying Fredholm operator is again
+
+    A = I - ( D + i k S ),
+
+but now the singular/near-singular behavior is treated through local corrected
+quadrature rules rather than a global dense `R` matrix.
+
+# Fields
+- `sampler::Vector{LinearNodes}`:
+  Placeholder field for the common solver API.
+- `pts_scaling_factor::Vector{T}`:
+  Controls the base sampling density.
+- `dim_scaling_factor::T`:
+  Compatibility field.
+- `eps::T`:
+  Compatibility / tolerance placeholder.
+- `min_dim::Int64`:
+  Compatibility field.
+- `min_pts::Int64`:
+  Minimum number of points on each panel.
+- `billiard::Bi`:
+  Billiard geometry.
+- `symmetry::Sym`:
+  Optional symmetry descriptor.
+- `alpert_order::Int`:
+  Order of the Alpert correction rule.
+- `alpertq::Int`:
+  Panel grading strength parameter used in the endpoint clustering map.
+
+# Mathematical viewpoint
+Where the Kress method removes the logarithmic singularity through an analytic
+periodic split, the Alpert method instead corrects the quadrature locally near
+the singularity using specially designed hybrid nodes and weights. This makes it
+well suited to open panels and multi-panel piecewise smooth boundaries.
+
+# When to use this type
+Use `CFIE_alpert` when:
+- the boundary is naturally panelized (but has true corners - polygons),
+- you want strong near-singular correction without building a global periodic
+  Kress structure,
+- you want a method that handles composite boundaries and corners in a natural,
+  panel-based way.
+"""
 struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     sampler::Vector{LinearNodes}
     pts_scaling_factor::Vector{T}
@@ -141,9 +383,61 @@ struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     alpertq::Int
 end
 
-# _warn_aggressive_alpert
-# This function checks if the combination of the Alpert quadrature parameters (order and grading strength) and the geometry of the billiard (specifically the lengths of the boundary segments) may lead to under-resolution of the near-correction on the shortest boundary segment. 
-# It calculates a heuristic danger ratio based on these parameters and issues a warning if the ratio exceeds certain thresholds, suggesting adjustments to the Alpert parameters for better accuracy.
+"""
+    _warn_aggressive_alpert(pts_scaling_factor, billiard, alpert_order, alpertq)
+
+Internal heuristic warning helper for CFIE-Alpert parameter choices. It does not prove that a discretization is invalid or
+accurate, but it is useful as an early warning that the shortest panel may be
+insufficiently resolved. It is based on testings and experience with the Alpert near-correction structure
+and is designed to be conservative in its warnings.
+
+Purpose
+-------
+This function estimates whether the chosen combination of:
+- Alpert correction order,
+- grading strength,
+- base boundary resolution,
+- geometry panel lengths,
+
+may be too aggressive for the shortest boundary segment.
+
+Why this matters
+----------------
+In Alpert-based panel quadrature, the effective near-correction becomes harder
+to resolve when:
+- the correction order is large,
+- the endpoint grading is strong,
+- the point density per wavelength is small,
+- one panel is much shorter than the others.
+
+Heuristic
+---------
+The function computes a rough dimensionless ratio
+
+    R ~ (alpert_order * alpertq) / (bmin * Lmin / Lavg),
+
+where:
+- `bmin` is the smallest point-scaling factor,
+- `Lmin` is the shortest segment length,
+- `Lavg` is the average segment length.
+
+Large values of `R` indicate that the near-correction may be too strong for the
+available resolution.
+
+# Behavior
+- If `R > 6`, it emits a warning.
+- If `4 < R <= 6`, it emits an informational message.
+- Otherwise it stays silent.
+
+# Arguments
+- `pts_scaling_factor`
+- `billiard`
+- `alpert_order::Int`
+- `alpertq::Int`
+
+# Returns
+- `nothing`
+"""
 function _warn_aggressive_alpert(pts_scaling_factor,billiard,alpert_order::Int,alpertq::Int)
     bs=pts_scaling_factor isa AbstractVector ? pts_scaling_factor : [pts_scaling_factor]
     bmin=minimum(bs)
@@ -199,8 +493,41 @@ end
 #### use N even for the algorithm - equidistant parameters ####
 s(k::Int,N::Int)=two_pi*k/N
 
-# reverse all BoundaryPointsCFIE except 1st as they correspond to holes in the outer domain.
-# this function is really tricky since we need to reverse the order of the points but also flip the tangents and ds to maintain the correct orientation for the holes. We also need to be careful with the periodicity and the weights. The compid should remain unchanged since we are just reversing the order of points within the same component. Closed periodic polar curves ts behave differently from open panels due to the definiiton of the log analytic split for Kress needing [s(j,N) for j in 1:N] while for Alpert we chose midpoints.
+
+"""
+    _reverse_component_orientation(solver::CFIE, pts::BoundaryPointsCFIE)
+
+Reverse the orientation of one boundary component while preserving its role as a
+closed periodic or open-panel object.
+
+Purpose
+-------
+In multiply connected billiards, the outer boundary and hole boundaries must
+carry opposite orientations for the boundary integral formulation to be
+consistent. This helper is used to reverse the point ordering for holes while
+also updating the derivative data so that the geometry remains mathematically
+correct.
+
+What gets reversed
+------------------
+- `xy`: point order is reversed,
+- `tangent`: reversed and negated,
+- `tangent_2`: reversed,
+- `ts`, `ws`, `ws_der`, `ds`: reversed,
+- endpoint data `xL, xR, tL, tR`: swapped and tangents sign-flipped.
+
+What does not change
+--------------------
+- `compid` stays the same, because the component identity is unchanged,
+- `is_periodic` stays the same.
+
+# Arguments
+- `solver::CFIE`
+- `pts::BoundaryPointsCFIE`
+
+# Returns
+- A new `BoundaryPointsCFIE` with reversed orientation.
+"""
 function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) where {T<:Real,S<:CFIE}
     xy=reverse(pts.xy)
     tangent=reverse(-pts.tangent)
@@ -221,20 +548,58 @@ end
 ###############
 
 """
-    _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    _evaluate_points(solver::CFIE_kress, crv, k, idx)
 
-Helper function to evaluate the boundary points, tangents, and weights for a single curve component of the billiard. This function is called by `evaluate_points` for each component of the boundary and constructs the `BoundaryPointsCFIE` struct for that component.
+Construct the periodic Kress discretization for one smooth closed boundary
+component.
 
-billiard.full_boundary is expected to be a vector of AbsCurve objects, where each AbsCurve represents a separate boundary component (e.g., outer boundary, hole 1, hole 2, etc.). The `idx` parameter is used to identify which component we are evaluating and to set the `compid` field in the `BoundaryPointsCFIE` struct accordingly.
+Purpose
+-------
+This helper generates the `BoundaryPointsCFIE` representation of one smooth
+closed curve for the periodic CFIE-Kress method. It provides:
+- sampled boundary points,
+- first and second derivatives with respect to the Kress variable,
+- periodic quadrature weights,
+- geometric arc-length increments.
 
-# Inputs
-- `solver`: The CFIE_kress solver instance containing the boundary discretization and weights.
-- `crv`: The curve component (of type AbsCurve) for which to evaluate the boundary points and tangents.
-- `k`: The wavenumber for which to evaluate the points and tangents.
-- `idx`: The index of the boundary component (1 for outer boundary, 2 for first hole, etc.) which is used to set the `compid` field in the `BoundaryPointsCFIE` struct and to determine the orientation of the tangents and weights.
+Resolution logic
+----------------
+For a component of length `L`, the number of periodic nodes is chosen roughly as
 
-# Output
-- A `BoundaryPointsCFIE` struct containing the evaluated boundary points, tangents, weights, and other relevant information for the specified curve component.
+    N ≈ k * L * b / (2π),
+
+subject to:
+- `N ≥ min_pts`,
+- compatibility with active rotational symmetry,
+- evenness constraints used by the periodic Kress infrastructure.
+
+Parameterization
+----------------
+The actual geometric curves in the library are typically defined on `[0,1]`,
+while Kress uses a periodic variable `t ∈ [0, 2π)`. Therefore:
+- nodes are generated in the periodic variable `t`,
+- those nodes are rescaled to `u = t / (2π)` for geometric evaluation,
+- the geometry derivatives are rescaled by the chain rule:
+
+    dγ/dt   = (dγ/du) / (2π)
+    d²γ/dt² = (d²γ/du²) / (2π)².
+
+Weights
+-------
+- `ws = 2π / N` are the periodic trapezoidal weights in the Kress variable,
+- `ws_der = 1` because no grading is applied in the smooth periodic case.
+
+# Arguments
+- `solver::CFIE_kress`
+- `crv::AbsCurve`:
+  One smooth closed curve.
+- `k`:
+  Real wavenumber.
+- `idx::Int`:
+  Boundary component index.
+
+# Returns
+- `BoundaryPointsCFIE`
 """
 function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
@@ -262,10 +627,56 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
-#############################
-#### KRESS SINGLE CORNER ####
-#############################
+"""
+    _evaluate_points(solver::CFIE_kress_corners, crv, k, idx)
 
+Construct a Kress-graded discretization for one closed curve with corner-type
+endpoint singular behavior.
+
+Purpose
+-------
+This helper is the corner-graded analogue of the smooth periodic Kress
+discretization. It replaces the uniform periodic parameter with a graded
+computational variable `σ`, whose map `t = w(σ)` clusters nodes near the corner
+locations.
+
+Resolution logic
+----------------
+As in the smooth case, the total node count is chosen from the boundary length
+and wavenumber, but now:
+- odd `N` is enforced,
+- rotational-symmetry compatibility is enforced when needed,
+- Kress grading data is generated by `kress_graded_nodes_data`.
+
+Grading transformation
+----------------------
+The grading map returns:
+- `σ`: computational nodes,
+- `tmap`: mapped periodic variable,
+- `jac = dt/dσ`,
+- `jac2 = d²t/dσ²`.
+
+Geometry derivatives are transformed by the chain rule:
+
+    γ'(σ)  = γ'(u) * jac / (2π)
+    γ''(σ) = γ''(u) * (jac / 2π)^2 + γ'(u) * (jac2 / 2π),
+
+because the underlying geometric parameter is still normalized to `[0,1]`.
+
+Weights
+-------
+- base quadrature weights are `h = π / ((N+1)/2)`,
+- `ws_der = jac` stores the Jacobian of the grading map.
+
+# Arguments
+- `solver::CFIE_kress_corners`
+- `crv::AbsCurve`
+- `k`
+- `idx::Int`
+
+# Returns
+- `BoundaryPointsCFIE`
+"""
 function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
@@ -302,24 +713,34 @@ end
 #### KRESS MULTI CORNER ####
 ############################
 
-# Evaluate one closed composite boundary component using
-# global multi-corner Kress grading.
-#
-# Steps:
-#   1. Compute total boundary length Ltot
-#   2. Choose total number of nodes N ~ k * Ltot
-#   3. Build corner locations from segment joins
-#   4. Generate graded nodes σ_k and map s = w(σ)
-#   5. Evaluate geometry at each s_k via segment mapping
-#   6. Apply chain rule to combine geometry + grading
-#   7. Compute arc-length increments ds
-#   8. Return BoundaryPointsCFIE object
-#
-# Output:
-#   One BoundaryPointsCFIE representing the entire component - flag is_periodic=true since it's a closed curve.
-#
-# This replaces per-segment discretization with a single
-# global discretization, which is required for Kress splitting.
+"""
+    _evaluate_points(solver::CFIE_kress_global_corners, comp, k, idx)
+
+Construct one globally graded periodic discretization for a closed composite
+boundary component consisting of multiple joined segments.
+
+Purpose
+-------
+This helper takes a vector of curve segments forming one closed component and
+turns them into a single `BoundaryPointsCFIE` object compatible with the global
+Kress CFIE assembly.
+
+Why global grading is needed
+----------------------------
+For Kress splitting to work correctly, the entire closed component must be
+treated as one periodic object. If one discretized each segment independently,
+the periodic logarithmic structure of the self-interaction kernel would be lost.
+
+# Arguments
+- `solver::CFIE_kress_global_corners`
+- `comp::Vector{AbsCurve}`:
+  Segments forming one closed component.
+- `k`
+- `idx::Int`
+
+# Returns
+- `BoundaryPointsCFIE`
+"""
 function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     # total length
     _,_,Ltot=component_lengths(comp)
@@ -353,15 +774,12 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
         tangent_1st[i]=γt*jac[i]
         tangent_2nd[i]=γtt*(jac[i]^2)+γt*jac2[i]
     end
-    # compute arc-length increments ds
-    ss=zeros(T,N)
-    @inbounds for i in 2:N
-        dx=xy[i][1]-xy[i-1][1]
-        dy=xy[i][2]-xy[i-1][2]
-        ss[i]=ss[i-1]+hypot(dx,dy)
+    ds=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        tx=tangent_1st[i][1]
+        ty=tangent_1st[i][2]
+        ds[i]=hypot(tx,ty)*h
     end
-    ds=diff(ss)
-    append!(ds,Ltot+ss[1]-ss[end])  # periodic closure
     # Kress weights
     h=pi/T((N+1)÷2)
     ts=σ  # computational nodes
@@ -374,6 +792,38 @@ end
 #### HIGH LEVEL ####
 ####################
 
+
+"""
+    evaluate_points(solver::Union{CFIE_kress,CFIE_kress_corners}, billiard, k)
+
+Construct CFIE-Kress boundary discretizations for all boundary components of the
+billiard.
+
+Behavior
+--------
+This high-level function:
+1. extracts the connected boundary components,
+2. requires each component to consist of exactly one smooth closed curve,
+3. applies the appropriate low-level `_evaluate_points` helper,
+4. reverses the orientation of every component except the first one, so that
+   holes acquire the correct opposite orientation.
+
+# Arguments
+- `solver::CFIE_kress` or `solver::CFIE_kress_corners`
+- `billiard::AbsBilliard`
+- `k`
+
+# Returns
+- `Vector{BoundaryPointsCFIE{T}}`
+
+  where:
+  - `pts[1]` is the outer boundary,
+  - `pts[2:]` are holes, orientation-reversed.
+
+# Notes
+This function does not support composite multi-segment components. For that,
+use `CFIE_kress_global_corners`.
+"""
 function evaluate_points(solver::Union{CFIE_kress{T},CFIE_kress_corners{T}},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     comps=_boundary_components(billiard.full_boundary)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(comps))
@@ -386,6 +836,34 @@ function evaluate_points(solver::Union{CFIE_kress{T},CFIE_kress_corners{T}},bill
     return pts
 end
 
+
+"""
+    evaluate_points(solver::CFIE_kress_global_corners, billiard, k)
+
+Construct CFIE-Kress boundary discretizations for all boundary components using
+global multi-corner grading when needed.
+
+Behavior
+--------
+For each connected component of the boundary:
+- if the component has exactly one curve, it falls back to the single-curve
+  corner-graded Kress helper,
+- if the component is composite, it builds a global graded periodic
+  discretization over the whole component,
+- components after the first are orientation-reversed to represent holes.
+
+# Arguments
+- `solver::CFIE_kress_global_corners`
+- `billiard::AbsBilliard`
+- `k`
+
+# Returns
+- `Vector{BoundaryPointsCFIE{T}}`
+
+# Notes
+This is the high-level entry point for the most general Kress-CFIE geometry
+handling in this file.
+"""
 function evaluate_points(solver::CFIE_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     comps=_boundary_components(billiard.full_boundary)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(comps))
@@ -405,51 +883,49 @@ end
 #### ALPERT ####
 ################
 
-# _open_panel_weights
-# Build simple open-panel geometric spacing weights from sampled arclength values.
-#
-# Inputs:
-#   - ss::AbstractVector{T} :
-#       Arclength values sampled on an open panel.
-#
-# Outputs:
-#   - ds::Vector{T} :
-#       Local geometric spacing weights for use in smooth quadrature parts.
-function _open_panel_weights(ss::AbstractVector{T}) where {T<:Real}
-    N=length(ss)
-    ds=Vector{T}(undef,N)
-    if N==1
-        ds[1]=zero(T)
-        return ds
-    elseif N==2
-        v=ss[2]-ss[1]
-        ds[1]=v
-        ds[2]=v
-        return ds
-    end
-    ds[1]=ss[2]-ss[1]
-    @inbounds for j in 2:N-1
-        ds[j]=(ss[j+1]-ss[j-1])/2
-    end
-    ds[N]=ss[N]-ss[N-1]
-    return ds
-end
+"""
+    _evaluate_points_periodic(solver::CFIE_alpert, crv, k, idx)
 
-# _evaluate_points_periodic
-# Build one closed boundary panel for CFIE_alpert. THis is used whenever the billiard boundary is not composite of many curves, but rather just just one curve
-# E.g Ellipse,Circle 
-#
-# Inputs:
-#   - solver::CFIE_alpert{T}
-#   - crv::C
-#   - k::T
-#   - idx::Int
-#
-# Outputs:
-#   - BoundaryPointsCFIE{T}
-#
-# Notes:
-#   - No lcm / symmetry-dependent point adjustment is used here -> since we do it before Beyn.
+Construct one closed periodic boundary component for the CFIE-Alpert method.
+
+Purpose
+-------
+Although Alpert quadrature is panel-based, a billiard may also consist of a
+single smooth closed curve such as a circle or ellipse. In that case, this
+helper builds a periodic closed discretization suitable for the Alpert CFIE
+infrastructure.
+
+Sampling choice
+---------------
+Unlike the Kress periodic helper, this function uses midpoint-like periodic nodes
+
+    t_j = 2π (j - 1/2) / N,
+
+rather than the `2π j / N` convention. This is consistent with the chosen
+periodic Alpert implementation.
+
+Derivative rescaling
+--------------------
+As usual, the curve is geometrically defined on `[0,1]`, so the first and
+second derivatives are rescaled by the chain rule:
+- first derivative divided by `2π`,
+- second derivative divided by `(2π)^2`.
+
+Weights
+-------
+- `ws = 2π / N`,
+- `ws_der = 1`,
+- `ds` from arc-length increments around the periodic curve.
+
+# Arguments
+- `solver::CFIE_alpert`
+- `crv::AbsCurve`
+- `k`
+- `idx::Int`
+
+# Returns
+- `BoundaryPointsCFIE`
+"""
 function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
@@ -469,7 +945,39 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
-# σ → (u, du/dσ, d²u/dσ²); map computational nodes to physical nodes and return Jacobian info for transforming geometry derivatives
+"""
+    _panel_sigma_to_u_jac(solver::CFIE_alpert, σ)
+
+Map an Alpert computational panel coordinate `σ` to the physical panel
+parameter `u`, together with the first and second derivatives of the map.
+
+Purpose
+-------
+The Alpert panel discretization uses a graded coordinate map near endpoints.
+This helper provides:
+- `u = u(σ)`,
+- `du/dσ`,
+- `d²u/dσ²`,
+
+which are then used to transform geometry derivatives from the physical panel
+parameter to the computational panel variable.
+
+# Arguments
+- `solver::CFIE_alpert`
+- `σ`:
+  Computational coordinate on the panel.
+
+# Returns
+- `(u, jac, jac2)`
+
+  where:
+  - `u`   is the physical panel coordinate,
+  - `jac` is `du/dσ`,
+  - `jac2` is `d²u/dσ²`.
+
+# Notes
+The grading strength is controlled by `solver.alpertq`.
+"""
 @inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
     q=solver.alpertq   # acts as grading strength parameter
     u=_panel_grade_map(σ,q)
@@ -478,19 +986,47 @@ end
     return u,jac,jac2
 end
 
-# _evaluate_points_panel
-# Build one open boundary panel for CFIE_alpert. This is used whenever the billiard boundary is composite of many curves, and we want to treat each curve as a separate panel. E.g for the stadium, we can treat the straight segments as one panel and the circular segments as another.
-#
-# Inputs:
-#   - solver::CFIE_alpert{T}
-#   - crv::C
-#   - k::T
-#   - idx::Int
-#
-# Outputs:
-#   - BoundaryPointsCFIE{T}
-# Notes:
-#   - No lcm / symmetry-dependent point adjustment is used here -> since we do it before Beyn.
+"""
+    _evaluate_points_panel(solver::CFIE_alpert, crv, k, idx)
+
+Construct one open-panel discretization for the CFIE-Alpert method.
+
+Purpose
+-------
+This helper builds the `BoundaryPointsCFIE` object for one panel curve. It is
+the fundamental geometry function behind the panel-based Alpert CFIE
+implementation.
+
+Sampling logic
+--------------
+For a panel of length `L`, the node count is chosen roughly as
+
+    N ≈ k * L * b / (2π),
+
+with `N ≥ min_pts`, and at least 2 nodes.
+
+Nodes are placed at panel midpoints in the computational variable `σ`, then
+mapped through the Alpert grading transformation to the physical panel
+parameter `u`.
+
+Open-panel metadata
+-------------------
+Because this is an open panel:
+- `is_periodic = false`,
+- the endpoints `xL`, `xR`,
+- and endpoint tangents `tL`, `tR`
+
+are stored explicitly in the returned `BoundaryPointsCFIE`.
+
+# Arguments
+- `solver::CFIE_alpert`
+- `crv::AbsCurve`
+- `k`
+- `idx::Int`
+
+# Returns
+- `BoundaryPointsCFIE`
+"""
 function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
@@ -523,21 +1059,43 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
 end
 
 """
-    evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+    evaluate_points(solver::CFIE_alpert, billiard, k)
 
-Evaluate the boundary points, tangents, and weights for all components of the billiard's boundary using the CFIE_alpert method. This function iterates over each component of the boundary, determines whether it is a closed curve or an open panel, and calls the appropriate helper function to compute the necessary information for each component. The results are assembled into a vector of `BoundaryPointsCFIE` structs, with correct orientation for holes in the billiard.
+Construct the CFIE-Alpert boundary discretization for the full billiard.
 
-Accepts either:
-- A vector of curve components where each component is a single smooth closed curve (e.g., `[outer, hole1, hole2, ...]`).
-- A vector of vectors where each vector contains multiple curve segments representing a composite boundary (e.g., `[[seg1, seg2, ...], [hole1_seg1, hole1_seg2, ...], ...]`). The function will check the structure of the input and process it accordingly, treating each inner vector as a separate component. For composite boundaries, it will treat each inner vector as a single component and apply open panel discretization to each segment, while for single closed curves, it will apply periodic discretization.
+Supported geometry layouts
+--------------------------
+This high-level function is flexible and supports several boundary descriptions:
 
-# Inputs:
-- `solver`: The CFIE_alpert solver instance containing the boundary discretization and weights.
-- `billiard`: The billiard domain for which we are solving the CFIE. It contains the geometry of the problem, including the boundary curves and their properties, which are essential for constructing the system matrix and solving the eigenvalue problem.
-- `k`: The wavenumber for which to evaluate the boundary points and tangents.   
+1. A vector of smooth closed curves:
+   - each curve is treated as one periodic closed component,
+   - periodic Alpert discretization is used.
 
-# Output:
-- A vector of `BoundaryPointsCFIE` structs, where each struct contains the evaluated boundary points, tangents, weights, and other relevant information for each component of the billiard's boundary. The first component corresponds to the outer boundary, and subsequent components correspond to holes in the billiard, with their tangents and weights appropriately oriented. For composite boundaries, each inner vector of curve segments is treated as a single component, and the points are evaluated accordingly.
+2. A single composite boundary described by several segments:
+   - each segment is treated as a separate open panel.
+
+3. Several connected components, each itself consisting of one or more panels:
+   - each panel is discretized separately,
+   - components after the first are orientation-reversed to represent holes.
+
+Boundary choice and symmetry
+----------------------------
+If no symmetry is active, the function uses `billiard.full_boundary`.
+If symmetry is active, it uses `billiard.desymmetrized_full_boundary`.
+
+# Arguments
+- `solver::CFIE_alpert`
+- `billiard::AbsBilliard`
+- `k`
+
+# Returns
+- `Vector{BoundaryPointsCFIE{T}}`
+
+# Output interpretation
+Depending on the geometry structure, the returned vector may contain:
+- one object per closed component,
+- or one object per panel, with `compid` indicating which connected component
+  that panel belongs to.
 """
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary

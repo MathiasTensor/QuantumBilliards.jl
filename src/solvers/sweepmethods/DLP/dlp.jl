@@ -4,18 +4,59 @@ const TWO_PI=2*pi
 const FOUR_PI=4*pi
 
 """
-    struct BoundaryIntegralMethod{T<:Real}
+    BoundaryIntegralMethod{T,Sym} <: SweepSolver
 
-Represents the configuration for the boundary integral method.
+Configuration object for the standard boundary integral method (BIM) Fredholm
+formulation based on the direct Helmholtz double-layer kernel.
+
+This solver is the “plain” boundary-integral implementation in the library:
+it does not use Kress logarithmic splitting, Alpert correction, or any special
+corner quadrature. Instead, it assembles the Fredholm second-kind matrix
+directly from the default 2D Helmholtz double-layer kernel, using the sampled
+boundary points, their normals, curvatures, and arc-length weights.
+
+Mathematically, the assembled operator is of the form
+
+    A(k) = I - K(k),
+
+where K(k) is the Nyström discretization of the boundary double-layer operator
+for the interior Helmholtz Dirichlet problem. In this implementation, symmetry
+images can be incorporated directly into the kernel before the Fredholm shift
+by the identity.
 
 # Fields
-- `dim_scaling_factor::T`: Scaling factor for the boundary dimensions (compatibility).
-- `pts_scaling_factor::Vector{T}`: Scaling factors for the boundary points.
-- `sampler::Vector`: Sampling strategy for the boundary points.
-- `eps::T`: Numerical tolerance.
-- `min_dim::Int64`: Minimum dimensions (compatibility field).
-- `min_pts::Int64`: Minimum points for evaluation.
-- `symmetry::Sym`: Symmetry for the configuration - nothing,Reflection,Rotation
+- `dim_scaling_factor::T`:
+  Compatibility field for the generic solver infrastructure. The plain BIM is a
+  boundary-only method and has no separate interior basis dimension, but the
+  field is kept so that refinement and sweep code can treat all solvers through
+  a common interface.
+- `pts_scaling_factor::Vector{T}`:
+  Boundary-resolution scaling factors. For each boundary component, the number
+  of quadrature nodes is chosen roughly as
+
+      N ≈ k * L * b / (2π),
+
+  where `L` is the component length and `b` is the corresponding scaling factor.
+- `sampler::Vector`:
+  Sampling rules used on each boundary component. These determine how the
+  parameter values are chosen before geometric quantities such as points,
+  normals, curvature, and arc-length weights are computed.
+- `eps::T`:
+  Numerical tolerance placeholder.
+- `min_dim::Int64`:
+  Compatibility field mirroring the other solvers.
+- `min_pts::Int64`:
+  Minimum number of boundary points per component.
+- `symmetry::Sym`:
+  Optional symmetry descriptor. If provided, the boundary points may be taken
+  from a desymmetrized boundary, and kernel assembly may add reflected or
+  rotated image contributions with the appropriate symmetry factors.
+
+# Limitations
+Because this is the direct method, near-singular and singular behavior is
+handled only through the built-in diagonal curvature correction and the raw
+Nyström quadrature. For high precision on difficult geometries, especially
+cornered ones, the Kress- or Alpert-corrected variants are usually preferable.
 """
 struct BoundaryIntegralMethod{T<:Real,Sym}<:SweepSolver 
     dim_scaling_factor::T
@@ -43,23 +84,6 @@ function resize_basis(basis::Ba,billiard::Bi,dim::Int,k) where {Ba<:AbstractHank
     return AbstractHankelBasis()
 end
 
-
-### STANDARD BIM ###
-
-"""
-    BoundaryIntegralMethod(pts_scaling_factor, billiard::Bi; min_pts=20, symmetries=Nothing, x_bc=:D, y_bc=:D) -> BoundaryIntegralMethod
-
-Creates a boundary integral method solver configuration.
-
-# Arguments
-- `pts_scaling_factor::Union{T,Vector{T}}`: Scaling factors for the boundary points.
-- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
-- `min_pts::Int`: Minimum number of boundary points (default: 20).
-- `symmetries::Union{Vector{Any},Nothing}`: Symmetry definitions (-1 Dirichlet for the given axis, 1 otherwise).
-
-# Returns
-- `BoundaryIntegralMethod`: Constructed solver configuration.
-"""
 function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real, Bi<:AbsBilliard}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
@@ -83,17 +107,57 @@ function _boundary_curves_for_solver(billiard::Bi,solver::BoundaryIntegralMethod
 end
 
 """
-    evaluate_points(solver::BoundaryIntegralMethod, billiard::Bi, k::Real) -> BoundaryPoints
+    evaluate_points(solver::BoundaryIntegralMethod, billiard, k)
 
-Evaluates the boundary points and associated properties for the given solver and billiard.
+Construct the boundary discretization used by the plain boundary integral
+method at wavenumber `k`.
+Unlike the Kress-based methods, this function does not build a special
+logarithmic-correction discretization. It simply samples the boundary according
+to the chosen sampler and converts those samples into a `BoundaryPoints`
+object.
+
+# Discretization strategy
+For each real boundary curve component:
+1. determine its length `L`,
+2. choose the number of points approximately as
+
+       N ≈ k * L * b / (2π),
+
+   where `b` is the component-specific entry of `pts_scaling_factor`,
+3. enforce `N ≥ min_pts`,
+4. sample the parameter nodes using the component’s sampler,
+5. evaluate:
+   - curve points,
+   - outward normals,
+   - curvature,
+   - cumulative arclength and local increments.
+
+The per-point quadrature weights stored in `bp.ds` are the local arc-length
+increments along the sampled boundary and are later used to turn the kernel
+matrix into the Fredholm matrix.
 
 # Arguments
-- `solver::BoundaryIntegralMethod`: Boundary integral method configuration.
-- `billiard::Bi`: Billiard configuration (subtype of `AbsBilliard`).
-- `k::Real`: Wavenumber.
+- `solver::BoundaryIntegralMethod`:
+  Solver configuration containing sampling and scaling information.
+- `billiard::AbsBilliard`:
+  Geometry to discretize.
+- `k`:
+  Wavenumber controlling the sampling density.
 
 # Returns
-- `BoundaryPoints{T}`: Evaluated boundary points and properties.
+- `BoundaryPoints{T}`
+
+  containing:
+  - `xy`: sampled boundary coordinates,
+  - `normal`: outward unit normals,
+  - `curvature`: curvature values,
+  - `ds`: arc-length weights,
+  - `shift_x`, `shift_y`: axis offsets used by symmetry-image formulas when
+    relevant.
+
+# Notes
+- If the billiard provides axis-shift information via `x_axis` or `y_axis`,
+  those values are stored in the returned `BoundaryPoints`.
 """
 function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
@@ -132,17 +196,53 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
 end
 
 """
-    default_helmholtz_kernel_matrix(bp::BoundaryPoints{T}, k::T) -> Matrix{Complex{T}}
+    default_helmholtz_kernel_matrix(bp, k; multithreaded=true)
 
-Computes the Helmholtz kernel matrix for the given boundary points using the matrix-based approach.
+Assemble the raw 2D Helmholtz double-layer kernel matrix on the sampled boundary,
+without symmetry images and before multiplication by arc-length weights or
+addition of the identity.
+
+Mathematical meaning
+--------------------
+For the interior Dirichlet Helmholtz problem, the double-layer kernel is
+
+    K(x,y;k) = (i k / 2) * cosφ * H₁^(1)(k r),
+
+in the normalization used by this code, where:
+- `r = |x - y|`,
+- `cosφ = n_y · (x - y) / r`,
+- `n_y` is the outward normal at the source point y,
+- `H₁^(1)` is the Hankel function of the first kind of order 1.
+
+Thus, for i ≠ j, the matrix entry represents the source-normal derivative of the
+free-space Green function evaluated between boundary points i and j.
+
+Diagonal treatment
+------------------
+On the diagonal the weak singularity is replaced by the limit
+
+    -κ / (2π),
+
+where `κ` is the boundary curvature at the target/source point. This is the
+standard diagonal correction for the direct DLP discretization.
 
 # Arguments
-- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
-- `k::T`: Wavenumber.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `bp::BoundaryPoints{T}`:
+  Boundary discretization containing points, normals, and curvature.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to thread the pairwise assembly loops.
 
 # Returns
-- `Matrix{Complex{T}}`: A matrix where each element corresponds to the Helmholtz kernel between boundary points, incorporating curvature for singular cases.
+- `Matrix{Complex{T}}`
+
+# Important note
+This function assembles only the geometric/kernel part. It does not yet:
+- multiply by arc-length weights `ds`,
+- apply the Fredholm sign,
+- add the identity.
+- those steps happen later in `fredholm_matrix!`.
 """
 function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
@@ -181,25 +281,35 @@ function default_helmholtz_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreade
 end
 
 """
-    default_helmholtz_kernel_derivative_matrix(bp::BoundaryPoints{T}, k::T) -> Matrix{Complex{T}}
+    default_helmholtz_kernel_derivative_matrix(bp, k; multithreaded=true)
 
-Constructs the first derivative (with respect to `k`) of the 2D Helmholtz kernel for all pairs of points
-in the boundary `bp`.
+Assemble the first derivative with respect to k of the raw Helmholtz
+double-layer kernel matrix.
 
-where:
-- `r` is the distance between points `i` and `j`,
-- `cos(φᵢ)` is `(nᵢ · (pᵢ - pⱼ)) / r`, using the normal at `pᵢ`,
-- `H₀^(1)` is the Hankel function of the first kind, order 0.
+
+    K(x,y;k) = (i k / 2) * cosφ * H₁^(1)(k r),
+
+this function assembles
+
+    ∂K/∂k.
+
+Using the Bessel/Hankel recurrence identities, the derivative simplifies in the
+chosen normalization to an expression proportional to
+
+    -(i k / 2) * r * H₀^(1)(k r),
+
+times the same geometric cosine factor.
 
 # Arguments
-- `bp::BoundaryPoints{T}`: A set of boundary points, including `(x, y)` coordinates and normals.
-- `k::T`: Wavenumber, a real value.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `bp::BoundaryPoints{T}`:
+  Boundary nodes, normals, and related geometry.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to use threaded assembly.
 
 # Returns
-- `Matrix{Complex{T}}`: An `N×N` matrix, where `N` is the number of boundary points. The element `(i,j)`
-  is the derivative of the Helmholtz kernel with respect to `k` between points `i` and `j`. Diagonal
-  entries where `distance < eps(T)` are set to zero.
+- `Matrix{Complex{T}}`
 """
 function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
@@ -231,27 +341,38 @@ function default_helmholtz_kernel_derivative_matrix(bp::BoundaryPoints{T},k::T;m
 end
 
 """
-    default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPoints{T}, k::T)
-        -> Matrix{Complex{T}}
+    default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPoints{T}, k::T; multithreaded::Bool=true) -> Matrix{Complex{T}}
 
-Constructs the second derivative (with respect to `k`) of the 2D Helmholtz kernel *for all pairs* of points
-in the boundary `bp`. Each entry `(i, j)` in the returned matrix corresponds to
+Assemble the second derivative with respect to k of the raw Helmholtz
+double-layer kernel matrix.
 
-    cos(φᵢ) * ( im/(2*k) ) * [ ...combination of HankelH1(1) and HankelH1(2)... ]
+This function computes
 
-where `cos(φᵢ) = (nᵢ · (pᵢ - pⱼ)) / r` and `r` is the distance between boundary points `pᵢ` and `pⱼ`.
-The exact Hankel expression matches the partial derivative:
-    
-    (d²/dk²) of [ cos(φᵢ) * H₀^(1)(k*r)* ... ].
+    ∂²K/∂k²
+
+for the default double-layer Helmholtz kernel. In the normalization of the code,
+the off-diagonal expression is a cosine-factor times a combination of
+Hankel functions of orders 1 and 2, namely the result of differentiating
+
+    (i k / 2) * H₁^(1)(k r)
+
+twice with respect to k.
 
 # Arguments
-- `bp::BoundaryPoints{T}`: Boundary points, containing `(x, y)` and normals.
-- `k::T`: Wavenumber, real.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `bp::BoundaryPoints{T}`:
+  Boundary discretization containing points and normals.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to thread the assembly loop.
 
 # Returns
-- `Matrix{Complex{T}}`: An `N×N` matrix, where each entry is the second derivative of the Helmholtz kernel
-  wrt. `k` between boundary points `i` and `j`. If `distance < eps(T)`, the entry is set to zero.
+- `Matrix{Complex{T}}`
+
+# Notes
+As with the first derivative, this is a raw kernel-derivative matrix, not yet
+the derivative of the Fredholm operator. The latter is built later by
+`fredholm_matrix_with_derivatives!`.
 """
 @inline function default_helmholtz_kernel_second_derivative_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     xy=bp.xy
@@ -284,28 +405,79 @@ The exact Hankel expression matches the partial derivative:
 end
 
 """
-    compute_kernel_matrix(bp::BoundaryPoints{T}, k::T; kernel_fun::Union{Symbol, Function}=:default) -> Matrix{Complex{T}}
+    compute_kernel_matrix(bp, k; multithreaded=true)
 
-Computes the kernel matrix for the given boundary points using the specified kernel function w/ NO symmetry.
+Convenience wrapper returning the raw default Helmholtz double-layer kernel
+matrix without symmetry. This is the allocation-returning counterpart of `compute_kernel_matrix!`. It
+simply calls the default direct-kernel assembly and returns the resulting dense
+matrix.
 
 # Arguments
-- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
-- `k::T`: Wavenumber.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `bp::BoundaryPoints{T}`:
+  Boundary discretization.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to thread assembly.
 
 # Returns
-- `Matrix{Complex{T}}`: The computed kernel matrix.
+- `Matrix{Complex{T}}`
 """
 function compute_kernel_matrix(bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     return default_helmholtz_kernel_matrix(bp,k;multithreaded=multithreaded)
 end
 
-"""
-    @inline function add_pair_default!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,tol2::T,pref::Complex{T};scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real} -> Bool
 
-Compute and add the default Helmholtz double-layer contribution for the pair (i,j).
-Writes scalars directly into `M` (both M[i,j] and M[j,i] if i≠j). Returns `true`
-if the pair was non-singular (distance² > tol2), `false` otherwise.
+"""
+    _add_pair_default!(M, i, j, xi, yi, nxi, nyi, xj, yj, nxj, nyj, k, tol2, pref; scale=1)
+
+Internal low-level helper adding the default off-diagonal double-layer kernel
+contribution for one ordered pair `(i,j)`.
+
+This helper exists to avoid repeated temporary allocations and repeated
+high-level dispatch inside tight kernel-assembly loops. It computes the raw
+double-layer contribution from source point j to target point i and adds it
+directly into `M[i,j]`.
+
+Mathematical meaning
+--------------------
+For a non-singular pair, it adds
+
+    scale * ((n_j · (x_i - x_j)) / r) * pref * H₁^(1)(k r),
+
+where:
+- `r = |x_i - x_j|`,
+- `n_j` is the source normal,
+- `pref` is typically `(i k / 2)` in the current normalization,
+- `scale` is an optional symmetry factor.
+
+No diagonal curvature correction is applied here. If the pair is too close,
+the function returns `false` and leaves the singular/diagonal handling to the
+caller.
+
+# Arguments
+- `M::AbstractMatrix{Complex{T}}`:
+  Destination matrix.
+- `i, j::Int`:
+  Target and source indices.
+- `xi, yi, nxi, nyi`:
+  Target coordinates and target normal components.
+- `xj, yj, nxj, nyj`:
+  Source coordinates and source normal components.
+- `k::T`:
+  Real wavenumber.
+- `tol2::T`:
+  Squared distance threshold below which the pair is considered singular or too
+  close to evaluate with the regular formula.
+- `pref::Complex{T}`:
+  Scalar prefactor already containing the chosen kernel normalization.
+- `scale`:
+  Optional real or complex multiplicative factor, used for symmetry images.
+
+# Returns
+- `Bool`:
+  `true` if a regular off-diagonal contribution was added,
+  `false` if `r² <= tol2`.
 """
 @inline function _add_pair_default!(M::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,k::T,tol2::T,pref::Complex{T};scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real}
     dx=xi-xj;dy=yi-yj
@@ -323,42 +495,39 @@ if the pair was non-singular (distance² > tol2), `false` otherwise.
 end
 
 """
-    _add_pair3_no_symmetry_default!(
-        K::AbstractMatrix{C},
-        dK::AbstractMatrix{C},
-        ddK::AbstractMatrix{C},
-        i::Int, j::Int,
-        xi::T, yi::T, nxi::T, nyi::T,
-        xj::T, yj::T, nxj::T, nyj::T,
-        κi::T, k::T, tol2::T;
-        scale::Union{T,Complex{T}} = one(Complex{T})
-    )::Bool where {T<:Real, C<:Complex}
+    _add_pair3_no_symmetry_default!(K, dK, ddK, i, j, xi, yi, nxi, nyi, xj, yj, nxj, nyj, κi, k, tol2; scale=1)
 
-Add the default 2D Helmholtz double-layer contribution for the pair `(i,j)` without symmetry images, together with
-its first and second derivatives w.r.t. `k`. On the diagonal (`i==j`) the curvature term `κi/(2π)` is added to `K`
-and the function returns `false`. For off-diagonal pairs, the routine fills both directions `(i,j)` and `(j,i)`.
+Internal low-level helper adding the default kernel and its first two
+k-derivatives for one pair `(i,j)` without symmetry images.
 
-The default kernel and its k-derivatives are:
-- `K:   cosφ * (-im*k/2) * H₁^{(1)}(k r)`
-- `dK:  cosφ * (-im*k/2) * r * H₀^{(1)}(k r)`
-- `ddK: cosφ * (im/(2k)) * [ (-2 + (k r)^2) H₁^{(1)}(k r) + (k r) H₂^{(1)}(k r) ]`
-
-where `r = ‖(xi,yi)-(xj,yj)‖` and `cosφ = (nxi,nyi)⋅((xi,yi)-(xj,yj))/r`.
+This is the core pairwise building block used by
+`compute_kernel_matrix_with_derivatives!`. It computes, in one shot:
+- the raw kernel contribution,
+- the first derivative with respect to k,
+- the second derivative with respect to k.
 
 # Arguments
-- `K, dK, ddK`: `AbstractMatrix{C}` – destination matrices for kernel, first and second k-derivatives.
-- `i, j`: `Int` – target and source indices.
-- `xi, yi`: `T` – target coordinates.
-- `nxi, nyi`: `T` – target outward unit normal.
-- `xj, yj`: `T` – source coordinates.
-- `nxj, nyj`: `T` – source unit normal.
-- `κi`: `T` – boundary curvature at target point `i`.
-- `k`: `T` – (real) wavenumber.
-- `tol2`: `T` – squared distance threshold; pairs with `r^2 ≤ tol2` are treated as singular.
-- `scale`: `Union{T,Complex{T}}` – multiplicative factor (e.g., parity `±1` or a symmetry character). Defaults to `1+0im`.
+- `K, dK, ddK`:
+  Destination matrices for the kernel and its first two derivatives.
+- `i, j::Int`:
+  Pair indices.
+- `xi, yi, nxi, nyi`:
+  Target coordinates and target normal.
+- `xj, yj, nxj, nyj`:
+  Source coordinates and source normal.
+- `κi::T`:
+  Curvature at target point i, used only for the diagonal limit.
+- `k::T`:
+  Real wavenumber.
+- `tol2::T`:
+  Squared distance threshold.
+- `scale`:
+  Optional real or complex multiplier.
 
 # Returns
-- `Bool`: `false` for diagonal/self (`i==j`, curvature term added to `K[i,i]`), `true` for regular off-diagonal pairs.
+- `Bool`:
+  `false` for the diagonal/self case,
+  `true` for a regular off-diagonal pair.
 """
 @inline function _add_pair3_no_symmetry_default!(K::AbstractMatrix{C},dK::AbstractMatrix{C},ddK::AbstractMatrix{C},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xj::T,yj::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::Union{T,Complex{T}}=one(Complex{T})) where {T<:Real,C<:Complex}
     dx=xi-xj;dy=yi-yj
@@ -388,27 +557,49 @@ where `r = ‖(xi,yi)-(xj,yj)‖` and `cosφ = (nxi,nyi)⋅((xi,yi)-(xj,yj))/r`.
 end
 
 """
-    _add_pair3_image_default!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,xi::T,yi::T,nxi::T,nyi::T,xjr::T,yjr::T,nxj::T,nyj::T,κi::T,k::T,tol2::T;scale::Union{T,Complex{T}}=one(Complex{T}))::Bool where {T<:Real}
+    _add_pair3_image_default!(K, dK, ddK, i, j, xi, yi, nxi, nyi, xjr, yjr, nxjr, nyjr, κi, k, tol2; scale=1)
 
-Add the **default** Helmholtz double-layer kernel (and its k-derivatives) for a **symmetry image** of the source,
-i.e. the source at `(xjr, yjr)` obtained by reflection/rotation of `(xj, yj)`. No curvature is added for coincident
-image pairs; if `‖(xi,yi)-(xjr,yjr)‖^2 ≤ tol2`, the contribution is skipped and the function returns `false`.
+Internal low-level helper adding the default kernel and derivative contribution
+from a symmetry image of the source point. This function is the symmetry-image analogue of
+`_add_pair3_no_symmetry_default!`. It is used when reflections or rotations are
+active and the source point j must contribute not only directly, but also via
+its transformed images.
 
-See `_add_pair3_no_symmetry_default!` for the exact kernel forms.
+Unlike the no-symmetry version:
+- no curvature term is ever added here,
+- if the image happens to coincide with the target up to tolerance, the
+  contribution is simply skipped.
+
+The function evaluates the same default kernel and its derivatives as in the
+base case, but using the transformed image coordinates `(xjr, yjr)` and the
+image normal `(nxjr, nyjr)`, multiplied by a symmetry scale factor.
+
+Typical scale factors are:
+- `±1` for reflection parity,
+- `exp(i 2π m l / n)` for rotational characters.
 
 # Arguments
-- `K, dK, ddK`: `AbstractMatrix{Complex{T}}` – destination matrices.
-- `i, j`: `Int` – target and (original) source indices.
-- `xi, yi, nxi, nyi`: `T` – target coordinates and outward unit normal.
-- `xjr, yjr`: `T` – **image** source coordinates (already reflected/rotated).
-- `nxj, nyj`: `T` – original source outward normal (unused by default kernel for the `(i,j)` entry).
-- `κi`: `T` – curvature at target `i` (not used here since no diagonal/image curvature is added).
-- `k`: `T` – wavenumber.
-- `tol2`: `T` – squared distance tolerance for skipping coincident image pairs.
-- `scale`: `Union{T,Complex{T}}` – symmetry factor (parity `±1` or rotation character `e^{iθ}`).
+- `K, dK, ddK`:
+  Destination matrices.
+- `i, j::Int`:
+  Target and original source indices.
+- `xi, yi, nxi, nyi`:
+  Target data.
+- `xjr, yjr, nxjr, nyjr`:
+  Image source coordinates and image normal.
+- `κi::T`:
+  Included for interface consistency; not used here for image contributions.
+- `k::T`:
+  Real wavenumber.
+- `tol2::T`:
+  Squared coincidence threshold.
+- `scale`:
+  Symmetry multiplier.
 
 # Returns
-- `Bool`: `true` if the image contribution was added; `false` if it was skipped due to `r^2 ≤ tol2`.
+- `Bool`:
+  `true` if the image contribution was added,
+  `false` if it was skipped because the image-target distance was too small.
 """
 @inline function _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxjr,nyjr,κi,k,tol2;scale=one(eltype(K))) 
     dx=xi-xjr
@@ -456,21 +647,6 @@ function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints
     return K
 end
 
-"""
-    compute_kernel_matrix(bp::BoundaryPoints{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; multithreaded::Bool=true) -> Matrix{Complex{T}}
-
-Computes the kernel matrix for the given boundary points with symmetry reflections applied.
-
-# Arguments
-- `K::AbstractMatrix{Complex{T}}`: Destination matrix for the kernel values.
-- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, and curvatures.
-- `symmetry::Sym`: Symmetry to apply.
-- `k::T`: Wavenumber.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
-
-# Returns
-- `Matrix{Complex{T}}`: The computed kernel matrix with symmetry reflections applied.
-"""
 function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(K,Complex{T}(zero(T),zero(T)))
     xy=bp.xy
@@ -570,27 +746,33 @@ function compute_kernel_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints
     return K
 end
 
-"""
-    compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real} -> Tuple{Matrix{Complex{T}}, Matrix{Complex{T}}, Matrix{Complex{T}}}
 
-Build the kernel matrix `K` and its first/second derivatives w.r.t. `k` without symmetry images for a set of
-boundary points.
+"""
+    compute_kernel_matrix_with_derivatives!(K, dK, ddK, bp, k; multithreaded=true)
+
+Assemble in-place the raw default kernel matrix and its first two derivatives
+with respect to k, without symmetry.
+It fills:
+- `K`   with the raw double-layer kernel,
+- `dK`  with ∂K/∂k,
+- `ddK` with ∂²K/∂k².
+
 # Arguments
-- `K`: `AbstractMatrix{Complex{T}}` – destination matrix for kernel values.
-- `dK`: `AbstractMatrix{Complex{T}}` – destination matrix for first derivatives w.r.t. `k`.
-- `ddK`: `AbstractMatrix{Complex{T}}` – destination matrix for second derivatives w.r.t. `k`.
-- `bp`: `BoundaryPoints{T}` – boundary data (points `xy`, normals, curvature `κ`, and arc-length weights `ds`).
-- `k`: `T` – (real) wavenumber about which derivatives are taken.
-- `multithreaded`: `Bool` – enable threaded assembly.
+- `K, dK, ddK::AbstractMatrix{Complex{T}}`:
+  Destination matrices.
+- `bp::BoundaryPoints{T}`:
+  Boundary discretization.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to use threaded assembly.
 
 # Returns
-- `K`:   `Matrix{Complex{T}}` – kernel matrix.
-- `dK`:  `Matrix{Complex{T}}` – first derivative w.r.t. `k`.
-- `ddK`: `Matrix{Complex{T}}` – second derivative w.r.t. `k`.
+- `(K, dK, ddK)`, each modified in place.
 
-Notes:
-- Diagonal entries of `K` receive the curvature term `κ/(2π)`; `dK` and `ddK` have zero diagonals for the default kernels.
-- Off-diagonal entries fill both `(i,j)` and `(j,i)` for the default kernels to account for different normals.
+# Notes
+This function assembles raw kernel quantities only. To obtain the Fredholm matrix
+and its derivatives, use `fredholm_matrix_with_derivatives!`.
 """
 function compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
@@ -611,37 +793,6 @@ function compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},d
     return K,dK,ddK
 end
 
-"""
-    compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry::Sym,k::T;multithreaded::Bool=true) where {T<:Real, Sym<:AbsSymmetry} -> Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}
-
-- Reflections with fields `axis` (`:x_axis`, `:y_axis`, or `:origin`) and `parity` (`±1` for single-axis or a length-2
-  tuple for `:origin`). These contribute with scale factors `sxgn`, `sygn`, or `sxy = sxgn*sygn`.
-- `Rotation` symmetries with fields `n::Int` (order), `m::Int` (representation index, taken `mod n`), and
-  `center::Tuple{T,T}`. Images are added for `l=1,…,n-1` by rotating the source and multiplying by the character
-  `χ_l = exp(im * 2π * m * l / n)`.
-
-For the **default** kernels the source normal of images is not transformed (the DLP at `(i,j)` uses the **target**
-normal). For **custom** kernels, the image source normal is reflected/rotated before calling the user callbacks.
-
-# Arguments
-- `K`: `AbstractMatrix{Complex{T}}` – destination matrix for kernel values.
-- `dK`: `AbstractMatrix{Complex{T}}` – destination matrix for first derivatives w.r.t. `k`.
-- `ddK`: `AbstractMatrix{Complex{T}}` – destination matrix for second derivatives w.r.t. `k`.
-- `bp`: `BoundaryPoints{T}` – boundary data (points `xy`, normals, curvature `κ`, arc-length weights `ds`,
-  and shifts `shift_x`, `shift_y` for reflection axes).
-- `symmetry`: `Sym` – symmetry descriptor (reflections and/or `Rotation`).
-- `k`: `T` – wavenumber.
-- `multithreaded`: `Bool` – enable threaded assembly.
-
-# Returns
-- `K`:   `Matrix{Complex{T}}` – kernel matrix including image contributions.
-- `dK`:  `Matrix{Complex{T}}` – first derivative w.r.t. `k`.
-- `ddK`: `Matrix{Complex{T}}` – second derivative w.r.t. `k`.
-
-Notes:
-- Image self-pairs are **not** given curvature; if an image falls within `tol2` the contribution is skipped.
-- Reflection scales are real (`±1`); rotation scales are unit-modulus complex characters `χ_l`.
-"""
 function compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy)
     fill!(K,Complex{T}(zero(T),zero(T)))
@@ -711,19 +862,25 @@ function compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},d
 end
 
 """
-    fredholm_matrix!(K::AbstractMatrix{Complex{T}}, bp::BoundaryPoints{T}, symmetry_rule::SymmetryRuleBIM{T}, k::T; multithreaded::Bool=true)
+    fredholm_matrix!(K, bp, symmetry, k; multithreaded=true)
 
-Constructs the Fredholm matrix for the boundary integral method using preallocated matrices.
+Assemble in-place the Fredholm second-kind matrix used by the plain boundary
+integral method. Thus the returned matrix is the actual Fredholm matrix used in solves.
 
 # Arguments
-- `K::AbstractMatrix{Complex{T}}`: Destination matrix for the Fredholm operator.
-- `bp::BoundaryPoints{T}`: Boundary points structure containing the source points, normal vectors, curvatures, and differential arc lengths.
-- `symmetry::Sym`: Symmetry to apply.
-- `k::T`: Wavenumber.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `K::AbstractMatrix{Complex{T}}`:
+  Preallocated destination matrix.
+- `bp::BoundaryPoints{T}`:
+  Boundary discretization including `ds`.
+- `symmetry`:
+  Optional symmetry descriptor; may be `nothing`.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to thread the underlying kernel assembly.
 
 # Returns
-- `Matrix{Complex{T}}`: The constructed Fredholm matrix, incorporating differential arc lengths and symmetry reflections.
+- `K`, modified in place to contain the Fredholm matrix.
 """
 function fredholm_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     isnothing(symmetry) ? compute_kernel_matrix!(K,bp,k;multithreaded=multithreaded) : compute_kernel_matrix!(K,bp,symmetry,k;multithreaded=multithreaded)
@@ -739,21 +896,25 @@ function fredholm_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sy
 end
 
 """
-    fredholm_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}}, bp::BoundaryPoints{T},symmetry::Sym,k::T;multithreaded::Bool=true) where {T<:Real}
+    fredholm_matrix_with_derivatives!(K, dK, ddK, bp, symmetry, k; multithreaded=true)
 
-Build the Fredholm matrix `A` and it's derivative matrices `dA/dk & d^2A/dk^2`.
+Assemble in-place the Fredholm matrix and its first two derivatives with respect
+to k. The returned matrices are the actual Fredholm matrix and its derivatives used in solves.
 
 # Arguments
-- `K::AbstractMatrix{Complex{T}}`: Destination matrix for the Fredholm operator.
-- `dK::AbstractMatrix{Complex{T}}`: Destination matrix for the first derivative w.r.t. `k`.
-- `ddK::AbstractMatrix{Complex{T}}`: Destination matrix for the second derivative w.r.t. `k`.
-- `bp::BoundaryPoints{T}`: Boundary points with `(x,y)`, normals, and `ds`.
-- `symmetry::Sym`: Symmetry to apply.
-- `k::T`: Wavenumber.
-- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+- `K, dK, ddK::AbstractMatrix{Complex{T}}`:
+  Destination matrices for the Fredholm matrix and its first two derivatives.
+- `bp::BoundaryPoints{T}`:
+  Boundary discretization.
+- `symmetry`:
+  Optional symmetry descriptor, possibly `nothing`.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to thread the kernel assembly.
 
 # Returns
-- `Tuple{Matrix{Complex{T}},Matrix{Complex{T}},Matrix{Complex{T}}}`: The 3`N×N` matrices representing the Fredholm matrix and it's first and second derivative, respectively.
+- `(K, dK, ddK)`, modified in place.
 """
 function fredholm_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(symmetry)
@@ -797,6 +958,50 @@ function fredholm_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry,k::T;mu
     return K,dK,ddK
 end
 
+"""
+    construct_matrices!(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, A, pts, k; multithreaded=true)
+    construct_matrices(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, pts, k; multithreaded=true)
+    construct_matrices!(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, A, dA, ddA, pts, k; multithreaded=true)
+    construct_matrices(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, pts, k, A, dA, ddA; multithreaded=true)
+    construct_matrices(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, pts, k; multithreaded=true)
+
+High-level BIM assembly interface for the Fredholm matrix and, optionally, its
+first two derivatives with respect to k.
+
+# Overloads
+- `construct_matrices!(..., A, pts, k; ...)`
+  In-place assembly of the Fredholm matrix into a preallocated buffer.
+- `construct_matrices(..., pts, k; ...)`
+  Allocation-returning version of the above.
+- `construct_matrices!(..., A, dA, ddA, pts, k; ...)`
+  In-place assembly of the Fredholm matrix and its first two derivatives.
+- `construct_matrices(..., pts, k, A, dA, ddA; ...)`
+  Reuse externally allocated buffers and return them.
+- `construct_matrices(..., pts, k; ...)` with three return matrices
+  Allocating version for matrix-plus-derivatives.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`
+- `basis::AbstractHankelBasis`
+  Placeholder basis object included for interface compatibility.
+- `A, dA, ddA`:
+  Destination matrices when using in-place forms.
+- `pts::BoundaryPoints{T}`:
+  Boundary discretization.
+- `k::T`:
+  Real wavenumber.
+- `multithreaded::Bool=true`:
+  Whether to thread the underlying kernel assembly.
+
+# Returns
+- Single-matrix forms return `A`.
+- Derivative forms return `(A, dA, ddA)`.
+
+# Notes
+The `basis` argument is not mathematically used by the direct BIM itself, but it
+is kept so this solver can participate in the same interface as the other
+spectral methods.
+"""
 function construct_matrices!(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     @blas_1 fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
     return A
@@ -827,6 +1032,44 @@ function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::Bounda
     return A,dA,ddA
 end
 
+"""
+    solve(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, pts, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+    solve(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, A, pts, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+
+High-level scalar solver interface for the plain boundary integral method.
+
+# Overloads
+- `solve(..., pts, k; ...)`
+  Allocates a fresh matrix, assembles the Fredholm operator, and evaluates the
+  requested scalar quantity.
+- `solve(..., A, pts, k; ...)`
+  Reuses a caller-provided matrix buffer `A` to avoid repeated allocations in
+  sweeps or local optimization.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`
+- `basis::AbstractHankelBasis`
+  Placeholder basis for interface compatibility.
+- `A::AbstractMatrix{Complex{T}}`
+  Optional preallocated Fredholm matrix buffer.
+- `pts::BoundaryPoints{T}`:
+  Boundary discretization.
+- `k`:
+  Real wavenumber.
+- `multithreaded::Bool=true`
+  Passed to matrix assembly.
+- `use_krylov::Bool=true`
+  Forwarded to the scalar-reduction backend.
+- `which::Symbol=:det_argmin`
+  Selects the returned scalar diagnostic, depending on the backend. Typical
+  choices include:
+  - `:svd`
+  - `:det`
+  - `:det_argmin`
+
+# Returns
+- A scalar spectral diagnostic, whose exact meaning depends on `which`.
+"""
 function solve(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
@@ -839,6 +1082,56 @@ function solve(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Comple
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
+"""
+    solve_vect(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, pts, k; multithreaded=true)
+    solve_vect(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, A, pts, k; multithreaded=true)
+    solve_vect(solver::BoundaryIntegralMethod, billiard, basis::AbstractHankelBasis, ks::Vector{T}; multithreaded=true)
+
+Compute the smallest singular value of the BIM Fredholm matrix together with the
+associated right singular vector.
+
+    A = U Σ V*,
+
+identify the smallest singular value `σ_min`, and return:
+- `σ_min`,
+- the corresponding right singular vector.
+
+# Overloads
+1. `solve_vect(..., pts, k; ...)`
+   Allocates the matrix, assembles it, computes the SVD.
+2. `solve_vect(..., A, pts, k; ...)`
+   Reuses a preallocated matrix buffer.
+3. `solve_vect(..., billiard, basis, ks; ...)`
+   Convenience batched form over a vector of wavenumbers. For each k it:
+   - builds the boundary discretization,
+   - computes the smallest singular vector,
+   - stores both the vector and the discretization.
+
+# Arguments
+- `solver::BoundaryIntegralMethod`
+- `basis::AbstractHankelBasis`
+- `A::AbstractMatrix{Complex{T}}`
+  Optional preallocated Fredholm buffer.
+- `pts::BoundaryPoints{T}`
+  Boundary discretization.
+- `billiard`
+  Needed only by the vector-of-k overload to generate discretizations.
+- `ks::Vector{T}`
+  Wavenumbers for the batched variant.
+- `multithreaded::Bool=true`
+  Passed to assembly.
+
+# Returns
+Single-k overloads:
+- `(σ_min, u_min)`
+
+Vector-of-k overload:
+- `(us_all, pts_all)`
+
+  where:
+  - `us_all[i]` is the smallest right singular vector at `ks[i]`,
+  - `pts_all[i]` is the corresponding boundary discretization.
+"""
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
@@ -855,6 +1148,19 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{C
     return S[idx],conj.(Vt[idx,:])
 end
 
+function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
+    for i in eachindex(ks)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
+end
+
+# INTERNAL - only for testing performance of the solve workflow, not for actual use in the solver interface
 function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
@@ -876,15 +1182,4 @@ function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     return mu
 end
 
-function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
-    for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
-        us_all[i]=u
-        pts_all[i]=pts
-    end
-    return us_all,pts_all
-end
 

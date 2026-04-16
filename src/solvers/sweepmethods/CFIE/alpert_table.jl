@@ -25,6 +25,7 @@ end
     alpert_log_rule(::Type{T}, order::Int) where {T<:Real}
 
 Return the tabulated Alpert logarithmic quadrature rule of the requested `order`.
+Ref: Alpert, "Hybrid Gauss-Trapezoidal Quadrature Rules", SIAM J. Sci. Comput., 20(5), 1551–1584 (1999).
 
 Supported orders are:
 

@@ -1,3 +1,58 @@
+"""
+    AlpertPeriodicCache{T}
+
+Cache for Alpert near-singular self-panel correction on a closed periodic
+boundary component.
+
+This cache stores all geometry and interpolation data needed to apply the
+Alpert hybrid Gauss-trapezoidal correction for a single periodic panel, that
+is, a whole smooth closed boundary component sampled on a periodic midpoint
+grid.
+
+It is designed for the case where the boundary is represented by one periodic
+parameter and the Alpert correction points lie at signed offsets ±ξ/N from
+each target node. Because the panel is periodic, all interpolation back to the
+native grid is also periodic, and the correction can be expressed using simple
+integer offsets modulo N.
+
+# Fields
+- `xp, yp`:
+  Coordinates of the positive-side Alpert correction nodes. Entry `(p,i)`
+  corresponds to the point reached from target node `i` by moving a signed
+  parameter distance `+ξ_p/N`.
+- `txp, typ`:
+  First derivative components of the boundary parameterization at those
+  positive correction nodes, already rescaled to the computational parameter
+  used by the periodic discretization.
+- `sp`:
+  Speed `|γ'(t)|` at the positive correction nodes.
+- `xm, ym`:
+  Coordinates of the negative-side correction nodes, using `-ξ_p/N`.
+- `txm, tym`:
+  Tangent components at the negative correction nodes.
+- `sm`:
+  Speed at the negative correction nodes.
+- `rp, rm`:
+  Distances from each target node to the positive/negative correction nodes.
+  Entries are set to `Inf` when the distance is numerically degenerate, so the
+  assembly code can skip them safely.
+- `innp, innm`:
+  Oriented DLP numerators at the correction nodes, i.e. the scalar
+  `t_y*dx - t_x*dy` evaluated using the correction-node tangent. These are the
+  geometric numerators entering the double-layer kernel.
+- `offsp, offsm`:
+  Integer periodic interpolation offsets for the positive/negative correction
+  nodes. For each Alpert node index `p`, these determine which nearby periodic
+  grid points receive the interpolated correction.
+- `wtp, wtm`:
+  Lagrange interpolation weights corresponding to `offsp` and `offsm`.
+- `ninterp`:
+  Interpolation stencil size used for each correction node.
+
+# Applicability
+Use this cache only when `pts.is_periodic == true`, i.e. for a single smooth
+closed component discretized on a periodic midpoint grid.
+"""
 struct AlpertPeriodicCache{T<:Real}
     xp::Matrix{T}
     yp::Matrix{T}
@@ -20,6 +75,53 @@ struct AlpertPeriodicCache{T<:Real}
     ninterp::Int
 end
 
+"""
+    AlpertSmoothPanelCache{T}
+
+Cache for Alpert near-singular self-panel correction on an open smooth panel.
+
+This is the open-panel analogue of `AlpertPeriodicCache`. It is used when the
+boundary is represented as one smooth segment with endpoints, rather than as a
+closed periodic curve. In that case, the Alpert correction nodes are generated
+in a graded panel parameter `σ ∈ (0,1)`, and interpolation back to the native
+midpoint grid must use explicit local index stencils rather than periodic wrap.
+
+# Fields
+- `crv`:
+  The underlying curve object for the panel. Stored so the cache remains tied
+  to the exact geometric segment it was built from.
+- `sig`:
+  Computational midpoint nodes on the open panel. These are the panel-native
+  coordinates from which correction offsets are formed.
+- `xp, yp`, `xm, ym`:
+  Positive and negative Alpert correction-node coordinates for every target
+  node and every Alpert abscissa.
+- `txp, typ`, `txm, tym`:
+  Tangent components at those correction nodes, after applying the chain rule
+  through the panel grading map.
+- `sp`, `sm`:
+  Speeds at the positive/negative correction nodes.
+- `rp`, `rm`:
+  Distances from the target node to the correction node.
+- `innp`, `innm`:
+  Oriented DLP numerators at the correction nodes.
+- `idxp`, `idxm`:
+  Explicit interpolation indices for the positive/negative correction nodes.
+  Shape is `(jcorr, N, p)`, where `p` is the interpolation stencil size.
+- `wtp`, `wtm`:
+  Corresponding interpolation weights.
+  Same shape as the index arrays.
+
+# Difference from the periodic cache
+The periodic cache can describe interpolation through integer offsets mod N.
+The open-panel cache cannot, because endpoint proximity matters. Therefore it
+stores the full interpolation indexes and their weights for each target
+node separately.
+
+# Applicability
+Use this cache only when `pts.is_periodic == false`, i.e. for smooth panels in
+the composite-panel Alpert discretization.
+"""
 struct AlpertSmoothPanelCache{T<:Real}
     crv::Any
     sig::Vector{T}
@@ -45,6 +147,32 @@ end
 
 const AlpertCache{T}=Union{AlpertPeriodicCache{T},AlpertSmoothPanelCache{T}}
 
+"""
+    CFIEAlpertWorkspace{T}
+
+Workspace for repeated CFIE-Alpert assembly on a fixed discretized boundary.
+This object collects all `k`-independent data needed by the Alpert-based CFIE
+assembly.
+
+# Fields
+- `rule::AlpertLogRule{T}`:
+  The chosen Alpert logarithmic quadrature rule, containing the correction
+  abscissae, weights, correction width `a`, and number of correction nodes `j`.
+- `offs::Vector{Int}`:
+  Global component offsets in the assembled matrix. If the full system has
+  total size `Ntot`, then component `a` occupies rows/cols
+  `offs[a] : offs[a+1]-1`.
+- `Gs::Vector{CFIEGeomCache{T}}`:
+  One geometric cache per boundary component/panel, storing pairwise
+  distances, inverse distances, kernel numerators, speeds, etc.
+- `Cs::Vector{AlpertCache{T}}`:
+  One Alpert self-correction cache per component, periodic or open-panel
+  depending on the geometry.
+- `parr::Vector{CFIEPanelArrays{T}}`:
+  Flat coordinate/tangent arrays used for fast off-panel assembly.
+- `Ntot::Int`:
+  Total system size after concatenating all components.
+"""
 struct CFIEAlpertWorkspace{T<:Real}
     rule::AlpertLogRule{T}
     offs::Vector{Int}
@@ -54,6 +182,54 @@ struct CFIEAlpertWorkspace{T<:Real}
     Ntot::Int
 end
 
+"""
+    _dlp_terms(TT, k, r, inn, invr, w)
+
+Return the off-diagonal double-layer contribution and its first two
+k-derivatives for a single source-target pair.
+
+This helper evaluates the complex Helmholtz DLP kernel contribution already
+multiplied by the relevant quadrature weight `w`, and also returns the Hankel
+values used so that the SLP part can reuse them without recomputation.
+
+# Mathematical meaning
+For the 2D Helmholtz Green function, the DLP kernel contribution entering the
+CFIE has the form
+
+    D(r) = w * (i k / 2) * inn * H₁^(1)(k r) / r
+
+where:
+- `r` is the source-target distance,
+- `inn` is the oriented tangent numerator,
+- `w` is the quadrature weight.
+
+The returned values are:
+- `d0 = D(k)`
+- `d1 = dD/dk`
+- `d2 = d²D/dk²`
+
+with the derivative formulas written in a way that reuses `H₀` and `H₁`.
+
+# Arguments
+- `TT`:
+  Real scalar type.
+- `k`:
+  Wavenumber.
+- `r`:
+  Distance between source and target.
+- `inn`:
+  Oriented DLP numerator.
+- `invr`:
+  Reciprocal distance `1/r`.
+- `w`:
+  Quadrature weight already appropriate for the source point/correction point.
+
+# Returns
+`(d0, d1, d2, h0, h1)` where:
+- `d0, d1, d2` are complex scalars,
+- `h0 = H₀^(1)(k r)`,
+- `h1 = H₁^(1)(k r)`.
+"""
 @inline function _dlp_terms(TT,k,r,inn,invr,w)
     h0,h1=hankel_pair01(k*r)
     αD=Complex{TT}(0,k/2)
@@ -63,6 +239,45 @@ end
     return d0,d1,d2,h0,h1
 end
 
+"""
+    _slp_terms(TT, k, r, s, w, h0, h1)
+
+Return the off-diagonal single-layer contribution and its first two
+k-derivatives for one source-target pair.
+
+# Mathematical meaning
+The SLP contribution appearing in the CFIE has the form
+
+    S(r) = w * (i / 2) * H₀^(1)(k r) * s
+
+where:
+- `s` is the source-point speed factor,
+- `w` is the quadrature weight.
+
+The returned values are:
+- `s0 = S(k)`
+- `s1 = dS/dk`
+- `s2 = d²S/dk²`
+
+with derivative formulas written using the already available Hankel values.
+
+# Arguments
+- `TT`:
+  Real scalar type.
+- `k`:
+  Wavenumber.
+- `r`:
+  Distance between source and target.
+- `s`:
+  Source-point speed factor entering the arclength measure.
+- `w`:
+  Quadrature weight.
+- `h0, h1`:
+  Hankel values `H₀^(1)(k r)` and `H₁^(1)(k r)`.
+
+# Returns
+`(s0, s1, s2)` as complex scalars.
+"""
 @inline function _slp_terms(TT,k,r,s,w,h0,h1)
     αS=Complex{TT}(0,one(TT)/2)
     s0=w*(αS*h0*s)
@@ -71,21 +286,88 @@ end
     return s0,s1,s2
 end
 
+"""
+    _wrap01(u)
+
+Wrap a real parameter to the half-open interval [0,1).
+
+This is the unit-interval analogue of periodic angular wrapping. It is used
+when periodic correction nodes for closed curves step outside the base
+parameter range.
+
+# Returns
+A value equivalent to `u mod 1`, but guaranteed to lie in `[0,1)`.
+
+# Use case
+Needed by periodic Alpert caches when a correction node at
+`u_i ± ξ/N` crosses the periodic seam.
+"""
 @inline function _wrap01(u::T) where {T<:Real}
     v=mod(u,one(T))
     v<zero(T) ? v+one(T) : v
 end
 
+"""
+    wrap_diff(t)
+
+Wrap an angular difference to the interval [-π, π).
+
+This helper is used to determine the orientation of a periodic parameter grid
+from successive samples, without ambiguity from the `2π` branch cut.
+
+# Returns
+The wrapped angular difference.
+
+# Use case
+Used in `_periodic_orientation_sign` to determine whether the periodic panel
+parameter increases or decreases with the stored node ordering.
+"""
 @inline function wrap_diff(t::T) where {T<:Real}
     mod(t+T(pi),two_pi)-T(pi)
 end
 
+"""
+    _panel_sigma_wrap(σ)
+
+Wrap an open-panel computational parameter into [0,1).
+
+This is used for midpoint-grid panel coordinates when forming Alpert correction
+nodes displaced by ±Δσ.
+
+# Returns
+Wrapped panel coordinate in `[0,1)`.
+"""
 @inline function _panel_sigma_wrap(σ::T) where {T<:Real}
     v=mod(σ,one(T))
     v<zero(T) ? v+one(T) : v
 end
 
+"""
+    _lagrange_weights(ξ, nodes)
 
+Compute Lagrange interpolation weights at evaluation point `ξ` for the given
+interpolation nodes.
+
+    ℓ_j(ξ) = ∏_{l≠j} (ξ - x_l) / (x_j - x_l)
+
+so that for any interpolated quantity `f`
+
+    f(ξ) ≈ Σ_j ℓ_j(ξ) f(x_j).
+
+# Arguments
+- `ξ`:
+  Evaluation point.
+- `nodes`:
+  Stencil nodes.
+
+# Returns
+- `w::Vector{T}`:
+  The Lagrange basis weights evaluated at `ξ`.
+
+# Use case in Alpert
+These weights are used to transfer kernel values evaluated at off-grid Alpert
+correction nodes back to the nearby native discretization nodes.
+"""
 @inline function _lagrange_weights(ξ::T,nodes::AbstractVector{T}) where {T<:Real}
     m=length(nodes)
     w=Vector{T}(undef,m)
@@ -104,6 +386,27 @@ end
     return w
 end
 
+"""
+    _alpert_interp_offsets_weights(ξ, ninterp)
+
+Build periodic interpolation offsets and weights for an Alpert correction node
+located at non-integer offset `ξ`.
+
+# Arguments
+- `ξ`:
+  Non-integer offset in grid-index units.
+- `ninterp`:
+  Interpolation stencil size.
+
+# Returns
+- `offs`:
+  Integer offsets describing the chosen local stencil.
+- `wt`:
+  Interpolation weights on that stencil.
+
+# Use case
+Stored in the periodic Alpert cache and later applied modulo N.
+"""
 @inline function _alpert_interp_offsets_weights(ξ::T,ninterp::Int) where {T<:Real}
     j0=floor(Int,ξ-T(ninterp)/2+one(T))
     offs=collect(j0:(j0+ninterp-1))
@@ -111,12 +414,47 @@ end
     return offs,wt
 end
 
+"""
+    _local_offsets(p)
+
+Return a centered even interpolation stencil of width `p`.
+
+For example, if `p = 8`, the offsets are
+`[-3, -2, -1, 0, 1, 2, 3, 4]`.
+
+# Requirements
+- `p` must be even.
+
+# Use case
+This is the canonical local stencil used for open-panel midpoint interpolation.
+"""
 @inline function _local_offsets(p::Int)
     iseven(p) || error("Interpolation stencil size p must be even.")
     q=p÷2
-    collect(-(q-1):q)
+    return collect(-(q-1):q)
 end
 
+
+"""
+    _periodic_orientation_sign(ts)
+
+Determine the orientation sign of a periodic node sequence.
+
+# Mathematical meaning
+Given periodic parameter nodes `ts`, this function inspects the wrapped
+difference between the first two nodes and returns:
+- `+1` if the parameter increases in the stored ordering,
+- `-1` if it decreases.
+
+# Why this matters
+For periodic Alpert correction nodes one must know whether positive correction
+correspond to forward or backward motion along the stored parameter
+order. This sign ensures the cache respects the actual orientation of the
+component.
+
+# Returns
+`1` or `-1`.
+"""
 @inline function _periodic_orientation_sign(ts::AbstractVector{T}) where {T<:Real}
     N=length(ts)
     N<2 && return 1
@@ -124,15 +462,45 @@ end
     Δ>=zero(T) ? 1 : -1
 end
 
+"""
+    _dinner(dx, dy, tx, ty)
+
+`ty*dx - tx*dy`.
+
+# Returns
+A scalar numerator for the DLP kernel.
+"""
 @inline function _dinner(dx,dy,tx,ty)
-    ty*dx-tx*dy
+    return ty*dx-tx*dy
 end
 
+"""
+    _speed(v)
+
+Return the Euclidean norm of a tangent vector.
+
+# Returns
+`max(|v|, eps(T))`.
+"""
 @inline function _speed(v::SVector{2,T}) where {T<:Real}
     s=sqrt(v[1]^2+v[2]^2)
     s<eps(T) ? eps(T) : s
 end
 
+"""
+    _panel_arrays(pts)
+
+Extract flat coordinate and tangent arrays from `BoundaryPointsCFIE`.
+
+# Returns
+`(X, Y, dX, dY, s)` where:
+- `X, Y` are point coordinates,
+- `dX, dY` are tangent components,
+- `s` is the speed array.
+
+This is a lightweight unpacking helper used in tight assembly loops that prefer
+plain vectors over repeated field access on small static vectors.
+"""
 @inline function _panel_arrays(pts::BoundaryPointsCFIE{T}) where {T<:Real}
     X=getindex.(pts.xy,1)
     Y=getindex.(pts.xy,2)
@@ -142,6 +510,44 @@ end
     return X,Y,dX,dY,s
 end
 
+"""
+    _add_naive_panel_block!(A, gi, xi, yi, rb, pb, Pb, k, αD, αS, ik; skip_pred=(j->false))
+
+Add the naive off-panel CFIE contribution from one source panel to a fixed
+target row.
+
+This helper is used for interactions that do not need Alpert self-correction,
+typically distinct panels/components
+
+# Mathematical meaning
+For each source node `j` in the source block `rb`, this adds
+
+    - [ D_ij + i k S_ij ]
+
+using the standard off-diagonal DLP and SLP kernels with source weights from
+`pb.ws`.
+
+# Arguments
+- `A`:
+  Global system matrix.
+- `gi`:
+  Global row index of the target point.
+- `xi, yi`:
+  Target coordinates.
+- `rb`:
+  Global index range of the source block.
+- `pb`:
+  Source boundary-point object.
+- `Pb`:
+  Flat source panel arrays.
+- `k, αD, αS, ik`:
+  Wavenumber and kernel prefactors.
+- `skip_pred`:
+  Optional predicate to omit selected source indices.
+
+# Returns
+- `A`, modified in place.
+"""
 function _add_naive_panel_block!(A::AbstractMatrix{Complex{T}},gi::Int,xi::T,yi::T,rb::UnitRange{Int},pb::BoundaryPointsCFIE{T},Pb::CFIEPanelArrays{T},k::T,αD::Complex{T},αS::Complex{T},ik::Complex{T};skip_pred=(j->false)) where {T<:Real}
     Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s;wb=pb.ws
     Nb=length(Xb)
@@ -159,6 +565,39 @@ function _add_naive_panel_block!(A::AbstractMatrix{Complex{T}},gi::Int,xi::T,yi:
     return A
 end
 
+
+"""
+    _add_self_panel_alpert_correction!(A, gi, xi, yi, i, ra, Ca, hσ, k, αD, αS, ik, rule)
+
+Add the Alpert self-panel correction for one target node on an open smooth
+panel. It implements the replacement of the inaccurate near-diagonal part by
+a corrected hybrid Gauss-trapezoid contribution.
+
+# Arguments
+- `A`:
+  Global system matrix.
+- `gi`:
+  Global row index of the target.
+- `xi, yi`:
+  Target coordinates.
+- `i`:
+  Local target index within the panel.
+- `ra`:
+  Global row/column range of the panel.
+- `Ca`:
+  `AlpertSmoothPanelCache`.
+- `hσ`:
+  Base panel midpoint spacing in computational parameter.
+- `k`:
+  Wavenumber.
+- `αD, αS, ik`:
+  Kernel prefactors.
+- `rule`:
+  Alpert logarithmic correction rule.
+
+# Returns
+- `A`, modified in place.
+"""
 function _add_self_panel_alpert_correction!(A::AbstractMatrix{Complex{T}},gi::Int,xi::T,yi::T,i::Int,ra::UnitRange{Int},Ca::AlpertSmoothPanelCache{T},hσ::T,k::T,αD::Complex{T},αS::Complex{T},ik::Complex{T},rule::AlpertLogRule{T}) where {T<:Real}
     jcorr=rule.j
     @inbounds for p in 1:jcorr
@@ -189,6 +628,33 @@ function _add_self_panel_alpert_correction!(A::AbstractMatrix{Complex{T}},gi::In
     return A
 end
 
+"""
+    _panel_interp_midpoint_data(σ, hσ, N, p)
+
+Build interpolation indices and weights for an off-grid point on an open
+midpoint panel.
+
+# Mathematical idea
+An off-grid coordinate `σ` is expressed relative to the midpoint grid spacing
+`hσ`. One chooses a centered even stencil of width `p`, clamps it inside the
+panel, and computes Lagrange weights on that stencil.
+
+# Arguments
+- `σ`:
+  Off-grid computational coordinate.
+- `hσ`:
+  Midpoint spacing.
+- `N`:
+  Number of panel nodes.
+- `p`:
+  Even interpolation stencil size.
+
+# Returns
+- `idx`:
+  Concrete interpolation indices on the panel.
+- `wt`:
+  Lagrange interpolation weights.
+"""
 @inline function _panel_interp_midpoint_data(σ::T,hσ::T,N::Int,p::Int) where {T<:Real}
     iseven(p) || error("p must be even.")
     p<=N || error("p must satisfy p <= N.")
@@ -206,6 +672,17 @@ end
     return idx,wt
 end
 
+"""
+    _eval_open_panel_geom_exact(crv, u)
+
+Evaluate exact open-panel geometry data at parameter value `u`.
+
+# Returns
+`(x, y, tx, ty, s)` where:
+- `(x,y)` is the point on the curve,
+- `(tx,ty)` is the tangent,
+- `s = |γ'(u)|` is the speed.
+"""
 @inline function _eval_open_panel_geom_exact(crv,u::T) where {T<:Real}
     q=curve(crv,u)
     t=tangent(crv,u)
@@ -213,6 +690,37 @@ end
     return q[1],q[2],t[1],t[2],s
 end
 
+"""
+    _build_alpert_periodic_cache(solver, crv, pts, rule, ord)
+
+Build the periodic Alpert self-correction cache for one closed smooth component.
+
+# What this computes
+For each target node `i` and each Alpert correction abscissa `ξ_p`, this
+function:
+1. constructs the positive and negative correction nodes on the periodic curve,
+2. evaluates coordinates, tangents, speeds, distances, and DLP numerators,
+3. constructs periodic interpolation offsets and weights of size `ord+3`.
+
+# Arguments
+- `solver`:
+  `CFIE_alpert` solver.
+- `crv`:
+  Underlying smooth periodic curve.
+- `pts`:
+  Boundary discretization for this component.
+- `rule`:
+  Alpert logarithmic rule.
+- `ord`:
+  Alpert correction order.
+
+# Returns
+- `AlpertPeriodicCache{T}`
+
+# Notes
+The interpolation width is chosen as `ninterp = ord + 3`, mirroring the
+standard practical choice of using a  slightly wider interpolation stencil.
+"""
 function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real,C<:AbsCurve}
     N=length(pts.xy)
     jcorr=rule.j
@@ -271,6 +779,39 @@ function _build_alpert_periodic_cache(solver::CFIE_alpert{T},crv::C,pts::Boundar
     return AlpertPeriodicCache(xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,rp,rm,innp,innm,offsp,wtp,offsm,wtm,ninterp)
 end
 
+"""
+    _build_alpert_smooth_panel_cache(solver, crv, pts, rule, p)
+
+Build the open-panel Alpert self-correction cache for one smooth panel.
+
+# What this computes
+For each target midpoint node and each Alpert correction, this
+function:
+1. shifts the panel computational coordinate by ±Δσ,
+2. maps that shifted coordinate through the panel grading map,
+3. evaluates the exact geometry and its chain-rule-transformed tangent,
+4. computes distances and DLP numerators,
+5. builds a local interpolation stencil of width `p`.
+
+# Arguments
+- `solver`:
+  `CFIE_alpert` solver.
+- `crv`:
+  Underlying open curve segment.
+- `pts`:
+  Boundary discretization for this panel.
+- `rule`:
+  Alpert logarithmic rule.
+- `p`:
+  Even interpolation stencil size.
+
+# Returns
+- `AlpertSmoothPanelCache{T}`
+
+# Notes
+Unlike the periodic cache, interpolation data must be stored separately for
+each target node because the stencil is clamped near endpoints.
+"""
 function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},p::Int) where {T<:Real}
     iseven(p) || error("Smooth-panel Alpert interpolation stencil size p must be even.")
     N=length(pts.xy)
@@ -333,6 +874,22 @@ function _build_alpert_smooth_panel_cache(solver::CFIE_alpert{T},crv,pts::Bounda
     return AlpertSmoothPanelCache(crv,sig,xp,yp,txp,typ,sp,xm,ym,txm,tym,sm,rp,rm,innp,innm,idxp,wtp,idxm,wtm)
 end
 
+"""
+    _build_alpert_component_cache(solver, crv, pts, rule, ord)
+
+Build the appropriate Alpert self-correction cache for one component.
+
+# Dispatch logic
+- If `pts.is_periodic`, returns `AlpertPeriodicCache`.
+- Otherwise returns `AlpertSmoothPanelCache`.
+
+# Returns
+- `AlpertCache{T}`
+
+# Why this helper exists
+It centralizes the cache-type selection so the workspace builder does not need
+to know whether each component is periodic or open.
+"""
 function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryPointsCFIE{T},rule::AlpertLogRule{T},ord::Int) where {T<:Real}
     if pts.is_periodic
         return _build_alpert_periodic_cache(solver,crv,pts,rule,ord)
@@ -346,6 +903,47 @@ function _build_alpert_component_cache(solver::CFIE_alpert{T},crv,pts::BoundaryP
     end
 end
 
+"""
+    _assemble_self_alpert_periodic!(A, pts, G, C, row_range, k, rule; multithreaded=true)
+
+Assemble the self-interaction block for one periodic component using Alpert’s
+hybrid correction.
+
+# Mathematical structure
+This function forms the self-block in three conceptual steps:
+
+1. Add the identity contribution on the diagonal.
+2. Add the full naive periodic quadrature contribution for all off-diagonal
+   source nodes.
+3. Undo the inaccurate near-neighbor trapezoid contribution in the band
+   `|j-i| < a`, where `a = rule.a`.
+4. Replace that near band with the Alpert correction-node contribution,
+   redistributed through the periodic interpolation weights.
+
+Thus the final block is the corrected self-panel CFIE block for a smooth closed
+periodic component.
+
+# Arguments
+- `A`:
+  Global system matrix.
+- `pts`:
+  Periodic boundary component.
+- `G`:
+  Geometric cache for this component.
+- `C`:
+  `AlpertPeriodicCache`.
+- `row_range`:
+  Global row/column range for this component.
+- `k`:
+  Wavenumber.
+- `rule`:
+  Alpert logarithmic correction rule.
+- `multithreaded`:
+  Enables row-parallel assembly.
+
+# Returns
+- `A`, modified in place.
+"""
 function _assemble_self_alpert_periodic!(A::Matrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2)
@@ -393,6 +991,26 @@ function _assemble_self_alpert_periodic!(A::Matrix{Complex{T}},pts::BoundaryPoin
     return A
 end
 
+"""
+    _assemble_self_alpert_periodic_deriv!(A, A1, A2, pts, G, C, P, row_range, k, rule; multithreaded=true)
+
+Assemble the periodic Alpert self-block together with its first and second
+derivatives with respect to `k`.
+This is the derivative-aware version of `_assemble_self_alpert_periodic!`.
+Every naive contribution, near-band subtraction, and Alpert correction-node
+replacement is mirrored consistently at the level of:
+- kernel values,
+- first derivatives,
+- second derivatives.
+
+# Returns
+- `A`:
+  CFIE block.
+- `A1`:
+  First k-derivative.
+- `A2`:
+  Second k-derivative.
+"""
 function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},P::CFIEPanelArrays{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
     X=P.X;Y=P.Y
@@ -450,6 +1068,29 @@ function _assemble_self_alpert_periodic_deriv!(A::AbstractMatrix{Complex{T}},A1:
     return A,A1,A2
 end
 
+"""
+    _assemble_self_alpert_smooth_panel!(A, pts, G, C, row_range, k, rule; multithreaded=true)
+
+Assemble the self-interaction block for one open smooth panel using Alpert
+endpoint-aware correction.
+
+# Mathematical structure
+For open panels, the near correction differs from the periodic case:
+- the near band `|j-i| < a` is treated differently because endpoint effects
+  break periodic symmetry,
+- the local correction nodes are interpolated through explicit per-target
+  interpolation.
+
+The function:
+1. adds the identity,
+2. adds either the naive or near-modified DLP/CFIE contribution depending on
+   whether `|j-i| < a`,
+3. adds the positive and negative Alpert correction-node contributions through
+   the open-panel interpolation.
+
+# Returns
+- `A`, modified in place.
+"""
 function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2);w=pts.ws
@@ -494,6 +1135,19 @@ function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::Boundary
     return A
 end
 
+"""
+    _assemble_self_alpert_smooth_panel_deriv!(A, A1, A2, pts, G, C, P, row_range, k, rule; multithreaded=true)
+
+Derivative version of the open-panel Alpert self-block assembly.
+
+# Returns
+- `A`, `A1`, `A2` assembled in place.
+
+# Mathematical role
+This extends `_assemble_self_alpert_smooth_panel!` to the first and second
+k-derivatives, with all near-band logic and correction-node interpolation
+performed as before.
+"""
 function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},P::CFIEPanelArrays{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
     X=P.X;Y=P.Y;w=pts.ws
@@ -548,12 +1202,47 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
     return A,A1,A2
 end
 
+
+"""
+    _assemble_self_alpert!(solver, A, pts, G, C, row_range, k, rule; multithreaded=true)
+
+Dispatch helper for Alpert self-block assembly.
+
+# Behavior
+- If `pts.is_periodic`, dispatches to `_assemble_self_alpert_periodic!`.
+- Otherwise dispatches to `_assemble_self_alpert_smooth_panel!`.
+
+# Purpose
+Provides a unified entry point when the caller does not want to branch
+explicitly on cache type.
+"""
 function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     pts.is_periodic ?
         _assemble_self_alpert_periodic!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded) :
         _assemble_self_alpert_smooth_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
 end
 
+
+"""
+    _assemble_all_offpanel_naive!(A, pts, offs, parr, k; multithreaded=true)
+
+Assemble all off-panel and off-component interactions using naive quadrature.
+
+# Arguments
+- `A`:
+  Global system matrix.
+- `pts`:
+  Vector of component/panel discretizations.
+- `offs`:
+  Global component offsets.
+- `parr`:
+  Flat source arrays for each panel.
+- `k`:
+  Wavenumber.
+
+# Returns
+- `A`, modified in place.
+"""
 function _assemble_all_offpanel_naive!(A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
     for aidx in eachindex(pts)
@@ -581,6 +1270,15 @@ function _assemble_all_offpanel_naive!(A::Matrix{Complex{T}},pts::Vector{Boundar
     return A
 end
 
+
+"""
+    _assemble_all_offpanel_naive_deriv!(A, A1, A2, pts, offs, parr, k; multithreaded=true)
+
+Derivative-aware version of `_assemble_all_offpanel_naive!`.
+
+# Returns
+- `A`, `A1`, `A2` modified in place.
+"""
 function _assemble_all_offpanel_naive_deriv!(A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
     for aidx in eachindex(pts)
@@ -612,6 +1310,29 @@ function _assemble_all_offpanel_naive_deriv!(A::Matrix{Complex{T}},A1::Matrix{Co
     return A,A1,A2
 end
 
+"""
+    build_cfie_alpert_workspace(solver, pts)
+
+Build the reusable Alpert workspace for a fixed boundary discretization.
+The function matches each `pts[a]` to the corresponding curve segment from the
+solver’s boundary description. For composite boundaries, the boundary is first
+flattened so that the cache list and panel list remain aligned.
+
+# What this builds
+- the Alpert logarithmic rule,
+- global component offsets,
+- one geometry cache per component,
+- one Alpert self-correction cache per component,
+- one flat panel-array cache per component,
+- the total matrix size.
+
+# Arguments
+- `solver::CFIE_alpert`
+- `pts::Vector{BoundaryPointsCFIE{T}}`
+
+# Returns
+- `CFIEAlpertWorkspace{T}`
+"""
 function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     rule=alpert_log_rule(T,solver.alpert_order)
     offs=component_offsets(pts)
@@ -626,6 +1347,33 @@ function build_cfie_alpert_workspace(solver::CFIE_alpert{T},pts::Vector{Boundary
     return CFIEAlpertWorkspace(rule,offs,Gs,Cs,parr,offs[end]-1)
 end
 
+"""
+    _construct_matrices_cached!(A, pts, ws, k; multithreaded=true)
+
+Assemble the full CFIE-Alpert matrix using a prebuilt workspace.
+
+# Mathematical decomposition
+The global matrix is assembled as
+
+    A = Σ self-blocks + Σ off-panel blocks
+
+where:
+- self-blocks are corrected by Alpert hybrid quadrature,
+- off-panel blocks are assembled naively because they are smooth.
+
+# Arguments
+- `A`:
+  Preallocated global matrix.
+- `pts`:
+  Boundary discretizations.
+- `ws`:
+  `CFIEAlpertWorkspace`.
+- `k`:
+  Wavenumber.
+
+# Returns
+- `A`, modified in place.
+"""
 @inline function _construct_matrices_cached!(A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     offs=ws.offs;Gs=ws.Gs;Cs=ws.Cs;parr=ws.parr;rule=ws.rule
@@ -641,6 +1389,19 @@ end
     return A
 end
 
+"""
+    _construct_matrices_deriv_cached!(A, A1, A2, pts, ws, k; multithreaded=true)
+
+Assemble the full CFIE-Alpert matrix and its first two k-derivatives using a
+prebuilt workspace.
+This is the derivative-aware counterpart of `_construct_matrices_cached!`,
+combining:
+- derivative-aware self-block Alpert corrections,
+- derivative-aware naive off-panel assembly.
+
+# Returns
+- `A`, `A1`, `A2` modified in place.
+"""
 @inline function _construct_matrices_deriv_cached!(A::Matrix{Complex{T}},A1::Matrix{Complex{T}},A2::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     fill!(A,zero(Complex{T}))
     fill!(A1,zero(Complex{T}))
@@ -658,6 +1419,48 @@ end
     return A,A1,A2
 end
 
+"""
+    construct_matrices!(solver::CFIE_alpert, A, pts, ws, k; multithreaded=true)
+    construct_matrices!(solver::CFIE_alpert, A, pts, k; multithreaded=true)
+    construct_matrices(solver::CFIE_alpert, pts, ws, k; multithreaded=true)
+    construct_matrices(solver::CFIE_alpert, pts, k; multithreaded=true)
+    construct_matrices!(solver::CFIE_alpert, A, A1, A2, pts, ws, k; multithreaded=true)
+    construct_matrices!(solver::CFIE_alpert, A, A1, A2, pts, k; multithreaded=true)
+    construct_matrices!(solver::CFIE_alpert, basis::AbstractHankelBasis, A, A1, A2, pts, ws, k; multithreaded=true)
+    construct_matrices!(solver::CFIE_alpert, basis::AbstractHankelBasis, A, A1, A2, pts, k; multithreaded=true)
+
+High-level matrix assembly interface for the CFIE-Alpert solver family.
+
+# What is assembled
+All these overloads construct the same global CFIE boundary operator matrix,
+with optional first and second derivatives with respect to `k`.
+
+The value-only forms return or overwrite:
+- `A(k)`
+
+The derivative-aware forms additionally assemble:
+- `A1(k) = dA/dk`
+- `A2(k) = d²A/dk²`
+
+# Overload philosophy
+- Forms with `ws` reuse a prebuilt `CFIEAlpertWorkspace`.
+- Forms without `ws` build the workspace internally.
+- Bang forms write into preallocated matrices.
+- Non-bang forms allocate and return new matrices.
+- Basis-accepting forms exist for compatibility with the generic
+  interface used elsewhere in the codebase.
+
+# Performance guidance
+For repeated use over many wavenumbers, prefer:
+1. build `pts`,
+2. build `ws = build_cfie_alpert_workspace(...)`,
+3. reuse `construct_matrices!` with preallocated `A`, `A1`, `A2`.
+
+# Returns
+Depending on the overload:
+- `A`
+- `(A, A1, A2)`
+"""
 function construct_matrices!(solver::CFIE_alpert{T},A::Matrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     _construct_matrices_cached!(A,pts,ws,k;multithreaded=multithreaded)
 end
@@ -696,6 +1499,36 @@ function construct_matrices!(solver::CFIE_alpert{T},basis::AbstractHankelBasis,A
     _construct_matrices_deriv_cached!(A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
+"""
+    solve(solver::CFIE_alpert, basis, pts, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+    solve(solver::CFIE_alpert, basis, pts, ws, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+    solve(solver::CFIE_alpert, basis, A, pts, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+    solve(solver::CFIE_alpert, basis, A, pts, ws, k; multithreaded=true, use_krylov=true, which=:det_argmin)
+
+High-level scalar solve interface for the CFIE-Alpert discretization.
+
+# Purpose
+These methods assemble the Alpert-corrected CFIE matrix and reduce it to a
+single scalar diagnostic using the common backend `@svd_or_det_solve`.
+
+Typical choices of `which` include:
+- `:svd` for smallest singular value,
+- `:det` for determinant,
+- `:det_argmin` for determinant-based minimization logic.
+
+# Overloads
+- no `ws`, no `A`:
+  simplest one-shot form;
+- with `ws`:
+  reuse cached geometric/alpert preprocessing;
+- with `A`:
+  reuse matrix storage;
+- with both `A` and `ws`:
+  most efficient repeated-use form.
+
+# Returns
+A scalar diagnostic whose exact meaning depends on `which`.
+"""
 function solve(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
@@ -717,6 +1550,36 @@ function solve(solver::CFIE_alpert,basis::Ba,A::AbstractMatrix{Complex{T}},pts::
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
+"""
+    solve_vect(solver::CFIE_alpert, basis, pts, k; multithreaded=true)
+    solve_vect(solver::CFIE_alpert, basis, pts, ws, k; multithreaded=true)
+    solve_vect(solver::CFIE_alpert, basis, A, pts, k; multithreaded=true)
+    solve_vect(solver::CFIE_alpert, basis, A, pts, ws, k; multithreaded=true)
+
+Compute the smallest singular value of the Alpert CFIE matrix and the
+associated right singular vector.
+
+# Mathematical meaning
+Given the assembled matrix `A`, these routines compute its full SVD
+
+    A = U Σ V*
+
+and return:
+- `σ_min(A)`,
+- the corresponding right singular vector.
+
+# Overloads
+They mirror the `solve` interface:
+- one-shot,
+- cached workspace,
+- reusable matrix buffer,
+- reusable matrix buffer plus workspace.
+
+# Returns
+`(mu, u_mu)` where:
+- `mu` is the smallest singular value,
+- `u_mu` is the corresponding right singular vector.
+"""
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
@@ -746,6 +1609,7 @@ function solve_vect(solver::CFIE_alpert,basis::Ba,A::AbstractMatrix{Complex{T}},
     return S[idx],conj.(Vt[idx,:])
 end
 
+# INTERNAL - for benchmarking and diagnostic purposes only; not part of the public API
 function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
@@ -771,6 +1635,7 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     return s
 end
 
+# INTERNAL - for benchmarking and diagnostic purposes only; not part of the public API
 function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     t0=time()
