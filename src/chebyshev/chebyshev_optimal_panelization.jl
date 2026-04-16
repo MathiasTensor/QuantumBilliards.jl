@@ -153,7 +153,7 @@ end
 #   - max_errs3::Vector{Float64}
 function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     if solver isa CFIE_kress || solver isa CFIE_kress_corners || solver isa CFIE_kress_global_corners
-        block_cache=build_cfie_kress_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax, really hate this hack, but dont care enough, not in hot loop
+        block_cache=build_cfie_kress_block_caches(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax, really hate this hack, but dont care enough, not in hot loop
     else
         block_cache=build_dlp_kress_block_cache(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) 
     end
