@@ -1207,7 +1207,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_alpert Direct Workspace" directws=build_CFIE_alpert_workspace(solver,pts)
+            @benchit timeit=timeit "CFIE_alpert Direct Workspace" directws=build_cfie_alpert_workspace(solver,pts)
             @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
