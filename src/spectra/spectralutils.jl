@@ -529,6 +529,7 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - `multithreaded_matrices::Bool=false`: Enable multithreading in matrix construction.
 - `use_krylov::Bool=true`: Use Krylov-based shift–invert solver instead of full generalized EVP.
 - `seg_reuse_frac::T=0.95`: Controls segment size; geometry is reused while `k` stays within this fraction of the segment’s upper bound.
+- `solve_info::Bool=true`: Print detailed information during the solve process.
 
 # Returns
 - `λs::Vector{T}`: Corrected eigenvalues (wavenumbers).
@@ -540,7 +541,7 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
 - Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95)) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     ks=T[]
     dks=T[]
     k=k1
@@ -565,7 +566,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
     A0=Matrix{Complex{T}}(undef,N0,N0)
     dA0=Matrix{Complex{T}}(undef,N0,N0)
     ddA0=Matrix{Complex{T}}(undef,N0,N0)
-    solve_INFO!(solver,A0,dA0,ddA0,pts0,ks[1],dks[1];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    solve_info && solve_INFO!(solver,A0,dA0,ddA0,pts0,ks[1],dks[1];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     p=Progress(length(ks),1)
     seg_first=1
