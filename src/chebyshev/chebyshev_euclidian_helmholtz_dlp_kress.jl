@@ -531,8 +531,8 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
 end
 
 """
-    construct_fredholm_kress_matrices_chebyshev!(Fs,pts,ws;multithreaded=true)
-    construct_fredholm_kress_matrices_derivatives_chebyshev!(Fs,F1s,F2s,pts,ws;multithreaded=true)
+    construct_dlp_kress_matrices_chebyshev!(Fs,pts,ws;multithreaded=true)
+    construct_dlp_kress_matrices_derivatives_chebyshev!(Fs,F1s,F2s,pts,ws;multithreaded=true)
 
 Assemble the Kress Fredholm second-kind matrices and, optionally, their first
 two wavenumber derivatives using a prebuilt Chebyshev workspace.
@@ -627,7 +627,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
-            @benchit timeit=timeit "DLP_kress Chebyshev" construct_fredholm_kress_matrices_chebyshev!(Tbufs,pts,chebws;multithreaded=multithreaded)
+            @benchit timeit=timeit "DLP_kress Chebyshev" construct_dlp_kress_matrices_chebyshev!(Tbufs,pts,chebws;multithreaded=multithreaded)
         end
     else
         @error("Direct matrix construction is only for real k currently")
