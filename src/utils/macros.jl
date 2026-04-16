@@ -165,3 +165,23 @@ macro svd_or_det_solve(A,use_krylov,which,blas_threads)
         end
     end
 end
+
+"""
+    try_MKL_on_x86_64!()
+
+Tries to use the MKL on x86_64 architecture if possible. Otherwise it defaults to the stock BLAS backend :lbt.
+"""
+function try_MKL_on_x86_64!()
+    if Sys.ARCH==:x86_64
+        try
+            @eval using MKL
+            println(BLAS.get_config())
+        catch e
+            println(e)
+            @warn "Install Math Kernel Library (MKL) via MKL.jl"
+            @info "Defaulting to stock BLAS backend: $(BLAS.vendor())"
+        end
+    else
+        @info "Not on x86_64 architecture ($(Sys.ARCH)), defaulting to stock BLAS backend: $(BLAS.vendor())"
+    end
+end
