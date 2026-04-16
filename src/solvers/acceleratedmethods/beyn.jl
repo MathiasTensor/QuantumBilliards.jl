@@ -219,11 +219,15 @@ function _CFIE_project_V_subspace!(solver::Union{DLP_kress,DLP_kress_global_corn
     apply_projection!(V,W,maps,solver.symmetry)
     return V
 end
+# this one has desymmetrization already built in in matrix construction stage, so dont do anything here
+function _CFIE_project_V_subspace!(solver::Union{BoundaryIntegralMethod},pts::BoundaryPoints{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+    return V
+end
 
 # construct the B matrix as described in Beyn's paper using the Chebyshev Hankel evaluations to circumvent allocations for complex argument Hankel functions. For high k this is unavoidable.
 #
 # Inputs:
-#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert}: Solver for either BIM with no holes, CFIE_kress for domains with holes, or CFIE_alpert for Alpert-based CFIE
+#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners}: The solver instance which defines the type of boundary integral formulation and may contain symmetry information.
 #   - pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}}: The boundary points for both the standard domain with outer boundary (BoundaryPoints) and the CFIE_kress or CFIE_alpert formulation with inner and outer boundaries (BoundaryPointsCFIE)
 #   - N::Int: Size of the Fredholm matrices
 #   - k0::Complex{T}: Center of the contour
@@ -242,7 +246,7 @@ end
 #   1) Forms A0 = (1/2πi)∮ T(z)^{-1} V dz and A1 = (1/2πi)∮ z T(z)^{-1} V dz via LU solves.
 #   2) Rank rk determined by Σ[i] ≥ svd_tol (strict absolute threshold).
 #   3) If rk == 0, return empty matrices to signal “no roots in window”.
-function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_chebyshev=true,n_panels=15000,M=5,info::Bool=false,multithreaded::Bool=true) where {T<:Real}
+function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_chebyshev=true,n_panels=15000,M=5,info::Bool=false,multithreaded::Bool=true) where {T<:Real}
     θ=range(zero(T),TWO_PI;length=nq+1)[1:end-1] # remove last point
     ej=cis.(θ) # unit circle points
     zj=k0.+R.*ej # contour points
@@ -317,7 +321,7 @@ end
 # matrices needed for residual testing.
 #
 # Inputs:
-#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert} : Solver for either BIM with no holes, CFIE_kress for domains with holes, or CFIE_alpert for Alpert-based CFIE
+#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners} : The solver instance which defines the type of boundary integral formulation and may contain symmetry information.
 #   - basis::Ba                      : Hankel basis type
 #   - pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}} : Boundary discretization
 #   - k::Complex{T}                  : Center of contour
@@ -346,7 +350,7 @@ end
 # Notes:
 #   - This function does not check residuals or remove spurious λ.
 #     Use `residual_and_norm_select` afterwards for filtering.
-function solve_vect(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels=15000,M=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve_vect(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels=15000,M=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
@@ -368,7 +372,7 @@ end
 #     them in statistics or physical interpretation.
 # -------------------------------------------------------------
 
-function solve(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
@@ -385,7 +389,7 @@ end
 # NOTE: Does not use chebyshev hankel evaluations for now, only standard hankel evaluations for clarity.
 #
 # Inputs:
-#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert}: Solver for either BIM with no holes, CFIE_kress for domains with holes, or CFIE_alpert for Alpert-based CFIE
+#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners}: The solver instance which defines the type of boundary integral formulation and may contain symmetry information.
 #   - basis::Ba: The basis type
 #   - pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}}: The boundary points (standard with just outer boundary) or CFIE_kress/CFIE_alpert type (w/ inner holes)
 #   - k0::Complex{T}: Center of the contour
@@ -406,7 +410,7 @@ end
 #   - λ::Vector{Complex{T}}: The eigenvalues found inside the contour
 #   - Phi::Matrix{Complex{T}}: The eigenvectors corresponding to the eigenvalues
 #   - tens::Vector{T}: The residuals ||A(k)v(k)||
-function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels=15000,M=5) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels=15000,M=5) where {Ba<:AbstractHankelBasis,T<:Real}
     N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
@@ -509,7 +513,7 @@ end
 
 # Computes the residuals ||A(k)φ|| and normalized residuals for a set of eigenpairs (λ,φ) obtained from Beyn's method. 
 # Inputs:
-#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert}: The BIM solver object
+#   - solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners}
 #   - λ::AbstractVector{Complex{T}}: Eigenvalues obtained from Beyn
 #   - Uk::AbstractMatrix{Complex{T}}: Left singular vectors from Beyn's method
 #   - Y::AbstractMatrix{Complex{T}}: Eigenvectors from the small B
@@ -533,7 +537,7 @@ end
 #   - tens::Vector{T}: Residual norms ||Aφ||
 #   - tensN::Vector{T}: Normalized residuals
 #   - logs::Vector{String}: Logs of the selection process (if collect_logs is true)
-function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,multithreaded::Bool=true) where {T<:Real}
+function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,multithreaded::Bool=true) where {T<:Real}
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
     y=Vector{Complex{T}}(undef,N)
@@ -576,14 +580,14 @@ end
 ########################
 
 """
-    compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},basis::Ba,billiard::Bi,k1::T,k2::T;kwargs...)
+    compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,billiard::Bi,k1::T,k2::T;kwargs...)
 
 Compute all eigenpairs in [k1,k2] via a two-phase Beyn workflow:
 Phase 1: (per Weyl-balanced disk) build Fredholm matrices along the contour, run Beyn to get provisional eigenvalues λ and subspaces (Uk, Y).
 Phase 2: validate each λ by computing residuals ||A(λ)φ|| (φ=Uk*Y[:,j]), keep those inside the disk with residual < res_tol.
 
 # Inputs:
-- solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert}: The BIM solver object
+- solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners}: The BIM solver object
 - basis::Ba: The basis type
 - billiard::Bi: The billiard domain
 - k1::T: Lower bound of the wavenumber interval
@@ -624,7 +628,7 @@ tensN   :: Vector{T}                   – normalized residuals (scale-free)
    • r is the probe rank for Beyn (auto-bumped internally if saturated).
    • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
 """
-function compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_alpert},basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-10,max_iter::Int=10,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-10,max_iter::Int=10,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     fundamental=!isnothing(solver.symmetry)
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
     if length(intervals)>=2
