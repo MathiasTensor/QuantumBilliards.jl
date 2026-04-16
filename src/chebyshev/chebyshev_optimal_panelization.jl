@@ -270,6 +270,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     ws=build_cfie_alpert_workspace(solver,pts) 
     geomws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
     rmin,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
+    @info "Estimated Chebyshev radial bounds for CFIE_alpert" rmin=rmin rmax=rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
