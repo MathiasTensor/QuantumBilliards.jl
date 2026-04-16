@@ -645,10 +645,10 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
         end
     end
     k0,R=beyn_disks_from_windows(intervals)
-    isempty(k0) && return T[],T[],Vector{Vector{Complex{T}}}(),Vector{Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}}}(),T[]
+    isempty(k0) && return T[],T[],Vector{Vector{Complex{T}}}(),Vector{Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}}(),T[]
     do_INFO_init && @info "Weyl windows planned" intervals=intervals k0=k0 R=R
     nq<=15 && error("Do not use less than 15 contour nodes")
-    all_pts=Vector{Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}}}}(undef,length(k0))
+    all_pts=Vector{Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}}(undef,length(k0))
     @benchit timeit=do_per_solve_INFO "Point evaluation" for i in eachindex(k0)
         all_pts[i]=evaluate_points(solver,billiard,real(k0[i]))
     end
@@ -718,7 +718,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
     tens_all=Vector{T}(undef,ntot)
     tensN_all=Vector{T}(undef,ntot)
     us_all=Vector{Vector{Complex{T}}}(undef,ntot)
-    pts_all=(solver isa CFIE) ? Vector{Vector{BoundaryPointsCFIE{T}}}(undef,ntot) : Vector{BoundaryPoints{T}}(undef,ntot)
+    pts_all=Vector{Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}}(undef,ntot)
     Threads.@threads for i in 1:nw
         n=n_by_win[i]
         n==0 && continue
