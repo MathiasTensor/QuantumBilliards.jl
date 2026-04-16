@@ -56,8 +56,9 @@
 #       Chebyshev plans for each zj.
 #   - max_errs::Vector{Float64}:
 #       Max error per zj.
-function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
+    @info "Estimated Chebyshev radial bounds for BIM H1x kernel" rmin=rmin rmax=rmax
     rs=collect(range(Float64(rmin),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
@@ -151,7 +152,7 @@ end
 #   - max_errs1::Vector{Float64}
 #   - max_errs2::Vector{Float64}
 #   - max_errs3::Vector{Float64}
-function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     if solver isa CFIE_kress || solver isa CFIE_kress_corners || solver isa CFIE_kress_global_corners
         block_cache=build_cfie_kress_block_caches(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax, really hate this hack, but dont care enough, not in hot loop
     else
@@ -267,7 +268,7 @@ end
 #   - plans1::Vector{ChebHankelPlanH}
 #   - max_errs0::Vector{Float64}
 #   - max_errs1::Vector{Float64}
-function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     ws=build_cfie_alpert_workspace(solver,pts) 
     geomws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
     rmin,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
