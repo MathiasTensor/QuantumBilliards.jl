@@ -285,7 +285,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{
     max_errs0=fill(Inf,nz)
     max_errs1=fill(Inf,nz)
     for it in 1:max_iter
-        plans0,plans1=build_CFIE_alpert_plans(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
+        plans0,plans1=build_CFIE_plans_alpert(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
         Threads.@threads for j in eachindex(zj)
             pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
