@@ -775,13 +775,13 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
         tangent_2nd[i]=γtt*(jac[i]^2)+γt*jac2[i]
     end
     ds=Vector{T}(undef,N)
+    # Kress weights
+    h=pi/T((N+1)÷2)
     @inbounds for i in 1:N
         tx=tangent_1st[i][1]
         ty=tangent_1st[i][2]
         ds[i]=hypot(tx,ty)*h
     end
-    # Kress weights
-    h=pi/T((N+1)÷2)
     ts=σ  # computational nodes
     ws=fill(h,N) # trapezoidal weights
     ws_der=jac # w'(σ)

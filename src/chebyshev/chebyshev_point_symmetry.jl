@@ -136,3 +136,72 @@ end
         error("Unknown reflection axis: $(sym.axis)")
     end
 end
+
+##################################################################################
+# Estimate suitable rmin and rmax for BIM based on boundary points and symmetry.
+# Inputs:
+#   bp: BoundaryPoints containing the boundary points
+#   sym: either nothing or a symmetry object (Reflection or Rotation) 
+#   pad: tuple of (rmin_pad,rmax_pad) to pad the estimated rmin and rmax
+#   rmax_factor: factor to multiply the estimated rmax by
+# Outputs:
+#   rmin,rmax: estimated minimum and maximum distances between boundary points considering symmetry
+##################################################################################
+function estimate_rmin_rmax(bp::BoundaryPoints{T},sym=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=3.0) where {T<:Real}
+    N=length(bp.xy);@assert N>1
+    tol2=(eps(T))^2
+    nth=Threads.nthreads()
+    min2_tls=fill(T(Inf),nth)
+    max2_tls=fill(zero(T),nth)
+    pt_tls=[zeros(T,2) for _ in 1:nth]
+    Threads.@threads for i in 1:N
+        xi,yi=bp.xy[i]
+        tid=Threads.threadid();pt=pt_tls[tid]
+        lmin2=typemax(T);lmax2=zero(T)
+        @inbounds for j in 1:N
+            xj,yj=bp.xy[j]
+            if i!=j
+                dx=xi-xj;dy=yi-yj;d2=muladd(dx,dx,dy*dy)
+                if d2>tol2
+                    if d2<lmin2;lmin2=d2;end
+                    if d2>lmax2;lmax2=d2;end
+                end
+            end
+            if !isnothing(sym)
+                if sym isa Reflection
+                    if sym.axis===:y_axis
+                        x_reflect_point!(pt,xj,yj,bp.shift_x)
+                    elseif sym.axis===:x_axis
+                        y_reflect_point!(pt,xj,yj,bp.shift_y)
+                    else
+                        xy_reflect_point!(pt,xj,yj,bp.shift_x,bp.shift_y)
+                    end
+                    dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
+                    if d2>tol2
+                        if d2<lmin2;lmin2=d2;end
+                        if d2>lmax2;lmax2=d2;end
+                    end
+                elseif sym isa Rotation
+                    cx,cy=s.center
+                    ctab,stab,_χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+                    @inbounds for l in 2:sym.n
+                        rot_point!(pt,xj,yj,cx,cy,ctab[l],stab[l])
+                        dx=xi-pt[1];dy=yi-pt[2];d2=muladd(dx,dx,dy*dy)
+                        if d2>tol2
+                            if d2<lmin2;lmin2=d2;end
+                            if d2>lmax2;lmax2=d2;end
+                        end
+                    end
+                end
+                
+            end
+        end
+        if lmin2<min2_tls[tid];min2_tls[tid]=lmin2;end
+        if lmax2>max2_tls[tid];max2_tls[tid]=lmax2;end
+    end
+    min2=minimum(min2_tls);max2=maximum(max2_tls)
+    @assert isfinite(min2) && max2>zero(T) "estimate_rmin_rmax: degenerate geometry"
+    rmin=pad[1]*sqrt(min2)
+    rmax=pad[2]*rmax_factor*sqrt(max2)
+    return rmin,rmax
+end

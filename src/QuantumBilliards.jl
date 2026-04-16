@@ -118,8 +118,9 @@ include("solvers/sweepmethods/cfie/cfie_alpert.jl")
 
 # Chebyshev machinery - applied to specific kernels
 include("chebyshev/chebyshev_euclidian_helmholtz_dlp.jl")
-include("chebyshev/chebyshev_euclidian_helmholtz_kress.jl")
-#include("chebyshev/chebyshev_euclidian_helmholtz_alpert.jl")
+include("chebyshev/chebyshev_euclidian_helmholtz_dlp_kress.jl")
+include("chebyshev/chebyshev_euclidian_helmholtz_cfie_kress.jl")
+#include("chebyshev/chebyshev_euclidian_helmholtz_cfie_alpert.jl")
 include("chebyshev/chebyshev_optimal_panelization.jl")
 
 # Expanded BIM
