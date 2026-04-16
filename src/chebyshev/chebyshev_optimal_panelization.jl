@@ -95,11 +95,10 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
 end
 
 # chebyshev_params
-# Determine suitable Chebyshev panel count and polynomial degree for the
-# CFIE_kress kernel evaluation (H0, H1, J0, J1).
+# Determine suitable Chebyshev panel count and polynomial degree for the kernel evaluation (H0, H1, J0, J1).
 #
 # Logic:
-# - Build a CFIE_kress block cache to extract a global radial interval
+# - Build a block cache to extract a global radial interval
 #   [rmin,rmax] across all boundary components.
 # - Sample many radii rs in [rmin,rmax].
 # - Build Chebyshev plans for:
@@ -111,13 +110,8 @@ end
 # - Iteratively refine panel count and polynomial degree until the
 #   desired accuracy is achieved.
 #
-# Notes:
-# - CFIE_kress requires both Hankel and Bessel functions due to the
-#   Kress regularization of singular kernels.
-# - All four kernels must satisfy the tolerance simultaneously.
-#
 # Inputs:
-#   - solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}:
+#   - solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners}:
 #       Kress-based CFIE solver.
 #   - pts::Vector{BoundaryPointsCFIE{T}} or BoundaryPointsCFIE{T}:
 #       Boundary components (multi-component geometry).
@@ -157,7 +151,7 @@ end
 #   - max_errs1::Vector{Float64}
 #   - max_errs2::Vector{Float64}
 #   - max_errs3::Vector{Float64}
-function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     block_cache=build_cfie_kress_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax 
     rmin,rmax=block_cache.rmin,block_cache.rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
