@@ -1658,3 +1658,53 @@ function solve_INFO(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE
     println("────────────────────────────────────────")
     return s
 end
+
+# this hack is really annoying, some off gird alpert nodes can be below the rmin of the actual geometry, so need to use the 
+# workspace to actually get the accurate bounds or else chebyshev interpolation will fail catastrophically. 
+# We pad the bounds a bit to be safe, but this is really just a hack until we have a better way to do this.
+function estimate_cfie_alpert_cheb_rbounds(ws::CFIEAlpertWorkspace{T};pad=(T(0.95),T(1.05))) where {T<:Real}
+    rmin=typemax(T)
+    rmax=zero(T)
+    for G in ws.Gs
+        R=G.R
+        @inbounds for j in axes(R,2), i in axes(R,1)
+            i==j && continue
+            r=R[i,j]
+            if isfinite(r) && r>eps(T)
+                rmin=min(rmin,r)
+                rmax=max(rmax,r)
+            end
+        end
+    end
+    for C in ws.Cs
+        if C isa AlpertPeriodicCache{T}
+            @inbounds for r in C.rp
+                if isfinite(r) && r>eps(T)
+                    rmin=min(rmin,r)
+                    rmax=max(rmax,r)
+                end
+            end
+            @inbounds for r in C.rm
+                if isfinite(r) && r>eps(T)
+                    rmin=min(rmin,r)
+                    rmax=max(rmax,r)
+                end
+            end
+        elseif C isa AlpertSmoothPanelCache{T}
+            @inbounds for r in C.rp
+                if isfinite(r) && r>eps(T)
+                    rmin=min(rmin,r)
+                    rmax=max(rmax,r)
+                end
+            end
+            @inbounds for r in C.rm
+                if isfinite(r) && r>eps(T)
+                    rmin=min(rmin,r)
+                    rmax=max(rmax,r)
+                end
+            end
+        end
+    end
+    @assert isfinite(rmin) && rmax>zero(T)
+    return Float64(pad[1]*rmin),Float64(pad[2]*rmax)
+end
