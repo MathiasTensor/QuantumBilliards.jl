@@ -969,14 +969,11 @@ require `J₀` and `J₁`, so they are interpolated separately.
   Panel index containing the current distance.
 - `t::Float64`:
   Local Chebyshev coordinate in that panel.
-- `cutoff::Float64`:
-  Threshold for small-argument patch. If `|k_m r| < cutoff`, use series expansions
-  instead of Chebyshev interpolation to avoid loss of precision.
 
 # Returns
 - `nothing`
 """
-@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64;cutoff=1e-3)
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         # reconstruct r from panel
         P=plans0[m].panels[pidx]
@@ -985,7 +982,7 @@ require `J₀` and `J₁`, so they are interpolated separately.
         r=((b+a)+(b-a)*t)*0.5
         k=plans0[m].k
         z=k*r
-        if abs(z)<cutoff
+        if abs(z)<hankel_chebyshev_cutoff
             # ---- SMALL ARGUMENT PATCH ----
             h0vals[m]=_small_h0_series(z)
             h1vals[m]=_small_h1_series(z)
@@ -1027,14 +1024,11 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
   Panel index for the active distance.
 - `t::Float64`:
   Local Chebyshev coordinate in that panel.
-- `cutoff::Float64`:
-  Threshold for small-argument patch. If `|k_m r| < cutoff`, use series expansions
-  instead of Chebyshev interpolation to avoid loss of precision.
 
 # Returns
 - `nothing`
 """
-@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64;cutoff=1e-3)
+@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans0)
         # reconstruct r
         P=plans0[m].panels[pidx]
@@ -1043,7 +1037,7 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
         r=((b+a)+(b-a)*t)*0.5
         k=plans0[m].k
         z=k*r
-        if abs(z)<cutoff
+        if abs(z)<hankel_chebyshev_cutoff
             # ---- SMALL ARGUMENT PATCH ----
             h0vals[m]=_small_h0_series(z)
             h1vals[m]=_small_h1_series(z)
