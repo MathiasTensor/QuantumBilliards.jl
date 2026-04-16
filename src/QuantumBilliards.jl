@@ -102,7 +102,7 @@ include("solvers/sweepmethods/dlp/dlp_kress.jl")
 # Chebyshev machinery - general
 include("chebyshev/chebyshev_core.jl")
 include("chebyshev/chebyshev_point_symmetry.jl")
-include("chebyshev/chebyshev_hankel.jl")
+include("chebyshev/chebyshev_bessels.jl")
 
 # CFIE
 include("solvers/sweepmethods/cfie/alpert_table.jl")

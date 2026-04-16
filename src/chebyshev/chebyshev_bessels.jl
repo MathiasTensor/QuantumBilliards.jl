@@ -30,6 +30,8 @@
 # MO/20/3/26
 #############################################################################
 
+const γ=MathConstants.eulergamma
+
 struct ChebHankelTableH1x
     a::Float64 # start of panel 
     b::Float64 # end of panel
@@ -576,6 +578,42 @@ function precompute_phase(k::ComplexF64,r::AbstractVector{Float64})::Vector{Comp
 end
 
 ##################################################################
+############## NEAR 0 EXPANSIONS FOR H0 AND H1 ###################
+##################################################################
+
+# For small arguments, the Hankel functions can be approximated by their series expansions. These are used to handle near-singular cases where the argument z = k*r is close to zero, which can cause numerical instability in the chebyshev evaluation of the Hankel functions.
+# Up to O(z^12) for both, hopefully with defaul cutoff 1e-3 this is good enough for near machine precision.
+
+@inline function _small_h0_series(z::ComplexF64)
+    zz=z*z
+    P=2123366400+zz*(-530841600+zz*(33177600+zz*(-921600+zz*(14400+zz*(-144+zz)))))
+    Q=10616832000+zz*(-995328000+zz*(33792000+zz*(-600000+zz*(6576+zz*(-49)))))
+    return (((10*pi+20*im*γ)*P+im*zz*Q)/(21233664000*pi))+(im*P/(1061683200*pi))*log(z/2)
+end
+
+@inline function _small_h0_series(z::Real)
+    return _small_h0_series(ComplexF64(z))
+end
+
+@inline function _small_h1_series(z::ComplexF64)
+    zz=z*z
+    A=-4161798144000+
+    zz*(1040449536000*(-1+2*γ-1im*pi)+
+    zz*(-65028096000*(-5+4*γ-2im*pi)+
+    zz*(1806336000*(-10+6*γ-3im*pi)+
+    zz*(-9408000*(-47+24*γ-12im*pi)+
+    zz*(47040*(-131+60*γ-30im*pi)+
+    zz*(-784*(-71+30*γ-15im*pi)+
+    zz*(-353+140*γ-70im*pi)))))))
+    R=14863564800+zz*(-1857945600+zz*(77414400+zz*(-1612800+zz*(20160+zz*(-168+zz))))))
+    return (im*A/(2080899072000*pi*z))+(im*z*R/(14863564800*pi))*log(z/2)
+end
+
+@inline function _small_h1_series(z::Real)
+    return _small_h1_series(ComplexF64(z))
+end
+
+##################################################################
 ###################### EVALUATION FUNCTIONS ######################
 ##################################################################
 
@@ -876,16 +914,36 @@ require `J₀` and `J₁`, so they are interpolated separately.
   Panel index containing the current distance.
 - `t::Float64`:
   Local Chebyshev coordinate in that panel.
+- `cutoff::Float64`:
+  Threshold for small-argument patch. If `|k_m r| < cutoff`, use series expansions
+  instead of Chebyshev interpolation to avoid loss of precision.
 
 # Returns
 - `nothing`
 """
-@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64;cutoff=1e-3)
     @inbounds for m in eachindex(plans0)
-        h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
-        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
-        j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
-        j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
+        # reconstruct r from panel
+        P=plans0[m].panels[pidx]
+        a=P.a
+        b=P.b
+        r=((b+a)+(b-a)*t)*0.5
+        k=plans0[m].k
+        z=k*r
+        if abs(z)<cutoff
+            # ---- SMALL ARGUMENT PATCH ----
+            h0vals[m]=_small_h0_series(z)
+            h1vals[m]=_small_h1_series(z)
+            # J's are safe → just evaluate normally
+            j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
+            j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
+        else
+            # ---- NORMAL CHEBYSHEV ----
+            h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
+            h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+            j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
+            j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
+        end
     end
     return nothing
 end
@@ -914,14 +972,31 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
   Panel index for the active distance.
 - `t::Float64`:
   Local Chebyshev coordinate in that panel.
+- `cutoff::Float64`:
+  Threshold for small-argument patch. If `|k_m r| < cutoff`, use series expansions
+  instead of Chebyshev interpolation to avoid loss of precision.
 
 # Returns
 - `nothing`
 """
-@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
+@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64;cutoff=1e-3)
     @inbounds for m in eachindex(plans0)
-        h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
-        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+        # reconstruct r
+        P=plans0[m].panels[pidx]
+        a=P.a
+        b=P.b
+        r=((b+a)+(b-a)*t)*0.5
+        k=plans0[m].k
+        z=k*r
+        if abs(z)<cutoff
+            # ---- SMALL ARGUMENT PATCH ----
+            h0vals[m]=_small_h0_series(z)
+            h1vals[m]=_small_h1_series(z)
+        else
+            # ---- NORMAL CHEBYSHEV ----
+            h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
+            h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+        end
     end
     return nothing
 end
