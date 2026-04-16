@@ -31,6 +31,7 @@
 #############################################################################
 
 const γ=MathConstants.eulergamma
+const hankel_chebyshev_cutoff=1e-3 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 
 struct ChebHankelTableH1x
     a::Float64 # start of panel 
@@ -680,9 +681,23 @@ end
 # =============================================================================
 function eval_h!(H1::AbstractVector{ComplexF64},pl::ChebHankelPlanH,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64})
     pans=pl.panels
+    k=ComplexF64(pl.k)
+    ν=pl.ν
     @inbounds Threads.@threads for i in eachindex(r)
-        T=pans[pidx[i]]
-        H1[i]=_cheb_clenshaw(T.c,t[i])
+        z=k*r[i]
+        if abs(z)<hankel_chebyshev_cutoff
+            if ν==0
+                H1[i]=_small_h0_series(z)
+            elseif ν==1
+                H1[i]=_small_h1_series(z)
+            else # yeah, not really implemented
+                T=pans[pidx[i]]
+                H1[i]=_cheb_clenshaw(T.c,t[i])
+            end
+        else
+            T=pans[pidx[i]]
+            H1[i]=_cheb_clenshaw(T.c,t[i])
+        end
     end
     return nothing
 end
@@ -756,12 +771,23 @@ end
 #           # panel index such that r ∈ [a,b]
 #   t    :: Float64
 #           # mapped Chebyshev coordinate in [-1,1]
-#
+#   r    :: Float64
+#           # radius for this evaluation point - for small z asymptotics
 # Output
 #   ComplexF64
 #           # approximation of H_ν^(κ)(k r)
 # =============================================================================
-@inline function eval_h(pl::ChebHankelPlanH,pidx::Int32,t::Float64)
+@inline function eval_h(pl::ChebHankelPlanH,pidx::Int32,t::Float64,r::Float64)
+    z=ComplexF64(pl.k)*r
+    if abs(z)<hankel_chebyshev_cutoff
+        if pl.ν==0
+            return _small_h0_series(z)
+        elseif pl.ν==1
+            return _small_h1_series(z)
+        else # yeah, not really implemented
+            return _cheb_clenshaw(pl.panels[pidx].c,t)
+        end
+    end
     return _cheb_clenshaw(pl.panels[pidx].c,t)
 end
 
@@ -837,7 +863,18 @@ end
 function eval_h_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH},r::Float64,pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans)
         plan_m=plans[m]
-        out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+        z=ComplexF64(plan_m.k)*r
+        if abs(z)<hankel_chebyshev_cutoff
+            if plan_m.ν==0
+                out[m]=_small_h0_series(z)
+            elseif plan_m.ν==1
+                out[m]=_small_h1_series(z)
+            else # yeah, not really implemented
+                out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+            end
+        else
+            out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+        end
     end
     return nothing
 end
@@ -921,7 +958,7 @@ require `J₀` and `J₁`, so they are interpolated separately.
 # Returns
 - `nothing`
 """
-@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64;cutoff=0.5)
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64;cutoff=1e-3)
     @inbounds for m in eachindex(plans0)
         # reconstruct r from panel
         P=plans0[m].panels[pidx]
@@ -979,7 +1016,7 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
 # Returns
 - `nothing`
 """
-@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64;cutoff=0.5)
+@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64;cutoff=1e-3)
     @inbounds for m in eachindex(plans0)
         # reconstruct r
         P=plans0[m].panels[pidx]
