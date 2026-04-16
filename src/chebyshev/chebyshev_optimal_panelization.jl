@@ -158,6 +158,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
         block_cache=build_dlp_kress_block_cache(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) 
     end
     rmin,rmax=block_cache.rmin,block_cache.rmax
+    @info "Estimated Chebyshev radial bounds for CFIE kress solvers" rmin=rmin rmax=rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
