@@ -152,7 +152,11 @@ end
 #   - max_errs2::Vector{Float64}
 #   - max_errs3::Vector{Float64}
 function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    block_cache=build_cfie_kress_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax 
+    if solver isa CFIE_kress || solver isa CFIE_kress_corners || solver isa CFIE_kress_global_corners
+        block_cache=build_cfie_kress_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax, really hate this hack, but dont care enough, not in hot loop
+    else
+        block_cache=build_dlp_kress_block_cache(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) 
+    end
     rmin,rmax=block_cache.rmin,block_cache.rmax
     rs=collect(range(rmin,rmax;length=sampling_points))
     nz=length(zj)
@@ -201,7 +205,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             max_errs2[j]=maximum(abs.(view(approx2,:,j).-view(exact2,:,j)))
             max_errs3[j]=maximum(abs.(view(approx3,:,j).-view(exact3,:,j)))
         end
-        verbose && @info "CFIE_kress Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3)
+        verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3)
         (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)) && return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
         if it%5==0
             M+=grow_M
@@ -209,7 +213,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             n_panels=ceil(Int,grow_panels*n_panels)
         end
     end
-    @warn "CFIE_kress Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
+    @warn "Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
     return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
 end
 
