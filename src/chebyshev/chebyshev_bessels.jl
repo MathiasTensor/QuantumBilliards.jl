@@ -31,7 +31,7 @@
 #############################################################################
 
 const γ=MathConstants.eulergamma
-const hankel_chebyshev_cutoff=1e-3 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
+const hankel_chebyshev_cutoff=0.1 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 
 struct ChebHankelTableH1x
     a::Float64 # start of panel 
@@ -648,10 +648,17 @@ end
 # =============================================================================
 function eval_h1x!(H1x::AbstractVector{ComplexF64},pl::ChebHankelPlanH1x,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64},invsqrt::AbstractVector{Float64})
     pans=pl.panels
+    k=pl.k
     @inbounds Threads.@threads for i in eachindex(r)
-        T=pans[pidx[i]]
-        g1=_cheb_clenshaw(T.c1,t[i])
-        H1x[i]=g1*invsqrt[i]
+        z=k*r[i]
+        if abs(z)<hankel_chebyshev_cutoff
+            h1=_small_h1_series(z)
+            H1x[i]=exp(-1*im*z)*h1
+        else
+            T=pans[pidx[i]]
+            g1=_cheb_clenshaw(T.c1,t[i])
+            H1x[i]=g1*invsqrt[i]
+        end
     end
     return nothing
 end
@@ -756,6 +763,11 @@ end
 # Output
 #   ComplexF64                     # approximation of H1x(k r)
 @inline function eval_h1x(pl::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64)
+    r=1/invsqrt^2
+    z=pl.k*r
+    if abs(z)<hankel_chebyshev_cutoff
+        return exp(-1im*z)*_small_h1_series(z)
+    end
     return _cheb_clenshaw(pl.panels[pidx].c1,t)*invsqrt
 end
 
@@ -832,8 +844,14 @@ end
 #   out[m] = H1x_{k_m}(r) for m = 1..length(plans).
 # =============================================================================
 function eval_h1x_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64)
+    r=1/invsqrt^2
     @inbounds for m in eachindex(plans)
-        out[m]=_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
+        z=plans[m].k*r
+        if abs(z)<hankel_chebyshev_cutoff
+            out[m]=exp(-1im*z)*_small_h1_series(z)
+        else
+            out[m]=_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
+        end
     end
     return nothing
 end
