@@ -117,7 +117,7 @@ end
 # - All four kernels must satisfy the tolerance simultaneously.
 #
 # Inputs:
-#   - solver::CFIE_kress:
+#   - solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}:
 #       Kress-based CFIE solver.
 #   - pts::Vector{BoundaryPointsCFIE{T}}:
 #       Boundary components (multi-component geometry).
@@ -157,7 +157,7 @@ end
 #   - max_errs1::Vector{Float64}
 #   - max_errs2::Vector{Float64}
 #   - max_errs3::Vector{Float64}
-function chebyshev_params(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=10,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     block_cache=build_cfie_kress_block_caches(pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax 
     rmin,rmax=block_cache.rmin,block_cache.rmax
     rs=collect(range(rmin,rmax;length=sampling_points))

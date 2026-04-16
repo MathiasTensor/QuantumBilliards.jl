@@ -1,18 +1,14 @@
 module QuantumBilliards
-#using Reexport
 
 #abstract types
 include("abstracttypes.jl")
 include("utils/macros.jl")
 
-#utils must be included here so modules work
 # utils
 include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/billiardutils.jl")
 include("utils/typeutils.jl")
-include("utils/symmetry.jl")
-export Reflection, XReflection, YReflection, XYReflection
 export real_length, is_inside
 
 #solvers
@@ -26,12 +22,12 @@ include("billiards/geometry/kress_grading_single_corner.jl")
 include("billiards/geometry/kress_grading_global_multi_corner.jl")
 include("billiards/geometry/alpert_endpoint_grading.jl")
 include("billiards/geometry/boundarypoints.jl")
+include("utils/symmetry.jl")
+export Reflection, XReflection, YReflection, XYReflection
 export BoundaryPoints
 export boundary_coords
 export GaussLegendreNodes, LinearNodes, FourierNodes, PolarSampler
 export sample_points
-
-# boundary
 
 #basis
 include("basis/planewaves/realplanewaves.jl")
@@ -96,7 +92,6 @@ export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
 # Vergini-Saraceno
 include("solvers/acceleratedmethods/scalingmethod.jl")
-include("solvers/acceleratedmethods/acceleratedmethods.jl")
 
 # Standard sweep methods
 include("solvers/sweepmethods/basis_sweep/particularsolutionsmethod.jl")
@@ -112,7 +107,6 @@ include("chebyshev/chebyshev_hankel.jl")
 # CFIE
 include("solvers/sweepmethods/cfie/alpert_table.jl")
 include("solvers/sweepmethods/cfie/cfie.jl")
-include("solvers/sweepmethods/cfie/cfie_geometry_helpers.jl")
 include("solvers/sweepmethods/cfie/cfie_kress.jl")
 include("solvers/sweepmethods/cfie/cfie_alpert.jl")
 
@@ -181,7 +175,6 @@ include("utils/benchmarkutils.jl")
 export BenchmarkInfo
 export benchmark_solver, compute_benchmarks
 
-include("utils/rotationutils.jl")
 include("spectra/m_index.jl")
 export visualize_overlap, compute_M, shift_s_vals_poincare_birkhoff, classical_phase_space_matrix, visualize_quantum_classical_overlap_of_levels!, plot_hist_M_distribution!, compute_overlaps, separate_ks_by_classical_indices, fraction_of_mixed_states, get_mixed_states, coefficient_of_fraction_of_mixed_eigenstates_vs_k, plot_fraction_of_mixed_eigenstates_vs_k, separate_Hs_by_classical_indices, separate_by_classical_indices, separate_ks_and_Hs_by_classical_indices, compute_fractions_of_mixed_eigenstates, plot_fraction_mixed_states, visualize_husimi_and_wavefunction!, save_separation_parameters!, load_separation_parameters, get_mixed_states_boolean_mask
 include("spectra/gap_ratios.jl")
@@ -189,8 +182,6 @@ export P_chaotic, P_integrable, P_r_normalized, plot_gap_ratios, average_gap_rat
 export compute_spectrum_with_state, StateData, solve_state_data_bundle, husimi_functions_from_boundary_functions, husimi_functions_from_StateData, match_wavenumbers_with_X, overlap_and_merge_state!
 include("spectra/localization_entropy.jl")
 export localization_entropy, normalized_inverse_participation_ratio_R, plot_P_localization_entropy_pdf!, P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta, heatmap_M_vs_A_2d, heatmap_R_vs_A_2d, combined_heatmaps_with_husimi, correlation_matrix, correlation_matrix_and_average
-include("spectra/reccurence.jl")
-export S, plot_S_heatmap!, plot_S_heatmaps!
 include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod, compute_interior_index, FEM_Hamiltonian, compute_fem_eigenmodes, compute_boundary, compute_boundary_tension
 include("spectra/evolution.jl")

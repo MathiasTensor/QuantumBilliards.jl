@@ -3,7 +3,6 @@
 @inline _is_kress_graded(::CFIE_kress_corners)=true
 @inline _is_kress_graded(::CFIE_kress_global_corners)=true
 
-
 """
     CFIEKressWorkspace{T,M}
 
@@ -765,4 +764,61 @@ function solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_globa
     println("(total: ",total," s)")
     println("────────────────────────────────────────")
     return s
+end
+
+function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners};k=20.0,markersize=5) where {Bi<:AbsBilliard}
+    pts_all=evaluate_points(solver,billiard,k)
+    comps=_boundary_components(billiard.full_boundary)
+    ncomp=length(pts_all)
+    f=Figure(resolution=(1200,400+300*ncomp))
+    ax=Axis(f[1,1],title="boundary + point-wise weights",aspect=DataAspect())
+    sc=nothing
+    for i in 1:ncomp
+        pts=pts_all[i]
+        xs=getindex.(pts.xy,1)
+        ys=getindex.(pts.xy,2)
+        ws_pts=pts.ws
+        sc=scatter!(ax,xs,ys;markersize=markersize,color=ws_pts,colormap=:viridis,strokewidth=0)
+        tx=getindex.(pts.tangent,1)
+        ty=getindex.(pts.tangent,2)
+        arrows!(ax,xs,ys,tx,ty;color=:black,lengthscale=0.08,linewidth=1)
+    end
+    hidespines!(ax,:t,:r)
+    for j in 1:ncomp
+        pts=pts_all[j]
+        comp=comps[j]
+        row=2+j
+        a1=Axis(f[row,1],title="component $j: ws",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws")
+        a2=Axis(f[row+1,1],title="component $j: ws_der",xlabel=pts.is_periodic ? "parameter" : "u",ylabel="ws_der")
+        ts=pts.ts
+        ws=pts.ws
+        ws_der=pts.ws_der
+        scatter!(a1,ts,ws,markersize=7)
+        scatter!(a2,ts,ws_der,markersize=7)
+        if solver isa CFIE_kress
+            h=length(ts)>1 ? ts[2]-ts[1] : 0.0
+            lines!(a1,ts,fill(h,length(ts)),linewidth=2)
+            lines!(a2,ts,fill(one(eltype(ts)),length(ts)),linewidth=2)
+        elseif solver isa CFIE_kress_corners
+            T=eltype(ts)
+            qT=T(solver.kressq)
+            tloc=collect(range(zero(T),T(2pi),length=800))
+            h=T(pi/((length(ts)+1)÷2))
+            wline=@. h*_kress_wprime(tloc,qT)
+            wderline=@. _kress_wprime(tloc,qT)
+            lines!(a1,tloc,wline,linewidth=2)
+            lines!(a2,tloc,wderline,linewidth=2)
+        elseif solver isa CFIE_kress_global_corners
+            T=eltype(ts)
+            tloc=collect(range(zero(T),T(2pi),length=800))
+            h=T(pi/((length(ts)+1)÷2))
+            corners=length(comp)==1 ? T[zero(T)] : _component_corner_locations(T,comp)
+            _,_,wprime,wdoubleprime,_=multi_kress_graded_nodes_data(T,length(tloc)%2==1 ? length(tloc) : length(tloc)-1,corners;q=solver.kressq)
+            lines!(a1,ts,ws,linewidth=2)
+            lines!(a2,ts,ws_der,linewidth=2)
+        end
+        hidespines!(a1,:t,:r)
+        hidespines!(a2,:t,:r)
+    end
+    return f
 end

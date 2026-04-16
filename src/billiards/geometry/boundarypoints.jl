@@ -286,7 +286,7 @@ function boundary_matrix_size(pts::BoundaryPointsCFIE{T}) where {T<:Real}
 end
 
 # helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE_kress method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
-function component_offsets(comps::Vector)
+function component_offsets(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     nc=length(comps)
     offs=Vector{Int}(undef,nc+1)
     offs[1]=1
@@ -294,6 +294,11 @@ function component_offsets(comps::Vector)
         offs[a+1]=offs[a]+length(comps[a].xy)
     end
     return offs
+end
+
+function component_offsets(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    N=length(pts.xy)
+    return [1,N+1]
 end
 
 # NECESSERY DUE TO LEGACY GEOMETRY CONVENTIONS

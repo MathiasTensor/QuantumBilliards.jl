@@ -832,3 +832,96 @@ function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{
     end
     return nothing
 end
+
+"""
+    h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx,t)
+
+Evaluate `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁` for all wavenumbers at one fixed
+distance panel/location, writing the results in place.
+
+This routine is the small inner evaluator used by the multi-`k` same-component
+CFIE-Kress assembly. The geometric pair `(i,j)` has already been mapped to:
+- a Chebyshev panel index `pidx`,
+- a local coordinate `t ∈ [-1,1]`.
+
+For each wavenumber `k_m`, the function interpolates:
+- `H₀^(1)(k_m r)`
+- `H₁^(1)(k_m r)`
+- `J₀(k_m r)`
+- `J₁(k_m r)`
+
+by evaluating the corresponding Chebyshev expansions with Clenshaw recurrence.
+For real wavenumbers one may sometimes identify `J_n` with `real(H_n^(1))`,
+but for complex `k` that is not valid. The Kress split formulas genuinely
+require `J₀` and `J₁`, so they are interpolated separately.
+
+# Arguments
+- `h0vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₀^(1)` values.
+- `h1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₁^(1)` values.
+- `j0vals::AbstractVector{ComplexF64}`:
+  Output vector for the `J₀` values.
+- `j1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `J₁` values.
+- `plans0::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₀^(1)`.
+- `plans1::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₁^(1)`.
+- `plansj0::AbstractVector{ChebJPlan}`:
+  Chebyshev plans for `J₀`.
+- `plansj1::AbstractVector{ChebJPlan}`:
+  Chebyshev plans for `J₁`.
+- `pidx::Int32`:
+  Panel index containing the current distance.
+- `t::Float64`:
+  Local Chebyshev coordinate in that panel.
+
+# Returns
+- `nothing`
+"""
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
+    @inbounds for m in eachindex(plans0)
+        h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
+        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+        j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
+        j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
+    end
+    return nothing
+end
+
+"""
+    h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,pidx,t)
+
+Evaluate `H₀^(1)` and `H₁^(1)` for all wavenumbers at one fixed distance
+panel/location, writing the results in place.
+
+This is the reduced special-function evaluator used in off-component CFIE-Kress
+blocks, where the kernel is smooth and no Kress logarithmic split is needed.
+Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
+`J₀/J₁` values are not required.
+
+# Arguments
+- `h0vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₀^(1)` values.
+- `h1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₁^(1)` values.
+- `plans0::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₀^(1)`.
+- `plans1::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₁^(1)`.
+- `pidx::Int32`:
+  Panel index for the active distance.
+- `t::Float64`:
+  Local Chebyshev coordinate in that panel.
+
+# Returns
+- `nothing`
+"""
+@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
+    @inbounds for m in eachindex(plans0)
+        h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
+        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+    end
+    return nothing
+end

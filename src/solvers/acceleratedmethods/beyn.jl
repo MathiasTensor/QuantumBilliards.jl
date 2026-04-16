@@ -136,8 +136,7 @@ end
 # Each window length is capped at ≤ 2*Rmax (so that disk radius R ≤ Rmax).
 # Uses: initial_step_from_dos, grow_upper_bound, bisect_for_delta_k.
 # Returns a list of (kL,kR) windows.
-function plan_weyl_windows(billiard::Bi,k1::T,k2::T; m::Int=10, Rmax::Real=1.0,
-                           fundamental::Bool=true, tol_levels=0.1, maxit::Int=50) where {T<:Real,Bi<:AbsBilliard}
+function plan_weyl_windows(billiard::Bi,k1::T,k2::T; m::Int=10, Rmax::Real=1.0,fundamental::Bool=true, tol_levels=0.1, maxit::Int=50) where {T<:Real,Bi<:AbsBilliard}
     iv=Vector{Tuple{T,T}}() # accumulator of (kL,kR) windows
     k=k1 # left cursor that advances to cover [k1,k2]
     while k<k2-eps() # loop until we reach the right end
@@ -200,90 +199,26 @@ end
 # This is necessary because CFIE_kress requires working with the full domain, and we need to ensure that the buffer matrix respects the symmetry of the problem.
 #
 # Inputs:
-#   - solver::CFIE_kress: The CFIE_kress solver instance containing the symmetry information.
-#   - pts::Vector{BoundaryPointsCFIE{T}}: The boundary points in the CFIE_kress formulation.
+#   - solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert}: The solver instance which may contain symmetry information.
+#   - pts::Vector{BoundaryPointsCFIE{T}}: The boundary points for the CFIE_kress / alpert method, which may consist of multiple components (e.g., outer boundary and holes).
 #   - V::Matrix{Complex{T}}: The buffer matrix to be projected.
 #   - W::Matrix{Complex{T}}: Buffer matrix.
 #
 # Output:
 #   - The function modifies `V` in-place to contain the projected values.
-function _CFIE_project_V_subspace!(solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+function _CFIE_project_V_subspace!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert},pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     isnothing(solver.symmetry) && return V
     maps=build_symmetry_maps(pts,solver.symmetry)
     apply_projection!(V,W,maps,solver.symmetry)
     return V
 end
-
-#########################################################################
-############# CONSTRUCT MATRICES FOR DIFFERENRT BIE SOLVERS #############
-#########################################################################
-
-# Since only outer boundary the size of the boundary matrix is just the number of points on the outer boundary. For CFIE_kress with holes, the size is the total number of points across all components.
-function boundary_matrix_size(pts::BoundaryPoints{T}) where {T<:Real}
-    return length(pts.xy)
+# Overload for the case where we have a single BoundaryPointsCFIE instead of a vector, which can happen in simpler geometries without holes. This ensures that the projection is applied correctly even when the input is not a vector of boundary point sets.
+function _CFIE_project_V_subspace!(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+    isnothing(solver.symmetry) && return V
+    maps=build_symmetry_maps(pts,solver.symmetry)
+    apply_projection!(V,W,maps,solver.symmetry)
+    return V
 end
-
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
-    rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
-    plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
-    @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
-        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform)
-    end
-    if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
-        @blas_1 begin
-            @benchit timeit=timeit "DLP Chebyshev" compute_kernel_matrices_DLP_chebyshev!(Tbufs,pts,solver.symmetry,plans;multithreaded=multithreaded)   
-            @benchit timeit=timeit "Assemble matrices" assemble_fredholm_matrices!(Tbufs,pts)
-        end
-    else
-        @blas_1 begin # use standard hankel evaluations for matrix construction. This is faster for small k values where chebyshev interpolation overhead is not worth it.
-            @benchit timeit=timeit "DLP complex k" @inbounds for j in eachindex(zj)
-                fredholm_matrix_complex_k!(Tbufs[j],pts,solver.symmetry,zj[j],multithreaded=multithreaded) 
-            end
-        end
-    end
-    return nothing
-end
-
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::CFIE_kress,pts::Vector{BoundaryPointsCFIE{T}},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
-    Mk=length(zj)
-    @assert length(Tbufs)==Mk
-    if use_chebyshev
-        @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(pts;npanels=n_panels,M=M,grading=:uniform)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
-            @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
-            @inbounds for j in eachindex(Tbufs)
-                fill!(Tbufs[j],0.0+0.0im)
-            end
-            @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
-        end
-    else
-        @error("Direct matrix construction is only for real k currently")
-    end
-    return nothing
-end
-
-#=
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
-    Mk=length(zj)
-    @assert length(Tbufs)==Mk
-    if use_chebyshev
-        @blas_1 begin
-            @benchit timeit=timeit "CFIE_alpert Workspace" ws=build_cfie_alpert_workspace(solver,pts)
-            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
-            @inbounds for j in eachindex(Tbufs)
-                fill!(Tbufs[j],0.0+0.0im)
-            end
-            @benchit timeit=timeit "CFIE_alpert Chebyshev" compute_kernel_matrices_CFIE_alpert_chebyshev!(Tbufs,solver,pts,chebws;multithreaded=multithreaded)
-        end
-    else
-        @error("Direct matrix construction is only for real k currently")
-    end
-    return nothing
-end
-=#
 
 # construct the B matrix as described in Beyn's paper using the Chebyshev Hankel evaluations to circumvent allocations for complex argument Hankel functions. For high k this is unavoidable.
 #
