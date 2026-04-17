@@ -31,7 +31,7 @@
 #############################################################################
 
 const γ=MathConstants.eulergamma
-const hankel_z_chebyshev_cutoff=0.00 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
+const hankel_z_chebyshev_cutoff=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 @inline function hankel_r_switch(kmax::T) where {T<:Real} # need to use for each contour the same cutoff since otherwise Beyn fails the analyticity
     return Float64(hankel_z_chebyshev_cutoff/kmax) # for each contour we choose cutoff/(k0+R) where k0 is the center and R the radius
 end
