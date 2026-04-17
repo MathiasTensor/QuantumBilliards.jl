@@ -153,15 +153,10 @@ matrix. It prints the timings at the end.
   - `B_int::Matrix`: The basis matrix evaluated at interior points.
 """
 function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    to=TimerOutput()
     pts_bd=pts.xy_boundary
     pts_int=pts.xy_interior
-    #basis and gradient matrices
-    @timeit to "basis_matrices" begin
-        @timeit to "boundary" B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
-        @timeit to "interior" B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
-    end
-    print_timer(to)
+    @time "boundary" B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
+    @time "interior" B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
     return B,B_int  
 end
 
