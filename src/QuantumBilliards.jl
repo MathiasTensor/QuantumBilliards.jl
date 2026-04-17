@@ -6,6 +6,7 @@ using Bessels
 using SpecialFunctions
 using LinearAlgebra
 using SparseArrays
+using StaticArrays
 using Arpack
 using Random
 using ForwardDiff
