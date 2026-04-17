@@ -165,8 +165,8 @@ function overlap_and_merge!(k_left::Vector{T},ten_left::Vector{T},k_right::Vecto
         return nothing
     end
     isempty(k_right) && return nothing
-    idx_l=(k_left.>(kl-tol)) .& (k_left.<(kr+tol))
-    idx_r=(k_right.>(kl-tol)) .& (k_right.<(kr+tol))
+    idx_l=(k_left.>(kl-tol)) .&& (k_left.<(kr+tol))
+    idx_r=(k_right.>(kl-tol)) .&& (k_right.<(kr+tol))
     ks_l=k_left[idx_l]
     ts_l=ten_left[idx_l]
     ks_r=k_right[idx_r]
