@@ -108,7 +108,7 @@ export BoundaryIntegralMethod,default_helmholtz_kernel_matrix,default_helmholtz_
 export fredholm_matrix!,fredholm_matrix_with_derivatives!,fredholm_matrix,fredholm_matrix_with_derivatives,construct_matrices!
 include("solvers/sweepmethods/dlp/dlp_kress.jl")
 export DLPKressWorkspace,DLP_kress,DLP_kress_global_corners,build_dlp_kress_workspace,build_Rmat_dlp_kress
-export construct_dlp_matrix!,construct_dlp_split!,construct_fredholm_matrix!,construct_dlp_matrix_derivatives!,construct_fredholm_matrix_derivatives!,
+export construct_dlp_matrix!,construct_dlp_split!,construct_fredholm_matrix!,construct_dlp_matrix_derivatives!,construct_fredholm_matrix_derivatives!
 
 # Chebyshev machinery - general
 include("chebyshev/chebyshev_core.jl")
@@ -125,7 +125,7 @@ export h0_h1_j0_j1_multi_ks_at_r!,h0_h1_multi_ks_at_r!
 include("solvers/sweepmethods/cfie/alpert_table.jl")
 export AlpertLogRule,alpert_log_rule
 include("solvers/sweepmethods/cfie/cfie.jl")
-export CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,
+export CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert
 include("solvers/sweepmethods/cfie/cfie_kress.jl")
 export CFIEKressWorkspace,build_cfie_kress_workspace,build_Rmat_kress,plot_boundary_with_weight_INFO
 include("solvers/sweepmethods/cfie/cfie_alpert.jl")
