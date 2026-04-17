@@ -84,12 +84,12 @@ function compute_eigenstate(solver::SweepSolver,basis::AbsBasis,billiard::AbsBil
 end
 
 """
-    compute_eigenstate(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k::T; dk::T=0.1) where {T<:Real}
+    compute_eigenstate(solver::VerginiSaraceno, basis::AbsBasis, billiard::AbsBilliard, k::T; dk::T=0.1) where {T<:Real}
 
 Computes a single eigenstate for a given wavenumber `k` using an accelerated solver. Based on the inputted k it finds the closest one. In principle this will find an even better precide eigenvalue k for which we get it's basis coefficients expansion (`Eigenstate`).
 
 # Arguments
-- `solver::AcceleratedSolver`: The solver object to compute the eigenstate.
+- `solver::VerginiSaraceno`: The solver object to compute the eigenstate.
 - `basis::AbsBasis`: The basis in which the eigenstate is represented.
 - `billiard::AbsBilliard`: The billiard domain for the eigenstate.
 - `k::T`: The wavenumber of the eigenstate.
@@ -98,7 +98,7 @@ Computes a single eigenstate for a given wavenumber `k` using an accelerated sol
 # Returns
 An `Eigenstate` object representing the computed eigenstate.
 """
-function compute_eigenstate(solver::AcceleratedSolver,basis::AbsBasis,billiard::AbsBilliard,k;dk=0.1)
+function compute_eigenstate(solver::VerginiSaraceno,basis::AbsBasis,billiard::AbsBilliard,k;dk=0.1)
     L=billiard.length
     dim=max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
     basis_new=resize_basis(basis,billiard,dim,k)
@@ -150,12 +150,12 @@ function EigenstateBundle(ks,k_basis,X,tens,basis,billiard)
 end
 
 """
-    compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k::T; dk::T=0.1, tol::T=1e-5) where {T<:Real}
+    compute_eigenstate_bundle(solver::VerginiSaraceno, basis::AbsBasis, billiard::AbsBilliard, k::T; dk::T=0.1, tol::T=1e-5) where {T<:Real}
 
 Computes a bundle of eigenstates within a small interval `[k-dk, k+dk]`.
 
 # Arguments
-- `solver::AcceleratedSolver`: The solver object to compute the eigenstates.
+- `solver::VerginiSaraceno`: The solver object to compute the eigenstates.
 - `basis::AbsBasis`: The basis in which the eigenstates are represented.
 - `billiard::AbsBilliard`: The billiard domain for the eigenstates.
 - `k::T`: The center wavenumber for the computation.
@@ -165,7 +165,7 @@ Computes a bundle of eigenstates within a small interval `[k-dk, k+dk]`.
 # Returns
 An `EigenstateBundle` object containing the computed eigenstates within the specified interval.
 """
-function compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k; dk = 0.1, tol=1e-5)
+function compute_eigenstate_bundle(solver::VerginiSaraceno,basis::AbsBasis,billiard::AbsBilliard,k;dk=0.1,tol=1e-5)
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
     basis_new=resize_basis(basis,billiard, dim,k)
@@ -216,12 +216,12 @@ end
 
 # this is basically the new solve where we incur the smallest penalty for getting the ks and the relevant state information for saving the husimi functions but it is much more efficient than doint it again once we have the eigenvalues
 """
-    solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+    solve_state_data_bundle(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis, Bi<:AbsBilliard}
 
 Solves the generalized eigenvalue problem in a small interval `[k0-dk, k0+dk]` and constructs the `StateData` object in that small interval. This function is iteratively called in the `compute_spectrum` function version that also computes the `StateData` object. The advantage of this version of the function from the regular `solve(solver...)` is that we get the eigenvectors here witjh minimal additional computational cost.
 
 # Arguments
-- `solver<:AbsSolver`: The solver object to use for the eigenvalue problem.
+- `solver::VerginiSaraceno`: The solver object to use for the eigenvalue problem.
 - `basis<:AbsBasis`: The basis object to use for the eigenvalue problem.
 - `billiard<:AbsBilliard`: The billiard object to use for the eigenvalue problem.
 - `k<:Real`: The center of the interval for which to solve the eigenvalue problem.
@@ -232,7 +232,7 @@ Solves the generalized eigenvalue problem in a small interval `[k0-dk, k0+dk]` a
 # Returns
 A `StateData` object containing the wavenumbers, the tensions and the expansion coefficients for the basis stored as a Vector of Vectors after a generalized eigenvalue problem computation.
 """
-function solve_state_data_bundle(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+function solve_state_data_bundle(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis, Bi<:AbsBilliard}
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
     basis_new=resize_basis(basis,billiard,dim,k)
@@ -245,7 +245,7 @@ end
 
 #### INTERNAL FUNCTION FOR TESTING TIME AND ALLOCATIONS OF MATRIX CONSTRUCTIONS AND EIGENVALUE SOLVING ####
 # Primarily used for checking regularizations of ill-conditioned F and dF/dk matrices ala Barnett. Useful for observing allocations, execution time and observing the variation of the condition number as k increases
-function solve_state_data_bundle_with_INFO(solver::Sol,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Sol<:AbsSolver, Ba<:AbsBasis, Bi<:AbsBilliard}
+function solve_state_data_bundle_with_INFO(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k,dk;multithreaded::Bool=true) where {Ba<:AbsBasis, Bi<:AbsBilliard}
     start_init=time()
     L=billiard.length
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))

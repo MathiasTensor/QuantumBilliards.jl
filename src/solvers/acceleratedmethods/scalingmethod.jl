@@ -4,7 +4,7 @@ abstract type AbsScalingMethod <: AcceleratedSolver
 end
 
 """
-    ScalingMethodA{T} <: AbsScalingMethod where {T<:Real}
+    VerginiSaraceno{T} <: AbsScalingMethod where {T<:Real}
 
 Represents the struct containing the parameters of the Scaling Method by Vergini and Saraceno.
 
@@ -16,7 +16,7 @@ Fields:
 - `min_dim::Int64`: The minimum dimension for the basis. This is in a way legacy code that is here for compatibility. But since one does not construct this struct outside it's function constructors just leave it.
 - `min_pts::Int64`: The minimum number of points for the boundary evaluation. This is in a way legacy code that is here for compatibility. But since one does not construct this struct outside it's function constructors just leave it.
 """
-struct ScalingMethodA{T} <: AbsScalingMethod where {T<:Real}
+struct VerginiSaraceno{T} <: AbsScalingMethod where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
     sampler::Vector
@@ -26,9 +26,9 @@ struct ScalingMethodA{T} <: AbsScalingMethod where {T<:Real}
 end
 
 """
-    ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
+    VerginiSaraceno(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
 
-Constructor for ScalingMethodA struct that takes into account default `GaussLegendreNodes` samplers.
+Constructor for VerginiSaraceno struct that takes into account default `GaussLegendreNodes` samplers.
 
 # Arguments
 - `dim_scaling_factor<:Real`: Scaling factor for the basis used. This one should be around 3.0-4.0 as a start to see how well the tension values are.
@@ -37,19 +37,19 @@ Constructor for ScalingMethodA struct that takes into account default `GaussLege
 - `min_pts::Int64`: The minimum number of points for the boundary evaluation. This is in a way legacy code that is here for compatibility. No need to change.
 
 # Returns
-- `ScalingMethodA{T}`: A struct with the provided parameters.
+- `VerginiSaraceno{T}`: A struct with the provided parameters.
 """
-function ScalingMethodA(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim=100,min_pts=500) where T<:Real 
+function VerginiSaraceno(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim=100,min_pts=500) where T<:Real 
     d=dim_scaling_factor
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[GaussLegendreNodes()]
-return ScalingMethodA(d,bs,sampler,eps(T),min_dim,min_pts)
+return VerginiSaraceno(d,bs,sampler,eps(T),min_dim,min_pts)
 end
 
 """
-    ScalingMethodA(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{Sam}; min_dim = 100, min_pts = 500) where {T<:Real, Sam<:AbsSampler} 
+    VerginiSaraceno(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{Sam}; min_dim = 100, min_pts = 500) where {T<:Real, Sam<:AbsSampler} 
 
-Constructor for ScalingMethodA struct that takes into account provided samplers.
+Constructor for VerginiSaraceno struct that takes into account provided samplers.
 
 # Arguments
 - `dim_scaling_factor<:Real`: Scaling factor for the basis used. This one should be around 3.0-4.0 as a start to see how well the tension values are.
@@ -59,12 +59,12 @@ Constructor for ScalingMethodA struct that takes into account provided samplers.
 - `min_pts::Int64`: The minimum number of points for the boundary evaluation. This is in a way legacy code that is here for compatibility. No need to change.
 
 # Returns
-- `ScalingMethodA{T}`: A struct with the provided parameters.
+- `VerginiSaraceno{T}`: A struct with the provided parameters.
 """
-function ScalingMethodA(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{Sam};min_dim=100,min_pts=500) where {T<:Real,Sam<:AbsSampler} 
+function VerginiSaraceno(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{Sam};min_dim=100,min_pts=500) where {T<:Real,Sam<:AbsSampler} 
     d=dim_scaling_factor
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    return ScalingMethodA(d,bs,samplers,eps(T),min_dim,min_pts)
+    return VerginiSaraceno(d,bs,samplers,eps(T),min_dim,min_pts)
 end
 
 """
@@ -121,17 +121,17 @@ function evaluate_points(solver::AbsScalingMethod,billiard::Bi,k) where {Bi<:Abs
 end
 
 """
-    construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices_benchmark(solver::VerginiSaraceno,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Benchmark the construction of F = G'*(W*G) and Fk = (dG/dk)'*(W*G) + (G'*(W*dG))
 using the same algorithm as `construct_matrices` (BLAS syr!/syr2k style; no W*G temp).
 
 Returns (F, Fk) and prints a detailed TimerOutput.
 """
-function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices_benchmark(solver::VerginiSaraceno,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     t0=time()
     xy=pts.xy; w=pts.w; N=basis.dim
-    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : 2*one(eltype(w))
     @info "construct_matrices_new" k=k N=N M=length(xy) nsym=nsym blas_threads=BLAS.get_num_threads()
     t=time()
     @blas_1 G=basis_matrix(basis,k,xy;multithreaded)
@@ -154,12 +154,12 @@ function construct_matrices_benchmark(solver::ScalingMethodA,basis::Ba,pts::Boun
 end
 
 """
-    construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+    construct_matrices(solver::VerginiSaraceno,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Constructs all the matrices needeed for the Scaling Method for a given reference k wavenumber. We need to construct from the solver a matrix that evaluates the basis function on the boundary, apply the weights to it and then multiplies it with the basis matrix transpose. This is detailed in section 6 of Barnett8s thesis: https://users.flatironinstitute.org/~ahb/thesis_html/node60.html.
 
 # Arguments
-- `solver::ScalingMethodA`: The solver for which the matrices are constructed. Redundant information, used b/c other methods have functions with same signatures and multiple dispatches are useful.
+- `solver::VerginiSaraceno`: The solver for which the matrices are constructed. Redundant information, used b/c other methods have functions with same signatures and multiple dispatches are useful.
 - `basis::Ba`: The basis on which the matrices are constructed.
 - `pts::BoundaryPoints`: The points on the boundary on which the matrices are constructed.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
@@ -168,11 +168,11 @@ Constructs all the matrices needeed for the Scaling Method for a given reference
 - `F::Symmetric{<:Real}`: The matrix that evaluates the basis function on the boundary and applies the weights.
 - `Fk::Symmetric{<:Real}`: The matrix that evaluates the derivative of the basis function on the boundary and applies the weights.
 """
-function construct_matrices(solver::ScalingMethodA,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
+function construct_matrices(solver::VerginiSaraceno,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     xy=pts.xy
     w=pts.w
     N=basis.dim                                 
-    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)  # symmetry multiplier
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : 2*one(eltype(w))  # symmetry multiplier
     @blas_1 G=basis_matrix(basis,k,xy;multithreaded) # G is the unweighted basis matrix (M×N)
     @blas_1 dG=dk_matrix(basis,k,xy;multithreaded) # dG si the unweighted k derivative ∂G/∂k (M×N)
     _scale_rows_sqrtw!(G,w,nsym) # G <- sqrt(nsym*w) .* G  , inplace row scaling, this is to use BLAS.syrk! trick because W is Diagonal: F = G'*(W*G) = (sqrt(W)*G)'*(sqrt(W)*G)

@@ -166,7 +166,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 function construct_matrices_benchmark(solver::DecompositionMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     t0=time()
     xy=pts.xy;w=pts.w;wn=pts.w_n;N=basis.dim
-    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : 2*one(eltype(w))
     t=time()
     @blas_1 B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
     @info "basis_and_gradient_matrices" elapsed=(time()-t) sizeB=size(B) sizeDX=size(dX) sizeDY=size(dY)
@@ -214,7 +214,7 @@ function construct_matrices(solver::DecompositionMethod,basis::Ba,pts::BoundaryP
     w=pts.w
     wn=pts.w_n
     N=basis.dim
-    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
+    nsym=isnothing(basis.symmetries) ? one(eltype(w)) : 2*one(eltype(w))
     # the alogrithm consctructs B and the normal derivative Bn with syrk to minimize the allocation cost. It does this with the trick of putting sqrt(w_n) into both the rows of B and the rows of B' so that we can use syrk on sqrt(W)*B to get B'*(W*B) without forming W*B as a temporary matrix (posible b/c W is diagonal)
     @blas_1 B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
     # Form F = B'*(W*B) by inplace scaling the rows of B by sqrt(w) (inplace to B) and use syrk to perform the Rank-k update of a symmetric matrix

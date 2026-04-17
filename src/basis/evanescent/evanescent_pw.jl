@@ -215,23 +215,25 @@ struct EvanescentParams{T<:Real}
     origins::Vector{SVector{2,T}} # one origin per angle set
 end
 
-struct EvanescentPlaneWaves{T,Sy} <: AbsBasis where  {T<:Real,Sy<:Union{AbsSymmetry,Nothing}}
+struct EvanescentPlaneWaves{T,Sym}<:AbsBasis where  {T<:Real}
     cs::PolarCS{T}
     dim::Int64 
     params::EvanescentParams{T}
-    symmetries::Union{Vector{Any},Nothing}
+    symmetries::Sym
     shift_x::T
     shift_y::T
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}}) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,params,symmetries,zero(T),zero(T))
+    Sym=typeof(symmetries)
+    return EvanescentPlaneWaves{T,Sym}(cs,dim,params,symmetries,zero(T),zero(T))
 end
 
 function EvanescentPlaneWaves(cs::PolarCS{T},params::EvanescentParams{T},symmetries::Union{Nothing,Vector{Any}},shift_x::T,shift_y::T) where {T<:Real}
     dim=length(vcat(params.angles...))
-    return EvanescentPlaneWaves{T,typeof(symmetries)}(cs,dim,params,symmetries,shift_x,shift_y)
+    Sym=typeof(symmetries)
+    return EvanescentPlaneWaves{T,Sym}(cs,dim,params,symmetries,shift_x,shift_y)
 end
 
 function EvanescentPlaneWaves(billiard::Bi,origin_cs::SVector{2,T},params::EvanescentParams{T},rot_angle::T;fundamental=false) where {Bi<:AbsBilliard,T<:Real}
