@@ -385,7 +385,7 @@ then the matrix size can be reduced. If they are up to the edges, then the matri
 - The color range is automatically balanced around the maximum absolute value in `Z`.
 - A color bar is displayed alongside the plot to indicate the data scale.
 """
-function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="",epsilon=1e-14)
+function plot_Z!(f::CairoMakie.Figure,i::Integer,j::Integer,Z::Matrix;title::String="",epsilon=1e-14)
     Z = deepcopy(Z)
     ax=Axis(f[i,j][1,1];title=title)
     m = findmax(abs.(Z))[1]
@@ -394,12 +394,12 @@ function plot_Z!(f::Figure,i::Integer,j::Integer,Z::Matrix;title::String="",epsi
     nan_col=findfirst(col->all(isnan,Z[:,col]),axes(Z,2))
     Z[isnan.(Z)].=m # to better see
     range_val=(-m,m) 
-    hmap=heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
+    hmap=CairoMakie.heatmap!(ax,Z,colormap=:balance,colorrange=range_val)
     lines!(ax,[1,size(Z,2)],[nan_row,nan_row],color=:green,linewidth=2,linestyle=:dash)
     lines!(ax,[nan_col,nan_col],[1,size(Z,1)],color=:green,linewidth=2,linestyle=:dash)
     ax.yreversed=false
-    ax.aspect=DataAspect()
-    Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
+    ax.aspect=Makie.DataAspect()
+    CairoMakie.Colorbar(f[i,j][1,2],colormap=:balance,limits=Float64.(range_val),tellheight=true)
 end
 
 """
