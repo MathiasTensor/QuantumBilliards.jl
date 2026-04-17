@@ -225,11 +225,18 @@ the Chebyshev-accelerated Alpert assembly.
 # Arguments
 - `solver::CFIE_alpert`
 - `pts::Vector{BoundaryPointsCFIE{T}}`
+- `rmin, rmax::T`: These global rmin and rmax must come from outside as they correct bounds due to off-grid Alpert nodes, and are used to build the Chebyshev plans. They can be estimated from the direct Alpert workspace using `estimate_cfie_alpert_cheb_rbounds`.
+- `npanels, M, grading, geo_ratio`:
+  Parameters passed to the Chebyshev Hankel plan builder, used here to determine
+  the panel layout for the blockwise interpolation metadata.
+- `pad`:
+  Safety padding factors for the minimum and maximum distances used in the
+  Chebyshev plans, applied to the blockwise extrema.
 
 # Returns
 - `CFIEAlpertBlockSystemCache{T}`
 """
-function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
+function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},rmin::T,rmax::T;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
     rule=alpert_log_rule(T,solver.alpert_order)
@@ -250,8 +257,6 @@ function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{Bound
         Cs[a]=_build_alpert_component_cache(solver,flat_boundary[a],pts[a],rule,solver.alpert_order)
     end
     blocks=Matrix{CFIE_alpert_BlockCache{T}}(undef,nc,nc)
-    global_rmin=typemax(T)
-    global_rmax=zero(T)
     for a in 1:nc,b in 1:nc
         pa=pts[a];pb=pts[b]
         Ga=Gs[a];Gb=Gs[b]
@@ -287,29 +292,11 @@ function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{Bound
             wj=copy(pb.ws)
             selfcache=nothing
         end
-
-        rmin_blk=typemax(T)
-        rmax_blk=zero(T)
-        @inbounds for j in 1:Nj,i in 1:Ni
-            if same && i==j
-                continue
-            end
-            rij=R[i,j]
-            if rij>eps(T)
-                rij<rmin_blk && (rmin_blk=rij)
-                rij>rmax_blk && (rmax_blk=rij)
-            end
-        end
-        @assert isfinite(rmin_blk) && rmax_blk>zero(T)
-        rmin_blk=pad[1]*rmin_blk
-        rmax_blk=pad[2]*rmax_blk
-        global_rmin=min(global_rmin,rmin_blk)
-        global_rmax=max(global_rmax,rmax_blk)
         pidx=Matrix{Int32}(undef,Ni,Nj)
         tloc=Matrix{Float64}(undef,Ni,Nj)
         blocks[a,b]=CFIE_alpert_BlockCache{T}(same,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,selfcache)
     end
-    pref_plan=plan_h(0,1,1.0+0im,Float64(global_rmin),Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
     pans=pref_plan.panels
     for a in 1:nc,b in 1:nc
         blk=blocks[a,b]
@@ -326,7 +313,7 @@ function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{Bound
             end
         end
     end
-    return CFIEAlpertBlockSystemCache{T}(blocks,offs,Xs,Ys,dXs,dYs,ss,Float64(global_rmin),Float64(global_rmax))
+    return CFIEAlpertBlockSystemCache{T}(blocks,offs,Xs,Ys,dXs,dYs,ss,rmin,rmax)
 end
 
 """
@@ -400,8 +387,8 @@ This routine combines:
 - `CFIEAlpertChebWorkspace{T}`
 """
 function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},direct::CFIEAlpertWorkspace{T},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real}
-    block_cache=build_cfie_alpert_block_caches(solver,pts;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
     rmin,rmax=estimate_cfie_alpert_cheb_rbounds(direct;pad=pad) # extremely annoying, some alpert nodes outside the initial interval since off grid, had to make a helper to fix this
+    block_cache=build_cfie_alpert_block_caches(solver,pts,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
     plans0,plans1=build_CFIE_plans_alpert(ks,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads,r_switch=r_switch)
     bessel_ws=CFIE_H0_H1_BesselWorkspace(length(ks);ntls=ntls)
     return CFIEAlpertChebWorkspace{T}(direct,block_cache,plans0,plans1,bessel_ws,ks,length(ks))
@@ -441,6 +428,7 @@ locating the corresponding Chebyshev panel on the fly from `plans0[1]`.
 - `nothing`
 """
 @inline function _h0_h1_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH})
+    @assert plans0[1].rmin<=r<=plans0[1].rmax
     pidx=_find_panel(plans0[1],r)
     P=plans0[1].panels[pidx]
     t=(2r-(P.b+P.a))/(P.b-P.a)
