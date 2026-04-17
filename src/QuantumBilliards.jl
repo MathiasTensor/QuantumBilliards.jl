@@ -203,7 +203,7 @@ export Eigenstate,compute_eigenstate,EigenstateBundle,compute_eigenstate_bundle,
 
 # Vergini-Saraceno
 include("solvers/acceleratedmethods/scalingmethod.jl")
-export VerginiSaraceno,solve_vectors,solve_spectrum_with_INFO,plot_Z!
+export VerginiSaraceno,solve_vectors,solve_spectrum_with_INFO,plot_Z!,compute_spectrum_with_state_scaling_method
 
 include("spectra/unfolding.jl")
 export weyl_law,k_at_state
