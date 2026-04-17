@@ -633,7 +633,7 @@ tensN   :: Vector{T}                   – normalized residuals (scale-free)
    • r is the probe rank for Beyn (auto-bumped internally if saturated).
    • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
 """
-function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-10,max_iter::Int=10,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-10,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     fundamental=!isnothing(solver.symmetry)
     basis=AbstractHankelBasis()
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
