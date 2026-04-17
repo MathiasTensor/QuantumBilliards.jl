@@ -1,10 +1,8 @@
-using CoordinateTransformations,Rotations,StaticArrays
-
 struct CartesianCS{T} <:CoordinateSystem where {T<:Number}
     origin::SVector{2,T}
     rot_angle::T
-    affine_map::CoordinateTransformations.AffineMap{LinearMaps.Angle2d{T},SVector{2,T}}
-    local_map::CoordinateTransformations.AffineMap{LinearMaps.Angle2d{T},SVector{2,T}}
+    affine_map::CoordinateTransformations.AffineMap{Rotations.Angle2d{T},SVector{2,T}}
+    local_map::CoordinateTransformations.AffineMap{Rotations.Angle2d{T},SVector{2,T}}
 end
 
 """
@@ -20,10 +18,10 @@ Create a `CartesianCS` struct that contains information about transformations po
 - `CartesianCS`: The struct containing the `AffineMap` for the rotations/translations and inverses for this coordiante system choice.
 """
 function CartesianCS(origin::SVector{2,T},rot_angle::T) where {T<:Number}
-    Rot=CoordinateTransformations.LinearMap(LinearMaps.Angle2d(rot_angle))
+    Rot=CoordinateTransformations.LinearMap(Rotations.Angle2d(rot_angle))
     Tran=CoordinateTransformations.Translation(origin[1],origin[2])
     Tran_inv=CoordinateTransformations.Translation(-origin[1],-origin[2])
-    Rot_inv=CoordinateTransformations.LinearMap(LinearMaps.Angle2d(-rot_angle))
+    Rot_inv=CoordinateTransformations.LinearMap(Rotations.Angle2d(-rot_angle))
     affine_map=CoordinateTransformations.compose(Tran,Rot)
     local_map=CoordinateTransformations.compose(Rot_inv,Tran_inv)
     return CartesianCS(origin,rot_angle,affine_map,local_map)
@@ -49,10 +47,10 @@ Create a `PolarCS` struct that contains information about transformations possib
 - `PolarCS`: The struct containing the `AffineMap` for the rotations/translations and inverses for this coordiante system choice.
 """
 function PolarCS(origin::SVector{2,T},rot_angle::T) where {T<:Number}
-    Rot=CoordinateTransformations.LinearMap(LinearMaps.Angle2d(rot_angle))
+    Rot=CoordinateTransformations.LinearMap(Rotations.Angle2d(rot_angle))
     Tran=CoordinateTransformations.Translation(origin[1],origin[2])
     Tran_inv=CoordinateTransformations.Translation(-origin[1],-origin[2])
-    Rot_inv=CoordinateTransformations.LinearMap(LinearMaps.Angle2d(-rot_angle))
+    Rot_inv=CoordinateTransformations.LinearMap(Rotations.Angle2d(-rot_angle))
     affine_map=CoordinateTransformations.compose(Tran,Rot) #already in cartesian coordinates
     local_map=CoordinateTransformations.compose(Rot_inv,Tran_inv) # rotate in local polar coordinates
     return PolarCS(origin,rot_angle,affine_map,local_map)

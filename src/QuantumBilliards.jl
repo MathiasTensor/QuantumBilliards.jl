@@ -25,6 +25,7 @@ using KrylovKit
 using LinearMaps
 using PyCall
 using CoordinateTransformations
+using Rotations
 
 #abstract types
 include("abstracttypes.jl")
