@@ -1,6 +1,7 @@
 module QuantumBilliards
 
 using CairoMakie
+using FFTW
 
 #abstract types
 include("abstracttypes.jl")
