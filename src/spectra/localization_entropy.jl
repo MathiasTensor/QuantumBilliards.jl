@@ -1,5 +1,3 @@
-using LsqFit, QuadGK, SpecialFunctions, ProgressMeter
-
 """
     localization_entropy(H::Matrix{T}, chaotic_classical_phase_space_vol_fraction::T) where {T<:Real}
 

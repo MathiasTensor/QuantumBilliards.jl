@@ -1,5 +1,3 @@
-using LinearAlgebra, Optim, ProgressMeter
-
 """
     solve_wavenumber(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,k::Real,dk::Real) -> Tuple{Real, Real}
 

@@ -1,5 +1,3 @@
-using LinearAlgebra, StaticArrays, TimerOutputs
-
 """
     struct ParticularSolutionsMethod{T} <: SweepSolver where {T<:Real}
 

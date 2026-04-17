@@ -1,7 +1,4 @@
-using LinearAlgebra, StaticArrays
-using TimerOutputs
-abstract type AbsScalingMethod <: AcceleratedSolver 
-end
+abstract type AbsScalingMethod <: AcceleratedSolver end
 
 """
     VerginiSaraceno{T} <: AbsScalingMethod where {T<:Real}

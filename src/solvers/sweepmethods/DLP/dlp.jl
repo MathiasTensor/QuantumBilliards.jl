@@ -1,5 +1,3 @@
-using LinearAlgebra, StaticArrays, TimerOutputs, Bessels
-const TO=TimerOutput()
 const TWO_PI=2*pi
 const FOUR_PI=4*pi
 

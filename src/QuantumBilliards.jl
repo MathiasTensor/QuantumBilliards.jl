@@ -27,6 +27,8 @@ using LinearMaps
 using PyCall
 using CoordinateTransformations
 using Rotations
+using Distributions
+using CircularArrays
 
 #abstract types
 include("abstracttypes.jl")

@@ -1,7 +1,3 @@
-using FastGaussQuadrature
-using StaticArrays
-using StatsBase
-
 struct LinearNodes <: AbsSampler 
 end 
 

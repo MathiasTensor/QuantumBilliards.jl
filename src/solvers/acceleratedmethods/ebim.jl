@@ -1,7 +1,3 @@
-using LinearAlgebra,StaticArrays,TimerOutputs,Bessels,ProgressMeter
-using KrylovKit
-using LinearMaps
-
 """
     EBIMSolver
 

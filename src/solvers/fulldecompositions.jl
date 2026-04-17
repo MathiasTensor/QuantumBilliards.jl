@@ -1,5 +1,3 @@
-using LinearAlgebra
-
 """
     generalized_eigen(A::Symmetric,B::Symmetric;eps=1e-15)
 

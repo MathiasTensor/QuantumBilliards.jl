@@ -1,5 +1,3 @@
-using LinearAlgebra,SparseArrays,Arpack
-
 """
     struct FiniteElementMethod{T<:Real,Bi<:AbsBilliard}
 

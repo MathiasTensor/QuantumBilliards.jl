@@ -1,5 +1,3 @@
-using LinearAlgebra, CoordinateTransformations, Rotations, StaticArrays
-
 """
 MAIN REFERENCE: Jan Wiersig, Gabriel G. Carlo, Evanescent wave approach to diﬀractive phenomena in convex billiards with corners
 https://arxiv.org/pdf/nlin/0212011

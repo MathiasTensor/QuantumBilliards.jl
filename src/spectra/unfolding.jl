@@ -1,5 +1,3 @@
-using QuadGK
-
 """
     corner_correction(billiard::Bi; fundamental::Bool=true) -> Real where {Bi<:AbsBilliard}
 

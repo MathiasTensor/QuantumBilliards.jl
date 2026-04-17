@@ -1,5 +1,3 @@
-using Random, Distributions
-
 """
     GaussianRandomState{K,T} <: AbsState where {K<:Number, T<:Real}
 

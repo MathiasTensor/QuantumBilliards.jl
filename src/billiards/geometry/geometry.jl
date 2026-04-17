@@ -1,5 +1,3 @@
-using StaticArrays,LinearAlgebra, ForwardDiff
-
 """
     tangent_vec(curve::L, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where {T<:Real, L<:AbsCurve}
 

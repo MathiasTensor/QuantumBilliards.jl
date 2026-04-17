@@ -1,6 +1,3 @@
-using Bessels
-using CoordinateTransformations, Rotations, StaticArrays
-
 #TODO Replace independant sin and cos calls with sincos
 #TODO Steer's reccurence formula for besselj might provide speedup, already in Bessels but we have to compute redundant terms.
 """
