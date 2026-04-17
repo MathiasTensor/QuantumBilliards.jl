@@ -30,8 +30,8 @@ end
 struct PolarCS{T} <:CoordinateSystem  where {T<:Number}
     origin::SVector{2,T}
     rot_angle::T
-    affine_map::CoordinateTransformations.AffineMap{CoordinateTransformations.Angle2d{T},SVector{2, T}}  #maps carthesian coordinates
-    local_map::CoordinateTransformations.AffineMap{CoordinateTransformations.Angle2d{T},SVector{2, T}} #transform carthesian into local polar coords
+    affine_map::CoordinateTransformations.AffineMap{Rotations.Angle2d{T},SVector{2, T}}  #maps carthesian coordinates
+    local_map::CoordinateTransformations.AffineMap{Rotations.Angle2d{T},SVector{2, T}} #transform carthesian into local polar coords
 end
 
 """
