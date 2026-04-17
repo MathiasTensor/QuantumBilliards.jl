@@ -133,6 +133,71 @@ function k_sweep(solver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_m
     return res
 end
 
+"""
+    find_peaks(x::Vector{T}, y::Vector{T}; threshold=200.0) where {T<:Real}
+
+Finds the x-coordinates of local maxima in the `y` vector that are greater than the specified `threshold`.
+
+# Arguments
+- `x::Vector{T}`: The x-coordinates corresponding to the y-values.
+- `y::Vector{T}`: The y-values to search for peaks.
+- `threshold::Union{T, Vector{T}}`: Minimum value a peak must exceed to be considered.
+  Can be a scalar (applied to all peaks) or a vector (element-wise comparison).
+  Default is 200.0.
+
+# Returns
+- `Vector{T}`: A vector of x-coordinates where peaks are located.
+"""
+function find_peaks(x::Vector{T}, y::Vector{T}; threshold::Union{T,Vector{T}}=200.0) where {T<:Real}
+    peaks=T[]
+    threshold_vec=length(threshold)==1 ? fill(threshold,length(x)) : threshold
+    for i in 2:length(y)-1
+        if y[i]>y[i-1] && y[i]>y[i+1] && y[i]>threshold_vec[i]
+            push!(peaks,x[i])
+        end
+    end
+    return peaks
+end
+
+"""
+    _second_derivative_sweep_spectrum(x::Vector{T}, y::Vector{T}) where {T<:Real}
+
+Computes the second derivative of `y` with respect to `x` using finite differences between the xs in `x`.
+
+# Arguments
+- `x::Vector{T}`: The x-coordinates of the data.
+- `y::Vector{T}`: The y-values of the data.
+
+# Returns
+- `Vector{T}`: Midpoints of the x-values for the second derivative.
+- `Vector{T}`: The second derivative of `y` with respect to `x`.
+"""
+function _second_derivative_sweep_spectrum(x::Vector{T}, y::Vector{T}) where {T<:Real}
+    first_grad=diff(y)./diff(x)
+    first_mid_x=@. (x[1:end-1]+x[2:end])/2
+    second_grad=diff(first_grad)./diff(first_mid_x)
+    second_mid_x=@. (first_mid_x[1:end-1]+first_mid_x[2:end])/2
+    return second_mid_x,second_grad
+end
+
+"""
+    get_eigenvalues(k_range::Vector{T}, tens::Vector{T}; threshold=200.0) where {T<:Real}
+
+Finds peaks in the second derivative of the logarithm of `tens` with respect to `k_range`. These peaks are as precise as the k step that was chosen in `k_range`.
+
+# Arguments
+- `k_range::Vector{T}`: The range of `k` values.
+- `tens::Vector{T}`: The tension values.
+- `threshold::Real`: Minimum value a peak in the second derivative gradient must exceed. Default is 200.0.
+
+# Returns
+- `Vector{T}`: The `k_range` values where peaks in the second derivative gradient are found.
+"""
+function get_eigenvalues(k_range::Vector{T}, tens::Vector{T}; threshold=200.0) where {T<:Real}
+    mid_x,gradient=_second_derivative_sweep_spectrum(k_range,log10.(tens))
+    return find_peaks(mid_x,gradient;threshold=threshold)
+end
+
 ############ REFINEMENT ############
 
 function _try_scaling_field(obj,field::Symbol,factor)

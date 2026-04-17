@@ -877,3 +877,155 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
     tensions_all=tensions_all[keep]
     return λs_all,tensions_all
 end
+
+"""
+    solve_DEBUG_w_2nd_order_corrections(
+        solver::ExpandedBoundaryIntegralMethod,
+        basis::Ba,
+        pts::BoundaryPoints,
+        k;
+        kernel_fun=(:default, :first, :second)
+    ) -> (Vector{T}, Vector{T}, Vector{T}, Vector{T})
+
+A debug routine that solves the generalized eigenproblem `(A, dA)` at wavenumber `k`, then applies
+**both first- and second-order** corrections to refine the approximate roots. Specifically,
+it extracts λ from `A*x = λ dA*x`, then does:
+
+  corr₁[i] = -λ[i]
+  corr₂[i] = -0.5 * corr₁[i]^2 * real( (v_leftᵀ ddA v_right) / (v_leftᵀ dA v_right) )
+
+Hence two sets of corrected wavenumbers: `k + corr₁` and `k + corr₁ + corr₂`. Tensions are `|corr₁|`
+and `|corr₁ + corr₂|`.
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The EBIM solver config.
+- `basis::Ba`: Basis function type.
+- `pts::BoundaryPoints`: Boundary geometry.
+- `k`: Wavenumber for the eigenproblem.
+- `kernel_fun`: A triple `(base, first, second)` or custom functions for kernel & derivatives.
+- `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
+
+# Returns
+- `(λ_corrected_1, tens_1, λ_corrected_2, tens_2)`: 
+   1. `λ_corrected_1 = k + corr₁` (1st-order),
+   2. `tens_1 = abs(corr₁)`,
+   3. `λ_corrected_2 = k + corr₁ + corr₂` (2nd-order),
+   4. `tens_2 = abs(corr₁ + corr₂)`.
+"""
+function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+    A,dA,ddA=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
+    λ,VR,VL=generalized_eigen_all(A,dA)
+    valid_indices=.!isnan.(λ).&.!isinf.(λ)
+    λ=λ[valid_indices]
+    sort_order=sortperm(abs.(λ)) 
+    λ=λ[sort_order]
+    T=eltype(real.(λ))
+    λ=real.(λ)
+    corr_1=Vector{T}(undef,length(λ))
+    corr_2=Vector{T}(undef,length(λ))
+    for i in eachindex(λ)
+        v_right=VR[:,i]
+        v_left=VL[:,i]
+        numerator=transpose(v_left)*ddA*v_right
+        denominator=transpose(v_left)*dA*v_right
+        corr_1[i]=-λ[i]
+        corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
+    end
+    λ_corrected_1=k.+corr_1
+    λ_corrected_2=λ_corrected_1.+corr_2
+    tens_1=abs.(corr_1)
+    tens_2=abs.(corr_1.+corr_2)
+    return λ_corrected_1,tens_1,λ_corrected_2,tens_2
+end
+
+"""
+    ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
+
+Computes the inverse of the differences between consecutive elements in `kvals`. This inverts the small differences between the ks very close to the correct eigenvalues and serves as a visual aid or potential criteria for finding missing levels.
+
+# Arguments
+- `kvals::Vector{T}`: A vector of values for which differences are calculated.
+
+# Returns
+- `Vector{T}`: The `kvals` vector excluding its last element.
+- `Vector{T}`: The inverse of the differences between consecutive elements in `kvals`.
+"""
+function ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
+    kvals_diff=diff(kvals)
+    kvals=kvals[1:end-1]
+    return kvals,T(1.0)./kvals_diff
+end
+
+"""
+    visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+
+Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
+
+# Usage
+hankel_basis=AbstractHankelBasis()
+@time ks_debug,tens_debug,ks_debug_small,tens_debug_small=QuantumBilliards.visualize_ebim_sweep(ebim_solver,hankel_basis,billiard,k1,k2;dk=dk)
+scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
+-> This gives a sequence of points that fall on a vertical line when close to an actual eigenvalue. 
+
+# Arguments
+- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the EBIM method.
+- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
+- `billiard::Bi`: The billiard geometry, a subtype of `AbsBilliard`.
+- `k1`: The initial value of `k` for the sweep.
+- `k2`: The final value of `k` for the sweep.
+- `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
+- `multithreaded::Bool=false`: If the matrix construction should be multithreaded.
+- `multithreaded_ks::Bool=true`: If the ks loop should be rather multithreaded.
+
+# Returns
+- `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
+- `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
+"""
+function visualize_ebim_sweep(solver::EBIMSolver,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Bi<:AbsBilliard}
+    k=k1
+    T=eltype(k1)
+    ks=T[] # these are the evaluation points
+    push!(ks,k1)
+    k=k1
+    while k<k2
+        k+=dk(k)
+        push!(ks,k)
+    end
+    ks_all_1=Vector{Union{T,Missing}}(missing,length(ks))
+    ks_all_2=Vector{Union{T,Missing}}(missing,length(ks))
+    tens_all_1=Vector{Union{T,Missing}}(missing,length(ks))
+    tens_all_2=Vector{Union{T,Missing}}(missing,length(ks))
+    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
+    @showprogress desc="Calculating boundary points..." for i in eachindex(ks) 
+        all_pts[i]=evaluate_points(solver,billiard,ks[i])
+    end
+    @info "EBIM smallest tens..."
+    p=Progress(length(ks),1)
+    @use_threads multithreading=multithreaded_ks for i in eachindex(ks)
+        ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,AbstractHankelBasis(),all_pts[i],ks[i],multithreaded=multithreaded)
+        idx1=findmin(tens1)[2]
+        idx2=findmin(tens2)[2]
+        if log10(tens1[idx1])<0.0
+            ks_all_1[i]=ks1[idx1]
+            tens_all_1[i]=tens1[idx1]   
+        end
+        if log10(tens2[idx2])<0.0
+            ks_all_2[i]=ks2[idx2]
+            tens_all_2[i]=tens2[idx2]
+        end
+        next!(p)
+    end
+    ks_all_1=skipmissing(ks_all_1)|>collect
+    tens_all_1=skipmissing(tens_all_1)|>collect
+    ks_all_2=skipmissing(ks_all_2)|>collect
+    tens_all_2=skipmissing(tens_all_2)|>collect
+    _,logtens_1=ebim_inv_diff(ks_all_1)
+    _,logtens_2=ebim_inv_diff(ks_all_2)
+    idxs1=findall(x->x>0.0,logtens_1)
+    idxs2=findall(x->x>0.0,logtens_2)
+    logtens_1=logtens_1[idxs1]
+    logtens_2=logtens_2[idxs2]
+    ks_all_1=ks_all_1[idxs1]
+    ks_all_2=ks_all_2[idxs2]
+    return ks_all_1,logtens_1, ks_all_2,logtens_2
+end

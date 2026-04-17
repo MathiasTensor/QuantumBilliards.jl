@@ -166,6 +166,9 @@ macro svd_or_det_solve(A,use_krylov,which,blas_threads)
     end
 end
 
+# helper for determining the byte size of object "a"
+memory_size(a)=Base.format_bytes(Base.summarysize(a)) 
+
 """
     try_MKL_on_x86_64!()
 
