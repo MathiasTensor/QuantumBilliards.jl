@@ -440,6 +440,7 @@ locating the corresponding Chebyshev panel on the fly from `plans0[1]`.
 - `nothing`
 """
 @inline function _h0_h1_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH})
+    @assert plans0[1].rmin<=r<=plans0[1].rmax
     pidx=_find_panel(plans0[1],r)
     P=plans0[1].panels[pidx]
     t=(2r-(P.b+P.a))/(P.b-P.a)
