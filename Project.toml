@@ -1,6 +1,6 @@
 name = "QuantumBilliards"
 uuid = "7c03dc60-f10f-4d5b-b776-32bcaab55394"
-authors = ["Crt Lozej"]
+authors = ["Matic Orel, Crt Lozej"]
 version = "0.1.0"
 
 [deps]

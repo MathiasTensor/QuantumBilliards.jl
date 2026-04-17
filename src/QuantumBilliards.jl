@@ -1,5 +1,7 @@
 module QuantumBilliards
 
+using CairoMakie
+
 #abstract types
 include("abstracttypes.jl")
 export CoordinateSystem,AbsBilliard,AbsCurve,AbsVirtualCurve,AbsRealCurve,AbsBasis,AbsFundamentalBasis,AbsSolver,AbsPoints,SweepSolver,AcceleratedSolver,AbsSampler,AbsState,StationaryState,AbsGrid,AbsSymmetry,AbsObservable,CFIE
