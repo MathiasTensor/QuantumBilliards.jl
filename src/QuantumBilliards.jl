@@ -2,6 +2,28 @@ module QuantumBilliards
 
 using CairoMakie
 using FFTW
+using Bessels
+using SpecialFunctions
+using LinearAlgebra
+using SparseArrays
+using Arpack
+using Random
+using ForwardDiff
+using QuadGK
+using FastGaussQuadrature
+using Optim
+using StatsBase
+using ProgressMeter
+using BenchmarkTools
+using CSV
+using DataFrames
+using PrettyTables
+using JLD2
+using LsqFit
+using MKL
+using KrylovKit
+using LinearMaps
+using PyCall
 
 #abstract types
 include("abstracttypes.jl")
