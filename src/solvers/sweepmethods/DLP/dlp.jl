@@ -1006,13 +1006,6 @@ function construct_matrices!(solver::BoundaryIntegralMethod,basis::Ba,A::Abstrac
     @blas_1 fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
     return A
 end
-function construct_matrices(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=length(pts.xy)
-    A=Matrix{Complex{T}}(undef,N,N)
-    construct_matrices!(solver,basis,A,pts,k;multithreaded=multithreaded)
-    return A
-end
-
 function construct_matrices!(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     @blas_1 fredholm_matrix_with_derivatives!(A,dA,ddA,pts,solver.symmetry,k;multithreaded=multithreaded)
     return A,dA,ddA
