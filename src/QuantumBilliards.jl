@@ -118,6 +118,7 @@ export EllipseMushroom,make_ellipse_mushroom_and_basis
 export CircularHoleBilliard,make_circle_with_holes_and_basis,make_multihole_and_basis,make_annulus_and_basis,MultiHoleBilliard,AnnularBilliard
 export EllipticFlowerWithOptionalHole,make_elliptic_flower_and_basis
 export StarBilliard,make_star_and_basis
+export AfricaBilliard,make_africa_and_basis
 
 # general matrix helpers
 include("solvers/fulldecompositions.jl")
