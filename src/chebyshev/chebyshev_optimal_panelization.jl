@@ -180,8 +180,10 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     max_errs1=fill(Inf,nz)
     max_errs2=fill(Inf,nz)
     max_errs3=fill(Inf,nz)
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
     for it in 1:max_iter
-        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
+        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads(),r_switch=r_switch)
         Threads.@threads for j in eachindex(zj)
             pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
@@ -285,8 +287,10 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     exact1=Matrix{ComplexF64}(undef,sampling_points,nz)
     max_errs0=fill(Inf,nz)
     max_errs1=fill(Inf,nz)
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
     for it in 1:max_iter
-        plans0,plans1=build_CFIE_plans_alpert(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
+        plans0,plans1=build_CFIE_plans_alpert(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads(),r_switch=r_switch)
         Threads.@threads for j in eachindex(zj)
             pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
             pidx1,tloc1,_=panel_and_geom(plans1[j],rs)

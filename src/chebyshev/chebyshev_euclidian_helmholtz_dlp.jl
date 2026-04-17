@@ -767,46 +767,6 @@ sym::Rotation,plan::ChebHankelPlanH1x;multithreaded::Bool=true) where {T<:Real}
     return _one_k_rotation_DLP_chebyshev!(K,bp,sym,plan;multithreaded)
 end
 
-"""
-    construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
-
-Inputs:
-- Tbufs: vector of matrices to fill, one for each complex k in zj. This should be preallocated outside
-- solver: BoundaryIntegralMethod containing the symmetry information
-- pts: BoundaryPoints containing the boundary points and normals
-- zj: vector of complex wavenumbers for which to construct the matrices
-- multithreaded: whether to use multithreading for matrix construction
-- use_chebyshev: whether to use chebyshev interpolation for hankel evaluations (faster for large k) or direct hankel evaluations
-- n_panels: number of panels to use for chebyshev interpolation if use_chebyshev is true
-- M: number of chebyshev points per panel for chebyshev interpolation if use_chebyshev is true
-- timeit: whether to print timing information for different steps
-
-# Returns:
-- nothing (the matrices are filled in place in Tbufs)
-"""
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
-    rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
-    plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
-    @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
-        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform)
-    end
-    if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
-        @blas_1 begin
-            @benchit timeit=timeit "DLP Chebyshev" compute_kernel_matrices_DLP_chebyshev!(Tbufs,pts,solver.symmetry,plans;multithreaded=multithreaded)   
-            @benchit timeit=timeit "Assemble matrices" assemble_fredholm_matrices!(Tbufs,pts)
-        end
-    else
-        @blas_1 begin # use standard hankel evaluations for matrix construction. This is faster for small k values where chebyshev interpolation overhead is not worth it.
-            @benchit timeit=timeit "DLP complex k" @inbounds for j in eachindex(zj)
-                fredholm_matrix_complex_k!(Tbufs[j],pts,solver.symmetry,zj[j],multithreaded=multithreaded) 
-            end
-        end
-    end
-    return nothing
-end
-
 #################################################################################
 # Assemble Fredholm matrices from kernel matrices by applying quadrature weights and adding identity.
 # Inputs:
@@ -847,5 +807,47 @@ function assemble_fredholm_matrices!(K::Matrix{Complex{T}},bp::BoundaryPoints{T}
         K[i,i]+=one(eltype(K))
     end
     filter_matrix!(K)
+    return nothing
+end
+
+"""
+    construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
+zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
+
+Inputs:
+- Tbufs: vector of matrices to fill, one for each complex k in zj. This should be preallocated outside
+- solver: BoundaryIntegralMethod containing the symmetry information
+- pts: BoundaryPoints containing the boundary points and normals
+- zj: vector of complex wavenumbers for which to construct the matrices
+- multithreaded: whether to use multithreading for matrix construction
+- use_chebyshev: whether to use chebyshev interpolation for hankel evaluations (faster for large k) or direct hankel evaluations
+- n_panels: number of panels to use for chebyshev interpolation if use_chebyshev is true
+- M: number of chebyshev points per panel for chebyshev interpolation if use_chebyshev is true
+- timeit: whether to print timing information for different steps
+- r_switch: Chebyshev cutoff radius for small-argument series patch in hankel evaluation. 
+  If r_switch>0, then for r<r_switch the hankel evaluation will switch to a series expansion.
+
+# Returns:
+- nothing (the matrices are filled in place in Tbufs)
+"""
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
+zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false,r_switch::Float64=0.0) where {T<:Real}
+    rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
+    plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
+    @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
+        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform,r_switch=r_switch)
+    end
+    if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
+        @blas_1 begin
+            @benchit timeit=timeit "DLP Chebyshev" compute_kernel_matrices_DLP_chebyshev!(Tbufs,pts,solver.symmetry,plans;multithreaded=multithreaded)   
+            @benchit timeit=timeit "Assemble matrices" assemble_fredholm_matrices!(Tbufs,pts)
+        end
+    else
+        @blas_1 begin # use standard hankel evaluations for matrix construction. This is faster for small k values where chebyshev interpolation overhead is not worth it.
+            @benchit timeit=timeit "DLP complex k" @inbounds for j in eachindex(zj)
+                fredholm_matrix_complex_k!(Tbufs[j],pts,solver.symmetry,zj[j],multithreaded=multithreaded) 
+            end
+        end
+    end
     return nothing
 end

@@ -253,7 +253,9 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE
     wj=(R/nq).*ej # contour weights
     #TODO Make the Fredholm matrices working buffers from outside to prevent large allocations in a loop (only for RAM critical applications since this is a small part of the actual execution time)
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
-    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info) # construct the T(zj) matrices for each contour point zj.
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
+    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info,r_switch=r_switch) # construct the T(zj) matrices for each contour point zj.
     # Allocate the buffers for the Beyn method. These are used in the matrix construction and then in the contour integrations to avoid repeated allocations. The matrices are sized according to the expected number of eigenvalues r and the size of the Fredholm matrices N.
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     if solver isa CFIE_kress
@@ -416,7 +418,9 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_c
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
-    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=true) # construct the T(zj) matrices for each contour point zj.
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
+    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=true,r_switch=r_switch) # construct the T(zj) matrices for each contour point zj.
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
@@ -474,7 +478,7 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_c
                 continue
             end
             fill!(Tbuf_check[1],0.0+0.0im)
-            construct_boundary_matrices!(Tbuf_check,solver,pts,[λ[j]];multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false) # construct the T(λ[j]) matrix for the eigenvalue λ[j] to check the residual
+            construct_boundary_matrices!(Tbuf_check,solver,pts,[λ[j]];multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false,r_switch=hankel_r_switch(abs(λ[j]))) # construct the T(λ[j]) matrix for the eigenvalue λ[j] to check the residual
             @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,Tbuf_check[1],@view(Phi[:,j]))
             ybuf_norm=norm(ybuf)
             @info "k=$((λ[j])) ||A(k)v(k)|| = $(ybuf_norm)"
@@ -546,7 +550,9 @@ function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kres
     tensN=Vector{T}(undef,rk)
     logs=collect_logs ? String[] : nothing
     Tbufs=[zeros(Complex{T},N,N) for _ in eachindex(λ)]
-    construct_boundary_matrices!(Tbufs,solver,pts,λ;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false)
+    kmax=maximum(abs.(λ))
+    r_switch=hankel_r_switch(kmax) # not really a contour here, but still use large k switch for the chebyshev hankel evaluation if needed
+    construct_boundary_matrices!(Tbufs,solver,pts,λ;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false,r_switch=r_switch)
     vecnorm= matnorm===:one ? (v->norm(v,1)) : matnorm===:two ? (v->norm(v)) : (v->norm(v,Inf))
     @inbounds for j in 1:rk
         λj=λ[j]
