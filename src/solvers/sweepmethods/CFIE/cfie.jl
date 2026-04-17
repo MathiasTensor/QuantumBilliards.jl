@@ -4,12 +4,9 @@
 #  - Barnett, A. H., & Betcke, T. (2007). Stability and convergence of the method of fundamental solutions for Helmholtz problems on analytic domains. Journal of Computational Physics, 227(14), 7003-7026.
 #  - Zhao, L., & Barnett, A. (2015). Robust and efficient solution of the drum problem via Nyström approximation of the Fredholm determinant. SIAM Journal on Numerical Analysis, Stable URL: https://www.jstor.org/stable/24512689
 
-H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
-H(n::Int,x::Complex{T}) where {T<:Real}=SpecialFunctions.besselh(n,1,x)
 two_pi=2*pi
 inv_two_pi=1/two_pi
 euler_over_pi=MathConstants.eulergamma/pi
-@inline function hankel_pair01(x);h0=H(0,x);h1=H(1,x);return h0,h1;end
 
 ################################
 #### CONSTRUCTOR CFIE_kress ####

@@ -3,12 +3,8 @@
 # - Barnett, A. H. / Betcke, T., mpspack DLP implementation.
 # - Zhao, L. / Barnett, A., Robust and efficient solution of the drum problem via Nyström approximation of the Fredholm determinant.
 
-H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
-H(n::Int,x::Complex{T}) where {T<:Real}=SpecialFunctions.besselh(n,1,x)
 const two_pi=2*pi
 const inv_two_pi=1/two_pi
-@inline function hankel_pair01(x);h0=H(0,x);h1=H(1,x);return h0,h1;end
-
 
 """
     DLPKressWorkspace{T,M}

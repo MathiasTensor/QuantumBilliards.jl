@@ -9,6 +9,7 @@ include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/billiardutils.jl")
 include("utils/typeutils.jl")
+include("utils/special_functions_calls.jl")
 export real_length, is_inside
 
 #solvers
