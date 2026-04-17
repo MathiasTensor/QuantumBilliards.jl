@@ -3,7 +3,7 @@
 #########################################################################
 
 """
-    _boundary_components(boundary)
+    _boundary_components_v2(boundary)
 
 Normalize a boundary description into a vector of connected components,
 where each component is a vector of curve pieces.
@@ -17,7 +17,7 @@ Convention:
 - component 1 = outer boundary
 - components 2:end = holes
 """
-function _boundary_components(boundary)
+function _boundary_components_v2(boundary)
     isempty(boundary) && return Vector{Vector{Any}}()
     if boundary[1] isa AbstractVector
         return [collect(comp) for comp in boundary]
@@ -45,7 +45,7 @@ otherwise falls back to `billiard.full_boundary`.
 """
 function billiard_boundary_components(billiard::Bi;fundamental_domain=true) where {Bi<:AbsBilliard}
     boundary=fundamental_domain && hasproperty(billiard,:fundamental_boundary) ? billiard.fundamental_boundary : billiard.full_boundary
-    return _boundary_components(boundary)
+    return _boundary_components_v2(boundary)
 end
 
 """
