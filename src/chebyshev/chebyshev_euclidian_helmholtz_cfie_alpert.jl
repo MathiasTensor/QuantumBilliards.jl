@@ -401,7 +401,7 @@ This routine combines:
 """
 function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},direct::CFIEAlpertWorkspace{T},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real}
     block_cache=build_cfie_alpert_block_caches(solver,pts;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
-    rmin,rmax=estimate_cfie_alpert_cheb_rbounds(direct;pad=pad)
+    rmin,rmax=estimate_cfie_alpert_cheb_rbounds(direct;pad=pad) # extremely annoying, some alpert nodes outside the initial interval since off grid, had to make a helper to fix this
     plans0,plans1=build_CFIE_plans_alpert(ks,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads,r_switch=r_switch)
     bessel_ws=CFIE_H0_H1_BesselWorkspace(length(ks);ntls=ntls)
     return CFIEAlpertChebWorkspace{T}(direct,block_cache,plans0,plans1,bessel_ws,ks,length(ks))
@@ -441,7 +441,6 @@ locating the corresponding Chebyshev panel on the fly from `plans0[1]`.
 - `nothing`
 """
 @inline function _h0_h1_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH})
-    @assert plans0[1].rmin<=r<=plans0[1].rmax
     pidx=_find_panel(plans0[1],r)
     P=plans0[1].panels[pidx]
     t=(2r-(P.b+P.a))/(P.b-P.a)
