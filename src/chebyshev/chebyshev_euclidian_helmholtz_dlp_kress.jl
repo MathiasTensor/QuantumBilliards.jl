@@ -634,17 +634,19 @@ wavenumbers, writing the results in place.
   Chebyshev interpolation order per panel.
 - `timeit::Bool=false`:
   Enables timing instrumentation through `@benchit`.
+- `r_switch::Float64=0.0`:
+  Chebyshev cutoff radius for small-argument series patch, passed to the plan builders.
 
 # Returns
 - `nothing`
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false,r_switch::Float64=0.0) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
             @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
-            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads(),r_switch=r_switch)
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
