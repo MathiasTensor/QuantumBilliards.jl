@@ -3,8 +3,8 @@ using CoordinateTransformations,Rotations,StaticArrays
 struct CartesianCS{T} <:CoordinateSystem where {T<:Number}
     origin::SVector{2,T}
     rot_angle::T
-    affine_map::CoordinateTransformations.AffineMap{CoordinateTransformations.Angle2d{T},SVector{2,T}}
-    local_map::CoordinateTransformations.AffineMap{CoordinateTransformations.Angle2d{T},SVector{2,T}}
+    affine_map::CoordinateTransformations.AffineMap{LinearMaps.Angle2d{T},SVector{2,T}}
+    local_map::CoordinateTransformations.AffineMap{LinearMaps.Angle2d{T},SVector{2,T}}
 end
 
 """
