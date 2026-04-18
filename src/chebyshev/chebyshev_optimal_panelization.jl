@@ -347,7 +347,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
     rmin_interp=max(Float64(rmin_raw),rmin_cheb)
     @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
+    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
@@ -393,7 +393,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
         end
         @inbounds for j in 1:nz
             Δ0=abs.(view(approx0,:,j).-view(exact0,:,j))
-            Δ1=abs.((ComplexF64(zj[j]).* rs).*(view(approx1,:,j).-view(exact1,:,j)))
+            Δ1=abs.(view(approx1,:,j).-view(exact1,:,j))
             max_errs0[j]=maximum(Δ0)
             max_errs1[j]=maximum(Δ1)
         end
@@ -406,9 +406,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
             e0,i0=findmax(Δ0)
             e1,i1=findmax(Δ1)
-            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=z0[i0] err=e0
-            @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
-            @info "n_panels M" n_panels M
+            @info "Worst H0 H1 | n_panels M" e0 e1 n_panels M
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
