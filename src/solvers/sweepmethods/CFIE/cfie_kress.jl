@@ -798,6 +798,5 @@ function plot_boundary_with_weight_INFO(billiard::Bi,solver::Union{CFIE_kress,CF
     end
     colgap!(f.layout,2)
     rowgap!(f.layout,2)
-    f.layout.padding=(5,5,5,5)
     return f
 end
