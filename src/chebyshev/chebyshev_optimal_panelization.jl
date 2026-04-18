@@ -101,9 +101,13 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
         @inbounds for j in 1:nz
             max_errs[j]=maximum(abs.(view(approx,:,j).-view(exact,:,j)))
         end
-        verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err=maximum(max_errs) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
-        all(err->err<tol,max_errs) && return n_panels,M,plans,max_errs
-        verbose && @info "Max error at idx: "*string(findmax(max_errs))*" (H1x)"
+        if verbose
+            j0=argmax(max_errs0)
+            Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
+            e0,i0=findmax(Δ0)
+            @info "Worst H1x location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
+            println()
+        end
         if it%5==0
             M+=grow_M
         else
@@ -250,9 +254,25 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             max_errs2[j]=maximum(abs.(view(approx2,:,j).-view(exact2,:,j)))
             max_errs3[j]=maximum(abs.(view(approx3,:,j).-view(exact3,:,j)))
         end
-        verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
-        (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)) && return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
-        verbose && @info "Max error at idx: "*string(findmax(max_errs0))*" (H0)"*" / "*string(findmax(max_errs1))*" (H1)"*" / "*string(findmax(max_errs2))*" (J0)"*" / "*string(findmax(max_errs3))*" (J1)"
+        if verbose
+            j0=argmax(max_errs0)
+            j1=argmax(max_errs1)
+            j2=argmax(max_errs2)
+            j3=argmax(max_errs3)
+            Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
+            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
+            Δ2=abs.(view(approx2,:,j2).-view(exact2,:,j2))
+            Δ3=abs.(view(approx3,:,j3).-view(exact3,:,j3))
+            e0,i0=findmax(Δ0)
+            e1,i1=findmax(Δ1)
+            e2,i2=findmax(Δ2)
+            e3,i3=findmax(Δ3)
+            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
+            @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=ComplexF64(zj[j1])*rs[i1] err=e1
+            @info "Worst J0 location" j=j2 i=i2 r=rs[i2] z=ComplexF64(zj[j2])*rs[i2] err=e2
+            @info "Worst J1 location" j=j3 i=i3 r=rs[i3] z=ComplexF64(zj[j3])*rs[i3] err=e3
+            println()
+        end
         if it%5==0
             M+=grow_M
         else
@@ -376,6 +396,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             e1,i1=findmax(Δ1)
             @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
             @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=ComplexF64(zj[j1])*rs[i1] err=e1
+            println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
             return n_panels,M,plans0,plans1,max_errs0,max_errs1
