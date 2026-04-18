@@ -57,9 +57,12 @@
 #   - max_errs::Vector{Float64}:
 #       Max error per zj.
 function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
-    @info "Estimated Chebyshev radial bounds for BIM H1x kernel" rmin=rmin rmax=rmax
-    rs=collect(range(Float64(rmin),Float64(rmax);length=sampling_points))
+    rmin_raw,rmax=estimate_rmin_rmax(pts,solver.symmetry)
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
+    rmin_interp=max(Float64(rmin_raw),r_switch)
+    @info "Estimated Chebyshev radial bounds for DLP H1x kernel" rmin=rmin_raw rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
+    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
@@ -69,10 +72,25 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
     max_errs=fill(Inf,nz)
     for it in 1:max_iter
         Threads.@threads for j in eachindex(zj)
-            plans[j]=plan_h1x(ComplexF64(zj[j]),Float64(rmin),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans[j]=plan_h1x(ComplexF64(zj[j]),rmin_interp,Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,r_switch=r_switch)
         end
         Threads.@threads for j in eachindex(zj)
-            pidx,tloc,invsqrt=panel_and_geom(plans[j],rs)
+            pidx=Vector{Int32}(undef,sampling_points)
+            tloc=Vector{Float64}(undef,sampling_points)
+            invsqrt=Vector{Float64}(undef,sampling_points)
+            @inbounds for i in eachindex(rs)
+                r=rs[i]
+                invsqrt[i]=inv(sqrt(r))
+                if r<rmin_interp
+                    pidx[i]=Int32(0)
+                    tloc[i]=0.0
+                else
+                    p=_find_panel(plans[j],r)
+                    P=plans[j].panels[p]
+                    pidx[i]=Int32(p)
+                    tloc[i]=(2r-(P.b+P.a))/(P.b-P.a)
+                end
+            end
             eval_h1x!(view(approx,:,j),plans[j],rs,pidx,tloc,invsqrt)
         end
         Threads.@threads for j in eachindex(zj)
@@ -83,7 +101,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
         @inbounds for j in 1:nz
             max_errs[j]=maximum(abs.(view(approx,:,j).-view(exact,:,j)))
         end
-        verbose && @info "BIM Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err=maximum(max_errs)
+        verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err=maximum(max_errs) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
         all(err->err<tol,max_errs) && return n_panels,M,plans,max_errs
         if it%5==0
             M+=grow_M
@@ -91,7 +109,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
             n_panels=ceil(Int,grow_panels*n_panels)
         end
     end
-    @warn "BIM Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
+    @warn "Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
     return n_panels,M,plans,max_errs
 end
 
@@ -154,13 +172,16 @@ end
 #   - max_errs3::Vector{Float64}
 function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     if solver isa CFIE_kress || solver isa CFIE_kress_corners || solver isa CFIE_kress_global_corners
-        block_cache=build_cfie_kress_block_caches(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) # just need it for rmin and rmax, really hate this hack, but dont care enough, not in hot loop
+        block_cache=build_cfie_kress_block_caches(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
     else
-        block_cache=build_dlp_kress_block_cache(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio) 
+        block_cache=build_dlp_kress_block_cache(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
     end
-    rmin,rmax=block_cache.rmin,block_cache.rmax
-    @info "Estimated Chebyshev radial bounds for CFIE kress solvers" rmin=rmin rmax=rmax
-    rs=collect(range(rmin,rmax;length=sampling_points))
+    rmin_raw,rmax=block_cache.rmin,block_cache.rmax
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
+    rmin_interp=max(Float64(rmin_raw),r_switch)
+    @info "Estimated Chebyshev radial bounds for CFIE kress solvers" rmin=rmin_raw rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
+    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
@@ -180,19 +201,44 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     max_errs1=fill(Inf,nz)
     max_errs2=fill(Inf,nz)
     max_errs3=fill(Inf,nz)
-    kmax=maximum(abs.(zj))
-    r_switch=hankel_r_switch(kmax)
     for it in 1:max_iter
-        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads(),r_switch=r_switch)
+        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin_interp,Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads(),r_switch=r_switch)
         Threads.@threads for j in eachindex(zj)
-            pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
-            pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
-            pidx2,tloc2,_=panel_and_geom(plans2[j],rs)
-            pidx3,tloc3,_=panel_and_geom(plans3[j],rs)
-            eval_h!(view(approx0,:,j),plans0[j],rs,pidx0,tloc0)
-            eval_h!(view(approx1,:,j),plans1[j],rs,pidx1,tloc1)
-            eval_j!(view(approx2,:,j),plans2[j],rs,pidx2,tloc2)
-            eval_j!(view(approx3,:,j),plans3[j],rs,pidx3,tloc3)
+            pidx0=Vector{Int32}(undef,sampling_points);tloc0=Vector{Float64}(undef,sampling_points)
+            pidx1=Vector{Int32}(undef,sampling_points);tloc1=Vector{Float64}(undef,sampling_points)
+            pidx2=Vector{Int32}(undef,sampling_points);tloc2=Vector{Float64}(undef,sampling_points)
+            pidx3=Vector{Int32}(undef,sampling_points);tloc3=Vector{Float64}(undef,sampling_points)
+            @inbounds for i in eachindex(rs)
+                r=rs[i]
+                if r<rmin_interp
+                    pidx0[i]=Int32(0);tloc0[i]=0.0
+                    pidx1[i]=Int32(0);tloc1[i]=0.0
+                    pidx2[i]=Int32(1);tloc2[i]=-1.0
+                    pidx3[i]=Int32(1);tloc3[i]=-1.0
+                else
+                    p0=_find_panel(plans0[j],r);P0=plans0[j].panels[p0]
+                    p1=_find_panel(plans1[j],r);P1=plans1[j].panels[p1]
+                    p2=_find_panel(plans2[j],r);P2=plans2[j].panels[p2]
+                    p3=_find_panel(plans3[j],r);P3=plans3[j].panels[p3]
+                    pidx0[i]=Int32(p0);tloc0[i]=(2*r-(P0.b+P0.a))/(P0.b-P0.a)
+                    pidx1[i]=Int32(p1);tloc1[i]=(2*r-(P1.b+P1.a))/(P1.b-P1.a)
+                    pidx2[i]=Int32(p2);tloc2[i]=(2*r-(P2.b+P2.a))/(P2.b-P2.a)
+                    pidx3[i]=Int32(p3);tloc3[i]=(2*r-(P3.b+P3.a))/(P3.b-P3.a)
+                end
+            end
+            @inbounds for i in eachindex(rs)
+                r=rs[i]
+                z=ComplexF64(zj[j])*r
+                if pidx0[i]==0
+                    approx0[i,j]=_small_h0_series(z)
+                    approx1[i,j]=_small_h1_series(z)
+                else
+                    approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
+                    approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
+                end
+                approx2[i,j]=eval_j(plans2[j],pidx2[i],tloc2[i])
+                approx3[i,j]=eval_j(plans3[j],pidx3[i],tloc3[i])
+            end
         end
         Threads.@threads for j in eachindex(zj)
             @inbounds for i in eachindex(rs)
@@ -209,7 +255,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             max_errs2[j]=maximum(abs.(view(approx2,:,j).-view(exact2,:,j)))
             max_errs3[j]=maximum(abs.(view(approx3,:,j).-view(exact3,:,j)))
         end
-        verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3)
+        verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
         (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)) && return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
         if it%5==0
             M+=grow_M
@@ -271,11 +317,13 @@ end
 #   - max_errs0::Vector{Float64}
 #   - max_errs1::Vector{Float64}
 function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    ws=build_cfie_alpert_workspace(solver,pts) 
-    geomws=build_cfie_alpert_cheb_workspace(solver,pts,ws,zj;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
-    rmin,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
-    @info "Estimated Chebyshev radial bounds for CFIE_alpert" rmin=rmin rmax=rmax
-    rs=collect(range(rmin,rmax;length=sampling_points))
+    ws=build_cfie_alpert_workspace(solver,pts)
+    rmin_raw,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
+    kmax=maximum(abs.(zj))
+    r_switch=hankel_r_switch(kmax)
+    rmin_interp=max(Float64(rmin_raw),r_switch)
+    @info "Estimated Chebyshev radial bounds for CFIE_alpert" rmin=rmin_raw rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
+    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
@@ -287,15 +335,36 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     exact1=Matrix{ComplexF64}(undef,sampling_points,nz)
     max_errs0=fill(Inf,nz)
     max_errs1=fill(Inf,nz)
-    kmax=maximum(abs.(zj))
-    r_switch=hankel_r_switch(kmax)
     for it in 1:max_iter
-        plans0,plans1=build_CFIE_plans_alpert(zj,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads(),r_switch=r_switch)
+        plans0,plans1=build_CFIE_plans_alpert(zj,rmin_interp,Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads(),r_switch=r_switch)
         Threads.@threads for j in eachindex(zj)
-            pidx0,tloc0,_=panel_and_geom(plans0[j],rs)
-            pidx1,tloc1,_=panel_and_geom(plans1[j],rs)
-            eval_h!(view(approx0,:,j),plans0[j],rs,pidx0,tloc0)
-            eval_h!(view(approx1,:,j),plans1[j],rs,pidx1,tloc1)
+            pidx0=Vector{Int32}(undef,sampling_points)
+            tloc0=Vector{Float64}(undef,sampling_points)
+            pidx1=Vector{Int32}(undef,sampling_points)
+            tloc1=Vector{Float64}(undef,sampling_points)
+            @inbounds for i in eachindex(rs)
+                r=rs[i]
+                if r<rmin_interp
+                    pidx0[i]=Int32(0);tloc0[i]=0.0
+                    pidx1[i]=Int32(0);tloc1[i]=0.0
+                else
+                    p0=_find_panel(plans0[j],r);P0=plans0[j].panels[p0]
+                    p1=_find_panel(plans1[j],r);P1=plans1[j].panels[p1]
+                    pidx0[i]=Int32(p0);tloc0[i]=(2r-(P0.b+P0.a))/(P0.b-P0.a)
+                    pidx1[i]=Int32(p1);tloc1[i]=(2r-(P1.b+P1.a))/(P1.b-P1.a)
+                end
+            end
+            @inbounds for i in eachindex(rs)
+                r=rs[i]
+                z=ComplexF64(zj[j])*r
+                if pidx0[i]==0
+                    approx0[i,j]=_small_h0_series(z)
+                    approx1[i,j]=_small_h1_series(z)
+                else
+                    approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
+                    approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
+                end
+            end
         end
         Threads.@threads for j in eachindex(zj)
             @inbounds for i in eachindex(rs)
@@ -309,7 +378,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             max_errs1[j]=maximum(abs.(view(approx1,:,j).-view(exact1,:,j)))
         end
         if verbose
-            @info "CFIE_alpert Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) rmin=rmin rmax=rmax
+            @info "CFIE_alpert Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
             return n_panels,M,plans0,plans1,max_errs0,max_errs1

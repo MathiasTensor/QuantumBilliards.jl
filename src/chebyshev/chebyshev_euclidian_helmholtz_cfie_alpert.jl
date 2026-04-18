@@ -406,8 +406,8 @@ end
 #### CHEB LOOKUP HELPERS FOR ONE ENTRY #####
 ############################################
 
-@inline function _h0_h1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH})
-    h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,pidx,t)
+@inline function _h0_h1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH})
+    h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,pidx,t,r)
     return nothing
 end
 
@@ -423,10 +423,10 @@ using the precomputed Chebyshev panel index and local coordinate stored in
 """
 @inline function _h0_h1_at_entry!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},blk::CFIE_alpert_BlockCache,i::Int,j::Int,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH})
     pidx=blk.pidx[i,j]
+    r=Float64(blk.R[i,j])
     if pidx!=0
-        _h0_h1_at_pidx_t!(h0vals,h1vals,pidx,blk.tloc[i,j],plans0,plans1)
+        _h0_h1_at_pidx_t!(h0vals,h1vals,pidx,blk.tloc[i,j],r,plans0,plans1)
     else
-        r=Float64(blk.R[i,j])
         @inbounds for m in eachindex(plans0)
             z=ComplexF64(plans0[m].k)*r
             h0vals[m]=_small_h0_series(z)
@@ -456,7 +456,7 @@ locating the corresponding Chebyshev panel on the fly from `plans0[1]`.
         pidx=_find_panel(plans0[1],r)
         P=plans0[1].panels[pidx]
         t=(2*r-(P.b+P.a))/(P.b-P.a)
-        _h0_h1_at_pidx_t!(h0vals,h1vals,Int32(pidx),t,plans0,plans1)
+        _h0_h1_at_pidx_t!(h0vals,h1vals,Int32(pidx),t,r,plans0,plans1)
     end
     return nothing
 end

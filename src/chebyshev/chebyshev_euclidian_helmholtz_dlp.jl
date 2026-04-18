@@ -270,9 +270,15 @@ end
 #################################################################################
 @inline function h1_multi_ks_at_r!(hvals::AbstractVector{ComplexF64},phases::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,ab::AbstractVector{NTuple{2,Float64}})
     @inbounds for m in eachindex(plans)
-        a,b=ab[m]
-        phases[m]=_exp_ikr(a,b,r)
-        hvals[m]=phases[m]*_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
+        plan=plans[m]
+        z=plan.k*r
+        if abs(z)<plan.r_switch
+            hvals[m]=_small_h1_series(z)
+        else
+            a,b=ab[m]
+            phases[m]=_exp_ikr(a,b,r)
+            hvals[m]=phases[m]*_cheb_clenshaw(plan.panels[pidx].c1,t)*invsqrt
+        end
     end
     return nothing
 end
@@ -440,13 +446,17 @@ function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boundary
                 val= -Complex{T}(bp.curvature[i]*INV_TWO_PI);K[i,j]=val;if i!=j;K[j,i]=val;end
             else
                 r=sqrt(d2);invr=inv(r)
-                p=_find_panel(plan,r)
-                P=pans[p]
-                t=(2*r-(P.b+P.a))/(P.b-P.a)
-                invsqrt=inv(sqrt(r))
-                phase=_exp_ikr(a,b,r)
-                h1x=_cheb_clenshaw(P.c1,t)
-                h=pref*(phase*h1x*invsqrt)
+                if abs(k*r)<plan.r_switch
+                    h=pref*_small_h1_series(k*r)
+                else
+                    p=_find_panel(plan,r)
+                    P=pans[p]
+                    t=(2*r-(P.b+P.a))/(P.b-P.a)
+                    invsqrt=inv(sqrt(r))
+                    phase=_exp_ikr(a,b,r)
+                    h1x=_cheb_clenshaw(P.c1,t)
+                    h=pref*(phase*h1x*invsqrt)
+                end
                 _accum_dlp_default_nosym!(K,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,h)
             end
         end
@@ -578,13 +588,17 @@ function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boun
                 if d2>tol2
                     r=sqrt(d2)
                     invr=inv(r)
-                    p=_find_panel(plan,r)
-                    P=pans[p]
-                    t=(2*r-(P.b+P.a))/(P.b-P.a)
-                    invsqrt=inv(sqrt(r))
-                    phase=_exp_ikr(a,b,r)
-                    h1x=_cheb_clenshaw(P.c1,t)
-                    h=Complex{T}(scale_r,zero(T))*pref*(phase*h1x*invsqrt)
+                    if abs(k*r)<plan.r_switch
+                        h=Complex{T}(scale_r,zero(T))*pref*_small_h1_series(k*r)
+                    else
+                        p=_find_panel(plan,r)
+                        P=pans[p]
+                        t=(2*r-(P.b+P.a))/(P.b-P.a)
+                        invsqrt=inv(sqrt(r))
+                        phase=_exp_ikr(a,b,r)
+                        h1x=_cheb_clenshaw(P.c1,t)
+                        h=Complex{T}(scale_r,zero(T))*pref*(phase*h1x*invsqrt)
+                    end
                     _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                 end
             end
@@ -700,13 +714,17 @@ function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Bounda
                 if d2>tol2
                     r=sqrt(d2)
                     invr=inv(r)
-                    p=_find_panel(plan,r)
-                    P=pans[p]
-                    t=(2*r-(P.b+P.a))/(P.b-P.a)
-                    invsqrt=inv(sqrt(r))
-                    phase=_exp_ikr(a,b,r)
-                    h1x=_cheb_clenshaw(P.c1,t)
-                    h=χ[l]*pref*(phase*h1x*invsqrt)
+                    if abs(k*r)<plan.r_switch
+                        h=χ[l]*pref*_small_h1_series(k*r)
+                    else
+                        p=_find_panel(plan,r)
+                        P=pans[p]
+                        t=(2*r-(P.b+P.a))/(P.b-P.a)
+                        invsqrt=inv(sqrt(r))
+                        phase=_exp_ikr(a,b,r)
+                        h1x=_cheb_clenshaw(P.c1,t)
+                        h=χ[l]*pref*(phase*h1x*invsqrt)
+                    end
                     _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                 end
             end

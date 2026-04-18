@@ -313,7 +313,7 @@ order to avoid recomputing geometry-dependent quantities at every `k`.
 # Returns
 - `CFIEBlockSystemCache{T}`
 """
-function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
+function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),r_switch::Float64=0.0) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
     Gs=_is_kress_graded(solver) ? [cfie_geom_cache(p,true) for p in comps] : [cfie_geom_cache(p,false) for p in comps]
@@ -403,7 +403,8 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
             blocks[a,b]=CFIE_kress_BlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,nothing,nothing,nothing)
         end
     end
-    pref_plan=plan_h(0,1,1.0+0im,Float64(global_rmin),Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    rmin_interp=max(Float64(global_rmin),r_switch)
+    pref_plan=plan_h(0,1,1.0+0im,rmin_interp,Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,r_switch=r_switch)
     pans=pref_plan.panels
     for a in 1:nc, b in 1:nc
         blk=blocks[a,b]
@@ -413,10 +414,15 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
                 blk.tloc[i,j]=0.0
             else
                 rij=Float64(blk.R[i,j])
-                p=_find_panel(pref_plan,rij)
-                P=pans[p]
-                blk.pidx[i,j]=Int32(p)
-                blk.tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
+                if rij<rmin_interp
+                    blk.pidx[i,j]=Int32(0)
+                    blk.tloc[i,j]=0.0
+                else
+                    p=_find_panel(pref_plan,rij)
+                    P=pans[p]
+                    blk.pidx[i,j]=Int32(p)
+                    blk.tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
+                end
             end
         end
     end
@@ -497,6 +503,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         @inbounds for i in (j+1):blk.Ni
             gi=ro+i-1
             invr=blk.invR[i,j]
+            r=blk.R[i,j]
             p=blk.pidx[i,j]
             t=blk.tloc[i,j]
             lt=blk.logterm[i,j]
@@ -505,7 +512,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             inn_ji=blk.inner[j,i]
             si=blk.speed_i[i]
             wi=blk.wi[i]
-            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t)
+            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t,Float64(r))
             for m in 1:Mk
                 h0=h0vals[m]
                 h1=h1vals[m]
@@ -543,9 +550,10 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             gi=ro+i-1
             invr=blk.invR[i,j]
             inn=blk.inner[i,j]
+            r=blk.R[i,j]
             p=blk.pidx[i,j]
             t=blk.tloc[i,j]
-            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
+            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t,Float64(r))
             for m in 1:Mk
                 h0=h0vals[m]
                 h1=h1vals[m]
@@ -650,7 +658,6 @@ function _all_k_nosymm_CFIE_chebyshev_deriv!(As::Vector{Matrix{ComplexF64}},A1s:
     αM2=0.5im
     blocks=block_cache.blocks
     nc=size(blocks,1)
-
     function same_block_col_deriv!(blk::CFIE_kress_BlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64},j0vals::Vector{ComplexF64},j1vals::Vector{ComplexF64}) where {T<:Real}
         ro=blk.row_offset
         co=blk.col_offset
@@ -686,7 +693,7 @@ function _all_k_nosymm_CFIE_chebyshev_deriv!(As::Vector{Matrix{ComplexF64}},A1s:
             inn_ji=blk.inner[j,i]
             si=blk.speed_i[i]
             wi=blk.wi[i]
-            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t)
+            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t,Float64(r))
             for m in 1:Mk
                 km=ks[m]
                 h0=h0vals[m]
@@ -752,7 +759,7 @@ function _all_k_nosymm_CFIE_chebyshev_deriv!(As::Vector{Matrix{ComplexF64}},A1s:
             inn=blk.inner[i,j]
             p=blk.pidx[i,j]
             t=blk.tloc[i,j]
-            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t)
+            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t,Float64(r))
             for m in 1:Mk
                 km=ks[m]
                 h0=h0vals[m]
@@ -963,8 +970,10 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=:uniform)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads(),r_switch=r_switch)
+            rsw=r_switch>0 ? r_switch : hankel_r_switch(maximum(abs.(zj)))
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=:uniform,r_switch=rsw)
+            rmin_interp=max(block_cache.rmin,rsw)
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin_interp,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads(),r_switch=rsw)
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)

@@ -109,7 +109,7 @@ fixed boundary discretization.
 # Returns
 - `DLPKressBlockSystemCache{T}`
 """
-function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
+function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_interp::Union{Nothing,Float64}=nothing) where {T<:Real}
     G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     N=length(pts.xy)
     R=copy(G.R)
@@ -137,9 +137,10 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
     @assert isfinite(rmin0) && rmax0>zero(T)
     rrmin=Float64(pad[1]*rmin0)
     rrmax=Float64(pad[2]*rmax0)
+    rmin_interp_loc=isnothing(rmin_interp) ? rrmin : max(Float64(rmin_interp),rrmin)
     pidx=Matrix{Int32}(undef,N,N)
     tloc=Matrix{Float64}(undef,N,N)
-    pref_plan=plan_h(0,1,1.0+0im,rrmin,rrmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,rmin_interp_loc,rrmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
     pans=pref_plan.panels
     @inbounds for j in 1:N,i in 1:N
         if i==j
@@ -147,14 +148,19 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
             tloc[i,j]=0.0
         else
             rij=Float64(R[i,j])
-            p=_find_panel(pref_plan,rij)
-            P=pans[p]
-            pidx[i,j]=Int32(p)
-            tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
+            if rij<rmin_interp_loc
+                pidx[i,j]=Int32(0)
+                tloc[i,j]=0.0
+            else
+                p=_find_panel(pref_plan,rij)
+                P=pans[p]
+                pidx[i,j]=Int32(p)
+                tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
+            end
         end
     end
     blk=DLP_kress_BlockCache{T}(N,R,invR,inner,wi,pidx,tloc,logterm,kappa,Rkress)
-    return DLPKressBlockSystemCache{T}(blk,rrmin,rrmax)
+    return DLPKressBlockSystemCache{T}(blk,rmin_interp_loc,rrmax)
 end
 
 """
@@ -347,7 +353,7 @@ function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_glo
 end
 
 """
-    _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx,t,plans0,plans1,plansj0,plansj1)
+    _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx,t,r,plans0,plans1,plansj0,plansj1)
 
 Evaluate `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁` for all wavenumbers at one fixed
 Chebyshev panel/location, writing the results in place.
@@ -355,7 +361,8 @@ Chebyshev panel/location, writing the results in place.
 This is the small inner evaluator used by the multi-`k` DLP-Kress assembly.
 The geometric pair `(i,j)` has already been mapped to:
 - a panel index `pidx`,
-- and a local coordinate `t ∈ [-1,1]`.
+- a local coordinate `t ∈ [-1,1]`,
+- and a physical distance `r`.
 
 For each stored wavenumber `k_m`, the routine interpolates:
 - `H₀^(1)(k_m r)`
@@ -363,28 +370,29 @@ For each stored wavenumber `k_m`, the routine interpolates:
 - `J₀(k_m r)`
 - `J₁(k_m r)`
 
+If pidx is zero, the distance is below the interpolation cutoff and direct evaluation is used instead to avoid accuracy issues and having too many panels to resolve the small z=k*r region.
+
 # Returns
 - `nothing`
 """
-@inline function _h0_h1_j0_j1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan})
-    h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx,t)
+@inline function _h0_h1_j0_j1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan})
+    h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx,t,r)
     return nothing
 end
 
 """
-    _h1_j1_at_pidx_t!(h1vals,j1vals,pidx,t,plans1,plansj1)
+    _h1_j1_at_pidx_t!(h1vals,j1vals,pidx,t,r,plans1,plansj1)
 
 Evaluate `H₁^(1)` and `J₁` for all wavenumbers at one fixed Chebyshev
-panel/location, writing the results in place.
+panel/location, writing the results in place. 
+
+If pidx is zero, the distance is below the interpolation cutoff and direct evaluation is used instead to avoid accuracy issues and having too many panels to resolve the small z=k*r region.
 
 # Returns
 - `nothing`
 """
-@inline function _h1_j1_at_pidx_t!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan})
-    @inbounds for m in eachindex(plans1)
-        h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
-        j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
-    end
+@inline function _h1_j1_at_pidx_t!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,r::Float64,plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan})
+    h1_j1_multi_ks_at_r!(h1vals,j1vals,plans1,plansj1,pidx,t,r)
     return nothing
 end
 
@@ -428,7 +436,8 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
         h1vals=h1_tls[tid]
         j1vals=j1_tls[tid]
         @inbounds for i in 1:j-1
-            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],ws.plans1,ws.plansj1)
+            r=blk.R[i,j]
+            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,ws.plans1,ws.plansj1)
             invr=blk.invR[i,j]
             lt=blk.logterm[i,j]
             inn_ij=blk.inner[i,j]
@@ -511,7 +520,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
         j1vals=j1_tls[tid]
         @inbounds for i in 1:j-1
             r=blk.R[i,j]
-            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],ws.plans0,ws.plans1,ws.plansj0,ws.plansj1)
+            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,ws.plans0,ws.plans1,ws.plansj0,ws.plansj1)
             invr=blk.invR[i,j]
             lt=blk.logterm[i,j]
             inn_ij=blk.inner[i,j]

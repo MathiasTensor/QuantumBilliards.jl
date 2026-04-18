@@ -939,6 +939,10 @@ function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{
     return nothing
 end
 
+############################################################
+##################### HIGH LEVEL API #######################
+############################################################
+
 """
     h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx,t)
 
@@ -986,25 +990,15 @@ require `J₀` and `J₁`, so they are interpolated separately.
 # Returns
 - `nothing`
 """
-@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64,r::Float64)
     @inbounds for m in eachindex(plans0)
-        # reconstruct r from panel
-        P=plans0[m].panels[pidx]
-        a=P.a
-        b=P.b
-        r=((b+a)+(b-a)*t)*0.5
-        k=plans0[m].k
-        z=k*r
-        rsw=plans0[m].r_switch
-        if abs(z)<rsw
-            # ---- SMALL ARGUMENT PATCH ----
+        z=ComplexF64(plans0[m].k)*r
+        if pidx==0
             h0vals[m]=_small_h0_series(z)
             h1vals[m]=_small_h1_series(z)
-            # J's are safe → just evaluate normally
-            j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
-            j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
+            j0vals[m]=SpecialFunctions.besselj(0,z)
+            j1vals[m]=SpecialFunctions.besselj(1,z)
         else
-            # ---- NORMAL CHEBYSHEV ----
             h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
             h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
             j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
@@ -1042,24 +1036,56 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
 # Returns
 - `nothing`
 """
-@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64)
+@inline function h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64,r::Float64)
     @inbounds for m in eachindex(plans0)
-        # reconstruct r
-        P=plans0[m].panels[pidx]
-        a=P.a
-        b=P.b
-        r=((b+a)+(b-a)*t)*0.5
-        k=plans0[m].k
-        z=k*r
-        rsw=plans0[m].r_switch
-        if abs(z)<rsw
-            # ---- SMALL ARGUMENT PATCH ----
+        z=ComplexF64(plans0[m].k)*r
+        if pidx==0
             h0vals[m]=_small_h0_series(z)
             h1vals[m]=_small_h1_series(z)
         else
-            # ---- NORMAL CHEBYSHEV ----
             h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
             h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+        end
+    end
+    return nothing
+end
+
+"""
+        h1_j1_multi_ks_at_r!(h1vals,j1vals,plans1,plansj1,pidx,t,r)
+
+Evaluate `H₁^(1)` and `J₁` for all wavenumbers at one fixed distance panel/location, writing the results in place.
+This is the reduced special-function evaluator used in off-component CFIE-Kress blocks, where the kernel is smooth and no Kress logarithmic split is needed. Since the smooth inter-component assembly uses only the Hankel terms, the Bessel `J₀` values are not required.
+
+If `pidx==0`, the evaluation point is close to zero and the small-argument series expansions are used for all wavenumbers. Otherwise, the Chebyshev expansions are evaluated with Clenshaw recurrence. This is to avoid too many panels, which would cause unnecessary overhead in the Chebyshev evaluation and also workspace construction.
+
+# Arguments
+- `h1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₁^(1)` values.
+- `j1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `J₁` values.
+- `plans1::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₁^(1)`.
+- `plansj1::AbstractVector{ChebJPlan}`:
+  Chebyshev plans for `J₁`.
+- `pidx::Int32`:
+  Panel index for the active distance.
+- `t::Float64`:
+  Local Chebyshev coordinate in that panel.
+- `r::Float64`:
+  Distance at which to evaluate the functions.
+
+# Returns
+- `nothing`
+"""
+@inline function h1_j1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64,r::Float64)
+    @inbounds for m in eachindex(plans1)
+        z=ComplexF64(plans1[m].k)*r
+        if pidx==0
+            h1vals[m]=_small_h1_series(z)
+            j1vals[m]=SpecialFunctions.besselj(1,z)
+        else
+            h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+            j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
         end
     end
     return nothing
