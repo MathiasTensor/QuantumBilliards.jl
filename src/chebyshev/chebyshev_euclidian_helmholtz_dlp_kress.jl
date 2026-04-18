@@ -189,14 +189,12 @@ complex wavenumbers one must not replace `J₀`/`J₁` by `real(H₀^(1))` or
   Parameters passed to the Chebyshev plan builders.
 - `nthreads::Int=1`:
   Number of threads used when building the plans.
-- `r_switch::Float64=0.0`:
-  Chebyshev cutoff radius for small-argument series patch, passed to the plan builders. This is important for accuracy and also for stability of Beyn's method when used in the eigenvalue search, since the Chebyshev approximation is not accurate near zero due to the singularity. The same cutoff should be used for all plans to preserve analyticity for Beyn.   
 
 # Returns
 - `(plans0,plans1,plansj0,plansj1)`:
   Chebyshev plans for `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁`.
 """
-function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1,r_switch::Float64=0.0)
+function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
     Mk=length(ks)
     plans0=Vector{ChebHankelPlanH}(undef,Mk)
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
@@ -205,8 +203,8 @@ function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::
     if nthreads<=1 || Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
-            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,r_switch=r_switch)
-            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,r_switch=r_switch)
+            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
             plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
             plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
         end
@@ -224,8 +222,8 @@ function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::
         Threads.@threads for tid in 1:nt
             @inbounds for m in chunks[tid]
                 k=ComplexF64(ks[m])
-                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,r_switch=r_switch)
-                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,r_switch=r_switch)
+                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
                 plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
                 plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
             end
@@ -339,15 +337,13 @@ This combines:
   Number of threads used when building the Chebyshev plans.
 - `ntls::Int=Threads.nthreads()`:
   Number of thread-local buffers allocated for the Bessel/Hankel workspace, which should ideally match the number of threads used during assembly to avoid contention.
-- `r_switch::Float64=0.0`:
-  Distance threshold for switching between different evaluation strategies in the Chebyshev plans. For small r values, the Chebyshev approximation may lose accuracy due to the singularity, so a series expansion or other patch may be used. This parameter is passed to the plan builders to ensure consistent behavior across all plans, which is important for stability when using Beyn's method for eigenvalue searches.
 
 # Returns
 - `DLPKressChebWorkspace{T,MatT}`
 """
-function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real,MatT<:AbstractMatrix{T}}
+function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
     block_cache=build_dlp_kress_block_cache(solver,pts;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
-    plans0,plans1,plansj0,plansj1=build_DLP_kress_plans(ks,block_cache.rmin,block_cache.rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads,r_switch=r_switch)
+    plans0,plans1,plansj0,plansj1=build_DLP_kress_plans(ks,block_cache.rmin,block_cache.rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
     bessel_ws=DLP_H0_H1_J0_J1_BesselWorkspace(length(ks);ntls=ntls)
     return DLPKressChebWorkspace{T,MatT}(direct,block_cache,plans0,plans1,plansj0,plansj1,bessel_ws,ks,length(ks))
 end
@@ -643,19 +639,17 @@ wavenumbers, writing the results in place.
   Chebyshev interpolation order per panel.
 - `timeit::Bool=false`:
   Enables timing instrumentation through `@benchit`.
-- `r_switch::Float64=0.0`:
-  Chebyshev cutoff radius for small-argument series patch, passed to the plan builders.
 
 # Returns
 - `nothing`
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false,r_switch::Float64=0.0) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
             @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
-            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads(),r_switch=r_switch)
+            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end

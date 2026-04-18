@@ -198,7 +198,6 @@
 #   - h1_at_r
 #
 # Low-z support
-#   - hankel_r_switch
 #   - _small_h0_series
 #   - _small_h1_series
 #
@@ -227,9 +226,6 @@
 const γ=MathConstants.eulergamma
 const hankel_z_chebyshev_cutoff_small_z=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 const hankel_z_chebyshev_cutoff=0.1 # this is the region between [hankel_z_chebyshev_cutoff_small_z, hankel_z_chebyshev_cutoff] where we switch from the small-argument series expansions to the direct evaluation since only 12th degree small z poly.
-@inline function hankel_r_switch(kmax::T) where {T<:Real} # need to use for each contour the same cutoff since otherwise Beyn fails the analyticity
-    return Float64(hankel_z_chebyshev_cutoff/kmax) # for each contour we choose cutoff/(k0+R) where k0 is the center and R the radius
-end
 
 struct ChebHankelTableH1x
     a::Float64 # start of panel 
@@ -373,7 +369,6 @@ struct ChebHankelPlanH1x
     dr::Float64
     invdr::Float64
     npanels::Int
-    r_switch::Float64
 end
 
 struct ChebHankelPlanH
@@ -387,7 +382,6 @@ struct ChebHankelPlanH
     dr::Float64
     invdr::Float64
     npanels::Int
-    r_switch::Float64
 end
 
 struct ChebJPlan
@@ -414,12 +408,11 @@ end
 #   M :: Int
 #   grading :: Symbol         # :uniform or :geometric
 #   geo_ratio :: Real         # panel-size ratio for :geometric
-#   r_switch :: Float64       # radius below which we switch to the small-argument series expansion for Hankel instead of the Chebyshev approximation
 #
 # Output
 #   ChebHankelPlanH1x(k, panels)
 # =============================================================================
-function plan_h1x(k::ComplexF64,rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05,r_switch::Float64=0.0)::ChebHankelPlanH1x
+function plan_h1x(k::ComplexF64,rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebHankelPlanH1x
     @assert rmin>0 && rmax>rmin
     br= grading===:uniform ?
         _breaks_uniform(rmin,rmax,npanels) :
@@ -430,7 +423,7 @@ function plan_h1x(k::ComplexF64,rmin::Float64,rmax::Float64;npanels::Int=64,M::I
     end
     dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
     invdr= grading===:uniform ? inv(dr) : 0.0
-    return ChebHankelPlanH1x(k,panels,rmin,rmax,grading,dr,invdr,npanels,r_switch)
+    return ChebHankelPlanH1x(k,panels,rmin,rmax,grading,dr,invdr,npanels)
 end
 
 # =============================================================================
@@ -459,12 +452,11 @@ end
 #       # :uniform or :geometric
 #   geo_ratio :: Real
 #       # panel-size ratio for :geometric
-#   r_switch :: Float64      # radius below which we switch to the small-argument series expansion for Hankel instead of the Chebyshev approximation
 #
 # Output
 #   ChebHankelPlanH(κ,k,ν,panels,...) containing the panelized Chebyshev tables.
 # =============================================================================
-function plan_h(ν::Int,κ::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05,r_switch::Float64=0.0)::ChebHankelPlanH
+function plan_h(ν::Int,κ::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebHankelPlanH
     @assert rmin>0 && rmax>rmin
     br= grading===:uniform ?
         _breaks_uniform(rmin,rmax,npanels) :
@@ -475,7 +467,7 @@ function plan_h(ν::Int,κ::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax:
     end
     dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
     invdr= grading===:uniform ? inv(dr) : 0.0
-    return ChebHankelPlanH(k,ν,κ,panels,rmin,rmax,grading,dr,invdr,npanels,r_switch)
+    return ChebHankelPlanH(k,ν,κ,panels,rmin,rmax,grading,dr,invdr,npanels)
 end
 
 # =============================================================================

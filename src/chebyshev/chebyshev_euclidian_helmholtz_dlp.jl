@@ -259,10 +259,9 @@ end
 # Below the cutoff, we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation
 # (or in the intermadiate region use either small z or direct evaluation to not have to use too high degree poly)
 # since the Chebyshev approximation is not accurate near zero due to the singularity. 
-# This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. 
 @inline function panel_t_invsqrt_h1x(pl::ChebHankelPlanH1x,r::Float64)
     invsqrt=inv(sqrt(r))
-    if abs(pl.k*r)<pl.r_switch
+    if r<pl.rmin
         return Int32(0),0.0,invsqrt
     else
         p=_find_panel(pl,r)
@@ -793,18 +792,16 @@ Inputs:
 - n_panels: number of panels to use for chebyshev interpolation if use_chebyshev is true
 - M: number of chebyshev points per panel for chebyshev interpolation if use_chebyshev is true
 - timeit: whether to print timing information for different steps
-- r_switch: Chebyshev cutoff radius for small-argument series patch in hankel evaluation. 
-  If r_switch>0, then for r<r_switch the hankel evaluation will switch to a series expansion.
 
 # Returns:
 - nothing (the matrices are filled in place in Tbufs)
 """
 function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false,r_switch::Float64=0.0) where {T<:Real}
+zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
     plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
     @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
-        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform,r_switch=r_switch)
+        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform)
     end
     if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
         @blas_1 begin
