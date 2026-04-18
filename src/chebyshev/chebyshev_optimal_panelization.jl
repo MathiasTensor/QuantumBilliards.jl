@@ -59,10 +59,10 @@
 function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
     rmin_raw,rmax=estimate_rmin_rmax(pts,solver.symmetry)
     kmax=maximum(abs.(zj))
-    r_switch=hankel_r_switch(kmax)
-    rmin_interp=max(Float64(rmin_raw),r_switch)
-    @info "Estimated Chebyshev radial bounds for DLP H1x kernel" rmin=rmin_raw rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
+    rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
+    rmin_interp=max(Float64(rmin_raw),rmin_cheb)
+    @info "Estimated Chebyshev radial bounds for DLP H1x kernel" rmin=rmin_interp rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
+    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
@@ -183,10 +183,10 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     end
     rmin_raw,rmax=block_cache.rmin,block_cache.rmax
     kmax=maximum(abs.(zj))
-    r_switch=hankel_r_switch(kmax)
-    rmin_interp=max(Float64(rmin_raw),r_switch)
-    @info "Estimated Chebyshev radial bounds for CFIE kress solvers" rmin=rmin_raw rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
+    rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
+    rmin_interp=max(Float64(rmin_raw),rmin_cheb)
+    @info "Estimated Chebyshev radial bounds for CFIE kress solvers" rmin=rmin_interp rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
+    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
@@ -344,10 +344,10 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     ws=build_cfie_alpert_workspace(solver,pts)
     rmin_raw,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
     kmax=maximum(abs.(zj))
-    r_switch=hankel_r_switch(kmax)
-    rmin_interp=max(Float64(rmin_raw),r_switch)
-    @info "Estimated Chebyshev radial bounds for CFIE_alpert" rmin=rmin_raw rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
+    rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
+    rmin_interp=max(Float64(rmin_raw),rmin_cheb)
+    @info "Estimated Chebyshev radial bounds for CFIE_alpert" rmin=rmin_interp rmax=rmax r_switch=r_switch rmin_interp=rmin_interp
+    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
