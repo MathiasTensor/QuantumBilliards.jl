@@ -60,7 +60,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
     rmin_raw,rmax=estimate_rmin_rmax(pts,solver.symmetry)
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
     rmin_interp=max(Float64(rmin_raw),rmin_cheb)
-    @info "Estimated Chebyshev radial bounds for " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
+    @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
     rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
@@ -343,7 +343,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     rmin_raw,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
     rmin_interp=max(Float64(rmin_raw),rmin_cheb)
-    @info "Estimated Chebyshev radial bounds for " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
+    @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
     rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
