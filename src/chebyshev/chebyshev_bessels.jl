@@ -1,14 +1,225 @@
 #############################################################################
-# Piecewise-Chebyshev approximation of Hankel functions H_ν^(1)(k r)
-# and Bessel functions J_ν(k r) for efficient evaluation in EBIM and Beyn's method.
+# Piecewise-Chebyshev special-function core for Helmholtz boundary integral
+# operators in 2D.
 #
-# Main API
-# - plan_h1x : build a complex-k scaled H1 plan
-# - plan_h  : build a real-k unscaled H_ν plan
-# - panel_indices / panel_and_geom : precompute panel locations and local coords
-# - eval_h1x! / eval_h1x : evaluate the stored scaled quantity
-# - eval_h!  / eval_h  : evaluate the physical unscaled Hankel
-# - precompute_phase : precompute exp(i k r) for the complex-k route
+# This file provides reusable plan construction and evaluation routines for
+# Hankel and Bessel functions of the form
+#
+#     H_ν^(κ)(k r),   J_ν(k r),
+#
+# where `r ≥ 0` is a geometric distance and `k` may be real or complex.
+#
+# The main purpose is to separate:
+#   1. geometric work        (distances, panel lookup, block caches),
+#   2. special-function work (Hankel/Bessel evaluation),
+# so that matrix assembly code can stay clean and only call a small evaluator
+# API at the point where values are needed.
+#
+# ---------------------------------------------------------------------------
+# DESIGN OVERVIEW
+# ---------------------------------------------------------------------------
+#
+# The core idea is to approximate the distance dependence of the kernels on a
+# fixed interval `[rmin, rmax]` by piecewise Chebyshev expansions. Since many
+# matrix entries reuse the same distance-to-special-function map, this is much
+# cheaper than repeatedly calling AMOS / Bessels.jl inside inner assembly loops.
+#
+# We support three related plan families:
+#
+# 1. ChebHankelPlanH1x
+#    Complex-k scaled H1 plan for the legacy Beyn / EBIM route:
+#
+#        H1x(z) = exp(-i z) H_1^(1)(z),    z = k r.
+#
+#    On each panel we interpolate
+#
+#        G1(r) = sqrt(r) * H1x(k r),
+#
+#    because the `sqrt(r)` factor regularizes the small-r behavior and the
+#    exponential scaling improves stability for complex arguments with nonzero
+#    imaginary part.
+#
+# 2. ChebHankelPlanH
+#    Unscaled Hankel plan for
+#
+#        H_ν^(κ)(k r),
+#
+#    used in the CFIE / DLP Kress and Alpert code paths. This is the standard
+#    route when the physical unscaled Hankel values are needed directly.
+#
+# 3. ChebJPlan
+#    Unscaled Bessel-J plan for
+#
+#        J_ν(k r),
+#
+#    needed especially in the Kress logarithmic split, where for complex `k`
+#    one must not replace `J_ν` by `real(H_ν^(1))`.
+#
+# ---------------------------------------------------------------------------
+# SMALL-ARGUMENT STRATEGY
+# ---------------------------------------------------------------------------
+#
+# The singular / nearly singular regime near `z = k r = 0` is handled outside
+# the Chebyshev interpolation itself.
+#
+# This file implements a layered strategy:
+#
+#   - for very small |z|:
+#         use explicit small-argument series for H0 / H1,
+#
+#   - for a slightly larger near-zero window:
+#         optionally use direct special-function evaluation,
+#
+#   - otherwise:
+#         use the Chebyshev panel expansions.
+#
+# This avoids polluting the whole interpolation interval with excessively many
+# tiny panels just to resolve the singular structure near zero. In practice this
+# is especially important for:
+#
+#   - !!! Alpert self-correction nodes, where some off-grid distances can be very
+#     small !!!
+#
+# In higher-level code, this is typically represented by:
+#
+#   pidx == 0
+#
+# meaning:
+#   “this distance is outside the interpolated radial range and should be
+#    evaluated through the low-z patch instead of panel interpolation.”
+#
+# That convention lets block caches and evaluators carry the switching logic,
+# rather than pushing it into matrix assembly.
+#
+# ---------------------------------------------------------------------------
+# PANELIZATION AND GEOMETRIC PRECOMPUTATION
+# ---------------------------------------------------------------------------
+#
+# For interpolated distances, each radius `r` is mapped to:
+#
+#   - a panel index `pidx`,
+#   - a local Chebyshev coordinate `t ∈ [-1,1]`,
+#   - and, for the scaled H1x route, `invsqrt = 1/sqrt(r)`.
+#
+# These quantities are geometry-dependent but k-independent, so they can be
+# precomputed once and then reused across:
+#
+#   - many contour points,
+#   - many matrix entries with repeated geometry,
+#   - derivative evaluations,
+#   - multi-k assembly loops.
+#
+# This file therefore exposes both scalar and vectorized lookup helpers:
+#
+#   - _find_panel / panel_indices
+#   - precompute_geom
+#   - panel_and_geom
+#
+# Uniform panel layouts use O(1) arithmetic lookup, while nonuniform layouts
+# use a binary search over panel endpoints.
+#
+# ---------------------------------------------------------------------------
+# MULTI-k EVALUATION API
+# ---------------------------------------------------------------------------
+#
+# A major use case is evaluating the same special function at one fixed distance
+# `r`, but for many wavenumbers `k_m` simultaneously. This appears throughout:
+#
+#   - Beyn contour matrix construction,
+#   - CFIE-Kress same-block assembly,
+#   - CFIE-Alpert correction nodes,
+#   - DLP-Kress derivative assembly.
+#
+# To support that efficiently, this file provides low-level multi-k evaluators
+# which fill user-provided output buffers in place, for example:
+#
+#   - eval_h1x_multi_ks!
+#   - eval_h_multi_ks!
+#   - eval_j_multi_ks!
+#   - h0_h1_multi_ks_at_r!
+#   - h0_h1_j0_j1_multi_ks_at_r!
+#   - h1_j1_multi_ks_at_r!
+#   - h1_multi_ks_at_r!
+#
+# These routines are intentionally written as the “special-function layer” under
+# the matrix constructors, so that future changes in the low-z strategy,
+# interpolation cutoffs, or direct-evaluation policy can be made here without
+# touching the assembly code.
+#
+# ---------------------------------------------------------------------------
+# THREADING / PERFORMANCE NOTES
+# ---------------------------------------------------------------------------
+#
+# Plan construction over panels is threaded.
+# Vectorized lookup and evaluation kernels are also threaded where beneficial.
+#
+# In practice, the dominant runtime is usually controlled by:
+#
+#   - number of distance panels,
+#   - Chebyshev degree per panel,
+#   - number of special-function evaluations per matrix entry,
+#
+# rather than by the tiny extra branch used to distinguish:
+#
+#   interpolated region   vs   small-z patched region.
+#
+# The branch cost is negligible compared to a Hankel / Bessel evaluation or a
+# Clenshaw recurrence, so keeping the switching logic in this low-level core is
+# the correct tradeoff for maintainability.
+#
+# ---------------------------------------------------------------------------
+# MAIN PUBLIC / SEMI-PUBLIC API
+# ---------------------------------------------------------------------------
+#
+# Plan builders
+#   - plan_h1x
+#   - plan_h
+#   - plan_j
+#
+# Panel / geometry helpers
+#   - panel_indices
+#   - precompute_geom
+#   - panel_and_geom
+#   - precompute_phase
+#
+# Scalar evaluators
+#   - eval_h1x! / eval_h1x
+#   - eval_h!   / eval_h
+#   - eval_j!   / eval_j
+#
+# Multi-k evaluators
+#   - eval_h1x_multi_ks!
+#   - eval_h_multi_ks!
+#   - eval_j_multi_ks!
+#   - h0_h1_multi_ks_at_r!
+#   - h0_h1_j0_j1_multi_ks_at_r!
+#   - h1_j1_multi_ks_at_r!
+#   - h1_multi_ks_at_r!
+#   - h1_at_r
+#
+# Low-z support
+#   - hankel_r_switch
+#   - _small_h0_series
+#   - _small_h1_series
+#
+# ---------------------------------------------------------------------------
+# FILE ROLE IN THE LARGER CODEBASE
+# ---------------------------------------------------------------------------
+#
+# This is the central special-function backend shared by:
+#
+#   - legacy EBIM / Beyn DLP code,
+#   - CFIE-Kress code paths,
+#   - DLP-Kress code paths,
+#   - CFIE-Alpert code paths.
+#
+# The goal is that assembly files should not contain detailed logic about when
+# to interpolate, when to use a series, or when to call direct special
+# functions. They should only pass:
+#
+#   (pidx, t, r, invsqrt, plans, output buffers)
+#
+# and let this core decide how the function value is actually produced.
 #
 # MO/18/4/26
 #############################################################################
