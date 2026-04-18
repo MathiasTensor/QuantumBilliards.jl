@@ -500,11 +500,27 @@ billiards using DLP-Kress.
 - `BoundaryPointsCFIE`
 """
 function evaluate_points(solver::DLP_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    comps=_boundary_components(billiard.full_boundary)
-    length(comps)==1 || error("DLP_kress supports exactly one outer boundary component.")
-    comp=comps[1]
-    length(comp)==1 || error("DLP_kress requires a single smooth closed curve.")
-    return _evaluate_points(solver,comp[1],k,1)
+    boundary=billiard.full_boundary
+    isempty(boundary) && error("Boundary cannot be empty.")
+    # Case 1: one smooth closed curve stored directly
+    # full_boundary = [crv]
+    # -> valid for DLP_kress
+    if length(boundary)==1 && !(boundary[1] isa AbstractVector)
+        crv=boundary[1]
+        return _evaluate_points(solver,crv,k,1)
+    end
+    # Case 2: single composite boundary stored as a flat vector of segments
+    # full_boundary = [seg1, seg2, ..., segm]
+    # -> not valid for smooth DLP_kress
+    if _is_single_composite_boundary(boundary)
+        error("DLP_kress requires a single smooth closed curve. " *
+            "This boundary is piecewise/composite; use DLP_kress_global_corners instead.")
+    end
+    # Case 3: multiple closed boundary components
+    # full_boundary = [[outer...],[hole...],...]
+    # -> not valid for DLP_kress
+    error("DLP_kress supports exactly one smooth outer boundary component. " *
+        "Geometries with holes or multiple closed components are not supported; use a CFIE solver instead.")
 end
 
 """
@@ -528,13 +544,31 @@ High-level boundary discretization for general (possibly cornered) geometries.
 - `BoundaryPointsCFIE`
 """
 function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    comps=_boundary_components(billiard.full_boundary) # get all the curves
-    if length(comps)==1 # if user mistakenly used the corner-capable type on a smooth boundary, just do the smooth thing instead of erroring out
-        base=DLP_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
-        return _evaluate_points(base,comps[1],k,1) # must accept a sigle crv 
-    else
-        return _evaluate_points(solver,comps,k,1) # accepts a vector of curves for the composite case
+    boundary=billiard.full_boundary
+    isempty(boundary) && error("Boundary cannot be empty.")
+    # Case 1: one smooth closed curve stored directly in full_boundary
+    # full_boundary = [crv]
+    # Example: a single PolarSegment-based smooth closed curve.
+    # -> fallback to smooth DLP_kress discretization.
+    if length(boundary)==1 && !(boundary[1] isa AbstractVector)
+        crv=boundary[1]
+        base_solver=DLP_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
+        return _evaluate_points(base_solver,crv,k,1)
     end
+    # Case 2: Single composite outer boundary stored as a flat vector of segments:
+    # full_boundary = [seg1, seg2, ..., segm]
+    # Example: rectangle, stadium.
+    # -> treat as one globally graded composite boundary.
+    if _is_single_composite_boundary(boundary)
+        comp=boundary
+        return _evaluate_points(solver,comp,k,1)
+    end
+    # 3) Multiple closed boundary components:
+    # full_boundary = [[outer_seg1,...],[hole_seg1,...],...]
+    # Example: outer flower boundary with an inner polygon hole.
+    # -> NOT supported here; DLP_kress_global_corners is for one outer boundary only.
+    # Use a CFIE-type solver for multiply connected geometries.
+    error("DLP_kress_global_corners supports exactly one outer boundary component.")
 end
 
 """
