@@ -187,7 +187,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
     rmin_interp=max(Float64(rmin_raw),rmin_cheb)
     @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
+    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     nz=length(zj)
     n_panels=n_panels_init
     M=M_init
