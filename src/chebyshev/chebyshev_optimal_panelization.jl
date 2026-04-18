@@ -103,7 +103,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
         end
         verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err=maximum(max_errs) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
         all(err->err<tol,max_errs) && return n_panels,M,plans,max_errs
-        verbose && "Max error at idx: "*string(findmax(max_errs))*" (H1x)"
+        verbose && @info "Max error at idx: "*string(findmax(max_errs))*" (H1x)"
         if it%5==0
             M+=grow_M
         else
@@ -252,7 +252,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
         end
         verbose && @info "Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) max_err_J0=maximum(max_errs2) max_err_J1=maximum(max_errs3) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
         (all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)) && return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
-        verbose && "Max error at idx: "*string(findmax(max_errs0))*" (H0)"*" / "*string(findmax(max_errs1))*" (H1)"*" / "*string(findmax(max_errs2))*" (J0)"*" / "*string(findmax(max_errs3))*" (J1)"
+        verbose && @info "Max error at idx: "*string(findmax(max_errs0))*" (H0)"*" / "*string(findmax(max_errs1))*" (H1)"*" / "*string(findmax(max_errs2))*" (J0)"*" / "*string(findmax(max_errs3))*" (J1)"
         if it%5==0
             M+=grow_M
         else
@@ -374,7 +374,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             max_errs1[j]=maximum(abs.(view(approx1,:,j).-view(exact1,:,j)))
         end
         verbose && @info "CFIE_alpert Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
-        verbose && "Max error at idx: "*string(findmax(max_errs0))*" (H0)"*" / "*string(findmax(max_errs1))*" (H1)"
+        verbose && @info "Max error at idx: "*string(findmax(max_errs0))*" (H0)"*" / "*string(findmax(max_errs1))*" (H1)"
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
             return n_panels,M,plans0,plans1,max_errs0,max_errs1
         end
