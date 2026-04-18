@@ -969,8 +969,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
     if use_chebyshev
         @blas_1 begin
             @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=:uniform)
-            rmin_interp=max(block_cache.rmin,rsw)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin_interp,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
