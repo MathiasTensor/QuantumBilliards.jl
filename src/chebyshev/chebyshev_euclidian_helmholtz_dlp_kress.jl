@@ -148,7 +148,7 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
             tloc[i,j]=0.0
         else
             rij=Float64(R[i,j])
-            if rij<rmin_interp_loc
+            if rij<rmin_cheb_loc
                 pidx[i,j]=Int32(0)
                 tloc[i,j]=0.0
             else
@@ -160,7 +160,7 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
         end
     end
     blk=DLP_kress_BlockCache{T}(N,R,invR,inner,wi,pidx,tloc,logterm,kappa,Rkress)
-    return DLPKressBlockSystemCache{T}(blk,rmin_interp_loc,rrmax)
+    return DLPKressBlockSystemCache{T}(blk,rmin_cheb_loc,rrmax)
 end
 
 """
