@@ -109,7 +109,7 @@ fixed boundary discretization.
 # Returns
 - `DLPKressBlockSystemCache{T}`
 """
-function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_interp::Union{Nothing,Float64}=nothing) where {T<:Real}
+function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     N=length(pts.xy)
     R=copy(G.R)
@@ -137,10 +137,10 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
     @assert isfinite(rmin0) && rmax0>zero(T)
     rrmin=Float64(pad[1]*rmin0)
     rrmax=Float64(pad[2]*rmax0)
-    rmin_interp_loc=isnothing(rmin_interp) ? rrmin : max(Float64(rmin_interp),rrmin)
+    rmin_cheb_loc=isnothing(rmin_cheb) ? rrmin : max(Float64(rmin_cheb),rrmin)
     pidx=Matrix{Int32}(undef,N,N)
     tloc=Matrix{Float64}(undef,N,N)
-    pref_plan=plan_h(0,1,1.0+0im,rmin_interp_loc,rrmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,rmin_cheb_loc,rrmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
     pans=pref_plan.panels
     @inbounds for j in 1:N,i in 1:N
         if i==j
