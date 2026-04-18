@@ -251,7 +251,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
         end
         @inbounds for j in 1:nz
             Δ0=abs.(view(approx0,:,j).-view(exact0,:,j))
-            Δ1=abs.((ComplexF64(zj[j]).*rs).*(view(approx1,:,j).-view(exact1,:,j)))
+            Δ1=abs.(view(approx1,:,j).-view(exact1,:,j))
             Δ2=abs.(view(approx2,:,j).-view(exact2,:,j))
             Δ3=abs.(view(approx3,:,j).-view(exact3,:,j))
             max_errs0[j]=maximum(Δ0)
