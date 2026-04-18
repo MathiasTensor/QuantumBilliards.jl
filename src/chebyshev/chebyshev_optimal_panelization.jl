@@ -105,7 +105,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
             Δ0=abs.(view(approx,:,j0).-view(exact,:,j0))
             e0,i0=findmax(Δ0)
             @info "Worst H1x" e0
-            @info "n panels" n_panels "M" M
+            @info "n_panels M" n_panels M
             println()
         end
         if all(err->err<tol,max_errs)
@@ -278,7 +278,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             e2,i2=findmax(Δ2)
             e3,i3=findmax(Δ3)
             @info "Worst H0, H1*z. J0, J1" e0 e1 e2 e3
-            @info "n panels" n_panels "M" M
+            @info "n_panels M" n_panels M
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)
@@ -410,6 +410,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             e1,i1=findmax(Δ1)
             @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=z0[i0] err=e0
             @info "Worst H1*z location" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
+            @info "n_panels M" n_panels M
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
