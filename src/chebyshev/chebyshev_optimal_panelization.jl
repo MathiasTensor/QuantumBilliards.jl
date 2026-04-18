@@ -101,11 +101,14 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
             max_errs[j]=maximum(abs.(view(approx,:,j).-view(exact,:,j)))
         end
         if verbose
-            j0=argmax(max_errs0)
-            Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
+            j0=argmax(max_errs)
+            Δ0=abs.(view(approx,:,j0).-view(exact,:,j0))
             e0,i0=findmax(Δ0)
             @info "Worst H1x location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
             println()
+        end
+        if all(err->err<tol,max_errs)
+            return n_panels,M,plans,max_errs
         end
         if it%5==0
             M+=grow_M
@@ -278,6 +281,9 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             @info "Worst J0 location" j=j2 i=i2 r=rs[i2] z=z2[i2] err=e2
             @info "Worst J1 location" j=j3 i=i3 r=rs[i3] z=z3[i3] err=e3
             println()
+        end
+        if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)
+            return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
         end
         if it%5==0
             M+=grow_M
