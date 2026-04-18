@@ -401,7 +401,7 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
             blocks[a,b]=CFIE_kress_BlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,nothing,nothing,nothing)
         end
     end
-    pref_plan=plan_h(0,1,1.0+0im,rmin_interp,Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,Float64(global_rmin),Float64(global_rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
     pans=pref_plan.panels
     for a in 1:nc, b in 1:nc
         blk=blocks[a,b]
