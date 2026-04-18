@@ -389,8 +389,8 @@ This routine combines:
 """
 function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},direct::CFIEAlpertWorkspace{T},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real}
     rmin_raw,rmax=estimate_cfie_alpert_cheb_rbounds(direct;pad=pad)
-    kmax=maximum(abs,ks)
-    rmin=max(rmin_raw,rsw)
+    rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(ks))
+    rmin=max(rmin_raw,rmin_cheb)
     block_cache=build_cfie_alpert_block_caches(solver,pts,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
     plans0,plans1=build_CFIE_plans_alpert(ks,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
     bessel_ws=CFIE_H0_H1_BesselWorkspace(length(ks);ntls=ntls)
