@@ -346,20 +346,14 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
                 else
                     p0=_find_panel(plans0[j],r);P0=plans0[j].panels[p0]
                     p1=_find_panel(plans1[j],r);P1=plans1[j].panels[p1]
-                    pidx0[i]=Int32(p0);tloc0[i]=(2r-(P0.b+P0.a))/(P0.b-P0.a)
-                    pidx1[i]=Int32(p1);tloc1[i]=(2r-(P1.b+P1.a))/(P1.b-P1.a)
+                    pidx0[i]=Int32(p0);tloc0[i]=(2*r-(P0.b+P0.a))/(P0.b-P0.a)
+                    pidx1[i]=Int32(p1);tloc1[i]=(2*r-(P1.b+P1.a))/(P1.b-P1.a)
                 end
             end
             @inbounds for i in eachindex(rs)
                 r=rs[i]
-                z=ComplexF64(zj[j])*r
-                if pidx0[i]==0
-                    approx0[i,j]=_small_h0_series(z)
-                    approx1[i,j]=_small_h1_series(z)
-                else
-                    approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
-                    approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
-                end
+                approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
+                approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
             end
         end
         Threads.@threads for j in eachindex(zj)
@@ -373,8 +367,16 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             max_errs0[j]=maximum(abs.(view(approx0,:,j).-view(exact0,:,j)))
             max_errs1[j]=maximum(abs.(view(approx1,:,j).-view(exact1,:,j)))
         end
-        verbose && @info "CFIE_alpert Chebyshev tuning" iteration=it n_panels=n_panels M=M max_err_H0=maximum(max_errs0) max_err_H1=maximum(max_errs1) rmin_raw=rmin_raw rmin_interp=rmin_interp rmax=rmax
-        verbose && @info "Max error at idx: "*string(findmax(max_errs0))*" (H0)"*" / "*string(findmax(max_errs1))*" (H1)"
+        if verbose
+            j0=argmax(max_errs0)
+            j1=argmax(max_errs1)
+            Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
+            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
+            e0,i0=findmax(Δ0)
+            e1,i1=findmax(Δ1)
+            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
+            @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=ComplexF64(zj[j1])*rs[i1] err=e1
+        end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
             return n_panels,M,plans0,plans1,max_errs0,max_errs1
         end
