@@ -104,8 +104,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
             j0=argmax(max_errs)
             Δ0=abs.(view(approx,:,j0).-view(exact,:,j0))
             e0,i0=findmax(Δ0)
-            @info "Worst H1x" e0
-            @info "n_panels M" n_panels M
+            @info "Worst H1x | n_panels M" e0 n_panels M
             println()
         end
         if all(err->err<tol,max_errs)
@@ -270,15 +269,14 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             z2=ComplexF64(zj[j2]).*rs
             z3=ComplexF64(zj[j3]).*rs
             Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
-            Δ1=abs.(z1.*(view(approx1,:,j1).-view(exact1,:,j1)))
+            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
             Δ2=abs.(view(approx2,:,j2).-view(exact2,:,j2))
             Δ3=abs.(view(approx3,:,j3).-view(exact3,:,j3))
             e0,i0=findmax(Δ0)
             e1,i1=findmax(Δ1)
             e2,i2=findmax(Δ2)
             e3,i3=findmax(Δ3)
-            @info "Worst H0, H1*z. J0, J1" e0 e1 e2 e3
-            @info "n_panels M" n_panels M
+            @info "Worst H0, H1, J0, J1 | n_panels M" e0 e1 e2 e3 n_panels M
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)
@@ -405,11 +403,11 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             z0=ComplexF64(zj[j0]).*rs
             z1=ComplexF64(zj[j1]).*rs
             Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
-            Δ1=abs.(z1.*(view(approx1,:,j1).-view(exact1,:,j1)))
+            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
             e0,i0=findmax(Δ0)
             e1,i1=findmax(Δ1)
             @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=z0[i0] err=e0
-            @info "Worst H1*z location" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
+            @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
             @info "n_panels M" n_panels M
             println()
         end
