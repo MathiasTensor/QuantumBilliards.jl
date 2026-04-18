@@ -277,7 +277,6 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             e2,i2=findmax(Δ2)
             e3,i3=findmax(Δ3)
             @info "Worst H0, H1, J0, J1 | n_panels M" e0 e1 e2 e3 n_panels M
-            @info "Location of worst H1 error" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)
@@ -408,6 +407,7 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             e0,i0=findmax(Δ0)
             e1,i1=findmax(Δ1)
             @info "Worst H0 H1 | n_panels M" e0 e1 n_panels M
+            @info "Location of worst H1 error" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
