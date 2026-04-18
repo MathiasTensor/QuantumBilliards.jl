@@ -276,7 +276,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             e1,i1=findmax(Δ1)
             e2,i2=findmax(Δ2)
             e3,i3=findmax(Δ3)
-            @info "Worst H0, H1*z. J0, J1" err=e0 err=e1 err=e2 err=e3
+            @info "Worst H0, H1*z. J0, J1" e0 e1 e2 e3
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)
