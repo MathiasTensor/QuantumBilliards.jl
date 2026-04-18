@@ -249,28 +249,36 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             end
         end
         @inbounds for j in 1:nz
-            max_errs0[j]=maximum(abs.(view(approx0,:,j).-view(exact0,:,j)))
-            max_errs1[j]=maximum(abs.(view(approx1,:,j).-view(exact1,:,j)))
-            max_errs2[j]=maximum(abs.(view(approx2,:,j).-view(exact2,:,j)))
-            max_errs3[j]=maximum(abs.(view(approx3,:,j).-view(exact3,:,j)))
+            Δ0=abs.(view(approx0,:,j).-view(exact0,:,j))
+            Δ1=abs.((ComplexF64(zj[j]).*rs).*(view(approx1,:,j).-view(exact1,:,j)))
+            Δ2=abs.(view(approx2,:,j).-view(exact2,:,j))
+            Δ3=abs.(view(approx3,:,j).-view(exact3,:,j))
+            max_errs0[j]=maximum(Δ0)
+            max_errs1[j]=maximum(Δ1)
+            max_errs2[j]=maximum(Δ2)
+            max_errs3[j]=maximum(Δ3)
         end
         if verbose
             j0=argmax(max_errs0)
             j1=argmax(max_errs1)
             j2=argmax(max_errs2)
             j3=argmax(max_errs3)
+            z0=ComplexF64(zj[j0]).*rs
+            z1=ComplexF64(zj[j1]).*rs
+            z2=ComplexF64(zj[j2]).*rs
+            z3=ComplexF64(zj[j3]).*rs
             Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
-            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
+            Δ1=abs.(z1.*(view(approx1,:,j1).-view(exact1,:,j1)))
             Δ2=abs.(view(approx2,:,j2).-view(exact2,:,j2))
             Δ3=abs.(view(approx3,:,j3).-view(exact3,:,j3))
             e0,i0=findmax(Δ0)
             e1,i1=findmax(Δ1)
             e2,i2=findmax(Δ2)
             e3,i3=findmax(Δ3)
-            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
-            @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=ComplexF64(zj[j1])*rs[i1] err=e1
-            @info "Worst J0 location" j=j2 i=i2 r=rs[i2] z=ComplexF64(zj[j2])*rs[i2] err=e2
-            @info "Worst J1 location" j=j3 i=i3 r=rs[i3] z=ComplexF64(zj[j3])*rs[i3] err=e3
+            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=z0[i0] err=e0
+            @info "Worst H1*z location" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
+            @info "Worst J0 location" j=j2 i=i2 r=rs[i2] z=z2[i2] err=e2
+            @info "Worst J1 location" j=j3 i=i3 r=rs[i3] z=z3[i3] err=e3
             println()
         end
         if it%5==0
@@ -384,18 +392,22 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
             end
         end
         @inbounds for j in 1:nz
-            max_errs0[j]=maximum(abs.(view(approx0,:,j).-view(exact0,:,j)))
-            max_errs1[j]=maximum(abs.(view(approx1,:,j).-view(exact1,:,j)))
+            Δ0=abs.(view(approx0,:,j).-view(exact0,:,j))
+            Δ1=abs.((ComplexF64(zj[j]).* rs).*(view(approx1,:,j).-view(exact1,:,j)))
+            max_errs0[j]=maximum(Δ0)
+            max_errs1[j]=maximum(Δ1)
         end
         if verbose
             j0=argmax(max_errs0)
             j1=argmax(max_errs1)
+            z0=ComplexF64(zj[j0]).*rs
+            z1=ComplexF64(zj[j1]).*rs
             Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
-            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
+            Δ1=abs.(z1.*(view(approx1,:,j1).-view(exact1,:,j1)))
             e0,i0=findmax(Δ0)
             e1,i1=findmax(Δ1)
-            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=ComplexF64(zj[j0])*rs[i0] err=e0
-            @info "Worst H1 location" j=j1 i=i1 r=rs[i1] z=ComplexF64(zj[j1])*rs[i1] err=e1
+            @info "Worst H0 location" j=j0 i=i0 r=rs[i0] z=z0[i0] err=e0
+            @info "Worst H1*z location" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
             println()
         end
         if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
