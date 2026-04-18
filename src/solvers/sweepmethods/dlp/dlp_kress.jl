@@ -528,15 +528,12 @@ High-level boundary discretization for general (possibly cornered) geometries.
 - `BoundaryPointsCFIE`
 """
 function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    comps=_boundary_components(billiard.full_boundary)
-    length(comps)==1 || error("DLP_kress_global_corners supports exactly one outer boundary component.")
-    comp=comps[1]
-    isempty(comp) && error("Boundary component cannot be empty.")
-    if length(comp)==1
+    comps=_boundary_components(billiard.full_boundary) # get all the curves
+    if length(comps)==1 # if user mistakenly used the corner-capable type on a smooth boundary, just do the smooth thing instead of erroring out
         base=DLP_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
-        return _evaluate_points(base,comp[1],k,1)
+        return _evaluate_points(base,comps[1],k,1) # must accept a sigle crv 
     else
-        return _evaluate_points(solver,comp,k,1)
+        return _evaluate_points(solver,comps,k,1) # accepts a vector of curves for the composite case
     end
 end
 

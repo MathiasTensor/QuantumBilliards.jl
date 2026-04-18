@@ -927,9 +927,7 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    N=max(N,4)
-    #ts=[s(j,N) for j in 1:N]
-    ts=[T(two_pi)*(j-T(1)/2)/T(N) for j in 1:N]
+    ts=[T(two_pi)*(j-1/2)/N for j in 1:N]
     ts_rescaled=ts./two_pi
     xy=curve(crv,ts_rescaled)
     tangent_1st=tangent(crv,ts_rescaled)./(two_pi)
