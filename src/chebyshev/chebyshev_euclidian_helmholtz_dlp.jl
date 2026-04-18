@@ -255,32 +255,21 @@ end
 #########################################
 
 #################################################################################
-# Evaluate unscaled hankel functions hankelh1(...) for multiple complex k values hidden (used) in plans at a given r.
-# invsqrt must be provided to prevent additional calculation in this loop. Internally it calculates the chebyshev interpolation of the scaled and sqrt(r) modified hankel
-# function G(r) = sqrt(r) * hankelh1x(1,1,k*r), so that is why we need the complex phases exp(-i k r) and sqrt to get the hankelh1(1,k*r) back.
-# Inputs:
-#  hvals: preallocated vector of length equal to number of plans to store hankel function evaluations
-#  phases: preallocated vector of length equal to number of plans to store complex phases exp(-i k r)
-#  plans: vector of ChebHankelPlanH1x containing the k values and chebyshev tables for each k
-#  pidx: panel index for the current r
-#  t: chebyshev local coordinate for the current r
-#  invsqrt: precomputed 1/sqrt(r) for the current r
-#  r: r at which to evaluate hankel functions via argument k*r internally in _cheb_clenshaw
-#  ab: vector of tuples containing (real(k),imag(k)) for each plan to compute complex phases
-#################################################################################
-@inline function h1_multi_ks_at_r!(hvals::AbstractVector{ComplexF64},phases::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,ab::AbstractVector{NTuple{2,Float64}})
-    @inbounds for m in eachindex(plans)
-        plan=plans[m]
-        z=plan.k*r
-        if abs(z)<plan.r_switch
-            hvals[m]=_small_h1_series(z)
-        else
-            a,b=ab[m]
-            phases[m]=_exp_ikr(a,b,r)
-            hvals[m]=phases[m]*_cheb_clenshaw(plan.panels[pidx].c1,t)*invsqrt
-        end
+# Swithcing logic when to start chebyshev interpolation. 
+# Below the cutoff, we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation
+# (or in the intermadiate region use either small z or direct evaluation to not have to use too high degree poly)
+# since the Chebyshev approximation is not accurate near zero due to the singularity. 
+# This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. 
+@inline function panel_t_invsqrt_h1x(pl::ChebHankelPlanH1x,r::Float64)
+    invsqrt=inv(sqrt(r))
+    if abs(pl.k*r)<pl.r_switch
+        return Int32(0),0.0,invsqrt
+    else
+        p=_find_panel(pl,r)
+        P=pl.panels[p]
+        t=(2*r-(P.b+P.a))/(P.b-P.a)
+        return Int32(p),t,invsqrt
     end
-    return nothing
 end
 
 ####################### MODULAR ACCUMULATION HELPERS (DEFAULT) ###################
@@ -392,7 +381,6 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
     nth=Threads.nthreads()
     phases_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth]
     hvals_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth]
-    pans_ref=plans[1].panels
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
         tid=Threads.threadid();phases=phases_tls[tid];hvals=hvals_tls[tid]
@@ -409,9 +397,8 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
                 end
             else
                 r=sqrt(d2);invr=inv(r) # compute r and 1/r for that matrix entry
-                p=_find_panel(plans[1],r);P=pans_ref[p] # find which panel this r belongs to to do chebyshev interp
-                t=(2*r-(P.b+P.a))/(P.b-P.a);invsqrt=inv(sqrt(r)) # compute local chebyshev coordinate and 1/sqrt(r) needed for hankel evaluation
-                h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab) # evaluate hankel functions for all ks at this r efficiently
+                p,t,invsqrt=panel_t_invsqrt_h1x(plans[1],Float64(r))
+                h1_multi_ks_at_r!(hvals,phases,plans,p,t,invsqrt,Float64(r),ab)
                 @inbounds for m in 1:Mk # accumulate into each matrix on the contour the respective contribution
                     h=pref[m]*hvals[m] # preweight hankel with -im*k/2
                     _accum_dlp_default_nosym!(Ks[m],i,j,nxi,nyi,nxj,nyj,dx,dy,invr,h)
@@ -436,7 +423,6 @@ function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boundary
     k=plan.k
     pref=Complex{T}(0,0.5)*k
     a,b=Float64(real(k)),Float64(imag(k))
-    pans=plan.panels
     fill!(K,zero(eltype(K)))
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
@@ -446,17 +432,8 @@ function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boundary
                 val= -Complex{T}(bp.curvature[i]*INV_TWO_PI);K[i,j]=val;if i!=j;K[j,i]=val;end
             else
                 r=sqrt(d2);invr=inv(r)
-                if abs(k*r)<plan.r_switch
-                    h=pref*_small_h1_series(k*r)
-                else
-                    p=_find_panel(plan,r)
-                    P=pans[p]
-                    t=(2*r-(P.b+P.a))/(P.b-P.a)
-                    invsqrt=inv(sqrt(r))
-                    phase=_exp_ikr(a,b,r)
-                    h1x=_cheb_clenshaw(P.c1,t)
-                    h=pref*(phase*h1x*invsqrt)
-                end
+                p,t,invsqrt=panel_t_invsqrt_h1x(plan,Float64(r))
+                h=pref*h1_at_r(plan,p,t,invsqrt,Float64(r),a,b)
                 _accum_dlp_default_nosym!(K,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,h)
             end
         end
@@ -493,7 +470,6 @@ function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bou
     phases_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth]
     hvals_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:nth]
     pt_tls=[zeros(T,2) for _ in 1:nth]
-    pans_ref=plans[1].panels
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i]
         nxi,nyi=bp.normal[i]
@@ -524,11 +500,8 @@ function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bou
                 if d2>tol2
                     r=sqrt(d2)
                     invr=inv(r)
-                    p=_find_panel(plans[1],r)
-                    P=pans_ref[p]
-                    t=(2*r-(P.b+P.a))/(P.b-P.a)
-                    invsqrt=inv(sqrt(r))
-                    h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab)
+                    p,t,invsqrt=panel_t_invsqrt_h1x(plans[1],Float64(r))
+                    h1_multi_ks_at_r!(hvals,phases,plans,p,t,invsqrt,Float64(r),ab)
                     @inbounds for m in 1:Mk
                         h=scale*pref[m]*hvals[m]
                         _accum_dlp_default_sym!(Ks[m],i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
@@ -556,7 +529,6 @@ function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boun
     k=plan.k
     pref=Complex{T}(0,0.5)*k
     a,b=Float64(real(k)),Float64(imag(k))
-    pans=plan.panels
     shift_x=bp.shift_x
     shift_y=bp.shift_y
     ops=_reflect_ops_and_scales(T,sym)
@@ -588,17 +560,8 @@ function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boun
                 if d2>tol2
                     r=sqrt(d2)
                     invr=inv(r)
-                    if abs(k*r)<plan.r_switch
-                        h=Complex{T}(scale_r,zero(T))*pref*_small_h1_series(k*r)
-                    else
-                        p=_find_panel(plan,r)
-                        P=pans[p]
-                        t=(2*r-(P.b+P.a))/(P.b-P.a)
-                        invsqrt=inv(sqrt(r))
-                        phase=_exp_ikr(a,b,r)
-                        h1x=_cheb_clenshaw(P.c1,t)
-                        h=Complex{T}(scale_r,zero(T))*pref*(phase*h1x*invsqrt)
-                    end
+                    p,t,invsqrt=panel_t_invsqrt_h1x(plan,Float64(r))
+                    h=Complex{T}(scale_r,zero(T))*pref*h1_at_r(plan,p,t,invsqrt,Float64(r),a,b)
                     _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                 end
             end
@@ -658,11 +621,8 @@ function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bound
                 if d2>tol2
                     r=sqrt(d2)
                     invr=inv(r)
-                    p=_find_panel(plans[1],r)
-                    P=pans_ref[p]
-                    t=(2*r-(P.b+P.a))/(P.b-P.a)
-                    invsqrt=inv(sqrt(r))
-                    h1_multi_ks_at_r!(hvals,phases,plans,Int32(p),t,invsqrt,r,ab)
+                    p,t,invsqrt=panel_t_invsqrt_h1x(plans[1],Float64(r))
+                    h1_multi_ks_at_r!(hvals,phases,plans,p,t,invsqrt,Float64(r),ab)
                     χl=χ[l]
                     @inbounds for m in 1:Mk
                         h=χl*pref[m]*hvals[m]
@@ -714,17 +674,8 @@ function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Bounda
                 if d2>tol2
                     r=sqrt(d2)
                     invr=inv(r)
-                    if abs(k*r)<plan.r_switch
-                        h=χ[l]*pref*_small_h1_series(k*r)
-                    else
-                        p=_find_panel(plan,r)
-                        P=pans[p]
-                        t=(2*r-(P.b+P.a))/(P.b-P.a)
-                        invsqrt=inv(sqrt(r))
-                        phase=_exp_ikr(a,b,r)
-                        h1x=_cheb_clenshaw(P.c1,t)
-                        h=χ[l]*pref*(phase*h1x*invsqrt)
-                    end
+                    p,t,invsqrt=panel_t_invsqrt_h1x(plan,Float64(r))
+                    h=χ[l]*pref*h1_at_r(plan,p,t,invsqrt,Float64(r),a,b)
                     _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxr,nyr,dx,dy,invr,h)
                 end
             end

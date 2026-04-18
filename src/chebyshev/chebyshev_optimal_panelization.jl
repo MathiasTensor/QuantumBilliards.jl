@@ -213,8 +213,8 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
                 if r<rmin_interp
                     pidx0[i]=Int32(0);tloc0[i]=0.0
                     pidx1[i]=Int32(0);tloc1[i]=0.0
-                    pidx2[i]=Int32(1);tloc2[i]=-1.0
-                    pidx3[i]=Int32(1);tloc3[i]=-1.0
+                    pidx2[i]=Int32(0);tloc2[i]=0.0
+                    pidx3[i]=Int32(0);tloc3[i]=0.0
                 else
                     p0=_find_panel(plans0[j],r);P0=plans0[j].panels[p0]
                     p1=_find_panel(plans1[j],r);P1=plans1[j].panels[p1]
@@ -228,16 +228,10 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
             end
             @inbounds for i in eachindex(rs)
                 r=rs[i]
-                z=ComplexF64(zj[j])*r
-                if pidx0[i]==0
-                    approx0[i,j]=_small_h0_series(z)
-                    approx1[i,j]=_small_h1_series(z)
-                else
-                    approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
-                    approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
-                end
-                approx2[i,j]=eval_j(plans2[j],pidx2[i],tloc2[i])
-                approx3[i,j]=eval_j(plans3[j],pidx3[i],tloc3[i])
+                approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
+                approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
+                approx2[i,j]=eval_j(plans2[j],pidx2[i],tloc2[i],r)
+                approx3[i,j]=eval_j(plans3[j],pidx3[i],tloc3[i],r)
             end
         end
         Threads.@threads for j in eachindex(zj)

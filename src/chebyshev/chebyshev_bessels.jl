@@ -1,23 +1,6 @@
 #############################################################################
-# Piecewise-Chebyshev approximation of Hankel functions H_ν^(1)(k r).
-#
-# 1. Complex-k scaled route (legacy Beyn path)
-#    For complex k we interpolate the scaled Hankel
-#        H1x(z) = exp(-i z) * H1^(1)(z),   z = k r
-#    and store Chebyshev coefficients of
-#        G1(r) = sqrt(r) * H1x(k r).
-#    The sqrt(r) factor regularizes the small-r behavior, and the scaling
-#    avoids overflow/underflow for large |Im(k r)|.
-#
-# 2. Real-k unscaled route
-#    For real k we interpolate the ordinary unscaled Hankel
-#        H_ν^(1)(k r)
-#    directly, since no exponential scaling is needed and Bessels.jl is
-#    faster for real arguments.
-#
-# In both cases the interval [rmin,rmax] is split into panels, each panel is
-# approximated by a Chebyshev series, and evaluation is done with Clenshaw’s
-# recurrence after mapping r to the local panel coordinate t ∈ [-1,1].
+# Piecewise-Chebyshev approximation of Hankel functions H_ν^(1)(k r)
+# and Bessel functions J_ν(k r) for efficient evaluation in EBIM and Beyn's method.
 #
 # Main API
 # - plan_h1x : build a complex-k scaled H1 plan
@@ -27,11 +10,12 @@
 # - eval_h!  / eval_h  : evaluate the physical unscaled Hankel
 # - precompute_phase : precompute exp(i k r) for the complex-k route
 #
-# MO/20/3/26
+# MO/18/4/26
 #############################################################################
 
 const γ=MathConstants.eulergamma
-const hankel_z_chebyshev_cutoff=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
+const hankel_z_chebyshev_cutoff_small_z=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
+const hankel_z_chebyshev_cutoff=0.01 # this is the region between [hankel_z_chebyshev_cutoff_small_z, hankel_z_chebyshev_cutoff] where we switch from the small-argument series expansions to the direct evaluation since only 12th degree small z poly.
 @inline function hankel_r_switch(kmax::T) where {T<:Real} # need to use for each contour the same cutoff since otherwise Beyn fails the analyticity
     return Float64(hankel_z_chebyshev_cutoff/kmax) # for each contour we choose cutoff/(k0+R) where k0 is the center and R the radius
 end
@@ -599,7 +583,7 @@ end
     return (((10*pi+20*im*γ)*P+im*zz*Q)/(21233664000*pi))+(im*P/(1061683200*pi))*log(z/2)
 end
 
-@inline function _small_h0_series(z::Real)
+@inline function _small_h0_series(z::T) where T<:Number
     return _small_h0_series(ComplexF64(z))
 end
 
@@ -617,7 +601,7 @@ end
     return (im*A/(2080899072000*pi*z))+(im*z*R/(14863564800*pi))*log(z/2)
 end
 
-@inline function _small_h1_series(z::Real)
+@inline function _small_h1_series(z::T) where T<:Number
     return _small_h1_series(ComplexF64(z))
 end
 
@@ -656,12 +640,14 @@ end
 function eval_h1x!(H1x::AbstractVector{ComplexF64},pl::ChebHankelPlanH1x,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64},invsqrt::AbstractVector{Float64})
     pans=pl.panels
     k=pl.k
-    rsw=pl.r_switch
     @inbounds Threads.@threads for i in eachindex(r)
         z=k*r[i]
-        if abs(z)<rsw
-            h1=_small_h1_series(z)
-            H1x[i]=exp(-1*im*z)*h1
+        if pidx[i]==0
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                H1x[i]=exp(-1*im*z)*_small_h1_series(z)
+            else
+                H1x[i]=SpecialFunctions.besselhx(1,1,z)
+            end
         else
             T=pans[pidx[i]]
             g1=_cheb_clenshaw(T.c1,t[i])
@@ -698,17 +684,23 @@ function eval_h!(H1::AbstractVector{ComplexF64},pl::ChebHankelPlanH,r::AbstractV
     pans=pl.panels
     k=ComplexF64(pl.k)
     ν=pl.ν
-    rsw=pl.r_switch
     @inbounds Threads.@threads for i in eachindex(r)
         z=k*r[i]
-        if abs(z)<rsw
+        if pidx[i]==0
             if ν==0
-                H1[i]=_small_h0_series(z)
+                if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                    H1[i]=_small_h0_series(z)
+                else
+                    H1[i]=SpecialFunctions.besselh(0,pl.κ,z)
+                end
             elseif ν==1
-                H1[i]=_small_h1_series(z)
-            else # yeah, not really implemented
-                T=pans[pidx[i]]
-                H1[i]=_cheb_clenshaw(T.c,t[i])
+                if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                    H1[i]=_small_h1_series(z)
+                else
+                    H1[i]=SpecialFunctions.besselh(1,pl.κ,z)
+                end
+            else
+                H1[i]=SpecialFunctions.besselh(ν,pl.κ,z)
             end
         else
             T=pans[pidx[i]]
@@ -741,9 +733,15 @@ end
 # =============================================================================
 function eval_j!(J::AbstractVector{ComplexF64},pl::ChebJPlan,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64})
     pans=pl.panels
+    ν=pl.ν
+    k=ComplexF64(pl.k)
     @inbounds Threads.@threads for i in eachindex(r)
-        T=pans[pidx[i]]
-        J[i]=_cheb_clenshaw(T.c,t[i])
+        if pidx[i]==0
+            J[i]=SpecialFunctions.besselj(ν,k*r[i])
+        else
+            T=pans[pidx[i]]
+            J[i]=_cheb_clenshaw(T.c,t[i])
+        end
     end
     return nothing
 end
@@ -774,9 +772,12 @@ end
 @inline function eval_h1x(pl::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64)
     r=1/invsqrt^2
     z=pl.k*r
-    rsw=pl.r_switch
-    if abs(z)<rsw
-        return exp(-1im*z)*_small_h1_series(z)
+    if pidx==0
+        if abs(z)<hankel_z_chebyshev_cutoff_small_z
+            return exp(-1*im*z)*_small_h1_series(z)
+        else
+            return SpecialFunctions.besselhx(1,1,z)
+        end
     end
     return _cheb_clenshaw(pl.panels[pidx].c1,t)*invsqrt
 end
@@ -801,14 +802,21 @@ end
 # =============================================================================
 @inline function eval_h(pl::ChebHankelPlanH,pidx::Int32,t::Float64,r::Float64)
     z=ComplexF64(pl.k)*r
-    rsw=pl.r_switch
-    if abs(z)<rsw
+    if pidx==0
         if pl.ν==0
-            return _small_h0_series(z)
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                return _small_h0_series(z)
+            else
+                return SpecialFunctions.besselh(0,pl.κ,z)
+            end
         elseif pl.ν==1
-            return _small_h1_series(z)
-        else # yeah, not really implemented
-            return _cheb_clenshaw(pl.panels[pidx].c,t)
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                return _small_h1_series(z)
+            else
+                return SpecialFunctions.besselh(1,pl.κ,z)
+            end
+        else
+            return SpecialFunctions.besselh(pl.ν,pl.κ,z)
         end
     end
     return _cheb_clenshaw(pl.panels[pidx].c,t)
@@ -828,7 +836,10 @@ end
 #   ComplexF64
 #           # approximation of J_ν(k r)
 # =============================================================================
-@inline function eval_j(pl::ChebJPlan,pidx::Int32,t::Float64)
+@inline function eval_j(pl::ChebJPlan,pidx::Int32,t::Float64,r::Float64)
+    if pidx==0
+        return SpecialFunctions.besselj(pl.ν,ComplexF64(pl.k)*r)
+    end
     return _cheb_clenshaw(pl.panels[pidx].c,t)
 end
 
@@ -858,9 +869,12 @@ function eval_h1x_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVecto
     r=1/invsqrt^2
     @inbounds for m in eachindex(plans)
         z=plans[m].k*r
-        rsw=plans[m].r_switch
-        if abs(z)<rsw
-            out[m]=exp(-1im*z)*_small_h1_series(z)
+        if pidx==0
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                out[m]=exp(-1*im*z)*_small_h1_series(z)
+            else
+                out[m]=SpecialFunctions.besselhx(1,1,z)
+            end
         else
             out[m]=_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
         end
@@ -894,14 +908,21 @@ function eval_h_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{
     @inbounds for m in eachindex(plans)
         plan_m=plans[m]
         z=ComplexF64(plan_m.k)*r
-        rsw=plan_m.r_switch
-        if abs(z)<rsw
+        if pidx==0
             if plan_m.ν==0
-                out[m]=_small_h0_series(z)
+                if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                    out[m]=_small_h0_series(z)
+                else
+                    out[m]=SpecialFunctions.besselh(0,plan_m.κ,z)
+                end
             elseif plan_m.ν==1
-                out[m]=_small_h1_series(z)
-            else # yeah, not really implemented
-                out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+                if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                    out[m]=_small_h1_series(z)
+                else
+                    out[m]=SpecialFunctions.besselh(1,plan_m.κ,z)
+                end
+            else
+                out[m]=SpecialFunctions.besselh(plan_m.ν,plan_m.κ,z)
             end
         else
             out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
@@ -934,7 +955,11 @@ end
 function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebJPlan},r::Float64,pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans)
         plan_m=plans[m]
-        out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+        if pidx==0
+            out[m]=SpecialFunctions.besselj(plan_m.ν,ComplexF64(plan_m.k)*r)
+        else
+            out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
+        end
     end
     return nothing
 end
@@ -994,8 +1019,13 @@ require `J₀` and `J₁`, so they are interpolated separately.
     @inbounds for m in eachindex(plans0)
         z=ComplexF64(plans0[m].k)*r
         if pidx==0
-            h0vals[m]=_small_h0_series(z)
-            h1vals[m]=_small_h1_series(z)
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                h0vals[m]=_small_h0_series(z)
+                h1vals[m]=_small_h1_series(z)
+            else
+                h0vals[m]=SpecialFunctions.besselh(0,1,z)
+                h1vals[m]=SpecialFunctions.besselh(1,1,z)
+            end
             j0vals[m]=SpecialFunctions.besselj(0,z)
             j1vals[m]=SpecialFunctions.besselj(1,z)
         else
@@ -1040,8 +1070,13 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
     @inbounds for m in eachindex(plans0)
         z=ComplexF64(plans0[m].k)*r
         if pidx==0
-            h0vals[m]=_small_h0_series(z)
-            h1vals[m]=_small_h1_series(z)
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                h0vals[m]=_small_h0_series(z)
+                h1vals[m]=_small_h1_series(z)
+            else
+                h0vals[m]=SpecialFunctions.besselh(0,1,z)
+                h1vals[m]=SpecialFunctions.besselh(1,1,z)
+            end
         else
             h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
             h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
@@ -1081,7 +1116,11 @@ If `pidx==0`, the evaluation point is close to zero and the small-argument serie
     @inbounds for m in eachindex(plans1)
         z=ComplexF64(plans1[m].k)*r
         if pidx==0
-            h1vals[m]=_small_h1_series(z)
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                h1vals[m]=_small_h1_series(z)
+            else
+                h1vals[m]=SpecialFunctions.hankelh1(1,z)
+            end
             j1vals[m]=SpecialFunctions.besselj(1,z)
         else
             h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
@@ -1089,4 +1128,65 @@ If `pidx==0`, the evaluation point is close to zero and the small-argument serie
         end
     end
     return nothing
+end
+
+"""
+        h1_multi_ks_at_r!(h1vals,phases,plans,pidx,t,invsqrt,r,ab)
+
+Evaluate `H₁^(1)` for all wavenumbers at one fixed distance panel/location, writing the results in place. Only used for standard DLP kernel where we need only H₁^(1) and not J₁, but we want to use the scaled Chebyshev expansions for complex k. The `phases` vector is used to store the exp(-i k r) factors for each wavenumber, which can be reused across multiple evaluations at the same radius.
+
+If `pidx==0`, the evaluation point is close to zero and the small-argument series expansion is used for all wavenumbers. Otherwise, the Chebyshev expansions are evaluated with Clenshaw recurrence. This is to avoid too many panels, which would cause unnecessary overhead in the Chebyshev evaluation and also workspace construction.
+
+# Arguments
+- `h1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₁^(1)` values.
+- `phases::AbstractVector{ComplexF64}`:
+  Workspace vector for the `exp(-i k r)` factors for each wavenumber.
+- `plans::AbstractVector{ChebHankelPlanH1x}`:
+  Chebyshev plans for the scaled Hankel `H1x`.
+- `pidx::Int32`:
+  Panel index for the active distance.
+- `t::Float64`:
+  Local Chebyshev coordinate in that panel.
+- `invsqrt::Float64`:
+  1 / √r for normalization.
+- `r::Float64`:
+  Distance at which to evaluate the functions.
+- `ab::AbstractVector{NTuple{2,Float64}}`:
+  Real and Imag parts of k for each plan, pre-extracted.
+
+# Returns
+- `nothing`
+"""
+@inline function h1_multi_ks_at_r!(hvals::AbstractVector{ComplexF64},phases::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,ab::AbstractVector{NTuple{2,Float64}})
+    @inbounds for m in eachindex(plans)
+        a,b=ab[m]
+        phases[m]=_exp_ikr(a,b,r)
+        if pidx==0
+            z=ComplexF64(plans[m].k)*r 
+            if abs(z)<hankel_z_chebyshev_cutoff_small_z
+                hvals[m]=phases[m]*_small_h1_series(z)
+            else
+                hvals[m]=phases[m]*SpecialFunctions.hankelh1(1,z)
+            end
+        else
+            hvals[m]=phases[m]*_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
+        end
+    end
+    return nothing
+end
+
+# check above, this is jsut the single k version
+@inline function h1_at_r(plan::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,a::Float64,b::Float64)
+    phase=_exp_ikr(a,b,r)
+    if pidx==0
+        z=ComplexF64(plan.k)*r
+        if abs(z)<hankel_z_chebyshev_cutoff_small_z
+            return phase*_small_h1_series(z)
+        else
+            return phase*SpecialFunctions.hankelh1(1,z)
+        end
+    else
+        return phase*_cheb_clenshaw(plan.panels[pidx].c1,t)*invsqrt
+    end
 end
