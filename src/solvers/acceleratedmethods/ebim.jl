@@ -1,9 +1,8 @@
 """
+
     EBIMSolver
 
-Union type collecting all solver backends that support the EBIM
-correction workflow.
-
+Union type collecting all solver backends that support the EBIM correction workflow.
 Included solvers are:
 - `BoundaryIntegralMethod`
 - `DLP_kress`
@@ -12,202 +11,198 @@ Included solvers are:
 - `CFIE_kress_corners`
 - `CFIE_kress_global_corners`
 - `CFIE_alpert`
-
-# Why this alias exists
-The EBIM routines do not care which specific boundary-integral discretization
-produced the matrices `A(k)`, `dA/dk`, and `d²A/dk²`. They only require that
-the solver can assemble:
-- the Fredholm matrix at a given `k`,
-- its first derivative with respect to `k`,
-- its second derivative with respect to `k`.
+The EBIM routines only require that the solver can assemble:
+- the Fredholm matrix `A(k)`,
+- its first derivative `dA/dk`,
+- its second derivative `d²A/dk²`.
 """
 const EBIMSolver=Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert}
-
-# Cache for chybshev interpolation option for EBIM. The W is left parametric since solvers have different workspaces.
-struct EBIMChebBatchCache{W}
-    ws::W
-    ks::Vector{ComplexF64}
-end
-# Unlike Beyn we have 3x the number of matrices, so for the same ammount of RAM we are limited to 1/3 of the actual precomputed steps
-@inline _ebim_batch_cap(max_batch_matrices::Int)=max(1,max_batch_matrices÷3)
 
 ###################################################################
 ################# CHEBYSHEV INTERPOLATION PATHWAY #################
 ###################################################################
-#=
-# workspace for standard DLP kernel. Requires only the BoundaryPoints (not vector since only outer boundary flattened)
-# plans needed are h1x type, as Beyn
-# Mk in the number of wanted matrices (i.e. number of wanted ks)
+
+"""
+
+    EBIMChebBatchCache{W}
+
+Reusable Chebyshev batch cache for EBIM matrix construction.
+This cache stores:
+- `ws`: the solver-specific Chebyshev workspace,
+- `ks`: the complex wavenumbers for which the workspace was built.
+The workspace type `W` is left parametric because each solver family has its own
+Chebyshev workspace type.
+"""
 struct EBIMChebBatchCache{W}
     ws::W
     ks::Vector{ComplexF64}
-    Mk::Int
-    estimated_matrix_bytes::Int
-end
-# workspace for the DLP Kress pathway, where we need the standard cfie_geom_cache to get access to curvature, log terms etc.
-# this is the easiest way since we need potentially the corrected log terms due to Kress quadrature, can be annoying
-# pts are BoundaryPointsCFIE since we can have only outer curve in this case (as opposed to CFIE)
-# Mk in the number of wanted matrices (i.e. number of wanted ks)
-struct DLPKressEBIMChebWorkspace{T,PT<:BoundaryPointsCFIE{T},WT}<:AbstractEBIMChebWorkspace
-    pts::PT
-    ws::WT
-    Mk::Int
-end
-# workspace for the CFIE Kress pathway, where we need the standard cfie_geom_cache to get access to curvature, log terms etc.
-# the pts is now a vector since we can have holes (each closed curve is flattened)
-# Mk in the number of wanted matrices (i.e. number of wanted ks)
-struct CFIEKressEBIMChebWorkspace{T,PT<:Vector{BoundaryPointsCFIE{T}},WT}<:AbstractEBIMChebWorkspace
-    pts::PT
-    ws::WT
-    Mk::Int
-end
-# workspace for alpert quadrature
-struct CFIEAlpertEBIMChebWorkspace{T,PT<:Vector{BoundaryPointsCFIE{T}},WT}<:AbstractEBIMChebWorkspace
-    pts::PT
-    ws::WT
-    Mk::Int
 end
 
-function build_ebim_cheb_workspace(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ks;
-    n_panels::Int=15000,M::Int=5,grading=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real}
-    zks=ComplexF64.(ks)
-    rmin,rmax=estimate_chebyshev_radial_bounds(pts)
-    plans=build_DLP_plans(zks,rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads,r_switch=r_switch)
-    return BIMChebWorkspace{T,typeof(pts),typeof(plans)}(pts,plans,length(zks))
+# EBIM needs 3 matrix families (A,dA,ddA), so the effective batch cap is reduced.
+@inline _ebim_batch_cap(max_batch_matrices::Int)=max(1,max_batch_matrices÷3)
+@inline _ebim_complex_ks(ks)=ComplexF64.(ks) # to guarantee it gets the correct type for cache
+@inline function allocate_ebim_cheb_matrices(cache::EBIMChebBatchCache,pts)
+    N=boundary_matrix_size(pts)
+    Mk=length(cache.ks)
+    As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:Mk]
+    dAs=[Matrix{ComplexF64}(undef,N,N) for _ in 1:Mk]
+    ddAs=[Matrix{ComplexF64}(undef,N,N) for _ in 1:Mk]
+    return As,dAs,ddAs
 end
 
-function build_ebim_cheb_workspace(solver::DLPKressSolver,pts::BoundaryPointsCFIE{T},ks;
-    n_panels::Int=15000,M::Int=5,grading=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real}
-    zks=ComplexF64.(ks)
-    ws=build_dlp_kress_cheb_workspace(solver,pts,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,plan_nthreads=plan_nthreads,ntls=ntls,r_switch=r_switch)
-    return DLPKressEBIMChebWorkspace{T,typeof(pts),typeof(ws)}(pts,ws,length(zks))
-end
+"""
+    build_ebim_cheb_cache(solver,pts,ks;kwargs...)
 
-function build_ebim_cheb_workspace(solver::CFIEKressSolver,pts::Vector{BoundaryPointsCFIE{T}},ks;
-    n_panels::Int=15000,M::Int=5,grading=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real}
-    zks=ComplexF64.(ks)
-    ws=build_cfie_kress_cheb_workspace(solver,pts,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,plan_nthreads=plan_nthreads,ntls=ntls,r_switch=r_switch)
-    return CFIEKressEBIMChebWorkspace{T,typeof(pts),typeof(ws)}(pts,ws,length(zks))
-end
+Build the solver-specific Chebyshev workspace needed for EBIM batch matrix
+construction over the wavenumbers `ks`.
 
-function build_ebim_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ks;
-    n_panels::Int=15000,M::Int=5,grading=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),r_switch::Float64=0.0) where {T<:Real}
+Returns:
+- `EBIMChebBatchCache`
+"""
+function build_ebim_cheb_cache(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ks;n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,timeit::Bool=false) where {T<:Real}
     zks=_ebim_complex_ks(ks)
-    directws=build_cfie_alpert_workspace(solver,pts)
-    ws=build_cfie_alpert_cheb_workspace(solver,pts,directws,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad,plan_nthreads=plan_nthreads,ntls=ntls,r_switch=r_switch)
-    return CFIEAlpertEBIMChebWorkspace{T,typeof(pts),typeof(ws)}(pts,ws,length(zks))
-end
-
-function allocate_ebim_cheb_matrices(ws::AbstractEBIMChebWorkspace,T::Type{ComplexF64}=ComplexF64)
-    N=boundary_matrix_size(ws.pts)
-    Mk=ws.Mk
-    As=[Matrix{T}(undef,N,N) for _ in 1:Mk]
-    A1s=[Matrix{T}(undef,N,N) for _ in 1:Mk]
-    A2s=[Matrix{T}(undef,N,N) for _ in 1:Mk]
-    return As,A1s,A2s
-end
-
-@inline function _first_only!(As)
-    @inbounds for m in eachindex(As)
-        fill!(As[m],0.0+0.0im)
+    rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
+    plans0=Vector{ChebHankelPlanH}(undef,length(zks))
+    plans1=Vector{ChebHankelPlanH}(undef,length(zks))
+    @benchit timeit=timeit "EBIM BIM deriv plans" Threads.@threads for i in eachindex(zks)
+        plans0[i]=plan_h(0,1,zks[i],rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+        plans1[i]=plan_h(1,1,zks[i],rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
     end
+    ws=DLPDerivChebWorkspace(T,length(zks))
+    return EBIMChebBatchCache((plans0,plans1,ws),zks)
+end
+
+function build_ebim_cheb_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},ks;n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+    zks=_ebim_complex_ks(ks)
+    @benchit timeit=timeit "EBIM DLP_kress direct workspace" directws=build_dlp_kress_workspace(solver,pts)
+    @benchit timeit=timeit "EBIM DLP_kress cheb workspace" ws=build_dlp_kress_cheb_workspace(solver,pts,directws,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,plan_nthreads=plan_nthreads,ntls=ntls)
+    return EBIMChebBatchCache(ws,zks)
+end
+
+function build_ebim_cheb_cache(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},ks;n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+    zks=_ebim_complex_ks(ks)
+    @benchit timeit=timeit "EBIM CFIE_kress cheb block cache" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+    @benchit timeit=timeit "EBIM CFIE_kress plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zks,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
+    ws=(block_cache=block_cache,plans0=plans0,plans1=plans1,plans2=plans2,plans3=plans3,bessel_ws=CFIE_H0_H1_J0_J1_BesselWorkspace(length(zks);ntls=ntls))
+    return EBIMChebBatchCache(ws,zks)
+end
+
+function build_ebim_cheb_cache(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ks;
+n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+    zks=_ebim_complex_ks(ks)
+    @benchit timeit=timeit "EBIM CFIE_alpert direct workspace" directws=build_cfie_alpert_workspace(solver,pts)
+    @benchit timeit=timeit "EBIM CFIE_alpert cheb workspace" ws=build_cfie_alpert_cheb_workspace(solver,pts,directws,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad,plan_nthreads=plan_nthreads,ntls=ntls)
+    return EBIMChebBatchCache(ws,zks)
+end
+
+"""
+    construct_ebim_cheb_matrices!(As,dAs,ddAs,solver,pts,cache;multithreaded=true)
+
+Construct EBIM matrix triples `(A,dA,ddA)` for all wavenumbers stored in
+`cache.ks`, writing them in place.
+"""
+function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},dAs::Vector{Matrix{ComplexF64}},ddAs::Vector{Matrix{ComplexF64}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},cache::EBIMChebBatchCache;multithreaded::Bool=true) where {T<:Real}
+    plans0,plans1,ws=cache.ws
+    compute_kernel_matrices_DLP_chebyshev_derivatives!(As,dAs,ddAs,pts,solver.symmetry,plans0,plans1;multithreaded=multithreaded,ws=ws)
+    assemble_fredholm_matrices_with_derivatives!(As,dAs,ddAs,pts)
     return nothing
 end
 
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ws::BIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_DLP_chebyshev!(As,pts,ws.plans;multithreaded=multithreaded)
-    assemble_fredholm_matrices!(As,pts)
+function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},dAs::Vector{Matrix{ComplexF64}},ddAs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache;multithreaded::Bool=true) where {T<:Real}
+    construct_dlp_kress_matrices_derivatives_chebyshev!(As,dAs,ddAs,pts,cache.ws;multithreaded=multithreaded)
     return nothing
 end
 
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ws::BIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    plan=ws.plans isa AbstractVector ? ws.plans[1] : ws.plans
-    compute_kernel_matrices_DLP_chebyshev!(A,pts,plan;multithreaded=multithreaded)
-    assemble_fredholm_matrices!(A,pts)
+function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},dAs::Vector{Matrix{ComplexF64}},ddAs::Vector{Matrix{ComplexF64}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},cache::EBIMChebBatchCache;multithreaded::Bool=true) where {T<:Real}
+    ws=cache.ws
+    compute_kernel_matrices_CFIE_kress_chebyshev!(As,dAs,ddAs,pts,ws.plans0,ws.plans1,ws.plans2,ws.plans3,ws.bessel_ws.h0_tls,ws.bessel_ws.h1_tls,ws.bessel_ws.j0_tls,ws.bessel_ws.j1_tls,ws.block_cache;multithreaded=multithreaded)
     return nothing
 end
 
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::DLPKressSolver,pts::BoundaryPointsCFIE{T},ws::DLPKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    construct_dlp_kress_matrices_derivatives_chebyshev!(As,A1s,A2s,pts,ws.ws;multithreaded=multithreaded)
+function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},dAs::Vector{Matrix{ComplexF64}},ddAs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},cache::EBIMChebBatchCache;multithreaded::Bool=true) where {T<:Real}
+    compute_kernel_matrices_CFIE_alpert_chebyshev!(As,dAs,ddAs,solver,pts,cache.ws;multithreaded=multithreaded)
     return nothing
 end
 
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::DLPKressSolver,pts::BoundaryPointsCFIE{T},ws::DLPKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    construct_dlp_kress_matrices_derivatives_chebyshev!([A],[A1],[A2],pts,typeof(ws.ws)(ws.ws.direct,[ws.ws.plans0[1]],[ws.ws.plans1[1]],[ws.ws.plans2[1]],[ws.ws.plans3[1]],ws.ws.tls,1);multithreaded=multithreaded)
-    return nothing
+"""
+
+    construct_ebim_cheb_matrices(solver,pts,cache;multithreaded=true)
+
+Allocate and construct EBIM Chebyshev matrix triples `(A,dA,ddA)` for all
+wavenumbers stored in `cache.ks`.
+
+Returns:
+- `(As,dAs,ddAs)`
+"""
+function construct_ebim_cheb_matrices(solver::EBIMSolver,pts,cache::EBIMChebBatchCache;multithreaded::Bool=true)
+    As,dAs,ddAs=allocate_ebim_cheb_matrices(cache,pts)
+    construct_ebim_cheb_matrices!(As,dAs,ddAs,solver,pts,cache;multithreaded=multithreaded)
+    return As,dAs,ddAs
 end
 
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},solver::DLPKressSolver,pts::BoundaryPointsCFIE{T},ws::DLPKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    construct_dlp_kress_matrices_chebyshev!(As,pts,ws.ws;multithreaded=multithreaded)
-    return nothing
-end
+"""
+    construct_ebim_cheb_matrix_at!(A,dA,ddA,solver,pts,cache,idx;multithreaded=true)
 
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},solver::DLPKressSolver,pts::BoundaryPointsCFIE{T},ws::DLPKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    construct_dlp_kress_matrices_chebyshev!(A,pts,ws.ws;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::CFIEKressSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_kress_chebyshev!(As,A1s,A2s,pts,ws.ws.plans0,ws.ws.plans1,ws.ws.plans2,ws.ws.plans3,ws.ws.bessel_ws.h0_tls,ws.ws.bessel_ws.h1_tls,ws.ws.bessel_ws.j0_tls,ws.ws.bessel_ws.j1_tls,ws.ws.block_cache;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::CFIEKressSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_kress_chebyshev!(A,A1,A2,pts,ws.ws.plans0[1],ws.ws.plans1[1],ws.ws.plans2[1],ws.ws.plans3[1],ws.ws.bessel_ws.h0_tls,ws.ws.bessel_ws.h1_tls,ws.ws.bessel_ws.j0_tls,ws.ws.bessel_ws.j1_tls,ws.ws.block_cache;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},solver::CFIEKressSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_kress_chebyshev!(As,pts,ws.ws.plans0,ws.ws.plans1,ws.ws.plans2,ws.ws.plans3,ws.ws.bessel_ws.h0_tls,ws.ws.bessel_ws.h1_tls,ws.ws.bessel_ws.j0_tls,ws.ws.bessel_ws.j1_tls,ws.ws.block_cache;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},solver::CFIEKressSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_kress_chebyshev!(A,pts,ws.ws.plans0[1],ws.ws.plans1[1],ws.ws.plans2[1],ws.ws.plans3[1],ws.ws.bessel_ws.h0_tls,ws.ws.bessel_ws.h1_tls,ws.ws.bessel_ws.j0_tls,ws.ws.bessel_ws.j1_tls,ws.ws.block_cache;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_alpert_chebyshev!(As,A1s,A2s,solver,pts,ws.ws;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_alpert_chebyshev!(A,A1,A2,solver,pts,ws.ws;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_alpert_chebyshev!(As,solver,pts,ws.ws;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertEBIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    compute_kernel_matrices_CFIE_alpert_chebyshev!(A,solver,pts,ws.ws;multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_ebim_cheb_matrices(solver::EBIMSolver,pts,ws::AbstractEBIMChebWorkspace;multithreaded::Bool=true,derivatives::Bool=true)
-    if derivatives
-        As,A1s,A2s=allocate_ebim_cheb_matrices(ws)
-        construct_ebim_cheb_matrices!(As,A1s,A2s,solver,pts,ws;multithreaded=multithreaded)
-        return As,A1s,A2s
+Construct the EBIM matrix triple for the `idx`-th wavenumber stored in a batch
+Chebyshev cache, writing into the preallocated matrices `A`, `dA`, `ddA`.
+"""
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},
+    solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},cache::EBIMChebBatchCache,idx::Int;multithreaded::Bool=true) where {T<:Real}
+    plans0,plans1,_=cache.ws
+    sym=solver.symmetry
+    if isnothing(sym)
+        compute_kernel_matrices_DLP_chebyshev_derivatives!(A,dA,ddA,pts,plans0[idx],plans1[idx];multithreaded=multithreaded)
+    elseif sym isa Reflection
+        ws1=DLPDerivChebWorkspace(T,1)
+        compute_kernel_matrices_DLP_chebyshev_derivatives!(A,dA,ddA,pts,sym,plans0[idx],plans1[idx];multithreaded=multithreaded,ws=ws1)
+    elseif sym isa Rotation
+        ws1=DLPDerivChebWorkspace(T,1)
+        compute_kernel_matrices_DLP_chebyshev_derivatives!(A,dA,ddA,pts,sym,plans0[idx],plans1[idx];multithreaded=multithreaded,ws=ws1)
     else
-        N=boundary_matrix_size(ws.pts)
-        As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:ws.Mk]
-        construct_ebim_cheb_matrices!(As,solver,pts,ws;multithreaded=multithreaded)
-        return As
+        error("Unsupported BIM symmetry $(typeof(sym))")
+    end
+    assemble_fredholm_matrices_with_derivatives!(A,dA,ddA,pts)
+    return nothing
+end
+
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache,idx::Int;multithreaded::Bool=true) where {T<:Real}
+    ws=cache.ws
+    ws1=typeof(ws)(ws.direct,ws.block_cache,[ws.plans0[idx]],[ws.plans1[idx]],[ws.plansj0[idx]],[ws.plansj1[idx]],DLP_H0_H1_J0_J1_BesselWorkspace(1;ntls=length(ws.bessel_ws.h0_tls)),[ws.ks[idx]],1)
+    construct_dlp_kress_matrices_derivatives_chebyshev!([A],[dA],[ddA],pts,ws1;multithreaded=multithreaded)
+    return nothing
+end
+
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},cache::EBIMChebBatchCache,idx::Int;multithreaded::Bool=true) where {T<:Real}
+    ws=cache.ws
+    compute_kernel_matrices_CFIE_kress_chebyshev!(A,dA,ddA,pts,ws.plans0[idx],ws.plans1[idx],ws.plans2[idx],ws.plans3[idx],ws.bessel_ws.h0_tls,ws.bessel_ws.h1_tls,ws.bessel_ws.j0_tls,ws.bessel_ws.j1_tls,ws.block_cache;multithreaded=multithreaded)
+    return nothing
+end
+
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},cache::EBIMChebBatchCache,idx::Int;multithreaded::Bool=true) where {T<:Real}
+    ws=cache.ws
+    ws1=CFIEAlpertChebWorkspace{T}(ws.direct,ws.block_cache,[ws.plans0[idx]],[ws.plans1[idx]],CFIE_H0_H1_BesselWorkspace(1;ntls=length(ws.bessel_ws.h0_tls)),[ws.ks[idx]],1)
+    compute_kernel_matrices_CFIE_alpert_chebyshev!([A],[dA],[ddA],solver,pts,ws1;multithreaded=multithreaded)
+    return nothing
+end
+
+"""
+    solve!(solver,A,dA,ddA,pts,k,dk,cache,idx;
+           use_lapack_raw=false,multithreaded=true,use_krylov=true,nev=5)
+
+EBIM solve using the `idx`-th Chebyshev-cached matrix triple from `cache`.
+"""
+function solve!(solver::EBIMSolver,A::AbstractMatrix{ComplexF64},dA::AbstractMatrix{ComplexF64},ddA::AbstractMatrix{ComplexF64},pts,k,dk,cache::EBIMChebBatchCache,idx::Int;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true,nev::Int=5)
+    fill!(A,0.0+0.0im)
+    fill!(dA,0.0+0.0im)
+    fill!(ddA,0.0+0.0im)
+    construct_ebim_cheb_matrix_at!(A,dA,ddA,solver,pts,cache,idx;multithreaded=multithreaded)
+    if use_krylov
+        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded,nev=nev)
+    else
+        return solve_full!(solver,A,dA,ddA,pts,k,dk;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded)
     end
 end
 
-function construct_ebim_cheb_matrices!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ws::BIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    error("BoundaryIntegralMethod Chebyshev derivative assembly is not wired here because your low-level derivative API was not included. Plug it in here if available.")
-end
-
-function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ws::BIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    error("BoundaryIntegralMethod Chebyshev derivative assembly is not wired here because your low-level derivative API was not included. Plug it in here if available.")
-end
-=#
 ###################################################################
 ######################## DIRECT PATHWAY ###########################
 ###################################################################
@@ -971,7 +966,7 @@ function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::
 end
 
 """
-    compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk=(k)->0.05*k^(-1/3),tol=1e-4,use_lapack_raw=false,multithreaded_matrices=false,use_krylov=true,seg_reuse_frac=0.95) -> Tuple{Vector{T},Vector{T}}
+    compute_spectrum(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk=(k)->0.05*k^(-1/3),tol=1e-4,use_lapack_raw=false,multithreaded_matrices=false,use_krylov=true,seg_reuse_frac=0.95,solve_info=true,use_chebyshev=false,n_panels=15000,M=5) -> Tuple{Vector{T},Vector{T}}
 
 Compute the spectrum and corresponding tensions of a billiard problem using the expanded boundary integral method (EBIM) over the wavenumber interval `[k1,k2]`.
 
@@ -991,6 +986,9 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - `use_krylov::Bool=true`: Use Krylov-based shift–invert solver instead of full generalized EVP.
 - `seg_reuse_frac::T=0.95`: Controls segment size; geometry is reused while `k` stays within this fraction of the segment’s upper bound.
 - `solve_info::Bool=true`: Print detailed information during the solve process.
+- `use_chebyshev::Bool=false`: Use Chebyshev interpolation for matrix assembly across segments.
+- `n_panels::Int=15000`: Number of panels for Chebyshev interpolation if `use_chebyshev=true`.
+- `M::Int=5`: Number of Chebyshev modes for interpolation if `use_chebyshev=true`.
 
 # Returns
 - `λs::Vector{T}`: Corrected eigenvalues (wavenumbers).
@@ -1002,7 +1000,7 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
 - Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5) where {T<:Real,Bi<:AbsBilliard}
     ks=T[]
     dks=T[]
     k=k1
@@ -1012,22 +1010,24 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
         push!(dks,Δk)
         k+=Δk
     end
-    # estitate the max number of eigenvalues per interval for krylov estimate
     nevs=Int[]
     for i in eachindex(ks)
         k=ks[i]
-        dk=dks[i]
-        push!(nevs,Int(ceil((billiard.area*k/(2*pi)-billiard.length/(4*pi))*dk))+10) # add some padding to be safe
+        Δk=dks[i]
+        push!(nevs,Int(ceil((billiard.area*k/(2*pi)-billiard.length/(4*pi))*Δk))+10)
     end
     isempty(ks) && return T[],T[]
     pts0=evaluate_points(solver,billiard,ks[1])
     println("compute_spectrum...")
     println("Total k points: $(length(ks))")
     N0=boundary_matrix_size(pts0)
-    A0=Matrix{Complex{T}}(undef,N0,N0)
-    dA0=Matrix{Complex{T}}(undef,N0,N0)
-    ddA0=Matrix{Complex{T}}(undef,N0,N0)
-    solve_info && solve_INFO!(solver,A0,dA0,ddA0,pts0,ks[1],dks[1];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    A0=Matrix{ComplexF64}(undef,N0,N0)
+    dA0=Matrix{ComplexF64}(undef,N0,N0)
+    ddA0=Matrix{ComplexF64}(undef,N0,N0)
+    if solve_info
+        #TODO Chebyshev pathway solve_INFO
+        solve_INFO!(solver,A0,dA0,ddA0,pts0,ks[1],dks[1];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
+    end
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     p=Progress(length(ks),1)
     seg_first=1
@@ -1038,13 +1038,31 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
         end
         pts=seg_first==1 ? pts0 : evaluate_points(solver,billiard,ks[seg_last])
         N=boundary_matrix_size(pts)
-        A=Matrix{Complex{T}}(undef,N,N)
-        dA=Matrix{Complex{T}}(undef,N,N)
-        ddA=Matrix{Complex{T}}(undef,N,N)
-        for i in seg_first:seg_last
-            λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i])
-            results[i]=(λs,tens)
-            next!(p)
+        A=Matrix{ComplexF64}(undef,N,N)
+        dA=Matrix{ComplexF64}(undef,N,N)
+        ddA=Matrix{ComplexF64}(undef,N,N)
+        if use_chebyshev
+            segks=ks[seg_first:seg_last]
+            cache=build_ebim_cheb_cache(solver,pts,segks;n_panels=n_panels,M=M,grading=:uniform)
+            for (loc,i) in enumerate(seg_first:seg_last)
+                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i],cache,loc;
+                    use_lapack_raw=use_lapack_raw,
+                    multithreaded=multithreaded_matrices,
+                    use_krylov=use_krylov,
+                    nev=nevs[i])
+                results[i]=(λs,tens)
+                next!(p)
+            end
+        else
+            for i in seg_first:seg_last
+                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];
+                    use_lapack_raw=use_lapack_raw,
+                    multithreaded=multithreaded_matrices,
+                    use_krylov=use_krylov,
+                    nev=nevs[i])
+                results[i]=(λs,tens)
+                next!(p)
+            end
         end
         seg_first=seg_last+1
     end
