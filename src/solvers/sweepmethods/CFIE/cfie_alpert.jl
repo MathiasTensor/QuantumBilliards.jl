@@ -1665,6 +1665,7 @@ end
 function estimate_cfie_alpert_cheb_rbounds(ws::CFIEAlpertWorkspace{T};pad=(T(0.95),T(1.05))) where {T<:Real}
     rmin=typemax(T)
     rmax=zero(T)
+    # 1) Include all same-block geometric distances already stored in the direct caches.
     for G in ws.Gs
         R=G.R
         @inbounds for j in axes(R,2), i in axes(R,1)
@@ -1676,32 +1677,46 @@ function estimate_cfie_alpert_cheb_rbounds(ws::CFIEAlpertWorkspace{T};pad=(T(0.9
             end
         end
     end
+    # 2) Include all off-block geometric distances explicitly.
+    #    This is required for composite corner geometries, where the smallest
+    #    Chebyshev-relevant distance can occur between different blocks/panels.
+    parr=ws.parr
+    nc=length(parr)
+    @inbounds for a in 1:nc
+        Pa=parr[a]
+        Xa=Pa.X; Ya=Pa.Y
+        Na=length(Xa)
+        for b in 1:nc
+            b==a && continue
+            Pb=parr[b]
+            Xb=Pb.X; Yb=Pb.Y
+            Nb=length(Xb)
+            for j in 1:Nb, i in 1:Na
+                dx=Xa[i]-Xb[j]
+                dy=Ya[i]-Yb[j]
+                r2=muladd(dx,dx,dy*dy)
+                if isfinite(r2) && r2>(eps(T))^2
+                    r=sqrt(r2)
+                    rmin=min(rmin,r)
+                    rmax=max(rmax,r)
+                end
+            end
+        end
+    end
+    # 3) Include all Alpert correction-node distances from the direct caches.
+    #    These can be much smaller than node-node distances and must be part of
+    #    the admissible Chebyshev radius interval.
     for C in ws.Cs
-        if C isa AlpertPeriodicCache{T}
-            @inbounds for r in C.rp
-                if isfinite(r) && r>eps(T)
-                    rmin=min(rmin,r)
-                    rmax=max(rmax,r)
-                end
+        @inbounds for r in C.rp
+            if isfinite(r) && r>eps(T)
+                rmin=min(rmin,r)
+                rmax=max(rmax,r)
             end
-            @inbounds for r in C.rm
-                if isfinite(r) && r>eps(T)
-                    rmin=min(rmin,r)
-                    rmax=max(rmax,r)
-                end
-            end
-        elseif C isa AlpertSmoothPanelCache{T}
-            @inbounds for r in C.rp
-                if isfinite(r) && r>eps(T)
-                    rmin=min(rmin,r)
-                    rmax=max(rmax,r)
-                end
-            end
-            @inbounds for r in C.rm
-                if isfinite(r) && r>eps(T)
-                    rmin=min(rmin,r)
-                    rmax=max(rmax,r)
-                end
+        end
+        @inbounds for r in C.rm
+            if isfinite(r) && r>eps(T)
+                rmin=min(rmin,r)
+                rmax=max(rmax,r)
             end
         end
     end
