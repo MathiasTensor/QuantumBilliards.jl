@@ -946,7 +946,7 @@ function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::
         tj=ten_right[j]
         hit=false
         for i in eachindex(k_left)
-            if abs(k_left[i]-kj) <= tol
+            if abs(k_left[i]-kj)<=tol
                 hit=true
                 if tj < ten_left[i]
                     k_left[i]=kj
@@ -963,9 +963,9 @@ function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::
         end
     end
     p=sortperm(k_left)
-    k_left[:] = k_left[p]
-    ten_left[:] = ten_left[p]
-    control_left[:] = control_left[p]
+    k_left[:]=k_left[p]
+    ten_left[:]=ten_left[p]
+    control_left[:]=control_left[p]
     return nothing
 end
 

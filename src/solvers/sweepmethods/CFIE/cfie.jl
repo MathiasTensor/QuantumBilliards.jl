@@ -862,14 +862,36 @@ This is the high-level entry point for the most general Kress-CFIE geometry
 handling in this file.
 """
 function evaluate_points(solver::CFIE_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    comps=_boundary_components(billiard.full_boundary)
+    boundary=billiard.full_boundary
+    isempty(boundary) && error("Boundary cannot be empty.")
+    # Case 1: one smooth closed curve stored directly
+    # full_boundary = [crv]
+    if length(boundary)==1 && !(boundary[1] isa AbstractVector)
+        crv=boundary[1]
+        base=CFIE_kress(solver.pts_scaling_factor,solver.billiard;
+            min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
+        return [_evaluate_points(base,crv,k,1)]
+    end
+    # Case 2: one composite outer boundary stored as a flat vector of segments
+    # full_boundary = [seg1,seg2,...]
+    # rectangle, stadium, polygon, ...
+    if _is_single_composite_boundary(boundary)
+        return [_evaluate_points(solver,boundary,k,1)]
+    end
+    # Case 3: multiple boundary components
+    # full_boundary = [outer_comp, hole1_comp, ...]
+    comps=_boundary_components(boundary)
     pts=Vector{BoundaryPointsCFIE{T}}(undef,length(comps))
     for (idx,comp) in enumerate(comps)
         isempty(comp) && error("Boundary component cannot be empty.")
-        if length(comp)==1
-            p=_evaluate_points(CFIE_kress_corners(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry,kressq=solver.kressq),comp[1],k,idx)
+        p= if length(comp)==1
+            # smooth closed component
+            base=CFIE_kress(solver.pts_scaling_factor,solver.billiard;
+                min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
+            _evaluate_points(base,comp[1],k,idx)
         else
-            p=_evaluate_points(solver,comp,k,idx)
+            # composite closed component with corners
+            _evaluate_points(solver,comp,k,idx)
         end
         pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
     end
