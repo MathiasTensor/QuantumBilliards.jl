@@ -424,8 +424,14 @@ using the precomputed Chebyshev panel index and local coordinate stored in
     else
         @inbounds for m in eachindex(plans0)
             z=ComplexF64(plans0[m].k)*r
-            h0vals[m]=_small_h0_series(z)
-            h1vals[m]=_small_h1_series(z)
+            az=abs(z)
+            if az<hankel_z_chebyshev_cutoff_small_z
+                h0vals[m]=_small_h0_series(z)
+                h1vals[m]=_small_h1_series(z)
+            else
+                h0vals[m]=SpecialFunctions.besselh(0,1,z)
+                h1vals[m]=SpecialFunctions.besselh(1,1,z)
+            end
         end
     end
     return nothing
@@ -444,8 +450,14 @@ locating the corresponding Chebyshev panel on the fly from `plans0[1]`.
     if r<plans0[1].rmin
         @inbounds for m in eachindex(plans0)
             z=ComplexF64(plans0[m].k)*r
-            h0vals[m]=_small_h0_series(z)
-            h1vals[m]=_small_h1_series(z)
+            az=abs(z)
+            if az<hankel_z_chebyshev_cutoff_small_z
+                h0vals[m]=_small_h0_series(z)
+                h1vals[m]=_small_h1_series(z)
+            else
+                h0vals[m]=SpecialFunctions.besselh(0,1,z)
+                h1vals[m]=SpecialFunctions.besselh(1,1,z)
+            end
         end
     else
         pidx=_find_panel(plans0[1],r)

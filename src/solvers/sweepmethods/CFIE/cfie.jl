@@ -890,7 +890,7 @@ function evaluate_points(solver::CFIE_kress_global_corners{T},billiard::Bi,k::T)
                 min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
             _evaluate_points(base,comp[1],k,idx)
         else
-            # composite closed component with corners
+            # composite closed component
             _evaluate_points(solver,comp,k,idx)
         end
         pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
