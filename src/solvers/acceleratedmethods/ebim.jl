@@ -34,7 +34,7 @@ end
 ###################################################################
 ################# CHEBYSHEV INTERPOLATION PATHWAY #################
 ###################################################################
-
+#=
 # workspace for standard DLP kernel. Requires only the BoundaryPoints (not vector since only outer boundary flattened)
 # plans needed are h1x type, as Beyn
 # Mk in the number of wanted matrices (i.e. number of wanted ks)
@@ -207,7 +207,7 @@ end
 function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ws::BIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     error("BoundaryIntegralMethod Chebyshev derivative assembly is not wired here because your low-level derivative API was not included. Plug it in here if available.")
 end
-
+=#
 ###################################################################
 ######################## DIRECT PATHWAY ###########################
 ###################################################################
