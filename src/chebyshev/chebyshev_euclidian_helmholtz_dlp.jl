@@ -288,7 +288,7 @@ end
 @inline function _kernel_triplet_from_hankels(k::T,r::T,H0::ComplexF64,H1::ComplexF64,H2::ComplexF64) where {T<:Real}
     kd=k*r
     hK=Complex{T}(zero(T),k/2)*H1
-    hdK=Complex{T}(zero(T),-k/2)*r*H0
+    hdK=Complex{T}(zero(T),k/2)*r*H0
     hddK=Complex{T}(zero(T),inv(2*k))*((-2+kd*kd)*H1+kd*H2)
     return hK,hdK,hddK
 end
@@ -575,9 +575,9 @@ function _all_k_nosymm_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}}
     @inbounds for m in 1:Mk
         km=ComplexF64(plans0[m].k)
         kvec[m]=km
-        pref0[m]=0.5im*km
-        pref1[m]=-0.5im*km
-        pref2[m]=0.5im/km
+        pref0[m]=0.5*im*km
+        pref1[m]=0.5*im*km
+        pref2[m]=0.5*im/km
     end
     local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,Mk) : ws
     @use_threads multithreading=multithreaded for i in 1:N
@@ -663,7 +663,9 @@ end
 function _one_k_nosymm_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true) where {T<:Real}
     N=length(bp.xy);tol2=(eps(T))^2;k=ComplexF64(plan0.k)
     fill!(K,zero(eltype(K)));fill!(dK,zero(eltype(dK)));fill!(ddK,zero(eltype(ddK)))
-    pref0=0.5im*k;pref1=-0.5im*k;pref2=0.5im/k
+    pref0=0.5*im*k
+    pref1=0.5*im*k
+    pref2=0.5*im/k
     @use_threads multithreading=multithreaded for i in 1:N
         xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
         @inbounds for j in 1:i
@@ -784,7 +786,7 @@ function _all_k_reflection_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{
     kvec=Vector{ComplexF64}(undef,Mk);pref0=Vector{ComplexF64}(undef,Mk);pref1=Vector{ComplexF64}(undef,Mk);pref2=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
         km=ComplexF64(plans0[m].k)
-        kvec[m]=km;pref0[m]=0.5im*km;pref1[m]=-0.5im*km;pref2[m]=0.5im/km
+        kvec[m]=km;pref0[m]=0.5*im*km;pref1[m]=0.5*im*km;pref2[m]=0.5*im/km
     end
     local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,Mk) : ws
     @use_threads multithreading=multithreaded for i in 1:N
@@ -909,7 +911,9 @@ end
 function _one_k_reflection_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
     _one_k_nosymm_DLP_chebyshev_derivatives!(K,dK,ddK,bp,plan0,plan1;multithreaded=multithreaded)
     N=length(bp.xy);tol2=(eps(T))^2;k=ComplexF64(plan0.k)
-    pref0=0.5im*k;pref1=-0.5im*k;pref2=0.5im/k
+    pref0=0.5*im*k
+    pref1=0.5*im*k
+    pref2=0.5*im/k
     shift_x=bp.shift_x
     shift_y=bp.shift_y
     ops=_reflect_ops_and_scales(T,sym)
@@ -1037,7 +1041,10 @@ function _all_k_rotation_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}
     kvec=Vector{ComplexF64}(undef,Mk);pref0=Vector{ComplexF64}(undef,Mk);pref1=Vector{ComplexF64}(undef,Mk);pref2=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
         km=ComplexF64(plans0[m].k)
-        kvec[m]=km;pref0[m]=0.5im*km;pref1[m]=-0.5im*km;pref2[m]=0.5im/km
+        kvec[m]=km
+        pref0[m]=0.5*im*km
+        pref1[m]=0.5*im*km
+        pref2[m]=0.5*im/km
     end
     local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,Mk) : ws
     @use_threads multithreading=multithreaded for i in 1:N
@@ -1144,7 +1151,9 @@ end
 function _one_k_rotation_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
     _one_k_nosymm_DLP_chebyshev_derivatives!(K,dK,ddK,bp,plan0,plan1;multithreaded=multithreaded)
     N=length(bp.xy);tol2=(eps(T))^2;k=ComplexF64(plan0.k)
-    pref0=0.5im*k;pref1=-0.5im*k;pref2=0.5im/k
+    pref0=0.5*im*k
+    pref1=0.5*im*k
+    pref2=0.5*im/k
     cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
     local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,1) : ws
     @use_threads multithreading=multithreaded for i in 1:N
