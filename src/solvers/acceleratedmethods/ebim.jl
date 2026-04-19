@@ -1041,7 +1041,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
     if use_chebyshev && cheb_param_strategy==:global
         kref=ks[end]
         pts_ref=evaluate_points(solver,billiard,kref)
-        n_panels,M,_=chebyshev_params(solver,pts_ref,ComplexF64(kref);tol=cheb_tol,n_panels_init=n_panels,M_init=M,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+        n_panels,M,_=chebyshev_params(solver,pts_ref,ComplexF64[kref];tol=cheb_tol,n_panels_init=n_panels,M_init=M,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
     elseif use_chebyshev && cheb_param_strategy==:manual
         @info "Using manual Chebyshev parameters: n_panels=$n_panels, M=$M for all segments."
     end
@@ -1064,7 +1064,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
                 kref=segks[end]
                 np_init=n_panels
                 M_init=M
-                n_panels,M,_=chebyshev_params(solver,pts,ComplexF64(kref);tol=cheb_tol,n_panels_init=np_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+                n_panels,M,_=chebyshev_params(solver,pts,ComplexF64[kref];tol=cheb_tol,n_panels_init=np_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
             end
             cache=build_ebim_cheb_cache(solver,pts,segks;n_panels=n_panels,M=M,grading=grading)
             for (loc,i) in enumerate(seg_first:seg_last)
