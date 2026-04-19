@@ -34,14 +34,15 @@ end
 ###################################################################
 ################# CHEBYSHEV INTERPOLATION PATHWAY #################
 ###################################################################
-#=
+
 # workspace for standard DLP kernel. Requires only the BoundaryPoints (not vector since only outer boundary flattened)
 # plans needed are h1x type, as Beyn
 # Mk in the number of wanted matrices (i.e. number of wanted ks)
-struct BIMChebWorkspace{T,PT<:BoundaryPoints{T},WT}<:AbstractEBIMChebWorkspace
-    pts::PT
-    plans::WT
+struct EBIMChebBatchCache{W}
+    ws::W
+    ks::Vector{ComplexF64}
     Mk::Int
+    estimated_matrix_bytes::Int
 end
 # workspace for the DLP Kress pathway, where we need the standard cfie_geom_cache to get access to curvature, log terms etc.
 # this is the easiest way since we need potentially the corrected log terms due to Kress quadrature, can be annoying
@@ -206,7 +207,7 @@ end
 function construct_ebim_cheb_matrices!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ws::BIMChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     error("BoundaryIntegralMethod Chebyshev derivative assembly is not wired here because your low-level derivative API was not included. Plug it in here if available.")
 end
-=#
+
 ###################################################################
 ######################## DIRECT PATHWAY ###########################
 ###################################################################

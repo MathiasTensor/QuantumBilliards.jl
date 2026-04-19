@@ -1665,7 +1665,7 @@ end
 function estimate_cfie_alpert_cheb_rbounds(ws::CFIEAlpertWorkspace{T};pad=(T(0.95),T(1.05))) where {T<:Real}
     rmin=typemax(T)
     rmax=zero(T)
-    # 1) Include all same-block geometric distances already stored in the direct caches.
+    # Case 1: Include all same-block geometric distances already stored in the direct caches.
     for G in ws.Gs
         R=G.R
         @inbounds for j in axes(R,2), i in axes(R,1)
@@ -1677,9 +1677,9 @@ function estimate_cfie_alpert_cheb_rbounds(ws::CFIEAlpertWorkspace{T};pad=(T(0.9
             end
         end
     end
-    # 2) Include all off-block geometric distances explicitly.
-    #    This is required for composite corner geometries, where the smallest
-    #    Chebyshev-relevant distance can occur between different blocks/panels.
+    # Case 2: Include all off-block geometric distances explicitly.
+    # This is required for composite corner geometries, where the smallest
+    # Chebyshev-relevant distance can occur between different blocks/panels.
     parr=ws.parr
     nc=length(parr)
     @inbounds for a in 1:nc
@@ -1703,9 +1703,9 @@ function estimate_cfie_alpert_cheb_rbounds(ws::CFIEAlpertWorkspace{T};pad=(T(0.9
             end
         end
     end
-    # 3) Include all Alpert correction-node distances from the direct caches.
-    #    These can be much smaller than node-node distances and must be part of
-    #    the admissible Chebyshev radius interval.
+    # Case 3: Include all Alpert correction-node distances from the direct caches.
+    # These can be much smaller than node-node distances and must be part of
+    # the admissible Chebyshev radius interval.
     for C in ws.Cs
         @inbounds for r in C.rp
             if isfinite(r) && r>eps(T)

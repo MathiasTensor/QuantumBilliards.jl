@@ -226,6 +226,7 @@
 const γ=MathConstants.eulergamma
 const hankel_z_chebyshev_cutoff_small_z=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 const hankel_z_chebyshev_cutoff=0.1 # this is the region between [hankel_z_chebyshev_cutoff_small_z, hankel_z_chebyshev_cutoff] where we switch from the small-argument series expansions to the direct evaluation since only 12th degree small z poly.
+#TODO Differentiation of Chebyshev polynomials to get other orders of hankels. Is this even good to do for performance, how much does it really matter?
 
 struct ChebHankelTableH1x
     a::Float64 # start of panel 
@@ -528,7 +529,7 @@ end
 # Implementation details
 #   - O(log Np) comparisons.
 #   - @inbounds avoids bounds checks for speed.
-#   - Typical Np = 50–300, so this routine is negligible cost compared to Hankel evaluation.
+#   - Typical Np = 50–300, so this function is negligible cost compared to Hankel evaluation.
 # =============================================================================
 @inline function _find_panel_binary(panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}},r::Float64)::Int
     lo=1;hi=length(panels)
@@ -1177,7 +1178,7 @@ end
 Evaluate `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁` for all wavenumbers at one fixed
 distance panel/location, writing the results in place.
 
-This routine is the small inner evaluator used by the multi-`k` same-component
+This function is the small inner evaluator used by the multi-`k` same-component
 CFIE-Kress assembly. The geometric pair `(i,j)` has already been mapped to:
 - a Chebyshev panel index `pidx`,
 - a local coordinate `t ∈ [-1,1]`.
@@ -1334,6 +1335,131 @@ If `pidx==0`, the evaluation point is close to zero and the small-argument serie
 end
 
 """
+    h0_h1_h2_at_r(plan0,plan1,pidx,t,r)
+
+Evaluate `H₀^(1)`, `H₁^(1)`, and `H₂^(1)` at one fixed distance for a single
+wavenumber, returning the values directly.
+
+This is the small scalar evaluator used by the single-`k` derivative DLP
+Chebyshev pathway. The geometric pair `(i,j)` has already been mapped to:
+- a Chebyshev panel index `pidx`,
+- a local coordinate `t ∈ [-1,1]`,
+- and the physical distance `r`.
+
+For the interpolated regime, the function evaluates:
+- `H₀^(1)(k r)` from `plan0`,
+- `H₁^(1)(k r)` from `plan1`,
+
+and then recovers `H₂^(1)(k r)` by the recurrence
+
+    H₂^(1)(z) = (2/z) H₁^(1)(z) - H₀^(1)(z).
+
+Near zero, the function switches to the small-argument series or direct special-
+function evaluation.
+
+# Arguments
+- `plan0::ChebHankelPlanH`:
+  Chebyshev plan for `H₀^(1)`.
+- `plan1::ChebHankelPlanH`:
+  Chebyshev plan for `H₁^(1)`.
+- `pidx::Int32`:
+  Panel index containing the current distance. If `pidx==0`, the evaluation is
+  taken from the near-zero patch instead of the Chebyshev panels.
+- `t::Float64`:
+  Local Chebyshev coordinate in the active panel.
+- `r::Float64`:
+  Distance at which to evaluate the Hankel functions.
+
+# Returns
+- `(H0,H1,H2)::Tuple{ComplexF64,ComplexF64,ComplexF64}`
+"""
+@inline function h0_h1_h2_at_r(plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,pidx::Int32,t::Float64,r::Float64)
+    z=ComplexF64(plan0.k)*r
+    az=abs(z)
+    if az<hankel_z_chebyshev_cutoff_small_z
+        H0=_small_h0_series(z)
+        H1=_small_h1_series(z)
+        H2=SpecialFunctions.besselh(2,1,z)
+    elseif az<hankel_z_chebyshev_cutoff||pidx==0
+        H0=SpecialFunctions.besselh(0,1,z)
+        H1=SpecialFunctions.besselh(1,1,z)
+        H2=SpecialFunctions.besselh(2,1,z)
+    else
+        H0=_cheb_clenshaw(plan0.panels[pidx].c,t)
+        H1=_cheb_clenshaw(plan1.panels[pidx].c,t)
+        H2=(2/z)*H1-H0
+    end
+    return H0,H1,H2
+end
+
+"""
+    h0_h1_h2_multi_ks_at_r!(h0vals,h1vals,h2vals,plans0,plans1,pidx,t,r)
+
+Evaluate `H₀^(1)`, `H₁^(1)`, and `H₂^(1)` for all wavenumbers at one fixed
+distance panel/location, writing the results in place.
+
+This is the reduced special-function evaluator used by the multi-`k` derivative
+DLP Chebyshev assembly. The geometric pair `(i,j)` has already been mapped to:
+- a Chebyshev panel index `pidx`,
+- a local coordinate `t ∈ [-1,1]`,
+- and the physical distance `r`.
+
+For each wavenumber `k_m`, the function evaluates:
+- `H₀^(1)(k_m r)`,
+- `H₁^(1)(k_m r)`,
+
+and then recovers `H₂^(1)(k_m r)` by the recurrence
+
+    H₂^(1)(z) = (2/z) H₁^(1)(z) - H₀^(1)(z),
+
+except in the small-argument regime, where it switches to series or direct
+evaluation to avoid loss of accuracy.
+
+# Arguments
+- `h0vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₀^(1)` values.
+- `h1vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₁^(1)` values.
+- `h2vals::AbstractVector{ComplexF64}`:
+  Output vector for the `H₂^(1)` values.
+- `plans0::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₀^(1)`.
+- `plans1::AbstractVector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₁^(1)`.
+- `pidx::Int32`:
+  Panel index containing the current distance. If `pidx==0`, the evaluation is
+  taken from the near-zero patch instead of the Chebyshev panels.
+- `t::Float64`:
+  Local Chebyshev coordinate in the active panel.
+- `r::Float64`:
+  Distance at which to evaluate the Hankel functions.
+
+# Returns
+- `nothing`
+"""
+@inline function h0_h1_h2_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},h2vals::AbstractVector{ComplexF64},
+    plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64,r::Float64)
+    @inbounds for m in eachindex(plans0)
+        z=ComplexF64(plans0[m].k)*r
+        az=abs(z)
+        if az<hankel_z_chebyshev_cutoff_small_z
+            h0vals[m]=_small_h0_series(z)
+            h1vals[m]=_small_h1_series(z)
+            h2vals[m]=SpecialFunctions.besselh(2,1,z)
+        elseif az<hankel_z_chebyshev_cutoff||pidx==0
+            h0vals[m]=SpecialFunctions.besselh(0,1,z)
+            h1vals[m]=SpecialFunctions.besselh(1,1,z)
+            h2vals[m]=SpecialFunctions.besselh(2,1,z)
+        else
+            h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
+            h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
+            h2vals[m]=(2/z)*h1vals[m]-h0vals[m]
+        end
+    end
+    return nothing
+end
+
+"""
         h1_multi_ks_at_r!(h1vals,phases,plans,pidx,t,invsqrt,r,ab)
 
 Evaluate `H₁^(1)` for all wavenumbers at one fixed distance panel/location, writing the results in place. Only used for standard DLP kernel where we need only H₁^(1) and not J₁, but we want to use the scaled Chebyshev expansions for complex k. The `phases` vector is used to store the exp(-i k r) factors for each wavenumber, which can be reused across multiple evaluations at the same radius.
@@ -1378,7 +1504,46 @@ If `pidx==0`, the evaluation point is close to zero and the small-argument serie
     return nothing
 end
 
-# check above, this is jsut the single k version
+"""
+    h1_at_r(plan,pidx,t,invsqrt,r,a,b)
+
+Evaluate `H₁^(1)` at one fixed distance for a single complex wavenumber using
+the scaled-Hankel Chebyshev plan, returning the unscaled value directly.
+
+    H1x(z) = exp(-i z) H₁^(1)(z),
+
+with `z = k r`.
+
+For the interpolated regime, the function evaluates the stored Chebyshev
+approximation to `H1x(k r)` and then restores the unscaled Hankel value by
+multiplying with
+
+    exp(i k r).
+
+Near zero, it switches to the small-argument series or direct special-function
+evaluation.
+
+# Arguments
+- `plan::ChebHankelPlanH1x`:
+  Chebyshev plan for the scaled Hankel function `H1x`.
+- `pidx::Int32`:
+  Panel index containing the current distance. If `pidx==0`, the evaluation is
+  taken from the near-zero patch instead of the Chebyshev panels.
+- `t::Float64`:
+  Local Chebyshev coordinate in the active panel.
+- `invsqrt::Float64`:
+  The factor `1/sqrt(r)` used to undo the radial regularization stored in the
+  plan coefficients.
+- `r::Float64`:
+  Distance at which to evaluate the Hankel function.
+- `a::Float64`:
+  Real part of the complex wavenumber `k`.
+- `b::Float64`:
+  Imaginary part of the complex wavenumber `k`.
+
+# Returns
+- `ComplexF64`
+"""
 @inline function h1_at_r(plan::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,a::Float64,b::Float64)
     phase=_exp_ikr(a,b,r)
     z=ComplexF64(plan.k)*r

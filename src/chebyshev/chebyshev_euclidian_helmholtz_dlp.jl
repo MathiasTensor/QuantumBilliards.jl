@@ -259,6 +259,8 @@ end
 # Below the cutoff, we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation
 # (or in the intermadiate region use either small z or direct evaluation to not have to use too high degree poly)
 # since the Chebyshev approximation is not accurate near zero due to the singularity. 
+
+# LEGACY FOR COMPATIBILITY
 @inline function panel_t_invsqrt_h1x(pl::ChebHankelPlanH1x,r::Float64)
     invsqrt=inv(sqrt(r))
     if r<pl.rmin
@@ -269,6 +271,26 @@ end
         t=(2*r-(P.b+P.a))/(P.b-P.a)
         return Int32(p),t,invsqrt
     end
+end
+
+# For any hankel plan - not just h1x like above (not legacy)
+@inline function panel_t_h(pl::ChebHankelPlanH,r::Float64)
+    if r<pl.rmin
+        return Int32(0),0.0
+    else
+        p=_find_panel(pl,r)
+        P=pl.panels[p]
+        t=(2*r-(P.b+P.a))/(P.b-P.a)
+        return Int32(p),t
+    end
+end
+
+@inline function _kernel_triplet_from_hankels(k::T,r::T,H0::ComplexF64,H1::ComplexF64,H2::ComplexF64) where {T<:Real}
+    kd=k*r
+    hK=Complex{T}(zero(T),k/2)*H1
+    hdK=Complex{T}(zero(T),-k/2)*r*H0
+    hddK=Complex{T}(zero(T),inv(2*k))*((-2+kd*kd)*H1+kd*H2)
+    return hK,hdK,hddK
 end
 
 ####################### MODULAR ACCUMULATION HELPERS (DEFAULT) ###################
@@ -301,6 +323,43 @@ end
 end
 
 #################################################################################
+# Accumulate the DLP kernel contribution and its first two k-derivatives for one
+# non-symmetric pair (i,j), assuming the special-function factors have already
+# been evaluated.
+#
+# Inputs:
+#   K,dK,ddK - destination matrices
+#   i,j      - target/source indices
+#   nxi,nyi  - target normal components
+#   nxj,nyj  - source normal components
+#   dx,dy    - displacement x_i - x_j
+#   invr     - 1 / |x_i - x_j|
+#   hK       - scalar kernel factor for K
+#   hdK      - scalar kernel factor for dK
+#   hddK     - scalar kernel factor for ddK
+#
+# Operation:
+#   Adds to (i,j), and mirrors to (j,i) using the target normal at i.
+#
+# Note:
+#   The diagonal handling is done outside this helper. This function assumes a
+#   regular off-diagonal pair.
+#################################################################################
+@inline function _accum_dlp_triplet_nosym!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,nxi::T,nyi::T,nxj::T,nyj::T,dx::T,dy::T,invr::T,hK::Complex{T},hdK::Complex{T},hddK::Complex{T}) where {T<:Real}
+    dotj=(nxj*dx+nyj*dy)*invr
+    @inbounds begin
+        K[i,j]+=dotj*hK;dK[i,j]+=dotj*hdK;ddK[i,j]+=dotj*hddK
+    end
+    if i!=j
+        doti=(nxi*(-dx)+nyi*(-dy))*invr
+        @inbounds begin
+            K[j,i]+=doti*hK;dK[j,i]+=doti*hdK;ddK[j,i]+=doti*hddK
+        end
+    end
+    return nothing
+end
+
+#################################################################################
 # Accumulate one default-kernel contribution into K for a given preweighted Hankel from h1_multi_ks_at_r! for
 # a geometry that containts symmetry.
 # Inputs:
@@ -321,6 +380,34 @@ end
 @inline function _accum_dlp_default_sym!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,nxi::T,nyi::T,nxj::T,nyj::T,dx::T,dy::T,invr::T,h::Complex{T}) where {T<:Real}
     dot_src_j=(nxj*dx+nyj*dy)*invr
     @inbounds K[i,j]+=dot_src_j*h
+    return nothing
+end
+
+#################################################################################
+# Accumulate the DLP kernel contribution and its first two k-derivatives for one
+# symmetry-image pair (i,j), assuming the special-function factors have already
+# been evaluated.
+#
+# Inputs:
+#   K,dK,ddK - destination matrices
+#   i,j      - target/source indices
+#   nxj,nyj  - image-source normal components
+#   dx,dy    - displacement x_i - x_j^(image)
+#   invr     - 1 / |x_i - x_j^(image)|
+#   hK       - scalar kernel factor for K
+#   hdK      - scalar kernel factor for dK
+#   hddK     - scalar kernel factor for ddK
+#
+# Operation:
+#   Adds only to entry (i,j). No mirroring is done here, because symmetry-image
+#   contributions are not symmetric under the same triangular shortcut as the
+#   direct no-symmetry term.
+#################################################################################
+@inline function _accum_dlp_triplet_sym!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},i::Int,j::Int,nxj::T,nyj::T,dx::T,dy::T,invr::T,hK::Complex{T},hdK::Complex{T},hddK::Complex{T}) where {T<:Real}
+    dotj=(nxj*dx+nyj*dy)*invr
+    @inbounds begin
+        K[i,j]+=dotj*hK;dK[i,j]+=dotj*hdK;ddK[i,j]+=dotj*hddK
+    end
     return nothing
 end
 
@@ -358,6 +445,48 @@ end
 @inline function _accum_dlp_default_sym!(K::AbstractMatrix{Complex{T}},i::Int,j::Int,
 nxi::T,nyi::T,nxj::T,nyj::T,dx::T,dy::T,invr::T,h::Complex{T},scale)::Nothing where {T<:Real}
     _accum_dlp_default_sym!(K,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,scale*h); return nothing
+end
+
+################################################
+############# DERIVATIVE PATHWAY ###############
+################################################
+
+#################################################################################
+# Thread-local workspace for the derivative Chebyshev pathway.
+#
+# Purpose:
+#   Avoid repeated allocations inside the multi-k derivative assembly loops.
+#   Each thread gets:
+#     - one 2-vector `pt_tls` for reflected/rotated image coordinates,
+#     - one buffer `h0_tls` for H₀^(1)(k_m r),
+#     - one buffer `h1_tls` for H₁^(1)(k_m r),
+#     - one buffer `h2_tls` for H₂^(1)(k_m r).
+#
+# The derivative route needs all three Hankel orders because:
+#   K    uses H₁,
+#   dK   uses H₀,
+#   ddK  uses H₁ and H₂.
+#
+# Inputs to constructor:
+#   T   - real scalar type used for geometry coordinates
+#   Mk  - number of contour points / plans
+#   nth - number of thread-local copies to allocate
+#
+# Output:
+#   DLPDerivChebWorkspace{T}
+#################################################################################
+struct DLPDerivChebWorkspace{T<:Real}
+    pt_tls::Vector{Vector{T}}
+    h0_tls::Vector{Vector{ComplexF64}}
+    h1_tls::Vector{Vector{ComplexF64}}
+    h2_tls::Vector{Vector{ComplexF64}}
+end
+
+function DLPDerivChebWorkspace(::Type{T},Mk::Int,nth::Int=Threads.nthreads()) where {T<:Real}
+    return DLPDerivChebWorkspace{T}([zeros(T,2) for _ in 1:nth],
+        [Vector{ComplexF64}(undef,Mk) for _ in 1:nth],
+        [Vector{ComplexF64}(undef,Mk) for _ in 1:nth],
+        [Vector{ComplexF64}(undef,Mk) for _ in 1:nth])
 end
 
 #################################################################################
@@ -409,6 +538,77 @@ function _all_k_nosymm_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Boundar
 end
 
 #################################################################################
+# Construct kernel matrices K, dK, ddK for all contour points using the
+# derivative Chebyshev pathway, without symmetry.
+#
+# Inputs:
+#   Ks,dKs,ddKs - vectors of matrices to fill, one triple per contour point
+#   bp          - BoundaryPoints containing geometry and curvature
+#   plans0      - vector of Chebyshev plans for H₀^(1)(k_m r)
+#   plans1      - vector of Chebyshev plans for H₁^(1)(k_m r)
+#   multithreaded - whether to use threaded loops
+#   ws          - optional derivative Chebyshev workspace
+#
+# Strategy:
+#   * Loop once through all geometric distances r = |x_i - x_j|.
+#   * Evaluate H₀, H₁, H₂ for all k_m in one pass at each r.
+#   * Form
+#         K    from H₁,
+#         dK   from H₀,
+#         ddK  from H₁ and H₂,
+#     and accumulate into every matrix triple.
+#   * On the diagonal, insert the standard curvature correction into K only.
+#
+# Output:
+#   nothing (fills Ks, dKs, ddKs in place).
+#################################################################################
+function _all_k_nosymm_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}},dKs::Vector{Matrix{Complex{T}}},ddKs::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH};multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    Mk=length(plans0);N=length(bp.xy);tol2=(eps(T))^2
+    @assert length(plans1)==Mk && length(Ks)==Mk && length(dKs)==Mk && length(ddKs)==Mk
+    for m in 1:Mk
+        fill!(Ks[m],zero(eltype(Ks[m])));fill!(dKs[m],zero(eltype(dKs[m])));fill!(ddKs[m],zero(eltype(ddKs[m])))
+    end
+    kvec=Vector{ComplexF64}(undef,Mk)
+    pref0=Vector{ComplexF64}(undef,Mk)
+    pref1=Vector{ComplexF64}(undef,Mk)
+    pref2=Vector{ComplexF64}(undef,Mk)
+    @inbounds for m in 1:Mk
+        km=ComplexF64(plans0[m].k)
+        kvec[m]=km
+        pref0[m]=0.5im*km
+        pref1[m]=-0.5im*km
+        pref2[m]=0.5im/km
+    end
+    local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,Mk) : ws
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
+        tid=Threads.threadid();h0vals=local_ws.h0_tls[tid];h1vals=local_ws.h1_tls[tid];h2vals=local_ws.h2_tls[tid]
+        @inbounds for j in 1:i
+            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
+            dx=xi-xj;dy=yi-yj;d2=muladd(dx,dx,dy*dy)
+            if d2<=tol2
+                val=-Complex{T}(bp.curvature[i]*INV_TWO_PI)
+                for m in 1:Mk
+                    Ks[m][i,j]=val
+                    if i!=j;Ks[m][j,i]=val;end
+                end
+            else
+                r=sqrt(d2);invr=inv(r);pidx,t=panel_t_h(plans0[1],Float64(r))
+                h0_h1_h2_multi_ks_at_r!(h0vals,h1vals,h2vals,plans0,plans1,pidx,t,Float64(r))
+                @inbounds for m in 1:Mk
+                    kd=kvec[m]*r
+                    hK=pref0[m]*h1vals[m]
+                    hdK=pref1[m]*r*h0vals[m]
+                    hddK=pref2[m]*((-2+kd*kd)*h1vals[m]+kd*h2vals[m])
+                    _accum_dlp_triplet_nosym!(Ks[m],dKs[m],ddKs[m],i,j,nxi,nyi,nxj,nyj,dx,dy,invr,hK,hdK,hddK)
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+#################################################################################
 # Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the upper triangle and mirrors it to the lower triangle and used for a single matrix.
 # Inputs:
 #   K: matrix to fill
@@ -434,6 +634,49 @@ function _one_k_nosymm_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boundary
                 p,t,invsqrt=panel_t_invsqrt_h1x(plan,Float64(r))
                 h=pref*h1_at_r(plan,p,t,invsqrt,Float64(r),a,b)
                 _accum_dlp_default_nosym!(K,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,h)
+            end
+        end
+    end
+    return nothing
+end
+
+#################################################################################
+# Construct kernel matrices K, dK, ddK for one contour point using the
+# derivative Chebyshev pathway, without symmetry.
+#
+# Inputs:
+#   K,dK,ddK   - destination matrices
+#   bp         - BoundaryPoints containing geometry and curvature
+#   plan0      - Chebyshev plan for H₀^(1)(k r)
+#   plan1      - Chebyshev plan for H₁^(1)(k r)
+#   multithreaded - whether to use threaded loops
+#
+# Strategy:
+#   * Loop over the upper triangle j=1:i and mirror to (j,i).
+#   * Evaluate H₀, H₁, H₂ at each distance r.
+#   * Form the kernel and derivative prefactors directly from the Hankel values.
+#   * Insert curvature correction on the diagonal of K only.
+#
+# Output:
+#   nothing (fills K, dK, ddK in place).
+#################################################################################
+function _one_k_nosymm_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true) where {T<:Real}
+    N=length(bp.xy);tol2=(eps(T))^2;k=ComplexF64(plan0.k)
+    fill!(K,zero(eltype(K)));fill!(dK,zero(eltype(dK)));fill!(ddK,zero(eltype(ddK)))
+    pref0=0.5im*k;pref1=-0.5im*k;pref2=0.5im/k
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
+        @inbounds for j in 1:i
+            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
+            dx=xi-xj;dy=yi-yj;d2=muladd(dx,dx,dy*dy)
+            if d2<=tol2
+                val=-Complex{T}(bp.curvature[i]*INV_TWO_PI);K[i,j]=val
+                if i!=j;K[j,i]=val;end
+            else
+                r=sqrt(d2);invr=inv(r);pidx,t=panel_t_h(plan0,Float64(r))
+                H0,H1,H2=h0_h1_h2_at_r(plan0,plan1,pidx,t,Float64(r));kd=k*r
+                hK=pref0*H1;hdK=pref1*r*H0;hddK=pref2*((-2+kd*kd)*H1+kd*H2)
+                _accum_dlp_triplet_nosym!(K,dK,ddK,i,j,nxi,nyi,nxj,nyj,dx,dy,invr,hK,hdK,hddK)
             end
         end
     end
@@ -513,6 +756,77 @@ function _all_k_reflection_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bou
 end
 
 #################################################################################
+# Construct kernel matrices K, dK, ddK for all contour points using the
+# derivative Chebyshev pathway with reflection symmetry.
+#
+# Inputs:
+#   Ks,dKs,ddKs - vectors of matrices to fill
+#   bp          - BoundaryPoints containing geometry and symmetry shifts
+#   sym         - Reflection symmetry descriptor
+#   plans0      - vector of Chebyshev plans for H₀^(1)
+#   plans1      - vector of Chebyshev plans for H₁^(1)
+#   multithreaded - whether to use threaded loops
+#   ws          - optional derivative Chebyshev workspace
+#
+# Strategy:
+#   * First assemble the direct no-symmetry contribution.
+#   * Then add reflected image contributions for each active reflection branch.
+#   * For each reflected source position, evaluate H₀,H₁,H₂ for all k_m and
+#     accumulate K,dK,ddK with the appropriate parity scale.
+#
+# Output:
+#   nothing (fills Ks, dKs, ddKs in place).
+#################################################################################
+function _all_k_reflection_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}},dKs::Vector{Matrix{Complex{T}}},ddKs::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH};multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    _all_k_nosymm_DLP_chebyshev_derivatives!(Ks,dKs,ddKs,bp,plans0,plans1;multithreaded=multithreaded,ws=ws)
+    Mk=length(plans0);N=length(bp.xy);tol2=(eps(T))^2
+    shift_x=bp.shift_x;shift_y=bp.shift_y;ops=_reflect_ops_and_scales(T,sym)
+    kvec=Vector{ComplexF64}(undef,Mk);pref0=Vector{ComplexF64}(undef,Mk);pref1=Vector{ComplexF64}(undef,Mk);pref2=Vector{ComplexF64}(undef,Mk)
+    @inbounds for m in 1:Mk
+        km=ComplexF64(plans0[m].k)
+        kvec[m]=km;pref0[m]=0.5im*km;pref1[m]=-0.5im*km;pref2[m]=0.5im/km
+    end
+    local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,Mk) : ws
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
+        tid=Threads.threadid();pt=local_ws.pt_tls[tid];h0vals=local_ws.h0_tls[tid];h1vals=local_ws.h1_tls[tid];h2vals=local_ws.h2_tls[tid]
+        @inbounds for j in 1:N
+            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
+            @inbounds for (op,scale) in ops
+                if op==1
+                    x_reflect_point!(pt,xj,yj,shift_x)
+                    nxr=-nxj
+                    nyr=nyj
+                elseif op==2
+                    y_reflect_point!(pt,xj,yj,shift_y)
+                    nxr=nxj
+                    nyr=-nyj
+                else
+                    xy_reflect_point!(pt,xj,yj,shift_x,shift_y)
+                    nxr=-nxj
+                    nyr=-nyj
+                end
+                dx=xi-pt[1]
+                dy=yi-pt[2]
+                d2=muladd(dx,dx,dy*dy)
+                if d2>tol2
+                    r=sqrt(d2);invr=inv(r);pidx,t=panel_t_h(plans0[1],Float64(r))
+                    h0_h1_h2_multi_ks_at_r!(h0vals,h1vals,h2vals,plans0,plans1,pidx,t,Float64(r))
+                    @inbounds for m in 1:Mk
+                        kd=kvec[m]*r
+                        hK=scale*pref0[m]*h1vals[m]
+                        hdK=scale*pref1[m]*r*h0vals[m]
+                        hddK=scale*pref2[m]*((-2+kd*kd)*h1vals[m]+kd*h2vals[m])
+                        _accum_dlp_triplet_sym!(Ks[m],dKs[m],ddKs[m],i,j,nxr,nyr,dx,dy,invr,hK,hdK,hddK)
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+#################################################################################
 # Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
 # Inputs:
 #   K: matrix to fill
@@ -567,6 +881,66 @@ function _one_k_reflection_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Boun
         end
     end
     return K
+end
+
+#################################################################################
+# Construct kernel matrices K, dK, ddK for one contour point using the
+# derivative Chebyshev pathway with reflection symmetry.
+#
+# Inputs:
+#   K,dK,ddK   - destination matrices
+#   bp         - BoundaryPoints containing geometry and symmetry shifts
+#   sym        - Reflection symmetry descriptor
+#   plan0      - Chebyshev plan for H₀^(1)(k r)
+#   plan1      - Chebyshev plan for H₁^(1)(k r)
+#   multithreaded - whether to use threaded loops
+#   ws         - optional derivative Chebyshev workspace
+#
+# Strategy:
+#   * First assemble the direct contribution.
+#   * Then add reflected image contributions using the transformed image points
+#     and reflected normals.
+#   * For each reflected pair, evaluate H₀,H₁,H₂ and accumulate K,dK,ddK with
+#     the reflection parity factor.
+#
+# Output:
+#   nothing (fills K, dK, ddK in place).
+#################################################################################
+function _one_k_reflection_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    _one_k_nosymm_DLP_chebyshev_derivatives!(K,dK,ddK,bp,plan0,plan1;multithreaded=multithreaded)
+    N=length(bp.xy);tol2=(eps(T))^2;k=ComplexF64(plan0.k)
+    pref0=0.5im*k;pref1=-0.5im*k;pref2=0.5im/k
+    shift_x=bp.shift_x
+    shift_y=bp.shift_y
+    ops=_reflect_ops_and_scales(T,sym)
+    local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,1) : ws
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i]
+        tid=Threads.threadid();pt=local_ws.pt_tls[tid]
+        @inbounds for j in 1:N
+            xj,yj=bp.xy[j]
+            nxj,nyj=bp.normal[j]
+            @inbounds for (op,scale) in ops
+                if op==1
+                    x_reflect_point!(pt,xj,yj,shift_x);nxr=-nxj;nyr=nyj
+                elseif op==2
+                    y_reflect_point!(pt,xj,yj,shift_y);nxr=nxj;nyr=-nyj
+                else
+                    xy_reflect_point!(pt,xj,yj,shift_x,shift_y);nxr=-nxj;nyr=-nyj
+                end
+                dx=xi-pt[1]
+                dy=yi-pt[2]
+                d2=muladd(dx,dx,dy*dy)
+                if d2>tol2
+                    r=sqrt(d2);invr=inv(r);pidx,t=panel_t_h(plan0,Float64(r))
+                    H0,H1,H2=h0_h1_h2_at_r(plan0,plan1,pidx,t,Float64(r));kd=k*r
+                    hK=scale*pref0*H1;hdK=scale*pref1*r*H0;hddK=scale*pref2*((-2+kd*kd)*H1+kd*H2)
+                    _accum_dlp_triplet_sym!(K,dK,ddK,i,j,nxr,nyr,dx,dy,invr,hK,hdK,hddK)
+                end
+            end
+        end
+    end
+    return nothing
 end
 
 #################################################################################
@@ -635,6 +1009,68 @@ function _all_k_rotation_DLP_chebyshev!(Ks::Vector{Matrix{Complex{T}}},bp::Bound
 end
 
 #################################################################################
+# Construct kernel matrices K, dK, ddK for all contour points using the
+# derivative Chebyshev pathway with rotational symmetry.
+#
+# Inputs:
+#   Ks,dKs,ddKs - vectors of matrices to fill
+#   bp          - BoundaryPoints containing geometry
+#   sym         - Rotation symmetry descriptor
+#   plans0      - vector of Chebyshev plans for H₀^(1)
+#   plans1      - vector of Chebyshev plans for H₁^(1)
+#   multithreaded - whether to use threaded loops
+#   ws          - optional derivative Chebyshev workspace
+#
+# Strategy:
+#   * First assemble the direct no-symmetry contribution.
+#   * Then add all nontrivial rotated image contributions l=1,...,n-1.
+#   * For each rotated source point, evaluate H₀,H₁,H₂ for all k_m and
+#     accumulate K,dK,ddK with the corresponding rotational character χ_l.
+#
+# Output:
+#   nothing (fills Ks, dKs, ddKs in place).
+#################################################################################
+function _all_k_rotation_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}},dKs::Vector{Matrix{Complex{T}}},ddKs::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Rotation,plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH};multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    _all_k_nosymm_DLP_chebyshev_derivatives!(Ks,dKs,ddKs,bp,plans0,plans1;multithreaded=multithreaded,ws=ws)
+    Mk=length(plans0);N=length(bp.xy);tol2=(eps(T))^2
+    cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+    kvec=Vector{ComplexF64}(undef,Mk);pref0=Vector{ComplexF64}(undef,Mk);pref1=Vector{ComplexF64}(undef,Mk);pref2=Vector{ComplexF64}(undef,Mk)
+    @inbounds for m in 1:Mk
+        km=ComplexF64(plans0[m].k)
+        kvec[m]=km;pref0[m]=0.5im*km;pref1[m]=-0.5im*km;pref2[m]=0.5im/km
+    end
+    local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,Mk) : ws
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i];nxi,nyi=bp.normal[i]
+        tid=Threads.threadid();pt=local_ws.pt_tls[tid];h0vals=local_ws.h0_tls[tid];h1vals=local_ws.h1_tls[tid];h2vals=local_ws.h2_tls[tid]
+        @inbounds for j in 1:N
+            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
+            @inbounds for l in 2:sym.n
+                cl=ctab[l];sl=stab[l]
+                rot_point!(pt,xj,yj,cx,cy,cl,sl)
+                nxr=cl*nxj-sl*nyj;nyr=sl*nxj+cl*nyj
+                dx=xi-pt[1]
+                dy=yi-pt[2]
+                d2=muladd(dx,dx,dy*dy)
+                if d2>tol2
+                    r=sqrt(d2);invr=inv(r);pidx,t=panel_t_h(plans0[1],Float64(r))
+                    h0_h1_h2_multi_ks_at_r!(h0vals,h1vals,h2vals,plans0,plans1,pidx,t,Float64(r))
+                    χl=χ[l]
+                    @inbounds for m in 1:Mk
+                        kd=kvec[m]*r
+                        hK=χl*pref0[m]*h1vals[m]
+                        hdK=χl*pref1[m]*r*h0vals[m]
+                        hddK=χl*pref2[m]*((-2+kd*kd)*h1vals[m]+kd*h2vals[m])
+                        _accum_dlp_triplet_sym!(Ks[m],dKs[m],ddKs[m],i,j,nxr,nyr,dx,dy,invr,hK,hdK,hddK)
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+#################################################################################
 # Construct a single matrix at a complex k as defined in the plan for which chebyshev interpolations are already precomputed. This one only fills the whole matrix since custom kernels may not be symmetric.
 # Inputs:
 #   K: matrix to fill
@@ -681,6 +1117,60 @@ function _one_k_rotation_DLP_chebyshev!(K::AbstractMatrix{Complex{T}},bp::Bounda
         end
     end
     return K
+end
+
+#################################################################################
+# Construct kernel matrices K, dK, ddK for one contour point using the
+# derivative Chebyshev pathway with rotational symmetry.
+#
+# Inputs:
+#   K,dK,ddK   - destination matrices
+#   bp         - BoundaryPoints containing geometry
+#   sym        - Rotation symmetry descriptor
+#   plan0      - Chebyshev plan for H₀^(1)(k r)
+#   plan1      - Chebyshev plan for H₁^(1)(k r)
+#   multithreaded - whether to use threaded loops
+#   ws         - optional derivative Chebyshev workspace
+#
+# Strategy:
+#   * First assemble the direct contribution.
+#   * Then add all nontrivial rotated image contributions.
+#   * For each rotated source point, evaluate H₀,H₁,H₂ and accumulate K,dK,ddK
+#     using the rotational character factor χ_l.
+#
+# Output:
+#   nothing (fills K, dK, ddK in place).
+#################################################################################
+function _one_k_rotation_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},dK::AbstractMatrix{Complex{T}},ddK::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    _one_k_nosymm_DLP_chebyshev_derivatives!(K,dK,ddK,bp,plan0,plan1;multithreaded=multithreaded)
+    N=length(bp.xy);tol2=(eps(T))^2;k=ComplexF64(plan0.k)
+    pref0=0.5im*k;pref1=-0.5im*k;pref2=0.5im/k
+    cx,cy=sym.center;ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+    local_ws=isnothing(ws) ? DLPDerivChebWorkspace(T,1) : ws
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i]
+        tid=Threads.threadid();pt=local_ws.pt_tls[tid]
+        @inbounds for j in 1:N
+            xj,yj=bp.xy[j];nxj,nyj=bp.normal[j]
+            @inbounds for l in 2:sym.n
+                cl=ctab[l]
+                sl=stab[l]
+                rot_point!(pt,xj,yj,cx,cy,cl,sl)
+                nxr=cl*nxj-sl*nyj
+                nyr=sl*nxj+cl*nyj
+                dx=xi-pt[1]
+                dy=yi-pt[2]
+                d2=muladd(dx,dx,dy*dy)
+                if d2>tol2
+                    r=sqrt(d2);invr=inv(r);pidx,t=panel_t_h(plan0,Float64(r))
+                    H0,H1,H2=h0_h1_h2_at_r(plan0,plan1,pidx,t,Float64(r));kd=k*r
+                    hK=χ[l]*pref0*H1;hdK=χ[l]*pref1*r*H0;hddK=χ[l]*pref2*((-2+kd*kd)*H1+kd*H2)
+                    _accum_dlp_triplet_sym!(K,dK,ddK,i,j,nxr,nyr,dx,dy,invr,hK,hdK,hddK)
+                end
+            end
+        end
+    end
+    return nothing
 end
 
 #################################################################################
@@ -778,26 +1268,143 @@ function assemble_fredholm_matrices!(K::Matrix{Complex{T}},bp::BoundaryPoints{T}
     return nothing
 end
 
+#############################################################
+################### DERIVATIVE PATHWAY ######################
+#############################################################
+
+function compute_kernel_matrices_DLP_chebyshev_derivatives!(Ks::Vector{Matrix{Complex{T}}},dKs::Vector{Matrix{Complex{T}}},ddKs::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry,plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH};multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    if symmetry===nothing
+        return _all_k_nosymm_DLP_chebyshev_derivatives!(Ks,dKs,ddKs,bp,plans0,plans1;multithreaded=multithreaded,ws=ws)
+    elseif symmetry isa Reflection
+        return _all_k_reflection_DLP_chebyshev_derivatives!(Ks,dKs,ddKs,bp,symmetry,plans0,plans1;multithreaded=multithreaded,ws=ws)
+    elseif symmetry isa Rotation
+        return _all_k_rotation_DLP_chebyshev_derivatives!(Ks,dKs,ddKs,bp,symmetry,plans0,plans1;multithreaded=multithreaded,ws=ws)
+    else
+        error("Unsupported symmetry $(typeof(symmetry))")
+    end
+end
+
+function compute_kernel_matrices_DLP_chebyshev_derivatives!(K::Matrix{Complex{T}},dK::Matrix{Complex{T}},ddK::Matrix{Complex{T}},
+    bp::BoundaryPoints{T},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;multithreaded::Bool=true) where {T<:Real}
+    return _one_k_nosymm_DLP_chebyshev_derivatives!(K,dK,ddK,bp,plan0,plan1;multithreaded=multithreaded)
+end
+
+function compute_kernel_matrices_DLP_chebyshev_derivatives!(K::Matrix{Complex{T}},dK::Matrix{Complex{T}},ddK::Matrix{Complex{T}},
+    bp::BoundaryPoints{T},sym::Reflection,plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;
+    multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    return _one_k_reflection_DLP_chebyshev_derivatives!(K,dK,ddK,bp,sym,plan0,plan1;multithreaded=multithreaded,ws=ws)
+end
+
+function compute_kernel_matrices_DLP_chebyshev_derivatives!(K::Matrix{Complex{T}},dK::Matrix{Complex{T}},ddK::Matrix{Complex{T}},
+    bp::BoundaryPoints{T},sym::Rotation,plan0::ChebHankelPlanH,plan1::ChebHankelPlanH;
+    multithreaded::Bool=true,ws::Union{Nothing,DLPDerivChebWorkspace{T}}=nothing) where {T<:Real}
+    return _one_k_rotation_DLP_chebyshev_derivatives!(K,dK,ddK,bp,sym,plan0,plan1;multithreaded=multithreaded,ws=ws)
+end
+
+#################################################################################
+# Assemble Fredholm matrices and their first two derivatives from kernel matrices
+# by applying quadrature weights and adding the identity shift to K only.
+#
+# Inputs:
+#   Ks,dKs,ddKs - vectors of kernel matrices to modify in place
+#   bp          - BoundaryPoints containing quadrature weights ds
+#
+# Operation:
+#   * multiply each column j by -ds[j] in all three matrix families,
+#   * add identity only to K,
+#   * filter numerical zeros in K,dK,ddK.
+#
+# Output:
+#   nothing (modifies Ks, dKs, ddKs in place).
+#################################################################################
+function assemble_fredholm_matrices_with_derivatives!(Ks::Vector{Matrix{Complex{T}}},dKs::Vector{Matrix{Complex{T}}},ddKs::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T}) where {T<:Real}
+    ds=bp.ds;N=length(ds);Mk=length(Ks)
+    @inbounds Threads.@threads for m in 1:Mk
+        K=Ks[m];dK=dKs[m];ddK=ddKs[m]
+        for j in 1:N
+            s=-ds[j]
+            @views K[:,j].*=s;@views dK[:,j].*=s;@views ddK[:,j].*=s
+        end
+        for i in 1:N
+            K[i,i]+=one(eltype(K))
+        end
+        filter_matrix!(K);filter_matrix!(dK);filter_matrix!(ddK)
+    end
+    return nothing
+end
+
+#################################################################################
+# Assemble one Fredholm matrix and its first two derivatives from kernel matrices
+# by applying quadrature weights and adding the identity shift to K only.
+#
+# Inputs:
+#   K,dK,ddK - kernel matrices to modify in place
+#   bp       - BoundaryPoints containing quadrature weights ds
+#
+# Operation:
+#   * multiply each column j by -ds[j] in K,dK,ddK,
+#   * add identity only to K,
+#   * filter numerical zeros in all three matrices.
+#
+# Output:
+#   nothing (modifies K, dK, ddK in place).
+#################################################################################
+function assemble_fredholm_matrices_with_derivatives!(K::Matrix{Complex{T}},dK::Matrix{Complex{T}},ddK::Matrix{Complex{T}},bp::BoundaryPoints{T}) where {T<:Real}
+    ds=bp.ds;N=length(ds)
+    @inbounds for j in 1:N
+        s=-ds[j]
+        @views K[:,j].*=s;@views dK[:,j].*=s;@views ddK[:,j].*=s
+    end
+    @inbounds for i in 1:N
+        K[i,i]+=one(eltype(K))
+    end
+    filter_matrix!(K);filter_matrix!(dK);filter_matrix!(ddK)
+    return nothing
+end
+
+#################################################################################
+
 """
     construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
+    zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
 
-Inputs:
-- Tbufs: vector of matrices to fill, one for each complex k in zj. This should be preallocated outside
-- solver: BoundaryIntegralMethod containing the symmetry information
-- pts: BoundaryPoints containing the boundary points and normals
-- zj: vector of complex wavenumbers for which to construct the matrices
-- multithreaded: whether to use multithreading for matrix construction
-- use_chebyshev: whether to use chebyshev interpolation for hankel evaluations (faster for large k) or direct hankel evaluations
-- n_panels: number of panels to use for chebyshev interpolation if use_chebyshev is true
-- M: number of chebyshev points per panel for chebyshev interpolation if use_chebyshev is true
-- timeit: whether to print timing information for different steps
+Construct the BIM Fredholm matrices for a vector of complex contour points.
 
-# Returns:
-- nothing (the matrices are filled in place in Tbufs)
+This is the top-level matrix-construction for each contour point `zj[m]` where it
+fills `Tbufs[m]` with the corresponding Fredholm matrix
+
+    T(zj[m]) = I - K(zj[m]),
+
+where `K(z)` is the Nyström discretization of the Helmholtz double-layer kernel
+at the complex parameter `z`.
+
+When `use_chebyshev=true`, the construction uses piecewise-Chebyshev plans for
+the scaled Hankel function
+
+    H1x(z) = exp(-i z) H₁^(1)(z),
+
+which are precomputed independently for each contour point and then evaluated in
+a single pass through the geometric distances appearing in the matrix entries.
+
+# Inputs
+- `Tbufs`: Preallocated vector of matrices to fill, one for each contour point in `zj`.
+- `solver::BoundaryIntegralMethod`: Solver configuration containing symmetry information.
+- `pts::BoundaryPoints{T}`: Boundary discretization containing points, normals, curvature, and weights.
+- `zj::AbstractVector{Complex{T}}`: Complex contour points at which to assemble the operator family.
+
+# Keyword arguments
+- `multithreaded::Bool=true`: Whether to use threaded assembly loops.
+- `use_chebyshev::Bool=true`: If `true`, use piecewise-Chebyshev interpolation of the scaled Hankel function for matrix construction. If `false`, use direct special-function evaluation instead.
+- `n_panels::Int=15000`: Number of radial panels used in the Chebyshev plans.
+- `M::Int=5`: Chebyshev polynomial degree per panel.
+- `timeit::Bool=false`: Whether to print timing information for plan construction and assembly.
+
+# Returns
+- `nothing`
+  The matrices are written in place into `Tbufs`.
 """
 function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=2000,M::Int=300,timeit::Bool=false) where {T<:Real}
+zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
     plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
     @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
@@ -814,6 +1421,67 @@ zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true
                 fredholm_matrix_complex_k!(Tbufs[j],pts,solver.symmetry,zj[j],multithreaded=multithreaded) 
             end
         end
+    end
+    return nothing
+end
+
+"""
+
+    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}}; multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+
+Construct the BIM Fredholm matrices and their first two derivatives for a vector of complex contour points.
+It fills, for each contour point `zj[m]`:
+- `Tbufs[m]`   with the Fredholm matrix `T(zj[m])`,
+- `dTbufs[m]`  with the first derivative `T'(zj[m])`,
+- `ddTbufs[m]` with the second derivative `T''(zj[m])`.
+
+When `use_chebyshev=true`, the construction uses piecewise-Chebyshev plans for
+the unscaled Hankel functions `H₀^(1)` and `H₁^(1)` on the radial interval
+estimated from the geometry. The second-order Hankel term `H₂^(1)` is then
+recovered away from the small-argument regime by the standard recurrence
+
+    H₂^(1)(z) = (2/z) H₁^(1)(z) - H₀^(1)(z)
+
+Note: The direct route for complex ks is not yet supported!
+
+# Inputs
+- `Tbufs`: Preallocated vector of matrices to hold the Fredholm matrices.
+- `dTbufs`: Preallocated vector of matrices to hold the first derivatives.
+- `ddTbufs`: Preallocated vector of matrices to hold the second derivatives.
+- `solver::BoundaryIntegralMethod`: Solver configuration containing symmetry information.
+- `pts::BoundaryPoints{T}`: Boundary discretization containing points, normals, curvature, and weights.
+- `zj::AbstractVector{Complex{T}}`: Complex k points at which to assemble the operator family.
+
+# Keyword arguments
+- `multithreaded::Bool=true`: Whether to use threaded assembly loops.
+- `use_chebyshev::Bool=true`: If `true`, use piecewise-Chebyshev Hankel interpolation for matrix construction. If `false`, use the direct special-function route instead.
+- `n_panels::Int=15000`: Number of radial panels used in the Chebyshev plans.
+- `M::Int=5`: Chebyshev polynomial degree per panel.
+- `timeit::Bool=false`: Whether to print timing information for plan construction and assembly.
+
+# Returns
+- `nothing`
+  The matrices are written in place into:
+  - `Tbufs`,
+  - `dTbufs`,
+  - `ddTbufs`.
+"""
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+    if use_chebyshev
+        rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
+        plans0=Vector{ChebHankelPlanH}(undef,length(zj))
+        plans1=Vector{ChebHankelPlanH}(undef,length(zj))
+        @benchit timeit=timeit "DLP deriv plans" Threads.@threads for i in eachindex(zj)
+            plans0[i]=plan_h(0,1,ComplexF64(zj[i]),rmin,rmax;npanels=n_panels,M=M,grading=:uniform)
+            plans1[i]=plan_h(1,1,ComplexF64(zj[i]),rmin,rmax;npanels=n_panels,M=M,grading=:uniform)
+        end
+        ws=DLPDerivChebWorkspace(T,length(zj))
+        @blas_1 begin
+            @benchit timeit=timeit "DLP deriv Chebyshev" compute_kernel_matrices_DLP_chebyshev_derivatives!(Tbufs,dTbufs,ddTbufs,pts,solver.symmetry,plans0,plans1;multithreaded=multithreaded,ws=ws)
+            @benchit timeit=timeit "Assemble deriv matrices" assemble_fredholm_matrices_with_derivatives!(Tbufs,dTbufs,ddTbufs,pts)
+        end
+    else
+        @error("Not currently implemented")
     end
     return nothing
 end
