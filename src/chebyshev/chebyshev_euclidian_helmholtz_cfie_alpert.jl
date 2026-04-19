@@ -362,7 +362,7 @@ end
 
 Build the full reusable Chebyshev workspace for CFIE-Alpert assembly.
 
-This routine combines:
+This function combines:
 - a prebuilt direct Alpert workspace `direct`,
 - a Chebyshev block cache,
 - Chebyshev Hankel plans over the required distance interval,
@@ -1249,6 +1249,75 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
         end
     else
         @error("Direct matrix construction is only for real k currently")
+    end
+    return nothing
+end
+
+"""
+    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+
+Assemble CFIE-Alpert boundary matrices and their first two derivatives with
+respect to the wavenumber for a collection of complex wavenumbers, writing the
+results in place.
+
+For each stored wavenumber `zj[m]`, this function fills:
+- `Tbufs[m]`   with the boundary matrix `A(zj[m])`,
+- `dTbufs[m]`  with the first derivative `dA/dk`,
+- `ddTbufs[m]` with the second derivative `d²A/dk²`.
+
+When `use_chebyshev=true`, the construction uses the Chebyshev-accelerated
+CFIE-Alpert pathway based on interpolation plans for:
+- `H₀^(1)(k r)`
+- `H₁^(1)(k r)`
+
+# Arguments
+- `Tbufs::Vector{Matrix{ComplexF64}}`:
+  Output matrices for `A(k)`, one per wavenumber.
+- `dTbufs::Vector{Matrix{ComplexF64}}`:
+  Output matrices for `dA/dk`, one per wavenumber.
+- `ddTbufs::Vector{Matrix{ComplexF64}}`:
+  Output matrices for `d²A/dk²`, one per wavenumber.
+- `solver::CFIE_alpert`:
+  CFIE-Alpert solver specifying the quadrature and formulation.
+- `pts::Vector{BoundaryPointsCFIE{T}}`:
+  Boundary discretization (possibly multi-component).
+- `zj::Vector{ComplexF64}`:
+  Wavenumbers at which the matrices and derivatives are assembled.
+
+# Keyword Arguments
+- `multithreaded::Bool=true`:
+  Enables threaded off-diagonal assembly when beneficial.
+- `use_chebyshev::Bool=true`:
+  If `true`, uses Chebyshev interpolation for special-function evaluation.
+  Currently this is the only supported path for complex wavenumbers.
+- `n_panels::Int=15000`:
+  Number of panels used in the Chebyshev interpolation of special functions.
+- `M::Int=5`:
+  Chebyshev interpolation order per panel.
+- `timeit::Bool=false`:
+  If `true`, enables timing instrumentation via `@benchit`.
+
+# Returns
+- `nothing`
+"""
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+    Mk=length(zj)
+    @assert length(Tbufs)==Mk
+    @assert length(dTbufs)==Mk
+    @assert length(ddTbufs)==Mk
+    if use_chebyshev
+        @blas_1 begin
+            @benchit timeit=timeit "CFIE_alpert Direct Workspace" directws=build_cfie_alpert_workspace(solver,pts)
+            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @inbounds for j in eachindex(Tbufs)
+                fill!(Tbufs[j],0.0+0.0im)
+                fill!(dTbufs[j],0.0+0.0im)
+                fill!(ddTbufs[j],0.0+0.0im)
+            end
+            @benchit timeit=timeit "CFIE_alpert Derivatives Chebyshev" compute_kernel_matrices_CFIE_alpert_chebyshev!(Tbufs,dTbufs,ddTbufs,solver,pts,chebws;multithreaded=multithreaded)
+        end
+    else
+        @error("Direct derivative matrix construction is only for real k currently")
     end
     return nothing
 end

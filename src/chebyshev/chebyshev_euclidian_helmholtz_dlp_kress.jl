@@ -360,7 +360,7 @@ The geometric pair `(i,j)` has already been mapped to:
 - a local coordinate `t ∈ [-1,1]`,
 - and a physical distance `r`.
 
-For each stored wavenumber `k_m`, the routine interpolates:
+For each stored wavenumber `k_m`, the function interpolates:
 - `H₀^(1)(k_m r)`
 - `H₁^(1)(k_m r)`
 - `J₀(k_m r)`
@@ -397,7 +397,7 @@ end
 
 Assemble the Kress-corrected DLP matrices for all wavenumbers stored in a
 prebuilt Chebyshev workspace, writing the results in place.
-This is the multi-`k` value-only Chebyshev assembly routine for the raw
+This is the multi-`k` value-only Chebyshev assembly function for the raw
 double-layer operator `D(k)`. One dense matrix is filled for each wavenumber in
 `ws.ks`.
 
@@ -466,7 +466,7 @@ Assemble the Kress-corrected DLP matrices and their first two derivatives with
 respect to the wavenumber for all wavenumbers stored in a prebuilt Chebyshev
 workspace, writing the results in place.
 
-For each stored wavenumber `k_m`, this routine computes:
+For each stored wavenumber `k_m`, this function computes:
 - `D(k_m)`
 - `D₁(k_m)=dD/dk`
 - `D₂(k_m)=d²D/dk²`
@@ -657,6 +657,78 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
         end
     else
         @error("Direct matrix construction is only for real k currently")
+    end
+    return nothing
+end
+
+"""
+    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+
+Assemble DLP-Kress Fredholm boundary matrices and their first two derivatives
+with respect to the wavenumber for a collection of complex wavenumbers, writing
+the results in place.
+
+For each stored wavenumber `zj[m]`, this function fills:
+- `Tbufs[m]`   with the Fredholm matrix `F(zj[m])`,
+- `dTbufs[m]`  with the first derivative `dF/dk`,
+- `ddTbufs[m]` with the second derivative `d²F/dk²`.
+
+When `use_chebyshev=true`, the construction uses the Chebyshev-accelerated
+DLP-Kress pathway based on interpolation plans for:
+- `H₀^(1)(k r)`
+- `H₁^(1)(k r)`
+- `J₀(k r)`
+- `J₁(k r)`
+
+# Arguments
+- `Tbufs::Vector{Matrix{ComplexF64}}`:
+  Output Fredholm matrices, one for each wavenumber in `zj`.
+- `dTbufs::Vector{Matrix{ComplexF64}}`:
+  Output first-derivative matrices, one for each wavenumber in `zj`.
+- `ddTbufs::Vector{Matrix{ComplexF64}}`:
+  Output second-derivative matrices, one for each wavenumber in `zj`.
+- `solver::Union{DLP_kress,DLP_kress_global_corners}`:
+  DLP-Kress solver describing the smooth or globally corner-graded boundary
+  discretization.
+- `pts::BoundaryPointsCFIE{T}`:
+  Boundary discretization for the single outer boundary component.
+- `zj::AbstractVector{ComplexF64}`:
+  Wavenumbers at which the Fredholm matrices and derivatives are assembled.
+
+# Keyword Arguments
+- `multithreaded::Bool=true`:
+  Enables threaded off-diagonal assembly when beneficial.
+- `use_chebyshev::Bool=true`:
+  If `true`, uses the Chebyshev-accelerated complex-`k` derivative assembly
+  route. Currently this is the only supported route for complex wavenumbers.
+- `n_panels::Int=15000`:
+  Number of distance panels used in the Chebyshev interpolation plans.
+- `M::Int=5`:
+  Chebyshev interpolation order per panel.
+- `timeit::Bool=false`:
+  Enables timing instrumentation through `@benchit`.
+
+# Returns
+- `nothing`
+"""
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+    Mk=length(zj)
+    @assert length(Tbufs)==Mk
+    @assert length(dTbufs)==Mk
+    @assert length(ddTbufs)==Mk
+    if use_chebyshev
+        @blas_1 begin
+            @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
+            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @inbounds for j in eachindex(Tbufs)
+                fill!(Tbufs[j],0.0+0.0im)
+                fill!(dTbufs[j],0.0+0.0im)
+                fill!(ddTbufs[j],0.0+0.0im)
+            end
+            @benchit timeit=timeit "DLP_kress Derivatives Chebyshev" construct_dlp_kress_matrices_derivatives_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,chebws;multithreaded=multithreaded)
+        end
+    else
+        @error("Direct derivative matrix construction is only for real k currently")
     end
     return nothing
 end

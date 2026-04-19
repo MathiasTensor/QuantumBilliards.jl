@@ -595,7 +595,7 @@ Assemble the CFIE-Kress Fredholm matrices and their first two wavenumber
 derivatives for all supplied wavenumbers, using Chebyshev-interpolated special
 functions and no symmetry reduction.
 
-For each wavenumber `k_m`, this routine computes in place:
+For each wavenumber `k_m`, this function computes in place:
 
 - `A(k_m)`,
 - `A₁(k_m) = dA/dk`,
@@ -978,6 +978,80 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
         end
     else
         @error("Direct matrix construction is only for real k currently")
+    end
+    return nothing
+end
+
+"""
+    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+
+Assemble CFIE-Kress boundary matrices and their first two derivatives with
+respect to the wavenumber for a collection of complex wavenumbers, writing the
+results in place.
+
+For each stored wavenumber `zj[m]`, this function fills:
+- `Tbufs[m]`   with the Fredholm matrix `A(zj[m])`,
+- `dTbufs[m]`  with the first derivative `dA/dk`,
+- `ddTbufs[m]` with the second derivative `d²A/dk²`.
+
+When `use_chebyshev=true`, the construction uses the Chebyshev-accelerated
+CFIE-Kress pathway based on interpolation plans for:
+- `H₀^(1)(k r)`
+- `H₁^(1)(k r)`
+- `J₀(k r)`
+- `J₁(k r)`
+
+# Arguments
+- `Tbufs::Vector{Matrix{Complex{T}}}`:
+  Output matrices for `A(k)`, one per wavenumber.
+- `dTbufs::Vector{Matrix{Complex{T}}}`:
+  Output matrices for `dA/dk`, one per wavenumber.
+- `ddTbufs::Vector{Matrix{Complex{T}}}`:
+  Output matrices for `d²A/dk²`, one per wavenumber.
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`:
+  CFIE-Kress solver specifying whether the geometry is smooth, cornered, or
+  globally corner-graded.
+- `pts::Vector{BoundaryPointsCFIE{T}}`:
+  Boundary discretization for all connected components.
+- `zj::AbstractVector{Complex{T}}`:
+  Wavenumbers at which the matrices and derivatives are assembled.
+
+# Keyword Arguments
+- `multithreaded::Bool=true`:
+  Enables threaded assembly when beneficial.
+- `use_chebyshev::Bool=true`:
+  If `true`, uses Chebyshev interpolation for the Hankel and Bessel special
+  functions. Currently this is the only supported path for complex
+  wavenumbers.
+- `n_panels::Int=15000`:
+  Number of distance panels used in the Chebyshev interpolation plans.
+- `M::Int=5`:
+  Chebyshev interpolation order per panel.
+- `timeit::Bool=false`:
+  If `true`, enables timing instrumentation via `@benchit`.
+
+# Returns
+- `nothing`
+"""
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+    Mk=length(zj)
+    @assert length(Tbufs)==Mk
+    @assert length(dTbufs)==Mk
+    @assert length(ddTbufs)==Mk
+    if use_chebyshev
+        @blas_1 begin
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=:uniform)
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
+            @inbounds for j in eachindex(Tbufs)
+                fill!(Tbufs[j],0.0+0.0im)
+                fill!(dTbufs[j],0.0+0.0im)
+                fill!(ddTbufs[j],0.0+0.0im)
+            end
+            @benchit timeit=timeit "CFIE_kress Derivatives Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
+        end
+    else
+        @error("Direct derivative matrix construction is only for real k currently")
     end
     return nothing
 end

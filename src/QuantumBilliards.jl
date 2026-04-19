@@ -163,7 +163,7 @@ export AlpertPeriodicCache,AlpertSmoothPanelCache,CFIEAlpertWorkspace,build_cfie
 
 # Chebyshev machinery - applied to specific kernels
 include("chebyshev/chebyshev_euclidian_helmholtz_dlp.jl")
-export compute_kernel_matrices_DLP_chebyshev!,assemble_fredholm_matrices!,construct_boundary_matrices!
+export compute_kernel_matrices_DLP_chebyshev!,assemble_fredholm_matrices!,construct_boundary_matrices!,construct_boundary_matrices_with_derivatives!
 include("chebyshev/chebyshev_euclidian_helmholtz_dlp_kress.jl")
 export DLP_kress_BlockCache,DLPKressBlockSystemCache,build_dlp_kress_block_cache,build_DLP_kress_plans,DLP_H0_H1_J0_J1_BesselWorkspace
 export build_dlp_kress_cheb_workspace,construct_dlp_kress_matrices_chebyshev!
