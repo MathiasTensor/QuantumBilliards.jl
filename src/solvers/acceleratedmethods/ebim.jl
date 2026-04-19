@@ -989,6 +989,16 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - `use_chebyshev::Bool=false`: Use Chebyshev interpolation for matrix assembly across segments.
 - `n_panels::Int=15000`: Number of panels for Chebyshev interpolation if `use_chebyshev=true`.
 - `M::Int=5`: Number of Chebyshev modes for interpolation if `use_chebyshev=true`.
+- `cheb_param_strategy::Symbol=:global`: Strategy for Chebyshev parameter selection. Options are `:global` for using the spectrum's maximum k value to decide panelization and M for Chebyshev polynomials, then `:segment` if we want to adaptively choose parameters for each segment (good for large intervals with varying k density). Third is `:manual` where it will provide the user's initial kwarg `n_panels` and `M` for all segments without adaptation.
+
+# Chebyshev specific kwargs:
+- cheb_tol::Real=1e-10: Tolerance for Chebyshev parameter tuning
+- max_iter::Int=10: Maximum iterations for Chebyshev parameter tuning
+- sampling_points::Int=50_000: Number of points to sample for Chebyshev parameter tuning
+- grading::Symbol=:uniform: Grading strategy for Chebyshev panels, by default uniform, can be :uniform or :geometric
+- grow_panels::Real=1.5: Growth factor for number of panels
+- grow_M::Int=2: Growth factor for degree of Chebyshev polynomials
+- verbose_cheb_panelization::Bool=false: Whether to print detailed information during Chebyshev panelization
 
 # Returns
 - `λs::Vector{T}`: Corrected eigenvalues (wavenumbers).
@@ -1000,7 +1010,7 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
 - Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-10,max_iter::Int=10,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false) where {T<:Real,Bi<:AbsBilliard}
     ks=T[]
     dks=T[]
     k=k1
@@ -1028,6 +1038,13 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
         #TODO Chebyshev pathway solve_INFO
         solve_INFO!(solver,A0,dA0,ddA0,pts0,ks[1],dks[1];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov)
     end
+    if use_chebyshev && cheb_param_strategy==:global
+        kref=ks[end]
+        pts_ref=evaluate_points(solver,billiard,kref)
+        n_panels,M,_=chebyshev_params(solver,pts_ref,ComplexF64(kref);tol=cheb_tol,n_panels_init=n_panels,M_init=M,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+    elseif use_chebyshev && cheb_param_strategy==:manual
+        @info "Using manual Chebyshev parameters: n_panels=$n_panels, M=$M for all segments."
+    end
     results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
     p=Progress(length(ks),1)
     seg_first=1
@@ -1043,23 +1060,21 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
         ddA=Matrix{ComplexF64}(undef,N,N)
         if use_chebyshev
             segks=ks[seg_first:seg_last]
-            cache=build_ebim_cheb_cache(solver,pts,segks;n_panels=n_panels,M=M,grading=:uniform)
+            if cheb_param_strategy==:segment
+                kref=segks[end]
+                np_init=n_panels
+                M_init=M
+                n_panels,M,_=chebyshev_params(solver,pts,ComplexF64(kref);tol=cheb_tol,n_panels_init=np_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+            end
+            cache=build_ebim_cheb_cache(solver,pts,segks;n_panels=n_panels,M=M,grading=grading)
             for (loc,i) in enumerate(seg_first:seg_last)
-                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i],cache,loc;
-                    use_lapack_raw=use_lapack_raw,
-                    multithreaded=multithreaded_matrices,
-                    use_krylov=use_krylov,
-                    nev=nevs[i])
+                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i],cache,loc;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i])
                 results[i]=(λs,tens)
                 next!(p)
             end
         else
             for i in seg_first:seg_last
-                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];
-                    use_lapack_raw=use_lapack_raw,
-                    multithreaded=multithreaded_matrices,
-                    use_krylov=use_krylov,
-                    nev=nevs[i])
+                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i])
                 results[i]=(λs,tens)
                 next!(p)
             end

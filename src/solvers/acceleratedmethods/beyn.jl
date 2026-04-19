@@ -663,7 +663,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
         imax=argmax(real.(k0).+ R)
         θref=range(zero(T),TWO_PI;length=nq+1)[1:end-1]
         zj_ref=k0[imax].+R[imax].*cis.(θref)
-        n_panels,M,_... =chebyshev_params(solver,all_pts[imax],zj_ref;tol=cheb_tol,n_panels_init=n_panels_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=do_per_solve_INFO)
+        n_panels,M,_=chebyshev_params(solver,all_pts[imax],zj_ref;tol=cheb_tol,n_panels_init=n_panels_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=do_per_solve_INFO)
     end
     if do_INFO_init
         mid=cld(length(k0),2)
