@@ -1010,7 +1010,7 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
 - Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-10,max_iter::Int=10,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=10,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false) where {T<:Real,Bi<:AbsBilliard}
     ks=T[]
     dks=T[]
     k=k1
