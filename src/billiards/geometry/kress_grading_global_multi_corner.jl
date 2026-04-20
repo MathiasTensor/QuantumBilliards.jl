@@ -107,7 +107,6 @@ function _cumtrapz(xs::AbstractVector{T},ys::AbstractVector{T}) where {T<:Real}
 end
 
 function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in::AbstractVector;q=4,quadN_factor::Int=16) where {T<:Real}
-    isodd(N) || error("Use odd N = 2n-1 for the Kress corner grading formula.")
     qT=T(q)
     qT>one(T) || error("Require q>1 for multi-corner grading.")
     corners=_sort_unique_corners(T,corners_in)
