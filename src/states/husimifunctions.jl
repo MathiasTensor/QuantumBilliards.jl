@@ -176,36 +176,6 @@ function husimi_at_point(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,q
 end
 
 """
-    husimi_on_grid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
-
-Evaluates the Poincaré-Husimi function on a grid defined by the sizes nx for q and ny for p. The grids are then automatically generated from 0 -> L and -1 -> 1.
-
-Arguments:
-- `k::T`: Wavenumber of the eigenstate.
-- `s::AbstractVector{T}`: Array of points on the boundary.
-- `u::AbstractVector{<:Number}`: Array of boundary function values. Can take complex values.
-- `L::T`: Total length of the boundary (maximum(s)).
-- `nx::Integer`: Number of grid points in the position coordinate (q).
-- `ny::Integer`: Number of grid points in the momentum coordinate (p).
-
-Returns:
-- `H::Matrix{T}`: Husimi function matrix of size (ny, nx).
-- `qs::Vector{T}`: Array of q values used in the grid.
-- `ps::Vector{T}`: Array of p values used in the grid.
-"""
-function husimi_on_grid_LEGACY(k::T,s::AbstractVector{T},u::AbstractVector{Num},L::T,nx::Integer,ny::Integer) where {T<:Real,Num<:Number}
-    qs=range(0.0,stop=L,length=nx)
-    ps=range(-1.0,stop=1.0,length=ny)
-    H=zeros(T,nx,ny)
-    Threads.@threads for idx_p in eachindex(ps)
-        for idx_q in eachindex(qs)
-            H[idx_q,idx_p]=husimi_at_point(k,s,u,L,qs[idx_q],ps[idx_p])
-        end
-    end
-    return H./sum(H),qs,ps
-end
-
-"""
     husimi_on_grid(k::T, s::Vector{T}, u::Vector{T}, L::T, qs::AbstractVector{T}, ps::AbstractVector{T}; full_p::Bool=false) where {T<:Real}
 
 Evaluates the Poincaré-Husimi function on a grid using vectorized operations in a thread-safe manner since only a single thread work on a column of the Husimi matrix.
@@ -442,119 +412,253 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVec
     return Hs,collect(ps),collect(qs)
 end
 
-"""
-    husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_of_s_vals::Vector{Vector{T}},billiard::Bi,nx::Integer,ny::Integer) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+##########################################################################
+#################### MULTI BOUNDARY FUNCTION VERSIONS ####################
+##########################################################################
 
-Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the arclength values along with the the boundary functions that corresponds to them.
+"""
+
+    split_boundary_data_by_component(comps::Vector{BoundaryPointsCFIE{T}},u::AbstractVector{Num}) where {T<:Real,Num<:Number}
+
+Split one concatenated CFIE/Alpert boundary density vector `u` into one density
+vector per connected boundary component, using the `compid` labels stored in
+`comps`. This is the helper needed for Husimi construction on multiply connected domains.
+The boundary discretization used by CFIE-style solvers is often stored as a flat
+vector of panels / periodic components, while the Husimi construction should be
+performed separately on each connected closed boundary component:
+
+- component 1 = outer boundary,
+- components 2:end = holes.
+
+Each entry of `comps` contributes a consecutive block of coefficients in the
+concatenated density vector `u`. Entries with the same `compid` belong to the
+same connected boundary component and are therefore grouped together. For each
+such group, this function constructs:
+- `u_comps[a]`: the boundary density restricted to component `a`,
+- `s_comps[a]`: a local arclength coordinate for component `a`, starting at 0
+  and increasing continuously across all pieces belonging to that component,
+- `L_comps[a]`: the total arclength of `a`.
+
+Example: [EllipticFlowerWithOptionalHole] - has an outer boundary consisting of elliptical segments
+with `compid=1` and an optional inner hole with `compid=2`. The `comps` vector for this geometry might look like:
+
+[BoundaryPointsCFIE{T}(compid=1, ...), BoundaryPointsCFIE{T}(compid=1, ...), BoundaryPointsCFIE{T}(compid=1, ...), BoundaryPointsCFIE{T}(compid=2, ...)]
+
+where the first entries belong to the outer boundary (compid=1) and the last entry belongs to the inner hole (compid=2).
+The function will then split the concatenated density vector `u` into two parts: one for the outer boundary and one for the inner hole, 
+and compute the corresponding arclength coordinates and total lengths for each component.
 
 # Arguments
-- `ks::Vector{T}`: A vector of eigenvalues.
-- `vec_us::Vector{Vector{T}}`: A vector of vectors representing the boundary function values.
-- `vec_of_s_vals::Vector{Vector{<:Number}}`: A vector of arclength values that correspond to the boundary function values. Can take complex values.
-- `billiard::Bi`: The billiard geometry for the total length.
-- `nx::Interger`: The size of linearly spaced q grid.
-- `ny::Interger`: The size of linearly spaced p grid.
-- `full_p::Bool=false`: Whether the boundary function is such that p -> -p symmetry is guaranteed. If so it halves the effort.
+- `comps::Vector{BoundaryPointsCFIE{T}}`:
+  Boundary discretization pieces. These may be whole periodic components or open
+  panels, depending on the solver, but pieces sharing the same `compid` are
+  interpreted as belonging to one connected closed boundary component.
+- `u::AbstractVector{Num}`:
+  Concatenated boundary density corresponding to the flattened ordering of
+  `comps`.
 
 # Returns
-- `Hs_list::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
-- `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
-- `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
+- `u_comps::Vector{Vector{Num}}`:
+  Boundary density split into one vector per connected boundary component.
+  -> [u for component 1, u for component 2] top example
+- `s_comps::Vector{Vector{T}}`:
+  Local arclength coordinates for each connected boundary component, each
+  starting at 0.
+  -> [s for component 1, s for component 2] top example
+- `L_comps::Vector{T}`:
+  Total perimeter / arclength of each connected boundary component.
+  -> [L for component 1, L for component 2] top example
+
+# Notes
+The output is designed to be passed directly to component-wise Husimi routines,
+where each component is treated with its own period `L_comps[a]`.
 """
-function husimi_functions_from_us_and_arclengths_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_of_s_vals::AbstractVector{AbstractVector{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
-    length(ks)==length(vec_us)==length(vec_of_s_vals) || error("Input vectors must have equal length")
-    L=billiard.length
-    qs=range(zero(T),stop=L,length=nx)
-    ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
-    if full_p
-        minimum(ps)<0 && maximum(ps)>0 || error("full_p=true requires ps spanning negatives and positives")
+function split_boundary_data_by_component(comps::Vector{BoundaryPointsCFIE{T}},u::AbstractVector{Num}) where {T<:Real,Num<:Number}
+    isempty(comps) && return Vector{Vector{Num}}(),Vector{Vector{T}}(),T[] # should not happen but just in case
+    compids=sort(unique(getfield.(comps,:compid))) # get unique component ids in order of appearance
+    # group the indices of comps by their compid so that we can slice u and s accordingly for each component
+    # E.g. if we have 3 components with compids [1,1,1,2,2] then groups will be [[1,2,3],[4,5]] so that we know to slice u and s
+    # for component 1 using comps[1], comps[2], and comps[3] and for component 2 using comps[4] and comps[5]
+    # num of groups is num of unique compids, therefore the number of closed boundary components (outer boundary + holes)
+    groups=[findall(c->c.compid==cid,comps) for cid in compids]
+    u_comps=Vector{Vector{Num}}(undef,length(groups))
+    s_comps=Vector{Vector{T}}(undef,length(groups))
+    L_comps=Vector{T}(undef,length(groups))
+    p=1 # starting with index 1 in the concatenated u and s, we will slice according to the lengths of the components as we iterate through the groups
+    for gi in eachindex(groups)
+        idxs=groups[gi] # get the index if the group along with the comps that belong to it
+        uparts=Vector{Vector{Num}}(undef,length(idxs))
+        sparts=Vector{Vector{T}}(undef,length(idxs))
+        soff=zero(T) # arclength offset for this component, since we want the s values for each component to start at 0 
+        # and at the total length of that component, we need to keep track of the offset as we concatenate the parts from each comp in the group
+        for (m,j) in enumerate(idxs)
+            # for each component in the group, we slice u and s according to the length of that component,
+            # which is given by length(comps[j].xy) since comps[j].xy gives the points on the boundary for that component
+            bd=comps[j] # get the component in the group
+            N=length(bd.xy) # number of points in that component, which tells us how many values in u and s correspond to that component
+            uj=collect(u[p:p+N-1]) # slice the corresponding part of u for that component [p:p+N-1] since p is the starting index for this component and we need N values for it
+            sj=cumsum(bd.ds) # cumulative sum of the arclengths for this component
+            sj.-=sj[1] # shift so that the arclength starts at 0
+            sj.+=soff # add the offset to account for previous components in the group
+            uparts[m]=uj
+            sparts[m]=sj
+            soff+=sum(bd.ds) # update the offset for the next component in the group
+            p+=N # move the starting index for slicing u and s for the next component in the concatenated vector
+        end
+        u_comps[gi]=vcat(uparts...) # concatenate the parts for this group to get the full u for this component
+        s_comps[gi]=vcat(sparts...) # concatenate the parts for this group to get the full s for this component
+        L_comps[gi]=soff # the total length of this component is the final offset after concatenating all parts in the group
     end
-    Hs=Vector{Matrix{T}}(undef,length(ks)); ok=trues(length(ks))
+    return u_comps,s_comps,L_comps
+end
+
+"""
+    husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_comps::Vector{<:AbstractVector{Num}},L_comps::AbstractVector{T},qs_list::Vector{<:AbstractVector{T}},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+
+Construct one Husimi matrix per connected boundary component on prescribed
+component-wise `q` grids and a shared `p` grid.
+
+This is a thin multi-component wrapper around the single-component
+`husimi_on_grid` routine. It is intended for multiply connected billiards where
+the boundary function has already been split into:
+- one arclength vector `s_comps[a]`,
+- one density vector `u_comps[a]`,
+- one perimeter `L_comps[a]`,
+for each connected closed boundary component `a`.
+
+The key point is that the Husimi construction should be carried out separately
+on each connected component, because each component has its own natural boundary
+periodicity:
+- the outer boundary is periodic with period `L_comps[1]`,
+- each hole is periodic with its own period `L_comps[a]`.
+
+Accordingly, this function returns one Husimi matrix per component rather than
+trying to force all components into a single global boundary period.
+
+# Arguments
+- `k::T`:
+  Wavenumber of the state whose Husimi representation is being constructed.
+- `s_comps::Vector{<:AbstractVector{T}}`:
+  Component-wise arclength coordinates, each starting at 0 and running over one
+  connected closed boundary component.
+- `u_comps::Vector{<:AbstractVector{Num}}`:
+  Component-wise boundary densities corresponding to `s_comps`.
+- `L_comps::AbstractVector{T}`:
+  Component-wise total boundary lengths / perimeters.
+- `qs_list::Vector{<:AbstractVector{T}}`:
+  One `q` grid per connected boundary component. Usually each grid spans
+  `[0,L_comps[a]]`.
+- `ps::AbstractVector{T}`:
+  Shared nonnegative `p` grid if `full_p=false`, or full signed `p` grid if
+  `full_p=true`.
+- `full_p::Bool=false`:
+  Passed through to `husimi_on_grid`. If `false`, the single-component routine
+  exploits the `p -> -p` reflection to reconstruct the negative-`p` half.
+
+# Returns
+- `Hs::Vector{Matrix{T}}`:
+  `Hs[a]` is the Husimi matrix for connected component `a`.
+- `qs_out::Vector{Vector{T}}`:
+  Stored copies of the `q` grids actually used for each component.
+- `ps_out::Vector{Vector{T}}`:
+  Stored copies of the `p` grids actually used for each component. These are
+  identical across components in the present implementation, but returned
+  component-wise for interface symmetry and future flexibility.
+"""
+function husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_comps::Vector{<:AbstractVector{Num}},L_comps::AbstractVector{T},qs_list::Vector{<:AbstractVector{T}},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+    ncomp=length(s_comps)
+    length(u_comps)==ncomp || error("u_comps and s_comps must have same length")
+    length(L_comps)==ncomp || error("L_comps and s_comps must have same length")
+    length(qs_list)==ncomp || error("qs_list and s_comps must have same length")
+    Hs=Vector{Matrix{T}}(undef,ncomp)
+    qs_out=Vector{Vector{T}}(undef,ncomp)
+    ps_out=Vector{Vector{T}}(undef,ncomp)
+    for a in 1:ncomp
+        length(s_comps[a])==length(u_comps[a]) || error("Component $a has inconsistent data: length(s_comps[$a])=$(length(s_comps[a])) but length(u_comps[$a])=$(length(u_comps[a])).")
+        H,qs_a,ps_a=husimi_on_grid(k,s_comps[a],u_comps[a],L_comps[a],qs_list[a],ps;full_p=full_p)
+        Hs[a]=H
+        qs_out[a]=collect(qs_a)
+        ps_out[a]=collect(ps_a)
+    end
+    return Hs,qs_out,ps_out
+end
+
+"""
+    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
+
+Construct fixed-grid Husimi functions for a batch of states whose
+boundary data may live on multiply connected billiards, including domains with
+holes.
+
+This is the high-level multi-state, multi-component wrapper for Husimi
+construction from CFIE-style boundary discretizations. For each state `i`:
+
+1. the concatenated boundary density `vec_us[i]` is split into connected
+   boundary components using `split_boundary_data_by_component`,
+2. one fixed `q` grid is built for each connected component, spanning that
+   component's own local arclength interval `[0,L_comps[a]]`,
+3. one Husimi matrix is constructed per connected component via
+   `husimi_on_grid_components`.
+
+Thus the output for one state is not a single Husimi matrix, but a vector of
+Husimi matrices:
+- one for the outer boundary,
+- one for each hole.
+
+This is the natural representation for multiply connected billiards, since each
+connected boundary component defines its own boundary phase-space section.
+
+# Arguments
+- `ks::AbstractVector{T}`:
+  Wavenumbers / eigenvalues of the states.
+- `vec_us::AbstractVector{<:AbstractVector{<:Number}}`:
+  Boundary densities, one concatenated density vector per state.
+- `vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}}`:
+  Boundary discretizations, one vector of `BoundaryPointsCFIE` pieces per state.
+  Within each state, pieces sharing the same `compid` are interpreted as
+  belonging to the same connected boundary component.
+- `nx::Integer`:
+  Number of `q`-grid points per connected boundary component.
+- `ny::Integer`:
+  Number of `p`-grid points for the full signed grid if `full_p=true`, or for
+  the reconstructed signed grid if `full_p=false`.
+- `full_p::Bool=false`:
+  Passed through to the underlying Husimi routines. If `false`, only the
+  nonnegative `p` half-grid is explicitly computed and the negative half is
+  reconstructed by symmetry.
+
+# Returns
+- `Hs_all::Vector{Vector{Matrix{T}}}`:
+  `Hs_all[i][a]` is the Husimi matrix for state `i` and connected boundary
+  component `a`.
+- `ps_out::Vector{T}`:
+  Common signed `p` grid returned in the user-facing format. If `full_p=false`,
+  this is the symmetrized grid reconstructed from the nonnegative half-grid.
+- `qs_all::Vector{Vector{Vector{T}}}`:
+  `qs_all[i][a]` is the `q` grid used for state `i`, component `a`.
+"""
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
+    length(ks)==length(vec_us)==length(vec_bdComps) || error("Input vectors must have equal length")
+    ps=full_p ? collect(range(-one(T),one(T),length=ny)) : collect(range(zero(T),one(T),length=cld(ny,2)))
+    Hs_all=Vector{Vector{Matrix{T}}}(undef,length(ks))
+    qs_all=Vector{Vector{Vector{T}}}(undef,length(ks))
+    ok=trues(length(ks))
+    pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)
         try
-            H,_,_=husimi_on_grid(ks[i],vec_of_s_vals[i],vec_us[i],L,qs,ps;full_p=full_p)
-            Hs[i]=H
+            u_comps,s_comps,L_comps=split_boundary_data_by_component(vec_bdComps[i],vec_us[i])
+            qs_list=[collect(range(zero(T),stop=Lc,length=nx)) for Lc in L_comps]
+            Hs,qs_out,_=husimi_on_grid_components(ks[i],s_comps,u_comps,L_comps,qs_list,ps;full_p=full_p)
+            Hs_all[i]=Hs
+            qs_all[i]=qs_out
         catch e
             @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
             ok[i]=false
         end
+        next!(pbar)
     end
-    Hs=Hs[ok]
-    ps_out=full_p ? collect(ps) : vcat(-reverse(ps)[1:end-1],ps)
-    return Hs,ps_out,collect(qs)
+    Hs_all=Hs_all[ok]
+    qs_all=qs_all[ok]
+    ps_out=full_p ? ps : vcat(-reverse(ps)[1:end-1],ps)
+    return Hs_all,ps_out,qs_all
 end
-
-"""
-    save_husimi_functions(Hs::Vector{Matrix}, ps::Vector{Vector}, qs::Vector{Vector}; filename::String="husimi.jld2")
-
-Saves the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) to the filename using JLD2.
-
-# Arguments
-- `Hs::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
-- `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
-- `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
-- `filename::String=husimi.jld2`: The name of the file to save the data to (must be .jld2)
-
-# Returns
-- `Nothing`
-"""
-function save_husimi_functions!(Hs::Vector,ps::Vector,qs::Vector;filename::String="husimi.jld2")
-    @save filename Hs ps qs
-end
-
-"""
-    load_husimi_functions(filename::String)
-
-Loads the husimi functions (the matrices and the qs and ps vector that accompany it for projections to classical phase space) from the filename using JLD2.
-
-# Arguments
-- `filename::String`: The name of the file to load the data from (must be .jld2)
-
-# Returns
-- `Hs::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
-- `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
-- `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
-"""
-function load_husimi_functions(filename::String)
-    @load filename Hs ps qs
-    return Hs,ps,qs
-end
-
-"""
-    save_ks_and_husimi_functions!(filename::String,ks::Vector{T},Hs::Vector{Matrix{T}},ps::Vector{Vector{T}},qs::Vector{Vector{T}}) where {T<:Real}
-
-Saves the ks with their corresponding Husimi functions.
-# Arguments
-- `filename::String`: The name of the file to save the data to (must be .jld2)
-- `ks::Vector{T}`: A vector of eigenvalues.
-- `Hs::Vector{Matrix{T}}`: A vector of matrices representing the Husimi functions.
-- `ps::Vector{Vector{T}}`: A vector of vectors representing the evaluation points in p coordinate.
-- `qs::Vector{Vector{T}}`: A vector of vectors representing the evaluation points in q coordinate.
-
-# Returns
-- `Nothing`
-"""
-function save_ks_and_husimi_functions!(filename::String,ks::Vector{T},Hs::Vector,ps::Vector,qs::Vector) where {T<:Real}
-    @time @save filename ks Hs ps qs
-end
-
-"""
-    read_ks_and_husimi_functions(filename::String)
-
-Loads the ks with their corresponding Husimi functions with their grids.
-
-# Arguments
-- `filename::String`: The name of the file to load the data from (must be .jld2)
-
-# Returns
-- `ks::Vector{<:Real}`: A vector of eigenvalues.
-- `Hs::Vector{Matrix{<:Real}}`: A vector of matrices representing the Husimi functions.
-- `ps::Vector{Vector{<:Real}}`: A vector of vectors representing the evaluation points in p coordinate.
-- `qs::Vector{Vector{<:Real}}`: A vector of vectors representing the evaluation points in q coordinate.
-"""
-function read_ks_and_husimi_functions(filename::String)
-    @time @load filename ks Hs ps qs
-    return ks,Hs,ps,qs
-end
-
-

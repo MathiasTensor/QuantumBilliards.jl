@@ -16,10 +16,8 @@ using Optim
 using StatsBase
 using ProgressMeter
 using BenchmarkTools
-using CSV
 using DataFrames
 using PrettyTables
-using JLD2
 using LsqFit
 using MKL
 using KrylovKit
