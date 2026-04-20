@@ -506,6 +506,7 @@ struct CFIEGeomCache{T<:Real}
     speed::Vector{T}
     kappa::Vector{T}
     original_ts::Vector{T} # for kress with corners for keeping track of original trapzoidal discretization for log term.
+    logjac::Vector{T} # corrections to the log term due to non-uniform quadrature
 end
 
 function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) where {T<:Real}
@@ -537,6 +538,7 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) wh
     κnum= -(dX.*ddY.-dY.*ddX)
     κden=dX.^2 .+dY.^2
     kappa=inv_two_pi.*(κnum./κden)
-    return CFIEGeomCache(R,invR,inner,logterm,speed,kappa,original_ts)
+    logjac=corner_kress ? T[2*log(abs(wd)) for wd in pts.ws_der] : zeros(T,N)
+    return CFIEGeomCache(R,invR,inner,logterm,speed,kappa,original_ts,logjac)
 end
 
