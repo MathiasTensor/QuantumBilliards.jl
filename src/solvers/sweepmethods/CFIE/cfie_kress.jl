@@ -231,8 +231,7 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
             wi=pa.ws[i]
             dval=Complex{T}(wi*κi,zero(T))
             m1=αM1*si
-            #m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
-            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2)+inv_two_pi*Ga.logjac[i])*si
+            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
             A[gi,gi]=one(Complex{T})-(dval+ik*sval)
         end
@@ -359,8 +358,7 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
             wi=pa.ws[i]
             dval=Complex{T}(wi*κi,zero(T))
             m1=αM1*si
-            #m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
-            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2)+inv_two_pi*Ga.logjac[i])*si
+            m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*si^2))*si
             sval=Complex{T}(Rmat[gi,gi]*m1,zero(T))+wi*m2
             m2_1=-(si/(π*k))
             m2_2=(si/(π*k^2))
