@@ -116,6 +116,7 @@ export EllipticFlowerWithOptionalHole,make_elliptic_flower_and_basis
 export StarBilliard,make_star_and_basis
 export AfricaBilliard,make_africa_and_basis
 export C3Billiard,make_c3_and_basis
+export StarHoleBilliard,make_star_hole_and_basis
 
 # general matrix helpers
 include("solvers/fulldecompositions.jl")
