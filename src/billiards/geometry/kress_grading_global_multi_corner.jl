@@ -20,11 +20,10 @@
 #
 #  with grading parameter q>1.
 #
-#  For odd N=2n-1, the computational nodes are chosen on a uniformly spaced
-#  periodic grid with spacing h=π/n, but shifted by a small constant δ so that
-#  no corner is sampled exactly. This preserves the Kress log-split structure,
-#  since only differences σ_i-σ_j matter.
-
+#  The computational nodes are chosen on a uniformly spaced periodic grid
+#  with spacing h=2π/N, shifted by a small constant δ so that no corner is
+#  sampled exactly. This works for both even and odd N and preserves the
+#  Kress log-split structure, since only differences σ_i-σ_j matter.
 const TWO_PI=2*pi
 
 @inline function _wrap_to_2pi(x::T) where {T<:Real}
@@ -110,12 +109,11 @@ function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in::AbstractVect
     qT=T(q)
     qT>one(T) || error("Require q>1 for multi-corner grading.")
     corners=_sort_unique_corners(T,corners_in)
-    n=(N+1)÷2
-    h=T(pi/n)
+    h=T(TWO_PI)/T(N)
     σ=Vector{T}(undef,N)
     δ=_choose_sigma_shift(T,h,corners)
     @inbounds for k in 1:N
-        σ[k]=_wrap_to_2pi(δ+T(k*pi/n))
+        σ[k]=_wrap_to_2pi(δ+T(k-1)*h)
     end
     sort!(σ)
     isempty(corners) && begin

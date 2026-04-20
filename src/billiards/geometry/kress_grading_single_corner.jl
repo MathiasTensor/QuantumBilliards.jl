@@ -1,10 +1,6 @@
 #  Reference:
 #      R. Kress, "Boundary integral equations in time-harmonic acoustic scattering",
 #      Math. Comput. Modelling 15 (1991), 229–243.
-#
-#  The grading transformation is given by (1 / q - 1 / 2) * ((pi - s) / pi)^3 + 1 / q * (s - pi) / pi + 1 / 2, where q is the grading parameter.
-#  The nodes are then obtained by applying the transformation to the equispaced nodes σ_k = kπ/n, k=1,...,2n-1, and the weights are computed as (π/n) * w'(σ_k), where w(s) is defined in terms of the grading transformation.
-#  The function `kress_graded_nodes_weights` computes the graded nodes and weights for a given number of points `N` and grading parameter `q`, ensuring that `N` is odd to satisfy the requirements of the Kress grading formula.
 const TWO_PI=2*pi
 
 # v(s,q)
@@ -60,18 +56,21 @@ end
     nump=app*b-a*bpp
     return T(TWO_PI*(nump*den-2*num*denp)/den^3)
 end
-# Computes the Kress graded nodes and weights for a given number of points `N` and grading parameter `q`.
+# Computes the Kress graded nodes and weights for a given number of points `N`
+# and grading parameter `q`, using a periodic grid that works for both even and
+# odd N.
 function kress_graded_nodes_data(::Type{T},N::Int;q=8) where {T<:Real}
-    n=(N+1)÷2 # ok
     qT=T(q)
+    qT>one(T) || error("Require q>1 for Kress grading.")
     σ=Vector{T}(undef,N)
     s=Vector{T}(undef,N)
     a=Vector{T}(undef,N)
     a2=Vector{T}(undef,N)
     wq=Vector{T}(undef,N)
-    h=T(pi/n)
+    h=T(TWO_PI)/T(N)
+    δ=h/T(2)   # midpoint shift: avoids sampling the corner exactly
     for k in 1:N
-        σ[k]=T(k*pi/n)
+        σ[k]=δ + T(k-1)*h
         s[k]=_kress_w(σ[k],qT)
         a[k]=_kress_wprime(σ[k],qT)
         a2[k]=_kress_wdoubleprime(σ[k],qT)
