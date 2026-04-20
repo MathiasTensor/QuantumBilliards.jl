@@ -701,7 +701,7 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    h=iseven(N) ? two_pi/T(N) : pi/T((N+1)÷2)
+    h=T(two_pi/N)
     ts=σ
     ws=fill(h,N)
     ws_der=jac
@@ -775,7 +775,7 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
     end
     ds=Vector{T}(undef,N)
     # Kress weights
-    h=iseven(N) ? two_pi/T(N) : pi/T((N+1)÷2)
+    h=T(two_pi/N)
     @inbounds for i in 1:N
         tx=tangent_1st[i][1]
         ty=tangent_1st[i][2]
