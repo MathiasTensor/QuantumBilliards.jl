@@ -1032,18 +1032,6 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     else
         xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
-    L_corners=0.0
-    res=Dict{Float64, Bool}()  # Dictionary to store length and type (true for real, false for virtual)
-    res[L_corners]=true # we should start at the real curve anyway
-    for crv in billiard.full_boundary
-        if crv isa AbsRealCurve
-            L_corners+=crv.length
-            res[L_corners]=true  # Add length with true (real curve)
-        elseif crv isa AbsVirtualCurve
-            L_corners+=crv.length
-            res[L_corners]=false  # Add length with false (virtual curve)
-        end
-    end
     n_rows=ceil(Int,length(ks)/max_cols)
     f=Figure(resolution=(3*width_ax*max_cols,2*height_ax*n_rows),size=(3*width_ax*max_cols,2*height_ax*n_rows))
     row=1
@@ -1066,9 +1054,6 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
         end
         local ax_boundary = Axis(f[row, col][2, 1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
         lines!(ax_boundary,s_vals_all[j],us_all[j],label="u(s)",linewidth=2)
-        for (length, is_real) in res
-            vlines!(ax_boundary,[length],color=(is_real ? :blue : :red),linestyle=(is_real ? :solid : :dash))
-        end
         # Move to the next column
         col+=1
         if col>max_cols

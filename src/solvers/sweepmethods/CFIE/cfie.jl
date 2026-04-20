@@ -951,6 +951,17 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
+    needed=1
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        if sym isa Rotation
+            needed=lcm(needed,sym.n)
+        elseif hasproperty(sym,:axis)
+            needed=lcm(needed,4) # handles x/y/origin reflection symmetry cleanly
+        end
+    end
+    remN=mod(N,needed)
+    remN!=0 && (N+=needed-remN)
     ts=[T(two_pi)*(j-1/2)/N for j in 1:N]
     ts_rescaled=ts./two_pi
     xy=curve(crv,ts_rescaled)
@@ -1050,7 +1061,17 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    N<2 && (N=2)
+    needed=1
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        if sym isa Rotation
+            needed=lcm(needed,sym.n)
+        elseif hasproperty(sym,:axis)
+            needed=lcm(needed,4) # handles x/y/origin reflection symmetry cleanly
+        end
+    end
+    remN=mod(N,needed)
+    remN!=0 && (N+=needed-remN)
     hσ=inv(T(N))
     sig=[T(j-0.5)/T(N) for j in 1:N]
     xy=Vector{SVector{2,T}}(undef,N)
