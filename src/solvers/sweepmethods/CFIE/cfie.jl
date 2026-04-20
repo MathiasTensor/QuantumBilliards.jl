@@ -602,11 +602,13 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/(two_pi)))
-    needed=2 # need it to. be even number of points for reflections and at same type divisible by rotation order for rotations. A bit hacky but valid for reflections/rotations. If we dont do this build_rotation_maps_components crashes
+    needed=2 # smooth periodic Kress should stay even; for reflections require divisibility by 4, for rotations by the rotation order
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
             needed=lcm(needed,sym.n)
+        elseif hasproperty(sym,:axis)
+            needed=lcm(needed,4)
         end
     end
     remN=mod(N,needed)
@@ -682,13 +684,13 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
-            iseven(sym.n) && error("Incompatible. If sym.n is even, please use reflections.")
             needed=lcm(needed,sym.n)
+        elseif hasproperty(sym,:axis)
+            needed=lcm(needed,4) # handles x/y/origin reflection symmetry cleanly
         end
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    iseven(N) && (N+=needed)
     σ,tmap,jac,jac2,_=kress_graded_nodes_data(T,N;q=solver.kressq)
     u=tmap./two_pi
     xy=curve(crv,u)
@@ -699,7 +701,7 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     ss=arc_length(crv,u)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
-    h=pi/T((N+1)÷2)
+    h=iseven(N) ? two_pi/T(N) : pi/T((N+1)÷2)
     ts=σ
     ws=fill(h,N)
     ws_der=jac
@@ -744,18 +746,18 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
     # choose number of nodes
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
-    # enforce symmetry compatibility - like above 
+    # enforce symmetry compatibility - for rotations require divisibility by the rotation order; for reflections by 4
     needed=1
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
-            iseven(sym.n) && error("Incompatible. If sym.n is even, please use reflections.")
             needed=lcm(needed,sym.n)
+        elseif hasproperty(sym,:axis)
+            needed=lcm(needed,4)
         end
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    iseven(N) && (N+=needed)  # enforce odd N
     # build corner locations
     corners=_component_corner_locations(T,comp)
     # global graded nodes
@@ -773,7 +775,7 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
     end
     ds=Vector{T}(undef,N)
     # Kress weights
-    h=pi/T((N+1)÷2)
+    h=iseven(N) ? two_pi/T(N) : pi/T((N+1)÷2)
     @inbounds for i in 1:N
         tx=tangent_1st[i][1]
         ty=tangent_1st[i][2]

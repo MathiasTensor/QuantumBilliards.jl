@@ -212,7 +212,7 @@ end
 # Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
 # Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
 # Alex Barnett's code via ifft to get the circulant vector kernel and construct the circulant with circshift.
-function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
+function kress_R_even!(R0::AbstractMatrix{T}) where {T<:Real}
     N=size(R0,1)
     n=N÷2 # integer division
     a=zeros(Complex{T},N) #  build the spectral vector a (first col)
@@ -230,16 +230,117 @@ function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
     return nothing
 end
 
-function kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
-    Nint=size(R0,1)
-    isodd(Nint) || error("kress_R_corner! expects odd size 2n-1.")
-    n=(Nint+1)÷2
-    Nfull=2*n
-    Rfull=Matrix{T}(undef,Nfull,Nfull)
-    kress_R!(Rfull)
-    # full ts nodes are k=0,...,2n-1; corner uses interior nodes k=1,...,2n-1
-    @views R0.=Rfull[2:end,2:end]
+# This version of kress_R! computes the R matrix for the odd case (2n-1 points) where the Nyquist frequency is not included, so we only have m=1,...,n-1 positive and negative frequencies.
+# The first column is built using the same FFT approach, but with the appropriate range of m. The rest of the matrix is filled circulantly as before.
+function kress_R_odd!(R0::AbstractMatrix{T}) where {T<:Real}
+    N=size(R0,1)
+    n=(N-1)÷2
+    a=zeros(Complex{T},N)   # spectral first column
+    for m in 1:n
+        a[m+1]=1/m   # positive freq
+        a[N-m+1]=1/m   # negative freq
+    end
+    rjn=real(ifft(a)) # gives (1/N) * sum_m a_m exp(2πimj/N)
+    @. R0[:,1]= -two_pi*rjn
+    for j in 2:N
+        @views R0[:,j].=circshift(R0[:,j-1],1)
+    end
     return nothing
+end
+
+"""
+Provides kress_R! to compute the circulant R matrix for the Kress method.
+Dispatches automatically to the even or odd periodic formula.
+
+ Even N = 2n: includes the usual Nyquist correction term.
+
+ Odd N = 2n+1: no Nyquist term appears, so we use the pure symmetric Fourier sum.
+
+ Ref:
+   Kress, R. (1991), Boundary integral equations in time-harmonic acoustic scattering.
+   Barnett / Betcke MATLAB implementations of the periodic logarithmic quadrature idea.
+"""
+function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
+    N=size(R0,1)
+    if iseven(N)
+        return kress_R_even!(R0)
+    else
+        return kress_R_odd!(R0)
+    end
+end
+
+# Corner Kress, odd case:
+# classical restricted construction on 2n-1 interior graded nodes,
+# obtained by deleting one periodic endpoint from the full even 2n grid.
+function kress_R_corner_odd!(R0::AbstractMatrix{T}) where {T<:Real}
+    Nint=size(R0,1)
+    isodd(Nint) || error("kress_R_corner_odd! expects odd size 2n-1.")
+    n=(Nint+1)÷2
+    Nfull=2n
+    Rfull=Matrix{T}(undef,Nfull,Nfull)
+    kress_R_even!(Rfull)
+    @views R0.= Rfull[2:end,2:end]
+    return nothing
+end
+
+# Corner Kress, even case:
+function kress_R_corner_even!(R0::AbstractMatrix{T}) where {T<:Real}
+    N=size(R0,1)
+    iseven(N) || error("kress_R_corner_even! expects even size 2n.")
+    kress_R_even!(R0)
+    return nothing
+end
+
+"""
+    kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
+
+Construct the Kress logarithmic correction matrix `R` for corner-graded
+boundary discretizations, dispatching automatically based on the matrix size.
+
+This function builds the circulant matrix associated with the periodic
+logarithmic kernel used in Kress-type Nyström discretizations of boundary
+integral operators with corner grading.
+
+# Behavior
+The construction depends on the parity of `N = size(R0,1)`:
+
+- Odd size (`N = 2n-1`):
+  Uses the classical restricted corner construction. The matrix is obtained
+  by forming the full even periodic Kress matrix on `2n` nodes and restricting
+  it to the interior nodes (removing one periodic endpoint).
+
+- Even size (`N = 2n`):
+  Uses a *full periodic graded construction*. The matrix is built directly on
+  the full graded periodic node set without restriction. This is consistent
+  with midpoint-shifted or endpoint-avoiding graded discretizations.
+
+# Mathematical note
+In both cases, `R` represents the discrete convolution operator corresponding
+to the periodic logarithmic kernel
+
+    log(4 sin^2((t - τ)/2)),
+
+with the construction chosen to match the underlying node set:
+
+- odd case: interior nodes of a periodic grid,
+- even case: full periodic graded grid.
+
+The two variants are consistent discretizations of the same continuous operator,
+but differ at finite `N` due to the choice of node set.
+
+# Arguments
+- `R0::AbstractMatrix{T}`: Square matrix to be filled in-place with the Kress logarithmic correction.
+
+# Returns
+- `nothing` (matrix is modified in-place)
+"""
+function kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
+    N=size(R0,1)
+    if isodd(N)
+        return kress_R_corner_odd!(R0)
+    else
+        return kress_R_corner_even!(R0)
+    end
 end
 
 struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
@@ -431,14 +532,11 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) wh
     dX_row=reshape(dX,1,N)
     dY_row=reshape(dY,1,N)
     inner=@. (dY_row*ΔX-dX_row*ΔY)
-    original_ts=Vector{T}(undef,N) # we need original ts before the grading for the log correction term,so we need to reconstruct them
-    if corner_kress
-        n=(N+1)÷2 # N is odd for Kress grading, so this is ok
-        original_ts=[T(k*pi/n) for k in 1:N]
-        ΔT=original_ts.-original_ts'
-    else
-        ΔT=ts.-ts'
-    end
+    # In the graded Kress case, pts.ts already stores the computational
+    # periodic grid σ on which the logarithmic split is defined. This works
+    # for both odd and even graded variants, so we use it directly.
+    original_ts=corner_kress ? copy(ts) : T[]
+    ΔT=ts.-ts'
     logterm=log.(4 .*sin.(ΔT./2).^2)
     logterm[diagind(logterm)].=zero(T)
     speed=@. sqrt(dX^2+dY^2)
