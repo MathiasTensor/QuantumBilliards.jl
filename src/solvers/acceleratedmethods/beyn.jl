@@ -256,10 +256,8 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE
     construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info) # construct the T(zj) matrices for each contour point zj.
     # Allocate the buffers for the Beyn method. These are used in the matrix construction and then in the contour integrations to avoid repeated allocations. The matrices are sized according to the expected number of eigenvalues r and the size of the Fredholm matrices N.
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
-    if solver isa CFIE_kress
-        W=similar(V)
-        _CFIE_project_V_subspace!(solver,pts,V,W) # for CFIE_kress we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem.
-    end
+    W=similar(V)
+    _CFIE_project_V_subspace!(solver,pts,V,W) # for CFIE/DLP Kress & Alpert we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem. 
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
