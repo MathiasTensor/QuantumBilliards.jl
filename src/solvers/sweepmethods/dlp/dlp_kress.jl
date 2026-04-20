@@ -233,7 +233,7 @@ multiple `k` values, such as in:
 # Notes
 `pts` must already be compatible with the solver type:
 - smooth periodic for `DLP_kress`,
-- odd-sized graded discretization for `DLP_kress_global_corners`.
+- graded periodic discretization for `DLP_kress_global_corners`, with either even or odd size depending on the chosen symmetry-compatible node count.
 """
 function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
     Rmat=build_Rmat_dlp_kress(solver,pts)
@@ -368,11 +368,13 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    needed=2
+    needed=2 # periodic smooth Kress wants even N; reflection symmetry wants divisibility by 4
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
             needed=lcm(needed,sym.n)
+        elseif sym isa Reflection
+            needed=lcm(needed,4)
         end
     end
     remN=mod(N,needed)
@@ -447,13 +449,13 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
-            iseven(sym.n) && error("Incompatible. If sym.n is even, please use reflections.")
             needed=lcm(needed,sym.n)
+        elseif sym isa Reflection
+            needed=lcm(needed,4)
         end
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    iseven(N) && (N+=needed)
     corners=_component_corner_locations(T,comp)
     σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq)
     xy=Vector{SVector{2,T}}(undef,N)
@@ -465,7 +467,7 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
         tangent_1st[i]=γt*jac[i]
         tangent_2nd[i]=γtt*(jac[i]^2)+γt*jac2[i]
     end
-    h=pi/T((N+1)÷2)
+    h=T(two_pi)/T(N)
     ds=Vector{T}(undef,N)
     @inbounds for i in 1:N
         tx=tangent_1st[i][1]

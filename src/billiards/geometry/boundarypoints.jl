@@ -270,16 +270,10 @@ function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
 end
 
 # Corner Kress, odd case:
-# classical restricted construction on 2n-1 interior graded nodes,
-# obtained by deleting one periodic endpoint from the full even 2n grid.
 function kress_R_corner_odd!(R0::AbstractMatrix{T}) where {T<:Real}
-    Nint=size(R0,1)
-    isodd(Nint) || error("kress_R_corner_odd! expects odd size 2n-1.")
-    n=(Nint+1)÷2
-    Nfull=2n
-    Rfull=Matrix{T}(undef,Nfull,Nfull)
-    kress_R_even!(Rfull)
-    @views R0.= Rfull[2:end,2:end]
+    N=size(R0,1)
+    isodd(N) || error("kress_R_corner_odd! expects odd size.")
+    kress_R_odd!(R0)
     return nothing
 end
 
