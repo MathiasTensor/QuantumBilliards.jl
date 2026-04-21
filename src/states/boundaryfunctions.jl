@@ -356,7 +356,7 @@ function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},lay
     return pts_all,layer_pot_all
 end
 
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{N},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{N},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
     pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
     layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
     return pts,layer_pot
