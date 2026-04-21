@@ -182,7 +182,7 @@ Construct a sequence of 2D wavefunction matrices for CFIE_kress / CFIE_alpert on
 - `x_grid` : x-coordinates of the grid
 - `y_grid` : y-coordinates of the grid
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{Vector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::AbstractVector,billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     kmax=maximum(ks)
     L=billiard.length
     xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi)))) # this accepts vector of curves, so it works for cfie as well
@@ -202,9 +202,15 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     S=eltype(vec_us[1])
     nstates=length(ks)
     Psi2ds=Vector{Matrix{S}}(undef,nstates)
+    function _ensure_cfie_vec(x) # annoying type casting due to being able to have holes with panels etc. Really hate Julia's type sometimes
+        x isa Vector{BoundaryPointsCFIE} && return x
+        x isa BoundaryPointsCFIE && return [x]
+        error("Expected CFIE boundary data, got $(typeof(x))")
+    end
     caches=Vector{CFIEWavefunctionCache{T}}(undef,nstates)
-    @inbounds for i in 1:nstates # Flatten caches once per state
-        caches[i]=flatten_cfie_wavefunction_cache(vec_comps[i])
+    @inbounds for i in 1:nstates
+        comps=_ensure_cfie_vec(vec_comps[i])
+        caches[i]=flatten_cfie_wavefunction_cache(comps)
     end
     Psi_flat=zeros(S,nx*ny) # flat workspace reused per state
     progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
