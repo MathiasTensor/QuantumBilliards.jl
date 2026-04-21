@@ -56,7 +56,7 @@ function PolarCS(origin::SVector{2,T},rot_angle::T) where {T<:Number}
     return PolarCS(origin,rot_angle,affine_map,local_map)
 end
 
-angle(a,b)=atan(norm(cross(a,b)),dot(a,b))
+#angle(a,b)=atan(norm(cross(a,b)),dot(a,b))
 
 """
     polar_to_cartesian(pt::SVector{2,T}) where {T<:Number}

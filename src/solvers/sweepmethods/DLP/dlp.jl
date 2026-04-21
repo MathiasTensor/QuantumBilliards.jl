@@ -1,6 +1,8 @@
 const TWO_PI=2*pi
 const FOUR_PI=4*pi
 
+#TODO Baoling Xie and Jun Lai, A Singularity Guided Nyström Method for Elastostatics on Two Dimensional Domains with Corners, arXiv:2512.18208, 2025
+
 """
     BoundaryIntegralMethod{T,Sym} <: SweepSolver
 

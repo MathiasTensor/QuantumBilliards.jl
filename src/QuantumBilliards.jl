@@ -36,7 +36,7 @@ export use_threads,benchit,blas_multi,blas_1,blas_multi_then_1,svd_or_det_solve,
 
 # utils
 include("utils/coordinatesystems.jl")
-export CartesianCS,PolarCS,polar_to_cartesian,cartesian_to_polar,_polar_coords!,angle
+export CartesianCS,PolarCS,polar_to_cartesian,cartesian_to_polar,_polar_coords!
 include("utils/billiardutils.jl")
 export real_length,virtual_length,curve_edge_lengths,is_inside,boundary_limits
 include("utils/typeutils.jl") # dont export anything from this file, it's just for internal type utilities
