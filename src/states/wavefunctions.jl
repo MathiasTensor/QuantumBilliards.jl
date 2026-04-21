@@ -685,7 +685,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::
         local ax_boundary=Axis(f[row,col][2,1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
         lines!(ax_boundary,s_vals_all[j],real.(us_all[j]),label="Re u(s)",linewidth=2)
         maximum(abs.(imag.(us_all[j])))>0 && lines!(ax_boundary,s_vals_all[j],imag.(us_all[j]),label="Im u(s)",linewidth=2,linestyle=:dash)
-        !isempty(seams) && vlines!(ax_boundary,seams,color=seam_color,linewidth=seam_linewidth)
+        !isempty(seams) && vlines!(ax_boundary,seams,color=seam_color,linewidth=seam_linewidth,linestyle=:dash)
         col+=1
         if col>max_cols
             row+=1
