@@ -174,6 +174,41 @@ function random_interior_points(billiard::AbsBilliard,N::Int;grd::Int=1000)
 end
 
 """
+    billiard_polygon(billiard::Bi, N_polygon_checks::Int; fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
+
+Given <:AbsBilliard object, computes the points on the boundary of the billiard that sampled with `LinearNodes`, with the total number of points being N_polygon_checks.
+    
+# Arguments
+- `billiard`: A billiard object with a fundamental_boundary or full_boundary field.
+- `N_polygon_checks`: The total number of points to be distributed along the boundary.
+- `fundamental_domain::Bool=true`: A flag indicating whether to compute points on the fundamental or full boundary.
+
+# Returns
+- `Vector{Vector{SVector{2,<:Real}}}`: For each crv in the billiard boundary (chosen by the flag fundamental_domain) form a Vector{SVector{2,<:Real}} object containing the discretization points for that curve. 
+"""
+function billiard_polygon(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) :: Vector where {Bi<:AbsBilliard}
+    if fundamental_domain
+        boundary=billiard.fundamental_boundary
+    else
+        boundary=billiard.full_boundary
+    end
+    # Find the fraction of lengths wrt to the boundary
+    billiard_composite_lengths=[crv.length for crv in boundary]
+    typ=eltype(billiard_composite_lengths[1])
+    total_billiard_length=sum(billiard_composite_lengths)
+    billiard_length_fractions=[crv.length/total_billiard_length for crv in boundary]
+    # Redistribute points based on the fractions
+    distributed_points=[round(Int,fract*N_polygon_checks) for fract in billiard_length_fractions]
+    # Use linear sampling 
+    ts_vectors=[sample_points(LinearNodes(),crv_pts)[1] for crv_pts in distributed_points] # vector of vectors for each crv a vector of ts
+    xy_vectors=Vector{Vector}(undef,length(boundary))
+    for (i,crv) in enumerate(boundary) 
+        xy_vectors[i]=curve(crv,ts_vectors[i])
+    end
+    return xy_vectors
+end
+
+"""
     random_interior_points_polygon(billiard::Bi, M::Int; N_polygon_checks = round(Int, sqrt(M)), fundamental_domain = true, chunk_factor = 32) -> Vector{SVector{2,T}}
 
 Generate `M` uniformly distributed random interior points for an arbitrary
