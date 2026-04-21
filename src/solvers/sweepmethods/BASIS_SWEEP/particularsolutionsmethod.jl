@@ -137,8 +137,6 @@ end
     construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
 
 Construct the basis matrices for boundary points and interior points, with timing information.
-This is a benchmarking variant that uses a `TimerOutput` to measure the time spent creating each
-matrix. It prints the timings at the end.
 
 # Arguments
 - `solver::ParticularSolutionsMethod`: Solver config, specifying scaling factors.
@@ -153,8 +151,8 @@ matrix. It prints the timings at the end.
   - `B_int::Matrix`: The basis matrix evaluated at interior points.
 """
 function construct_matrices_benchmark(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    pts_bd=pts.xy_boundary
-    pts_int=pts.xy_interior
+    pts_bd=pts.xy
+    pts_int=pts.xy_int
     @time "boundary" B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
     @time "interior" B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
     return B,B_int  
@@ -169,7 +167,7 @@ These represent the basis functions evaluated at the domain's boundary and inter
 # Arguments
 - `solver::ParticularSolutionsMethod`: The PSM solver config.
 - `basis::Ba<:AbsBasis`: A basis type implementing `basis_matrix(...)`.
-- `pts::BoundaryPoints{T}`: Contains boundary (`xy_boundary`) and interior (`xy_interior`) points.
+- `pts::BoundaryPoints{T}`: Contains boundary (`xy`) and interior (`xy_int`) points.
 - `k::Real`: Wavenumber.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -179,8 +177,8 @@ These represent the basis functions evaluated at the domain's boundary and inter
   - `B_int::Matrix`: Basis matrix at interior points.
 """
 function construct_matrices(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
-    pts_bd=pts.xy_boundary
-    pts_int=pts.xy_interior
+    pts_bd=pts.xy
+    pts_int=pts.xy_int
     @blas_1 begin
         B=basis_matrix(basis,k,pts_bd;multithreaded=multithreaded)
         B_int=basis_matrix(basis,k,pts_int;multithreaded=multithreaded)
