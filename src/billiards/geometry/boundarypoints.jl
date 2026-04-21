@@ -209,6 +209,183 @@ function boundary_coords_desymmetrized_full_boundary(billiard::Bi,sampler::Fouri
     end
 end
 
+#########################################################################
+######################## BOUNDARY -> POLYGON HELPERS ####################
+#########################################################################
+
+"""
+    _boundary_components_v2(boundary)
+
+Normalize a boundary description into a vector of connected components,
+where each component is a vector of curve pieces.
+
+Accepted inputs:
+- `[outer,hole1,hole2,...]` for multiple closed components
+- `[seg1,seg2,...]` for one composite connected boundary
+- `[[outer...],[hole1...],...]` for explicitly grouped components
+
+Convention:
+- component 1 = outer boundary
+- components 2:end = holes
+"""
+function _boundary_components_v2(boundary)
+    isempty(boundary) && return Vector{Vector{Any}}()
+    if boundary[1] isa AbstractVector
+        return [collect(comp) for comp in boundary]
+    end
+    all_closed=all(crv->begin
+        p0=curve(crv,[0.0])[1]
+        p1=curve(crv,[1.0])[1]
+        hypot(p1[1]-p0[1],p1[2]-p0[2])<=1e-8
+    end,boundary)
+
+    if all_closed
+        return [[crv] for crv in boundary]
+    else
+        return [collect(boundary)]
+    end
+end
+
+"""
+    billiard_boundary_components(billiard::Bi;fundamental_domain=true) where {Bi<:AbsBilliard}
+
+Return the billiard boundary as `Vector{Vector}` of connected components.
+
+If `fundamental_domain=true`, uses `billiard.fundamental_boundary` when present,
+otherwise falls back to `billiard.full_boundary`.
+"""
+function billiard_boundary_components(billiard::Bi;fundamental_domain=true) where {Bi<:AbsBilliard}
+    boundary=fundamental_domain && hasproperty(billiard,:fundamental_boundary) ? billiard.fundamental_boundary : billiard.full_boundary
+    return _boundary_components_v2(boundary)
+end
+
+@inline function _component_length(comp)
+    return sum(crv.length for crv in comp)
+end
+
+"""
+    _sample_component_polygon(comp,N)
+
+Sample one connected component into a polygon with about `N` points total,
+distributed across its curve pieces proportionally to arclength.
+"""
+function _sample_component_polygon(comp,N::Int)
+    npieces=length(comp)
+    npieces==0 && return SVector{2,Float64}[]
+    lengths=[crv.length for crv in comp]
+    Ltot=sum(lengths)
+    counts=Vector{Int}(undef,npieces)
+    @inbounds for i in 1:npieces
+        counts[i]=max(8,round(Int,N*lengths[i]/Ltot))
+    end
+    xy_parts=Vector{Vector}(undef,npieces)
+    @inbounds for i in 1:npieces
+        ts=sample_points(LinearNodes(),counts[i])[1]
+        xy_parts[i]=curve(comp[i],ts)
+    end
+    return vcat(xy_parts...)
+end
+
+"""
+    billiard_polygon_components(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {Bi<:AbsBilliard}
+
+Sample each connected component of the billiard into one polygon.
+
+Returns `Vector{Vector{SVector{2,T}}}` with convention:
+- polygon_components[1] = outer boundary polygon
+- polygon_components[2:end] = hole polygons
+"""
+function billiard_polygon_components(billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {Bi<:AbsBilliard}
+    comps=billiard_boundary_components(billiard;fundamental_domain=fundamental_domain)
+    ncomp=length(comps)
+    ncomp==0 && return Vector{Vector{SVector{2,Float64}}}()
+    comp_lengths=[_component_length(comp) for comp in comps]
+    Ltot=sum(comp_lengths)
+    comp_points=Vector{Int}(undef,ncomp)
+    @inbounds for i in 1:ncomp
+        comp_points[i]=max(16,round(Int,N_polygon_checks*comp_lengths[i]/Ltot))
+    end
+    polys=Vector{Vector}(undef,ncomp)
+    @inbounds for i in 1:ncomp
+        polys[i]=_sample_component_polygon(comps[i],comp_points[i])
+    end
+    return polys
+end
+
+"""
+    is_left(p1::SVector{2,T},p2::SVector{2,T},pt::SVector{2,T}) where {T<:Real}
+
+Signed area test for whether `pt` lies to the left of the directed segment `p1 -> p2`.
+"""
+@inline function is_left(p1::SVector{2,T},p2::SVector{2,T},pt::SVector{2,T}) where {T<:Real}
+    return (p2[1]-p1[1])*(pt[2]-p1[2])-(pt[1]-p1[1])*(p2[2]-p1[2])
+end
+
+"""
+    is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T})::Bool where {T<:Real}
+
+Winding-number point-in-polygon test.
+"""
+function is_point_in_polygon(polygon::Vector{SVector{2,T}},point::SVector{2,T})::Bool where {T<:Real}
+    winding_number=0
+    n=length(polygon)
+    @inbounds for i in 1:n
+        p1=polygon[i]
+        p2=polygon[(i%n)+1]
+        if p1[2]<=point[2]
+            if p2[2]>point[2] && is_left(p1,p2,point)>0
+                winding_number+=1
+            end
+        else
+            if p2[2]<=point[2] && is_left(p1,p2,point)<0
+                winding_number-=1
+            end
+        end
+    end
+    return winding_number!=0
+end
+
+"""
+    is_point_in_multiply_connected_polygon(components,point::SVector{2,T})::Bool where {T<:Real}
+
+Test membership in a multiply connected domain.
+
+Convention:
+- `components[1]` is outer boundary
+- `components[2:end]` are holes
+"""
+function is_point_in_multiply_connected_polygon(components,point::SVector{2,T})::Bool where {T<:Real}
+    isempty(components) && return false
+    is_point_in_polygon(components[1],point) || return false
+    @inbounds for h in 2:length(components)
+        if is_point_in_polygon(components[h],point)
+            return false
+        end
+    end
+    return true
+end
+
+"""
+    points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
+
+Determine whether points lie inside the billiard domain by polygonizing each
+connected boundary component.
+
+Works for:
+- single smooth closed boundaries
+- composite outer boundaries
+- outer boundary with holes
+- composite holes
+"""
+function points_in_billiard_polygon(pts::Vector{SVector{2,T}},billiard::Bi,N_polygon_checks::Int;fundamental_domain=true) where {T<:Real,Bi<:AbsBilliard}
+    polygon_components=billiard_polygon_components(billiard,N_polygon_checks;fundamental_domain=fundamental_domain)
+    mask=fill(false,length(pts))
+    Threads.@threads for i in eachindex(pts)
+        mask[i]=is_point_in_multiply_connected_polygon(polygon_components,pts[i])
+    end
+    return mask
+end
+
 # Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
 # Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
 # Alex Barnett's code via ifft to get the circulant vector kernel and construct the circulant with circshift.
@@ -337,6 +514,53 @@ function kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
     end
 end
 
+"""
+    BoundaryPointsCFIE{T} <: AbsPoints
+
+Boundary discretization container tailored for CFIE-type (Combined Field Integral Equation)
+formulations on curves and panels.
+
+# Fields
+- `xy::Vector{SVector{2,T}}`:
+  Cartesian coordinates of the discretization points on the boundary.
+
+- `tangent::Vector{SVector{2,T}}`:
+  First derivatives of the parametrization evaluated at the nodes.
+
+- `tangent_2::Vector{SVector{2,T}}`:
+  Second derivatives of the parametrization at the nodes.
+
+- `ts::Vector{T}`:
+  Parameter values associated with the discretization nodes. For periodic
+  curves, these are typically distributed over `[0, 2π]`.
+
+- `ws::Vector{T}`:
+  Quadrature weights associated with the parameter nodes `ts`.
+
+- `ws_der::Vector{T}`:
+  Derivatives of the quadrature weights with respect to the parameter. These
+  are required in formulations involving derivatives of the integral operator.
+
+- `ds::Vector{T}`:
+  Local arc-length increments corresponding to the discretization.
+
+- `compid::Int`:
+  Component index for multi-boundary geometries. The outer boundary should be
+  indexed as `1`, and inner boundaries as `2, 3, ...`. This ordering is
+  important for consistent orientation of tangents and derived normals.
+
+- `is_periodic::Bool`:
+  Indicates whether the boundary component is closed (`true`) or an open panel
+  (`false`).
+
+- `xL::SVector{2,T}`, `xR::SVector{2,T}`:
+  Left and right endpoints of the boundary component. These are only relevant
+  for non-periodic (panel) geometries.
+
+- `tL::SVector{2,T}`, `tR::SVector{2,T}`:
+  Tangent vectors at the left and right endpoints, respectively. Used for panel
+  endpoint corrections and boundary treatments.
+"""
 struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     xy::Vector{SVector{2,T}} # the xy coords of the new mesh points
     tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
@@ -353,6 +577,8 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     tR::SVector{2,T} # tangent at right endpoint of the curve component, only used for panels
 end
 
+# For CFIE panel case this stores for eaach panel the relevant geometry (Alpert for now)
+# so it does not need to be evaluated on the fly in a hoot loop 
 struct CFIEPanelArrays{T<:Real}
     X::Vector{T}
     Y::Vector{T}
@@ -370,17 +596,23 @@ end
     return CFIEPanelArrays(X,Y,dX,dY,s)
 end
 
-# For CFIE with holes, we compute this by looking at the component offsets, which tell us where each component's points start and end in the concatenated array. The last offset gives us the total count of points.
+# For CFIE with holes, we compute this by looking at the component offsets
+# which tell us where each component's points start and end in the concatenated array. 
+# The last offset gives us the total count of points.
 function boundary_matrix_size(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     return offs[end]-1
 end
 
+# For CFIE without holes, we just return the length of the points array since there is only one component.
 function boundary_matrix_size(pts::BoundaryPointsCFIE{T}) where {T<:Real}
     return length(pts.xy)
 end
 
-# helper function to compute the offsets for each component of the boundary, which are needed to correctly assemble the R matrix for the CFIE_kress method. The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
+# helper function to compute the offsets for each component of the boundary
+# which are needed to correctly assemble the R matrix for the CFIE_kress method. 
+# The offsets indicate the starting index of each component's points in the concatenated list of all boundary points. 
+# For example, if we have 3 components with 10, 15, and 20 points respectively, the offsets would be [1, 11, 26, 46].
 function component_offsets(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     nc=length(comps)
     offs=Vector{Int}(undef,nc+1)
@@ -494,10 +726,60 @@ function _eval_composite_geom_global_t(::Type{T},comp::Vector,t::T) where {T<:Re
     return xy,γt,γtt
 end
 
-########################################
-#### GEOMETRY CACHE FOR BIE SOLVERS ####
-########################################
+#########################################
+#### GEOMETRY CACHE FOR CFIE SOLVERS ####
+#########################################
 
+"""
+    CFIEGeomCache{T} <: Any
+
+Precomputed geometric cache for CFIE-type boundary integral formulations.
+
+This structure stores pairwise geometric quantities and local differential
+geometry derived from a `BoundaryPointsCFIE` discretization. It is designed to
+avoid recomputation of distances, tangential interactions, logarithmic kernels,
+and curvature-related terms during matrix assembly, especially for singular and
+near-singular kernels.
+
+# Fields
+- `R::Matrix{T}`:
+  Pairwise distances `R[i,j] = |x_i - x_j|` between boundary points. The diagonal
+  is regularized to `1` to avoid division-by-zero in downstream computations (overwritten anyway)
+
+- `invR::Matrix{T}`:
+  Elementwise inverse distances `1 / R[i,j]`, with zeros on the diagonal (overwritten anyway).
+
+- `inner::Matrix{T}`:
+  Tangential interaction term
+
+      inner[i,j] = t_j × (x_i - x_j)
+
+  where `t_j` is the tangent at the source point. In 2D this corresponds to the
+  scalar cross product `(dY_j * ΔX - dX_j * ΔY)` and appears in many CFIE kernels.
+
+- `logterm::Matrix{T}`:
+  Logarithmic kernel term
+
+      log(4 sin²((t_i - t_j)/2))
+
+  used in Kress-type logarithmic splitting of weakly singular kernels. The
+  diagonal is set to zero (diagonal entries are computed separately).
+
+- `speed::Vector{T}`:
+  Parametrization speed `|γ'(t)|` at each node.
+
+- `kappa::Vector{T}`:
+  Curvature scaled by `1/(2π)`, computed as
+
+      κ = (-(x' y'' - y' x'')) / (x'^2 + y'^2)
+
+  and used in diagonal limits of some kernels.
+
+- `original_ts::Vector{T}`:
+  Copy of the original parameter grid when using Kress corner grading. This is
+  required to correctly evaluate logarithmic terms in graded parametrizations.
+  Empty if no corner treatment is used.
+"""
 struct CFIEGeomCache{T<:Real}
     R::Matrix{T}
     invR::Matrix{T}
@@ -508,6 +790,27 @@ struct CFIEGeomCache{T<:Real}
     original_ts::Vector{T} # for kress with corners for keeping track of original trapzoidal discretization for log term.
 end
 
+"""
+    cfie_geom_cache(pts::BoundaryPointsCFIE{T}; corner_kress::Bool=false) -> CFIEGeomCache{T}
+
+Construct a geometric cache for CFIE boundary integral formulations from a
+`BoundaryPointsCFIE` discretization.
+
+This function precomputes pairwise distances, inverse distances, tangential
+interaction terms, logarithmic kernel components, parametrization speeds, and
+curvature values. These quantities are reused during matrix assembly to reduce
+overhead cost.
+
+# Arguments
+- `pts::BoundaryPointsCFIE{T}`
+- `corner_kress::Bool=false`:
+  If `true`, store a copy of the parameter grid `ts` for use in Kress-type
+  logarithmic splitting with graded meshes (e.g., near corners). If `false`,
+  no parameter copy is stored.
+
+# Returns
+- `CFIEGeomCache{T}`
+"""
 function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) where {T<:Real}
     ts=pts.ts
     N=length(pts.xy)

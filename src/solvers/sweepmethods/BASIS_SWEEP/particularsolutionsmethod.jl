@@ -101,9 +101,7 @@ and how many interior points to sample.
 - `k::Real`: Wavenumber, used to scale the number of points (e.g. `k * L * scaling / (2π)`).
 
 # Returns
-- `BoundaryPoints{T}`: A struct containing:
-  - `xy_boundary`: All boundary points appended from each curve.
-  - `xy_interior`: Randomly sampled interior points.
+- `BoundaryPoints{T}`
 """
 function evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
@@ -289,7 +287,7 @@ Returns the smallest singular value and the basis expansion coefficient vector f
 
 # Returns
 - `μ::Real`: the stabilized analogue of the smallest generalized singular value.
-- `chat::Vector`: Coefficient vector in the given `basis`.
+- `chat::Vector{Real}`: Coefficient vector in the given `basis`.
 """
 function solve_vect(solver::ParticularSolutionsMethod,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true,tol=1e-10) where {Ba<:AbsBasis}
     B,C=construct_matrices(solver,basis,pts,k;multithreaded)

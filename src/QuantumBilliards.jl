@@ -40,8 +40,6 @@ export CartesianCS,PolarCS,polar_to_cartesian,cartesian_to_polar,_polar_coords!
 include("utils/billiardutils.jl")
 export real_length,virtual_length,curve_edge_lengths,is_inside,boundary_limits
 include("utils/typeutils.jl") # dont export anything from this file, it's just for internal type utilities
-include("utils/special_functions_calls.jl")
-export H,hankel_pair01
 
 # geometry
 include("billiards/geometry/linesegment.jl")
@@ -64,6 +62,9 @@ export BoundaryPointsCFIE,CFIEPanelArrays,_panel_arrays_cache,component_offsets,
 include("utils/symmetry.jl")
 export Reflection,XReflection,YReflection,XYReflection,Rotation,apply_symmetries_to_boundary_points,apply_symmetries_to_boundary_function
 export flatten_points,apply_projection!
+
+include("utils/special_functions_calls.jl")
+export H,hankel_pair01
 
 # basis
 include("basis/planewaves/realplanewaves.jl")

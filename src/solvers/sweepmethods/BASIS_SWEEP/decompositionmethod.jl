@@ -340,7 +340,7 @@ https://users.flatironinstitute.org/~ahb/thesis_html/node58.html
 # Returns
 - `(t, x)`: 
   - `t = 1 / mu[end]`: The reciprocal of the largest eigenvalue. 
-  - `x = x_vector ./ sqrt(mu[end])`: The corresponding eigenvector in the original basis.
+  - `x = x_vector ./ sqrt(mu[end]) ::Vector{Real}`: The corresponding eigenvector in the original basis.
 """
 function solve_vect(solver::DecompositionMethod,basis::AbsBasis,pts::BoundaryPoints,k;multithreaded::Bool=true)
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)

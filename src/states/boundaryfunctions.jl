@@ -1,3 +1,7 @@
+#########################################################################################
+################## HELPERS FOR SYMMETRIZATION OF THE BOUNDARY FUNCTION ##################
+#########################################################################################
+
 """
     regularize!(u::Vector{T}) where {T<:Real}
 
@@ -23,13 +27,13 @@ end
 """
     shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) where {Bi<:AbsBilliard}
 
-When constructing the boundary function u we need to sometimes shift the starting point on the full boundary. This is a helper function that shifts all the fields in the BoundaryPoints struct such that all of them are shifted by the shift_s field in the billiard struct.
+When constructing the boundary function u we need to sometimes shift the starting point on the full boundary. 
+This is a helper function that shifts all the fields in the BoundaryPoints struct such that all of them are 
+shifted by the shift_s field in the billiard struct.
 
-1) pick `start_index = argmin(|s_i - shift_s|)` (nearest sampled boundary point to the wanted shift_s),
-2) apply `circshift(..., -start_index+1)` to every boundary-aligned array (s, xy, normal, ds, and u),
-so the chosen point becomes index 1 and alignment between fields is preserved,
-3) renormalize arclength: subtract `s_offset = shifted_s[1]` so the new start is exactly s=0,
-4) wrap with `mod(·, L_effective)` to keep s continuous on [0, L_effective) after the circular shift.
+Note: This is called after apply_symmetries_to_boundary_points and apply_symmetries_to_boundary_function, 
+so the u_bundle is already symmetrized and the pts are already symmetrized. Otherwise the shifting will happen
+on the fundamental domain and when symmetrizing the results will be wrong.
 
 # Arguments
 - `billiard::Bi<:AbsBilliard`: the billiard object.
@@ -62,15 +66,19 @@ function shift_starting_arclength(billiard::Bi,u::AbstractVector{U},pts::Boundar
     return pts,u
 end
 
-# Wrapper for multi u case
 """
     shift_starting_arclength(billiard::Bi, u_bundle::Matrix, pts::BoundaryPoints) where {Bi<:AbsBilliard}
 
-Wrapper for the arclength shift when we have a StateBundle as the input to the boundary_function. This is the an efficient way to handle many boundary u functions.
+Wrapper for the arclength shift when we have a matrix (columnwise) of us as the input to the boundary_function. 
+This is the an efficient way to handle many boundary u functions.
+
+Note: This is called after apply_symmetries_to_boundary_points and apply_symmetries_to_boundary_function, 
+so the u_bundle is already symmetrized and the pts are already symmetrized. Otherwise the shifting will happen
+on the fundamental domain and when symmetrizing the results will be wrong.
 
 # Arguments
 - `billiard::Bi<:AbsBilliard`: the billiard object.
-- `u_bundle::AbstractMatrix{U}`: the boundary function matrix obtained from the StateBundle input. Can be either real or complex.
+- `u_bundle::AbstractMatrix{U}`: the boundary function matrix obtained from the full_boundary. Can be either real or complex.
 - `pts::BoundaryPoints`: the struct containing the boundary points on the full_boundary.
 
 # Returns
@@ -104,10 +112,15 @@ end
 #### BASIS RESCALINGS ####
 ##########################
 
+#TODO Really annoying hack
 """
     rescale_dimension(basis::Ba, dim::T) where {T<:Real, Ba<:AbsBasis}
 
-Helper/hack function to rescaled the dimension of RealPlaneWaves struct b/c due to the basis unique parity_pattern function which rescales the basis in a way that it multiplies it with the length of possible parity combinations. Since we require one in the fundamental domain for boundary function construction this effectively divides the dimension of the basis with the parity combination length.
+Helper/hack function to rescale the dimension of RealPlaneWaves struct b/c due to 
+the basis unique parity_pattern function which rescales the basis in a way that it 
+multiplies it with the length of possible parity combinations. 
+Since we require one in the fundamental domain for boundary function construction this effectively divides 
+the dimension of the basis with the parity combination length.
 
 # Arguments
 - `basis::Ba`: the basis object.
@@ -137,12 +150,35 @@ end
     return basis isa CompositeBasis ? basis.evanescent.dim : 0
 end
 
-##########################
+###########################################################################
+################ BOUNDARY FUNCTION FOR BASIS TYPE SOLVERS #################
+###########################################################################
 
 """
     boundary_function(state::S; b=5.0) where {S<:AbsState}
 
-Low-level function that constructs the boundary function and it's associated arclength `s` values alond the `desymmetrized_full_boundary` to which symmetries are being applied. This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`. It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
+Low-level function that constructs the boundary function and the boundary points `BoundaryPoints` on the `desymmetrized_full_boundary` to which symmetries are being applied.
+This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`.
+It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
+
+Is is used by `ParticularSolutionsMethod`,`DecompositionMethod` and `VerginiSaraceno` solvers.
+To construct a state use the results from `solve_vect` to get the vector of coefficients in a given basis
+and then construct an `Eigenstate` object with those coefficients and the associated `k` and `basis`. 
+Then this `Eigenstate` object can be used as the input to this function to get the boundary function, arclength values, and norm.
+
+Example: 
+
+```julia
+d=7.0
+b=12.0
+k=10.0 # not really an eigenvalue, but needs to be an eigenvalue otherwise the coefficients just give nonsense ofc. 
+solver=ParticularSolutionsMethod(d,b,b) # or DecompositionMethod(d,b) or VerginiSaraceno(d,b)
+billiard,basis=make_stadium_and_basis(1.0)
+pts=evaluate_points(solver,billiard,1.0)
+ten,vec=solve_vect(solver,basis,pts,k)
+state=Eigenstate(k,vec,ten,basis,billiard)
+u,pts,norm=boundary_function(state,b=b)
+```
 
 # Arguments
 - `state<:AbsState`: typically the eigenstate associated with a particular solution to the problem on the fundamental boundary.
@@ -150,7 +186,7 @@ Low-level function that constructs the boundary function and it's associated arc
 
 # Returns
 - `u::Vector{<:Real}`: the boundary function evaluated at the points on the boundary.
-- `pts.s::Vector{<:Real}`: the arclength s values along the boundary.
+- `pts::BoundaryPoints`: the boundary points corresponding to the `u`. 
 - `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
@@ -168,9 +204,9 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
     @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
     M=size(dX,1)
-    tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
-    tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
-    u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
+    tX=Vector{T}(undef,M) # tX = (∂xϕ)(x_i), always real since the basis is real.
+    tY=Vector{T}(undef,M) # tY = (∂yϕ)(x_i), always real since the basis is real.
+    u=Vector{T}(undef,M) # u  = ∂nϕ(x_i), always real since the basis is real and the normal is real.
     # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
     @blas_multi_then_1 MAX_BLAS_THREADS begin
         mul!(tX,dX,vec) # tX = dX*vec
@@ -192,142 +228,33 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
         acc+=w*abs2(u[i]) # accumulate w_i*|u_i|^2
     end
     norm=acc/(2*k^2)
-    @blas_1 return u,pts.s::Vector{T},norm
-end
-
-
-"""
-    boundary_function(state::S; b=5.0) where {S<:AbsState}
-
-Multi-solution version of the commonly used `state` version of the `boundary_function`.
-Low-level function that constructs the boundary function and it's associated arclength `s` values alond the `desymmetrized_full_boundary` to which symmetries are being applied. This effectively constructs the boundary function on the whole boundary through applying symmetries to the `desymmetrized_full_boundary`. It also constructs the norm of the boundary function on the whole boundary (after symmetry application) as norm = ∮u(s)⟨r(s),n(s)⟩ds.
-
-# Arguments
-- `state<:AbsState`: typically the eigenstate associated with a particular solution to the problem on the fundamental boundary.
-- `b=5.0`: optional parameter for point scaling in the construction of evaluation points on the boundary.
-
-# Returns
-- `u::Vector{<:Real}`: the boundary function evaluated at the points on the boundary.
-- `pts.s::Vector{<:Real}`: the arclength s values along the boundary.
-- `norm<:Real`: the norm of the boundary function on the whole boundary.
-"""
-function boundary_function(state_bundle::S;b=5.0) where {S<:EigenstateBundle}
-    X=state_bundle.X
-    k_basis=state_bundle.k_basis
-    ks=state_bundle.ks
-    new_basis=state_bundle.basis
-    billiard=state_bundle.billiard 
-    type=eltype(X)
-    boundary=billiard.desymmetrized_full_boundary
-    crv_lengths=[crv.length for crv in boundary]
-    sampler=FourierNodes([2,3,5],crv_lengths)
-    L=billiard.length
-    N=max(round(Int,k_basis*L*b/(2*pi)),512)
-    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    @blas_1 dX,dY=gradient_matrices(basis,k_basis,pts.xy)
-    Ne=size(X,2)
-    tX=similar(dX,Complex{T},size(dX,1),Ne)
-    tY=similar(dY,Complex{T},size(dY,1),Ne) 
-    @blas_multi_then_1 MAX_BLAS_THREADS begin
-        mul!(tX,dX,X)   # dX*X GEMM
-        mul!(tY,dY,X)   # dY*X GEMM
-    end
-    U=similar(tX)  # U .= nx .* (dX*X) + ny .* (dY*X) 
-    nx=getindex.(pts.normal,1)
-    ny=getindex.(pts.normal,2)
-    @fastmath @inbounds for i in axes(U,1)
-        nxi=nx[i];nyi=ny[i]
-        @simd for j in axes(U,2)
-            U[i,j]=muladd(nyi,tY[i,j],nxi*tX[i,j])
-        end
-    end
-    @inbounds for j in 1:Ne
-        regularize!(@view U[:,j]) # regularize to get rid of eps numerical artifacts
-    end
-    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
-    for u in eachcol(u_bundle)
-        regularize!(u)
-        u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
-    end
-    pts,u_bundle=shift_starting_arclength(billiard,u_bundle,pts)
-    w=dot.(pts.normal,pts.xy).*pts.ds
-    norms=[sum(abs2.(u_bundle[:,i]).* w)/(2*ks[i]^2) for i in eachindex(ks)]
-    us::Vector{Vector{type}} = [u for u in eachcol(u_bundle)]
-    @blas_1 return us,pts.s,norms
-end
-
-### NEW ### -> for the saving of the boundary functions of StateData construct a StateData wrapper for the Eigenstate version of boundary_function
-"""
-    boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) :: Tuple{Vector{T}, Vector{Vector{T}}, Vector{Vector{T}}, Vector{T}} where {T, Bi<:AbsBilliard, Ba<:AbsBasis}
-
-High level wrapper for the `Eigenstate` version of the `boundary_function`. This one is useful if we save the data from a version of `compute_spectrum` as a `StateData` object which automatically saves not just the `ks` and `tens` but also the vector of coefficients for the basis expansion of the wavefunction. This drastically saves time for computing the Husimi functions.
-
-# Arguments
-- `state_data::StateData`: An object of type `StateData` containing the `ks`, `tens`, and `X` coefficients for the basis expansion of the wavefunction.
-- `billiard::Bi`: An object of type `Bi` representing the billiard geometry.
-- `basis::Ba`: An object of type `Ba` representing the basis functions.
-
-
-# Returns
-- `ks`: A vector of the wave numbers.
-- `us`: A vector of vectors containing the boundary functions (the u functions). Each inner vector corresponds to a wave number `ks[i]`.
-- `s_vals`: A vector of vectors containing the positions of the boundary points (the s values). Each inner vector corresponds to a wave number `ks[i]`.
-- `norms`: A vector of the norms of the boundary functions (the u functions). Each element corresponds to a wave number `ks[i]`.
-"""
-function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
-    ks=state_data.ks
-    tens=state_data.tens
-    X=state_data.X
-    us=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    s_vals=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    norms=Vector{eltype(ks)}(undef,length(ks))
-    valid_indices=fill(true,length(ks))
-    progress=Progress(length(ks);desc="Constructing the u(s)...")
-    for i in eachindex(ks) 
-        try # the @. macro can faill in gradient_matrices when multithreading
-            vec=X[i] # vector of vectors
-            dim=length(vec)
-            dim=dim-get_evanescent_dim_in_CompositeBasis(basis) # this is to prevent double counting the EWP
-            dim=rescale_dimension(basis,dim)
-            new_basis=resize_basis(basis,billiard,dim,ks[i])  # dim here should be for the main function
-            state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
-            u,s,norm=boundary_function(state;b=b)
-            us[i]=u
-            s_vals[i]=s
-            norms[i]=norm
-        catch e
-            println("Error while constructing the u(s) for k = $(ks[i]): $e")
-            valid_indices[i]=false
-        end
-        next!(progress)
-    end
-    ks=ks[valid_indices]
-    us=us[valid_indices]
-    s_vals=s_vals[valid_indices]
-    norms=norms[valid_indices]
-    return ks,us,s_vals,norms
+    @blas_1 return u,pts,norm
 end
 
 """
-    boundary_function_with_points(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+    boundary_function(state_data::StateData, billiard::Bi, basis::Ba; b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
 
-Computes the boundary functions us and the `BoundaryPoints` from which we can construct the wavefunction object using the boundary integtral definition.
+Computes the boundary functions us and the `BoundaryPoints` from which we can construct the wavefunction object 
+using the boundary integral definition.
 
+Note: This is a higher-level wrapper around the `boundary_function` that takes in the `StateData` object 
+therefore it is only ever used from the `compute_eigenstate` function with the `VerginiSaraceno` solver. 
+It is not used in the `ParticularSolutionsMethod` or `DecompositionMethod` solvers.
 # Arguments
-`state_data::StateData`: The state data object that contains the `ks` and the `vec` from which we cna contruct the boundary points and the boundary function.
+`state_data::StateData`: The state data object that contains the `ks` and the `vec` from which we can construct the boundary points and the boundary function.
 `billiard<:AbsBilliard`: The geometry of the billiard.
-`basis<::AbsBilliard`: The basis of from which we contruct the wavefunction and the `vec` object.
+`basis<::AbsBilliard`: The basis from which we construct the wavefunction and the `vec` basis coefficients.
 
 # Returns
 `ks::Vector`: The vector of eigenvalues. A convenience return.
 `us::Vector{Vector}`: The vector of boundary functions (Vector) for each k that is a solution.
 `pts_all::Vector{BoundaryPoints}`: A struct that contains the positions for which the u(s) (boundary function was evaluated) {pts.xy}, the arclengths that corresponds to these points {pts.s}, the normal vectors for the points we use {pts.normal} and the differences between the arclengths {pts.ds}. This is for every k in ks.
 """
-function boundary_function_with_points(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
+function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) where {Bi<:AbsBilliard, Ba<:AbsBasis}
     ks=state_data.ks
     tens=state_data.tens
     X=state_data.X
-    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
+    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks)) # always real since reflection are 1d irreps
     pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
     valid_indices=fill(true,length(ks))
     progress=Progress(length(ks);desc="Constructing the u(s)...")
@@ -339,11 +266,11 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
             dim=rescale_dimension(basis,dim)
             new_basis=resize_basis(basis,billiard,dim,ks[i]) # dim here should be for the main function
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
-            u,pts,_=setup_momentum_density(state;b=b) # pts is BoundaryPoints and has information on ds and x
+            u,pts,_=boundary_function(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
             pts_all[i]=pts
         catch e
-            println("Error while constructing the u(s) for k = $(ks[i])")
+            println("Error while constructing the u(s) for k = $(ks[i]): $e")
             valid_indices[i]=false
         end
         next!(progress)
@@ -353,6 +280,47 @@ function boundary_function_with_points(state_data::StateData,billiard::Bi,basis:
     pts_all=pts_all[valid_indices]
     return ks,us_all,pts_all
 end
+
+#########################################################################################################
+################### BoundaryIntegralMethod, DLP_kress and DLP_kress_global_corners ######################
+#########################################################################################################
+
+# single vec per pts
+function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
+    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
+    u=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
+    return pts,u
+end
+
+# multi vec per non-common pts
+function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    us_all=Vector{Vector{N}}(undef,length(pts))
+    pts_all=Vector{typeof(pts[1])}(undef,length(pts))
+    @use_threads multithreading=multithreaded for i in eachindex(pts)
+        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetries,billiard)
+        us_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetries)
+    end
+    return pts_all,us_all
+end
+
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
+    layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
+    return pts,layer_pot
+end
+
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
+    pts_all=Vector{typeof(apply_symmetries_to_boundary_points(pts[1],solver.symmetries,billiard))}(undef,length(pts))
+    layer_pot_all=Vector{typeof(apply_symmetries_to_boundary_function(layer_pot[1],solver.symmetries))}(undef,length(pts))
+    @use_threads multithreading=multithreaded for i in eachindex(pts)
+        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetries,billiard)
+        layer_pot_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetries)
+    end
+    return pts_all,layer_pot_all
+end
+
+
+
 
 """
     momentum_function(u, s)
@@ -389,90 +357,7 @@ Computes the momentum distribution function for a given quantum state object. Th
 - `Vector`: The frequencies (`ks`) associated with the DFT components.
 """
 function momentum_function(state::S;b=5.0) where {S<:AbsState}
-    u,s,norm=boundary_function(state;b)
+    u,s,norm=boundary_function(state;b=b)
     return momentum_function(u,s)
-end
-
-#this can be optimized by usinf FFTW plans
-"""
-    momentum_function(state_bundle::S; b=5.0) where {S<:EigenstateBundle}
-
-Computes the momentum distribution functions for all eigenstates in a given bundle of quantum states. Each eigenstate in the bundle has its momentum distribution computed, and the results are returned as a vector of momentum distributions.
-
-# Arguments
-- `state_bundle::S`: A bundle of quantum eigenstates of type `<:EigenstateBundle` which is a collection of states `<:AbsState`
-- `b::Real`: Number of basis functions used to compute the wavefunctions on the boundary (default: `5.0`).
-
-# Returns
-- `Vector{Vector}`: A vector of DFT amplitude vectors, one for each eigenstate in the bundle.
-- `Vector`: A vector of frequencies (`ks`) associated with the DFT components (shared across all eigenstates since marker on x-axis (not function of unique u just the length of s)).
-"""
-function momentum_function(state_bundle::S;b=5.0) where {S<:EigenstateBundle}
-    us,s,norms=boundary_function(state_bundle;b)
-    mf,ks=momentum_function(us[1],s)
-    type=eltype(mf)
-    mfs::Vector{Vector{type}}=[mf]
-    for i in eachindex(us)[2:end]
-        mf,ks=momentum_function(us[i],s)
-        push!(mfs,mf)
-    end
-    return mfs,ks
-end
-
-# Helper for momentum function calculations. We need this one since we will require much point information like xy, s,...
-"""
-    setup_momentum_density(state::S; b::Float64=5.0) where {S<:AbsState}
-
-Prepares the necessary data for computing the momentum density from a given state.
-
-# Arguments
-- `state::S`: An instance of a subtype of `AbsState`, representing the quantum state.
-- `b::Float64=5.0`: An optional parameter controlling the number of boundary points. Defaults to `5.0`.
-
-# Returns
-- `u_values`: A vector of type `Vector{T}` containing the computed eigenvector components.
-- `pts::BoundaryPoints`: A structure containing boundary points and related information.
-- `k`: The wave number extracted from the state.
-
-# Description
-This function extracts the eigenvector components (`u_values`), boundary points (`pts`), and wave number (`k`) from the provided `state`. It sets up the necessary variables for computing the radially and angularly integrated momentum densities.
-The function internally calls `boundary_coords` to obtain the boundary coordinates and uses `gradient_matrices` to compute the derivatives required for `u_values`.
-
-# Notes
-- The parameter `b` affects the number of boundary points used in the computation. A higher value results in more points.
-- Ensure that the `state` object contains the necessary attributes (`vec`, `k`, `k_basis`, `basis`, `billiard`).
-"""
-function setup_momentum_density(state::S;b::Float64=5.0) where {S<:AbsState}
-    vec=state.vec
-    k=state.k
-    k_basis=state.k_basis
-    new_basis=state.basis
-    billiard=state.billiard
-    T=eltype(vec)
-    boundary=billiard.desymmetrized_full_boundary
-    crv_lengths=(crv.length for crv in boundary)
-    sampler=FourierNodes([2,3,5],collect(crv_lengths))
-    L=billiard.length
-    N=max(round(Int,k*L*b/(2π)),512)
-    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
-    @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
-    M=size(dX,1)
-    tX=Vector{Complex{T}}(undef,M) # tX = (∂xϕ)(x_i)
-    tY=Vector{Complex{T}}(undef,M) # tY = (∂yϕ)(x_i)
-    u=Vector{Complex{T}}(undef,M) # u  = ∂nϕ(x_i)
-    # 2 GEMVs into empty then fuse normal-combination: ∂_n ϕ = nx ∂_x ϕ + ny ∂_y ϕ
-    @blas_multi_then_1 MAX_BLAS_THREADS begin
-        mul!(tX,dX,vec) # tX = dX*vec
-        mul!(tY,dY,vec) # tY = dY*vec
-    end
-    @fastmath @inbounds @simd for i in 1:M # fuse u = nx.*tX .+ ny.*tY in one loop
-        n=pts.normal[i]
-        u[i]=muladd(n[2],tY[i],n[1]*tX[i]) # u = n_x tX + n_y tY via muladd
-    end
-    regularize!(u)
-    pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
-    pts,u=shift_starting_arclength(billiard,u,pts)
-    @blas_1 return u,pts,k
 end
 
