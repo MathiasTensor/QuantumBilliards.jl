@@ -518,32 +518,32 @@ end
 ################################################
 
 # helper to concatenate multiple Husimi components into one big Husimi matrix with the qs grids concatenated with offsets to avoid overlap, and also return the seam locations for plotting vertical lines to indicate the component boundaries. This is useful for plotting multiple Husimi components together in a single plot while visually separating them along the q-axis.
-function _husimi_concat_with_separation(Hs_comps::Vector{<:AbstractMatrix{T}},qs_comps::Vector{<:AbstractVector{T}}) where {T<:Real}
-    ncomp=length(Hs_comps)
-    ncomp==length(qs_comps) || error("Hs_comps and qs_comps must have same length")
-    ncomp>0 || error("Need at least one component")
-    psize=size(Hs_comps[1],2)
+function _husimi_concat_with_separation(Hs::Vector{<:AbstractMatrix{T}},qs_list::Vector{<:AbstractVector{T}}) where {T<:Real}
+    length(Hs)==length(qs_list) || error("Hs and qs_list must have same length")
+    isempty(Hs) && return zeros(T,0,0),T[],T[]
+    ncomp=length(Hs)
+    nps=size(Hs[1],2)
     for a in 1:ncomp
-        size(Hs_comps[a],2)==psize || error("All Husimi components must share the same p-grid size")
+        size(Hs[a],1)==length(qs_list[a]) || error("Component $a has inconsistent Husimi/q-grid sizes")
+        size(Hs[a],2)==nps || error("All Husimi components must share the same p-grid")
     end
-    qoffsets=Vector{T}(undef,ncomp)
-    qoffsets[1]=zero(T)
-    for a in 2:ncomp
-        qoffsets[a]=qoffsets[a-1]+maximum(qs_comps[a-1])
-    end
-    qs_cat=Vector{T}[]
-    for a in 1:ncomp
-        push!(qs_cat,collect(qs_comps[a].+qoffsets[a]))
-    end
-    qs=vcat(qs_cat...)
-    H=hcat(Hs_comps...)
+    qcat=T[]
     seams=T[]
-    if ncomp>1
-        for a in 1:(ncomp-1)
-            push!(seams,qoffsets[a+1])
+    Hblocks=Vector{Matrix{T}}(undef,ncomp)
+    qoff=zero(T)
+    for a in 1:ncomp
+        qa=collect(qs_list[a])
+        Ha=Matrix{T}(Hs[a])
+        if a>1
+            push!(seams,qoff)
         end
+        qa_shift=qa.+qoff
+        append!(qcat,qa_shift)
+        Hblocks[a]=Ha
+        qoff=isempty(qa_shift) ? qoff : qa_shift[end]
     end
-    return H,qs,seams
+    Hcat=vcat(Hblocks...)
+    return Hcat,qcat,seams
 end
 
 # helper to plot vertical lines on the Husimi plot to indicate the separation between different Husimi components when they are concatenated together with offsets. This function takes in the axis to plot on, the seam locations, and the p-grid values to determine the y-limits of the lines.
