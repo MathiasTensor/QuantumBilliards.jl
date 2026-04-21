@@ -2,6 +2,8 @@ using QuantumBilliards, CairoMakie, LinearAlgebra, Printf, StaticArrays
 
 # One needs to create a phi(x,y) function that acts as a boolean mask (0 or 1 depending whether it is inside the boundary or outside) for the same geometry as the one defined as the <:AbsBilliard struct as. It needs to be externally given as the method itself needs to calculate for wanted cell (i,j) the values there
 
+# JUST PICK ONE OF THESE, COMMENT OUT THE REST, AND MAKE SURE TO DEFINE THE CORRESPONDING BILLIARD AND BASIS BELOW. ALSO SET THE FUNDAMENTAL FLAG ACCORDINGLY (TRUE IF THE BILLIARD IS FUNDAMENTAL DOMAIN, FALSE OTHERWISE)
+
 # RECTANGLE
 #=
 function rectangle_phi(x, y, width, height)
