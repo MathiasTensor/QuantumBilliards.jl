@@ -4,7 +4,7 @@ https://arxiv.org/pdf/nlin/0212011
 AUXILIARY REFERENCE: Alex Barnett, PhD Thesis
 https://users.flatironinstitute.org/~ahb/thesis_html/node157.html
 """
-
+#TODO Make it work, normalization is completely wrong!
 """
     α(i::Int,k::T)
 

@@ -513,6 +513,50 @@ function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, 
     batch_wrapper(plot_wavefunctions_BATCH,ks,Psi2ds,x_grid,y_grid,billiard;N=N,kwargs...)
 end
 
+################################################
+################ WITH HUSIMIS ##################
+################################################
+
+# helper to concatenate multiple Husimi components into one big Husimi matrix with the qs grids concatenated with offsets to avoid overlap, and also return the seam locations for plotting vertical lines to indicate the component boundaries. This is useful for plotting multiple Husimi components together in a single plot while visually separating them along the q-axis.
+function _husimi_concat_with_separation(Hs_comps::Vector{<:AbstractMatrix{T}},qs_comps::Vector{<:AbstractVector{T}}) where {T<:Real}
+    ncomp=length(Hs_comps)
+    ncomp==length(qs_comps) || error("Hs_comps and qs_comps must have same length")
+    ncomp>0 || error("Need at least one component")
+    psize=size(Hs_comps[1],2)
+    for a in 1:ncomp
+        size(Hs_comps[a],2)==psize || error("All Husimi components must share the same p-grid size")
+    end
+    qoffsets=Vector{T}(undef,ncomp)
+    qoffsets[1]=zero(T)
+    for a in 2:ncomp
+        qoffsets[a]=qoffsets[a-1]+maximum(qs_comps[a-1])
+    end
+    qs_cat=Vector{T}[]
+    for a in 1:ncomp
+        push!(qs_cat,collect(qs_comps[a].+qoffsets[a]))
+    end
+    qs=vcat(qs_cat...)
+    H=hcat(Hs_comps...)
+    seams=T[]
+    if ncomp>1
+        for a in 1:(ncomp-1)
+            push!(seams,qoffsets[a+1])
+        end
+    end
+    return H,qs,seams
+end
+
+# helper to plot vertical lines on the Husimi plot to indicate the separation between different Husimi components when they are concatenated together with offsets. This function takes in the axis to plot on, the seam locations, and the p-grid values to determine the y-limits of the lines.
+function _plot_husimi_separation_lines!(ax,seams::AbstractVector{T},ps::AbstractVector{T};color=:cyan,linewidth=3,linestyle=:dash) where {T<:Real}
+    isempty(seams) && return ax
+    ymin=minimum(ps)
+    ymax=maximum(ps)
+    for s0 in seams
+        lines!(ax,[s0,s0],[ymin,ymax],color=color,linewidth=linewidth,linestyle=linestyle)
+    end
+    return ax
+end
+
 """
     plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
 
@@ -533,12 +577,13 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
-- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory (in that order). These are used to construct the chaotic mask overlay so we can better observe the overlaps.
+- `seam_color=:cyan`: The color of the seam lines separating the Husimi components.
+- `seam_linewidth=2`: The linewidth of the seam lines separating the Husimi components.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector{<:Vector{<:AbstractMatrix}},ps_list::Vector,qs_list::Vector{<:Vector{<:AbstractVector}},billiard::Bi; b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=2) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -555,23 +600,18 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
         xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
     n_rows=ceil(Int,length(ks)/max_cols)
-    f = Figure(resolution=(3*width_ax*max_cols,1.5*height_ax*n_rows),size=(3*width_ax*max_cols,1.5*height_ax*n_rows))
+    f=Figure(resolution=(3*width_ax*max_cols,1.5*height_ax*n_rows),size=(3*width_ax*max_cols,1.5*height_ax*n_rows))
     row=1
     col=1
     @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
-        title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
+        title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
-        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
+        heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
-        if !isempty(use_projection_grid[1]) && !isempty(use_projection_grid[2])
-            projection_grid=classical_phase_space_matrix(use_projection_grid[1],use_projection_grid[2],qs_list[j],ps_list[j])
-            H_bg,chaotic_mask=husimi_with_chaotic_background(Hs_list[j],projection_grid)
-            heatmap!(ax_h,qs_list[j],ps_list[j],H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-            heatmap!(ax_h,qs_list[j],ps_list[j],chaotic_mask;colormap=cgrad([:white, :black]),alpha=0.05,colorrange=(0,1))
-        else
-            heatmap!(ax_h,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
-        end
+        Hcat,qcat,seams=_husimi_concat_with_separation(Hs_list[j],qs_list[j])
+        heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))
+        _plot_husimi_separation_lines!(ax_h,seams,ps_list[j];color=seam_color,linewidth=seam_linewidth)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
         col+=1
@@ -605,12 +645,13 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
-- `use_projection_grid::Tuple{Vector,Vector}=([],[])`: A tuple containing the classical s and p values of the chaotic trajectory (in that order). These are used to construct the chaotic mask overlay so we can better observe the overlaps.
+- `seam_color=:cyan`: The color of the seam lines separating the Husimi components.
+- `seam_linewidth=2`: The linewidth of the seam lines separating the Husimi components.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[], use_projection_grid::Tuple{Vector,Vector}=([],[])) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,s_vals_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=2) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -631,27 +672,22 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector, Psi2ds::Vector, x_grid
     row=1
     col=1
     @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
-        title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
-        local ax_wave=Axis(f[row, col][1, 1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        hm_wave=heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
+        title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
+        local ax_wave=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
+        heatmap!(ax_wave,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
-        local ax_h=Axis(f[row, col][1, 2],width=width_ax,height=height_ax)
-        if !isempty(use_projection_grid[1]) && !isempty(use_projection_grid[2])
-            projection_grid=classical_phase_space_matrix(use_projection_grid[1],use_projection_grid[2],qs_list[j],ps_list[j])
-            H_bg,chaotic_mask=husimi_with_chaotic_background(Hs_list[j],projection_grid)
-            heatmap!(ax_h,qs_list[j],ps_list[j],H_bg; colormap=Reverse(:gist_heat), colorrange=(0.0, maximum(H_bg)))
-            heatmap!(ax_h,qs_list[j],ps_list[j],chaotic_mask;colormap=cgrad([:white, :black]),alpha=0.05,colorrange=(0,1))
-        else
-            heatmap!(ax_h,qs_list[j],ps_list[j],Hs_list[j];colormap=Reverse(:gist_heat))
-        end
-        local ax_boundary = Axis(f[row, col][2, 1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
-        lines!(ax_boundary,s_vals_all[j],us_all[j],label="u(s)",linewidth=2)
-        # Move to the next column
+        local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
+        Hcat,qcat,seams=_husimi_concat_with_separation(Hs_list[j],qs_list[j])
+        heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))
+        _plot_husimi_separation_lines!(ax_h,seams,ps_list[j];color=seam_color,linewidth=seam_linewidth)
+        local ax_boundary=Axis(f[row,col][2,1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
+        lines!(ax_boundary,s_vals_all[j],real.(us_all[j]),label="Re u(s)",linewidth=2)
+        maximum(abs.(imag.(us_all[j])))>0 && lines!(ax_boundary,s_vals_all[j],imag.(us_all[j]),label="Im u(s)",linewidth=2,linestyle=:dash)
         col+=1
         if col>max_cols
-            row+=1 
+            row+=1
             col=1
         end
     end

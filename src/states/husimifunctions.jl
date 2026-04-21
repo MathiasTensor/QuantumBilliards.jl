@@ -513,7 +513,7 @@ function split_boundary_data_by_component(comps::Vector{BoundaryPointsCFIE{T}},u
 end
 
 """
-    husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_comps::Vector{<:AbstractVector{Num}},L_comps::AbstractVector{T},qs_list::Vector{<:AbstractVector{T}},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+    husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_comps::Vector{<:AbstractVector{Num}},L_comps::AbstractVector{T},qs_list::Vector{<:AbstractVector{T}},ps::AbstractVector{T};full_p::Bool=false,normalize_components::Bool=true) where {T<:Real,Num<:Number}
 
 Construct one Husimi matrix per connected boundary component on prescribed
 component-wise `q` grids and a shared `p` grid.
@@ -535,6 +535,11 @@ periodicity:
 Accordingly, this function returns one Husimi matrix per component rather than
 trying to force all components into a single global boundary period.
 
+If `normalize_components=true`, then each connected component Husimi is
+normalized separately:
+    sum(Hs[a]) = 1
+for every component `a` whose Husimi mass is nonzero.
+
 # Arguments
 - `k::T`:
   Wavenumber of the state whose Husimi representation is being constructed.
@@ -554,6 +559,8 @@ trying to force all components into a single global boundary period.
 - `full_p::Bool=false`:
   Passed through to `husimi_on_grid`. If `false`, the single-component routine
   exploits the `p -> -p` reflection to reconstruct the negative-`p` half.
+- `normalize_components::Bool=true`:
+  Whether to normalize each component Husimi separately to unit sum.
 
 # Returns
 - `Hs::Vector{Matrix{T}}`:
@@ -565,7 +572,7 @@ trying to force all components into a single global boundary period.
   identical across components in the present implementation, but returned
   component-wise for interface symmetry and future flexibility.
 """
-function husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_comps::Vector{<:AbstractVector{Num}},L_comps::AbstractVector{T},qs_list::Vector{<:AbstractVector{T}},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+function husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_comps::Vector{<:AbstractVector{Num}},L_comps::AbstractVector{T},qs_list::Vector{<:AbstractVector{T}},ps::AbstractVector{T};full_p::Bool=false,normalize_components::Bool=true) where {T<:Real,Num<:Number}
     ncomp=length(s_comps)
     length(u_comps)==ncomp || error("u_comps and s_comps must have same length")
     length(L_comps)==ncomp || error("L_comps and s_comps must have same length")
@@ -576,6 +583,10 @@ function husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_c
     for a in 1:ncomp
         length(s_comps[a])==length(u_comps[a]) || error("Component $a has inconsistent data: length(s_comps[$a])=$(length(s_comps[a])) but length(u_comps[$a])=$(length(u_comps[a])).")
         H,qs_a,ps_a=husimi_on_grid(k,s_comps[a],u_comps[a],L_comps[a],qs_list[a],ps;full_p=full_p)
+        if normalize_components
+            hsum=sum(H)
+            hsum>zero(T) && (H./=hsum)
+        end
         Hs[a]=H
         qs_out[a]=collect(qs_a)
         ps_out[a]=collect(ps_a)
@@ -584,7 +595,7 @@ function husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_c
 end
 
 """
-    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
+    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
 
 Construct fixed-grid Husimi functions for a batch of states whose
 boundary data may live on multiply connected billiards, including domains with
@@ -608,6 +619,9 @@ Husimi matrices:
 This is the natural representation for multiply connected billiards, since each
 connected boundary component defines its own boundary phase-space section.
 
+If `normalize_components=true`, then each connected component Husimi is
+normalized separately to unit sum.
+
 # Arguments
 - `ks::AbstractVector{T}`:
   Wavenumbers / eigenvalues of the states.
@@ -626,6 +640,8 @@ connected boundary component defines its own boundary phase-space section.
   Passed through to the underlying Husimi routines. If `false`, only the
   nonnegative `p` half-grid is explicitly computed and the negative half is
   reconstructed by symmetry.
+- `normalize_components::Bool=true`:
+  Whether to normalize each component Husimi separately to unit mass.
 
 # Returns
 - `Hs_all::Vector{Vector{Matrix{T}}}`:
@@ -636,21 +652,26 @@ connected boundary component defines its own boundary phase-space section.
   this is the symmetrized grid reconstructed from the nonnegative half-grid.
 - `qs_all::Vector{Vector{Vector{T}}}`:
   `qs_all[i][a]` is the `q` grid used for state `i`, component `a`.
+- `L_all::Vector{Vector{T}}`:
+  `L_all[i][a]` is the total length of connected component `a` for state `i`.
+  This is useful for plotting vertical seam lines after concatenation.
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
     length(ks)==length(vec_us)==length(vec_bdComps) || error("Input vectors must have equal length")
     ps=full_p ? collect(range(-one(T),one(T),length=ny)) : collect(range(zero(T),one(T),length=cld(ny,2)))
     Hs_all=Vector{Vector{Matrix{T}}}(undef,length(ks))
     qs_all=Vector{Vector{Vector{T}}}(undef,length(ks))
+    L_all=Vector{Vector{T}}(undef,length(ks))
     ok=trues(length(ks))
     pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)
         try
             u_comps,s_comps,L_comps=split_boundary_data_by_component(vec_bdComps[i],vec_us[i])
             qs_list=[collect(range(zero(T),stop=Lc,length=nx)) for Lc in L_comps]
-            Hs,qs_out,_=husimi_on_grid_components(ks[i],s_comps,u_comps,L_comps,qs_list,ps;full_p=full_p)
+            Hs,qs_out,_=husimi_on_grid_components(ks[i],s_comps,u_comps,L_comps,qs_list,ps;full_p=full_p,normalize_components=normalize_components)
             Hs_all[i]=Hs
             qs_all[i]=qs_out
+            L_all[i]=collect(L_comps)
         catch e
             @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
             ok[i]=false
@@ -659,6 +680,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVec
     end
     Hs_all=Hs_all[ok]
     qs_all=qs_all[ok]
+    L_all=L_all[ok]
     ps_out=full_p ? ps : vcat(-reverse(ps)[1:end-1],ps)
-    return Hs_all,ps_out,qs_all
+    return Hs_all,ps_out,qs_all,L_all
 end

@@ -590,6 +590,7 @@ function slp_boundary_kress(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kre
 end
 
 # hypersingular_maue_kress(solver, μ, comps, ws, k)
+# REF: Kress, "Boundary Integral Equations in Time-Harmonic Acoustic Scattering", Eq. 2.7, page 233, 1991
 #
 # Compute the Maue-regularized hypersingular action Nμ for the periodic
 # CFIE-Kress family.

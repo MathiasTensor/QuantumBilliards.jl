@@ -24,6 +24,7 @@
 #  with spacing h=2π/N, shifted by a small constant δ so that no corner is
 #  sampled exactly. This works for both even and odd N and preserves the
 #  Kress log-split structure, since only differences σ_i-σ_j matter.
+#TODO Make a better one than this -> Kress's teardrop drops from 1e-14 - 1e-15 accuracy to 1e-10 if we use the global multi corner solver!
 const TWO_PI=2*pi
 
 @inline function _wrap_to_2pi(x::T) where {T<:Real}
