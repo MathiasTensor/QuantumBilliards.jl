@@ -583,7 +583,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector{<:Vector{<:AbstractMatrix}},ps_list::Vector,qs_list::Vector{<:Vector{<:AbstractVector}},billiard::Bi; b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=2) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector{<:Vector{<:AbstractMatrix}},ps_list::Vector,qs_list::Vector{<:Vector{<:AbstractVector}},billiard::Bi; b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -651,7 +651,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,s_vals_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=2) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,s_vals_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
