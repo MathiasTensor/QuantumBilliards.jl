@@ -507,7 +507,7 @@ where
     # the kernel is
     #   K = (i k / 2) * inn * H1 / r  -  (k / 2) * H0 * sj
     khalf=k*T(0.5)
-    tol2=(T(100)*eps(T))^2 # for near boundary skipping, squared for distance comparison
+    tol2=(T(100)*eps(T)) # for near boundary skipping
     @inbounds @fastmath for j in 1:N
         dx=xp-x[j]
         dy=yp-y[j]
