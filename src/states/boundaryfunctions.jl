@@ -590,10 +590,11 @@ function slp_boundary_kress(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kre
 end
 
 # hypersingular_maue_kress(solver, μ, comps, ws, k)
+# REF: Kress, A COLLOCATION METHOD FOR A HYPERSINGULAR BOUNDARY INTEGRAL EQUATION VIA TRIGONOMETRIC DIFFERENTIATION, JOURNAL OF INTEGRAL EQUATIONS AND APPLICATIONS Volume 26, Number 2, Summer 2014
 # REF: Kress, "Boundary Integral Equations in Time-Harmonic Acoustic Scattering", Eq. 2.7, page 233, 1991
 #
 # Compute the Maue-regularized hypersingular action Nμ for the periodic
-# CFIE-Kress family.
+# CFIE-Kress family using Maue's formula (check 1st reference).
 #
 # Mathematical meaning:
 # The hypersingular operator N is the normal derivative of the double-layer
