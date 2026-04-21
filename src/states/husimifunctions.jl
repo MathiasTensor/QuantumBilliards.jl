@@ -595,7 +595,7 @@ function husimi_on_grid_components(k::T,s_comps::Vector{<:AbstractVector{T}},u_c
 end
 
 """
-    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
+    husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
 
 Construct fixed-grid Husimi functions for a batch of states whose
 boundary data may live on multiply connected billiards, including domains with
@@ -656,7 +656,7 @@ normalized separately to unit sum.
   `L_all[i][a]` is the total length of connected component `a` for state `i`.
   This is useful for plotting vertical seam lines after concatenation.
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
+function husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdComps::AbstractVector{<:Vector{BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
     length(ks)==length(vec_us)==length(vec_bdComps) || error("Input vectors must have equal length")
     ps=full_p ? collect(range(-one(T),one(T),length=ny)) : collect(range(zero(T),one(T),length=cld(ny,2)))
     Hs_all=Vector{Vector{Matrix{T}}}(undef,length(ks))
