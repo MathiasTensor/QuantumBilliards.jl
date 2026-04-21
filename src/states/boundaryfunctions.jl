@@ -281,47 +281,6 @@ function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) w
     return ks,us_all,pts_all
 end
 
-#########################################################################################################
-################### BoundaryIntegralMethod, DLP_kress and DLP_kress_global_corners ######################
-#########################################################################################################
-
-# single vec per pts
-function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
-    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
-    u=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
-    return pts,u
-end
-
-# multi vec per non-common pts
-function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    us_all=Vector{Vector{N}}(undef,length(pts))
-    pts_all=Vector{typeof(pts[1])}(undef,length(pts))
-    @use_threads multithreading=multithreaded for i in eachindex(pts)
-        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetries,billiard)
-        us_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetries)
-    end
-    return pts_all,us_all
-end
-
-function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
-    layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
-    return pts,layer_pot
-end
-
-function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
-    pts_all=Vector{typeof(apply_symmetries_to_boundary_points(pts[1],solver.symmetries,billiard))}(undef,length(pts))
-    layer_pot_all=Vector{typeof(apply_symmetries_to_boundary_function(layer_pot[1],solver.symmetries))}(undef,length(pts))
-    @use_threads multithreading=multithreaded for i in eachindex(pts)
-        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetries,billiard)
-        layer_pot_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetries)
-    end
-    return pts_all,layer_pot_all
-end
-
-
-
-
 """
     momentum_function(u, s)
 
@@ -361,3 +320,704 @@ function momentum_function(state::S;b=5.0) where {S<:AbsState}
     return momentum_function(u,s)
 end
 
+#########################################################################################################
+################### BoundaryIntegralMethod, DLP_kress and DLP_kress_global_corners ######################
+#########################################################################################################
+
+function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
+    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
+    u=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
+    return pts,u
+end
+
+function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    us_all=Vector{Vector{N}}(undef,length(pts))
+    pts_all=Vector{typeof(pts[1])}(undef,length(pts))
+    @use_threads multithreading=multithreaded for i in eachindex(pts)
+        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetries,billiard)
+        us_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetries)
+    end
+    return pts_all,us_all
+end
+
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
+    layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
+    return pts,layer_pot
+end
+
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
+    pts_all=Vector{typeof(apply_symmetries_to_boundary_points(pts[1],solver.symmetries,billiard))}(undef,length(pts))
+    layer_pot_all=Vector{typeof(apply_symmetries_to_boundary_function(layer_pot[1],solver.symmetries))}(undef,length(pts))
+    @use_threads multithreading=multithreaded for i in eachindex(pts)
+        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetries,billiard)
+        layer_pot_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetries)
+    end
+    return pts_all,layer_pot_all
+end
+
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{N},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    pts=apply_symmetries_to_boundary_points(pts,solver.symmetries,billiard)
+    layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetries)
+    return pts,layer_pot
+end
+
+####################################################################################################
+################### CFIE_kress, CFIE_kress_corners, CFIE_kress_global_corners ######################
+####################################################################################################
+
+
+#    split_cfie_density_by_component(comps, μ)
+#
+# Split one global CFIE density vector into one density vector per connected
+# boundary component. For the Kress-based CFIE solvers, the unknown boundary density is stored as one
+# global vector
+#
+#    μ = [μ₁; μ₂; ...; μ_nc],
+#
+# where:
+# - `nc` is the number of connected boundary components,
+# - `μ_a` is the restriction of the density to component `Γ_a`,
+# - the global ordering follows exactly the same component-by-component
+#  concatenation used in matrix assembly.
+#
+# If component `Γ_a` is discretized by `N_a` points, then the global vector has
+# length
+#
+#    N_tot = N₁ + N₂ + ... + N_nc,
+#
+# and this function recovers the block decomposition
+#
+#    μ_a, a = 1, ..., nc.
+#
+# Inputs
+# - `comps::Vector{BoundaryPointsCFIE{T}}`:
+#  The CFIE boundary discretization, one entry per connected component, in the
+#  same order used for the global matrix.
+# - `μ::AbstractVector{Complex{T}}`:
+#  The global concatenated CFIE density.
+#
+#Returns
+#- `out::Vector{Vector{Complex{T}}}`: such that `out[a]` is the slice of `μ` corresponding to the `a`-th connected component.
+function split_cfie_density_by_component(comps::Vector{BoundaryPointsCFIE{T}},μ::AbstractVector{Complex{T}}) where {T<:Real}
+    out=Vector{Vector{Complex{T}}}(undef,length(comps))
+    p=1
+    for a in eachindex(comps)
+        N=length(comps[a].xy)
+        out[a]=collect(μ[p:p+N-1])
+        p+=N
+    end
+    return out
+end
+
+"""
+    periodic_derivative_t(f::AbstractVector{Complex{T}}) where {T<:Real}
+
+Compute the spectral derivative of a periodic function sampled on an equispaced grid.
+Let `f` be a periodic function defined on the interval `[0, 2π)` and sampled at
+equispaced nodes
+
+    t_j = 2π j / N,   j = 0, ..., N-1.
+
+The discrete vector `f[j] ≈ f(t_j)` represents a periodic function, and its
+derivative with respect to the periodic parameter `t` can be computed via the
+Fourier series representation
+
+    f(t) = Σ_k  f̂_k e^{i k t}.
+
+Then
+
+    ∂_t f(t) = Σ_k  (i k) f̂_k e^{i k t}.
+
+# Returns
+- (∂_t f)(t_j)::Vector{Complex{T}}: the spectral derivative of `f` evaluated at the same grid points `t_j`. The output is a vector of the same length as `f`, where each entry approximates the derivative of `f` at the corresponding grid point. In other words, if `f[j] ≈ f(t_j)`, then `(∂_t f)[j] ≈ (∂_t f)(t_j)` for each `j = 0, ..., N-1`. The output is generally complex-valued, even if the input `f` is real-valued, due to the nature of the Fourier differentiation.
+"""
+function periodic_derivative_t(f::AbstractVector{Complex{T}}) where {T<:Real}
+    N=length(f)
+    F=fft(f) # to get the Fourier coefficients f̂_k
+    kvec=iseven(N) ? vcat(0:N÷2-1,0,-N÷2+1:-1) : vcat(0:(N-1)÷2,-(N-1)÷2:-1) # wave numbers k for the Fourier modes, ordered according to the output of fft. If even N, the zero frequency is followed by positive frequencies up to N/2-1, then the Nyquist frequency (which is zero for the derivative), and then negative frequencies from -N/2+1 to -1. If odd N, the zero frequency is followed by positive frequencies up to (N-1)/2, and then negative frequencies from -(N-1)/2 to -1.
+    return ifft((im.*T.(kvec)).*F) # ∂_t f(t) = Σ_k  (i k) f̂_k e^{i k t} where f̂_k is the Fourier transform 
+end
+
+# tangential_derivative_density(pts, μ)
+#
+# Compute the tangential derivative ∂_s μ on one periodic CFIE-Kress component.
+#
+# Mathematical meaning:
+# The boundary is parameterized by a periodic variable t (or σ in the graded case),
+# and μ is sampled at those nodes. The physical derivative along arc-length is
+#
+#     ∂_s μ = (1 / |γ'(t)|) ∂_t μ.
+#
+# Here:
+# - ∂_t μ is computed spectrally via periodic_derivative_t,
+# - |γ'(t)| is the local speed reconstructed from the stored tangent.
+#
+# Assumptions:
+# - pts.is_periodic == true (Kress periodic discretization),
+# - nodes are equispaced in the periodic computational variable.
+#
+# Not valid for non-periodic (e.g. Alpert) discretizations.
+function tangential_derivative_density(pts::BoundaryPointsCFIE{T},μ::AbstractVector{Complex{T}}) where {T<:Real}
+    pts.is_periodic || error("Only works for periodic components - Kress works fine, Alpert not implemented.")
+    _,_,speed=component_normals(pts)
+    dμ_dt=periodic_derivative_t(μ)
+    return dμ_dt./speed
+end
+
+# tangential_derivative_density_components(comps, μ)
+#
+# Compute the tangential derivative ∂_s μ componentwise for a global CFIE density.
+# This version handles holes and multiple connected components by calling tangential_derivative_density on each component separately.
+#
+# Mathematical meaning:
+# The global density is stored as a concatenation
+#
+#     μ = [μ₁; μ₂; ...; μ_nc],
+#
+# where each μ_a lives on one periodic boundary component Γ_a. Since the
+# tangential derivative ∂_s acts independently on each component, we compute
+#
+#     (∂_s μ)_a = ∂_s (μ_a)
+#
+# using the periodic Kress differentiation on each Γ_a separately.
+function tangential_derivative_density_components(comps::Vector{BoundaryPointsCFIE{T}},μ::AbstractVector{Complex{T}}) where {T<:Real}
+    μ_comps=split_cfie_density_by_component(comps,μ)
+    out=Vector{Vector{Complex{T}}}(undef,length(comps))
+    for a in eachindex(comps)
+        out[a]=collect(tangential_derivative_density(comps[a],μ_comps[a]))
+    end
+    return out
+end
+
+# _slp_self_kress_component(solver, pts, σ, k, Rblock, G)
+#
+# Apply the on-boundary single-layer operator Sσ on one periodic component
+# using the Kress logarithmic singularity splitting.
+#
+# The Helmholtz single-layer operator is
+#
+#     (Sσ)(x) = ∫_Γ Φ_k(x,y) σ(y) ds_y,
+#
+# with Φ_k(x,y) = (i/4) H_0^(1)(k|x-y|).
+#
+# On a periodic Kress discretization, the kernel is decomposed as
+#
+#     Φ_k(x,y) = m1(x,y) log|sin((t-s)/2)| + m2(x,y),
+#
+# where:
+# - m1 captures the universal logarithmic singularity,
+# - m2 is smooth.
+function _slp_self_kress_component(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::BoundaryPointsCFIE{T},σ::AbstractVector{Complex{T}},k::T,Rblock::AbstractMatrix{T},G::CFIEGeomCache{T}) where {T<:Real}
+    N=length(pts.xy)
+    length(σ)==N || error("σ length mismatch in _slp_self_kress_component")
+    pts.is_periodic || error("_slp_self_kress_component only supports periodic Kress components.")
+    speed=G.speed
+    logterm=G.logterm
+    R=G.R
+    ws=pts.ws
+    out=Vector{Complex{T}}(undef,N)
+    @inbounds for i in 1:N
+        acc=zero(Complex{T})
+        for j in 1:N
+            sj=speed[j]
+            if i==j
+                m1=-inv_two_pi*sj
+                m2=((Complex{T}(0,one(T)/2)-euler_over_pi)-inv_two_pi*log((k^2/4)*sj^2))*sj
+                sval=Complex{T}(Rblock[i,j]*m1,zero(T))+ws[j]*m2
+                acc+=sval*σ[j]
+            else
+                r=R[i,j]
+                h0=H(0,k*r)
+                j0=real(h0)
+                m1=-inv_two_pi*j0*sj
+                m2=Complex{T}(0,one(T)/2)*h0*sj-m1*logterm[i,j]
+                sval=Rblock[i,j]*m1+ws[j]*m2
+                acc+=sval*σ[j]
+            end
+        end
+        out[i]=acc
+    end
+    return out
+end
+
+# slp_boundary_kress(solver, comps, σ, ws, k)
+#
+# Apply the on-boundary single-layer operator S to a global CFIE density σ on
+# a multi-component periodic Kress geometry.
+#
+# Mathematical meaning:
+# If the boundary is a disjoint union
+#
+#     Γ = Γ₁ ∪ Γ₂ ∪ ... ∪ Γ_m,
+#
+# then the boundary single-layer operator splits into component blocks
+#
+#     (Sσ)|_{Γ_a} = Σ_b S_ab σ_b.
+#
+# For same-component interactions a=b, the kernel is weakly singular and must be
+# evaluated with the Kress logarithmic correction.
+#
+# For cross-component interactions a≠b, the kernel is smooth, since distinct
+# components stay a positive distance apart, so ordinary quadrature is enough.
+function slp_boundary_kress(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}},σ::AbstractVector{Complex{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+    σ_comps=split_cfie_density_by_component(comps,σ)
+    out_parts=Vector{Vector{Complex{T}}}(undef,length(comps))
+    for a in eachindex(comps)
+        ra=ws.offs[a]:(ws.offs[a+1]-1)
+        Raa=@view ws.Rmat[ra,ra]
+        Sa=_slp_self_kress_component(solver,comps[a],σ_comps[a],k,Raa,ws.Gs[a])
+        ta_xy=comps[a].xy
+        @inbounds for b in eachindex(comps)
+            b==a && continue
+            src=comps[b]
+            σb=σ_comps[b]
+            for i in eachindex(ta_xy)
+                xi=ta_xy[i][1]
+                yi=ta_xy[i][2]
+                acc=zero(Complex{T})
+                for j in eachindex(src.xy)
+                    q=src.xy[j]
+                    r=hypot(xi-q[1],yi-q[2])
+                    acc+=Φ_helmholtz(k,r)*σb[j]*src.ds[j]
+                end
+                Sa[i]+=acc
+            end
+        end
+        out_parts[a]=Sa
+    end
+    return vcat(out_parts...)
+end
+
+# hypersingular_maue_kress(solver, μ, comps, ws, k)
+#
+# Compute the Maue-regularized hypersingular action Nμ for the periodic
+# CFIE-Kress family.
+#
+# Mathematical meaning:
+# The hypersingular operator N is the normal derivative of the double-layer
+# potential taken on the boundary. Direct evaluation is difficult because its
+# kernel is strongly singular. Maue's identity rewrites it in the regularized
+# form
+#
+#     Nμ = ∂_s S(∂_s μ) + k^2 n · S(n μ),
+#
+# where:
+# - S is the boundary single-layer operator,
+# - ∂_s is the tangential derivative along the boundary,
+# - n is the outward unit normal.
+#
+# In two dimensions this means that the hypersingular action can be computed
+# from weakly singular single-layer evaluations plus tangential differentiation,
+# avoiding direct hypersingular quadrature.
+#
+# What this routine does:
+# 1. Split the global density μ into connected components.
+# 2. Compute ∂_s μ componentwise.
+# 3. Form the auxiliary single-layer source densities
+#
+#       σx = n_x μ,
+#       σy = n_y μ.
+#
+# 4. Evaluate the three boundary single-layer fields
+#
+#       S(∂_s μ),  S(n_x μ),  S(n_y μ).
+#
+# 5. On each component, compute
+#
+#       T1 = ∂_s S(∂_s μ),
+#       T2 = k^2 (n_x S(n_x μ) + n_y S(n_y μ)).
+#
+# 6. Return
+#       Nμ = T1 + T2
+function hypersingular_maue_kress(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},μ::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+    dμds_comps=tangential_derivative_density_components(comps,μ)
+    dμds=vcat(dμds_comps...)
+    src=flatten_cfie_components(comps)
+    Ntot=length(μ)
+    σx=Vector{Complex{T}}(undef,Ntot)
+    σy=Vector{Complex{T}}(undef,Ntot)
+    @inbounds for j in 1:Ntot
+        σx[j]=src.nx[j]*μ[j]
+        σy[j]=src.ny[j]*μ[j]
+    end
+    S_dμds=slp_boundary_kress(solver,comps,dμds,ws,k)
+    Sx=slp_boundary_kress(solver,comps,σx,ws,k)
+    Sy=slp_boundary_kress(solver,comps,σy,ws,k)
+    S_dμds_comps=split_cfie_density_by_component(comps,S_dμds)
+    Sx_comps=split_cfie_density_by_component(comps,Sx)
+    Sy_comps=split_cfie_density_by_component(comps,Sy)
+    out_parts=Vector{Vector{Complex{T}}}(undef,length(comps))
+    for a in eachindex(comps)
+        pts=comps[a]
+        nx,ny,_=component_normals(pts)
+        T1=collect(tangential_derivative_density(pts,S_dμds_comps[a]))
+        Nloc=length(pts.xy)
+        T2=Vector{Complex{T}}(undef,Nloc)
+        @inbounds for i in 1:Nloc
+            T2[i]=k^2*(nx[i]*Sx_comps[a][i]+ny[i]*Sy_comps[a][i])
+        end
+        out_parts[a]=T1+T2
+    end
+    return vcat(out_parts...)
+end
+
+# boundary_function_hypersingular_part(solver, layer_pot, comps, ws, k)
+#
+# Return the hypersingular part of the recovered physical boundary function for
+# the periodic CFIE-Kress family.
+#
+# Mathematical meaning:
+# If the CFIE wavefunction is represented as
+#
+#     ψ = -(D + i k S) μ,
+#
+# then its boundary normal derivative contains the contribution
+#
+#     -Nμ,
+#
+# where N is the hypersingular operator associated with the double-layer part.
+#
+# This helper isolates exactly that piece:
+#
+#     boundary_function_hypersingular_part = Nμ.
+#
+# It is therefore just a thin semantic wrapper around
+# `hypersingular_maue_kress`, but the wrapper is useful because it makes the
+# later boundary-function formula easier to read and documents the physical role
+# of this term.
+#
+# Notes:
+# The actual minus sign is applied later in `boundary_function`, since there we
+# assemble the full identity
+#
+#     ∂_n ψ = -Nμ - i k (-1/2 I + K') μ
+function boundary_function_hypersingular_part(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+    return hypersingular_maue_kress(solver,layer_pot,comps,ws,k)
+end
+
+# boundary_function_hypersingular_part(solver, layer_pot, comps, k)
+#
+# Convenience wrapper for `boundary_function_hypersingular_part` that builds the
+# CFIE-Kress workspace internally.
+#
+# Use this form when the hypersingular part is needed only once. For repeated
+# evaluations at the same discretization, the workspace-taking overload is more efficient
+function boundary_function_hypersingular_part(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},k::T) where {T<:Real}
+    ws=build_cfie_kress_workspace(solver,comps)
+    return boundary_function_hypersingular_part(solver,layer_pot,comps,ws,k)
+end
+
+# construct_cfie_kress_dlp_matrix!(solver, D, pts, Rmat, Gs, parr, offs, k; multithreaded=true)
+#
+# Assemble the pure double-layer part D(k) of the periodic CFIE-Kress operator
+# on a multiply connected periodic boundary.
+#
+#     (Dμ)(x) = ∫_Γ ∂_{n_y} G_k(x,y) μ(y) ds_y
+#
+# discretized on all components.
+#
+# Structure of the assembly:
+#
+# 1. Same-component interactions:
+#    For x,y on the same periodic component Γ_a, the weak logarithmic
+#    singularity is handled by the Kress decomposition
+#
+#        kernel = logarithmic part + smooth remainder.
+#
+#    On each diagonal block this gives entries of the form
+#
+#        D_ij = R_ij l1_ij + w_j l2_ij,
+#
+#    with:
+#    - `Rmat` carrying the universal periodic logarithmic quadrature,
+#    - `l1_ij` the coefficient of the logarithmic part,
+#    - `l2_ij` the smooth remainder,
+#    - `w_j = pts[a].ws[j]`.
+#
+#    The diagonal entries are filled from the curvature limit already used in
+#    the CFIE assembly:
+#
+#        D_ii = w_i κ_i.
+#
+# 2. Cross-component interactions:
+#    For x ∈ Γ_a, y ∈ Γ_b with a ≠ b, the kernel is smooth, so no Kress
+#    correction is needed. Those blocks are evaluated directly with standard
+#    quadrature:
+#
+#        D_ij = w_j (i k / 2) H_1^(1)(k r) inner / r.
+function construct_cfie_kress_dlp_matrix!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},Gs::Vector{CFIEGeomCache{T}},parr::Vector{CFIEPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
+    αL1=-k*inv_two_pi
+    αL2=Complex{T}(0,k/2)
+    fill!(D,zero(Complex{T}))
+    nc=length(pts)
+    for a in 1:nc
+        pa=pts[a]
+        Ga=Gs[a]
+        Pa=parr[a]
+        Na=length(Pa.X)
+        ra=offs[a]:(offs[a+1]-1)
+        @inbounds for i in 1:Na
+            gi=ra[i]
+            D[gi,gi]=Complex{T}(pa.ws[i]*Ga.kappa[i],zero(T))
+        end
+        @use_threads multithreading=(multithreaded && Na>=32) for j in 2:Na
+            gj=ra[j]
+            wj=pa.ws[j]
+            @inbounds for i in 1:(j-1)
+                gi=ra[i]
+                wi=pa.ws[i]
+                r=Ga.R[i,j]
+                invr=Ga.invR[i,j]
+                lt=Ga.logterm[i,j]
+                inn_ij=Ga.inner[i,j]
+                inn_ji=Ga.inner[j,i]
+                _,h1=hankel_pair01(k*r)
+                j1=real(h1)
+                l1_ij=αL1*inn_ij*j1*invr
+                l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
+                D[gi,gj]=Rmat[gi,gj]*l1_ij+wj*l2_ij
+                l1_ji=αL1*inn_ji*j1*invr
+                l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
+                D[gj,gi]=Rmat[gj,gi]*l1_ji+wi*l2_ji
+            end
+        end
+    end
+    for a in 1:nc, b in 1:nc
+        a==b && continue
+        pa=pts[a]
+        pb=pts[b]
+        Pa=parr[a]
+        Pb=parr[b]
+        Na=length(Pa.X)
+        Nb=length(Pb.X)
+        ra=offs[a]:(offs[a+1]-1)
+        rb=offs[b]:(offs[b+1]-1)
+        Xa=Pa.X; Ya=Pa.Y
+        Xb=Pb.X; Yb=Pb.Y
+        dXb=Pb.dX; dYb=Pb.dY
+        wb=pb.ws
+        @use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
+            gi=ra[i]
+            xi=Xa[i]
+            yi=Ya[i]
+            @inbounds for j in 1:Nb
+                gj=rb[j]
+                dx=xi-Xb[j]
+                dy=yi-Yb[j]
+                r2=muladd(dx,dx,dy*dy)
+                r2<=(eps(T))^2 && continue
+                r=sqrt(r2)
+                invr=inv(r)
+                inn=dYb[j]*dx-dXb[j]*dy
+                _,h1=hankel_pair01(k*r)
+                D[gi,gj]=wb[j]*(Complex{T}(0,k/2)*inn*h1*invr)
+            end
+        end
+    end
+    return D
+end
+
+# construct_cfie_kress_dlp_matrix!(solver, D, pts, ws, k; multithreaded=true)
+#
+# Workspace wrapper for `construct_cfie_kress_dlp_matrix!`.
+function construct_cfie_kress_dlp_matrix!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    return construct_cfie_kress_dlp_matrix!(solver,D,pts,ws.Rmat,ws.Gs,ws.parr,ws.offs,k;multithreaded=multithreaded)
+end
+
+# construct_cfie_kress_dlp_matrix!(solver, D, pts, k; multithreaded=true)
+#
+# Convenience wrapper for `construct_cfie_kress_dlp_matrix!` that first builds
+# the required CFIE-Kress workspace internally. Useful when the DLP matrix is needed only once.
+function construct_cfie_kress_dlp_matrix!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_kress_workspace(solver,pts)
+    return construct_cfie_kress_dlp_matrix!(solver,D,pts,ws,k;multithreaded=multithreaded)
+end
+
+# adjoint_K_from_dlp_matrix(D, ds)
+#
+# Construct the discrete adjoint double-layer matrix K' from the discrete
+# double-layer matrix D using the weighted transpose identity.
+# On the boundary, the continuous adjoint double-layer operator K' is the
+# adjoint of K with respect to the L²(ds) pairing. In a Nyström discretization
+# with quadrature weights ds_j, this means that the discrete adjoint is not the
+# plain transpose of D, but the weighted transpose
+#
+#     K' = W^{-1} Dᵀ W,
+#
+# where
+#
+#     W = diag(ds_1, ..., ds_N).
+#
+# Equivalently, entrywise,
+#
+#     K'_{ij} = D_{ji} ds_j / ds_i.
+function adjoint_K_from_dlp_matrix(D::AbstractMatrix{Complex{T}},ds::AbstractVector{T}) where {T<:Real}
+    N=length(ds)
+    Kp=Matrix{Complex{T}}(undef,N,N)
+    @inbounds for i in 1:N
+        invdsi=inv(ds[i])
+        for j in 1:N
+            Kp[i,j]=D[j,i]*ds[j]*invdsi
+        end
+    end
+    return Kp
+end
+
+# adjoint_K_action_from_dlp_matrix(D, μ, ds)
+#
+# Apply the discrete adjoint double-layer operator K' to a vector μ using the
+# weighted transpose identity, without explicitly forming K'.
+#
+# Mathematical meaning:
+# In the Nyström discretization associated with physical arc-length weights
+# `ds`, the adjoint double-layer operator satisfies
+#
+#     K' = W^{-1} Dᵀ W,
+#
+# where W = diag(ds).
+#
+# Therefore its action on a vector μ is
+#
+#     K'μ = W^{-1} Dᵀ (W μ).
+#
+# The action form is cheaper and numerically cleaner than explicitly building
+# the full matrix K'.
+function adjoint_K_action_from_dlp_matrix(D::AbstractMatrix{Complex{T}},μ::AbstractVector{Complex{T}},ds::AbstractVector{T}) where {T<:Real}
+    N=length(ds)
+    tmp=Vector{Complex{T}}(undef,N)
+    @inbounds for j in 1:N
+        tmp[j]=ds[j]*μ[j]
+    end
+    v=transpose(D)*tmp
+    @inbounds for i in 1:N
+        v[i]/=ds[i]
+    end
+    return v
+end
+
+# cfie_kress_adjoint_K_action(solver, layer_pot, pts, ws, k; multithreaded=true)
+#
+# Compute the adjoint double-layer action K'μ needed in the CFIE boundary
+# function recovery formula for the periodic Kress family.
+#
+# Mathematical meaning:
+# If the CFIE wavefunction is written as
+#
+#     ψ = -(D + i k S) μ,
+#
+# then taking the interior normal derivative of the single-layer part produces
+#
+#     ∂_n^- Sμ = (-1/2 I + K') μ
+#
+# under the outward-normal convention used here.
+#
+# Therefore the final physical boundary function requires K'μ. This helper
+# computes it in three steps:
+#
+# 1. assemble the pure DLP matrix D(k) on the full multi-component boundary,
+# 2. flatten the physical arc-length weights ds,
+# 3. apply the weighted transpose identity
+#
+#        K'μ = W^{-1} Dᵀ W μ.
+#
+# Notes:
+# This function does not include the jump term `-μ/2`; it returns only the K'
+# part. The jump is inserted later in `boundary_function`.
+function cfie_kress_adjoint_K_action(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    Ntot=ws.Ntot
+    length(layer_pot)==Ntot || error("layer_pot length mismatch in cfie_kress_adjoint_K_action")
+    D=Matrix{Complex{T}}(undef,Ntot,Ntot)
+    construct_cfie_kress_dlp_matrix!(solver,D,pts,ws,k;multithreaded=multithreaded)
+    ds=flatten_cfie_ds(pts)
+    return adjoint_K_action_from_dlp_matrix(D,layer_pot,ds)
+end
+
+# cfie_kress_adjoint_K_action(solver, layer_pot, pts, k; multithreaded=true)
+#
+# Convenience wrapper for `cfie_kress_adjoint_K_action` that builds the
+# CFIE-Kress workspace internally. Useful when need only one application of adjoint K'.
+function cfie_kress_adjoint_K_action(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_kress_workspace(solver,pts)
+    return cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
+end
+
+"""
+    boundary_function(solver, layer_pot, pts, ws, k; multithreaded=true)
+
+Construct the Dirichlet boundary function
+
+    u = ∂_n ψ |_{∂Ω}
+
+from the CFIE layer density for the periodic Kress family.
+In this implementation the reconstructed wavefunction is represented as
+
+    ψ = -(D + i k S) μ,
+
+where:
+- `D` is the double-layer potential,
+- `S` is the single-layer potential,
+- `μ` is the CFIE layer density.
+
+Taking the interior normal derivative gives
+
+    ∂_n ψ = -Nμ - i k ∂_n^- Sμ.
+
+Using the standard jump relation for the single-layer operator with outward
+normal,
+
+    ∂_n^- Sμ = (-1/2 I + K') μ,
+
+we obtain
+
+    u = ∂_n ψ
+      = -Nμ - i k (-1/2 I + K') μ.
+
+1. Compute the hypersingular contribution
+
+       Nμ = hypersingular_maue_kress(...)
+
+   using Maue regularization:
+
+       Nμ = ∂_s S(∂_s μ) + k^2 n · S(n μ)
+
+2. Compute the adjoint double-layer action
+
+       K'μ
+
+   via the weighted transpose of the DLP matrix.
+
+3. Combine the terms as
+
+       u = -Nμ - i k (-μ/2 + K'μ).
+
+Inputs
+------
+- `solver`: One of the periodic CFIE-Kress solvers, with or without corners.
+- `layer_pot`: Global CFIE density μ.
+- `pts`: Boundary discretization (one `BoundaryPointsCFIE` per component).
+- `ws`: Precomputed CFIE Kress workspace.
+- `k`: Wavenumber.
+- `multithreaded`: Enables threaded DLP assembly for K'.
+Output
+-------
+    `u ≈ ∂_n ψ ::Vector{Complex{T}}` at all boundary nodes, in the same ordering as `layer_pot`.
+"""
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    Nμ=hypersingular_maue_kress(solver,layer_pot,pts,ws,k)
+    Kpμ=cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
+    return -Nμ-Complex{T}(0,k).*(-layer_pot/2+Kpμ)
+end
+
+"""
+    boundary_function(solver, layer_pot, pts, k; multithreaded=true)
+
+Recover the physical boundary function ∂_n ψ from the CFIE layer density,
+building the CFIE-Kress workspace internally.
+
+This is a convenience wrapper around `boundary_function(solver, layer_pot, pts, ws, k)`.
+"""
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+    ws=build_cfie_kress_workspace(solver,pts)
+    return boundary_function(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
+end

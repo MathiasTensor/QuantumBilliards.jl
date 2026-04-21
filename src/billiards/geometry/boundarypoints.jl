@@ -671,6 +671,54 @@ function _component_corner_locations(::Type{T},comp::Vector) where {T<:Real}
     return corners
 end
 
+# Given a BoundaryPointsCFIE discretization, compute the outward normal vectors at each point.
+# usually not needed for CFIE, but we compute it here for completeness and potential use in other formulations.
+# the normals are weigthed by the local speed.
+function component_normals(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    tx=getindex.(pts.tangent,1)
+    ty=getindex.(pts.tangent,2)
+    sp=@. sqrt(tx^2+ty^2)
+    nx=@.  ty/sp
+    ny=@. -tx/sp
+    return nx,ny,sp
+end
+
+function flatten_cfie_components(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    N=sum(length(c.xy) for c in comps)
+    x=Vector{T}(undef,N)
+    y=Vector{T}(undef,N)
+    nx=Vector{T}(undef,N)
+    ny=Vector{T}(undef,N)
+    ds=Vector{T}(undef,N)
+    offs=component_offsets(comps)
+    p=1
+    for c in comps
+        cnx,cny,_=component_normals(c)
+        for j in eachindex(c.xy)
+            q=c.xy[j]
+            x[p]=q[1]
+            y[p]=q[2]
+            nx[p]=cnx[j]
+            ny[p]=cny[j]
+            ds[p]=c.ds[j]
+            p+=1
+        end
+    end
+    return (;x,y,nx,ny,ds,offs)
+end
+
+function flatten_cfie_ds(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    Ntot=boundary_matrix_size(comps)
+    ds=Vector{T}(undef,Ntot)
+    p=1
+    for c in comps
+        n=length(c.ds)
+        ds[p:p+n-1].=c.ds
+        p+=n
+    end
+    return ds
+end
+
 # Map global periodic parameter t ∈ [0,2π) to:
 # (j,u) where
 # j = index of the segment in the composite component
