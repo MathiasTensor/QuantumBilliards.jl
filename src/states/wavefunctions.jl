@@ -182,10 +182,10 @@ Construct a sequence of 2D wavefunction matrices for CFIE_kress / CFIE_alpert on
 - `x_grid` : x-coordinates of the grid
 - `y_grid` : y-coordinates of the grid
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::AbstractVector,billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{<:Union{BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     kmax=maximum(ks)
     L=billiard.length
-    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi)))) # this accepts vector of curves, so it works for cfie as well
+    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
     dy=ylim[2]-ylim[1]
     nx=max(round(Int,kmax*dx*b/(2π)),512)
@@ -202,17 +202,13 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     S=eltype(vec_us[1])
     nstates=length(ks)
     Psi2ds=Vector{Matrix{S}}(undef,nstates)
-    function _ensure_cfie_vec(x) # annoying type casting due to being able to have holes with panels etc. Really hate Julia's type sometimes
-        x isa Vector{BoundaryPointsCFIE} && return x
-        x isa BoundaryPointsCFIE && return [x]
-        error("Expected CFIE boundary data, got $(typeof(x))")
-    end
+    _ensure_cfie_vec(x::BoundaryPointsCFIE{T}) where {T<:Real}=[x]
+    _ensure_cfie_vec(x::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}=x
     caches=Vector{CFIEWavefunctionCache{T}}(undef,nstates)
     @inbounds for i in 1:nstates
-        comps=_ensure_cfie_vec(vec_comps[i])
-        caches[i]=flatten_cfie_wavefunction_cache(comps)
+        caches[i]=flatten_cfie_wavefunction_cache(_ensure_cfie_vec(vec_comps[i]))
     end
-    Psi_flat=zeros(S,nx*ny) # flat workspace reused per state
+    Psi_flat=zeros(S,nx*ny)
     progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
     @inbounds for i in eachindex(ks)
