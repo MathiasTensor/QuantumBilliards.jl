@@ -1,6 +1,6 @@
 module QuantumBilliards
 
-using CairoMakie
+using CairoMakie #FIXME move the geometry package
 using FFTW
 using Bessels
 using SpecialFunctions
@@ -10,22 +10,22 @@ using StaticArrays
 using Arpack
 using Random
 using ForwardDiff
-using QuadGK
-using FastGaussQuadrature
-using Optim
-using StatsBase
+using QuadGK #FIXME move to geomtey package
+using FastGaussQuadrature #FIXME move to geometry
+using Optim 
+using StatsBase #FIXME remove this dependency
 using ProgressMeter
-using BenchmarkTools
-using DataFrames
-using PrettyTables
-using LsqFit
+using BenchmarkTools #TODO REMOVE NOW 
+using DataFrames # FIXME remove
+using PrettyTables #FIXME remove
+using LsqFit #FIXME move to SpectralStatistics.jl
 using MKL
 using KrylovKit
 using LinearMaps
 using PyCall
-using CoordinateTransformations
-using Rotations
-using Distributions
+using CoordinateTransformations # FIXME needs to go
+using Rotations #FIXME needs to go
+using Distributions #FIXME remove
 using CircularArrays
 
 #abstract types

@@ -102,47 +102,6 @@ function husimi_function(state::S;b=5.0,c=10.0,w=7.0,full_p::Bool=false) where {
 end
 
 """
-    husimi_function(state_bundle::S; b = 5.0, c = 10.0, w = 7.0) where {S<:EigenstateBundle}
-
-Calculates the Husimi function for a batch of billiard eigenstates that came from a single Scaling Method evaluation, therefore the expansion coefficients in the basis have same length. Wrapper for lower level husimi_function.
-
-# Arguments
-- `state<:EigenstateBundle`: An eigenstate of the billiard system (contains the basis, billiard and k importantly)
-- `b`: Parameter for the boundary function computation (default: `5.0`).
-- `c`: Density of points in the coherent state peak (default: `10.0`).
-- `w`: Width in units of `σ` (default: `7.0`).
-- `full_p::Bool=false`: Whether the boundary function is such that p -> -p symmetry is guaranteed. If so it halves the effort.
-
-# Returns
-- `H::Vector{Matrix{<:Real}}`: Husimi function matrices for that state bundle with same grids.
-- `qs::Vector{<:Real}`: Array of position coordinates on the grid.
-- `ps::Vector{<:Real}`: Array of momentum coordinates on the grid.
-"""
-function husimi_function(state_bundle::S;b=5.0,c=10.0,w=7.0,full_p::Bool=false) where {S<:EigenstateBundle}
-    L=state_bundle.billiard.length
-    ks=state_bundle.ks
-    us,s,norm=boundary_function(state_bundle; b=b)
-    H,qs,ps=husimi_function(ks[1],us[1],s,L;c=c,w=w,full_p=full_p)
-    type=eltype(H)
-    valid_indices=fill(true,length(ks))
-    Hs=Vector{Matrix{type}}(undef,length(ks))
-    Hs[1]=H
-    for i in eachindex(ks)[2:end] # no need for multithreading here
-        try
-            H,qs,ps=husimi_function(ks[i],us[i],s,L;c=c,w=w,full_p=full_p)
-            Hs[i]=H
-        catch e
-            println("Error while constructing Husimi for k = $(ks[i]): $e")
-            valid_indices[i]=false
-        end
-    end
-    Hs=Hs[valid_indices]
-    return Hs,qs,ps
-end
-
-### NEW ###
-
-"""
     husimi_at_point(k::T,s::Vector{T},u::Vector{T},L::T,q::T,p::T) where {T<:Real}
 
 Calculates the Poincaré-Husimi function at point (q, p) in the quantum phase space.
