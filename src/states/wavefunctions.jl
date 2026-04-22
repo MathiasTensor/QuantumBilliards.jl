@@ -594,7 +594,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
         ψplot=sqrt.(Psi2ds[j]) # display-only contrast boost
-        heatmap!(ax_wave,x_grid,y_grid,ψplot,colormap=Reverse(:gist_heat),colorrange=(0,1))
+        heatmap!(ax,x_grid,y_grid,ψplot,colormap=Reverse(:gist_heat),colorrange=(0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         Hcat,qcat,seams=_husimi_concat_with_separation(Hs_list[j],qs_list[j])
         heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))

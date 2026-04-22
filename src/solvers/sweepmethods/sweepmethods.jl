@@ -109,7 +109,7 @@ High-level API for performing a sweep over wavenumbers `ks` to compute tensions.
 - `tol::Real=1e-10`: Tolerance for convergence in appropriate solvers (`ParticularSolutionsMethod`).
 - `which::Symbol=:svd`: Whether to compute the determinant (`:det`) or the smallest singular value (`:svd`) during refinement. Also there is option :det_argmin which can be used for finding minima.
 """
-function k_sweep(solver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=false,tol=1e-10,which::Symbol=:det_argmin)
+function k_sweep(solver,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=false,tol=1e-10,which::Symbol=:svd)
     solve_first,solve_one=_k_sweep_prepare(solver,basis,billiard,ks;multithreaded_matrices=multithreaded_matrices,use_krylov=use_krylov,tol=tol,which=which)
     res=_k_sweep_result_container(ks;which=which)
     println("$(nameof(typeof(solver))) sweep...")
