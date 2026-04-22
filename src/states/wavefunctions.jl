@@ -1041,39 +1041,3 @@ function compute_psi(state_bundle::S,x_grid::Vector{T},y_grid::Vector{T};inside_
         return Psi_bundle #this is a matrix 
     end
 end
-
-"""
-    wavefunction(state_bundle::S; b=5.0, inside_only=true, fundamental_domain=true, memory_limit=10.0e9) where {S<:EigenstateBundle}
-
-Construct the wavefunction matrices from an EigenstateBundle on a common grid. Useful for a smaller number of wavefunctions.
-
-# Arguments
-- `state_bundle::S`: An object representing the bundle of eigenstates.
-- `b`: The point scalling factor. Default is 5.0.
-- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
-- `fundamental_domain::Bool`: If true, the wavefunction is only constructed in the fundamental domain. Default is true.
-- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the non-multithreaded implementation.
-
-# Returns
-- `Psi2ds::Vector{Matrix{<:Real}}`: A vector of `Matrix` objects containing the wavefunction for each state in the bundle.
-- `x_grid::Vector{<:Real}`: A vector of x grid points common for the entire bundle.
-- `y_grid::Vector{<:Real}`: A vector of y grid points common for the entire bundle.
-"""
-function wavefunction(state_bundle::S;b=5.0,inside_only=true,fundamental_domain=true,memory_limit=10.0e9) where {S<:EigenstateBundle}
-    k=state_bundle.k_basis
-    billiard=state_bundle.billiard
-    symmetries=state_bundle.basis.symmetries
-    T=Float64
-    L=billiard.length
-    xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k*L*b/(2*pi))))
-    dx=xlim[2]-xlim[1]
-    dy=ylim[2]-ylim[1]
-    nx=max(round(Int,k*dx*b/(2*pi)),512)
-    ny=max(round(Int,k*dy*b/(2*pi)),512)
-    x_grid::Vector{T}=collect(range(xlim...,nx))
-    y_grid::Vector{T}=collect(range(ylim...,ny))
-    Psi_bundle::Matrix{Complex{T}}=compute_psi(state_bundle,x_grid,y_grid;inside_only=inside_only,memory_limit=memory_limit)
-    # Reshape each column of Psi_bundle into a matrix
-    Psi2d::Vector{Matrix{Complex{T}}}=[reshape(Psi,(nx,ny)) for Psi in eachcol(Psi_bundle)]
-    return Psi2d,x_grid,y_grid
-end
