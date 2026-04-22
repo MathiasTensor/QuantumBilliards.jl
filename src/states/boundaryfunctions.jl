@@ -413,7 +413,7 @@ end
 """
     periodic_derivative_t(f::AbstractVector{Complex{T}}) where {T<:Real}
 
-Compute the spectral derivative of a periodic function sampled on an equispaced grid.
+Compute the derivative of a periodic function sampled on an equispaced grid.
 Let `f` be a periodic function defined on the interval `[0, 2π)` and sampled at
 equispaced nodes
 
@@ -1003,12 +1003,13 @@ Inputs
 - `multithreaded`: Enables threaded DLP assembly for K'.
 Output
 -------
-    `u ≈ ∂_n ψ ::Vector{Complex{T}}` at all boundary nodes, in the same ordering as `layer_pot`.
+    - `pts::Vector{BoundaryPointsCFIE{T}}`: the input boundary discretization, returned for convenience.
+    - `u ≈ ∂_n ψ ::Vector{Complex{T}}` at all boundary nodes, in the same ordering as `layer_pot`.
 """
 function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     Nμ=hypersingular_maue_kress(solver,layer_pot,pts,ws,k)
     Kpμ=cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
-    return -Nμ-Complex{T}(0,k).*(-layer_pot/2+Kpμ)
+    return pts,-Nμ-Complex{T}(0,k).*(-layer_pot/2+Kpμ)
 end
 
 """

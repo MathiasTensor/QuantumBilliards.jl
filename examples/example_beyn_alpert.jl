@@ -44,6 +44,10 @@ b=20.0 # good for 1e-(7-9) im part at small k (k<100) and 1e-(10-11) im part at 
 k1=200.0
 k2=205.0
 
+# if still not eonugh RAM use
+#k1=60.0
+#k2=70.0
+
 # Beyn can handle symmetries  nternally via applying the projection to the subspace iterates, 
 # but for simplicity we can use the no-symmetry option as:
 
@@ -65,7 +69,7 @@ function make_geometry_and_basis(geometry)
         billiard,_=make_rectangle_and_basis(1.0,1.0)
     elseif geometry==:triangle
         # 2 corners that define a rectangle, and a third corner that creates a 60 degree angle with the first two.
-        billiard,_=QuantumBilliards.make_triangle_and_basis(pi/3,2*pi/3) 
+        billiard,_=make_triangle_and_basis(pi/3,2*pi/3) 
     else
         @error "Unknown geometry choice: $geometry, make your own!"
     end
