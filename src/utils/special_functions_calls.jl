@@ -102,7 +102,6 @@ end
 """
     flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real} -> CFIEWavefunctionCache{T}
 
-Flattens the CFIE boundary points from the fundamental domain into a single cache for faster wavefunction reconstruction.
 Contains just enough information to evaluate the CFIE wavefunction at many points without needing 
 to reconstruct the `BoundaryPointsCFIE` objects or do any extra computations.
 

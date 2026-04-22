@@ -202,6 +202,8 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     S=eltype(vec_us[1])
     nstates=length(ks)
     Psi2ds=Vector{Matrix{S}}(undef,nstates)
+    # each cache has information on the entire geometry of the boundaries (the whole thing, even holes) per eigenstate. This is flattened 
+    # as the machinery bellow needs a flattened array of (x,y,tx,ty,sj,w) for the entire geometry, and the same ordering as the flattened boundary density vector `u`.
     _ensure_cfie_vec(x::BoundaryPointsCFIE{T}) where {T<:Real}=[x]
     _ensure_cfie_vec(x::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}=x
     caches=Vector{CFIEWavefunctionCache{T}}(undef,nstates)

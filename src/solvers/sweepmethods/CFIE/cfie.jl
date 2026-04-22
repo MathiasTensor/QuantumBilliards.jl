@@ -1138,7 +1138,7 @@ Depending on the geometry structure, the returned vector may contain:
   that panel belongs to.
 """
 function evaluate_points(solver::CFIE_alpert{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
-    boundary=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
+    boundary=billiard.full_boundary
     if !(boundary[1] isa AbstractVector) && _all_closed_curves(boundary)
         pts=Vector{BoundaryPointsCFIE{T}}(undef,length(boundary))
         for (idx,crv) in enumerate(boundary)
