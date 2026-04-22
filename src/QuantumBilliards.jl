@@ -185,7 +185,7 @@ export construct_B_matrix,residual_and_norm_select,compute_spectrum_beyn
 
 # General sweep methods high level interface
 include("solvers/sweepmethods/sweepmethods.jl")
-export solve_wavenumber,k_sweep,refine_minima
+export solve_wavenumber,k_sweep,refine_minima,get_eigenvalues
 
 # Hyperbolic kernels and solvers
 include("Hyperbolic/patched_taylor_series_Q.jl")
