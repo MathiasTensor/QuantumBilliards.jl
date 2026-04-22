@@ -684,8 +684,9 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::
         ylims!(ax_wave,ylim)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
         Hcat,qcat,seams=_husimi_concat_with_separation(Hs_list[j],qs_list[j])
-        heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))
-        _plot_husimi_separation_lines!(ax_h,seams,ps_list[j];color=seam_color,linewidth=seam_linewidth)
+        pgrid=eltype(ps_list)<:Real ? ps_list : ps_list[j] # to make both hole and no hole work, hack
+        heatmap!(ax_h,qcat,pgrid,Hcat;colormap=Reverse(:gist_heat))
+        _plot_husimi_separation_lines!(ax_h,seams,pgrid;color=seam_color,linewidth=seam_linewidth)
         local ax_boundary=Axis(f[row,col][2,1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
         svals=boundary_s(pts_all[j])
         lines!(ax_boundary,svals,real.(us_all[j]),label="Re u(s)",linewidth=2)
