@@ -209,6 +209,9 @@ function boundary_coords_desymmetrized_full_boundary(billiard::Bi,sampler::Fouri
     end
 end
 
+# helper to get he arclengths from the arclengths differences
+@inline boundary_s(pts::BoundaryPoints{T}) where {T<:Real}=pts.s
+
 #########################################################################
 ######################## BOUNDARY -> POLYGON HELPERS ####################
 #########################################################################
@@ -575,6 +578,29 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     xR::SVector{2,T} # right endpoint of the curve component, only used for panels
     tL::SVector{2,T} # tangent at left endpoint of the curve component, only used for panels
     tR::SVector{2,T} # tangent at right endpoint of the curve component, only used for panels
+end
+
+# helper to get the arclengths from the arclengths differences for multiple components
+function boundary_s(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    s=cumsum(pts.ds)
+    s.-=s[1]
+    return s
+end
+
+# helper to get the arclengths from the arclengths differences for multiple components
+function boundary_s(pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    isempty(pts) && return T[]
+    s=T[]
+    sizehint!(s,sum(length(p.ds) for p in pts))
+    soff=zero(T)
+    for p in pts
+        local_s=cumsum(p.ds)
+        local_s.-=local_s[1]
+        local_s.+=soff
+        append!(s,local_s)
+        soff+=sum(p.ds)
+    end
+    return s
 end
 
 # For CFIE panel case this stores for eaach panel the relevant geometry (Alpert for now)

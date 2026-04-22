@@ -357,7 +357,7 @@ function partition_vector(ks::Vector, N::Integer)
 end
 
 """
-    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+    plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;b::Float64=5.0,width_ax::Integer=300, height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the wavefunction_multi or a similar function.
 
@@ -377,7 +377,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;b::Float64=5.0,width_ax::Integer=300, height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -414,7 +414,7 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_
 end
 
 """
-    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6, fundamental=true) where {Bi<:AbsBilliard}
+    plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the `wavefunctions` method since it expects for each wavefunctions it's separate x and y grid.
 
@@ -434,7 +434,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; b::Float64=5.0, width_ax::Integer=300, height_ax::Integer=300, max_cols::Integer=6, fundamental=true, custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -471,7 +471,7 @@ function plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vec
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+    plot_wavefunctions(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;N::Integer=100,kwargs...) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions specified by `Psi2ds` on the domain defined by `x_grid` and `y_grid`, 
 for the billiard geometry `billiard`. The eigenvalues are provided in `ks`. When the number of 
@@ -490,12 +490,12 @@ and generates multiple figures.
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch.
 """
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+function plot_wavefunctions(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;N::Integer=100,kwargs...) where {Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_BATCH,ks,Psi2ds,x_grid,y_grid,billiard;N=N,kwargs...)
 end
 
 """
-    plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+    plot_wavefunctions(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi; N::Integer=100,kwargs...) where {Bi<:AbsBilliard}
 
 Similar to `plot_wavefunctions` above, but this version allows for a distinct `(x_grid, y_grid)` 
 for each wavefunction in `Psi2ds`. This is useful if each wavefunction was computed on a different 
@@ -513,7 +513,7 @@ grid. Automatically splits the data into batches of size `N` if `ks` is large.
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch of wavefunctions.
 """
-function plot_wavefunctions(ks::Vector, Psi2ds::Vector, x_grid::Vector{Vector}, y_grid::Vector{Vector}, billiard::Bi; N::Integer=100, kwargs...) where {Bi<:AbsBilliard}
+function plot_wavefunctions(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi; N::Integer=100,kwargs...) where {Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_BATCH,ks,Psi2ds,x_grid,y_grid,billiard;N=N,kwargs...)
 end
 
@@ -562,7 +562,7 @@ function _plot_husimi_separation_lines!(ax,seams::AbstractVector{T},ps::Abstract
 end
 
 """
-    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+    plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector{<:Vector{<:AbstractMatrix}},ps_list::Vector,qs_list::Vector{<:Vector{<:AbstractVector}},billiard::Bi; b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary) together with the respective husimi function matrices on the provided grids. The x_grid and y_grid is supplied from the wavefunction_multi or a similar function, and the ps and qs grids mudt also be supplied for plotting the Husimi functions.
 
@@ -628,9 +628,9 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::
 end
 
 """
-    plot_wavefunctions_BATCH(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, billiard::Bi; b::Float64=5.0, width_ax::Integer=500, height_ax::Integer=500, max_cols::Integer=6) where {Bi<:AbsBilliard}
+    plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,pts_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
 
-Plots the wavefunctions into a grid (only the fundamental boundary) together with the respective husimi function matrices on the provided grids. The x_grid and y_grid is supplied from the wavefunction_multi or a similar function, and the ps and qs grids mudt also be supplied for plotting the Husimi functions. This version also accepts the us boundary functions and the corresponding arclength evaluation point (us_all -> Vector{Vector{T}} and s_vals_all -> Vector{Vector{T}}) that this function was evaluated on.
+Plots the wavefunctions into a grid (only the fundamental boundary) together with the respective husimi function matrices on the provided grids. The x_grid and y_grid is supplied from the wavefunction_multi or a similar function, and the ps and qs grids mudt also be supplied for plotting the Husimi functions. This version also accepts the us boundary functions and the corresponding arclength evaluation point (us_all -> Vector{Vector{T}} and pts_all -> s_vals_all -> Vector{Vector{T}}) that this function was evaluated on.
 
 # Arguments
 - `ks`: Vector of eigenvalues.
@@ -642,7 +642,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `qs_list::Vector{Vector}`: Vector of qs grids for the husimi matrices.
 - `billiard<:AbsBilliard`: The billiard geometry.
 - `us_all::Vector{Vector{T}}`: Vector of us boundary functions.
-- `s_vals_all::Vector{Vector{T}}`: Vector of arclength evaluation points.
+- `pts_all::Vector{Vector{T}}`: Vector of solver dependant boundary points that the us_all functions were evaluated on.
 - `b::Float64=5.0`: The point scaling factor.
 - `width_ax::Integer=500`: The size of each axis in the grid layout.
 - `height_ax::Integer=500`: The size of each axis in the grid layout.
@@ -655,7 +655,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,s_vals_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,pts_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -687,8 +687,9 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::
         heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))
         _plot_husimi_separation_lines!(ax_h,seams,ps_list[j];color=seam_color,linewidth=seam_linewidth)
         local ax_boundary=Axis(f[row,col][2,1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
-        lines!(ax_boundary,s_vals_all[j],real.(us_all[j]),label="Re u(s)",linewidth=2)
-        maximum(abs.(imag.(us_all[j])))>0 && lines!(ax_boundary,s_vals_all[j],imag.(us_all[j]),label="Im u(s)",linewidth=2,linestyle=:dash)
+        svals=boundary_s(pts_all[j])
+        lines!(ax_boundary,svals,real.(us_all[j]),label="Re u(s)",linewidth=2)
+        maximum(abs.(imag.(us_all[j])))>0 && lines!(ax_boundary,svals,imag.(us_all[j]),label="Im u(s)",linewidth=2,linestyle=:dash)
         !isempty(seams) && vlines!(ax_boundary,seams,color=seam_color,linewidth=seam_linewidth,linestyle=:dash)
         col+=1
         if col>max_cols
@@ -720,15 +721,15 @@ splits large datasets into batches of size `N`.
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects with wavefunction and Husimi plots, one per batch.
 """
-function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi; N=100, kwargs...) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector, billiard::Bi;N=100,kwargs...) where {Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard;N=N,kwargs...)
 end
 
 """
-    plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; N=100, kwargs...) where {Bi<:AbsBilliard}
+    plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, pts_all::Vector; N=100, kwargs...) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions along with their Husimi distributions and boundary functions `us_all` 
-evaluated at `s_vals_all`. This function also handles a large number of wavefunctions by batching 
+evaluated at `pts_all -> s_vals_all`. This function also handles a large number of wavefunctions by batching 
 the data into sets of size `N`.
 
 # Arguments
@@ -741,15 +742,15 @@ the data into sets of size `N`.
 - `qs_list::Vector{Vector{<:Real}}`: Position-like coordinates for Husimi functions.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `us_all::Vector{Vector{T}}`: Boundary functions.
-- `s_vals_all::Vector{Vector{T}}`: Arclength evaluation points for the boundary functions.
+- `pts_all::Vector{Vector{T}}`: Points at which the boundary functions are evaluated.
 - `N::Integer=100`: Number of items per batch.
 - `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, also chaotic PS overlays, check _BATCH function)
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, each containing wavefunction, Husimi plots, and boundary functions, one per batch.
 """
-function plot_wavefunctions_with_husimi(ks::Vector, Psi2ds::Vector, x_grid::Vector, y_grid::Vector, Hs_list::Vector, ps_list::Vector, qs_list::Vector, billiard::Bi, us_all::Vector, s_vals_all::Vector; N=100, kwargs...) where {Bi<:AbsBilliard}
-    batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,s_vals_all;N=N,kwargs...)
+function plot_wavefunctions_with_husimi(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector, billiard::Bi,us_all::Vector,pts_all::Vector;N=100,kwargs...) where {Bi<:AbsBilliard}
+    batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,pts_all;N=N,kwargs...)
 end
 
 ###################################################################################
