@@ -143,23 +143,6 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{<:AbstractV
 end
 
 """
-        phase_fix_real(psi::AbstractArray{Complex{T}}) where {T<:Real} -> (AbstractArray{Complex{T}}, T)
-
-Given a complex wavefunction `psi` that is expected to be real up to a global phase, find the global phase that makes it as close to real as possible and return the phase-corrected wavefunction along with the phase angle. Plotting separately the real and imaginary parts of the original and phase-corrected wavefunctions can be useful for verifying that the phase correction worked as intended.
-
-# Arguments
-- `psi::AbstractArray{Complex{T}}`: The input complex wavefunction array.
-
-# Returns
-- `(AbstractArray{Complex{T}}, T)`: A tuple containing the phase-corrected wavefunction and the phase angle that was applied. The corrected wavefunction should have a zero reduced imaginary part if the original wavefunction is correct.
-"""
-function phase_fix_real(psi::AbstractArray{Complex{T}}) where {T<:Real}
-    s=sum(psi.^2)
-    θ=0.5*Base.angle(s)
-    return psi.*exp(-im*θ),θ
-end
-
-"""
     wavefunction_multi_cfie(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{Vector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
 Construct a sequence of 2D wavefunction matrices for CFIE_kress / CFIE_alpert on a common grid.
