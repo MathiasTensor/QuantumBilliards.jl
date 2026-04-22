@@ -261,13 +261,13 @@ function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{Bound
         Ni=length(pa.xy);Nj=length(pb.xy)
         same=(a==b)
         if same
-            R=copy(Ga.R)
-            invR=copy(Ga.invR)
-            inner=copy(Ga.inner)
-            speed_i=copy(Ga.speed)
-            speed_j=copy(Ga.speed)
-            wi=copy(pa.ws)
-            wj=copy(pa.ws)
+            R=Ga.R
+            invR=Ga.invR
+            inner=Ga.inner
+            speed_i=Ga.speed
+            speed_j=Ga.speed
+            wi=pa.ws
+            wj=pa.ws
             selfcache=Cs[a]
         else
             Xa=Xs[a];Ya=Ys[a]
@@ -284,10 +284,10 @@ function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{Bound
                 invR[i,j]=rij>eps(T) ? inv(rij) : zero(T)
                 inner[i,j]=dYb[j]*dx-dXb[j]*dy
             end
-            speed_i=copy(Ga.speed)
-            speed_j=copy(Gb.speed)
-            wi=copy(pa.ws)
-            wj=copy(pb.ws)
+            speed_i=Ga.speed
+            speed_j=Gb.speed
+            wi=pa.ws
+            wj=pb.ws
             selfcache=nothing
         end
         pidx=Matrix{Int32}(undef,Ni,Nj)
