@@ -199,9 +199,8 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     nmask=length(pts_masked_indices)
     NT=Threads.nthreads()
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
-    S=eltype(vec_us[1])
     nstates=length(ks)
-    Psi2ds=Vector{Matrix{S}}(undef,nstates)
+    Psi2ds=Vector{Matrix{T}}(undef,nstates)
     # each cache has information on the entire geometry of the boundaries (the whole thing, even holes) per eigenstate. This is flattened 
     # as the machinery bellow needs a flattened array of (x,y,tx,ty,sj,w) for the entire geometry, and the same ordering as the flattened boundary density vector `u`.
     _ensure_cfie_vec(x::BoundaryPointsCFIE{T}) where {T<:Real}=[x]
@@ -210,14 +209,14 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     @inbounds for i in 1:nstates
         caches[i]=flatten_cfie_wavefunction_cache(_ensure_cfie_vec(vec_comps[i]))
     end
-    Psi_flat=zeros(S,nx*ny)
+    Psi_flat=zeros(T,nx*ny)
     progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
     @inbounds for i in eachindex(ks)
         k=ks[i]
         cache=caches[i]
         us=vec_us[i]
-        fill!(Psi_flat,zero(S))
+        fill!(Psi_flat,zero(T))
         @fastmath begin
             Threads.@threads :static for t in 1:NT_eff
                 lo=(t-1)*q+min(t-1,r)+1
