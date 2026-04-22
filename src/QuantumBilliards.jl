@@ -199,7 +199,7 @@ include("Hyperbolic/wavefunction_hyperbolic.jl")
 
 #spectra
 include("states/eigenstates.jl")
-export Eigenstate,compute_eigenstate,EigenstateBundle,compute_eigenstate_bundle,StateData,solve_state_data_bundle,solve_state_data_bundle_with_INFO
+export Eigenstate,compute_eigenstate,compute_eigenstate_bundle,StateData,solve_state_data_bundle,solve_state_data_bundle_with_INFO
 
 # Vergini-Saraceno
 include("solvers/acceleratedmethods/scalingmethod.jl")
