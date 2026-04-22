@@ -1131,16 +1131,14 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     @blas_1 construct_matrices!(solver,basis,A,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
-    #return S[idx],conj.(Vt[idx,:])
-    return S[idx],(Vt[idx,:])
+    return S[idx],conj.(Vt[idx,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     @blas_1 construct_matrices!(solver,basis,A,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
-    #return S[idx],conj.(Vt[idx,:])
-    return S[idx],(Vt[idx,:])
+    return S[idx],conj.(Vt[idx,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
