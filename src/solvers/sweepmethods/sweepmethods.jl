@@ -191,8 +191,8 @@ Finds peaks in the second derivative of the logarithm of `tens` with respect to 
 # Returns
 - `Vector{T}`: The `k_range` values where peaks in the second derivative gradient are found.
 """
-function get_eigenvalues(k_range::Vector{T}, tens::Vector{T}; threshold=200.0) where {T<:Real}
-    mid_x,gradient=_second_derivative_sweep_spectrum(k_range,log10.(tens))
+function get_eigenvalues(k_range::Vector{T},tens::Vector{T};threshold=200.0) where {T<:Real}
+    mid_x,gradient=_second_derivative_sweep_spectrum(k_range,log10.(abs.(tens)))
     return find_peaks(mid_x,gradient;threshold=threshold)
 end
 
