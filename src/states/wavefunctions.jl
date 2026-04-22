@@ -855,7 +855,9 @@ function wavefunction(vec::Vector,k::T,billiard::Bi,basis::Ba;b=5.0,inside_only=
     y_grid::Vector{type}=collect(type,range(ylim...,ny))
     Psi::Vector{type}=compute_psi(vec,k,billiard,basis,x_grid,y_grid; inside_only=inside_only, memory_limit=memory_limit) 
     Psi2d::Array{type,2}=reshape(Psi,(nx,ny))
-    return Psi2d,x_grid,y_grid
+    x_axis=hasfield(billiard,:x_axis) ? billiard.x_axis : 0.0
+    y_axis=hasfield(billiard,:y_axis) ? billiard.y_axis : 0.0
+    return reflect_wavefunction(Psi,x_grid,y_grid,symmetries;x_axis=x_axis,y_axis=y_axis)
 end
 
 """
@@ -987,57 +989,5 @@ function wavefunction(state::BasisState;xlim =(-2.0,2.0),ylim=(-2.0,2.0),b=5.0)
         Psi::Vector{type}=basis_fun(basis,state.idx,k,pts_grid) 
         Psi2d::Array{type,2}=reshape(Psi,(nx,ny))
         return Psi2d,x_grid,y_grid
-    end
-end
-
-#TODO this can be optimized
-"""
-    compute_psi(state_bundle::S, x_grid::Vector{T}, y_grid::Vector{T}; inside_only=true, memory_limit = 10.0e9) where {S<:EigenstateBundle, T<:Real}
-
-Computs the wavefunction Matrix on an x_grid and y_grid from an EigenstateBundle object. All the matrices in the state bundle are computed on the same grid.
-
-# Arguments
-- `state_bundle::S`: An object representing the bundle of eigenstate.
-- `x_grid::Vector{<:Real}`: A vector representing the x grid.
-- `y_grid::Vector{<:Real}`: A vector representing the y grid.
-- `inside_only::Bool`: If true, only the points inside the billiard are considered. Default is true.
-- `memory_limit`: The maximum amount of memory (in bytes) for constructing the wavefunction with julia broadcasting operations and the use of the `basis_matrix`. Otherwise we use the non-multithread implementation.
-
-# Returns
-- `Psi_bundle::Matrix{<:Real}`: A matrix containing the wavefunction for each state in the bundle on the given grid.
-"""
-function compute_psi(state_bundle::S,x_grid::Vector{T},y_grid::Vector{T};inside_only=true,memory_limit=10.0e9) where {S<:EigenstateBundle,T<:Real}
-    let k=state_bundle.k_basis,basis=state_bundle.basis,billiard=state_bundle.billiard,X=state_bundle.X #basis is correct size
-        sz=length(x_grid)*length(y_grid)
-        pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-        if inside_only
-            pts_mask=is_inside(billiard,pts)
-            pts=pts[pts_mask]
-        end
-        n_pts=length(pts)
-        n_states=length(state_bundle.ks)
-        type=eltype(state_bundle.X) #estimate max memory needed for the matrices
-        memory=sizeof(type)*basis.dim*n_pts
-        Psi_bundle=zeros(type,(sz,n_states))  #Vector of results
-        if memory<memory_limit
-            B=basis_matrix(basis,k,pts)
-            Psi_pts=B*X
-            Psi_bundle[pts_mask,:].=Psi_pts
-        else
-            println("Warning: memory limit of $(Base.format_bytes(memory_limit)) exceded $(Base.format_bytes(memory)).")
-            Psi_pts=zeros(type,(n_pts,n_states))
-            for i in 1:basis.dim
-                bf=basis_fun(basis,i,k,pts) #vector of length n_pts
-                for j in 1:n_states
-                    Psi_pts[:,j].+=X[i,j].*bf
-                end
-            end
-            if inside_only
-                Psi_bundle[pts_mask,:]=Psi_pts
-            else
-                Psi_bundle=Psi_pts
-            end
-        end
-        return Psi_bundle #this is a matrix 
     end
 end
