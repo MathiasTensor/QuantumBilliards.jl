@@ -229,11 +229,10 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
                 end
             end
         end
-        Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
+        Psi2ds[i]=copy(abs.(reshape(Psi_flat,nx,ny)))
         next!(progress)
     end
     for i in eachindex(Psi2ds)
-        Psi2ds[i],_=abs.(Psi2ds[i])
         nrm=sqrt(sum(abs2,Psi2ds[i][pts_masked_indices]))
         Psi2ds[i]./=nrm
     end
