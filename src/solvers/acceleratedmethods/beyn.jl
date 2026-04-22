@@ -616,7 +616,7 @@ Phase 2: validate each λ by computing residuals ||A(λ)φ|| (φ=Uk*Y[:,j]), kee
 ks      :: Vector{T}                   – kept real wavenumbers Re(λ)
 tens    :: Vector{T}                   – raw residuals ||A(λ)φ||
 us      :: Vector{Vector{Complex{T}}}  – kept DLP densities φ (one per eigenvalue)
-pts     :: Vector{BoundaryPoints{T}}– matching boundary points object per φ
+pts     :: Vector{pts_type}            - matching boundary points object per φ based on what pts the solver uses
 tensN   :: Vector{T}                   – normalized residuals (scale-free)
 
 # Notes:
@@ -643,10 +643,12 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
         end
     end
     k0,R=beyn_disks_from_windows(intervals)
-    isempty(k0) && return T[],T[],Vector{Vector{Complex{T}}}(),Vector{Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}}(),T[]
+    # get the type of pts
+    pts_type=typeof(evaluate_points(solver,billiard,k1))
+    isempty(k0) && return T[],T[],Vector{Vector{Complex{T}}}(),Vector{pts_type}(),T[]
     do_INFO_init && @info "Weyl windows planned" intervals=intervals k0=k0 R=R
     nq<=15 && error("Do not use less than 15 contour nodes")
-    all_pts=Vector{Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}}(undef,length(k0))
+    all_pts=Vector{pts_type}(undef,length(k0))
     @benchit timeit=do_per_solve_INFO "Point evaluation" for i in eachindex(k0)
         all_pts[i]=evaluate_points(solver,billiard,real(k0[i]))
     end
@@ -716,7 +718,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
     tens_all=Vector{T}(undef,ntot)
     tensN_all=Vector{T}(undef,ntot)
     us_all=Vector{Vector{Complex{T}}}(undef,ntot)
-    pts_all=Vector{Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}}(undef,ntot)
+    pts_all=Vector{pts_type}(undef,ntot)
     Threads.@threads for i in 1:nw
         n=n_by_win[i]
         n==0 && continue
