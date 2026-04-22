@@ -1142,8 +1142,8 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{C
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{BoundaryPoints{eltype(ks)}}(undef,length(ks))
+    us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
+    pts_all=Vector{BoundaryPoints{eltype(ks[1])}}(undef,length(ks))
     for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
         _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)

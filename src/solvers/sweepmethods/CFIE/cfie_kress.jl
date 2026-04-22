@@ -732,8 +732,8 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_globa
 end
 
 function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    us_all=Vector{Vector{eltype(ks)}}(undef,length(ks))
-    pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks)}}}(undef,length(ks))
+    us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
+    pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks[1])}}}(undef,length(ks))
     for i in eachindex(ks)
         pts=evaluate_points(solver,solver.billiard,ks[i])
         _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
