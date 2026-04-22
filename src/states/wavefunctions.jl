@@ -857,7 +857,7 @@ function wavefunction(vec::Vector,k::T,billiard::Bi,basis::Ba;b=5.0,inside_only=
     Psi2d::Array{type,2}=reshape(Psi,(nx,ny))
     x_axis=hasproperty(billiard,:x_axis) ? billiard.x_axis : 0.0
     y_axis=hasproperty(billiard,:y_axis) ? billiard.y_axis : 0.0
-    return reflect_wavefunction(Psi,x_grid,y_grid,symmetries;x_axis=x_axis,y_axis=y_axis)
+    return reflect_wavefunction(Psi2d,x_grid,y_grid,symmetries;x_axis=x_axis,y_axis=y_axis)
 end
 
 """
