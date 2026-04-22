@@ -4,6 +4,9 @@ using StaticArrays
 using Printf
 using CairoMakie
 
+try_MKL_on_x86_64!() # try to use MKL on x86_64 for faster linear algebra, but don't error if not available. 
+# On M-series chips this will do nothing and just use OpenBLAS, which is fine.
+
 # NOTE: This is a competely detailed example with explanations of each step, 
 # meant for users who want to understand the full pipeline of going from geometry 
 # to wavefunctions using Beyn. In practice only a few kwargs need to be changed, and 

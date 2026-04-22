@@ -1,4 +1,6 @@
-using QuantumBilliards, CairoMakie, LinearAlgebra, SparseArrays, Printf
+using QuantumBilliards
+using CairoMakie
+using LinearAlgebra
 
 billiard,_=make_rectangle_and_basis(2.0,1.0)
 #billiard,_=make_circle_and_basis(1.0)
@@ -19,16 +21,15 @@ println("Interior grid pts: ",fem.Q)
 
 println("Constructed Hamiltonian")
 
-nev=500
+nev=100
 Es,wavefunctions=compute_fem_eigenmodes(fem,nev=nev,maxiter=100000,tol=1e-8)
 ks=sqrt.(abs.(Es))
 println("Constructed Wavefunctions")
-idxs=findall(x->x>1e-4,ks) # if ill conditioned
+idxs=findall(x->x>1e-4,ks) # sometimes has some noise at the bottom
 ks=ks[idxs]
 wavefunctions=wavefunctions[idxs]
 
 wavefunctions=[abs2.(wf) for wf in wavefunctions]
-
 fs=plot_wavefunctions(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=false)
 for i in eachindex(fs)
     save("$(nameof(typeof(billiard)))_$(i)_package.png",fs[i])
