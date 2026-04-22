@@ -841,7 +841,7 @@ Computes the wavefunction matrix and the x and y grids for heatmap plotting. It 
 """
 function wavefunction(vec::Vector,k::T,billiard::Bi,basis::Ba;b=5.0,inside_only=true,fundamental_domain=true,memory_limit=10.0e9) where {Bi<:AbsBilliard, Ba<:AbsBasis,T<:Real}     
     dim=length(vec)
-    dim=rescale_rpw_dimension(basis,dim)
+    dim=rescale_dimension(basis,dim)
     basis=resize_basis(basis,billiard,dim,k)
     symmetries=basis.symmetries
     type=eltype(vec)
@@ -946,9 +946,9 @@ function wavefunctions(state_data::StateData,billiard::Bi,basis::Ba;b=5.0,inside
     for i in eachindex(ks) 
         vec=X[i] # vector of vectors
         dim=length(vec)
-        dim=rescale_rpw_dimension(basis, dim)
-        new_basis=resize_basis(basis, billiard, dim, ks[i])
-        state=Eigenstate(ks[i], vec, tens[i], new_basis, billiard)
+        dim=rescale_dimension(basis,dim)
+        new_basis=resize_basis(basis,billiard,dim,ks[i])
+        state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
         Psi2d,x_grid,y_grid=wavefunction(state;b=b,inside_only=inside_only,fundamental_domain=fundamental_domain,memory_limit=memory_limit)
         Psi2ds[i]=Psi2d
         x_grids[i]=x_grid
