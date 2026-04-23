@@ -57,7 +57,7 @@ Practical guidance
 - Typical robust defaults: m≈8–12, Rmax≈0.5, nq≈64–96, r≈m+15, svd_tol≈1e-13, res_tol≈1e-10.
 - For very high k or intricate geometries, start conservative (smaller R, larger nq) and relax if safe.
 
-Added support for BoundaryPointsCFIE to handle domains with holes (e.g., annulus) where the CFIE_kress formulation is needed.
+Added support for BoundaryPointsCFIE to handle domains with holes (e.g., annulus) where the CFIE_kress & other solver's formulation is needed.
 MO 29/3/26
 =#
 
