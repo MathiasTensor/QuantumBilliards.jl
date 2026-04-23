@@ -6,41 +6,44 @@ using ProgressMeter
 
 ################## USER PARAMS ###################
 
-#geometry=:star # smooth geometry for all methods in this example; choose :star, :prosen, or :stadium
-#geometry=:prosen # another smooth geometry, good for CFIE_kress / DLP_kress / EBIM testing
-geometry=:stadium 
+#geometry=:star 
+geometry=:prosen
+#geometry=:stadium 
+#geometry=:ellipse
 
 # choose the symmetry (for BoundaryIntegralMethod,CFIE_kress,DLP_kress)
 #symmetry=nothing
-#symmetry=Rotation(3,0)
+#symmetry=Rotation(5,0) # needs to have same order as the star geometry below
 symmetry=XYReflection(-1,-1) # for stadium this full desymmetrization
 
-method=:bim_sweep # choose one method family here: 
+#method=:bim_sweep # choose one method family here: 
 #method=:psm #- ParticularSolutionsMethod, can do sweeps
 #method=:dm #- DecompositionMethod, can do sweeps
-#method=:bim_sweep #- plain BoundaryIntegralMethod sweep, can do sweeps and EBIM
-#method=:ebim_bim 
-#method=:ebim_dlp_kress 
-#method=:ebim_cfie_kress
+method=:ebim_bim # will do plain BIM and EBIM
+#method=:ebim_dlp_kress # will do Kress DLP and EBIM with Kress DLP kernel
 
 k1=20.0 # left endpoint of the spectral window to scan
 k2=22.0 # right endpoint of the spectral window to scan
 step=1e-3
 kgrid=collect(k1:step:k2) # explicit k grid to use for the EBIM scan; if not provided, a default adaptive grid will be used based on the local density of states and the dk function provided below
-d=8.0 # basis dimension scaling factor for PSM, DM and VerginiSaraceno method (not used here).
-b=12.0 # collocation point scaling factor (points per wavelength) N = ceil(Int, b*k*L/(2*pi)) where L is the boundary length.
+d=10.0 # basis dimension scaling factor for PSM, DM (and VerginiSaraceno method - not used here).
+b=15.0 # collocation point scaling factor (points per wavelength) N = ceil(Int, b*k*L/(2*pi)) where L is the boundary length.
+plot_wavef=true # whether to reconstruct and plot the wavefunctions
 
 #################################################################
 
 function make_geometry_and_basis(geometry)
     if geometry==:star
-        return make_star_and_basis(3) 
+        return make_star_and_basis(5) # 5 pointed star
     elseif geometry==:prosen
-        return make_prosen_and_basis(0.25) 
+        return make_prosen_and_basis(0.1,basis_type=:cafb) # For curved non-convex geometries basis type methods
+        # quickly fail. Increasing the prosen parameter 0.1 -> 0.15 -> 0.2 completely break the PSM/DM/VerginiSaraceno
     elseif geometry==:stadium
         return make_stadium_and_basis(1.0) 
+    elseif geometry==:ellipse
+        return make_ellipse_and_basis(1.0,0.5)
     else
-        error("Use a smooth geometry here: :star, :prosen, or :stadium") # keep this example restricted to smooth no-corner cases
+        error("Make your own!") 
     end
 end
 
@@ -59,9 +62,6 @@ elseif method==:ebim_bim
 elseif method==:ebim_dlp_kress
     solver=DLP_kress(b,billiard,symmetry=symmetry) # smooth periodic DLP Kress solver for EBIM tests on no-corner geometries
     basis=AbstractHankelBasis() # all BIE formulations have no formal basis, so we make one up for multi-dispacth to be nicer
-elseif method==:ebim_cfie_kress
-    solver=CFIE_kress(b,billiard,symmetry=symmetry) # smooth CFIE Kress solver for EBIM tests on no-corner geometries
-    basis=AbstractHankelBasis() # all BIE formulations have no formal basis, so we make one up for multi-dispacth to be nicer
 else
     error("Unknown method: $method") # keep method choice explicit and user-controlled from the top of the file
 end
@@ -72,37 +72,61 @@ end
 
 println("Running $(method) on $(nameof(typeof(billiard))) ...")
 
-if method==:psm || method==:dm || method==:bim_sweep
-    tens=k_sweep(solver,basis,billiard,kgrid,multithreaded_matrices=true,use_krylov=false) # compute the minimization parameters over a grid of k values. The minima represent where the eigenvalues are located approximately to the resolution of the grid.
-    ks=get_eigenvalues(kgrid,tens;threshold=100.0) # in the logarithmic tension plot, find the local minima that are below the threshold and return their k values as approximate eigenvalues. The threshold is a tuning parameter that should be above the noise floor but below the typical tension values at non-eigenvalues.
-    f=Figure()
-    ax=Axis(f[1,1],xlabel="k",ylabel="log10 min. parameter")
-    lines!(ax,kgrid,log10.(abs.(tens)),color=:red)
-    save("sweep_$(nameof(typeof(billiard)))_$(method).png",f)
+f=Figure()
+ax=Axis(f[1,1],xlabel="k",ylabel="log10 min. parameter")
 
-    Psi2ds=Vector{Matrix{Float64}}(undef,length(ks))
-    xgrid=Vector{Float64}(undef,0) # make them exist
-    ygrid=Vector{Float64}(undef,0) # make them exist
-    if method==:bim_sweep
-        us_all,pts_all=solve_vect(solver,billiard,basis,ks) # computes the singular vecotr to the smallest singular value. Nicely enough for DLP this correspons to the normal derivative of the eigenfunction so we dont have to do any more work! Still need to symmetrize it with boundary_function
-        pts_all,us_all=boundary_function(solver,us_all,pts_all,billiard) # symmetrize the boundary function in the correct irrep
-        us_all=[real.(us) for us in us_all] # make them real since they can have a tiny imag part even for 1d irreps
-        Psi2ds,xgrid,ygrid=wavefunction_multi(ks,us_all,pts_all,billiard;fundamental=false) # reconstruct the wavefunctions for all states in a batch
-    else
-        @showprogress "constructing eigenstates" for (i,k) in enumerate(ks)
-            state=compute_eigenstate(solver,basis,billiard,k) # build the library Eigenstate at this k for basis type methods
-            Psi2ds[i],xg,yg=wavefunction(state;fundamental_domain=false) # reconstruct the wavefunction and its plotting grids
-            if i==1
-                global xgrid=xg # keep the common x-grid once
-                global ygrid=yg # keep the common y-grid once
+if method==:psm || method==:dm || method==:bim_sweep || method==:ebim_bim || method==:ebim_dlp_kress
+    # compute the minimization parameters over a grid of k values. The minima represent where the eigenvalues are located approximately to the resolution of the grid.
+    tens=k_sweep(solver, 
+    basis, # based on the solver type, this is either the constructor-provided basis for PSM/DM or a dummy Hankel basis (AbstractHankelBasis()) for the BIM methods since they dont have a formal basis
+    billiard, 
+    kgrid, # ks for which the tensions will be computed
+    multithreaded_matrices=true, # allow threaded matrix assembly for the sweep for each k
+    use_krylov=false, # use the shift-invert Krylov method to find the smallest singular value and vector at each k instead of the full dense SVD; 
+    # this is much faster for large problems but not that useful for small and intermediate k-regime
+    which=:svd, # alg for minimization parameter -> used for Fredholm based approaches like BIM and CFIE, for PSM/DM it does nothing
+    # :svd for smallest singular value, :det_argmin for the min(|det(A)|), :det gives back det(A) which is a complex number to compare if the roots for both coincide (almost impossible for naive BIM)
+    ) 
+    ks=get_eigenvalues(kgrid,tens;threshold=100.0) # in the logarithmic tension plot, find the local minima that are below the threshold and return their k values as approximate eigenvalues. The threshold is a tuning parameter that should be above the noise floor but below the typical tension values at non-eigenvalues.
+    # threshold gives a minimal value for which the local minima is really a minima (in the log scale)
+    # one can plo _second_derivative_sweep_spectrum(ks,log10.(abs.(tens))) to get a sense of the noise floor and how to set the threshold.
+    lines!(ax,kgrid,log10.(abs.(tens)),color=:red)
+    
+    if plot_wavef
+        Psi2ds=Vector{Matrix{Float64}}(undef,length(ks))
+        xgrid=Vector{Float64}(undef,0) # make them exist
+        ygrid=Vector{Float64}(undef,0) # make them exist
+        if method==:bim_sweep || method==:ebim_bim  || method==:ebim_dlp_kress
+            # BIE type solvers have nice wavefunction reconstruction formulas using the layer potentials
+            us_all,pts_all=solve_vect(solver,billiard,basis,ks) # computes the singular vector to the smallest singular value. 
+            # Nicely enough for DLP this correspons to the normal derivative of the eigenfunction so we dont have to do any more work! 
+            # Still need to symmetrize it with boundary_function
+            pts_all,us_all=boundary_function(solver,us_all,pts_all,billiard) # symmetrize the boundary function in the correct irrep
+            Psi2ds,xgrid,ygrid=wavefunction_multi(ks,us_all,pts_all,billiard;fundamental=false) # reconstruct the wavefunctions for all states in a batch
+            # fundamental just means we get the wavefunction on the fundamental domain, which is smaller and faster to compute, but since we want to plot the full wavefunction we set it to false
+            Psi2ds=[abs.(Psi2d) for Psi2d in Psi2ds] # makes phase independance easier to handle in the plotting
+        else
+            @showprogress "constructing eigenstates" for (i,k) in enumerate(ks)
+                # Basis type solvers dont have access to solve_vect since we dont get an easy way to get layer potentials
+                # in principle what one can do is to call from "state" below the boundary_function method that is 
+                # dispatched on the "Eigenstate" struct to get the normal derivative of the wavefunction usually used for 
+                # husimis and then insert that into the wavefunction_multi for faster evaluations!
+                state=compute_eigenstate(solver,basis,billiard,k) # build the library Eigenstate at this k for basis type methods
+                Psi2ds[i],xg,yg=wavefunction(state;fundamental_domain=false) # reconstruct the wavefunction and its plotting grids
+                # this is quite slow, since it needs to for each grid point evaluate the entire basis. But this is not a problem
+                # as PSM/DM are just for checking basis convergence for VerginiSaraceno
+                if i==1
+                    global xgrid=xg # keep the common x-grid once
+                    global ygrid=yg # keep the common y-grid once
+                end
             end
         end
+        fs=plot_wavefunctions(ks,Psi2ds,xgrid,ygrid,billiard;fundamental=false)
+        save("wavefunction_$(nameof(typeof(billiard)))_$(method)_$(nameof(typeof(symmetry))).png",fs[1])
     end
-    f=plot_wavefunctions(ks,Psi2ds,xgrid,ygrid,billiard;fundamental=false)
-    save("wavefunction_$(nameof(typeof(billiard)))_$(method).png",f[1])
     println("==============================================================")
 end
-if method==:ebim_bim || method==:ebim_dlp_kress || method==:ebim_cfie_kress
+if method==:ebim_bim || method==:ebim_dlp_kress
     #NOTE The tensions (tens) in EBIM are just the distances of the eigenvalue from the k0 reference eigenvalue where the GEVP was being solved, so they are not directly comparable to the sweep tensions.
     ks,tens=compute_spectrum_ebim(
         solver,                          # EBIM solver backend used to assemble A, dA, and ddA
@@ -116,7 +140,7 @@ if method==:ebim_bim || method==:ebim_dlp_kress || method==:ebim_cfie_kress
         use_krylov=true,                 # use the shift-invert Krylov EBIM correction instead of the full dense generalized eigensolve
         seg_reuse_frac=0.95,             # reuse one boundary discretization for a segment of nearby k values before rebuilding it
         solve_info=true,                 # print one detailed diagnostic INFO solve at the start of the EBIM run
-        use_chebyshev=false,              # build derivative matrices with Chebyshev-accelerated Hankel evaluation instead of the direct pathway - since in demo ks are small there is no need
+        use_chebyshev=true,              # build derivative matrices with Chebyshev-accelerated Hankel evaluation instead of the direct pathway - since in demo ks are small there is no need
         n_panels=15000,                  # initial number of Chebyshev radial panels used for special-function interpolation
         M=5,                             # Chebyshev polynomial degree on each radial panel
         cheb_param_strategy=:global,     # choose one Chebyshev panelization from the largest k in the interval and reuse it for all segments
@@ -128,6 +152,9 @@ if method==:ebim_bim || method==:ebim_dlp_kress || method==:ebim_cfie_kress
         grow_M=2,                        # multiplicative growth factor when the tuning loop decides higher Chebyshev degree is needed
         verbose_cheb_panelization=false  # keep the Chebyshev tuning output quiet except for the main solve diagnostics
     )
+
+    scatter!(ax,ks,log10.(tens),color=:blue)
+
     println()
     println("==============================================================")
     println("$(method) summary")
@@ -138,5 +165,7 @@ if method==:ebim_bim || method==:ebim_dlp_kress || method==:ebim_cfie_kress
     println("==============================================================")
     println()
 end
+
+save("sweep_$(nameof(typeof(billiard)))_$(method)_$(nameof(typeof(symmetry))).png",f)
 
 println("Done.")

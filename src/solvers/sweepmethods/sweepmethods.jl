@@ -260,6 +260,35 @@ function _prepare_newton_refinement(solver::Union{DLP_kress,DLP_kress_global_cor
     return assemble,A,dA,ddA,G,H,H2,W
 end
 
+# Refine an approximate eigenvalue location k0 by applying Newton iteration to the
+# smallest singular value of a matrix-valued operator A(k).
+# 
+# This function is intended for boundary-integral-type sweep solvers, where one has
+# already prepared reusable buffers for the matrix A(k) and its first two
+# derivatives with respect to k:
+# - A(k)
+# - dA/dk
+# - d²A/dk²
+#
+# Instead of minimizing the smallest singular value of A(k) by a generic 1D
+# optimizer, this function performs a local Newton refinement on the smallest
+# eigenvalue of
+#
+#    G(k) = A(k)' * A(k),
+#
+# whose square root is the smallest singular value of A(k). This Hermitian 
+# problem seems numerically nicer by comparing it to the previous direct svd newton approach
+#
+# At each iteration it:
+# 1. assembles A(k), dA(k), ddA(k) using assemble(k),
+# 2. forms
+#   - G = A' * A,
+#   - H = d/dk (A' * A),
+#   - H2 = d²/dk² (A' * A),
+# 3. computes the lowest eigenpair of G,
+# 4. evaluates first- and second-derivative information for the lowest eigenvalue,
+# 5. updates k by a Newton step,
+# 6. clamps the iterate to the interval [a,b].
 function newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,tol=1e-12)
     T=typeof(k0)
     k=clamp(k0,a,b)
@@ -323,11 +352,115 @@ function newton_refine_svd!(assemble,A,dA,ddA,G,H,H2,W,k0;a=0.0,b=Inf,maxiter=8,
     end
 end
 
+"""
+Refine approximate eigenvalue locations extracted from a sweep over `ks`.
+
+This function takes a previously computed sweep:
+- `ks`: wavenumber grid,
+- `tens`: corresponding sweep tensions / minimization parameters,
+
+detects approximate minima with `get_eigenvalues`, and then locally refines each
+candidate eigenvalue.
+
+Two refinement pathways are used depending on the solver type:
+
+- For boundary-integral-type solvers
+  (`BoundaryIntegralMethod`, `CFIE_*`, `DLP_kress`, `CFIE_alpert`),
+  the refinement is performed with `newton_refine_svd!`, using the smallest
+  singular value of the assembled Fredholm matrix.
+
+- For basis-type solvers
+  (`ParticularSolutionsMethod`, `DecompositionMethod`, and other non-BIE sweep
+  solvers), the refinement is performed by repeated local scalar minimization of
+  `solve(solver, basis, pts, k)` on shrinking intervals around each candidate.
+
+At each refinement level, the solver resolution can be increased through:
+- `pts_refinement_factors` for boundary sampling resolution,
+- `dim_refinement_factors` for basis dimension scaling.
+
+This allows coarse sweep minima to be polished into more accurate eigenvalue
+estimates.
+
+# Arguments
+- `solver::SweepSolver`:
+  Solver used to generate the original sweep.
+- `basis::AbsBasis`:
+  Basis used by the solver. For BIE solvers this may be `AbstractHankelBasis()`.
+- `billiard::AbsBilliard`:
+  Billiard geometry.
+- `ks::AbstractVector{T}`:
+  Wavenumber grid used in the original sweep.
+- `tens::AbstractVector{T}`:
+  Sweep tensions / minimization parameter values on `ks`.
+
+# Keyword arguments
+- `multithreaded_matrices::Bool=true`:
+  Whether to use threaded matrix assembly during refinement.
+- `threshold=200.0`:
+  Threshold passed to `get_eigenvalues` for what qualifies as a minimum to refine.
+- `print_refinement::Bool=true`:
+  Whether to print a refinement summary table.
+- `use_krylov::Bool=true`:
+  Passed through to non-BIE refinement solves where applicable.
+- `digits::Int=10`:
+  Number of digits printed in the summary table.
+- `which::Symbol=:svd`:
+  Sweep functional used for non-BIE refinement solves.
+- `pts_refinement_factors=(1.0,1.5,2.0)`:
+  Multiplicative factors applied level-by-level to the solver’s
+  `pts_scaling_factor`.
+- `dim_refinement_factors=(1.0,1.1,1.25)`:
+  Multiplicative factors applied level-by-level to the solver’s
+  `dim_scaling_factor`.
+- `window_shrink=3.0`:
+  After each refinement level, the local search window is divided by this value.
+- `optimizer_kwargs=NamedTuple()`:
+  Optional keyword arguments forwarded to `optimize` in the non-BIE refinement
+  branch.
+- `stop_k_tol=0.0`:
+  If positive, stop refinement early when successive refined `k` values differ
+  by at most this tolerance.
+- `stop_t_tol=0.0`:
+  If positive, stop refinement early when successive tensions differ by at most
+  this tolerance.
+- `initial_refinement_interval=1e-3`:
+  Default initial half-width scale for the local refinement interval if the
+  spacing of `ks` does not provide a better estimate.
+- `show_progress::Bool=false`:
+  Whether to display a progress bar over all refined minima.
+- `newton_max_iter::Int=8`:
+  Maximum Newton iterations used in the BIE refinement branch.
+- `newton_tol::Float64=1e-12`:
+  Newton stopping tolerance used in the BIE refinement branch.
+- `progress_info::Bool=false`:
+  Reserved diagnostic flag for additional refinement progress information.
+
+# Returns
+- `(sols, tens_refined, histories)`:
+  where
+  - `sols` is the vector of refined eigenvalues,
+  - `tens_refined` is the corresponding vector of refined tensions,
+  - `histories` is a vector of per-state refinement histories.
+
+Each entry of `histories[i]` is a vector of named tuples with fields:
+- `level`
+- `pts_factor`
+- `dim_factor`
+- `k`
+- `tension`
+- `window`
+
+describing the successive refinement levels for the `i`-th eigenvalue.
+
+# Notes
+- The factors in `pts_refinement_factors` and `dim_refinement_factors` must have
+  the same length (legacy reasons...).
+"""
 function refine_minima(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,ks::AbstractVector{T},tens::AbstractVector{T};multithreaded_matrices::Bool=true,threshold=200.0,print_refinement::Bool=true,use_krylov::Bool=true,digits::Int=10,which::Symbol=:svd,pts_refinement_factors=(1.0,1.5,2.0),dim_refinement_factors=(1.0,1.1,1.25),window_shrink=3.0,optimizer_kwargs=NamedTuple(),stop_k_tol=0.0,stop_t_tol=0.0,initial_refinement_interval=1e-3,show_progress::Bool=false,newton_max_iter::Int=8,newton_tol::Float64=1e-12,progress_info::Bool=false) where {T<:Real}
     N=length(ks)
     @assert N==length(tens)
     @assert length(pts_refinement_factors)==length(dim_refinement_factors)
-    ks_approx=length(ks)==1 ? collect(ks) : get_eigenvalues(collect(ks),abs.(tens);threshold=threshold)
+    ks_approx=length(ks)==1 ? collect(ks) : get_eigenvalues(collect(ks),tens;threshold=threshold)
     isempty(ks_approx) && return T[],T[],Vector{Vector{NamedTuple}}()
     sols=similar(ks_approx)
     tens_refined=similar(ks_approx)
