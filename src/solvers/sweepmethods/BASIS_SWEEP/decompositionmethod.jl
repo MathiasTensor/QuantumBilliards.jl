@@ -46,7 +46,8 @@ function DecompositionMethod(dim_scaling_factor::T,pts_scaling_factor::Union{T,V
     d=dim_scaling_factor
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[GaussLegendreNodes()]
-return DecompositionMethod(d,bs,sampler,eps(T),min_dim,min_pts)
+    epsilon=max(eps(T),1e-15) # set a floor on eps to avoid numerical issues in the generalized eigenvalue solver
+return DecompositionMethod(d,bs,sampler,epsilon,min_dim,min_pts)
 end
 
 """
@@ -74,7 +75,8 @@ Construct a `DecompositionMethod{T}` solver configuration using a custom vector 
 function DecompositionMethod(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{Sam};min_dim=100,min_pts=500) where {T<:Real,Sam<:AbsSampler} 
     d=dim_scaling_factor
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    return DecompositionMethod(d,bs,samplers,eps(T),min_dim,min_pts)
+    epsilon=max(eps(T),1e-15) # set a floor on eps to avoid numerical issues in the generalized eigenvalue solver
+    return DecompositionMethod(d,bs,samplers,epsilon,min_dim,min_pts)
 end
 
 """
