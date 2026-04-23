@@ -4,17 +4,18 @@ A Julia library for computing eigenvalues, eigenfunctions and Husimi functions o
 
 ## Overview
 
-`QuantumBilliards.jl` targets high-frequency spectral computations on smooth and piecewise-smooth domains. It combines:
+Targets high-frequency spectral computations on smooth and piecewise-smooth domains. It combines:
 
 - Boundary Integral Methods (DLP / CFIE / Alpert)
     1. Boundary Integral Equations in time-harmonic acoustic scattering, Kress R., 1991
     2. (Habilitationsschrift) Eigenfunctions in chaotic quantum systems, Backer A., 2007
     3. HYBRID GAUSS-TRAPEZOIDAL QUADRATURE RULES, Alpert B., 1999
 - Local accelerated solvers (EBIM, Vergini–Saraceno)
-    1. Calculation by scaling of highly excited states of billiards, Vergini E., Saraceno M. 1995
+    1. Calculation by scaling of highly excited states of billiards, Vergini E., Saraceno M. 1995 https://pubmed.ncbi.nlm.nih.gov/9963660/
     2. (PhD thesis) https://users.flatironinstitute.org/~ahb/thesis_html/node71.html, Barnett A.
+    3. Expanded boundary integral method and chaotic time-reversal doublets in quantum billiards, Veble et. al., 2006 https://arxiv.org/abs/nlin/0612011
 - Contour methods (Beyn)
-    1. An integral method for solving nonlinear eigenvalue problems, Wolf-Jürgen Beyn, 2012
+    1. An integral method for solving nonlinear eigenvalue problems, Wolf-Jürgen Beyn, 2010 https://arxiv.org/abs/1003.1580
 - Chebyshev-accelerated kernel assembly
     1. Greengard's hank106.f code - panelization implementation
 
@@ -28,21 +29,15 @@ Focus is on the balance between **performance** and **spectral resolution**, wit
 
 The Helmholtz problem
 
-\[
-(\Delta + k^2)\psi = 0, \quad \psi|_{\partial\Omega}=0
-\]
+(Δ + k²) ψ = 0      in Ω
 
 is reduced to
 
-\[
-A(k)\sigma = 0.
-\]
+A(k) σ = 0
 
 CFIE variants use
 
-\[
-(\alpha I + D(k) + i\eta S(k))\sigma = 0,
-\]
+(α I + D(k) + i η S(k)) σ = 0
 
 typically in the presence of holes.
 
@@ -55,15 +50,11 @@ typically in the presence of holes.
 
 Local expansion:
 
-\[
-A(k+\varepsilon) \approx A + \varepsilon A' + \tfrac12 \varepsilon^2 A''.
-\]
+A(k + ε) ≈ A + ε A’ + (1/2) ε² A’’
 
 Solve
 
-\[
-A v = \lambda A' v, \quad \lambda \approx -\varepsilon,
-\]
+A v = λ A’ v
 
 with second-order corrections.
 
@@ -74,11 +65,9 @@ with second-order corrections.
 
 ### Vergini–Saraceno (Scaling Method)
 
-Basis expansion near \(k_0\):
+Basis expansion near k_0:
 
-\[
-F c = \mu G c.
-\]
+F c = μ G c
 
 **+** Extremely fast, gets many nearby levels per solve
 **−** Basis-dependent, less robust for complex (non-convex) geometries  
@@ -89,9 +78,9 @@ F c = \mu G c.
 
 Contour-based extraction:
 
-\[
-M_p = \frac{1}{2\pi i} \oint_\Gamma z^p T(z)^{-1} V \, dz.
-\]
+A_p = (1 / 2πi) ∮ z^p T(z)^{-1} V dz
+
+where we construct A_0 and A_1
 
 **+** Finds all eigenvalues in a region  
 **+** Very effective when Vergini–Saraceno fails  
@@ -101,15 +90,14 @@ M_p = \frac{1}{2\pi i} \oint_\Gamma z^p T(z)^{-1} V \, dz.
 
 ---
 
-### Chebyshev Acceleration
+### Chebyshev Interpolation
 
 Kernel approximation:
 
-\[
-f(x) \approx \sum a_n T_n(x).
-\]
+f(x) ≈ Σ a_n T_n(x)
 
 **+** Faster repeated assembly, prioriziting smaller panels with lower degrees
+**+** Accuracy is given as a kwarg so that we dont overpanelize
 **−** Slightly higher RAM usage due to panelization  
 
 ---
@@ -156,6 +144,8 @@ Some solvers (e.g. Kress, Alpert) assume periodic parametrizations and do not di
 3. Discretize boundary -> evaluate_points(...) (done internally)
 4. Compute spectrum  -> compute_spectrum_beyn(...), compute_spectrum_ebim(...), compute_spectrum_with_state_data(...)
 
+! Check examples folder 
+
 ---
 
 ## Status
@@ -166,6 +156,7 @@ Active development focused on:
 - neutrino billiards
     1. Relativistic Quantum Chaos in Neutrino Billiards, Dietz B. (https://arxiv.org/pdf/2604.13003)
 - Hyperbolic kernel - Legendre Q via mpmath and seeding w/ Taylor series center expansion (Done, currently used in a paper, add after publication)  
+- Fast computation of high frequency Dirichlet eigenmodes via the spectral flow of the interior Neumann-to-Dirichlet map, Barnett A., Hassell A. 2011 https://arxiv.org/abs/1112.5665
 - QBX,QB2X
     1. Quadrature by Expansion: A New Method for the Evaluation of Layer Potentials, Kl¨ockner A., Barnett A., Greendard L., O'Neil M. (https://arxiv.org/pdf/1207.4461)
     2. Quadrature by Two Expansions for Evaluating
