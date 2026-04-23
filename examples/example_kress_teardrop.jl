@@ -40,6 +40,7 @@ sols,tens_refined,histories=refine_minima(solver, # like above
 # Inf means that the gesvd crashed becuase we are too close to a true eigenvalue where the matrix is singular, but this is actually a good sign that we are close to a true root.
 
 # Check with Beyn the accuracy of the refined minima if they agree
+# The im part of Beyn is a good proxy for the accuracy of the eigenvalue (heuristic)
 ks,tens,us,pts,tensN=compute_spectrum_beyn(
     solver,                          # solver defining the boundary operator T(k)
     billiard,                        # billiard used for Weyl planning and point evaluation

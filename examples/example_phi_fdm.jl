@@ -1,4 +1,6 @@
-using QuantumBilliards, CairoMakie, LinearAlgebra, Printf, StaticArrays
+using QuantumBilliards
+using CairoMakie
+using LinearAlgebra
 
 # One needs to create a phi(x,y) function that acts as a boolean mask (0 or 1 depending whether it is inside the boundary or outside) 
 # for the same geometry as the one defined as the <:AbsBilliard struct as. It needs to be externally given as the method itself needs 
@@ -123,7 +125,7 @@ fundamental=false
 
 
 # Create the FDM struct
-fem=QuantumBilliards.FiniteElementMethod(billiard,300,300;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
+fem=QuantumBilliards.FiniteElementMethod(billiard,200,200;k_max=1000.0,offset_x_symmetric=0.1,offset_y_symmetric=0.1,fundamental=fundamental)
 # needed for wavefunction plotting
 x_grid,y_grid=fem.x_grid,fem.y_grid
 # to see the actual dimension of the Sparse Hamiltonian
@@ -140,19 +142,19 @@ save("MASK.png",f)
 # compute the ϕ-FD Hamiltonian:
 H_phiFD=phiFD_Hamiltonian(fem,phi,γ,σ)
 
-nev=200 # number of eigenvalues -> ideally should be 2%-5% of Nx*Ny due to precision problems arising due to discretization for high lying nodes. This should guarantee a relative accuracy of <0.1%
-ks,wavefunctions=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
+nev=100 # number of eigenvalues -> ideally should be 2%-5% of Nx*Ny due to precision problems arising due to discretization for high lying nodes. This should guarantee a relative accuracy of <0.1%
+@time "ARPACK" ks,wavefunctions=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
 ks=sqrt.(abs.(ks)) # need to transform the E to the k based on m and ℏ
 wavefunctions=[abs2.(wf) for wf in wavefunctions] # if wanting to plot the |Ψ(x,y)|^2
-fs=QuantumBilliards.plot_wavefunctions(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=fundamental)
+fs=plot_wavefunctions(ks,wavefunctions,x_grid,y_grid,billiard,fundamental=fundamental) # the typical library plotting function that takes vector of matrices representing wavefunction
 for i in eachindex(fs)
-    save("φ_$(nameof(typeof(billiard)))_$(i)_package.png",fs[i])
+    save("φ_$(nameof(typeof(billiard)))_$(i).png",fs[i])
 end
 
 # check wavefunctions badness
-boundary_mask=compute_boundary(fem.interior_idx,fem.Nx,fem.Ny)
+boundary_mask=compute_boundary(fem.interior_idx,fem.Nx,fem.Ny) # this is a boolean mask that is 1 on the boundary and 0 in the interior, used to compute the tension of the wavefunction on the boundary
 tensions=[compute_boundary_tension(Ψ,boundary_mask) for Ψ in wavefunctions]
 f=Figure()
 ax=Axis(f[1,1])
 scatter!(ax,1:length(tensions),tensions)
-save("φ_tensions_$(nameof(typeof(billiard)))_package.png",f)
+save("φ_tensions_$(nameof(typeof(billiard))).png",f)

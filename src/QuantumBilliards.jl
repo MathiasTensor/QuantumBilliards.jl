@@ -206,7 +206,7 @@ include("solvers/acceleratedmethods/scalingmethod.jl")
 export VerginiSaraceno,solve_vectors,solve_spectrum_with_INFO,plot_Z!,compute_spectrum_with_state_scaling_method
 
 include("spectra/unfolding.jl")
-export weyl_law,k_at_state
+export weyl_law,k_at_state,calculate_spacings
 
 #states
 include("states/basisstates.jl")
