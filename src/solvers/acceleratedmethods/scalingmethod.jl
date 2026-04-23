@@ -669,7 +669,7 @@ Computes the spectrum over a range of wavenumbers `[k1, k2]` using the given sol
     - `tens::Vector{T}`: Vector of tensions for each eigenvalue
 - `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
-function compute_spectrum_with_state_scaling_method(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+function compute_spectrum_with_state_scaling_method(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k1::T,k2::T;tol::T=T(1e-4),N_expect=1,dk_threshold::T=T(0.05),fundamental::Bool=true,multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,cholesky::Bool=false) where {Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
     k_vals=T[]
     dk_vals=T[]
     k0=k1
@@ -738,7 +738,7 @@ After solving, results are merged using `overlap_and_merge_state!`, keeping lowe
   - `state_res.X`: Basis coefficient vectors for each eigenvalue.
 - `control::Vector{Bool}`: Vector indicating if an eigenvalue was involved in overlap resolution (`true`) or added uniquely (`false`).
 """
-function compute_spectrum_with_state_scaling_method(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol::T=T(1e-4),multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
+function compute_spectrum_with_state_scaling_method(solver::VerginiSaraceno,basis::Ba,billiard::Bi,k1::T,k2::T,dk::T;tol::T=T(1e-4),multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,cholesky::Bool=false) where {Ba<:AbsBasis, Bi<:AbsBilliard, T<:Real}
     k_vals=collect(range(k1,k2,step=dk))
     @info "Scaling Method w/ StateData..."
     println("Total intervals: ",length(k_vals))
@@ -790,7 +790,7 @@ Computes the spectrum over a range of wavenumbers defined by the bracketing inte
     - `tens::Vector{T}`: Vector of tensions for each eigenvalue
 - `control::Vector{Bool}`: Vector signifying if the eigenvalues at that indexed was compared to another and merged.
 """
-function compute_spectrum_with_state_scaling_method(solver::VerginiSaraceno,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=false,multithreaded_ks::Bool=true,cholesky::Bool=false) where {Ba<:AbsBasis,Bi<:AbsBilliard}
+function compute_spectrum_with_state_scaling_method(solver::VerginiSaraceno,basis::Ba,billiard::Bi,N1::Int,N2::Int;tol=1e-4,N_expect=1,dk_threshold=0.05,fundamental::Bool=true,multithreaded_matrices::Bool=true,multithreaded_ks::Bool=false,cholesky::Bool=false) where {Ba<:AbsBasis,Bi<:AbsBilliard}
     k1=k_at_state(N1,billiard;fundamental=fundamental)
     k2=k_at_state(N2,billiard;fundamental=fundamental)
     println("k1 = $(k1), k2 = $(k2)")
