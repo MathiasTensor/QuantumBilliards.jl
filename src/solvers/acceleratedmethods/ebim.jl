@@ -476,6 +476,9 @@ function solve_krylov!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::Abst
         buf=zeros(CT,n) # reusable temp array used with mul! to always overwrite previous result
         @inbounds for j in 1:nev
             λj=λ[j]
+            if !(abs(real(λj))<dk && abs(imag(λj))<dk)
+                continue
+            end
             v=VRlist[j];u=ULlist[j]
             @blas_multi MAX_BLAS_THREADS mul!(buf,ddA,v) # buf <- ddA * v
             num=dot(u,buf)  # numerator = u' * ddA * v
