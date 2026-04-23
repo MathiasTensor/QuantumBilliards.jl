@@ -1300,7 +1300,7 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,
     return mu,u_mu
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
     @blas_1 Rmat=build_Rmat_dlp_kress(solver,pts)
@@ -1312,17 +1312,18 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,
     return mu,u_mu
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsCFIE{eltype(ks[1])}}(undef,length(ks))
     for i in eachindex(ks)
-        pts=evaluate_points(solver,solver.billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded)
         us_all[i]=u
         pts_all[i]=pts
     end
     return us_all,pts_all
 end
+
 # INTERNAL - for checking allocation patterns and execution time of the single-k solve variants. Not intended for public use.
 function solve_INFO(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.N,ws.N)

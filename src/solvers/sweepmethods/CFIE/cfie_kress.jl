@@ -625,8 +625,8 @@ end
     solve_vect(solver, basis, A, pts, k, Rmat; multithreaded=true)
     solve_vect(solver, basis, A, pts, ws, k; multithreaded=true)
     solve_vect(solver, basis, pts, ws, k; multithreaded=true)
-    solve_vect(solver, basis, pts, k; multithreaded=true)
-    solve_vect(solver, basis, ks::Vector; multithreaded=true)
+    solve_vect(solver, billiard, basis, pts, k; multithreaded=true)
+    solve_vect(solver, billiard, basis, ks::Vector; multithreaded=true)
 
 Compute the smallest singular value of the CFIE-Kress matrix together with the
 corresponding right singular vector.
@@ -718,7 +718,7 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_globa
     return mu,u_mu
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
@@ -731,12 +731,12 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_globa
     return mu,u_mu
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
     pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks[1])}}}(undef,length(ks))
     for i in eachindex(ks)
-        pts=evaluate_points(solver,solver.billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded)
         us_all[i]=u
         pts_all[i]=pts
     end

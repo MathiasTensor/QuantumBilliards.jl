@@ -1551,8 +1551,9 @@ function solve(solver::CFIE_alpert,basis::Ba,A::AbstractMatrix{Complex{T}},pts::
 end
 
 """
-    solve_vect(solver::CFIE_alpert, basis, pts, k; multithreaded=true)
-    solve_vect(solver::CFIE_alpert, basis, pts, ws, k; multithreaded=true)
+    solve_vect(solver::CFIE_alpert, billiards, basis, pts, k; multithreaded=true)
+    solve_vect(solver::CFIE_alpert, billiards, basis, pts, ks; multithreaded=true)
+    solve_vect(solver::CFIE_alpert, billiard, basis, pts, ws, k; multithreaded=true)
     solve_vect(solver::CFIE_alpert, basis, A, pts, k; multithreaded=true)
     solve_vect(solver::CFIE_alpert, basis, A, pts, ws, k; multithreaded=true)
 
@@ -1580,11 +1581,23 @@ They mirror the `solve` interface:
 - `mu` is the smallest singular value,
 - `u_mu` is the corresponding right singular vector.
 """
-function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE_alpert,billiard::Bi,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     @blas_1 A=construct_matrices(solver,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])
+end
+
+function solve_vect(solver::CFIE_alpert,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
+    us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
+    pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks[1])}}}(undef,length(ks))
+    for i in eachindex(ks)
+        pts=evaluate_points(solver,billiard,ks[i])
+        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded)
+        us_all[i]=u
+        pts_all[i]=pts
+    end
+    return us_all,pts_all
 end
 
 function solve_vect(solver::CFIE_alpert,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEAlpertWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
