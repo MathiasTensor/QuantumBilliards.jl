@@ -4,6 +4,8 @@ using Printf
 using CairoMakie
 using ProgressMeter
 
+try_MKL_on_x86_64!()
+
 ################## USER PARAMS ###################
 
 #geometry=:star 

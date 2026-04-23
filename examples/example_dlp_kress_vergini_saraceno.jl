@@ -2,6 +2,8 @@ using QuantumBilliards
 using LinearAlgebra
 using CairoMakie
 
+try_MKL_on_x86_64!()
+
 billiard,basis=make_ellipse_and_basis(1.0,0.5) # easy corner free geometry to compare Beyn & VS & EBIM
 
 d=10.0 # basis scaling parameter -> determines basis size oversampling 
