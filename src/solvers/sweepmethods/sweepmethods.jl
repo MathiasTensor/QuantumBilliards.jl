@@ -75,19 +75,29 @@ end
 function _k_sweep_prepare(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
-    basis_max=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    solve_first(k)=solve_INFO(solver,basis_max,pts,k;multithreaded=multithreaded_matrices,tol=tol)
-    solve_one(k)=solve(solver,basis_max,pts,k;multithreaded=multithreaded_matrices,tol=tol)
+    solve_first(k)=begin
+        basis_new=resize_basis(basis,billiard,dim,k)
+        solve_INFO(solver,basis_new,pts,k;multithreaded=multithreaded_matrices,tol=tol)
+    end
+    solve_one(k)=begin
+        basis_new=resize_basis(basis,billiard,dim,k)
+        solve(solver,basis_new,pts,k;multithreaded=multithreaded_matrices,tol=tol)
+    end
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     dim=_sweep_dim(solver,billiard,ks)
-    basis_max=resize_basis(basis,billiard,dim,kmax)
     pts=evaluate_points(solver,billiard,kmax)
-    solve_first(k)=solve_INFO(solver,basis_max,pts,k;multithreaded=multithreaded_matrices)
-    solve_one(k)=solve(solver,basis_max,pts,k;multithreaded=multithreaded_matrices)
+    solve_first(k)=begin 
+        basis_new=resize_basis(basis,billiard,dim,k)
+        solve_INFO(solver,basis_new,pts,k;multithreaded=multithreaded_matrices)
+    end
+    solve_one(k)=begin
+        basis_new=resize_basis(basis,billiard,dim,k)
+        solve(solver,basis_new,pts,k;multithreaded=multithreaded_matrices)
+    end
     return solve_first,solve_one
 end
 @inline function _k_sweep_result_container(ks;which::Symbol=:det_argmin)
