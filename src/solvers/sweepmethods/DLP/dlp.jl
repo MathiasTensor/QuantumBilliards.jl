@@ -860,7 +860,6 @@ function compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},d
                     end
                 end
             end
-            end
         end
     return K,dK,ddK
 end
