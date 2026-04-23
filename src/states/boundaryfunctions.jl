@@ -325,6 +325,8 @@ end
 #########################################################################################################
 
 function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
+    # naive DLP has method of images / irrep projections so it works with fundamental domains.
+    # Therefore we need to apply the symmetries to the boundary points and the boundary function to get the full boundary function on the full boundary.
     pts=apply_symmetries_to_boundary_points(pts,solver.symmetry,billiard)
     u=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
     return pts,u
@@ -341,25 +343,19 @@ function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:Ab
 end
 
 function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    pts=apply_symmetries_to_boundary_points(pts,solver.symmetry,billiard)
-    layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
+    # for DLP kress and DLP_kress_global_corners the boundary function is the layer potential itself and
+    # also the boudnary is always full due to Kress splitting, therefore there is no symetrization that needs to be done
     return pts,layer_pot
 end
 
 function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
-    pts_all=Vector{typeof(apply_symmetries_to_boundary_points(pts[1],solver.symmetry,billiard))}(undef,length(pts))
-    layer_pot_all=Vector{typeof(apply_symmetries_to_boundary_function(layer_pot[1],solver.symmetry))}(undef,length(pts))
+    pts_all=Vector{typeof(pts)}(undef,length(pts))
+    layer_pot_all=Vector{typeof(layer_pot)}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
-        pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetry,billiard)
-        layer_pot_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetry)
+        pts_all[i]=pts[i]
+        layer_pot_all[i]=layer_pot[i]
     end
     return pts_all,layer_pot_all
-end
-
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{N},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
-    pts=apply_symmetries_to_boundary_points(pts,solver.symmetry,billiard)
-    layer_pot=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
-    return pts,layer_pot
 end
 
 ####################################################################################################
