@@ -70,13 +70,13 @@ end
 function _k_sweep_prepare(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     solve_first(k)=begin
         pts=evaluate_points(solver,billiard,k)
-        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
+        dim=max(solver.min_dim,round(Int,billiard.length_fundamental*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve_INFO(solver,basis_new,pts,k;multithreaded=multithreaded_matrices,tol=tol)
     end
     solve_one(k)=begin
         pts=evaluate_points(solver,billiard,k)
-        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
+        dim=max(solver.min_dim,round(Int,billiard.length_fundamental*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve(solver,basis_new,pts,k;multithreaded=multithreaded_matrices,tol=tol)
     end
@@ -85,13 +85,13 @@ end
 function _k_sweep_prepare(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     solve_first(k)=begin 
         pts=evaluate_points(solver,billiard,k)
-        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
+        dim=max(solver.min_dim,round(Int,billiard.length_fundamental*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve_INFO(solver,basis_new,pts,k;multithreaded=multithreaded_matrices)
     end
     solve_one(k)=begin
         pts=evaluate_points(solver,billiard,k)
-        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
+        dim=max(solver.min_dim,round(Int,billiard.length_fundamental*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve(solver,basis_new,pts,k;multithreaded=multithreaded_matrices)
     end
