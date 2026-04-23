@@ -182,7 +182,7 @@ function estimate_rmin_rmax(bp::BoundaryPoints{T},sym=nothing;pad=(T(0.9),T(1.1)
                         if d2>lmax2;lmax2=d2;end
                     end
                 elseif sym isa Rotation
-                    cx,cy=s.center
+                    cx,cy=sym.center
                     ctab,stab,_χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
                     @inbounds for l in 2:sym.n
                         rot_point!(pt,xj,yj,cx,cy,ctab[l],stab[l])

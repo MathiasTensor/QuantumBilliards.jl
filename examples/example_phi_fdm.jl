@@ -1,8 +1,11 @@
 using QuantumBilliards, CairoMakie, LinearAlgebra, Printf, StaticArrays
 
-# One needs to create a phi(x,y) function that acts as a boolean mask (0 or 1 depending whether it is inside the boundary or outside) for the same geometry as the one defined as the <:AbsBilliard struct as. It needs to be externally given as the method itself needs to calculate for wanted cell (i,j) the values there
+# One needs to create a phi(x,y) function that acts as a boolean mask (0 or 1 depending whether it is inside the boundary or outside) 
+# for the same geometry as the one defined as the <:AbsBilliard struct as. It needs to be externally given as the method itself needs 
+# to calculate for wanted cell (i,j) the values there
 
-# JUST PICK ONE OF THESE, COMMENT OUT THE REST, AND MAKE SURE TO DEFINE THE CORRESPONDING BILLIARD AND BASIS BELOW. ALSO SET THE FUNDAMENTAL FLAG ACCORDINGLY (TRUE IF THE BILLIARD IS FUNDAMENTAL DOMAIN, FALSE OTHERWISE)
+# JUST PICK ONE OF THESE, COMMENT OUT THE REST, AND MAKE SURE TO DEFINE THE CORRESPONDING BILLIARD AND BASIS BELOW. 
+# ALSO SET THE FUNDAMENTAL FLAG ACCORDINGLY (TRUE IF THE BILLIARD IS FUNDAMENTAL DOMAIN, FALSE OTHERWISE)
 
 # RECTANGLE
 #=
@@ -137,7 +140,7 @@ save("MASK.png",f)
 # compute the ϕ-FD Hamiltonian:
 H_phiFD=phiFD_Hamiltonian(fem,phi,γ,σ)
 
-nev=2000 # number of eigenvalues -> ideally should be 2%-5% of Nx*Ny due to precision problems arising due to discretization for high lying nodes. This should guarantee a relative accuracy of <0.1%
+nev=200 # number of eigenvalues -> ideally should be 2%-5% of Nx*Ny due to precision problems arising due to discretization for high lying nodes. This should guarantee a relative accuracy of <0.1%
 ks,wavefunctions=compute_ϕ_fem_eigenmodes(fem,phi,γ,σ,nev=nev,maxiter=50000,tol=1e-8)
 ks=sqrt.(abs.(ks)) # need to transform the E to the k based on m and ℏ
 wavefunctions=[abs2.(wf) for wf in wavefunctions] # if wanting to plot the |Ψ(x,y)|^2
