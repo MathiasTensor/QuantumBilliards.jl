@@ -659,7 +659,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                 xy2=same_direction ? reverse(rxy) : rxy
                 t2=same_direction ? reverse(rt) : rt
                 ds2=same_direction ? reverse(c.ds) : copy(c.ds)
-                push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
+                push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
 
@@ -678,7 +678,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                 xy2=same_direction ? reverse(rxy) : rxy
                 t2=same_direction ? reverse(rt) : rt
                 ds2=same_direction ? reverse(c.ds) : copy(c.ds)
-                push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic))
+                push!(new_parts,BoundaryPointsCFIE(xy2,t2,c.tangent_2,c.ts,c.ws,c.ws_der,ds2,c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
         if sym.axis===:origin
@@ -693,7 +693,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                     tx,ty=_xy_reflect_tangent(t[1],t[2])
                     rt[j]=SVector{2,T}(tx,ty)
                 end
-                push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
+                push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
     elseif sym isa Rotation
@@ -717,7 +717,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                     rxy[j]=SVector{2,T}(x,y)
                     rt[j]=SVector{2,T}(tx,ty)
                 end
-                push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic))
+                push!(new_parts,BoundaryPointsCFIE(rxy,rt,c.tangent_2,c.ts,c.ws,c.ws_der,copy(c.ds),c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
     else
