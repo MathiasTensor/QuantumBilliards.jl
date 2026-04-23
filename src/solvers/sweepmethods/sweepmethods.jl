@@ -27,10 +27,6 @@ function solve_wavenumber(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilli
     return k0,t0
 end
 
-function _sweep_dim(solver::SweepSolver,billiard::AbsBilliard,k)
-    return max(solver.min_dim,round(Int,billiard.length*k*solver.dim_scaling_factor/(2*pi)))
-end
-
 function _k_sweep_prepare(solver::BoundaryIntegralMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
     kmax=maximum(ks)
     pts=evaluate_points(solver,billiard,kmax)
@@ -72,30 +68,30 @@ function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilli
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::ParticularSolutionsMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
-    kmax=maximum(ks)
-    pts=evaluate_points(solver,billiard,kmax)
     solve_first(k)=begin
-        dim=_sweep_dim(solver,billiard,k)
+        pts=evaluate_points(solver,billiard,k)
+        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve_INFO(solver,basis_new,pts,k;multithreaded=multithreaded_matrices,tol=tol)
     end
     solve_one(k)=begin
-        dim=_sweep_dim(solver,billiard,k)
+        pts=evaluate_points(solver,billiard,k)
+        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve(solver,basis_new,pts,k;multithreaded=multithreaded_matrices,tol=tol)
     end
     return solve_first,solve_one
 end
 function _k_sweep_prepare(solver::DecompositionMethod,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
-    kmax=maximum(ks)
-    pts=evaluate_points(solver,billiard,kmax)
     solve_first(k)=begin 
-        dim=_sweep_dim(solver,billiard,k)
+        pts=evaluate_points(solver,billiard,k)
+        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve_INFO(solver,basis_new,pts,k;multithreaded=multithreaded_matrices)
     end
     solve_one(k)=begin
-        dim=_sweep_dim(solver,billiard,k)
+        pts=evaluate_points(solver,billiard,k)
+        dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
         basis_new=resize_basis(basis,billiard,dim,k)
         solve(solver,basis_new,pts,k;multithreaded=multithreaded_matrices)
     end
