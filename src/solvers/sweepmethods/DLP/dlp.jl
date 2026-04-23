@@ -835,25 +835,29 @@ function compute_kernel_matrix_with_derivatives!(K::AbstractMatrix{Complex{T}},d
                 if j<=i
                     _add_pair3_no_symmetry_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xj,yj,nxj,nyj,κ[i],k,tol2)
                 end
-                # reflected legs (always full j=1:N; never add curvature)
                 if add_x
                     xjr=_x_reflect(xj,shift_x);yjr=yj
-                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxgn)
+                    nxjr,nyjr=_x_reflect_normal(nxj,nyj)
+                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxjr,nyjr,κ[i],k,tol2;scale=sxgn)
                 end
                 if add_y
                     xjr=xj;yjr=_y_reflect(yj,shift_y)
-                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sygn)
+                    nxjr,nyjr=_y_reflect_normal(nxj,nyj)
+                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxjr,nyjr,κ[i],k,tol2;scale=sygn)
                 end
                 if add_xy
                     xjr=_x_reflect(xj,shift_x);yjr=_y_reflect(yj,shift_y)
-                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=sxy)
+                    nxjr,nyjr=_xy_reflect_normal(nxj,nyj)
+                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxjr,nyjr,κ[i],k,tol2;scale=sxy)
                 end
                 if have_rot
-                @inbounds for l in 1:nrot-1 # l=0 is the direct term we already added; add l=1..nrot-1
-                    cl=ctab[l+1];sl=stab[l+1]
-                    xjr,yjr=_rot_point(xj,yj,cx,cy,cl,sl)
-                    phase=χ[l+1]  # e^{i 2π m l / n}, reflections due to being 1d-irreps have real characters
-                    _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxj,nyj,κ[i],k,tol2;scale=phase)
+                    @inbounds for l in 1:nrot-1
+                        cl=ctab[l+1];sl=stab[l+1]
+                        xjr,yjr=_rot_point(xj,yj,cx,cy,cl,sl)
+                        nxjr,nyjr=_rot_vec(nxj,nyj,cl,sl)
+                        phase=χ[l+1]
+                        _add_pair3_image_default!(K,dK,ddK,i,j,xi,yi,nxi,nyi,xjr,yjr,nxjr,nyjr,κ[i],k,tol2;scale=phase)
+                    end
                 end
             end
             end
