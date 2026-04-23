@@ -143,6 +143,7 @@ Some solvers (e.g. Kress, Alpert) assume periodic parametrizations and do not di
 2. Choose solver -> geometry and problem dependant
 3. Discretize boundary -> evaluate_points(...) (done internally)
 4. Compute spectrum  -> compute_spectrum_beyn(...), compute_spectrum_ebim(...), compute_spectrum_with_state_data(...)
+5. Plot wavefunctions or compute boundary functions (normal derivative of wavefunction on boudnary) for Husimi functions
 
 ! Check examples folder 
 

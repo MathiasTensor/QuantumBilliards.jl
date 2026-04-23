@@ -187,16 +187,6 @@ export construct_B_matrix,residual_and_norm_select,compute_spectrum_beyn
 include("solvers/sweepmethods/sweepmethods.jl")
 export solve_wavenumber,k_sweep,refine_minima,get_eigenvalues
 
-# Hyperbolic kernels and solvers
-include("Hyperbolic/patched_taylor_series_Q.jl")
-include("Hyperbolic/DLP_hyperbolic_helmholtz.jl")
-include("Hyperbolic/BIM_hyperbolic.jl")
-include("Hyperbolic/sampler_hyperbolic.jl")
-include("Hyperbolic/weyl_hyperbolic.jl")
-include("Hyperbolic/Beyn_hyperbolic.jl")
-include("Hyperbolic/husimi_hyperbolic.jl")
-include("Hyperbolic/wavefunction_hyperbolic.jl")
-
 #spectra
 include("states/eigenstates.jl")
 export Eigenstate,compute_eigenstate,compute_eigenstate_bundle,StateData,solve_state_data_bundle,solve_state_data_bundle_with_INFO
