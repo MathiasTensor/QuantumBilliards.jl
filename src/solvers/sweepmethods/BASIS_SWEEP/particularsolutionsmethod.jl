@@ -54,7 +54,7 @@ function ParticularSolutionsMethod(dim_scaling_factor::T, pts_scaling_factor::Un
     d=dim_scaling_factor
     bs=typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[GaussLegendreNodes()]
-    epsilon=max(eps(T),1e-15) # set a floor on eps to avoid numerical issues in the generalized eigenvalue solver
+    epsilon=max(eps(T),1e-14) # set a floor on eps to avoid numerical issues in the generalized eigenvalue solver
     return ParticularSolutionsMethod(d,bs,int_pts_scaling_factor,sampler,epsilon,min_dim,min_pts,min_int_pts)
 end
 
@@ -86,7 +86,7 @@ Construct a `ParticularSolutionsMethod{T}` object with user-provided samplers.
 function ParticularSolutionsMethod(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},int_pts_scaling_factor::T,samplers::Vector{Sam};min_dim = 100,min_pts = 500,min_int_pts=500) where {T<:Real,Sam<:AbsSampler} 
     d=dim_scaling_factor
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
-    epsilon=max(eps(T),1e-15) # set a floor on eps to avoid numerical issues in the generalized eigenvalue solver
+    epsilon=max(eps(T),1e-14) # set a floor on eps to avoid numerical issues in the generalized eigenvalue solver
     return ParticularSolutionsMethod(d,bs,int_pts_scaling_factor,samplers,epsilon,min_dim,min_pts,min_int_pts)
 end
 
