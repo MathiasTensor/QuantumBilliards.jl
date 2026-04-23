@@ -349,8 +349,8 @@ function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},lay
 end
 
 function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
-    pts_all=Vector{typeof(pts)}(undef,length(pts))
-    layer_pot_all=Vector{typeof(layer_pot)}(undef,length(pts))
+    pts_all=Vector{typeof(pts[1])}(undef,length(pts))
+    layer_pot_all=Vector{typeof(layer_pot[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
         pts_all[i]=pts[i]
         layer_pot_all[i]=layer_pot[i]
