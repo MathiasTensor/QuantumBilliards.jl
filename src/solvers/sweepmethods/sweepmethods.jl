@@ -417,11 +417,8 @@ estimates.
 - `optimizer_kwargs=NamedTuple()`:
   Optional keyword arguments forwarded to `optimize` in the non-BIE refinement
   branch.
-- `stop_k_tol=0.0`:
-  If positive, stop refinement early when successive refined `k` values differ
-  by at most this tolerance.
 - `stop_t_tol=0.0`:
-  If positive, stop refinement early when successive tensions differ by at most
+  Stop refinement early when successive tensions differ by at most this tolerance.
   this tolerance.
 - `initial_refinement_interval=1e-3`:
   Default initial half-width scale for the local refinement interval if the

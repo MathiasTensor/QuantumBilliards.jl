@@ -381,86 +381,6 @@ struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
 end
 
 """
-    _warn_aggressive_alpert(pts_scaling_factor, billiard, alpert_order, alpertq)
-
-Internal heuristic warning helper for CFIE-Alpert parameter choices. It does not prove that a discretization is invalid or
-accurate, but it is useful as an early warning that the shortest panel may be
-insufficiently resolved. It is based on testings and experience with the Alpert near-correction structure
-and is designed to be conservative in its warnings.
-
-Purpose
--------
-This function estimates whether the chosen combination of:
-- Alpert correction order,
-- grading strength,
-- base boundary resolution,
-- geometry panel lengths,
-
-may be too aggressive for the shortest boundary segment.
-
-Why this matters
-----------------
-In Alpert-based panel quadrature, the effective near-correction becomes harder
-to resolve when:
-- the correction order is large,
-- the endpoint grading is strong,
-- the point density per wavelength is small,
-- one panel is much shorter than the others.
-
-Heuristic
----------
-The function computes a rough dimensionless ratio
-
-    R ~ (alpert_order * alpertq) / (bmin * Lmin / Lavg),
-
-where:
-- `bmin` is the smallest point-scaling factor,
-- `Lmin` is the shortest segment length,
-- `Lavg` is the average segment length.
-
-Large values of `R` indicate that the near-correction may be too strong for the
-available resolution.
-
-# Behavior
-- If `R > 6`, it emits a warning.
-- If `4 < R <= 6`, it emits an informational message.
-- Otherwise it stays silent.
-
-# Arguments
-- `pts_scaling_factor`
-- `billiard`
-- `alpert_order::Int`
-- `alpertq::Int`
-
-# Returns
-- `nothing`
-"""
-function _warn_aggressive_alpert(pts_scaling_factor,billiard,alpert_order::Int,alpertq::Int)
-    bs=pts_scaling_factor isa AbstractVector ? pts_scaling_factor : [pts_scaling_factor]
-    bmin=minimum(bs)
-    boundary=billiard.full_boundary
-    lens=Float64[]
-    if boundary[1] isa AbstractVector
-        for comp in boundary;append!(lens,[crv.length for crv in comp]);end
-    else;append!(lens,[crv.length for crv in boundary]);end
-    Lmin=minimum(lens) # minimum length is the most problematic since the near-correction will be strongest there and we need to make sure we have enough points to resolve it. 
-    Lavg=sum(lens)/length(lens) # The average length is also relevant since it gives us a sense of the overall discretization density.
-    # heuristic danger ratio:
-    # bigger order, bigger q, smaller b, shorter smallest panel => more dangerous
-    R=(alpert_order*alpertq)/(bmin*Lmin/Lavg)
-    if R>6.0
-        b_suggest=(alpert_order*alpertq)/(4.0*Lmin/Lavg)
-        q_suggest=(4.0*bmin*Lmin/Lavg)/alpert_order
-        @warn "CFIE_alpert: aggressive grading / near-correction may be under-resolved on the shortest boundary segment." b=bmin alpert_order=alpert_order alpertq=alpertq shortest_segment=Lmin average_segment=Lavg ratio=R suggested_min_b=b_suggest suggested_max_q=q_suggest
-    elseif R>4.0
-        b_suggest=(alpert_order*alpertq)/(4.0*Lmin/Lavg)
-        q_suggest=(4.0*bmin*Lmin/Lavg)/alpert_order
-        @info "CFIE_alpert: borderline grading / correction strength." b=bmin alpert_order=alpert_order alpertq=alpertq shortest_segment=Lmin average_segment=Lavg ratio=R suggested_min_b=b_suggest suggested_max_q=q_suggest
-    end
-    return nothing
-end
-
-"""
     CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,S}=nothing,alpert_order=16,alpertq=8) where {T<:Real,Bi<:AbsBilliard,S<:AbsSymmetry}
 
 Constructor for CFIE_alpert solver.
@@ -479,8 +399,6 @@ Constructor for CFIE_alpert solver.
 """
 function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=12,alpertq::Int=4) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
-    _warn_aggressive_alpert(pts_scaling_factor,billiard,alpert_order,alpertq)
-    _=alpert_log_rule(T,alpert_order)
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)

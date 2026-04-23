@@ -85,7 +85,7 @@ where we construct A_0 and A_1
 **+** Finds all eigenvalues in a region  
 **+** Very effective when Vergini–Saraceno fails  
 **+** Naturally supports desymmetrized domains via subspace projections
-**−** Slower than Vergini–Saraceno, as for desymmetirzed domains still needs to form and invert the full size matrix 
+**−** Slower (not by much) than Vergini–Saraceno, as always needs to form and invert the full size matrix regardles of subspace projection
 **−** Requires contour tuning (nq, but it varies slowly and is typically very small around 40-45) 
 
 ---
