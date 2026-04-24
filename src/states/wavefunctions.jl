@@ -569,7 +569,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector{<:Vector{<:AbstractMatrix}},ps_list::Vector,qs_list::Vector{<:Vector{<:AbstractVector}},billiard::Bi; b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Vector{<:AbstractMatrix}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Vector{<:AbstractVector{T}}},billiard::Bi;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {T<:Real,Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -638,7 +638,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector,billiard::Bi,us_all::Vector,pts_all::Vector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector,ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Vector{<:AbstractVector{T}}},billiard::Bi,us_all::Vector{<:AbstractVector{Complex{T}}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {T<:Real,Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -706,7 +706,7 @@ splits large datasets into batches of size `N`.
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects with wavefunction and Husimi plots, one per batch.
 """
-function plot_wavefunctions_with_husimi(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector, billiard::Bi;N=100,kwargs...) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector,ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Vector{<:AbstractVector{T}}},billiard::Bi;N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard;N=N,kwargs...)
 end
 
@@ -734,7 +734,7 @@ the data into sets of size `N`.
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, each containing wavefunction, Husimi plots, and boundary functions, one per batch.
 """
-function plot_wavefunctions_with_husimi(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,Hs_list::Vector,ps_list::Vector,qs_list::Vector, billiard::Bi,us_all::Vector,pts_all::Vector;N=100,kwargs...) where {Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector,ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Vector{<:AbstractVector{T}}},billiard::Bi,us_all::Vector{<:AbstractVector{Complex{T}}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,pts_all;N=N,kwargs...)
 end
 

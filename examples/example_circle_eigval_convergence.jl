@@ -26,7 +26,7 @@ bvals=[2.0,3.0,4.0,5.0,6.0,8.0,10.0] # these are points per wavelength, so the n
 billiard,_=make_circle_and_basis(1.0)
 
 # storage
-names=["BIM","DLP_kress","CFIE_kress","CFIE_alpert (order=12, q=4)","CFIE_alpert (order=14, q=2)"]
+names=["DLP","DLP_kress","CFIE_kress","CFIE_alpert (order=12, q=4)","CFIE_alpert (order=14, q=2)"]
 kconv=Dict(name=>Float64[] for name in names)
 errconv=Dict(name=>Float64[] for name in names)
 Nconv=Dict(name=>Int[] for name in names)
@@ -34,7 +34,7 @@ Nconv=Dict(name=>Int[] for name in names)
 for b in bvals
     println("b = $b")
     solvers=[
-        ("BIM",BoundaryIntegralMethod(b,billiard)),
+        ("DLP",BoundaryIntegralMethod(b,billiard)),
         ("DLP_kress",DLP_kress(b,billiard)),
         ("CFIE_kress",CFIE_kress(b,billiard)),
         ("CFIE_alpert (order=12, q=4)",CFIE_alpert(b,billiard,alpert_order=12,alpertq=4)),
@@ -58,8 +58,8 @@ end
 ##### BIM FIT #####
 
 # extract BIM data
-N_bim=Nconv["BIM"]
-err_bim=errconv["BIM"].+1e-16
+N_bim=Nconv["DLP"]
+err_bim=errconv["DLP"].+1e-16
 # fit constant C using first point and ref curve
 C=err_bim[1]*N_bim[1]^3 # we expect BIM to have 3rd order convergence since it is weakly singular and we dont fix the near diagonal behaviour, so the reference curve is C/N^3
 Ns=range(minimum(N_bim),maximum(N_bim),length=200)
@@ -96,6 +96,6 @@ end
 # add 1/N^3 reference
 lines!(ax,Ns,ref,linestyle=:dash,color=:black,label="~ N^{-3}")
 # add Alpert reference
-lines!(ax,Ns,ref_alp,linestyle=:dash,color=:red,label="~ N^{$(round(p_est,digits=2))}")
+lines!(ax,Ns,ref_alp,linestyle=:dash,color=:red,label="~ N^{-$(round(p_est,digits=2))}")
 axislegend(ax,position=:rc)
 save("circle_convergence.png",fig)
