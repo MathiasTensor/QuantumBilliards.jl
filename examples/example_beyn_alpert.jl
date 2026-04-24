@@ -220,7 +220,7 @@ Psi2ds,x_grid,y_grid=wavefunction_multi(
     us,                    # layer potentials corresponding to each state
     pts_all,               # boundary discretizations for each state (typically Vector{BoundaryPointsCFIE})
     billiard;              # billiard geometry used to build the common plotting grid and inside-mask
-    b=5.0,                 # grid-density scaling: larger b -> finer x/y plotting grid
+    b=b,                 # grid-density scaling: larger b -> finer x/y plotting grid
     inside_only=true,      # evaluate ψ only at points inside the billiard; outside stays zero ->  for checking correctness 
     fundamental=false,     # if true use the fundamental-domain mask/limits, otherwise use the full billiard
     MIN_CHUNK=4096,        # minimum number of interior grid points assigned per thread chunk
