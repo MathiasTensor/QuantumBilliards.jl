@@ -506,7 +506,7 @@ end
 # helper to concatenate multiple Husimi components into one big Husimi matrix with the qs grids concatenated with offsets to avoid overlap, and also return the seam locations for plotting vertical lines to indicate the component boundaries. This is useful for plotting multiple Husimi components together in a single plot while visually separating them along the q-axis.
 function _husimi_concat_with_separation(Hs::Vector{<:AbstractMatrix{T}},qs_list::Vector{<:AbstractVector{T}}) where {T<:Real}
     length(Hs)==length(qs_list) || error("Hs and qs_list must have same length")
-    isempty(Hs) && return zeros(T,0,0),T[],T[]
+    (isempty(Hs) || any(isempty,Hs)) && return zeros(T,0,0),T[],T[]
     ncomp=length(Hs)
     nps=size(Hs[1],2)
     for a in 1:ncomp
@@ -593,12 +593,12 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
         title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
-        ψplot=sqrt.(Psi2ds[j]) # display-only contrast boost
+        ψplot=sqrt.(abs.(Psi2ds[j])) # display-only contrast boost
         heatmap!(ax,x_grid,y_grid,ψplot,colormap=Reverse(:gist_heat),colorrange=(0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
-        Hs=Hs_list[j];qs=qs_list[j];Hs=Hs isa AbstractMatrix ? [Hs] : Hs;qs=qs isa AbstractVector ? [qs] : qs
+        Hs=Hs_list[j];qs=qs_list[j];Hs=Hs isa AbstractMatrix ? [Hs] : Hs;qs=(qs isa AbstractVector{T} && !(eltype(qs)<:AbstractVector)) ? [qs] : qs
         Hcat,qcat,seams=_husimi_concat_with_separation(Hs,qs)
-        heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))
+        !isempty(Hcat) && heatmap!(ax_h,qcat,ps_list[j],Hcat;colormap=Reverse(:gist_heat))
         _plot_husimi_separation_lines!(ax_h,seams,ps_list[j];color=seam_color,linewidth=seam_linewidth)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -662,16 +662,16 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
     @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
         title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax_wave=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        ψplot=sqrt.(Psi2ds[j]) # display-only contrast boost
+        ψplot=sqrt.(abs.(Psi2ds[j])) # display-only contrast boost
         heatmap!(ax_wave,x_grid,y_grid,ψplot,colormap=Reverse(:gist_heat),colorrange=(0,1))
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
-        Hs=Hs_list[j];qs=qs_list[j];Hs=Hs isa AbstractMatrix ? [Hs] : Hs;qs=qs isa AbstractVector ? [qs] : qs
+        Hs=Hs_list[j];qs=qs_list[j];Hs=Hs isa AbstractMatrix ? [Hs] : Hs;qs=(qs isa AbstractVector{T} && !(eltype(qs)<:AbstractVector)) ? [qs] : qs
         Hcat,qcat,seams=_husimi_concat_with_separation(Hs,qs)
-        pgrid=eltype(ps_list)<:Real ? ps_list : ps_list[j] # to make both hole and no hole work, hack
-        heatmap!(ax_h,qcat,pgrid,Hcat;colormap=Reverse(:gist_heat))
+        pgrid=ps_list[j]
+        !isempty(Hcat) && heatmap!(ax_h,qcat,pgrid,Hcat;colormap=Reverse(:gist_heat))
         _plot_husimi_separation_lines!(ax_h,seams,pgrid;color=seam_color,linewidth=seam_linewidth)
         local ax_boundary=Axis(f[row,col][2,1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
         svals=boundary_s(pts_all[j])
