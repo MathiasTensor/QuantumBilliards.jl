@@ -7,6 +7,7 @@ using SpecialFunctions
 using LinearAlgebra
 using SparseArrays
 using StaticArrays
+using Statistics
 using Arpack
 using Random
 using ForwardDiff
