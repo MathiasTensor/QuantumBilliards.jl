@@ -1,4 +1,8 @@
-ENV["JULIA_PRECOMPILE_THREADS"]="auto" # faster precompilation if neccesery
+
+#########################
+#### Standalone file ####
+#########################
+
 using GSL # for the derivatives of the Bessel functions
 using Bessels # for the Bessel functions themselves due to GSL underflow
 using QuadGK # for the radial integrand of the conformal mapping matrix

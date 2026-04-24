@@ -1,6 +1,6 @@
 module QuantumBilliards
 
-using CairoMakie #FIXME move the geometry package
+using CairoMakie
 using FFTW
 using Bessels
 using SpecialFunctions
@@ -10,22 +10,15 @@ using StaticArrays
 using Arpack
 using Random
 using ForwardDiff
-using QuadGK #FIXME move to geomtey package
-using FastGaussQuadrature #FIXME move to geometry
+using QuadGK
+using FastGaussQuadrature
 using Optim 
-using StatsBase #FIXME remove this dependency
 using ProgressMeter
-using BenchmarkTools #TODO REMOVE NOW 
-using DataFrames # FIXME remove
-using PrettyTables #FIXME remove
-using LsqFit #FIXME move to SpectralStatistics.jl
 using MKL
 using KrylovKit
 using LinearMaps
-using PyCall
 using CoordinateTransformations # FIXME needs to go
 using Rotations #FIXME needs to go
-using Distributions #FIXME remove
 using CircularArrays
 
 #abstract types
@@ -96,7 +89,6 @@ include("billiards/africa.jl")
 include("billiards/circle_with_circle_holes.jl")
 include("billiards/star_with_hole.jl")
 include("billiards/stadium_within_stadium.jl")
-include("billiards/elliptic_flower_with_hole.jl")
 # convenience billiard functions
 export CircleBilliard,make_quarter_circle,make_circle,make_circle_and_basis
 export Ellipse,make_quarter_ellipse,make_full_ellipse,make_ellipse_and_basis
@@ -113,7 +105,6 @@ export Triangle,make_triangle_and_basis
 export StadiumWithOptionalHole,make_stadium_with_optional_hole_and_basis
 export EllipseMushroom,make_ellipse_mushroom_and_basis
 export CircularHoleBilliard,make_circle_with_holes_and_basis,make_multihole_and_basis,make_annulus_and_basis,MultiHoleBilliard,AnnularBilliard
-export EllipticFlowerWithOptionalHole,make_elliptic_flower_and_basis
 export StarBilliard,make_star_and_basis
 export AfricaBilliard,make_africa_and_basis
 export C3Billiard,make_c3_and_basis
@@ -187,16 +178,6 @@ export construct_B_matrix,residual_and_norm_select,compute_spectrum_beyn
 include("solvers/sweepmethods/sweepmethods.jl")
 export solve_wavenumber,k_sweep,refine_minima,get_eigenvalues
 
-# Hyperbolic kernels and solvers
-include("Hyperbolic/patched_taylor_series_Q.jl")
-include("Hyperbolic/DLP_hyperbolic_helmholtz.jl")
-include("Hyperbolic/BIM_hyperbolic.jl")
-include("Hyperbolic/sampler_hyperbolic.jl")
-include("Hyperbolic/weyl_hyperbolic.jl")
-include("Hyperbolic/Beyn_hyperbolic.jl")
-include("Hyperbolic/husimi_hyperbolic.jl")
-include("Hyperbolic/wavefunction_hyperbolic.jl")
-
 #spectra
 include("states/eigenstates.jl")
 export Eigenstate,compute_eigenstate,compute_eigenstate_bundle,StateData,solve_state_data_bundle,solve_state_data_bundle_with_INFO
@@ -228,12 +209,8 @@ include("spectra/m_index.jl")
 export visualize_overlap,compute_M,shift_s_vals_poincare_birkhoff,classical_phase_space_matrix,compute_overlaps,separate_regular_and_chaotic_states
 include("spectra/gap_ratios.jl")
 export P_chaotic,P_integrable,P_r_normalized,plot_gap_ratios,average_gap_ratio,plot_average_r_vs_parameter!
-include("spectra/localization_entropy.jl")
-export localization_entropy,normalized_inverse_participation_ratio_R,plot_P_localization_entropy_pdf!,P_localization_entropy_pdf_data, fit_P_localization_entropy_to_beta,correlation_matrix,correlation_matrix_and_average
-include("solvers/gridmethods/fdm.jl")
+nclude("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod,compute_interior_index,FEM_Hamiltonian,compute_fem_eigenmodes,compute_boundary,compute_boundary_tension
-include("spectra/evolution.jl")
-export Wavepacket,gaussian_wavepacket_2d,gaussian_coefficients,plot_gaussian_from_eigenfunction_expansion,evolution_gaussian_coefficients, animate_wavepacket_evolution!
 include("spectra/otoc.jl")
 export plot_wavefunctions,X_mn_standard,X_standard,B_standard,microcanocinal_Cn_standard,plot_microcanonical_Cn!,microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
 include("solvers/gridmethods/phi_fdm.jl")
