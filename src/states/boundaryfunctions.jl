@@ -272,7 +272,7 @@ It also constructs the norm of the boundary function on the whole boundary (afte
 Is is used by `ParticularSolutionsMethod`,`DecompositionMethod` and `VerginiSaraceno` solvers.
 To construct a state use the results from `solve_vect` to get the vector of coefficients in a given basis
 and then construct an `Eigenstate` object with those coefficients and the associated `k` and `basis`. 
-Then this `Eigenstate` object can be used as the input to this function to get the boundary function, arclength values, and norm.
+Then this `Eigenstate` object can be used as the input to this function to get the boundary function, arclength values.
 
 Example: 
 
@@ -295,7 +295,6 @@ u,pts,norm=boundary_function(state,b=b)
 # Returns
 - `u::Vector{<:Real}`: the boundary function evaluated at the points on the boundary.
 - `pts::BoundaryPoints`: the boundary points corresponding to the `u`. 
-- `norm<:Real`: the norm of the boundary function on the whole boundary.
 """
 function boundary_function(state::S;b=5.0) where {S<:AbsState}
     vec=state.vec
@@ -329,7 +328,7 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
     pts,u=shift_starting_arclength(billiard,u,pts)
     nrlz=_rellich(pts,u,k) # Rellich boundary norm: ∫ |u|^2 (n·x) ds / (2k^2) no temps
-    @blas_1 return u./sqrt(nrlz),pts,nrlz
+    @blas_1 return u./sqrt(nrlz),pts
 end
 
 """
@@ -367,7 +366,7 @@ function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) w
             dim=rescale_dimension(basis,dim)
             new_basis=resize_basis(basis,billiard,dim,ks[i]) # dim here should be for the main function
             state=Eigenstate(ks[i],vec,tens[i],new_basis,billiard)
-            u,pts,_=boundary_function(state;b=b) # pts is BoundaryPoints and has information on ds and x
+            u,pts=boundary_function(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
             pts_all[i]=pts
         catch e
@@ -417,7 +416,7 @@ Computes the momentum distribution function for a given quantum state object. Th
 - `Vector`: The frequencies (`ks`) associated with the DFT components.
 """
 function momentum_function(state::S;b=5.0) where {S<:AbsState}
-    u,s,norm=boundary_function(state;b=b)
+    u,s=boundary_function(state;b=b)
     return momentum_function(u,s)
 end
 
