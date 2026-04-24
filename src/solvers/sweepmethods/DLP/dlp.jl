@@ -165,34 +165,31 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     normal_all=Vector{SVector{2,type}}()
+    s_all=Vector{type}()
     kappa_all=Vector{type}()
     w_all=Vector{type}()
+    soff=zero(type)
     for i in eachindex(curves)
         crv=curves[i]
         if typeof(crv)<:AbsRealCurve
             L=crv.length
             N=max(solver.min_pts,round(Int,k*L*bs[i]/(2*pi)))
             sampler=samplers[i]
-            if sampler isa PolarSampler
-                t,dt=sample_points(sampler,crv,N)
-            else
-                t,dt=sample_points(sampler,N)
-            end
+            t,dt=sampler isa PolarSampler ? sample_points(sampler,crv,N) : sample_points(sampler,N)
             s=arc_length(crv,t)
             ds=diff(s)
-            append!(ds,L+s[1]-s[end]) # add the last difference as we have 1 less element. Add L to s[1] so we can logically subtract s[end]
-            xy=curve(crv,t)
-            normal=normal_vec(crv,t)
-            kappa=curvature(crv,t)
-            append!(xy_all,xy)
-            append!(normal_all,normal)
-            append!(kappa_all,kappa)
+            append!(ds,L+s[1]-s[end])
+            append!(s_all,s.-s[1].+soff)
+            soff+=L
+            append!(xy_all,curve(crv,t))
+            append!(normal_all,normal_vec(crv,t))
+            append!(kappa_all,curvature(crv,t))
             append!(w_all,ds)
         end
     end
     shift_x=hasproperty(billiard,:x_axis) ? billiard.x_axis : type(0.0)
     shift_y=hasproperty(billiard,:y_axis) ? billiard.y_axis : type(0.0)
-    return BoundaryPoints{type}(xy_all,normal_all,Vector{type}(),w_all,Vector{type}(),Vector{type}(),kappa_all,Vector{SVector{2,type}}(),shift_x,shift_y)
+    return BoundaryPoints{type}(xy_all,normal_all,s_all,w_all,Vector{type}(),Vector{type}(),kappa_all,Vector{SVector{2,type}}(),shift_x,shift_y)
 end
 
 """

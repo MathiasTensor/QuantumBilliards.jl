@@ -134,8 +134,8 @@ function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{<:AbstractV
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
     if use_fixed_grid
         Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
-        ps_list=fill(ps,length(Hs_list))
-        qs_list=fill(qs,length(Hs_list))
+        ps_list=[ps for _ in 1:length(ks)]
+        qs_list=[qs for _ in 1:length(ks)]
     else
         Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
     end
