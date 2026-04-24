@@ -18,9 +18,11 @@ end
 """
     normal_vec(curve::L, ts::AbstractVector{T}) :: Vector{SVector{2,T}} where {T<:Real, L<:AbsCurve}
 
-Compute the outward normal vectors of an arbitrary curve at parameter values `ts`, 
-assuming a right‐handed orientation. Each normal is obtained by rotating the unit tangent 
-vector by +90° (i.e. `(t_x, t_y) -> (t_y, -t_x)`).
+Compute normal vectors from the unit tangent by a -90° rotation,
+`(t_x,t_y) -> (t_y,-t_x)`. This gives the outward normal for a counterclockwise
+outer boundary. For holes, the component must be oriented clockwise for this to
+be the outward normal of the billiard domain (done internally with `_reverse_component_orientation`
+under the hood).
 
 # Arguments
 - `curve::L<:AbsCurve`: Any curve type implementing `tangent_vec`.

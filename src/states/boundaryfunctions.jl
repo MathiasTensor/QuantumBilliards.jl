@@ -25,6 +25,114 @@ Regularizes the boudnary function to get rid of potential artifacts in them. Thi
 end
 
 """
+    _rellich(pts::BoundaryPoints{T},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
+
+Compute the Rellich normalization integral estimate for a boundary density `u`
+interpreted as the normal derivative of a Dirichlet eigenfunction.
+
+Uses the identity
+
+    ∫Ω |ψ|² dx = 1/(2k²) ∫∂Ω (x⋅n) |∂ₙψ|² ds
+
+with the quadrature data stored in `pts`.
+
+# Arguments
+- `pts`: Boundary points containing `xy`, outward `normal`, and quadrature weights `ds`.
+- `u`: Boundary density values at `pts.xy` <-> `∂ₙψ(x,y)`.
+- `k`: Wavenumber.
+
+# Returns
+- Approximation of `∫Ω |ψ|² dx`.
+"""
+function _rellich(pts::BoundaryPoints{T},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
+    acc=zero(T)
+    @inbounds @simd for i in eachindex(u)
+        n=pts.normal[i]
+        xy=pts.xy[i]
+        w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i]
+        acc+=w*abs2(u[i])
+    end
+    return acc/(2*k^2)
+end
+
+"""
+    _rellich(pts::BoundaryPointsCFIE{T},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
+
+Compute the Rellich normalization integral estimate for CFIE boundary data.
+
+The outward normal is reconstructed from the stored tangent as
+
+    n = (t₂,-t₁)
+
+and the returned value approximates
+
+    ∫Ω |ψ|² dx = 1/(2k²) ∫∂Ω (x⋅n) |∂ₙψ|² ds.
+
+For multiply connected domains, call this on all boundary components and sum the
+signed contributions. Hole components must use the outward normal of the domain.
+
+# Arguments
+- `pts`: CFIE boundary points containing `xy`, `tangent`, and quadrature weights `ds`.
+- `u`: Boundary density values at `pts.xy` <-> `∂ₙψ(x,y)`.
+- `k`: Wavenumber.
+
+# Returns
+- Approximation of `∫Ω |ψ|² dx` for this component.
+"""
+function _rellich(pts::BoundaryPointsCFIE{T},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
+    acc=zero(T)
+    @inbounds @simd for i in eachindex(u)
+        t=pts.tangent[i]
+        n=SVector{T}(t[2],-t[1])
+        xy=pts.xy[i]
+        w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i]
+        acc+=w*abs2(u[i])
+    end
+    return acc/(2*k^2)
+end
+
+"""
+    _rellich(comps::Vector{BoundaryPointsCFIE{T}}, u::AbstractVector{N}, k::T) where {N<:Number,T<:Real}
+
+Compute the Rellich normalization integral for a multiply connected domain
+represented by several CFIE boundary components.
+
+This evaluates the identity
+
+    ∫Ω |ψ|² dx = 1/(2k²) ∫∂Ω (x⋅n) |∂ₙψ|² ds
+
+by summing contributions from all boundary components
+
+    Ω = ∂Ω₁ ∪ ∂Ω₂ ∪ ... ∪ ∂Ωₘ
+
+where ∂Ω₁ is the outer boundary and subsequent ∂Ωᵢ are holes. `u` is interpreted as the normal derivative `∂ₙψ` on the full boundary.
+
+# Arguments
+- `comps`: Vector of CFIE boundary components (`BoundaryPointsCFIE`), ordered
+  such that the first component is the outer boundary and subsequent components
+  are holes.
+- `u`: Concatenated boundary density values corresponding to all components,
+  ordered consistently with `comps`.
+- `k`: Wavenumber.
+
+# Returns
+- Approximation of `∫Ω |ψ|² dx` over the full (possibly multiply connected) domain.
+"""
+function _rellich(comps::Vector{BoundaryPointsCFIE{T}},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
+     length(u)==sum(length(c.xy) for c in comps) || error("u length does not match concatenated CFIE boundary components")
+    # require one object per connected component
+    length(unique(getfield.(comps,:compid)))==length(comps) || error("_rellich(comps, u, k) expects one BoundaryPointsCFIE per connected component")
+    acc=zero(T)
+    p=1
+    for c in comps
+        n=length(c.xy)
+        acc+=_rellich(c,@view(u[p:p+n-1]),k)
+        p+=n
+    end
+    return acc
+end
+
+"""
     shift_starting_arclength(billiard::Bi, u::Vector, pts::BoundaryPoints) where {Bi<:AbsBilliard}
 
 When constructing the boundary function u we need to sometimes shift the starting point on the full boundary. 
@@ -220,15 +328,8 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     pts=apply_symmetries_to_boundary_points(pts,new_basis.symmetries,billiard)
     u=apply_symmetries_to_boundary_function(u,new_basis.symmetries)
     pts,u=shift_starting_arclength(billiard,u,pts)
-    acc=zero(T)
-    @inbounds @simd for i in eachindex(u) # boundary norm: ∫ |u|^2 (n·x) ds / (2k^2) no temps
-        n=pts.normal[i]
-        xy=pts.xy[i]
-        w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i] # w_i = (n·x) ds
-        acc+=w*abs2(u[i]) # accumulate w_i*|u_i|^2
-    end
-    norm=acc/(2*k^2)
-    @blas_1 return u,pts,norm
+    nrlz=_rellich(pts,u,k) # Rellich boundary norm: ∫ |u|^2 (n·x) ds / (2k^2) no temps
+    @blas_1 return u./sqrt(nrlz),pts,nrlz
 end
 
 """
@@ -324,36 +425,42 @@ end
 ################### BoundaryIntegralMethod, DLP_kress and DLP_kress_global_corners ######################
 #########################################################################################################
 
-function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,billiard::Bi) where {N<:Number,Bi<:AbsBilliard}
+function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     # naive DLP has method of images / irrep projections so it works with fundamental domains.
     # Therefore we need to apply the symmetries to the boundary points and the boundary function to get the full boundary function on the full boundary.
     pts=apply_symmetries_to_boundary_points(pts,solver.symmetry,billiard)
     u=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
-    return pts,u
+    nrlz=_rellich(pts,u,k)
+    return pts,u./sqrt(nrlz)
 end
 
-function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     us_all=Vector{Vector{N}}(undef,length(pts))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
         pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetry,billiard)
-        us_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetry)
+        u=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetry)
+        nrlz=_rellich(pts_all[i],u,ks[i])
+        us_all[i]=u./sqrt(nrlz)
     end
     return pts_all,us_all
 end
 
-function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     # for DLP kress and DLP_kress_global_corners the boundary function is the layer potential itself and
     # also the boudnary is always full due to Kress splitting, therefore there is no symetrization that needs to be done
-    return pts,layer_pot
+    # normalize with Rellich
+    nrlz=_rellich(pts,layer_pot,k)
+    return pts,layer_pot./sqrt(nrlz)
 end
 
-function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard,T<:Real}
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     layer_pot_all=Vector{typeof(layer_pot[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
         pts_all[i]=pts[i]
-        layer_pot_all[i]=layer_pot[i]
+        nrlz=_rellich(pts[i],layer_pot[i],ks[i])
+        layer_pot_all[i]=layer_pot[i]./sqrt(nrlz)
     end
     return pts_all,layer_pot_all
 end
@@ -993,7 +1100,7 @@ Inputs
 ------
 - `solver`: One of the periodic CFIE-Kress solvers, with or without corners.
 - `layer_pot`: Global CFIE density μ.
-- `pts`: Boundary discretization (one `BoundaryPointsCFIE` per component).
+- `pts`: Boundary discretization (one `BoundaryPointsCFIE` per connected component).
 - `ws`: Precomputed CFIE Kress workspace.
 - `k`: Wavenumber.
 - `multithreaded`: Enables threaded DLP assembly for K'.
@@ -1005,7 +1112,9 @@ Output
 function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     Nμ=hypersingular_maue_kress(solver,layer_pot,pts,ws,k)
     Kpμ=cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
-    return pts,-Nμ-Complex{T}(0,k).*(-layer_pot/2+Kpμ)
+    u=-Nμ-Complex{T}(0,k).*(-layer_pot/2+Kpμ)
+    nrlz=_rellich(pts,u,k)
+    return pts,u./sqrt(nrlz)
 end
 
 """
