@@ -209,7 +209,7 @@ include("spectra/m_index.jl")
 export visualize_overlap,compute_M,shift_s_vals_poincare_birkhoff,classical_phase_space_matrix,compute_overlaps,separate_regular_and_chaotic_states
 include("spectra/gap_ratios.jl")
 export P_chaotic,P_integrable,P_r_normalized,plot_gap_ratios,average_gap_ratio,plot_average_r_vs_parameter!
-nclude("solvers/gridmethods/fdm.jl")
+include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod,compute_interior_index,FEM_Hamiltonian,compute_fem_eigenmodes,compute_boundary,compute_boundary_tension
 include("spectra/otoc.jl")
 export plot_wavefunctions,X_mn_standard,X_standard,B_standard,microcanocinal_Cn_standard,plot_microcanonical_Cn!,microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
