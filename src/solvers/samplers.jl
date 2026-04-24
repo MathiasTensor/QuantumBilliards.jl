@@ -1,9 +1,6 @@
 struct LinearNodes <: AbsSampler 
 end 
 
-@inline midpoints(v::AbstractVector)=(v[1:end-1].+v[2:end])./2
-@inline midpoints(r::AbstractRange)=r[1:end-1].+step(r)/2
-
 """
     sample_points(sampler::LinearNodes,N::Int)
 

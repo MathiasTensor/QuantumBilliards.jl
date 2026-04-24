@@ -149,3 +149,21 @@ function boundary_limits(curves;grd=1000)
     ylim=extrema(y_bnd)
     return xlim,ylim
 end
+
+@inline midpoints(v::AbstractVector)=(v[1:end-1].+v[2:end])./2
+@inline midpoints(r::AbstractRange)=r[1:end-1].+step(r)/2
+
+function median(v::AbstractVector{T}) where {T<:Real}
+    n=length(v)
+    w=copy(v) 
+    if isodd(n) # take the middle one
+        k=(n+1)÷2
+        return select!(w,k)
+    else # take the average of the two middle ones
+        k1=n÷2
+        k2=k1+1
+        m1=select!(w,k1)
+        m2=select!(w,k2)
+        return (m1+m2)/2
+    end
+end
