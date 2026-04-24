@@ -211,8 +211,6 @@ include("spectra/gap_ratios.jl")
 export P_chaotic,P_integrable,P_r_normalized,plot_gap_ratios,average_gap_ratio,plot_average_r_vs_parameter!
 include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod,compute_interior_index,FEM_Hamiltonian,compute_fem_eigenmodes,compute_boundary,compute_boundary_tension
-include("spectra/otoc.jl")
-export plot_wavefunctions,X_mn_standard,X_standard,B_standard,microcanocinal_Cn_standard,plot_microcanonical_Cn!,microcanonical_Cn_no_wavepacket, plot_microcanonical_Cn_no_wavepacket!
 include("solvers/gridmethods/phi_fdm.jl")
 export compute_extended_index,phiFD_Hamiltonian,compute_ϕ_fem_eigenmodes
 
