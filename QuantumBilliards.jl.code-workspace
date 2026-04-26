@@ -17,6 +17,6 @@
 		}
 	],
 	"settings": {
-		"julia.environmentPath": "C:\\Users\\d93490\\.julia\\environments\\quantumchaos"
+		"julia.environmentPath": "/home/clozej/.julia/environments/quantumchaos"
 	}
 }
