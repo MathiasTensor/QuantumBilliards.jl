@@ -74,5 +74,4 @@ export wavefunction #wavefunction_norm
 export get_boundary_curves_with_ignored, boundary_function, momentum_function, husimi_function
 
 
-
 end

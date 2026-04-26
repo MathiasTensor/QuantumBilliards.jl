@@ -12,7 +12,7 @@ Construct a polar coordinate system centered at the `i`-th corner of a triangle 
 - `cs::PolarCS`: A polar coordinate system with origin at the corner and angle-aligned axis.
 - `symmetry::Nothing`: Placeholder for symmetry information (not used currently).
 """
-function adapt_basis(triangle::T,i::Ti) where {T<:TriangleBilliard,Ti<:Integer}
+function adapt_basis(triangle::T,i::Ti) where {T<:BilliardGeometry.TriangleBilliard,Ti<:Integer}
     N=3
     c=triangle.fundamental_domain.corners
     i0=mod1(i,N)
