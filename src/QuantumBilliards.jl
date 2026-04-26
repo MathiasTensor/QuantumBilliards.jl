@@ -17,7 +17,6 @@ export AbsBasis, AbsSolver
 include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/typeutils.jl")
-include("utils/gridutils.jl")
 include("utils/macros.jl")
 include("utils/billiardutils.jl")
 export make_triangle_and_basis, adapt_basis
