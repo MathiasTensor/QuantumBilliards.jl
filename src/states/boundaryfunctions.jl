@@ -83,7 +83,8 @@ function _rellich(pts::BoundaryPointsCFIE{T},u::AbstractVector{N},k::T) where {N
     acc=zero(T)
     @inbounds @simd for i in eachindex(u)
         t=pts.tangent[i]
-        n=SVector(t[2],-t[1])
+        sp=hypot(t[1],t[2])
+        n=SVector(t[2]/sp,-t[1]/sp)
         xy=pts.xy[i]
         w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i]
         acc+=w*abs2(u[i])
