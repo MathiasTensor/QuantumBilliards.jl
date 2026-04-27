@@ -1125,7 +1125,7 @@ building the CFIE-Kress workspace internally.
 
 This is a convenience wrapper around `boundary_function(solver, layer_pot, pts, ws, k)`.
 """
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},billiard::Bi,k::T;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     ws=build_cfie_kress_workspace(solver,pts)
     return boundary_function(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
 end
@@ -1136,7 +1136,7 @@ end
 Recover the physical boundary function ∂_n ψ for multiple wavenumbers, building the CFIE-Kress workspace internally for each.
 This is a convenience wrapper around `boundary_function(solver, layer_pot, pts, ws, k)` that loops over multiple wavenumbers. The output is a vector of boundary functions, one per wavenumber.
 """
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{Complex{T}}},pts::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real}
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{Complex{T}}},pts::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     us=Vector{Vector{Complex{T}}}(undef,length(pts))
     for i in eachindex(ks)
         ws=build_cfie_kress_workspace(solver,pts[i])
