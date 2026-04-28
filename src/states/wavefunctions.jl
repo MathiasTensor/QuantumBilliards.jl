@@ -615,12 +615,13 @@ function _husimi_concat_with_separation(Hs::Vector{<:AbstractMatrix{T}},qs_list:
     return Hcat,qcat,seams
 end
 
+# helper to compute the breakpoints along the q-axis for plotting vertical lines to indicate the boundaries between different Husimi components when they are concatenated together. This is useful for visually separating the different components in a combined Husimi plot.
 function boundary_hole_breakpoints(pts)
-    if pts isa Vector # multi-component CFIE case
-        lengths=[length(boundary_s(p)) for p in pts]
+    if pts isa Vector
+        lengths = [maximum(boundary_s(p)) for p in pts]
         return cumsum(lengths)[1:end-1]
     else
-        return Float64[]  # single boundary -> no holes
+        return Float64[]
     end
 end
 
