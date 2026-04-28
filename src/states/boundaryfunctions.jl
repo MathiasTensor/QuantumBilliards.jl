@@ -489,7 +489,7 @@ function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:Ab
     us_all=Vector{Vector{N}}(undef,length(pts))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
-        nrlz=_rellich(pts_all[i],layer_pot[i],ks[i])
+        nrlz=_rellich(pts[i],layer_pot[i],ks[i])
         us_all[i]=layer_pot[i]./sqrt(nrlz)
     end
     return pts_all,us_all
