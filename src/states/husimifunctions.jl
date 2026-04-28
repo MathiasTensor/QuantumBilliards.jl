@@ -330,29 +330,35 @@ function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Abst
 end
 
 """
-    function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::Vector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi, nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
-Efficient way to construct the husimi functions (`Vector{Matrix}`) on a common grid of `size(nx,ny)` from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
+Construct fixed-grid Husimi functions from boundary functions and boundary-point
+objects.
+
+This method supports both the standard `BoundaryPoints` route and the DLP-Kress
+single-component `BoundaryPointsCFIE` route. Each state is assumed to have one
+closed boundary component.
 
 # Arguments
-- `ks::Vector{T}`: A vector of eigenvalues.
-- `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: A vector of vectors representing the boundary function values. Cant take complex values
-- `vec_bdPoints::Vector{BoundaryPoints{T}}`: A vector of `BoundaryPoints` objects.
-- `billiard::Bi`: The billiard geometry for the total length. Faster than calling `maximum(s)`.
-- `nx::Interger`: The size of linearly spaced q grid.
-- `ny::Interger`: The size of linearly spaced p grid.
-- `full_p::Bool=false`: Whether the boundary function is such that p -> -p symmetry is guaranteed. If so it halves the effort.
+- `ks::AbstractVector{T}`: Wavenumbers / eigenvalues.
+- `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: Boundary functions, one per state.
+- `vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}}`: Boundary discretizations, one per state.
+- `billiard::Bi`: Billiard geometry. Kept for API compatibility.
+- `nx::Integer`: Number of `q` grid points.
+- `ny::Integer`: Number of `p` grid points.
+- `full_p::Bool=false`: If `false`, compute nonnegative `p` and reflect; if `true`, compute the full signed grid.
 
 # Returns
-- `Hs_list::Vector{Matrix}`: A vector of matrices representing the Husimi functions.
-- `ps::Vector{T}`: A vector representing the evaluation points in p coordinate (same for all husimi matrices).
-- `qs::Vector{T}`: A vector representing the evaluation points in q coordinate (same for all husimi matrices).
+- `Hs::Vector{Matrix{T}}`: Husimi matrices, one per valid state.
+- `ps::Vector{T}`: Common signed momentum grid.
+- `qs::Vector{T}`: Common position grid.
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}}, vec_bdPoints::AbstractVector{BoundaryPoints{T}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+    length(ks)==length(vec_us)==length(vec_bdPoints) || error("Input vectors must have equal length")
     L=billiard.length
     qs=range(zero(T),stop=L,length=nx)
     ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
-    vec_s=[bd.s for bd in vec_bdPoints]
+    vec_s=[boundary_s(bd) for bd in vec_bdPoints]
     Hs=Vector{Matrix{T}}(undef,length(ks))
     ok=trues(length(ks))
     pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
@@ -366,8 +372,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVec
         end
         next!(pbar)
     end
-    Hs=Hs[ok]
-    return Hs,collect(ps),collect(qs)
+    return Hs[ok],collect(full_p ? ps : vcat(-reverse(ps)[1:end-1],ps)),collect(qs)
 end
 
 ##########################################################################
@@ -641,4 +646,14 @@ function husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_
     L_all=L_all[ok]
     ps_out=full_p ? ps : vcat(-reverse(ps)[1:end-1],ps)
     return Hs_all,ps_out,qs_all,L_all
+end
+
+"""
+    husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPts::AbstractVector{<:BoundaryPointsCFIE{T}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
+
+Convenience wrapper for the case where the input boundary discretization is given as a vector of `BoundaryPointsCFIE` rather than a vector of vectors of `BoundaryPointsCFIE`. This is the case for DLP kress formulation which are not meant to be used with interior holes, so each pts of the given solution only has a single struct BoundaryPointsCFIE instead of a vector of them. This wrapper just wraps each `BoundaryPointsCFIE` in a vector as a single-element vector and calls the more general version of the function.
+"""
+function husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPts::AbstractVector{<:BoundaryPointsCFIE{T}},nx::Integer,ny::Integer;full_p::Bool=false,normalize_components::Bool=true) where {T<:Real}
+    vec_bdComps=[[p] for p in vec_bdPts]
+    return husimi_functions_from_us_and_boundary_points(ks,vec_us,vec_bdComps,nx,ny;full_p=full_p,normalize_components=normalize_components)
 end

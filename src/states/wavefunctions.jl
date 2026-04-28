@@ -1,27 +1,30 @@
 """
-    wavefunction_multi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
+    wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
-Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral.
+Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral. The integrand used is the SLP kernel, so the wavefunction is given by `Ψ(x,y) = (1/4) ∮ Y₀(k|q-q_s|) u(s) ds` where `q` are the boundary points and `u` is the boundary density. The kernel is real, so if `u` is real the wavefunction will be real as well, and if `u` is complex the wavefunction will be complex as well.
 
 # Arguments
+- `solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners}`: DLP solver, either naive or Kress.
 - `ks`: Vector of eigenvalues.
 - `vec_bdPoints`: Vector of `BoundaryPoints` objects, one for each eigenvalue.
 - `billiard`: The billiard geometry.
 - `vec_us::Vector{Vector}`: Vector of the boundary functions. Can be either complex or real, this determines whether the wavefunction is real or not.
-- `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
+- `b::Union{Float64,Symbol}=:auto`: (Optional), Point scaling factor. Default is :auto. If not the same as in solver then artifacts can potentially emerge. Reason it is left as kwarg is to speed up wavefunction matrix construction.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
 - `MIN_CHUNK::Int=4096`: keep ≥ this many boundary points per thread
+- `use_float_32::Bool=true`: (Optional), Whether to compute the wavefunction using Float32 Bessel evaluations for speed. Default is true. This can be used when the number of points in the grid is very large and the Bessel evaluations become a bottleneck. For most cases this is most useful.
 
 # Returns
-- `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
+- `Psi2ds::Vector{Matrix{eltype(vec_us[1])}}`: Vector of 2D wavefunction matrices constructed on the same grid.
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
+    b= b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     else
@@ -53,7 +56,7 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_b
                 @inbounds for jj in lo:hi
                     idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
                     x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_float32_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
+                    Psi_flat[idx]=use_float_32 ? ϕ_slp_float32_bessel(x,y,k,bdPoints,us) : ϕ_slp(x,y,k,bdPoints,us)
                 end
             end
         end
@@ -64,110 +67,100 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_b
 end
 
 """
-    wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
+    wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
-Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral. Additionally also constructs the husimi functions.
+Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral. The integrand is the slp kernel, so the wavefunction is given by `Ψ(x,y) = (1/4) ∮ Y₀(k|q-q_s|) u(s) ds` where `q` are the boundary points and `u` is the boundary density. The kernel is real, so if `u` is real the wavefunction will be real as well, and if `u` is complex the wavefunction will be complex as well. Additionally also constructs the husimi functions.
 
 # Arguments
+- `solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners}`: DLP solver, either naive or Kress.
 - `ks`: Vector of eigenvalues.
-- `vec_bdPoints`: Vector of `BoundaryPoints` objects, one for each eigenvalues.
+- `vec_bdPoints`: Vector of `BoundaryPoints` or `BoundaryPointsCFIE` objects, one for each eigenvalue.
 - `billiard`: The billiard geometry.
 - `vec_us::Vector{Vector}`: Vector of the boundary functions. Can be either complex or real, this determines whether the wavefunction is real or not.
-- `b::Float64=5.0`: (Optional), Point scaling factor. Default is 5.0.
+- `b::Union{Float64,Symbol}=:auto`: (Optional), Point scaling factor. Default is `:auto`. If so it reuses the same point scaling factor as the solver, otherwise it uses the one provided. If not the same as in solver then artifacts can potentially emerge. Reason it is left as kwarg is to speed up wavefunction matrix construction.
 - `inside_only::Bool=true`: (Optional), Whether to only compute wavefunctions inside the billiard. Default is true.
 - `fundamental::Bool=true`: (Optional), Whether to use fundamental domain for boundary integral. Default is true.
 - `xgrid_size::Int=2000`: (Optional), Size of the x grid for the husimi functions. Default is 2000.
 - `ygrid_size::Int=1000`: (Optional), Size of the y grid for the husimi functions. Default is 1000.
 - `use_fixed_grid::Bool=true`: (Optional), Whether to use a fixed grid for the husimi functions. Default is true.
 - `MIN_CHUNK::Int=4096`: keep ≥ this many boundary points per thread
+- `use_float_32::Bool=true`: (Optional), Whether to compute the wavefunction using Float32 Bessel evaluations for speed. Default is true.
+- `full_p::Bool=false`: (Optional), Whether to compute the full p grid for the husimi functions. Default is false which is the conservative route when one does not know which irrep gives p -> -p symmetry.
 
 # Returns
-- `Psi2ds::Vector{Matrix{T}}`: Vector of 2D wavefunction matrices constructed on the same grid.
+- `Psi2ds::Vector{Matrix{eltype(vec_us[1])}}`: Vector of 2D wavefunction matrices constructed on the same grid.
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 - `Hs_list::Vector{Matrix{T}}`: Vector of 2D husimi function matrices.
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;b::Float64=5.0, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096) where {Bi<:AbsBilliard,T<:Real}
-    k_max=maximum(ks)
-    type=eltype(k_max)
-    L=billiard.length
-    if fundamental
-        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
-    else
-        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
-    end
-    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
-    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
-    x_grid,y_grid=collect(type,range(xlim..., nx)),collect(type,range(ylim..., ny))
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-    sz=length(pts)
-    # Determine points inside the billiard only once if inside_only is true
-    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
-    pts_masked_indices=findall(pts_mask)
-    NT=Threads.nthreads()
-    nmask=length(pts_masked_indices)
-    S=eltype(vec_us[1])<:Real ? type : Complex{type}
-    Psi_flat=zeros(S,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
-    Psi2ds=Vector{Matrix{S}}(undef,length(ks))
-    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
-    q,r=divrem(nmask,NT_eff)
-    for i in eachindex(ks)
-        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-        @fastmath begin
-            Threads.@threads :static for t in 1:NT_eff
-                # compute this thread's block [lo:hi]
-                lo=(t-1)*q+min(t-1,r) + 1
-                hi=lo+q-1+(t<=r ? 1 : 0)
-                @inbounds for jj in lo:hi
-                    idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
-                    x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_float32_bessel(x,y,k,bdPoints,us) # Do it with floating point bessel computation, no need for double_precision here, and only for interior points
-                end
-            end
-        end
-        Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
-        next!(progress)
-    end
-    vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
+function wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true,full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+    Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_us,vec_bdPoints,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,use_float_32=use_float_32)
     if use_fixed_grid
-        Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size)
-        ps_list=[ps for _ in 1:length(ks)]
-        qs_list=[qs for _ in 1:length(ks)]
+        Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size;full_p=full_p)
+        ps_list=[ps for _ in eachindex(Hs_list)]
+        qs_list=[qs for _ in eachindex(Hs_list)]
     else
-        Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard)
+        vec_of_s_vals=[boundary_s(bdPoints) for bdPoints in vec_bdPoints]
+        Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard;full_p=full_p)
     end
     return Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list
 end
 
 """
-    wavefunction_multi_cfie(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{Vector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+    wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector{<:Number}},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
-Construct a sequence of 2D wavefunction matrices for CFIE_kress / CFIE_alpert on a common grid.
+Construct a batch of interior wavefunction intensity matrices for CFIE-based solvers
+on a common Cartesian grid.
+
+For each wavenumber `k ∈ ks`, the interior wavefunction `ψ(x,y)` is evaluated via
+the CFIE representation
+    ψ = -(D + i k S) μ,
+where `μ` is the CFIE boundary density and `D,S` are the double- and single-layer
+potentials. The resulting matrices store `|ψ(x,y)|` evaluated on a shared grid.
+
+The evaluation is restricted to interior points (if `inside_only=true`) and is
+parallelized over spatial grid points.
 
 # Arguments
-- `ks`         : eigenvalues
-- `vec_us`     : boundary densities, one per eigenstate
-- `vec_comps`  : CFIE_kress / CFIE_alpert boundary discretizations, one per eigenstate
-- `billiard`   : billiard geometry
-
+- `solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners}`  
+  CFIE solver used to generate the boundary densities.
+- `ks::Vector{T}`  
+  Wavenumbers / eigenvalues.
+- `vec_us::Vector{<:AbstractVector{<:Number}}`  
+  CFIE boundary densities `μ`, one per state. Each vector is concatenated over
+  all boundary components.
+- `vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}}`  
+  Boundary discretizations for each state. Each entry contains the CFIE boundary
+  components (possibly multiple connected components).
+- `billiard::Bi`  
+  Billiard geometry.
 # Keyword arguments
-- `b`                  : grid density scaling
-- `inside_only`        : compute only inside the billiard
-- `fundamental`        : use fundamental domain limits if desired
-- `MIN_CHUNK`          : minimum masked points per thread chunk
-- `float32_bessel`     : use Float32 Hankel evaluations
+- `b::Union{Float64,Symbol}=:auto`  
+  Spatial grid density scaling. If `:auto`, uses the solver’s internal scaling.
+- `inside_only::Bool=true`  
+  If `true`, evaluate only at points inside the billiard domain.
+- `fundamental::Bool=false`  
+  If `true`, uses fundamental-domain bounding box; otherwise full domain.
+- `MIN_CHUNK::Int=4096`  
+  Minimum number of grid points per thread chunk.
+- `float32_bessel::Bool=true`  
+  Use `Float32` kernel evaluations for faster computation.
 
 # Returns
-- `Psi2ds` : vector of wavefunction matrices
-- `x_grid` : x-coordinates of the grid
-- `y_grid` : y-coordinates of the grid
+- `Psi2ds::Vector{Matrix{T}}`  
+  Wavefunction intensity matrices `|ψ(x,y)|`, one per state, all defined on the
+  same spatial grid.
+- `x_grid::Vector{T}`  
+  Grid coordinates in the x-direction.
+- `y_grid::Vector{T}`  
+  Grid coordinates in the y-direction.
 """
-function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::Vector{<:Union{BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     kmax=maximum(ks)
     L=billiard.length
+    b= b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
     dy=ylim[2]-ylim[1]
@@ -184,14 +177,10 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
     NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     S=eltype(vec_us[1])
     nstates=length(ks)
-    Psi2ds=Vector{Matrix{T}}(undef,nstates)
-    # each cache has information on the entire geometry of the boundaries (the whole thing, even holes) per eigenstate. This is flattened 
-    # as the machinery bellow needs a flattened array of (x,y,tx,ty,sj,w) for the entire geometry, and the same ordering as the flattened boundary density vector `u`.
-    _ensure_cfie_vec(x::BoundaryPointsCFIE{T}) where {T<:Real}=[x]
-    _ensure_cfie_vec(x::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}=x
+    Psi2ds=Vector{Matrix{S}}(undef,nstates)
     caches=Vector{CFIEWavefunctionCache{T}}(undef,nstates)
     @inbounds for i in 1:nstates
-        caches[i]=flatten_cfie_wavefunction_cache(_ensure_cfie_vec(vec_comps[i]))
+        caches[i]=flatten_cfie_wavefunction_cache(vec_comps[i])
     end
     Psi_flat=zeros(S,nx*ny)
     progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
@@ -220,6 +209,87 @@ function wavefunction_multi(ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_c
         Psi2ds[i]./=nrm
     end
     return Psi2ds,x_grid,y_grid
+end
+
+"""
+    wavefunction_multi_with_husimi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{<:Complex{T}}},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,xgrid_size::Int=2000,ygrid_size::Int=1000,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,full_p::Bool=false,normalize_components::Bool=true,multithreaded_boundary_function::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+
+Construct interior wavefunctions and component-wise Husimi functions for a batch
+of CFIE eigenstates on a common spatial grid.
+
+1. Wavefunction reconstruction (interior)
+   For each `k ∈ ks`, the interior wavefunction is evaluated on a common grid via
+   the CFIE representation
+       ψ = -(D + i k S) μ
+
+2. Boundary function recovery  
+   The physical boundary function
+       u = ∂ₙψ |_{∂Ω}
+   is reconstructed from `μ` using the CFIE boundary operator and normalized
+   via the Rellich identity.
+
+3. Husimi construction (per component)
+   The boundary is split into connected components (outer boundary + holes), and
+   a Husimi function is computed independently on each component using its own
+   arclength parametrization.
+
+# Arguments
+- `solver`:
+  CFIE solver (`CFIE_kress`, `CFIE_alpert`, or corner variants).
+- `ks::Vector{T}`:
+  Wavenumbers / eigenvalues.
+- `vec_μ::Vector{<:AbstractVector{<:Complex{T}}}`:
+  CFIE boundary densities, one per state (concatenated across components).
+- `vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}}`:
+  Boundary discretizations for each state. Entries sharing the same `compid`
+  belong to the same connected boundary component.
+- `billiard::Bi`:
+  Billiard geometry.
+
+# Keyword arguments
+- `b::Union{Float64,Symbol}`:
+  Grid density scaling (`:auto` uses solver value).
+- `inside_only::Bool`:
+  Restrict wavefunction evaluation to interior points.
+- `fundamental::Bool`:
+  Use fundamental-domain bounding box.
+- `xgrid_size::Int`, `ygrid_size::Int`:
+  Husimi grid resolution.
+- `MIN_CHUNK::Int`:
+  Minimum number of spatial points per thread.
+- `float32_bessel::Bool`:
+  Use Float32 kernel evaluations.
+- `full_p::Bool`:
+  If `false`, use p→−p symmetry; otherwise compute full momentum grid.
+- `normalize_components::Bool`:
+  Normalize each component Husimi independently.
+- `multithreaded_boundary_function::Bool`:
+  Enable threading in CFIE boundary reconstruction.
+
+# Returns
+- `Psi2ds::Vector{Matrix{eltype(vec_μ[1])}}`:
+  Wavefunction intensity matrices on a common grid.
+- `x_grid::Vector{T}`, `y_grid::Vector{T}`:
+  Spatial grid coordinates.
+- `Hs_list::Vector{Vector{Matrix{T}}}`:
+  Husimi matrices. `Hs_list[i][a]` corresponds to state `i`, component `a`.
+- `ps_list::Vector{Vector{T}}`:
+  Momentum grids (identical across states).
+- `qs_list::Vector{Vector{Vector{T}}}`:
+  Position grids per state and component.
+- `u_bdry::Vector{Vector{Complex{T}}}`:
+  Boundary functions `u = ∂ₙψ`.
+- `pts_bdry::Vector{Vector{BoundaryPointsCFIE{T}}}`:
+  Boundary discretizations.
+- `L_list::Vector{Vector{T}}`:
+  Component-wise boundary lengths.
+"""
+function wavefunction_multi_with_husimi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,xgrid_size::Int=2000,ygrid_size::Int=1000,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,full_p::Bool=false,normalize_components::Bool=true,multithreaded_boundary_function::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_μ,vec_comps,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,float32_bessel=float32_bessel)
+    pts_bdry,u_bdry=boundary_function(solver,vec_μ,vec_comps,billiard,ks;multithreaded=multithreaded_boundary_function)
+    Hs_list,ps,qs_list,L_list=husimi_functions_from_us_and_boundary_points(ks,u_bdry,pts_bdry,xgrid_size,ygrid_size;full_p=full_p,normalize_components=normalize_components)
+    ps_list=[ps for _ in eachindex(Hs_list)]
+    return Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,u_bdry,pts_bdry,L_list
 end
 
 ###########################################################################
@@ -980,7 +1050,6 @@ Construct the wavefunction for a given basis function defined from a `BasisState
 function wavefunction(state::BasisState;xlim =(-2.0,2.0),ylim=(-2.0,2.0),b=5.0) 
     let k=state.k,basis=state.basis      
         type=eltype(state.vec)
-        #TODO try to find a lazy way to do this
         dx=xlim[2]-xlim[1]
         dy=ylim[2]-ylim[1]
         nx=max(round(Int,k*dx*b/(2*pi)),512)

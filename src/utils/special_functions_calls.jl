@@ -10,15 +10,15 @@
 #################################################################
 
 """
-    ϕ(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
+    ϕ_slp(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
 
 Wavefunction at (x,y) via the boundary integral:
     Ψ(x,y) = (1/4) ∮ Y₀(k|q-q_s|) u(s) ds
 
 Specialized for real `u` to keep everything in real arithmetic.
 """
-@inline function ϕ(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{T}) where {T<:Real}
-    xy=bd.xy; ds=bd.ds
+@inline function ϕ_slp(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector{T}) where {T<:Real}
+    xy=bd.xy;ds=bd.ds
     s=zero(T)
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
@@ -30,13 +30,13 @@ Specialized for real `u` to keep everything in real arithmetic.
 end
 
 """
-    ϕ(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
+    ϕ_slp(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
 
 Same integral, but with complex boundary data `u`. Uses real kernel and
 accumulates real/imag parts separately to avoid unnecessary complex multiplies.
 """
-@inline function ϕ(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{Complex{T}}) where {T<:Real}
-    xy=bd.xy; ds=bd.ds
+@inline function ϕ_slp(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector{Complex{T}}) where {T<:Real}
+    xy=bd.xy;ds=bd.ds
     sr=zero(T); si=zero(T)
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
@@ -50,12 +50,12 @@ accumulates real/imag parts separately to avoid unnecessary complex multiplies.
 end
 
 """
-    ϕ_float32_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
+    ϕ_slp_float32_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{T}) where {T<:Real} -> T
 
-As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
+As `ϕ_slp`, but calls `bessely0` in Float32 for speed; returns in `T`.
 """
-@inline function ϕ_float32_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{T}) where {T<:Real}
-    xy=bd.xy; ds=bd.ds
+@inline function ϕ_slp_float32_bessel(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector{T}) where {T<:Real}
+    xy=bd.xy;ds=bd.ds
     s=zero(T)
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
@@ -67,12 +67,12 @@ As `ϕ`, but calls `bessely0` in Float32 for speed; returns in `T`.
 end
 
 """
-    ϕ_float32_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
+    ϕ_slp_float32_bessel(x::T, y::T, k::T, bd::BoundaryPoints{T}, u::AbstractVector{Complex{T}}) where {T<:Real} -> Complex{T}
 
 Float32-Bessel variant for complex `u`. Accumulates real/imag parts separately.
 """
-@inline function ϕ_float32_bessel(x::T,y::T,k::T,bd::BoundaryPoints{T},u::AbstractVector{Complex{T}}) where {T<:Real}
-    xy=bd.xy; ds=bd.ds
+@inline function ϕ_slp_float32_bessel(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector{Complex{T}}) where {T<:Real}
+    xy=bd.xy;ds=bd.ds
     sr=zero(T); si=zero(T)
     @inbounds @simd for j in eachindex(u)
         p=xy[j]
@@ -89,7 +89,7 @@ end
 ################## CFIE WAVEFUNCTION CONSTRUCTION ###################
 #####################################################################
 
-# Flattne the CFIE_kress boundary points into a single cache for faster wavefunction reconstruction, and then evaluate the CFIE_kress wavefunction at many points from the flattened cache and boundary density `u`.
+# Flatten the CFIE_kress boundary points into a single cache for faster wavefunction reconstruction, and then evaluate the CFIE_kress wavefunction at many points from the flattened cache and boundary density `u`.
 struct CFIEWavefunctionCache{T<:Real}
     x::Vector{T} # boundary x_j
     y::Vector{T} # boundary y_j

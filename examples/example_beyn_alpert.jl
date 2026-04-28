@@ -216,6 +216,7 @@ us=us[1:20]
 pts_all=pts_all[1:20]
 
 Psi2ds,x_grid,y_grid=wavefunction_multi(
+    solver,
     ks,                    # eigenvalues k for all states to be reconstructed
     us,                    # layer potentials corresponding to each state
     pts_all,               # boundary discretizations for each state (typically Vector{BoundaryPointsCFIE})

@@ -958,6 +958,45 @@ function fredholm_matrix_with_derivatives(bp::BoundaryPoints{T},symmetry,k::T;mu
     return K,dK,ddK
 end
 
+#########################################
+########## NEEDED FOR HUSIMIS ###########
+#########################################
+
+"""
+    adjoint_fredholm_matrix!(K,bp,symmetry,k;multithreaded=true)
+
+Assemble the adjoint Fredholm matrix
+
+    A'(k)=I-K'(k)
+
+from the same source-normal DLP kernel used by `fredholm_matrix!`.
+
+If `D` is the quadrature-weighted DLP matrix, then the discrete adjoint is
+
+    K' = W⁻¹ Dᵀ W,
+
+where `W=diag(ds)`. The right singular vector of this matrix is directly the
+boundary normal derivative `u=∂ₙψ`, so this is the preferred matrix when the
+output vector will be used for Husimi / boundary-function postprocessing.
+"""
+function adjoint_fredholm_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
+    isnothing(symmetry) ? compute_kernel_matrix!(K,bp,k;multithreaded=multithreaded) : compute_kernel_matrix!(K,bp,symmetry,k;multithreaded=multithreaded)
+    ds=bp.ds
+    D=copy(K)
+    @inbounds for j in eachindex(ds)
+        @views D[:,j].*=ds[j]
+    end
+    @inbounds for i in axes(K,1),j in axes(K,2)
+        K[i,j]=-D[j,i]*ds[j]/ds[i]
+    end
+    @inbounds for i in axes(K,1)
+        K[i,i]+=one(Complex{T})
+    end
+    return K
+end
+
+#########################################
+
 """
     construct_matrices!(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, A, pts, k; multithreaded=true)
     construct_matrices(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, pts, k; multithreaded=true)
@@ -1080,7 +1119,7 @@ end
     solve_vect(solver::BoundaryIntegralMethod, basis::AbstractHankelBasis, A, pts, k; multithreaded=true)
     solve_vect(solver::BoundaryIntegralMethod, billiard, basis::AbstractHankelBasis, ks::Vector{T}; multithreaded=true)
 
-Compute the smallest singular value of the BIM Fredholm matrix together with the
+Compute the smallest singular value of the adjoint BIM Fredholm matrix together with the
 associated right singular vector.
 
     A = U Σ V*,
@@ -1128,14 +1167,14 @@ Vector-of-k overload:
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
-    @blas_1 construct_matrices!(solver,basis,A,pts,k;multithreaded=multithreaded)
+    @blas_1 adjoint_fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    @blas_1 construct_matrices!(solver,basis,A,pts,k;multithreaded=multithreaded)
+    @blas_1 adjoint_fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])

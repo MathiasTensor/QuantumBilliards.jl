@@ -206,6 +206,7 @@ println()
 
 # Now construct interior wavefunction matrices ψ(x,y) on one common plotting grid.
 Psi2ds,x_grid,y_grid=wavefunction_multi(
+    solver,
     ks,                    # eigenvalues k for all states to be reconstructed
     us,                    # layer potentials / CFIE densities corresponding to each state
     pts_all,               # boundary discretizations for each state

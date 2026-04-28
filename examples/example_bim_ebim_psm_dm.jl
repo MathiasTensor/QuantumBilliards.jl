@@ -104,7 +104,7 @@ if method==:psm || method==:dm || method==:bim_sweep || method==:ebim_bim || met
             # Nicely enough for DLP this correspons to the normal derivative of the eigenfunction so we dont have to do any more work! 
             # Still need to symmetrize it with boundary_function
             pts_all,us_all=boundary_function(solver,us_all,pts_all,billiard) # symmetrize the boundary function in the correct irrep
-            Psi2ds,xgrid,ygrid=wavefunction_multi(ks,us_all,pts_all,billiard;fundamental=false,b=b) # reconstruct the wavefunctions for all states in a batch
+            Psi2ds,xgrid,ygrid=wavefunction_multi(solver,ks,us_all,pts_all,billiard;fundamental=false,b=b) # reconstruct the wavefunctions for all states in a batch
             # fundamental just means we get the wavefunction on the fundamental domain, which is smaller and faster to compute, but since we want to plot the full wavefunction we set it to false
             Psi2ds=[abs.(Psi2d) for Psi2d in Psi2ds] # makes phase independance easier to handle in the plotting
         else
