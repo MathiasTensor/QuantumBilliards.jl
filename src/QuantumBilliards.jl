@@ -195,7 +195,7 @@ export BasisState
 include("states/randomstates.jl")
 export GaussianRandomState
 include("states/boundaryfunctions.jl")
-export boundary_function,boundary_function_with_points,setup_momentum_density
+export boundary_function,boundary_function_with_points,setup_momentum_density,symmetrize_layer_potential
 include("states/husimifunctions.jl")
 export husimi_function,husimi_on_grid,husimi_functions_from_StateData,husimi_functions_from_boundary_functions
 export husimi_functions_from_us_and_boundary_points,husimi_on_grid_components
