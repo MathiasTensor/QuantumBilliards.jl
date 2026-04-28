@@ -616,9 +616,9 @@ normalized separately to unit sum.
 - `Hs_all::Vector{Vector{Matrix{T}}}`:
   `Hs_all[i][a]` is the Husimi matrix for state `i` and connected boundary
   component `a`.
-- `ps_out::Vector{T}`:
-  Common signed `p` grid returned in the user-facing format. If `full_p=false`,
-  this is the symmetrized grid reconstructed from the nonnegative half-grid.
+- `ps_all::Vector{Vector{T}}`: `ps_all[i][a]` is the `p` grid used for state `i`, component `a`. These are
+    identical across components in the present implementation, but returned
+    component-wise for interface symmetry.
 - `qs_all::Vector{Vector{Vector{T}}}`:
   `qs_all[i][a]` is the `q` grid used for state `i`, component `a`.
 - `L_all::Vector{Vector{T}}`:
@@ -651,7 +651,8 @@ function husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_
     qs_all=qs_all[ok]
     L_all=L_all[ok]
     ps_out=full_p ? ps : vcat(-reverse(ps)[1:end-1],ps)
-    return Hs_all,ps_out,qs_all,L_all
+    ps_all=[collect(ps_out) for _ in eachindex(Hs_all)]
+    return Hs_all,ps_all,qs_all,L_all
 end
 
 """
