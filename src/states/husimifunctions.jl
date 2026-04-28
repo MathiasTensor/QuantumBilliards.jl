@@ -282,8 +282,10 @@ An efficient way to ge the husimi functions from the stored `ks`, `us`, `s_vals`
 - `ps_return::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs_return::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_boundary_functions(ks,us,s_vals,billiard::Bi;c=10.0,w=7.0,full_p::Bool=false) where {Bi<:AbsBilliard}
-    L=billiard.length
+function husimi_functions_from_boundary_functions(ks::AbstractVector{T},us::AbstractVector{<:AbstractVector{<:Number}},s_vals::AbstractVector{<:AbstractVector{<:Number}};c=10.0,w=7.0,full_p::Bool=false) where {T<:Real}
+    perm=sortperm(ks)
+    last_vec_s=s_vals[perm[end]]
+    L=last_vec_s[end]
     valid_indices=fill(true,length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
     ps_return=Vector{Vector}(undef,length(ks))
@@ -308,7 +310,7 @@ function husimi_functions_from_boundary_functions(ks,us,s_vals,billiard::Bi;c=10
 end
 
 """
-    husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi) where {Bi<:AbsBilliard,T<:Real,Num<:Number}
+    husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Vector{Vector{Num}},vec_bdPoints::Vector{BoundaryPoints{T}}) where {T<:Real,Num<:Number}
 
 Efficient way to construct the husimi functions (`Vector{Matrix}`) and their grids from the boundary function values along with the vector of `BoundaryPoints` whic containt the .s field which gives the the arclengths.
 
@@ -323,14 +325,14 @@ Efficient way to construct the husimi functions (`Vector{Matrix}`) and their gri
 - `ps::Vector{Vector}`: A vector of vectors representing the evaluation points in p coordinate.
 - `qs::Vector{Vector}`: A vector of vectors representing the evaluation points in q coordinate.
 """
-function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::Vector{BoundaryPoints{T}},billiard::Bi;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::Vector{BoundaryPoints{T}};full_p::Bool=false) where {T<:Real}
     vec_of_s_vals=[bdPoints.s for bdPoints in vec_bdPoints]
-    Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,billiard,full_p=full_p)
+    Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals,full_p=full_p)
     return Hs_list,ps_list,qs_list
 end
 
 """
-    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
 Construct fixed-grid Husimi functions from boundary functions and boundary-point
 objects.
@@ -343,7 +345,6 @@ closed boundary component.
 - `ks::AbstractVector{T}`: Wavenumbers / eigenvalues.
 - `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: Boundary functions, one per state.
 - `vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}}`: Boundary discretizations, one per state.
-- `billiard::Bi`: Billiard geometry. Kept for API compatibility.
 - `nx::Integer`: Number of `q` grid points.
 - `ny::Integer`: Number of `p` grid points.
 - `full_p::Bool=false`: If `false`, compute nonnegative `p` and reflect; if `true`, compute the full signed grid.
@@ -353,12 +354,13 @@ closed boundary component.
 - `ps::Vector{T}`: Common signed momentum grid.
 - `qs::Vector{T}`: Common position grid.
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi,nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
     length(ks)==length(vec_us)==length(vec_bdPoints) || error("Input vectors must have equal length")
-    L=billiard.length
+    perm=sortperm(ks)
+    vec_s=[boundary_s(bd) for bd in vec_bdPoints]
+    L=vec_s[perm[end]][end]
     qs=range(zero(T),stop=L,length=nx)
     ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
-    vec_s=[boundary_s(bd) for bd in vec_bdPoints]
     Hs=Vector{Matrix{T}}(undef,length(ks))
     ok=trues(length(ks))
     pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
