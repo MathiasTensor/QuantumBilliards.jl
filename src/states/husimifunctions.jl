@@ -332,6 +332,54 @@ function husimi_functions_from_us_and_boundary_points(ks::Vector{T},vec_us::Abst
 end
 
 """
+    husimi_functions_from_us_and_boundary_points_FIXED_GRID(
+        ks, vec_us, vec_bdPoints, nx, ny; full_p=false
+    )
+
+Construct fixed-grid Husimi functions from boundary function values and
+`BoundaryPoints` objects.
+
+Each state is evaluated on a common `(q,p)` grid determined by the largest
+wavenumber (densest boundary discretization). The boundary arclengths are
+taken directly from the `.s` field of `BoundaryPoints`.
+
+# Arguments
+- `ks`: Wavenumbers / eigenvalues.
+- `vec_us`: Boundary function values, one vector per state.
+- `vec_bdPoints`: BoundaryPoints objects (must contain `.s`).
+- `nx`: Number of q-grid points.
+- `ny`: Number of p-grid points.
+- `full_p=false`: If false, exploit p→-p symmetry.
+
+# Returns
+- `Hs`: Vector of Husimi matrices.
+- `ps`: Common momentum grid.
+- `qs`: Common position grid.
+"""
+function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:BoundaryPoints{T}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
+    length(ks)==length(vec_us)==length(vec_bdPoints) || error("Input vectors must have equal length")
+    perm=sortperm(ks)
+    vec_s=[bd.s for bd in vec_bdPoints]
+    L=maximum(vec_s[perm[end]])
+    qs=range(zero(T),stop=L,length=nx)
+    ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
+    Hs=Vector{Matrix{T}}(undef,length(ks))
+    ok=trues(length(ks))
+    pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
+    Threads.@threads for i in eachindex(ks)
+        try
+            H,_,_=husimi_on_grid(ks[i],vec_s[i],vec_us[i],L,qs,ps;full_p=full_p)
+            Hs[i]=H
+        catch e
+            @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
+            ok[i]=false
+        end
+        next!(pbar)
+    end
+    return Hs[ok],collect(full_p ? ps : vcat(-reverse(ps)[1:end-1],ps)),collect(qs)
+end
+
+"""
     husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
 Construct fixed-grid Husimi functions from boundary functions and boundary-point
