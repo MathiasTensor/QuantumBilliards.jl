@@ -602,6 +602,15 @@ function _husimi_concat_with_separation(Hs::Vector{<:AbstractMatrix{T}},qs_list:
     return Hcat,qcat,seams
 end
 
+function boundary_hole_breakpoints(pts)
+    if pts isa Vector # multi-component CFIE case
+        lengths=[length(boundary_s(p)) for p in pts]
+        return cumsum(lengths)[1:end-1]
+    else
+        return Float64[]  # single boundary -> no holes
+    end
+end
+
 # helper to plot vertical lines on the Husimi plot to indicate the separation between different Husimi components when they are concatenated together with offsets. This function takes in the axis to plot on, the seam locations, and the p-grid values to determine the y-limits of the lines.
 function _plot_husimi_separation_lines!(ax,seams::AbstractVector{T},ps::AbstractVector{T};color=:cyan,linewidth=3,linestyle=:dash) where {T<:Real}
     isempty(seams) && return ax
@@ -745,9 +754,14 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
         _plot_husimi_separation_lines!(ax_h,seams,pgrid;color=seam_color,linewidth=seam_linewidth)
         local ax_boundary=Axis(f[row,col][2,1:2],xlabel="s",ylabel="u(s)",width=2*width_ax,height=height_ax/2)
         svals=boundary_s(pts_all[j])
+        breakpoints=boundary_hole_breakpoints(pts_all[j])
         lines!(ax_boundary,svals,real.(us_all[j]),label="Re u(s)",linewidth=2)
-        maximum(abs.(imag.(us_all[j])))>0 && lines!(ax_boundary,svals,imag.(us_all[j]),label="Im u(s)",linewidth=2,linestyle=:dash)
-        !isempty(seams) && vlines!(ax_boundary,seams,color=seam_color,linewidth=seam_linewidth,linestyle=:dash)
+        if maximum(abs.(imag.(us_all[j])))>0
+            lines!(ax_boundary,svals,imag.(us_all[j]),label="Im u(s)",linewidth=2,linestyle=:dash)
+        end
+        if !isempty(breakpoints)
+            vlines!(ax_boundary,breakpoints,color=seam_color,linewidth=seam_linewidth,linestyle=:dash)
+        end
         col+=1
         if col>max_cols
             row+=1
