@@ -1168,14 +1168,14 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints
     N=length(pts.xy)
     A=Matrix{Complex{T}}(undef,N,N)
     @blas_1 adjoint_fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     @blas_1 adjoint_fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     idx=findmin(S)[2]
     return S[idx],conj.(Vt[idx,:])
 end

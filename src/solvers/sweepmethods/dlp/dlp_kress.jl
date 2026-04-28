@@ -1357,7 +1357,7 @@ Vector-of-k overload returns:
 """
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     @blas_1 adjoint_fredholm_matrix!(A,solver,pts,Rmat,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=conj.(Vt[idx,:])
@@ -1366,7 +1366,7 @@ end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     @blas_1 adjoint_fredholm_matrix!(A,solver,pts,ws,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=conj.(Vt[idx,:])
@@ -1376,7 +1376,7 @@ end
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.N,ws.N)
     @blas_1 adjoint_fredholm_matrix!(A,solver,pts,ws,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=conj.(Vt[idx,:])
@@ -1388,7 +1388,7 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::
     A=Matrix{Complex{T}}(undef,N,N)
     @blas_1 Rmat=build_Rmat_dlp_kress(solver,pts)
     @blas_1 adjoint_fredholm_matrix!(A,solver,pts,Rmat,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     idx=findmin(S)[2]
     mu=S[idx]
     u_mu=conj.(Vt[idx,:])
