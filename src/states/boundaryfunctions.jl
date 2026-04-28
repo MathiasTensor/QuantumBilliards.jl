@@ -1171,8 +1171,7 @@ Output
 function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     Nμ=hypersingular_maue_kress(solver,layer_pot,pts,ws,k)
     Kpμ=cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
-    u= -Nμ-Complex{T}(0,k).*(-layer_pot/2+Kpμ)
-    #u= -Nμ-Complex{T}(0,k).*(layer_pot/2+Kpμ)
+    u= -2*Nμ-Complex{T}(0,k).*(layer_pot+Kpμ)
     nrlz=_rellich(pts,u,k)
     return pts,u./sqrt(nrlz)
 end
