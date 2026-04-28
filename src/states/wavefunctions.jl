@@ -408,6 +408,22 @@ function partition_vector(ks::Vector, N::Integer)
     return partitions
 end
 
+# for a nicer plotting of the wavefunction, we can choose to plot either the real part, the imaginary part, the absolute value, or the absolute value squared. This is useful since various irreps can have complex wavefucntions, and thsoe need a better/different way to represent them visually.
+@inline function wavefunction_plot_data(ψ::AbstractMatrix;mode::Symbol=:auto)
+    if mode===:auto
+        mode=eltype(ψ)<:Real ? :real : :abs
+    end
+    A=
+        mode===:real  ? real.(ψ) :
+        mode===:imag  ? imag.(ψ) :
+        mode===:abs   ? abs.(ψ)  :
+        mode===:abs2  ? abs2.(ψ) :
+        error("Unknown wavefunction plot mode: $mode. Use :auto, :real, :imag, :abs, :abs2.")
+    amax=maximum(abs,A)
+    amax>0 && (A./=amax)
+    return A
+end
+
 """
     plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;b::Float64=5.0,width_ax::Integer=300, height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
 
@@ -425,20 +441,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
+- `wave_mode::Symbol=:auto`: The mode for plotting the wavefunction. Can be `:auto`, `:real`, `:imag`, `:abs`, or `:abs2`. Default is `:auto`, which plots the real part for real wavefunctions and the absolute value for complex wavefunctions.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;b::Float64=5.0,width_ax::Integer=300, height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
-    for i in eachindex(Psi2ds)
-        ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
-    end
+function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_grid::Vector,billiard::Bi;b::Float64=5.0,width_ax::Integer=300, height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto) where {Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -446,13 +454,14 @@ function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_gri
         xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
     end
     n_rows=ceil(Int,length(ks)/max_cols)
-    f = Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)))
+    f=Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*n_rows)))
     row=1
     col=1
     @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        hm=heatmap!(ax,x_grid,y_grid,Psi2ds[j],colormap=:balance,colorrange=(-1,1))
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
+        heatmap!(ax,x_grid,y_grid,ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -466,7 +475,7 @@ function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector,y_gri
 end
 
 """
-    plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+    plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto) where {Bi<:AbsBilliard}
 
 Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid and y_grid is supplied from the `wavefunctions` method since it expects for each wavefunctions it's separate x and y grid.
 
@@ -482,11 +491,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `max_cols::Integer=6`: The maximum number of columns in the grid layout.
 - `fundamental::Bool=true`: If plotting just the desymmetrized part.
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
+- `wave_mode::Symbol=:auto`: The mode for plotting the wavefunction. Can be `:auto`, `:real`, `:imag`, `:abs`, or `:abs2`. Default is `:auto`, which plots the real part for real wavefunctions and the absolute value for complex wavefunctions.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[]) where {Bi<:AbsBilliard}
+function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto) where {Bi<:AbsBilliard}
     for i in eachindex(Psi2ds)
         ψ=Psi2ds[i]
         amax=maximum(abs,ψ)
@@ -509,7 +519,8 @@ function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vecto
     @showprogress desc="Plotting wavefunctions..." for j in eachindex(ks)
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        hm=heatmap!(ax,x_grid[j],y_grid[j],Psi2ds[j],colormap=:balance,colorrange=(-1,1))
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
+        heatmap!(ax,x_grid[j],y_grid[j],ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -538,6 +549,7 @@ and generates multiple figures.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `N::Integer=100`: The number of items per batch. If `length(ks) > N`, multiple figures are produced.
 - `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
+- `wave_mode::Symbol=:auto`: The mode for plotting the wavefunction. Can be `:auto`, `:real`, `:imag`, `:abs`, or `:abs2`. Default is `:auto`, which plots the real part for real wavefunctions and the absolute value for complex wavefunctions.
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch.
@@ -561,6 +573,7 @@ grid. Automatically splits the data into batches of size `N` if `ks` is large.
 - `billiard::Bi<:AbsBilliard`: The billiard geometry.
 - `N::Integer=100`: The number of items per batch.
 - `kwargs...`: Additional keyword arguments passed to the underlying plotting function (N axes per Figure and custom label, check _BATCH function)
+- `wave_mode::Symbol=:auto`: The mode for plotting the wavefunction. Can be `:auto`, `:real`, `:imag`, `:abs`, or `:abs2`. Default is `:auto`, which plots the real part for real wavefunctions and the absolute value for complex wavefunctions.
 
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, one per batch of wavefunctions.
@@ -644,20 +657,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
 - `seam_color=:cyan`: The color of the seam lines separating the Husimi components.
 - `seam_linewidth=2`: The linewidth of the seam lines separating the Husimi components.
+- `wave_mode=:auto`: The mode for plotting the wavefunction. Can be `:auto`, `:real`, `:imag`, `:abs`, or `:abs2`. If `:auto`, it will plot the real part for real-valued wavefunctions and the absolute value for complex-valued wavefunctions.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {T<:Real,Bi<:AbsBilliard}
-    for i in eachindex(Psi2ds)
-        ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
-    end
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4,wave_mode::Symbol=:auto) where {T<:Real,Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -672,8 +677,8 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
         title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
-        ψplot=sqrt.(abs.(Psi2ds[j])) # display-only contrast boost
-        heatmap!(ax,x_grid,y_grid,ψplot,colormap=Reverse(:gist_heat),colorrange=(0,1))
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
+        heatmap!(ax,x_grid,y_grid,ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         Hs=Hs_list[j];qs=qs_list[j];Hs=Hs isa AbstractMatrix ? [Hs] : Hs;qs=(qs isa AbstractVector{T} && !(eltype(qs)<:AbstractVector)) ? [qs] : qs
         Hcat,qcat,seams=_husimi_concat_with_separation(Hs,qs)
@@ -714,20 +719,12 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
 - `custom_label::Vector{String}`: The labels to be plotted for each Axis in the Figure. ! Needs to be the same length as ks, as it should be unique to each k in ks !.
 - `seam_color=:cyan`: The color of the seam lines separating the Husimi components.
 - `seam_linewidth=2`: The linewidth of the seam lines separating the Husimi components.
+- `wave_mode=:auto`: The mode for plotting the wavefunction. Can be `:auto`, `:real`, `:imag`, `:abs`, or `:abs2`. If `:auto`, it will plot the real part for real-valued wavefunctions and the absolute value for complex-valued wavefunctions.
 
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi,us_all::Vector{<:AbstractVector{Complex{T}}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4) where {T<:Real,Bi<:AbsBilliard}
-    for i in eachindex(Psi2ds)
-        ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
-    end
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi,us_all::Vector{<:AbstractVector{Complex{T}}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4,wave_mode::Symbol=:auto) where {T<:Real,Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -741,8 +738,8 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
     @showprogress desc="Plotting wavefunctions and husimi..." for j in eachindex(ks)
         title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax_wave=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
-        ψplot=sqrt.(abs.(Psi2ds[j])) # display-only contrast boost
-        heatmap!(ax_wave,x_grid,y_grid,ψplot,colormap=Reverse(:gist_heat),colorrange=(0,1))
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
+        heatmap!(ax_wave,x_grid,y_grid,ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
