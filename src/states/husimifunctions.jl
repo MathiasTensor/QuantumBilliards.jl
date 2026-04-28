@@ -380,7 +380,7 @@ function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVec
 end
 
 """
-    husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+    husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
 
 Construct fixed-grid Husimi functions from boundary functions and boundary-point
 objects.
@@ -402,7 +402,7 @@ closed boundary component.
 - `ps::Vector{T}`: Common signed momentum grid.
 - `qs::Vector{T}`: Common position grid.
 """
-function husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
+function husimi_functions_from_us_and_boundary_points(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_bdPoints::AbstractVector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},nx::Integer,ny::Integer;full_p::Bool=false) where {T<:Real}
     length(ks)==length(vec_us)==length(vec_bdPoints) || error("Input vectors must have equal length")
     perm=sortperm(ks)
     vec_s=[boundary_s(bd) for bd in vec_bdPoints]
