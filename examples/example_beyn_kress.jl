@@ -4,9 +4,6 @@ using StaticArrays
 using Printf
 using CairoMakie
 
-try_MKL_on_x86_64!() # try to use MKL on x86_64 for faster linear algebra, but don't error if not available. 
-# On M-series chips this will do nothing and just use OpenBLAS, which is fine.
-
 # NOTE: This is a detailed example for smooth geometries, where the periodic
 # Kress machinery is the natural choice. In contrast to the Alpert example,
 # here we DO also construct boundary functions and Husimis, because for smooth
@@ -21,11 +18,12 @@ try_MKL_on_x86_64!() # try to use MKL on x86_64 for faster linear algebra, but d
 
 # Pick one smooth geometry:
 #geometry=:star
-geometry=:star_hole
-#geometry=:prosen
+#geometry=:star_hole
+geometry=:prosen
 #geometry=:robnik
 #geometry=:ellipse
 #geometry=:africa -> has no symmetries
+#geometry=:c3
 
 # Main CFIE / spectral scale parameter.
 # Roughly:
@@ -42,13 +40,13 @@ b=10.0 # b can be relatively small to get very good accuracy (1e-14-1e-15 im par
 #k2=205.0
 
 # if not enough RAM use maybe
-k1=80.0
-k2=85.0
+k1=40.0
+k2=45.0
 
 # Symmetry choices based on billiard chosen
 #symmetry=nothing # no symmetry, full billiard, valid for all trivially
-#symmetry=XYReflection(-1,-1) # for Prosen/Ellipse billiard this gives the odd-odd subspace, which is a good test case for symmetry reduction.
-symmetry=Rotation(5,0) # for the 5 star billiard with or wihtout hole
+symmetry=XYReflection(-1,-1) # for Prosen/Ellipse billiard this gives the odd-odd subspace, which is a good test case for symmetry reduction.
+#symmetry=Rotation(5,0) # for the 5 star billiard with or wihtout hole
 #symmetry=YReflection(-1) # for the Robnik billiard, this gives the odd subspace which is a good test case for symmetry reduction.
 
 function make_geometry(geometry)
@@ -81,6 +79,12 @@ function make_geometry(geometry)
     elseif geometry==:africa
         # Smooth "Africa"-shaped billiard with deformation parameter 0.15.
         billiard,_=make_africa_and_basis(0.15)
+    elseif geometry==:annulus
+        # Smooth annulus-shaped billiard with inner radius 0.5 and outer radius 1.0, which is integrable.
+        billiard,_=make_annulus_and_basis(1.0,0.5)
+    elseif geometry==:c3
+        # Smooth 3-lobed clover-shaped billiard with deformation parameter 0.2
+        billiard,_=make_c3_and_basis(0.2)
     else
         @error "Unknown geometry choice: $geometry, make your own!"
     end
@@ -97,7 +101,9 @@ billiard=make_geometry(geometry)
 #
 # This is the natural choice for analytic / smooth boundaries where the Kress
 # logarithmic split and periodic quadrature are effective.
-solver=CFIE_kress(b,billiard;symmetry=symmetry)
+#solver=CFIE_kress(b,billiard;symmetry=symmetry)
+#solver=BoundaryIntegralMethod(b,billiard;symmetry=symmetry) 
+solver=DLP_kress(b,billiard;symmetry=symmetry)
 
 ################################################################################
 ############################### BEYN HELPERS ###################################
@@ -168,7 +174,7 @@ end
 ############################### RUN BEYN #######################################
 ################################################################################
 
-println("Running CFIE_kress Beyn on $(nameof(typeof(billiard))) ...")
+println("Running kress Beyn on $(nameof(typeof(billiard))) ...")
 
 ks,tens,us,pts_all,tensN=run_beyn(
     solver,
@@ -204,37 +210,33 @@ println()
 ######################## BOUNDARY FUNCTIONS / WAVEFUNCTIONS #####################
 ################################################################################
 
+# the actual boundary function / normal derivative for the DLP / BoundaryIntegralMethod is u(s) = ∂_n ψ(s), 
+# which is what we need to construct the Husimis and also the physical boundary function for plotting. 
+# The layer potential returned by Beyn is μ, which is the density of the DLP or CFIE layer potential, 
+# so we need to actuall calculate the adjoint kernel smallest singular vectors to get the physical 
+# boundary function u(s) = ∂_n ψ(s) for the DLP / BoundaryIntegralMethod. This is done by first symmetrizing
+# the layer potential and then applying the rellich norm via boundary_function.
+
+# !!! NOTE: Remove for the case of CFIE since we dont use the adjoint kernel but rather use the normal derivative directly
+# It will give correct results if left here but it is just redundant
+@time "layer potential" us_all,pts_all=solve_vect(solver,billiard,AbstractHankelBasis(),ks)
+@time "symmetrize layer potential" pts_all,us_all=symmetrize_layer_potential(solver,us_all,pts_all,billiard)
+@time "boundary function construction" pts_bdry,u_bdry=boundary_function(solver,us_all,pts_all,billiard,ks)
+
 # Now construct interior wavefunction matrices ψ(x,y) on one common plotting grid.
 Psi2ds,x_grid,y_grid=wavefunction_multi(
-    solver,
+    solver,                # dispatches differently based on solver type
     ks,                    # eigenvalues k for all states to be reconstructed
-    us,                    # layer potentials / CFIE densities corresponding to each state
-    pts_all,               # boundary discretizations for each state
+    u_bdry,                # layer potentials / CFIE densities corresponding to each state
+    pts_bdry,               # boundary discretizations for each state
     billiard;              # billiard geometry used to build the common plotting grid and inside-mask
-    b=b,                 # grid-density scaling: larger b -> finer x/y plotting grid
-    inside_only=true,      # evaluate ψ only at points inside the billiard; outside stays zero
+    b=b,                   # grid-density scaling: larger b -> finer x/y plotting grid
+    inside_only=true,      # evaluate ψ everywhere on the grid, including outside the billiard -> good test for eigenfunction accuracy
     fundamental=false,     # if true use the fundamental-domain mask/limits, otherwise use the full billiard
-    MIN_CHUNK=4096,        # minimum number of interior grid points assigned per thread chunk
-    float32_bessel=true   # if true use Float32 Bessel/Hankel evaluation inside ϕ_cfie for speed/memory
+    MIN_CHUNK=4096,        # minimum number of interior grid points assigned per thread chunk 
 )
 
-# For smooth CFIE_kress states we turn the returned layer potentials μ
-# into the physical boundary functions u(s) = \partial_n ψ(s).
-#
-# boundary_function(solver,μ,pts,k) returns the physical boundary function
-# evaluated on the same collocation points encoded in pts.
-#
-# We also collect the corresponding arclength coordinates s from pts so they can
-# be used directly for Husimi construction and boundary plotting.
-#
-# Under the hood the library will evaluate the normal derivative of the wavefunction
-# via the normal derivative of the CFIE layer potential, which is stable for smooth boundaries
-# via the maue fomrula for the hypersingular kernels. For corners a regularization is needed (not yet done.)
-u_bdry=Vector{Vector{ComplexF64}}(undef,length(ks))
-for i in eachindex(ks)
-    _,u=boundary_function(solver,us[i],pts_all[i],ks[i])
-    u_bdry[i]=u
-end
+# END TEST
 
 # Construct Husimis from the physical boundary functions u(s).
 #
@@ -247,10 +249,10 @@ end
 Hs_list,ps_list,qs_list=husimi_functions_from_us_and_boundary_points(
     ks,          # eigenvalues k for labeling and scaling the Husimis
     u_bdry,      # vector of physical boundary functions u(s) for each state (not layer potentials!)
-    pts_all,      # corresponding arclength coordinates for each u(s)
+    pts_bdry,      # corresponding arclength coordinates for each u(s)
     500,         # number of pts on s grid
     500;         # number of pts on p grid
-    full_p=false # use p -> -p symmetry when appropriate and reconstruct the full signed grid.
+    full_p=true  # use p -> -p symmetry when appropriate and reconstruct the full signed grid.
                  # if stumbled if a given irrep has this symmetry, you can set full_p=true to get the full grid and avoid the symmetry check.
                  # it will handle it anyway correctly for the final Husimi, but the intermediate p-grid will be full instead of half, which is less efficient.
 )
@@ -274,7 +276,7 @@ figs=plot_wavefunctions_with_husimi(
     qs_list,              # q-grids for the Husimis
     billiard,             # billiard geometry used to overlay the boundary
     u_bdry,               # physical boundary functions u(s), shown in the lower panel
-    pts_all,              # boundary discretizations used for all calcs, especially u_bdry
+    pts_bdry,             # boundary discretizations used for all calcs
     N=50,                 # number of states per Figure
     max_cols=3,           # maximum number of subplot columns in one Figure
     width_ax=320,         # width of each axis in pixels
@@ -289,7 +291,7 @@ figs=plot_wavefunctions_with_husimi(
 # for each closed boundary component)
 
 for (i,fig) in enumerate(figs)
-    save("cfie_kress_wavefunctions_husimi_$(geometry)_$(i).png",fig)
+    save("wavefunctions_husimi_$(geometry)_$(nameof(typeof(solver))).png",fig)
 end
 
 println("Done.")

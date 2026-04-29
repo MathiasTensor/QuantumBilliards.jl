@@ -155,15 +155,13 @@ end
 
 function median(v::AbstractVector{T}) where {T<:Real}
     n=length(v)
-    w=copy(v) 
-    if isodd(n) # take the middle one
-        k=(n+1)÷2
-        return select!(w,k)
-    else # take the average of the two middle ones
-        k1=n÷2
-        k2=k1+1
-        m1=select!(w,k1)
-        m2=select!(w,k2)
+    w=copy(v)
+    if isodd(n)
+        return partialsort!(w,(n+1)÷2)
+    else
+        k=n÷2
+        m1=partialsort!(w,k)
+        m2=partialsort!(w,k+1)
         return (m1+m2)/2
     end
 end

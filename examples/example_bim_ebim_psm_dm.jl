@@ -4,8 +4,6 @@ using Printf
 using CairoMakie
 using ProgressMeter
 
-try_MKL_on_x86_64!()
-
 ################## USER PARAMS ###################
 
 #geometry=:star 
@@ -100,13 +98,12 @@ if method==:psm || method==:dm || method==:bim_sweep || method==:ebim_bim || met
         ygrid=Vector{Float64}(undef,0) # make them exist
         if method==:bim_sweep || method==:ebim_bim  || method==:ebim_dlp_kress
             # BIE type solvers have nice wavefunction reconstruction formulas using the layer potentials
-            us_all,pts_all=solve_vect(solver,billiard,basis,ks) # computes the singular vector to the smallest singular value. 
             # Nicely enough for DLP this correspons to the normal derivative of the eigenfunction so we dont have to do any more work! 
-            # Still need to symmetrize it with boundary_function
-            pts_all,us_all=boundary_function(solver,us_all,pts_all,billiard) # symmetrize the boundary function in the correct irrep
-            Psi2ds,xgrid,ygrid=wavefunction_multi(solver,ks,us_all,pts_all,billiard;fundamental=false,b=b) # reconstruct the wavefunctions for all states in a batch
+            us_all,pts_all=solve_vect(solver,billiard,AbstractHankelBasis(),ks)
+            pts_all,us_all=symmetrize_layer_potential(solver,us_all,pts_all,billiard)
+            pts_bdry,u_bdry=boundary_function(solver,us_all,pts_all,billiard,ks)
+            Psi2ds,xgrid,ygrid=wavefunction_multi(solver,ks,u_bdry,pts_bdry,billiard;fundamental=false) # reconstruct the wavefunctions for all states in a batch
             # fundamental just means we get the wavefunction on the fundamental domain, which is smaller and faster to compute, but since we want to plot the full wavefunction we set it to false
-            Psi2ds=[abs.(Psi2d) for Psi2d in Psi2ds] # makes phase independance easier to handle in the plotting
         else
             @showprogress "constructing eigenstates" for (i,k) in enumerate(ks)
                 # Basis type solvers dont have access to solve_vect since we dont get an easy way to get layer potentials
