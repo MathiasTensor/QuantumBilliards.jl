@@ -169,7 +169,7 @@ function shift_starting_arclength(billiard::Bi,u::AbstractVector{U},pts::Boundar
         s_offset=shifted_s[1]
         shifted_s.=shifted_s.-s_offset  # Subtract the first value to make it zero
         shifted_s.=mod.(shifted_s,L_effective)  # Wrap around to maintain continuity
-        pts=BoundaryPoints(shifted_xy,shifted_normal,shifted_s,shifted_ds)
+        pts=BoundaryPoints{T}(shifted_xy,shifted_normal,shifted_s,shifted_ds,pts.w,pts.w_n,pts.curvature,pts.xy_int,pts.shift_x,pts.shift_y)
         u=shifted_u
     end
     return pts,u
@@ -210,7 +210,7 @@ function shift_starting_arclength(billiard::Bi,u_bundle::AbstractMatrix{U},pts::
         for i in axes(u_bundle,2)
             shifted_u_bundle[:,i].=circshift(u_bundle[:,i],-start_index+1)
         end
-        pts=BoundaryPoints(shifted_xy,shifted_normal,shifted_s,shifted_ds)
+        pts=BoundaryPoints(shifted_xy,shifted_normal,shifted_s,shifted_ds,pts.w,pts.w_n,pts.curvature,pts.xy_int,pts.shift_x,pts.shift_y)
         return pts,shifted_u_bundle
     else
         return pts,u_bundle
