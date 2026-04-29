@@ -668,7 +668,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
         local ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         local ax_h=Axis(f[row,col][1,2],width=width_ax,height=height_ax)
         ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
-        heatmap!(ax,x_grid,y_grid,ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
+        heatmap!(ax,x_grid,y_grid,ψplot',colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         Hs=Hs_list[j];qs=qs_list[j];Hs=Hs isa AbstractMatrix ? [Hs] : Hs;qs=(qs isa AbstractVector{T} && !(eltype(qs)<:AbstractVector)) ? [qs] : qs
         Hcat,qcat,seams=_husimi_concat_with_separation(Hs,qs)
@@ -729,7 +729,7 @@ function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:Abs
         title=isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax_wave=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
-        heatmap!(ax_wave,x_grid,y_grid,ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
+        heatmap!(ax_wave,x_grid,y_grid,ψplot',colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax_wave,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax_wave,xlim)
         ylims!(ax_wave,ylim)
