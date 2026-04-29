@@ -17,12 +17,12 @@ using CairoMakie
 # and then we visualize all three together.
 
 # Pick one smooth geometry:
-#geometry=:star
+geometry=:star
 #geometry=:star_hole
-geometry=:prosen
+#geometry=:prosen
 #geometry=:robnik
 #geometry=:ellipse
-#geometry=:africa -> has no symmetries
+#geometry=:africa # has no symmetries
 #geometry=:c3
 
 # Main CFIE / spectral scale parameter.
@@ -31,7 +31,7 @@ geometry=:prosen
 #     N ≈ k * L * b / (2π)
 #
 # so b behaves like "points per wavelength" on the boundary discretization.
-b=10.0 # b can be relatively small to get very good accuracy (1e-14-1e-15 im part - proxy for accuracy) for smooth geometries since Kress
+b=15.0 # b can be relatively small to get very good accuracy (1e-14-1e-15 im part - proxy for accuracy) for smooth geometries since Kress
 # has spectral convergence on smooth boundaries. 
 
 # Beyn search window [k1,k2]. For demo purposes we keep it small enough to run comfortably.
@@ -45,8 +45,8 @@ k2=45.0
 
 # Symmetry choices based on billiard chosen
 #symmetry=nothing # no symmetry, full billiard, valid for all trivially
-symmetry=XYReflection(-1,-1) # for Prosen/Ellipse billiard this gives the odd-odd subspace, which is a good test case for symmetry reduction.
-#symmetry=Rotation(5,0) # for the 5 star billiard with or wihtout hole
+#symmetry=XYReflection(-1,-1) # for Prosen/Ellipse billiard this gives the odd-odd subspace, which is a good test case for symmetry reduction.
+symmetry=Rotation(5,0) # for the 5 star billiard with or wihtout hole
 #symmetry=YReflection(-1) # for the Robnik billiard, this gives the odd subspace which is a good test case for symmetry reduction.
 
 function make_geometry(geometry)
@@ -77,7 +77,7 @@ function make_geometry(geometry)
         # Smooth ellipse billiard with semiaxes 1 and 0.5, which is integrable.
         billiard,_=make_ellipse_and_basis(1.0,0.5)
     elseif geometry==:africa
-        # Smooth "Africa"-shaped billiard with deformation parameter 0.15.
+        # Smooth "Africa"-shaped billiard with deformation parameter 0.15. Has no symmetries
         billiard,_=make_africa_and_basis(0.15)
     elseif geometry==:annulus
         # Smooth annulus-shaped billiard with inner radius 0.5 and outer radius 1.0, which is integrable.

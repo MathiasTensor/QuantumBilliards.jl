@@ -9,20 +9,20 @@ try_MKL_on_x86_64!()
 
 billiard,basis=make_ellipse_and_basis(1.0,0.5)
 
-d=10.0
-b=15.0
+d=8.0
+b=12.0
 
 k1=5.0
-k2=300.0
+k2=400.0
 
 symmetry=XYReflection(-1,-1) 
 #solver_dlp_kress=DLP_kress(b,billiard,symmetry=symmetry) # very slow as it needs to do whole matrix, but extremely accurate - imag beyn eigval proxy for accuracy - 1e-14 up to 1e-15 im part!
 solver_dlp=BoundaryIntegralMethod(b,billiard,symmetry=symmetry) # faster than Kress but less accurate, still should give enough digits for good spectral statistics < 1 % of mean level spacing, 5 digits is enough for this (that is the im part)
 solver_vs=VerginiSaraceno(d,b)
 
-which_solver=:beyn # or :beyn
+which_solver=:vs # or :beyn
 
-if which_solver==:vs # (benchmark Beyn vs Vergini Saraceno, really similar performance if matrix sizes are equal)
+if which_solver==:beyn # (benchmark Beyn vs Vergini Saraceno, really similar performance if matrix sizes are equal)
 
 !isfile("ellipse_ks_beyn.csv") && begin
 
@@ -84,7 +84,7 @@ elseif which_solver==:vs
 end
 
 # Plot P(s) after unfolding the spectrum with Weyl's law
-ks=weyl_law(ks,billiard,fundamental=true) # we are using eigvals from a fundamental domain
+ks=weyl_law(collect(ks),billiard,fundamental=true) # we are using eigvals from a fundamental domain
 spacings=calculate_spacings(ks)
 @info "mean spacing: $(mean(spacings)) (should be 1 after unfolding)"
 

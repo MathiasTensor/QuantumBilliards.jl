@@ -973,9 +973,8 @@ using the same Kress-corrected DLP matrix `D` as the ordinary solver.
 # Returns
 - `A`, modified in place.
 """
-function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     N=ws.N
-    D=Matrix{Complex{T}}(undef,N,N)
     construct_dlp_matrix!(solver,D,pts,ws.Rmat,ws.G,k;multithreaded=multithreaded)
     ds=pts.ds
     @inbounds for i in 1:N, j in 1:N
@@ -993,9 +992,9 @@ end
 Convenience wrapper for `adjoint_fredholm_matrix!` that builds the
 `DLPKressWorkspace` internally.
 """
-function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_dlp_kress_workspace(solver,pts)
-    return adjoint_fredholm_matrix!(A,solver,pts,ws,k;multithreaded=multithreaded)
+    return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
 end
 
 """
@@ -1003,11 +1002,11 @@ end
 
 Convenience wrapper using a precomputed Kress correction matrix `Rmat`.
 """
-function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     parr=_panel_arrays_cache(pts)
     ws=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
-    return adjoint_fredholm_matrix!(A,solver,pts,ws,k;multithreaded=multithreaded)
+    return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
 end
 
 ##########################################
@@ -1356,53 +1355,54 @@ Vector-of-k overload returns:
   vector of boundary discretizations used at those wavenumbers.
 """
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 adjoint_fredholm_matrix!(A,solver,pts,Rmat,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    D=similar(A)
+    adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    i=findmin(S)[2]
+    return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 adjoint_fredholm_matrix!(A,solver,pts,ws,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    D=similar(A)
+    adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    i=findmin(S)[2]
+    return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
-    A=Matrix{Complex{T}}(undef,ws.N,ws.N)
-    @blas_1 adjoint_fredholm_matrix!(A,solver,pts,ws,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    A=Matrix{Complex{T}}(undef,ws.N,ws.N);D=similar(A)
+    adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    i=findmin(S)[2]
+    return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
-    N=length(pts.xy)
-    A=Matrix{Complex{T}}(undef,N,N)
-    @blas_1 Rmat=build_Rmat_dlp_kress(solver,pts)
-    @blas_1 adjoint_fredholm_matrix!(A,solver,pts,Rmat,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
+    Rmat=build_Rmat_dlp_kress(solver,pts)
+    adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    i=findmin(S)[2]
+    return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
-    us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
-    pts_all=Vector{BoundaryPointsCFIE{eltype(ks[1])}}(undef,length(ks))
+    kref=maximum(ks)
+    pts=evaluate_points(solver,billiard,kref)
+    ws=build_dlp_kress_workspace(solver,pts)
+    A=Matrix{Complex{T}}(undef,ws.N,ws.N)
+    D=similar(A)
+    us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
+    pts_all=Vector{BoundaryPointsCFIE{T}}(undef,length(ks))
+    p=Progress(length(ks),desc="Adjoint DLP boundary functions...")
     for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded)
-        us_all[i]=u
+        @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,ks[i];multithreaded=multithreaded)
+        @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
+        idx=findmin(S)[2]
+        us_all[i]=conj.(Vt[idx,:])
         pts_all[i]=pts
+        next!(p)
     end
     return us_all,pts_all
 end

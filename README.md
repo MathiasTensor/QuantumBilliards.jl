@@ -2,6 +2,8 @@
 
 A Julia library for computing eigenvalues, eigenfunctions and Husimi functions of 2D quantum billiards using boundary integral and basis-expansion methods.
 
+**Manual coming soon!!!**
+
 ## Overview
 
 Targets high-frequency spectral computations on smooth and piecewise-smooth domains. It combines:
@@ -167,7 +169,7 @@ Active development focused on:
 
 1. Need to find a better global grading for Kress & Alpert that can handle both joins with and wihtout corners. Currently we have a global grading that works but the accuracy could be improved with a more specialized grading.
 
-2. Poincar\'e - Husimi functions for cornered domains with Kress (and potentially Alpert). Currently implementations exist for only non corner CFIE/DLP solvers with and without holes. Expecteadly the corners give large jumps to the boudnary function that completely skews the PH function, need to regularize it somehow...
+2. Poincar\'e - Husimi functions for cornered domains with Kress (and potentially Alpert). Currently implementations exist for only non corner CFIE/DLP solvers with and without holes. Corners give large jumps to the boudnary function that completely skews the PH function, need to regularize it somehow...
 
 3. Fix Evanescent Plane Waves, as currently the CompositeBasis does not work.
 
@@ -179,8 +181,16 @@ Convergence to an eigenvalue of the circle with R=1 for various BIE type solvers
 
 ![prosen_sweep_dlp_kress_with_ebim](examples/sweep_ProsenBilliard_ebim_dlp_kress.png)
 
-Example k_sweep for the Prosen billiard (red line) with the solutions (blue dots) of ebim. Symmetry was set to nothing as this is what primarily Kress and Alpert solvers are meant for outside Beyn subspace projection.
+Example k_sweep for the Prosen billiard (red line) with the solutions (blue dots) of ebim for the DLP_kress solver. Symmetry was set to nothing as this is what primarily Kress and Alpert solvers are meant for outside Beyn subspace projection.
+
+![spectrum](examples/spacing_distribution_vs.png)
+
+Spectrum of the desymmetrized XYReflection(-1,-1) ellipse for k in [5,400] showing excellent agreement with Poisson. This is part of examples/example_spectrum.jl
 
 ![ellipse_mushroom_wav_hus](examples/ellipse_mushroom_wav_hus.png)
 
-Examples of the wavefucntions and husimis for the ellipse cap mushroom for k in [300,301] using the VerginiSaraceno scaling method.
+Examples of the wavefucntions and husimis for the ellipse cap mushroom (XReflection(-1) symmetry) for k in [800.0,800.5] using the VerginiSaraceno scaling method. The regular region is very small and can be seen in a few subfigures where the wavefunction lives only in the cap. Also some MUPOs can be seen. The boundary function is purely real.
+
+![dlp_kress_star_wav_hus](examples/star_wav_hus_dlp_kress.png)
+
+Examples of wavefunctions and PH functions for the star billiard desymmetrized with Rotation(5,0) (the real irrep) which was done via Beyn's subspace projection. Note that the imaginary part of the u(s) is 0, which is needed since that irrep has real eigenfunctions.

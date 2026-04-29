@@ -152,7 +152,7 @@ matrix into the Fredholm matrix.
 """
 function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
-    curves=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.fundamental_boundary
+    curves=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.desymmetrized_full_boundary
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     normal_all=Vector{SVector{2,type}}()
@@ -954,7 +954,7 @@ end
 #########################################
 
 """
-    adjoint_fredholm_matrix!(K,bp,symmetry,k;multithreaded=true)
+    adjoint_fredholm_matrix!(A,D,bp,symmetry,k;multithreaded=true)
 
 Assemble the adjoint Fredholm matrix
 
@@ -970,20 +970,19 @@ where `W=diag(ds)`. The right singular vector of this matrix is directly the
 boundary normal derivative `u=∂ₙψ`, so this is the preferred matrix when the
 output vector will be used for Husimi / boundary-function postprocessing.
 """
-function adjoint_fredholm_matrix!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
-    isnothing(symmetry) ? compute_kernel_matrix!(K,bp,k;multithreaded=multithreaded) : compute_kernel_matrix!(K,bp,symmetry,k;multithreaded=multithreaded)
+function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},symmetry,k::T;multithreaded::Bool=true) where {T<:Real}
+    isnothing(symmetry) ? compute_kernel_matrix!(D,bp,k;multithreaded=multithreaded) : compute_kernel_matrix!(D,bp,symmetry,k;multithreaded=multithreaded)
     ds=bp.ds
-    D=copy(K)
     @inbounds for j in eachindex(ds)
         @views D[:,j].*=ds[j]
     end
-    @inbounds for i in axes(K,1),j in axes(K,2)
-        K[i,j]=-D[j,i]*ds[j]/ds[i]
+    @inbounds for i in axes(A,1),j in axes(A,2)
+        A[i,j]=-D[j,i]*ds[j]/ds[i]
     end
-    @inbounds for i in axes(K,1)
-        K[i,i]+=one(Complex{T})
+    @inbounds for i in axes(A,1)
+        A[i,i]+=one(Complex{T})
     end
-    return K
+    return A
 end
 
 #########################################
@@ -1156,29 +1155,35 @@ Vector-of-k overload:
   - `pts_all[i]` is the corresponding boundary discretization.
 """
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=length(pts.xy)
-    A=Matrix{Complex{T}}(undef,N,N)
-    @blas_1 adjoint_fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    idx=findmin(S)[2]
-    return S[idx],conj.(Vt[idx,:])
+    N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
+    adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    i=findmin(S)[2]
+    return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    @blas_1 adjoint_fredholm_matrix!(A,pts,solver.symmetry,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    idx=findmin(S)[2]
-    return S[idx],conj.(Vt[idx,:])
+    D=similar(A)
+    adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
+    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    i=findmin(S)[2]
+    return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-    us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
-    pts_all=Vector{BoundaryPoints{eltype(ks[1])}}(undef,length(ks))
+    kref=maximum(ks)
+    pts=evaluate_points(solver,billiard,kref)
+    N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
+    us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
+    pts_all=Vector{BoundaryPoints{T}}(undef,length(ks))
+    p=Progress(length(ks),desc="Adjoint BIM boundary functions...")
     for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,basis,pts,ks[i];multithreaded=multithreaded)
-        us_all[i]=u
+        adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[i];multithreaded=multithreaded)
+        _,S,Vt=LAPACK.gesvd!('N','A',A)
+        idx=findmin(S)[2]
+        us_all[i]=conj.(Vt[idx,:])
         pts_all[i]=pts
+        next!(p)
     end
     return us_all,pts_all
 end
