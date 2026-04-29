@@ -20,15 +20,15 @@ symmetry=XYReflection(-1,-1)
 solver_dlp=BoundaryIntegralMethod(b,billiard,symmetry=symmetry) # faster than Kress but less accurate, still should give enough digits for good spectral statistics < 1 % of mean level spacing, 5 digits is enough for this (that is the im part)
 solver_vs=VerginiSaraceno(d,b)
 
-which_solver=:vs # or :beyn
+which_solver=:beyn # or :beyn
 
-if which_solver==:beyn
+if which_solver==:vs # (benchmark Beyn vs Vergini Saraceno, really similar performance if matrix sizes are equal)
 
 !isfile("ellipse_ks_beyn.csv") && begin
 
 # solving with dlp_kress is 4x more difficult problem as it needs to solve full matrix before projecting to irrep subspace
 # so here we just do standard BoundaryIntegralMethod for Beyn, which should be enough to get good accuracy for spectral statistics while allowing for matrix size reduction from symmetry.
-@time "BEYN" ks,tens,us,pts,tensN=compute_spectrum_beyn(
+@time "Beyn" ks,tens,us,pts,tensN=compute_spectrum_beyn(
     solver_dlp,                      # solver defining the boundary operator T(k)
     billiard,                        # billiard used for Weyl planning and point evaluation
     k1,                              # lower scan bound
@@ -126,4 +126,4 @@ s_poisson=range(0.0,5.0;length=1000)
 P_poisson=exp.(-s_poisson)
 lines!(ax,s_poisson,P_poisson,color=:red,label="Poisson")
 axislegend(ax)
-save("spacing_distribution.png",f)
+save("spacing_distribution_$(which_solver).png",f)

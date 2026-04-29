@@ -25,7 +25,7 @@ Focus is on the balance between **performance** and **spectral resolution**, wit
 
 ## Methods
 
-### Boundary Integral Methods (BIM / DLP / CFIE)
+### Boundary Integral Methods (DLP / CFIE)
 
 The Helmholtz problem
 
@@ -41,7 +41,7 @@ CFIE variants use
 
 typically in the presence of holes.
 
-**+** Accurate, flexible, stable (CFIE)  
+**+** Accurate, flexible, stable
 **−** Dense matrices, expensive assembly  
 
 ---
@@ -58,7 +58,7 @@ A v = λ A’ v
 
 with second-order corrections.
 
-**+** Efficient for sweeps, works with Krylov  
+**+** Efficient for medium scale spectrum computations, works with Krylov for GEVP 
 **−** Finicky to deal with, requires checking interval size to not lose eigenvalues  
 
 ---
@@ -84,9 +84,9 @@ where we construct A_0 and A_1
 
 **+** Finds all eigenvalues in a region  
 **+** Very effective when Vergini–Saraceno fails  
-**+** Naturally supports desymmetrized domains via subspace projections
+**+** Naturally supports desymmetrized domains via subspace projections (Kress/Alpert)
 **−** Slower (not by much) than Vergini–Saraceno, as always needs to form and invert the full size matrix regardles of subspace projection
-**−** Requires contour tuning (nq, but it varies slowly and is typically very small around 40-45) 
+**−** Requires contour tuning (nq, but it varies slowly and is typically very small around 40-45) along with svd toleranance for A_0, but this is best left to default kwargs
 
 ---
 
@@ -97,7 +97,7 @@ Kernel approximation:
 f(x) ≈ Σ a_n T_n(x)
 
 **+** Faster repeated assembly, prioriziting smaller panels with lower degrees
-**+** Accuracy is given as a kwarg so that we dont overpanelize
+**+** Accuracy is given as a kwarg so that we dont overpanelize when many digits not needed
 **−** Slightly higher RAM usage due to panelization  
 
 ---
@@ -115,11 +115,11 @@ Supports many billiards:
 - **Many levels in a small window and large-scale computation →** Vergini–Saraceno  
 - **Smaller number of eigenvalues →** EBIM (Krylov for large systems)  
 - **Large-scale / difficult spectra →** Beyn  
-- **Assembly dominates →** Chebyshev acceleration  
+- **Assembly dominates →** Chebyshev interpolation  
 
 In practice:
 - VS is fastest when it applies.
-- Beyn is the most robust fallback and works on desymmetrized domains.
+- Beyn is the most robust fallback and works on desymmetrized domains for all BIE type solvers.
 - EBIM is best for systematic checking in medium sized intervals.
 
 ---
@@ -160,6 +160,21 @@ Active development focused on:
 - Fast computation of high frequency Dirichlet eigenmodes via the spectral flow of the interior Neumann-to-Dirichlet map, Barnett A., Hassell A. 2011 https://arxiv.org/abs/1112.5665
 - QBX,QB2X
     1. Quadrature by Expansion: A New Method for the Evaluation of Layer Potentials, Kl¨ockner A., Barnett A., Greendard L., O'Neil M. (https://arxiv.org/pdf/1207.4461)
-    2. Quadrature by Two Expansions for Evaluating
-    elmholtz Layer Potentials, Weed J., Ding. L,... (https://arxiv.org/pdf/2207.13762)
+    2. Quadrature by Two Expansions for Evaluating Helmholtz Layer Potentials, Weed J., Ding. L,... (https://arxiv.org/pdf/2207.13762)
 - OTOC, wavepacket dynamics...
+
+## Critical
+
+1. Need to find a better global grading for Kress & Alpert that can handle both joins with and wihtout corners. Currently we have a global grading that works but the accuracy could be improved with a more specialized grading.
+
+2. Poincar\'e - Husimi functions for cornered domains with Kress (and potentially Alpert). Currently implementations exist for only non corner CFIE/DLP solvers with and without holes. Expecteadly the corners give large jumps to the boudnary function that completely skews the PH function, need to regularize it somehow...
+
+## Some pics...
+
+![circle_eigval_conv](examples/circle_convergence.png.png)
+
+Convergence to an eigenvalue of the circle with R=1 for various BIE type solvers (DLP kress, CFIE kress, Alpert, naive DLP) showing spectral convergence for the Kress solvers and high order for Alpert along with O(1/N^3) for naive DLP.
+
+![prosen_sweep_dlp_kress_with_ebim](examples/sweep_ProsenBilliard_ebim_dlp_kress.png)
+
+Example k_sweep for the Prosen billiard (red line) with the solutions (blue dots) of ebim. Symmetry was set to nothing as this is what primarily Kress and Alpert solvers are meant for outside Beyn subspace projection.

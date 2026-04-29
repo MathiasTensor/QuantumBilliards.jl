@@ -1,10 +1,10 @@
 """
-    wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
 Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral. The integrand used is the SLP kernel, so the wavefunction is given by `Ψ(x,y) = (1/4) ∮ Y₀(k|q-q_s|) u(s) ds` where `q` are the boundary points and `u` is the boundary density. The kernel is real, so if `u` is real the wavefunction will be real as well, and if `u` is complex the wavefunction will be complex as well.
 
 # Arguments
-- `solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners}`: DLP solver, either naive or Kress.
+- `solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno}`: DLP solver, either naive or Kress. Also supports Vergini Saraceno, since it is solving the same boundary integral equation with the result of it's `boundary_function`.
 - `ks`: Vector of eigenvalues.
 - `vec_bdPoints`: Vector of `BoundaryPoints` objects, one for each eigenvalue.
 - `billiard`: The billiard geometry.
@@ -20,7 +20,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
     k_max=maximum(ks)
     type=eltype(k_max)
     L=billiard.length
@@ -67,12 +67,12 @@ function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_k
 end
 
 """
-    wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{Vector{T}},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto, inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 
 Constructs a sequence of 2D wavefunctions as matrices over the same sized grid for easier computation of matrix elements. The matrices are constructed via the boundary integral. The integrand is the slp kernel, so the wavefunction is given by `Ψ(x,y) = (1/4) ∮ Y₀(k|q-q_s|) u(s) ds` where `q` are the boundary points and `u` is the boundary density. The kernel is real, so if `u` is real the wavefunction will be real as well, and if `u` is complex the wavefunction will be complex as well. Additionally also constructs the husimi functions.
 
 # Arguments
-- `solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners}`: DLP solver, either naive or Kress.
+- `solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno}`: DLP solver, either naive or Kress. Also supports Vergini Saraceno, since it is solving the same boundary integral equation with the result of it's `boundary_function`.
 - `ks`: Vector of eigenvalues.
 - `vec_bdPoints`: Vector of `BoundaryPoints` or `BoundaryPointsCFIE` objects, one for each eigenvalue.
 - `billiard`: The billiard geometry.
@@ -95,7 +95,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `ps_list::Vector{Vector{T}}`: Vector of ps grids for the husimi matrices.
 - `qs_list::Vector{Vector{T}}`: Vector of qs grids for the husimi matrices.
 """
-function wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true,full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true,full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_us,vec_bdPoints,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,use_float_32=use_float_32)
     if use_fixed_grid
         Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size;full_p=full_p)
