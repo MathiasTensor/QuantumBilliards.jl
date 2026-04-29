@@ -83,7 +83,7 @@ end
         svd_tol=1e-11,res_tol=1e-7,
         auto_discard_spurious=true,
         multithreaded_matrix=true,
-        use_chebyshev=false,
+        use_chebyshev=true,
         do_INFO_init=false,
         do_per_solve_INFO=false
     )
