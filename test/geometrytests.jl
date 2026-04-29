@@ -43,7 +43,7 @@ using QuantumBilliards
 
     # test boundary coords
     solver=BoundaryIntegralMethod(10.0,[GaussLegendreNodes()],stadium)
-    bp=evaluate_points(solver,stadium,solver,100.0)
+    bp=evaluate_points(solver,stadium,100.0)
     xy=bp.xy
     normals=bp.normal
     s_vals=bp.s
@@ -107,7 +107,7 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
 
     # Test boundary_coords:
     solver=BoundaryIntegralMethod(10.0,[GaussLegendreNodes()],ellipse)
-    bp=evaluate_points(solver,ellipse,solver,100.0)
+    bp=evaluate_points(solver,ellipse,100.0)
     xy=bp.xy
     normals=bp.normal
     s_vals=bp.s
