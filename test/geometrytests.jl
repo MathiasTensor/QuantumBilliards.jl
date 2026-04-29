@@ -42,9 +42,8 @@ using QuantumBilliards
     @test checks==[true,true,false,true]
 
     # test boundary coords
-    N=10000
-    sampler=GaussLegendreNodes()
-    bp=QuantumBilliards.boundary_coords(stadium,sampler,N)
+    solver=BoundaryIntegralMethod(10.0,[GaussLegendreNodes()],stadium)
+    bp=evaluate_points(solver,stadium,solver,100.0)
     xy=bp.xy
     normals=bp.normal
     s_vals=bp.s
@@ -107,9 +106,8 @@ ellipse_area(a::T,b::T) where {T<:Real}=pi*a*b
     @test inside_vals[2]==false
 
     # Test boundary_coords:
-    N=10000
-    sampler=GaussLegendreNodes()
-    bp=QuantumBilliards.boundary_coords(ellipse,sampler,N)
+    solver=BoundaryIntegralMethod(10.0,[GaussLegendreNodes()],ellipse)
+    bp=evaluate_points(solver,ellipse,solver,100.0)
     xy=bp.xy
     normals=bp.normal
     s_vals=bp.s
