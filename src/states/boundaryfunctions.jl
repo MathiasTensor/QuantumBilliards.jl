@@ -360,7 +360,7 @@ function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) w
     valid_indices=fill(true,length(ks))
     progress=Progress(length(ks);desc="Constructing the u(s)...")
     for i in eachindex(ks) 
-        try # the @. macro can faill in gradient_matrices when multithreading
+        #try # the @. macro can faill in gradient_matrices when multithreading
             vec=X[i] # vector of vectors
             dim=length(vec)
             dim=dim-get_evanescent_dim_in_CompositeBasis(basis) # this is to prevent double counting the EWP
@@ -370,10 +370,10 @@ function boundary_function(state_data::StateData,billiard::Bi,basis::Ba;b=5.0) w
             u,pts=boundary_function(state;b=b) # pts is BoundaryPoints and has information on ds and x
             us_all[i]=u
             pts_all[i]=pts
-        catch e
-            println("Error while constructing the u(s) for k = $(ks[i]): $e")
-            valid_indices[i]=false
-        end
+        #catch e
+        #    println("Error while constructing the u(s) for k = $(ks[i]): $e")
+        #    valid_indices[i]=false
+        #end
         next!(progress)
     end
     ks=ks[valid_indices]

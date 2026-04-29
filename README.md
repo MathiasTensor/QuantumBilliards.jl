@@ -169,12 +169,18 @@ Active development focused on:
 
 2. Poincar\'e - Husimi functions for cornered domains with Kress (and potentially Alpert). Currently implementations exist for only non corner CFIE/DLP solvers with and without holes. Expecteadly the corners give large jumps to the boudnary function that completely skews the PH function, need to regularize it somehow...
 
+3. Fix Evanescent Plane Waves, as currently the CompositeBasis does not work.
+
 ## Some pics...
 
-![circle_eigval_conv](examples/circle_convergence.png.png)
+![circle_eigval_conv](examples/circle_convergence.png)
 
 Convergence to an eigenvalue of the circle with R=1 for various BIE type solvers (DLP kress, CFIE kress, Alpert, naive DLP) showing spectral convergence for the Kress solvers and high order for Alpert along with O(1/N^3) for naive DLP.
 
 ![prosen_sweep_dlp_kress_with_ebim](examples/sweep_ProsenBilliard_ebim_dlp_kress.png)
 
 Example k_sweep for the Prosen billiard (red line) with the solutions (blue dots) of ebim. Symmetry was set to nothing as this is what primarily Kress and Alpert solvers are meant for outside Beyn subspace projection.
+
+![ellipse_mushroom_wav_hus](examples/ellipse_mushroom_wav_hus.png)
+
+Examples of the wavefucntions and husimis for the ellipse cap mushroom for k in [300,301] using the VerginiSaraceno scaling method.
