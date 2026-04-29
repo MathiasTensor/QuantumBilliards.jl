@@ -2,7 +2,7 @@ using Test, QuantumBilliards
 
 analytical_rect_ks(w,h,k1,k2; mmax=40,nmax=40) =
     filter(k->k1<=k<=k2,
-        sort([sqrt((m*pi/w)^2+(n*pi/h)^2) for m in 1:mmax, n in 1:nmax]))
+        sort([sqrt((m*pi/w)^2+(n*pi/h)^2) for m in 1:mmax for n in 1:nmax]))
 
 all_computed_are_true(ks,ks_true; tol=1e-3) =
     !isempty(ks) && all(k->any(ka->abs(ka-k)<=tol,ks_true), ks)
