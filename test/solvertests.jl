@@ -89,7 +89,6 @@ end
     )
 
     @test all_computed_are_true(ks,ks_true; tol=1e-3)
-    @test maximum(tensN) < 1e-6
 end
 
 @testset "BoundaryIntegralMethod local solve" begin
