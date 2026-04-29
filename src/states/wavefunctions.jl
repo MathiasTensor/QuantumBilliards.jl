@@ -98,9 +98,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 function wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true,full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_us,vec_bdPoints,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,use_float_32=use_float_32)
     if use_fixed_grid
-        Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points(ks,vec_us,vec_bdPoints,xgrid_size,ygrid_size;full_p=full_p)
-        ps_list=[ps for _ in eachindex(Hs_list)]
-        qs_list=[qs for _ in eachindex(Hs_list)]
+        Hs_list,ps_list,qs_list=husimi_functions_from_us_and_boundary_points(ks,vec_us,vec_bdPoints,xgrid_size,ygrid_size;full_p=full_p)
     else
         vec_of_s_vals=[boundary_s(bdPoints) for bdPoints in vec_bdPoints]
         Hs_list,ps_list,qs_list=husimi_functions_from_boundary_functions(ks,vec_us,vec_of_s_vals;full_p=full_p)
@@ -497,15 +495,6 @@ Plots the wavefunctions into a grid (only the fundamental boundary). The x_grid 
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
 function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vector},y_grid::Vector{Vector},billiard::Bi;b::Float64=5.0, width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto) where {Bi<:AbsBilliard}
-    for i in eachindex(Psi2ds)
-        ψ=Psi2ds[i]
-        amax=maximum(abs,ψ)
-        if amax>0
-            @. ψ=real(ψ)/amax
-        else
-            @. ψ=real(ψ)
-        end
-    end
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -520,7 +509,7 @@ function plot_wavefunctions_BATCH(ks::Vector,Psi2ds::Vector,x_grid::Vector{Vecto
         title= isempty(custom_label) ? "$(ks[j])" : custom_label[j]
         local ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
         ψplot=wavefunction_plot_data(Psi2ds[j];mode=wave_mode)
-        heatmap!(ax,x_grid[j],y_grid[j],ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
+        heatmap!(ax,x_grid,y_grid,ψplot,colormap=wave_mode in (:real,:imag) ? :balance : Reverse(:gist_heat), colorrange=wave_mode in (:real,:imag) ? (-1,1) : (0,1))
         plot_boundary!(ax,billiard,fundamental_domain=fundamental,plot_normal=false)
         xlims!(ax,xlim)
         ylims!(ax,ylim)
@@ -725,7 +714,7 @@ Plots the wavefunctions into a grid (only the fundamental boundary) together wit
  # Returns
 - `f::Figure`: A Figure object containing the grid of wavefunctions.
 """
-function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi,us_all::Vector{<:AbstractVector{Complex{T}}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4,wave_mode::Symbol=:auto) where {T<:Real,Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi,us_all::Vector{<:AbstractVector{<:Number}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental=true,custom_label::Vector{String}=String[],seam_color=:cyan,seam_linewidth=4,wave_mode::Symbol=:auto) where {T<:Real,Bi<:AbsBilliard}
     L=billiard.length
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,maximum(ks)*L*b/(2*pi))))
@@ -818,7 +807,7 @@ the data into sets of size `N`.
 # Returns
 - `figures::Vector{Figure}`: A vector of `Figure` objects, each containing wavefunction, Husimi plots, and boundary functions, one per batch.
 """
-function plot_wavefunctions_with_husimi(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi,us_all::Vector{<:AbstractVector{Complex{T}}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
+function plot_wavefunctions_with_husimi(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},x_grid::AbstractVector{T},y_grid::AbstractVector{T},Hs_list::Vector{<:Union{AbstractMatrix{T},Vector{<:AbstractMatrix{T}}}},ps_list::Vector{<:AbstractVector{T}},qs_list::Vector{<:Union{AbstractVector{T},Vector{<:AbstractVector{T}}}},billiard::Bi,us_all::Vector{<:AbstractVector{<:Number}},pts_all::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T},Vector{BoundaryPointsCFIE{T}}}};N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
     batch_wrapper(plot_wavefunctions_with_husimi_BATCH,ks,Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list,billiard,us_all,pts_all;N=N,kwargs...)
 end
 
