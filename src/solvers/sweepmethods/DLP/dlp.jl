@@ -1156,16 +1156,16 @@ Vector-of-k overload:
 """
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
-    adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     i=findmin(S)[2]
     return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     D=similar(A)
-    adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     i=findmin(S)[2]
     return S[i],conj.(Vt[i,:])
 end
@@ -1178,8 +1178,8 @@ function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Ve
     pts_all=Vector{BoundaryPoints{T}}(undef,length(ks))
     p=Progress(length(ks),desc="Adjoint BIM boundary functions...")
     for i in eachindex(ks)
-        adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[i];multithreaded=multithreaded)
-        _,S,Vt=LAPACK.gesvd!('N','A',A)
+        @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[i];multithreaded=multithreaded)
+        @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
         idx=findmin(S)[2]
         us_all[i]=conj.(Vt[idx,:])
         pts_all[i]=pts

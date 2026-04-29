@@ -1356,24 +1356,24 @@ Vector-of-k overload returns:
 """
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     D=similar(A)
-    adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     i=findmin(S)[2]
     return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     D=similar(A)
-    adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     i=findmin(S)[2]
     return S[i],conj.(Vt[i,:])
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.N,ws.N);D=similar(A)
-    adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     i=findmin(S)[2]
     return S[i],conj.(Vt[i,:])
 end
@@ -1381,8 +1381,8 @@ end
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
     Rmat=build_Rmat_dlp_kress(solver,pts)
-    adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
-    _,S,Vt=LAPACK.gesvd!('N','A',A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
+    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
     i=findmin(S)[2]
     return S[i],conj.(Vt[i,:])
 end
