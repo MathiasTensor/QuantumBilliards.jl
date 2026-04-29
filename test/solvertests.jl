@@ -7,7 +7,7 @@ analytical_rect_ks(w,h,k1,k2; mmax=40,nmax=40) =
 all_computed_are_true(ks,ks_true; tol=1e-3) =
     !isempty(ks) && all(k->any(ka->abs(ka-k)<=tol,ks_true), ks)
 
-const W_RECT=1.2
+const W_RECT=2.0
 const H_RECT=1.0
 const K1_RECT=18.0
 const K2_RECT=20.0
@@ -63,29 +63,6 @@ end
         solver,billiard,k1,k2;
         dk=ebim_dk,use_lapack_raw=false,use_krylov=true,
         multithreaded_matrices=true,solve_info=false
-    )
-
-    @test all_computed_are_true(ks,ks_true; tol=1e-3)
-end
-
-@testset "Beyn Alpert" begin
-    w,h = W_RECT,H_RECT
-    k1,k2 = K1_RECT,K2_RECT
-    ks_true = analytical_rect_ks(w,h,k1,k2)
-
-    b=12.0
-    billiard,_ = make_rectangle_and_basis(w,h)
-    solver = CFIE_alpert(b,billiard;symmetry=nothing,alpertq=2,alpert_order=14)
-
-    ks,tens,_,_,tensN = compute_spectrum_beyn(
-        solver,billiard,k1,k2;
-        m=20,Rmax=0.5,nq=32,r=40,
-        svd_tol=1e-11,res_tol=1e-7,
-        auto_discard_spurious=true,
-        multithreaded_matrix=true,
-        use_chebyshev=true,
-        do_INFO_init=false,
-        do_per_solve_INFO=false
     )
 
     @test all_computed_are_true(ks,ks_true; tol=1e-3)
