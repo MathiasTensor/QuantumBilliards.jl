@@ -68,14 +68,14 @@ end
     @test all_computed_are_true(ks,ks_true; tol=1e-3)
 end
 
-@testset "Beyn DLP_kress_global_corners" begin
+@testset "Beyn Alpert" begin
     w,h = W_RECT,H_RECT
     k1,k2 = K1_RECT,K2_RECT
     ks_true = analytical_rect_ks(w,h,k1,k2)
 
     b=12.0
     billiard,_ = make_rectangle_and_basis(w,h)
-    solver = DLP_kress_global_corners(b,billiard; symmetry=nothing,kressq=4)
+    solver = CFIE_alpert(b,billiard;symmetry=nothing,kressq=2,alpert_order=14)
 
     ks,tens,_,_,tensN = compute_spectrum_beyn(
         solver,billiard,k1,k2;
