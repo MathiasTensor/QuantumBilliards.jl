@@ -98,7 +98,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 function wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,use_fixed_grid=true,xgrid_size=2000,ygrid_size=1000,MIN_CHUNK=4_096,use_float_32::Bool=true,full_p::Bool=false) where {Bi<:AbsBilliard,T<:Real}
     Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_us,vec_bdPoints,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,use_float_32=use_float_32)
     if use_fixed_grid
-        Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points_FIXED_GRID(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size;full_p=full_p)
+        Hs_list,ps,qs=husimi_functions_from_us_and_boundary_points(ks,vec_us,vec_bdPoints,billiard,xgrid_size,ygrid_size;full_p=full_p)
         ps_list=[ps for _ in eachindex(Hs_list)]
         qs_list=[qs for _ in eachindex(Hs_list)]
     else
