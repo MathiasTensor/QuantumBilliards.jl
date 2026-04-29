@@ -7,7 +7,7 @@ analytical_rect_ks(w,h,k1,k2; mmax=40,nmax=40) =
 all_computed_are_true(ks,ks_true; tol=1e-3) =
     !isempty(ks) && all(k->any(ka->abs(ka-k)<=tol,ks_true), ks)
 
-const W_RECT=1.0
+const W_RECT=1.2
 const H_RECT=1.0
 const K1_RECT=18.0
 const K2_RECT=20.0
