@@ -35,7 +35,7 @@ end
 ##########################
 
 @testset "RealPlaneWaves" begin
-    symmetry=Vector{Any}([XYReflection(-1,-1)])
+    symmetry=XYReflection(-1,-1)
     basis=RealPlaneWaves(10,symmetry;angle_arc=pi/2.0)
     nx=100
     ny=100
