@@ -50,7 +50,7 @@ include("billiards/geometry/kress_grading_single_corner.jl") # dont export anyth
 include("billiards/geometry/kress_grading_global_multi_corner.jl") # dont export anything from this file, it's just for internal use in kress grading
 include("billiards/geometry/alpert_endpoint_grading.jl") # dont export anything from this file, it's just for internal use in alpert endpoint grading
 include("billiards/geometry/boundarypoints.jl")
-export BoundaryPoints,boundary_matrix_size,boundary_coords,boundary_coords_desymmetrized_full_boundary,kress_R!,kress_R_corner!
+export BoundaryPoints,boundary_matrix_size,boundary_coords,kress_R!,kress_R_corner!
 export BoundaryPointsCFIE,CFIEPanelArrays,_panel_arrays_cache,component_offsets,component_lengths,CFIEGeomCache,cfie_geom_cache
 include("utils/symmetry.jl")
 export Reflection,XReflection,YReflection,XYReflection,Rotation,apply_symmetries_to_boundary_points,apply_symmetries_to_boundary_function

@@ -304,12 +304,12 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
     new_basis=state.basis
     billiard=state.billiard
     T=eltype(vec)
-    boundary=billiard.desymmetrized_full_boundary
-    crv_lengths=(crv.length for crv in boundary)
+    boundary=billiard.fundamental_boundary
+    crv_lengths=[crv.length for crv in boundary if crv isa AbsRealCurve]
     sampler=FourierNodes([2,3,5],collect(crv_lengths))
     L=billiard.length
     N=max(round(Int,k*L*b/(2π)),512)
-    pts=boundary_coords_desymmetrized_full_boundary(billiard,sampler,N)
+    pts=boundary_coords_fourier(billiard,sampler,N)
     @blas_1 dX,dY=gradient_matrices(new_basis,k_basis,pts.xy) # ∂xϕ, ∂yϕ evaluated on pts.xy 
     M=size(dX,1)
     tX=Vector{T}(undef,M) # tX = (∂xϕ)(x_i), always real since the basis is real.

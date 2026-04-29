@@ -97,15 +97,6 @@ function BoundaryIntegralMethod(pts_scaling_factor::Union{T,Vector{T}},samplers:
     return BoundaryIntegralMethod{T,Sym}(1.0,bs,samplers,eps(T),min_pts,min_pts,symmetry)
 end
 
-function _boundary_curves_for_solver(billiard::Bi,solver::BoundaryIntegralMethod) where {Bi<:AbsBilliard}
-    if isnothing(solver.symmetry)
-        hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
-    end
-    hasproperty(billiard,:desymmetrized_full_boundary) && return getfield(billiard,:desymmetrized_full_boundary)
-    hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
-    error("No usable boundary field found in $(typeof(billiard))")
-end
-
 """
     evaluate_points(solver::BoundaryIntegralMethod, billiard, k)
 
@@ -161,7 +152,7 @@ matrix into the Fredholm matrix.
 """
 function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {Bi<:AbsBilliard}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
-    curves=_boundary_curves_for_solver(billiard,solver)
+    curves=isnothing(solver.symmetry) ? billiard.full_boundary : billiard.fundamental_boundary
     type=eltype(solver.pts_scaling_factor)
     xy_all=Vector{SVector{2,type}}()
     normal_all=Vector{SVector{2,type}}()

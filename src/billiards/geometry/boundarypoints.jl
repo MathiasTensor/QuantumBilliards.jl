@@ -92,121 +92,36 @@ function boundary_coords(crv::C,t,dt) where {C<:AbsCurve}
 end 
 
 """
-    boundary_coords(billiard::Bi, sampler::FourierNodes, N::Int) :: BoundaryPoints{T} where {Bi<:AbsBilliard, T<:Real}
+    boundary_coords_fourier(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard}
 
- # IMPORTANT: First curve must be real in the f`billiard.full_boundary`
-
-Construct boundary points for each real segment of `billiard.full_boundary` by sampling with `FourierNodes`.
-Only real (non‐virtual) segments are included. Returns a `BoundaryPoints` container combining:
-- `xy_all`: concatenated coordinates,
-- `normal_all`: concatenated normals,
-- `s_all`: concatenated arc‐lengths (shifted by cumulative lengths),
-- `ds_all`: concatenated weight segments.
+Compute boundary coordinates for the billiard using Fourier sampling.
+Used only for boundary_function when we comnstruct the gradient matrices via basis explicitely (VerginiSaraceno,ParticularSolutionsMethod,DecompositionMethod).
 
 # Arguments
-- `billiard::Bi<:AbsBilliard`: A billiard object containing `full_boundary::Vector{AbsCurve}`.
-- `sampler::FourierNodes`: Sampler for Fourier‐type nodes on each segment.
-- `N::Int`: Total number of sample points distributed proportionally to each segment’s length.
+- `billiard::Bi<:AbsBilliard`: The billiard geometry.
+- `sampler::FourierNodes`: Fourier sampling strategy.
+- `N::Int`: Number of sample points.
 
 # Returns
-- `BoundaryPoints{T}`: T is the element type of the boundary curves’ lengths.
+- `BoundaryPoints{T}`
 """
-function boundary_coords(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard}
-    let boundary=billiard.full_boundary
-        ts,dts=sample_points(sampler,N)
-        xy_all,normal_all,s_all,ds_all=boundary_coords(boundary[1],ts[1],dts[1])
-        l=boundary[1].length
-        for i in 2:length(ts)
-            crv=boundary[i]
-            if (typeof(crv) <: AbsRealCurve)
-                Lc=crv.length
-                xy,nxy,s,ds=boundary_coords(crv,ts[i],dts[i])
-                append!(xy_all,xy)
-                append!(normal_all,nxy)
-                s=s.+l
-                append!(s_all,s)
-                append!(ds_all,ds)
-                l+=Lc
-            end    
-        end
-        return BoundaryPoints(xy_all,normal_all,s_all,ds_all,Vector{T}(),Vector{T}(),Vector{T}(),Vector{SVector{2,T}}(),zero(T),zero(T)) 
+function boundary_coords_fourier(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard}
+    boundary=billiard.fundamental_boundary
+    real_boundary=[crv for crv in boundary if crv isa AbsRealCurve]
+    ts,dts=sample_points(sampler,N)
+    xy_all,normal_all,s_all,ds_all=boundary_coords(real_boundary[1],ts[1],dts[1])
+    l=real_boundary[1].length
+    T=eltype(ds_all)
+    for i in 2:length(real_boundary)
+        crv=real_boundary[i]
+        xy,nxy,s,ds=boundary_coords(crv,ts[i],dts[i])
+        append!(xy_all,xy)
+        append!(normal_all,nxy)
+        append!(s_all,s .+ l)
+        append!(ds_all,ds)
+        l+=crv.length
     end
-end
-
-"""
-    boundary_coords(billiard::Bi, sampler::S, N::Int) :: BoundaryPoints{T} where {Bi<:AbsBilliard, S<:AbsSampler, T<:Real}
-
- # IMPORTANT: First curve must be real in the `billiard.full_boundary`
-
-Sample the entire `billiard.full_boundary` using a generic `sampler`. Each real curve is sampled
-with `Nc = round(Int, N * (crv.length / total_length))` points. Virtual curves are skipped.
-
-# Arguments
-- `billiard::Bi<:AbsBilliard`: Billiard containing `full_boundary`.
-- `sampler::S<:AbsSampler`: Sampler object (e.g. uniform, Gauss‐Legendre).
-- `N::Int`: Total number of points (distributed proportionally).
-
-# Returns
-- `BoundaryPoints{T}`: Combined discretization of all real boundary segments.
-"""
-function boundary_coords(billiard::Bi,sampler::S,N) where {Bi<:AbsBilliard,S<:AbsSampler}
-    let boundary=billiard.full_boundary
-            L=billiard.length
-            Lc=boundary[1].length
-            Nc=round(Int,N*Lc/L)
-            xy_all,normal_all,s_all,ds_all=boundary_coords(boundary[1],sampler,Nc)
-            l=boundary[1].length #cumulative length
-            for crv in boundary[2:end]
-                if (typeof(crv) <: AbsRealCurve)
-                    Lc=crv.length
-                    Nc=round(Int,N*Lc/L)
-                    xy,nxy,s,ds=boundary_coords(crv,sampler,Nc)
-                    append!(xy_all,xy)
-                    append!(normal_all,nxy)
-                    s=s.+l
-                    append!(s_all,s)
-                    append!(ds_all,ds)
-                    l+=Lc
-                end    
-            end
-        return BoundaryPoints(xy_all,normal_all,s_all,ds_all,Vector{T}(),Vector{T}(),Vector{T}(),Vector{SVector{2,T}}(),zero(T),zero(T)) 
-    end
-end
-
-"""
-    boundary_coords_desymmetrized_full_boundary(billiard::Bi, sampler::FourierNodes, N) where {Bi<:AbsBilliard}
-
-#INTERNAL
-Specialized boundary points construction function used exclusively for the boundary_function where we need to take into account the desymmetrized_full_boundary. Not used anywhere else.
-
-# Arguments
-- `billiard::Bi`: a billiard geometry
-- `sampler::FourierNodes`: a sampler for Fourier nodes. Must be this one for consistency with boundary_function.
-- `N`: the number of points to sample
-
-# Returns
-- `BoundaryPoints`: a struct containing the boundary points, normals, arc lengths, and integration weights for the boundary_function.
-"""
-function boundary_coords_desymmetrized_full_boundary(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard}
-    let boundary=billiard.desymmetrized_full_boundary
-        ts,dts=sample_points(sampler,N)
-        xy_all,normal_all,s_all,ds_all=boundary_coords(boundary[1],ts[1],dts[1])
-        l=boundary[1].length
-        for i in 2:length(ts)
-            crv=boundary[i]
-            if (typeof(crv) <: AbsRealCurve)
-                Lc=crv.length
-                xy,nxy,s,ds=boundary_coords(crv,ts[i],dts[i])
-                append!(xy_all,xy)
-                append!(normal_all,nxy)
-                s=s.+l
-                append!(s_all,s)
-                append!(ds_all,ds)
-                l+=Lc
-            end    
-        end
-        return BoundaryPoints(xy_all,normal_all,s_all,ds_all,Vector{T}(),Vector{T}(),Vector{T}(),Vector{SVector{2,T}}(),zero(T),zero(T)) 
-    end
+    return BoundaryPoints(xy_all,normal_all,s_all,ds_all,T[],T[],T[],SVector{2,T}[],zero(T),zero(T))
 end
 
 # helper to get he arclengths from the arclengths differences
