@@ -75,7 +75,7 @@ end
 
     b=12.0
     billiard,_ = make_rectangle_and_basis(w,h)
-    solver = CFIE_alpert(b,billiard;symmetry=nothing,kressq=2,alpert_order=14)
+    solver = CFIE_alpert(b,billiard;symmetry=nothing,alpertq=2,alpert_order=14)
 
     ks,tens,_,_,tensN = compute_spectrum_beyn(
         solver,billiard,k1,k2;
