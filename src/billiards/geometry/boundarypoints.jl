@@ -106,7 +106,7 @@ Used only for boundary_function when we comnstruct the gradient matrices via bas
 - `BoundaryPoints{T}`
 """
 function boundary_coords_fourier(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard}
-    boundary=billiard.fundamental_boundary
+    boundary=billiard.desymmetrized_full_boundary
     real_boundary=[crv for crv in boundary if crv isa AbsRealCurve]
     ts,dts=sample_points(sampler,N)
     xy_all,normal_all,s_all,ds_all=boundary_coords(real_boundary[1],ts[1],dts[1])
