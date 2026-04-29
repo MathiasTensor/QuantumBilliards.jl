@@ -985,6 +985,25 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
     return A
 end
 
+# Helper non-exported function for computing the smallest singular/eigenvalue proxy and associated vector of a matrix using a Krylov method. 
+# This is used in Husimi postprocessing to find the boundary normal derivative vector corresponding to the smallest singular value of the DLP matrix, 
+# which is the most physically relevant quantity for Husimi analysis. For just wavefunctions we dont really need this path since we can reuse layer potentials.
+function smallest_nullvec_krylov!(A::AbstractMatrix{Complex{T}};nev::Int=1,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real}
+    n=size(A,1)
+    F=lu!(A)
+    function op!(y,x)
+        copyto!(y,x)
+        ldiv!(F,y) # y <- A \ x
+        return y
+    end
+    C=LinearMaps.LinearMap{eltype(A)}(op!,n,n;ismutating=true)
+    μs,vecs,info=eigsolve(C,n,nev,:LM;tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    μ=μs[1]
+    u=vecs[1]./norm(vecs[1])
+    σ=inv(abs(μ)) # smallest-singular/eigenvalue proxy
+    return σ,u,info # info is foe debugging
+end
+
 #########################################
 
 """
@@ -1154,34 +1173,31 @@ Vector-of-k overload:
   - `us_all[i]` is the smallest right singular vector at `ks[i]`,
   - `pts_all[i]` is the corresponding boundary discretization.
 """
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {Ba<:AbstractHankelBasis,T<:Real}
+    N=length(pts.xy); A=Matrix{Complex{T}}(undef,N,N); D=similar(A)
     @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    i=findmin(S)[2]
-    return S[i],conj.(Vt[i,:])
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
 end
 
-function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {Ba<:AbstractHankelBasis,T<:Real}
     D=similar(A)
     @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-    i=findmin(S)[2]
-    return S[i],conj.(Vt[i,:])
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
 end
 
-function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
     kref=maximum(ks)
     pts=evaluate_points(solver,billiard,kref)
-    N=length(pts.xy);A=Matrix{Complex{T}}(undef,N,N);D=similar(A)
+    N=length(pts.xy); A=Matrix{Complex{T}}(undef,N,N); D=similar(A)
     us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
     pts_all=Vector{BoundaryPoints{T}}(undef,length(ks))
     p=Progress(length(ks),desc="Adjoint BIM boundary functions...")
     for i in eachindex(ks)
         @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[i];multithreaded=multithreaded)
-        @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('N','A',A)
-        idx=findmin(S)[2]
-        us_all[i]=conj.(Vt[idx,:])
+        _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+        us_all[i]=u
         pts_all[i]=pts
         next!(p)
     end
