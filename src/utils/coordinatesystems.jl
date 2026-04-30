@@ -56,7 +56,53 @@ function PolarCS(origin::SVector{2,T},rot_angle::T) where {T<:Number}
     return PolarCS(origin,rot_angle,affine_map,local_map)
 end
 
-#angle(a,b)=atan(norm(cross(a,b)),dot(a,b))
+"""
+    linear_map(cs, v) -> SVector{2,T}
+
+Apply only the linear (rotation) part of a coordinate-system transformation
+to a vector `v`, discarding any translational component.
+
+# Purpose
+In the geometry framework, `AffineMap`s stored in `CartesianCS` and `PolarCS`
+represent transformations of the form
+
+    x ↦ R*x + t
+
+where `R` is a rotation and `t` is a translation.
+
+While this is correct for points, it is incorrect for vectors such as:
+- tangents,
+- normals,
+- higher derivatives,
+
+because vectors must transform only under the linear part `R`.
+
+This helper extracts that linear action by removing the translation.
+
+# Definition
+The linear map is computed as
+
+    linear_map(cs, v) = cs.affine_map(v) - cs.affine_map(0)
+
+which is equivalent to applying the rotation `R` alone.
+
+# Arguments
+- `cs`: A coordinate system (`CartesianCS` or `PolarCS`)
+- `v`: A vector in ℝ² (e.g. tangent, normal, derivative)
+
+# Returns
+- `SVector{2,T}`: The rotated vector
+
+# Important
+- This function must be used for transforming derivatives.
+- Using `affine_map` directly on tangents introduces a translation offset,
+  which leads to incorrect geometry (e.g. twisted normals for off-center curves).
+"""
+@inline linear_map(cs,v)=cs.affine_map(v)-cs.affine_map(zero(v))
+@inline function linear_map(cs::Union{CartesianCS,PolarCS},v::SVector{2})
+    s,c=sincos(cs.rot_angle)
+    return SVector(c*v[1]-s*v[2],s*v[1]+c*v[2])
+end
 
 """
     polar_to_cartesian(pt::SVector{2,T}) where {T<:Number}

@@ -195,15 +195,12 @@ Compute tangent vectors along the circular segment at each `t ∈ ts`.
 - `Vector{SVector{2,T}}`: Tangent vectors (derivatives) at each `t`.
 """
 function tangent(circle::L,ts::AbstractArray{T}) where {T<:Real,L<:CircleSegments{T}}
-    affine_map=circle.cs.affine_map
     R=circle.radius
     c=circle.center
     a=circle.arc_angle
     s=circle.shift_angle
     orient=T(circle.orientation)
-    return [
-        orient*affine_map(_circle_tangent(R,a,s,c,t)) for t in ts
-    ]
+    return [orient*linear_map(circle.cs,_circle_tangent(R,a,s,c,t)) for t in ts]
 end
 
 """
@@ -219,13 +216,12 @@ Compute the first derivative (tangent) vector of a circular segment at a single 
 - `SVector{2,T}`: The tangent vector at `t`, scaled by `circle.orientation`.
 """
 function tangent(circle::L,t::T) where {T<:Real,L<:CircleSegments{T}}
-    affine_map=circle.cs.affine_map
     R=circle.radius
     c=circle.center
     a=circle.arc_angle
     s=circle.shift_angle
     orient=T(circle.orientation)
-    return orient*affine_map(_circle_tangent(R,a,s,c,t))
+    return orient*linear_map(circle.cs,_circle_tangent(R,a,s,c,t))
 end
 
 """
@@ -240,14 +236,13 @@ Compute the second derivative of a circular segment at a single parameter `t`.
 # Returns
 - `SVector{2,T}`: The second derivative vector at `t`.
 """
-function tangent_2(circle::L,t::T) where {T<:Real,L<:CircleSegments{T}}
-    affine_map=circle.cs.affine_map
+function tangent_2(circle::L,ts::AbstractArray{T}) where {T<:Real,L<:CircleSegments{T}}
     R=circle.radius
     c=circle.center
     a=circle.arc_angle
     s=circle.shift_angle
     orient=T(circle.orientation)
-    return orient*affine_map(_circle_tangent_2(R,a,s,c,t))
+    return [orient*linear_map(circle.cs,_circle_tangent_2(R,a,s,c,t)) for t in ts]
 end
 
 """
@@ -262,16 +257,13 @@ Compute the second derivative vectors of a circular segment at each parameter in
 # Returns
 - `Vector{SVector{2,T}}`: Second derivative vectors at each `t`.
 """
-function tangent_2(circle::L,ts::AbstractArray{T}) where {T<:Real,L<:CircleSegments{T}}
-    affine_map=circle.cs.affine_map
+function tangent_2(circle::L,t::T) where {T<:Real,L<:CircleSegments{T}}
     R=circle.radius
     c=circle.center
     a=circle.arc_angle
     s=circle.shift_angle
     orient=T(circle.orientation)
-    return [
-        orient*affine_map(_circle_tangent_2(R,a,s,c,t)) for t in ts
-    ]
+    return orient*linear_map(circle.cs,_circle_tangent_2(R,a,s,c,t))
 end
 
 """

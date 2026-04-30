@@ -129,10 +129,11 @@ Compute the tangent vector (derivative w.r.t. `t`) of the polar segment at `t`, 
 # Returns
 - `SVector{2,T}`: The derivative `d/dt [ affine_map( r_func(t) ) ]`.
 """
-function tangent(polar::L,t) where {T,L<:PolarSegments{T}}
-    affine_map=polar.cs.affine_map
-    r_func=polar.r_func
-    return ForwardDiff.derivative(l->affine_map(r_func(l)),t)
+function tangent(polar::L,t::T) where {T<:Real,L<:PolarSegments{T}}
+    f=polar.r_func
+    dx=ForwardDiff.derivative(u->f(u)[1],t)
+    dy=ForwardDiff.derivative(u->f(u)[2],t)
+    return linear_map(polar.cs,SVector(dx,dy))
 end
 
 """
@@ -148,7 +149,10 @@ Compute the tangent vector derivative (2nd derivative w.r.t. `t`) of the polar s
 - `SVector{2,T}`: The derivative `d^2/dt^2 [ affine_map( r_func(t) ) ]`.
 """
 function tangent_2(polar::L,t::T) where {T<:Real,L<:PolarSegments{T}}
-    return SVector(ForwardDiff.derivative(u->tangent(polar,u)[1],t),ForwardDiff.derivative(u->tangent(polar,u)[2],t))
+    f=polar.r_func
+    ddx=ForwardDiff.derivative(u->ForwardDiff.derivative(v->f(v)[1],u),t)
+    ddy=ForwardDiff.derivative(u->ForwardDiff.derivative(v->f(v)[2],u),t)
+    return linear_map(polar.cs,SVector(ddx,ddy))
 end
 
 """
@@ -233,10 +237,10 @@ Helper to compute total arc length at construction time (from `0` to `t`), using
 # Returns
 - `T`: Arc length `∫₀ᵗ ‖ d/dτ [ affine_map(r_func(τ)) ] ‖ dτ`.
 """
-function compute_arc_length_constructor(r_func::Function,affine_map::AffineMap,t)
-    r_prime_x(l)=ForwardDiff.derivative(k->affine_map(r_func(k))[1],l)
-    r_prime_y(l)=ForwardDiff.derivative(k->affine_map(r_func(k))[2],l)    
-    integrand(l)=sqrt(r_prime_x(l)^2+r_prime_y(l)^2)
+function compute_arc_length_constructor(r_func::Function,cs::Union{CartesianCS,PolarCS},t)
+    rpx(l)=ForwardDiff.derivative(k->r_func(k)[1],l)
+    rpy(l)=ForwardDiff.derivative(k->r_func(k)[2],l)
+    integrand(l)=hypot(rpx(l),rpy(l))
     length,_=quadgk(integrand,0.0,t)
     return length
 end

@@ -191,10 +191,8 @@ Compute tangent (derivative) vectors along the segment at each `t ∈ ts`.
 - `Vector{SVector{2,T}}`: Tangent vectors at each `t`, scaled by `orientation`.
 """
 function tangent(line::L,ts::AbstractArray{T,1}) where {T<:Real,L<:LineSegments{T}}
-    let pt0=line.cs.affine_map(line.pt0),pt1=line.cs.affine_map(line.pt1),orient=line.orientation
-        r(t)=line_eq(pt0,pt1,t)
-        return collect(orient*ForwardDiff.derivative(r,t) for t in ts)
-    end
+    v=line.orientation*linear_map(line.cs,line.pt1-line.pt0)
+    return fill(v,length(ts))
 end
 
 """
@@ -210,11 +208,8 @@ Compute the first derivative (tangent) vector of a line segment at a single para
 - `SVector{2,T}`: The tangent vector at `t`, scaled by the segment’s `orientation`.
 """
 function tangent(line::L,t) where {T<:Real,L<:LineSegments{T}}
-    pt0=line.cs.affine_map(line.pt0)
-    pt1=line.cs.affine_map(line.pt1)
-    orient=line.orientation
-    r(t)=line_eq(pt0,pt1,t)
-    return orient*ForwardDiff.derivative(r,t)
+    v=line.pt1-line.pt0
+    return line.orientation*linear_map(line.cs,v)
 end
 
 """
