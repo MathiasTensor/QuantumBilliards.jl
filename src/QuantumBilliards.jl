@@ -14,8 +14,6 @@ using QuadGK
 using FastGaussQuadrature
 using Optim 
 using ProgressMeter
-using MKL
-using AppleAccelerate
 using KrylovKit
 using LinearMaps
 using CoordinateTransformations # FIXME needs to go
