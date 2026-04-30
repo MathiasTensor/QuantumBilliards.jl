@@ -9,7 +9,7 @@ using Statistics
 # and BIM should give 3rd order algebraic convergence since it is weakly singular as
 # we dont fix the near diagonal behaviouur.
 
-try_MKL_on_x86_64!()
+try_accelerated_blas!()
 
 # exact eigenvalue (J_0 zero near k ≈ 30)
 k_exact=30.63460646843198

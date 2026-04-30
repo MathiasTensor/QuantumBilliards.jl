@@ -4,6 +4,8 @@ using Printf
 using CairoMakie
 using ProgressMeter
 
+try_accelerated_blas!()
+
 ################## USER PARAMS ###################
 
 #geometry=:star 

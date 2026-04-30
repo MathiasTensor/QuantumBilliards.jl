@@ -170,21 +170,38 @@ end
 memory_size(a)=Base.format_bytes(Base.summarysize(a)) 
 
 """
-    try_MKL_on_x86_64!()
+    try_accelerated_blas!()
 
-Tries to use the MKL on x86_64 architecture if possible. Otherwise it defaults to the stock BLAS backend :lbt.
+Select the fastest available BLAS/LAPACK backend:
+- x86_64 → MKL (if available)
+- Apple Silicon → AppleAccelerate (if available)
+- otherwise fallback to default
+
+Prints active BLAS configuration.
 """
-function try_MKL_on_x86_64!()
-    if Sys.ARCH==:x86_64
+function try_accelerated_blas!()
+    arch=Sys.ARCH
+    if arch==:x86_64
         try
             @eval using MKL
-            println(BLAS.get_config())
+            @info "Using MKL"
         catch e
-            println(e)
-            @warn "Install Math Kernel Library (MKL) via MKL.jl"
-            @info "Defaulting to stock BLAS backend: $(BLAS.vendor())"
+            @warn "MKL unavailable" exception=e
+        end
+    elseif arch==:aarch64 && Sys.isapple()
+        try
+            @eval using AppleAccelerate
+            @info "Using AppleAccelerate"
+        catch e
+            @warn "AppleAccelerate unavailable" exception=e
         end
     else
-        @info "Not on x86_64 architecture ($(Sys.ARCH)), defaulting to stock BLAS backend: $(BLAS.vendor())"
+        @info "Using default BLAS ($(BLAS.vendor()))"
     end
+    try
+        println("BLAS config: ",BLAS.get_config())
+    catch
+        println("BLAS vendor: ",BLAS.vendor())
+    end
+    return nothing
 end

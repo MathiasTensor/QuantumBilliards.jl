@@ -2,7 +2,7 @@ using QuantumBilliards
 using LinearAlgebra
 using CairoMakie
 
-try_MKL_on_x86_64!()
+try_accelerated_blas!()
 
 d=8.0
 b=12.0

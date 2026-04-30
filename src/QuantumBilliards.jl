@@ -25,7 +25,7 @@ using CircularArrays
 include("abstracttypes.jl")
 export CoordinateSystem,AbsBilliard,AbsCurve,AbsVirtualCurve,AbsRealCurve,AbsBasis,AbsFundamentalBasis,AbsSolver,AbsPoints,SweepSolver,AcceleratedSolver,AbsSampler,AbsState,StationaryState,AbsGrid,AbsSymmetry,AbsObservable,CFIE
 include("utils/macros.jl")
-export use_threads,benchit,blas_multi,blas_1,blas_multi_then_1,svd_or_det_solve,try_MKL_on_x86_64!
+export use_threads,benchit,blas_multi,blas_1,blas_multi_then_1,svd_or_det_solve,try_accelerated_blas!
 
 # utils
 include("utils/coordinatesystems.jl")

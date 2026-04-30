@@ -4,6 +4,8 @@ using StaticArrays
 using Printf
 using CairoMakie
 
+try_accelerated_blas!()
+
 # NOTE: This is a competely detailed example with explanations of each step, 
 # meant for users who want to understand the full pipeline of going from geometry 
 # to wavefunctions using Beyn. In practice only a few kwargs need to be changed, and 

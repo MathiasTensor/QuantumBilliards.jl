@@ -2,6 +2,8 @@ using QuantumBilliards
 using LinearAlgebra
 using CairoMakie
 
+try_accelerated_blas!()
+
 billiard,_=make_teardrop_and_basis() # the infamous kress teardrop from this paper: "Boundary Integral Equations in time-harmonic accoustic scattering (1991). A difficult geometry since it has a corner but Kress introduced a grading that effectively achieves a high order convergence
 
 b=15.0
