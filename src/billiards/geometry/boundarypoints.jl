@@ -315,7 +315,7 @@ function kress_R_even!(R0::AbstractMatrix{T}) where {T<:Real}
         a[m+1]=1/m     # positive freq
         a[N-m+1]=1/m     # negative freq
     end # leave a[n+1] == 0  (no 1/n term)
-    rjn=real(ifft(a)) # inverse FFT → rjn[j] = (2/N)*∑_{m=1..n-1} (1/m) cos(2π m (j-1)/N)
+    rjn=real(FFTW.ifft(a)) # inverse FFT → rjn[j] = (2/N)*∑_{m=1..n-1} (1/m) cos(2π m (j-1)/N)
     ks=0:(N-1) # build the first column, adding the “alternating” correction
     alt=(-1).^ks # alt[j+1] = (-1)^j
     @. R0[:,1]=-two_pi*rjn-(2*two_pi/(N^2))*alt # R0[:,1] = -2π*rjn .- (4π/N^2)*alt, first col is ref
@@ -335,7 +335,7 @@ function kress_R_odd!(R0::AbstractMatrix{T}) where {T<:Real}
         a[m+1]=1/m   # positive freq
         a[N-m+1]=1/m   # negative freq
     end
-    rjn=real(ifft(a)) # gives (1/N) * sum_m a_m exp(2πimj/N)
+    rjn=real(FFTW.ifft(a)) # gives (1/N) * sum_m a_m exp(2πimj/N)
     @. R0[:,1]= -two_pi*rjn
     for j in 2:N
         @views R0[:,j].=circshift(R0[:,j-1],1)

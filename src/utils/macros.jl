@@ -169,17 +169,39 @@ end
 # helper for determining the byte size of object "a"
 memory_size(a)=Base.format_bytes(Base.summarysize(a)) 
 
+"""
+    try_accelerated_blas!()
+
+Select the fastest available BLAS/LAPACK backend:
+- x86_64 → MKL (if available)
+- Apple Silicon → AppleAccelerate (if available)
+- otherwise fallback to default
+
+Prints active BLAS configuration.
+"""
 function try_accelerated_blas!()
-    if Sys.ARCH==:x86_64
+    arch=Sys.ARCH
+    if arch==:x86_64
         try
             @eval using MKL
             @info "Using MKL"
         catch e
             @warn "MKL unavailable" exception=e
         end
+    elseif arch==:aarch64 && Sys.isapple()
+        try
+            @eval using AppleAccelerate
+            @info "Using AppleAccelerate"
+        catch e
+            @warn "AppleAccelerate unavailable" exception=e
+        end
     else
-        @info "Using default BLAS/FFTW backend ($(BLAS.vendor()))"
+        @info "Using default BLAS ($(BLAS.vendor()))"
     end
-    println("BLAS config: ",BLAS.get_config())
+    try
+        println("BLAS config: ",BLAS.get_config())
+    catch
+        println("BLAS vendor: ",BLAS.vendor())
+    end
     return nothing
 end

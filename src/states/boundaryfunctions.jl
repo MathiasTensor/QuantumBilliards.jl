@@ -396,9 +396,9 @@ Computes the momentum distribution function for the boundary function `u` define
 - `ks::Vector`: The associated frequencies.
 """
 function momentum_function(u,s)
-    fu=rfft(u)
+    fu=FFTW.rfft(u)
     sr=1.0/diff(s)[1]
-    ks=rfftfreq(length(s),sr).*(2*pi)
+    ks=FFTW.rfftfreq(length(s),sr).*(2*pi)
     return abs2.(fu)/length(fu),ks
 end
 
@@ -597,9 +597,9 @@ Then
 """
 function periodic_derivative_t(f::AbstractVector{Complex{T}}) where {T<:Real}
     N=length(f)
-    F=fft(f) # to get the Fourier coefficients f̂_k
+    F=FFTW.fft(f) # to get the Fourier coefficients f̂_k
     kvec=iseven(N) ? vcat(0:N÷2-1,0,-N÷2+1:-1) : vcat(0:(N-1)÷2,-(N-1)÷2:-1) # wave numbers k for the Fourier modes, ordered according to the output of fft. If even N, the zero frequency is followed by positive frequencies up to N/2-1, then the Nyquist frequency (which is zero for the derivative), and then negative frequencies from -N/2+1 to -1. If odd N, the zero frequency is followed by positive frequencies up to (N-1)/2, and then negative frequencies from -(N-1)/2 to -1.
-    return ifft((im.*T.(kvec)).*F) # ∂_t f(t) = Σ_k  (i k) f̂_k e^{i k t} where f̂_k is the Fourier transform 
+    return FFTW.ifft((im.*T.(kvec)).*F) # ∂_t f(t) = Σ_k  (i k) f̂_k e^{i k t} where f̂_k is the Fourier transform 
 end
 
 # tangential_derivative_density(pts, μ)
