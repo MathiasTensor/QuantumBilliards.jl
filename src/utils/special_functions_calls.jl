@@ -113,30 +113,30 @@ to reconstruct the `BoundaryPointsCFIE` objects or do any extra computations.
 - `CFIEWavefunctionCache{T}`: A struct containing flattened vectors of boundary coordinates, tangents, quadrature weights, etc., for efficient CFIE wavefunction evaluation.
 """
 function flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
-    N=sum(length(c.xy) for c in comps)
-    x=Vector{T}(undef,N)
-    y=Vector{T}(undef,N)
-    tx=Vector{T}(undef,N)
-    ty=Vector{T}(undef,N)
-    sj=Vector{T}(undef,N)
-    w=Vector{T}(undef,N)
-    p=1
-    @inbounds for c in comps
-        for j in eachindex(c.xy)
-            q=c.xy[j]
-            t=c.tangent[j]
-            txj=t[1]
-            tyj=t[2]
-            x[p]=q[1]
-            y[p]=q[2]
-            tx[p]=txj
-            ty[p]=tyj
-            sj[p]=sqrt(txj*txj+tyj*tyj)
-            w[p]=c.ws[j]
-            p+=1
+    N=sum(length(c.xy) for c in comps)       # total number of boundary nodes over all components
+    x=Vector{T}(undef,N)                     # flattened boundary x-coordinates x_j
+    y=Vector{T}(undef,N)                     # flattened boundary y-coordinates y_j
+    tx=Vector{T}(undef,N)                    # flattened tangent x-components γ'_x(t_j)
+    ty=Vector{T}(undef,N)                    # flattened tangent y-components γ'_y(t_j)
+    sj=Vector{T}(undef,N)                    # speed factors |γ'(t_j)|
+    w=Vector{T}(undef,N)                     # quadrature weights in parameter variable t
+    p=1                                      # global flattened index
+    @inbounds for c in comps # loop over boundary components
+        for j in eachindex(c.xy) # loop over nodes of this component
+            q=c.xy[j] # boundary point q_j = (x_j,y_j)
+            t=c.tangent[j] # tangent vector γ'(t_j)
+            txj=t[1]  
+            tyj=t[2] 
+            x[p]=q[1]                       
+            y[p]=q[2]                   
+            tx[p]=txj                   
+            ty[p]=tyj                 
+            sj[p]=sqrt(txj*txj+tyj*tyj) # store speed |γ'(t_j)|
+            w[p]=c.ws[j] # store parameter quadrature weight Δt_j
+            p+=1                         
         end
     end
-    return CFIEWavefunctionCache(x,y,tx,ty,sj,w)
+    return CFIEWavefunctionCache(x,y,tx,ty,sj,w) 
 end
 
 """
@@ -182,9 +182,9 @@ where
     # the kernel is
     #   K = (i k / 2) * inn * H1 / r  -  (k / 2) * H0 * sj
     khalf=k*T(0.5)
-    h=minimum(cache.w) # minimal arc-length spacing
-    tol2=(0.5*h)^2 # for near boundary skipping since we have log singularity for H0 
-    @inbounds @fastmath for j in 1:N
+    h=minimum(cache.w.*cache.sj) # minimal physical boundary node spacing
+    tol2=(0.5*h)^2 # for near boundary skipping since we have log and 1/r singularities
+    @inbounds @fastmath for j in 1:N # fastmath since we remove the singular/near-singular region
         dx=xp-x[j]
         dy=yp-y[j]
         r2=muladd(dx,dx,dy*dy)
