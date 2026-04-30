@@ -175,6 +175,8 @@ Active development focused on:
 
 ## Some pics...
 
+NOTE: All of these are generate from .jl files inside examples/ folder
+
 ![circle_eigval_conv](examples/circle_convergence.png)
 
 Convergence to an eigenvalue of the circle with R=1 for various BIE type solvers (DLP kress, CFIE kress, Alpert, naive DLP) showing spectral convergence for the Kress solvers and high order for Alpert along with O(1/N^3) for naive DLP.
@@ -194,3 +196,7 @@ Examples of the wavefucntions and husimis for the ellipse cap mushroom (XReflect
 ![dlp_kress_star_wav_hus](examples/star_wav_hus_dlp_kress.png)
 
 Examples of wavefunctions and PH functions for the star billiard desymmetrized with Rotation(5,0) (the real irrep) which was done via Beyn's subspace projection. Note that the imaginary part of the u(s) is 0, which is needed since that irrep has real eigenfunctions. In principle this can even be complex with just a global phase shift depending on the SVD conventions (Krylov solve_vect for adjint kernel gives it with a general global phase but it gives correct wavefunctions/PH functions - this pic was made with a slower gesvd call which had the global phase realification built in and returned the deshifted u(s), but this is just cosmetics for wavefunctions/PH functions.)
+
+![cfie_holes](examples/cfie_wav_hus_holes.png)
+
+Examples of a domain with holes, restricted via Beyn's subspace projection to Reflection(-1,-1). It is an example of a mixed type system, where the outer high angular momentum nodes do not see the interior holes and behave like a regular circle billiard. Once it penetrates deeper into the billiard it disperses giving rise to nontrivial patterns with localization.
