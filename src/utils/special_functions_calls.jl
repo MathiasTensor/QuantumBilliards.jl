@@ -3,7 +3,8 @@
 @inline H(n::Int,x::T) where {T<:Real}=Bessels.hankelh1(n,x)
 @inline H(n::Int,x::Complex{T}) where {T<:Real}=SpecialFunctions.besselh(n,1,x)
 @inline function hankel_pair01(x);h0=H(0,x);h1=H(1,x);return h0,h1;end
-@inline Φ_helmholtz(k::T,r::T) where {T<:Real}=(im/4)*Bessels.hankelh1(0,k*r) # used for CFIE husimi to get the boundary function
+@inline Φ_helmholtz(k::T,r::T) where {T<:Real}=(im/4)*Bessels.hankelh1(0,k*r) # used for CFIE solvers to get the normal derivative of the wavefunctions
+# this is the slp kernel used in the hypersingular maue kress formula for the normal derivative of the DLP kernel.
 
 #################################################################
 ################# DLP WAVEFUNCTION CONSTRUCTION #################
@@ -181,7 +182,8 @@ where
     # the kernel is
     #   K = (i k / 2) * inn * H1 / r  -  (k / 2) * H0 * sj
     khalf=k*T(0.5)
-    tol2=(T(100)*eps(T)) # for near boundary skipping
+    h=minimum(cache.w) # minimal arc-length spacing
+    tol2=(0.5*h)^2 # for near boundary skipping since we have log singularity for H0 
     @inbounds @fastmath for j in 1:N
         dx=xp-x[j]
         dy=yp-y[j]
