@@ -59,7 +59,7 @@ to local coordinates `(x(t), y(t))`. The arc length is computed via numerical qu
 """
 function PolarSegment(r_func::Function;origin=SVector(0.0,0.0),rot_angle=0.0)
     cs=PolarCS(SVector(origin...),rot_angle)
-    L=compute_arc_length_constructor(r_func,cs.affine_map,1.0)
+    L=compute_arc_length_constructor(r_func,cs,1.0)
     return PolarSegment(cs,r_func,L)
 end
 
@@ -79,7 +79,7 @@ Construct a `VirtualPolarSegment{T}` given a parametric function `r_func`, plus 
 """
 function VirtualPolarSegment(r_func::Function;symmetry_type=:Dirichlet,origin=SVector(0.0,0.0),rot_angle=0.0)
     cs=PolarCS(SVector(origin...),rot_angle)
-    L=compute_arc_length_constructor(r_func,cs.affine_map,1.0)
+    L=compute_arc_length_constructor(r_func,cs,1.0)
     return VirtualPolarSegment(cs,r_func,L,symmetry_type)
 end
 
