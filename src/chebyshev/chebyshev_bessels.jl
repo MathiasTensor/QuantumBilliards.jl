@@ -309,7 +309,7 @@ function _build_table_h!(ν::Int,κ::Int,k::Float64,a::Float64,b::Float64;M::Int
         t=cospi(j/M) # chebyshev node in [-1,1]
         r=((b+a)+(b-a)*t)/2 # affine map to [a,b] so we are in the correct sector
         z=k*r # argument for Hankel in local coordinates
-        f1[j+1]=ComplexF64(Bessels.hankelh(ν,κ,z)) # unscaled real-argument Hankel from Bessels.jl
+        f1[j+1]=ComplexF64(Bessels.besselh(ν,κ,z)) # unscaled real-argument Hankel from Bessels.jl
     end
     c=Vector{ComplexF64}(undef,M+1) # preallocate chebyshev coeffs
     _chebfit!(c,f1) # fit the chebyshev coeffs to the chebyshev node evaluations
