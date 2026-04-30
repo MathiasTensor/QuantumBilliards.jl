@@ -523,7 +523,7 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
     if use_chebyshev
         cheb_npanels,cheb_M,plan1,max_err0,max_err1=chebyshev_params(kmax,caches[idx_max],x_grid,y_grid,verbose=cheb_verbose,tol=tol_cheb)
         @inbounds for i in eachindex(ks)
-            cheb_plans[i]=build_cfie_wavefunction_cheb_plan(ks[i],caches[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M,grading=cheb_grading)
+            cheb_plans[i]=build_cfie_wavefunction_cheb_plan(ks[i],caches[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M)
         end
     end
     Psi_flat=zeros(S,nx*ny)
