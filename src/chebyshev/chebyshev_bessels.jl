@@ -1561,6 +1561,28 @@ end
 ################## CFIE WAVEFUNCTION EVALUATION ##################
 ##################################################################
 
+#    SLPWavefunctionChebPlan{T}
+#
+# Chebyhsev interpolation plain for SLP wavefunction reconstruction from DLP type kernels
+#
+# 
+struct SLPWavefunctionChebPlan{T}
+    plan::ChebHankelPlanH 
+    rmin::T
+    rmax::T
+end
+
+@inline function _eval_y0_slp_cheb(pl::SLPWavefunctionChebPlan{T},k::T,r::T) where {T<:Real}
+    rf=Float64(r)
+    if rf<Float64(pl.rmin) || rf>Float64(pl.rmax)
+        return T(Bessels.bessely0(k*r))
+    end
+    pidx=Int32(_find_panel(pl.plan,rf))
+    P=pl.plan.panels[pidx]
+    t=(2*rf-(P.b+P.a))/(P.b-P.a)
+    # plan stores H₀⁽¹⁾(k r) = J₀(k r) + iY₀(k r)
+    return T(imag(_cheb_clenshaw(P.c,t)))
+end
 
 #    CFIEWavefunctionChebPlan{T}
 #
