@@ -199,4 +199,4 @@ Examples of wavefunctions and PH functions for the star billiard desymmetrized w
 
 ![cfie_holes](examples/cfie_wav_hus_holes.png)
 
-Examples of a domain with holes, restricted via Beyn's subspace projection to Reflection(-1,-1). It is an example of a mixed type system, where the outer high angular momentum nodes do not see the interior holes and behave like a regular circle billiard. Once it penetrates deeper into the billiard it disperses giving rise to nontrivial patterns with localization.
+Examples of a domain with holes, restricted via Beyn's subspace projection to Reflection(-1,-1). It is an example of a mixed type system, where the outer high angular momentum nodes do not see the interior holes and behave like a regular circle billiard. Once it penetrates deeper into the billiard it disperses giving rise to nontrivial patterns with localization. The irrep is real, therefore the u(s) should be real. One can check that the resulting u(s) in the plots can be made real with a global phase shift (as can be seen from PH functions being symmetric p -> -p) 
