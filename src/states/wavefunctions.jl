@@ -106,8 +106,341 @@ function wavefunction_multi_with_husimi(solver::Union{BoundaryIntegralMethod,DLP
     return Psi2ds,x_grid,y_grid,Hs_list,ps_list,qs_list
 end
 
+#####################################################################
+################## CFIE WAVEFUNCTION CONSTRUCTION ###################
+#####################################################################
+
+# Flatten the CFIE_kress boundary points into a single cache for faster wavefunction reconstruction, and then evaluate the CFIE_kress wavefunction at many points from the flattened cache and boundary density `u`.
+struct CFIEWavefunctionCache{T<:Real}
+    x::Vector{T} # boundary x_j
+    y::Vector{T} # boundary y_j
+    tx::Vector{T} # tangent x-component
+    ty::Vector{T} # tangent y-component
+    sj::Vector{T} # |tangent_j|
+    w::Vector{T} # quadrature weight w_j
+    hmin::T
+end
+
 """
-    wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector{<:Number}},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    build_cfie_wavefunction_cheb_plan(k, cache, x_grid, y_grid;
+        npanels=256, M=16, grading=:uniform,
+        rmin_factor=0.7, rmax_pad=1.1)
+
+Build the Chebyshev interpolation plan used during CFIE wavefunction
+postprocessing.
+
+The plan stores piecewise-Chebyshev approximations of
+
+    H₀⁽¹⁾(k r),    H₁⁽¹⁾(k r)
+
+on a radial interval `[rmin,rmax]` large enough to cover all distances between
+the plotting grid and the boundary nodes.
+
+# Inputs
+- `k`:
+  Real wavenumber of the state.
+- `cache`:
+  Flattened CFIE wavefunction cache containing boundary nodes, tangents,
+  quadrature weights, and the minimum boundary spacing `hmin`.
+- `x_grid`, `y_grid`:
+  Cartesian plotting grid coordinates.
+
+# Keyword arguments
+- `npanels`:
+  Number of radial Chebyshev panels.
+- `M`:
+  Chebyshev degree on each panel.
+- `grading`:
+  Radial panel grading. For wavefunction plotting this is usually `:uniform`.
+- `rmin_factor`:
+  Safety factor multiplying the smaller of plotting-grid spacing and boundary
+  spacing to define the interpolation lower radius.
+- `rmax_pad`:
+  Padding factor applied to the plotting-box diagonal.
+
+# Returns
+- `CFIEWavefunctionChebPlan{T}`:
+  A pair of Chebyshev Hankel plans for `H₀` and `H₁`.
+"""
+function build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=256,M::Int=16,grading::Symbol=:uniform,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1)) where {T<:Real}
+    hx=length(x_grid)>1 ? abs(x_grid[2]-x_grid[1]) : one(T)
+    hy=length(y_grid)>1 ? abs(y_grid[2]-y_grid[1]) : one(T)
+    hgrid=min(hx,hy) # plotting-grid resolution
+    hbdry=cache.hmin # boundary-node arc spacing
+    rmin=max(rmin_factor*min(hgrid,hbdry),T(1e-12))
+    dx=maximum(x_grid)-minimum(x_grid)
+    dy=maximum(y_grid)-minimum(y_grid)
+    rmax=rmax_pad*hypot(dx,dy)
+    h0=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading)
+    h1=plan_h(1,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading)
+    return CFIEWavefunctionChebPlan{T}(h0,h1,T(rmin),T(rmax))
+end
+
+"""
+    chebyshev_params(k, cache, x_grid, y_grid;
+        n_panels_init=15000, M_init=5, grading=:uniform,
+        tol=1e-12, sampling_points=20000, max_iter=20,
+        grow_panels=1.5, grow_M=2, geo_ratio=1.05,
+        rmin_factor=0.5, rmax_pad=1.01, verbose=false)
+
+Tune the Chebyshev parameters for CFIE wavefunction reconstruction.
+
+This function tests piecewise-Chebyshev approximations of
+
+    H₀⁽¹⁾(k r),    H₁⁽¹⁾(k r)
+
+against direct special-function evaluation on a sampled radial interval. It
+increases either the number of panels or the polynomial degree until both
+maximum errors are below `tol`, or until `max_iter` is reached.
+
+This is intended to be run once at the largest `k` in a batch. The resulting
+`n_panels` and `M` can then be reused for all smaller wavenumbers in the same
+plotting job.
+
+# Inputs
+- `k`:
+  Wavenumber used for tuning, usually `maximum(ks)`.
+- `cache`:
+  Flattened CFIE cache for the state associated with `k`.
+- `x_grid`, `y_grid`:
+  Cartesian plotting grid coordinates.
+
+# Keyword arguments
+- `n_panels_init`:
+  Initial number of radial Chebyshev panels.
+- `M_init`:
+  Initial Chebyshev degree per panel.
+- `grading`:
+  Radial panel grading, usually `:uniform`.
+- `tol`:
+  Maximum allowed interpolation error for both `H₀` and `H₁`.
+- `sampling_points`:
+  Number of radial sample points used for the error check.
+- `max_iter`:
+  Maximum tuning iterations.
+- `grow_panels`:
+  Multiplicative panel-growth factor when increasing panel count.
+- `grow_M`:
+  Additive degree increment used every fifth iteration.
+- `geo_ratio`:
+  Geometric grading ratio, only relevant if `grading != :uniform`.
+- `rmin_factor`:
+  Safety factor applied to the boundary spacing when estimating the lower
+  radius.
+- `rmax_pad`:
+  Padding factor applied to the plotting-box diagonal.
+- `verbose`:
+  If `true`, print worst-error diagnostics at each tuning step.
+
+# Returns
+- `n_panels::Int`:
+  Tuned number of Chebyshev panels.
+- `M::Int`:
+  Tuned Chebyshev degree.
+- `plan0::ChebHankelPlanH`:
+  Final interpolation plan for `H₀⁽¹⁾(k r)`.
+- `plan1::ChebHankelPlanH`:
+  Final interpolation plan for `H₁⁽¹⁾(k r)`.
+- `max_err0`:
+  Final maximum interpolation error for `H₀`.
+- `max_err1`:
+  Final maximum interpolation error for `H₁`.
+"""
+function chebyshev_params(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),verbose::Bool=false) where {T<:Real}
+    hbdry=cache.hmin
+    rmin=max(rmin_factor*hbdry,T(1e-12))
+    dx=maximum(x_grid)-minimum(x_grid)
+    dy=maximum(y_grid)-minimum(y_grid)
+    rmax=rmax_pad*hypot(dx,dy)
+    rmin_cheb=T(hankel_z_chebyshev_cutoff)/abs(k)
+    rmin_interp=max(Float64(rmin),Float64(rmin_cheb))
+    @info "Estimated CFIE wavefunction Chebyshev radial bounds" rmin rmax rmin_cheb rmin_interp
+    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
+    n_panels=n_panels_init
+    M=M_init
+    plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+    plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+    approx0=Vector{ComplexF64}(undef,sampling_points)
+    approx1=Vector{ComplexF64}(undef,sampling_points)
+    exact0=Vector{ComplexF64}(undef,sampling_points)
+    exact1=Vector{ComplexF64}(undef,sampling_points)
+    max_err0=Inf
+    max_err1=Inf
+    for it in 1:max_iter
+        plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+        plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+        Threads.@threads for i in eachindex(rs)
+            r=rs[i]
+            p0=_find_panel(plan0,r)
+            P0=plan0.panels[p0]
+            t0=(2*r-(P0.b+P0.a))/(P0.b-P0.a)
+            p1=_find_panel(plan1,r)
+            P1=plan1.panels[p1]
+            t1=(2*r-(P1.b+P1.a))/(P1.b-P1.a)
+            approx0[i]=eval_h(plan0,Int32(p0),t0,r)
+            approx1[i]=eval_h(plan1,Int32(p1),t1,r)
+            z=ComplexF64(k)*r
+            exact0[i]=SpecialFunctions.besselh(0,1,z)
+            exact1[i]=SpecialFunctions.besselh(1,1,z)
+        end
+        max_err0=maximum(abs.(approx0.-exact0))
+        max_err1=maximum(abs.(approx1.-exact1))
+        if verbose
+            i0=argmax(abs.(approx0.-exact0))
+            i1=argmax(abs.(approx1.-exact1))
+            @info "CFIE wavefunction Chebyshev tuning" it n_panels M max_err0 max_err1
+            @info "Worst H0" r=rs[i0] z=ComplexF64(k)*rs[i0] err=abs(approx0[i0]-exact0[i0])
+            @info "Worst H1" r=rs[i1] z=ComplexF64(k)*rs[i1] err=abs(approx1[i1]-exact1[i1])
+        end
+        if max_err0<tol && max_err1<tol
+            return n_panels,M,plan0,plan1,max_err0,max_err1
+        end
+        if it%5==0
+            M+=grow_M
+        else
+            n_panels=ceil(Int,grow_panels*n_panels)
+        end
+    end
+    @warn "CFIE wavefunction Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort." max_err0 max_err1 n_panels M
+    return n_panels,M,plan0,plan1,max_err0,max_err1
+end
+
+"""
+    flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real} -> CFIEWavefunctionCache{T}
+
+Contains just enough information to evaluate the CFIE wavefunction at many points without needing 
+to reconstruct the `BoundaryPointsCFIE` objects or do any extra computations.
+
+# Inputs:
+- `comps`: Vector of `BoundaryPointsCFIE` objects, one for each component of the boundary.
+
+# Outputs:
+- `CFIEWavefunctionCache{T}`: A struct containing flattened vectors of boundary coordinates, tangents, quadrature weights, etc., for efficient CFIE wavefunction evaluation.
+"""
+function flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    N=sum(length(c.xy) for c in comps)       # total number of boundary nodes over all components
+    x=Vector{T}(undef,N)                     # flattened boundary x-coordinates x_j
+    y=Vector{T}(undef,N)                     # flattened boundary y-coordinates y_j
+    tx=Vector{T}(undef,N)                    # flattened tangent x-components γ'_x(t_j)
+    ty=Vector{T}(undef,N)                    # flattened tangent y-components γ'_y(t_j)
+    sj=Vector{T}(undef,N)                    # speed factors |γ'(t_j)|
+    w=Vector{T}(undef,N)                     # quadrature weights in parameter variable t
+    p=1                                      # global flattened index
+    @inbounds for c in comps # loop over boundary components
+        for j in eachindex(c.xy) # loop over nodes of this component
+            q=c.xy[j] # boundary point q_j = (x_j,y_j)
+            t=c.tangent[j] # tangent vector γ'(t_j)
+            txj=t[1]  
+            tyj=t[2] 
+            x[p]=q[1]                       
+            y[p]=q[2]                   
+            tx[p]=txj                   
+            ty[p]=tyj                 
+            sj[p]=sqrt(txj*txj+tyj*tyj) # store speed |γ'(t_j)|
+            w[p]=c.ws[j] # store parameter quadrature weight Δt_j
+            p+=1                         
+        end
+    end
+    hmin=typemax(T)
+    @inbounds for i in 1:N
+        hmin=min(hmin,w[i]*sj[i])
+    end
+    return CFIEWavefunctionCache(x,y,tx,ty,sj,w,hmin) 
+end
+
+"""
+    ϕ_cfie(xp::T, yp::T, k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false,use_chebyshev::Bool=false,cheb::Union{CFIEWavefunctionChebPlan{T},Nothing}=nothing) where {T<:Real} -> Complex{T}
+
+Evaluate the CFIE reconstructed wavefunction at point `(xp, yp)` from a
+flattened boundary cache and boundary density `u`.
+
+This uses the same kernel as the CFIE assembly:
+
+    ψ(x) = -∑_j w_j u_j [ (i k / 2) * inn * H1(k r) / r + i k * (i/2) * H0(k r) * s_j ]
+
+where
+    inn = t_y (x-x_j) - t_x (y-y_j)
+
+# Arguments
+- `xp, yp` : evaluation point p = SVector(xp, yp)
+- `k::T`      : real wavenumber
+- `cache::CFIEWavefunctionCache{T}`  : flattened CFIE geometry cache
+- `u::AbstractVector{Complex{T}}`      : complex boundary density, same ordering as flattening
+- `float32_bessel::Bool`     : evaluate Hankels in Float32 and cast back
+- `use_chebyshev::Bool`      : use Chebyshev interpolation evaluation for Hankel functions
+- `cheb::Union{CFIEWavefunctionChebPlan{T},Nothing}` : precomputed Chebyshev plan for Hankel evaluation, required if `use_chebyshev=true`
+# Returns
+- `Complex{T}`: the reconstructed wavefunction value at (xp, yp)
+"""
+@inline function ϕ_cfie(xp::T,yp::T,k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false,use_chebyshev::Bool=false,cheb::Union{CFIEWavefunctionChebPlan{T},Nothing}=nothing) where {T<:Real}
+    x=cache.x
+    y=cache.y
+    tx=cache.tx
+    ty=cache.ty
+    sj=cache.sj
+    w=cache.w
+    N=length(x)
+    @assert length(u)==N
+    ψr=zero(T)
+    ψi=zero(T)
+    # Constants:
+    # dterm = (i k / 2) * inn * H1 / r
+    # sterm = (i / 2) * H0 * sj
+    # contribution = -(w*u) * (dterm + i k * sterm)
+    #
+    # Since i*k*sterm = i*k*(i/2) H0 sj = -(k/2) H0 sj,
+    # the kernel is
+    #   K = (i k / 2) * inn * H1 / r  -  (k / 2) * H0 * sj
+    khalf=k*T(0.5)
+    tol2=(T(0.5)*cache.hmin)^2 # for near boundary skipping since we have log and 1/r singularities
+    @inbounds @fastmath for j in 1:N # fastmath since we remove the singular/near-singular region
+        dx=xp-x[j]
+        dy=yp-y[j]
+        r2=muladd(dx,dx,dy*dy)
+        r2<=tol2 && continue # skip near-boundary points
+        r=sqrt(r2)
+        invr=inv(r)
+        inn=muladd(ty[j],dx,-(tx[j]*dy)) # ty*dx - tx*dy
+        if use_chebyshev
+            h0,h1=_eval_h0h1_cfie_cheb(cheb,r)
+        else
+            if float32_bessel
+                zf=Float32(k*r)
+                h0=Complex{T}(Bessels.hankelh1(0,zf))
+                h1=Complex{T}(Bessels.hankelh1(1,zf))
+            else
+                z=k*r
+                h0=Bessels.hankelh1(0,z)
+                h1=Bessels.hankelh1(1,z)
+            end
+        end
+        # Kernel:
+        # K = (i k / 2) * inn * H1 / r - (k / 2) * H0 * sj
+        #
+        # Let A = (k/2) * inn/r, B = (k/2) * sj
+        # Then
+        #   K = i*A*h1 - B*h0
+        A=khalf*inn*invr
+        #B=khalf*sj[j]
+        B=khalf*sj[j]
+        # i*A*h1 = (-A*imag(h1)) + i*(A*real(h1))
+        Kr=muladd(-A,imag(h1),-B*real(h0))
+        Ki=muladd(A,real(h1),-B*imag(h0))
+        # contribution = -(w*u)*K
+        uj=u[j]
+        wr=w[j]*real(uj)
+        wi=w[j]*imag(uj)
+        # -(wr+i wi)(Kr+i Ki)
+        ψr-= wr*Kr-wi*Ki
+        ψi-= wr*Ki+wi*Kr
+    end
+    return Complex{T}(ψr,ψi)
+end
+
+#####################################################################
+
+"""
+    function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
 
 Construct a batch of interior wavefunction intensity matrices for CFIE-based solvers
 on a common Cartesian grid.
@@ -145,6 +478,12 @@ parallelized over spatial grid points.
   Minimum number of grid points per thread chunk.
 - `float32_bessel::Bool=true`  
   Use `Float32` kernel evaluations for faster computation.
+- `use_chebyshev::Bool=true`
+  Use chebyshev interpolation for hankel evaluations. Basically neccesery for lage number of states for large k.
+- `tol_cheb=1e-12`
+  Accuracy of the interpolated hankel functions. For plotting this does not need to be very high, maybe 1e-12 - 1e-14.
+- `cheb_verbose::Bool=true`
+  If panelization steps are to be explititely printed as diagnostic information.
 
 # Returns
 - `Psi2ds::Vector{Matrix{T}}`  
@@ -155,8 +494,8 @@ parallelized over spatial grid points.
 - `y_grid::Vector{T}`  
   Grid coordinates in the y-direction.
 """
-function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=true) where {Bi<:AbsBilliard,T<:Real}
-    kmax=maximum(ks)
+function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
+    kmax,idx_max=findmax(ks)
     L=billiard.length
     b= b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
@@ -180,6 +519,13 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
     @inbounds for i in 1:nstates
         caches[i]=flatten_cfie_wavefunction_cache(vec_comps[i])
     end
+    cheb_plans=use_chebyshev ? Vector{CFIEWavefunctionChebPlan{T}}(undef,nstates) : fill(nothing,nstates)
+    if use_chebyshev
+        cheb_npanels,cheb_M,plan1,max_err0,max_err1=chebyshev_params(kmax,caches[idx_max],x_grid,y_grid,verbose=cheb_verbose,tol=tol_cheb)
+        @inbounds for i in eachindex(ks)
+            cheb_plans[i]=build_cfie_wavefunction_cheb_plan(ks[i],caches[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M,grading=cheb_grading)
+        end
+    end
     Psi_flat=zeros(S,nx*ny)
     progress=Progress(nstates,desc="Constructing CFIE wavefunction matrices...")
     q,r=divrem(nmask,NT_eff)
@@ -195,7 +541,7 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
                 for jj in lo:hi
                     idx=pts_masked_indices[jj]
                     p=pts[idx]
-                    Psi_flat[idx]=ϕ_cfie(p[1],p[2],k,cache,us;float32_bessel=float32_bessel)
+                    Psi_flat[idx]=ϕ_cfie(p[1],p[2],k,cache,us;float32_bessel=float32_bessel,use_chebyshev=use_chebyshev,cheb=cheb_plans[i])
                 end
             end
         end
@@ -210,7 +556,7 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
 end
 
 """
-    wavefunction_multi_with_husimi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{<:Complex{T}}},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,xgrid_size::Int=2000,ygrid_size::Int=1000,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,full_p::Bool=false,normalize_components::Bool=true,multithreaded_boundary_function::Bool=true) where {Bi<:AbsBilliard,T<:Real}
+    wavefunction_multi_with_husimi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{<:Complex{T}}},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,xgrid_size::Int=2000,ygrid_size::Int=1000,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,full_p::Bool=false,normalize_components::Bool=true,multithreaded_boundary_function::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
 
 Construct interior wavefunctions and component-wise Husimi functions for a batch
 of CFIE eigenstates on a common spatial grid.
@@ -263,6 +609,12 @@ of CFIE eigenstates on a common spatial grid.
   Normalize each component Husimi independently.
 - `multithreaded_boundary_function::Bool`:
   Enable threading in CFIE boundary reconstruction.
+  - `use_chebyshev::Bool=true`
+  Use chebyshev interpolation for hankel evaluations. Basically neccesery for lage number of states for large k.
+- `tol_cheb=1e-12`
+  Accuracy of the interpolated hankel functions. For plotting this does not need to be very high, maybe 1e-12 - 1e-14.
+- `cheb_verbose::Bool=true`
+  If panelization steps are to be explititely printed as diagnostic information.
 
 # Returns
 - `Psi2ds::Vector{Matrix{eltype(vec_μ[1])}}`:
@@ -282,8 +634,8 @@ of CFIE eigenstates on a common spatial grid.
 - `L_list::Vector{Vector{T}}`:
   Component-wise boundary lengths.
 """
-function wavefunction_multi_with_husimi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,xgrid_size::Int=2000,ygrid_size::Int=1000,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,full_p::Bool=false,normalize_components::Bool=true,multithreaded_boundary_function::Bool=true) where {Bi<:AbsBilliard,T<:Real}
-    Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_μ,vec_comps,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,float32_bessel=float32_bessel)
+function wavefunction_multi_with_husimi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector},vec_comps::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental::Bool=false,xgrid_size::Int=2000,ygrid_size::Int=1000,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,full_p::Bool=false,normalize_components::Bool=true,multithreaded_boundary_function::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
+    Psi2ds,x_grid,y_grid=wavefunction_multi(solver,ks,vec_μ,vec_comps,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,float32_bessel=float32_bessel,use_chebyshev=use_chebyshev,tol_cheb=tol_cheb,cheb_verbose=cheb_verbose)
     pts_bdry,u_bdry=boundary_function(solver,vec_μ,vec_comps,billiard,ks;multithreaded=multithreaded_boundary_function)
     Hs_list,ps,qs_list,L_list=husimi_functions_from_us_and_boundary_points(ks,u_bdry,pts_bdry,xgrid_size,ygrid_size;full_p=full_p,normalize_components=normalize_components)
     ps_list=[ps for _ in eachindex(Hs_list)]
