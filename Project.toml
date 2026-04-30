@@ -25,6 +25,7 @@ Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
 MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
 KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
+AppleAccelerate = "13e28ba4-7ad8-5781-acae-3021b1ed3924"
 
 [compat]
 Bessels = "0.2.8 - 3"
@@ -46,6 +47,7 @@ SparseArrays = "1.10, 1.11"
 Arpack = "0.5.4"
 MKL = "0.8.0"
 LinearMaps = "3"
+AppleAccelerate = "0.6.0
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
