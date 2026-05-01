@@ -2,7 +2,7 @@ using QuantumBilliards
 using LinearAlgebra
 using CairoMakie
 
-try_accelerated_blas!()
+try_MKL!()
 
 d=8.0
 b=12.0

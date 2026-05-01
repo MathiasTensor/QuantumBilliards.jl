@@ -170,11 +170,11 @@ end
 memory_size(a)=Base.format_bytes(Base.summarysize(a)) 
 
 """
-    try_accelerated_blas!()
+    try_MKL!()
 
 Tries to use the MKL on x86_64 architecture if possible. Otherwise it defaults to the stock BLAS backend :lbt.
 """
-function try_accelerated_blas!()
+function try_MKL!()
     if Sys.ARCH==:x86_64
         try
             @eval using MKL

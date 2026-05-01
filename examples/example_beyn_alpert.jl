@@ -4,7 +4,7 @@ using StaticArrays
 using Printf
 using CairoMakie
 
-try_accelerated_blas!()
+try_MKL!()
 
 # NOTE: This is a competely detailed example with explanations of each step, 
 # meant for users who want to understand the full pipeline of going from geometry 

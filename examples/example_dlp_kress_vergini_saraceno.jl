@@ -2,7 +2,7 @@ using QuantumBilliards
 using LinearAlgebra
 using CairoMakie
 
-try_accelerated_blas!()
+try_MKL!()
 
 billiard,basis=make_ellipse_and_basis(1.0,0.5) # easy corner free geometry to compare Beyn & VS & EBIM
 

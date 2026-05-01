@@ -5,7 +5,7 @@ using CSV
 using DataFrames
 using Statistics
 
-try_accelerated_blas!()
+try_MKL!()
 
 billiard,basis=make_ellipse_and_basis(1.0,0.5)
 

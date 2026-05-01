@@ -5,7 +5,7 @@ using Printf
 using CairoMakie
 
 # try MKL if possible, lu! for Beyn is much faster!
-try_accelerated_blas!()
+try_MKL!()
 
 # Requies moderate ammount of RAM for this, if not try lowering k1,k2
 b=6.5

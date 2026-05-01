@@ -4,7 +4,7 @@ using StaticArrays
 using Printf
 using CairoMakie
 
-try_accelerated_blas!()
+try_MKL!()
 
 # NOTE: This is a detailed example for smooth geometries, where the periodic
 # Kress machinery is the natural choice. In contrast to the Alpert example,
