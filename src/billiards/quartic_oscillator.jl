@@ -1,5 +1,5 @@
 """
-    quartic_radius(θ::T,E::T,beta::T) where {T<:Real}
+    quartic_radius(θ,E,beta)
 
 Radius of the equipotential curve
 
@@ -9,10 +9,10 @@ so
 
     r(θ)=(E/(cos^2θ sin^2θ/2+β(cos^4θ+sin^4θ)/4))^(1/4).
 """
-@inline function quartic_radius(θ::T,E::T,beta::T) where {T<:Real}
+@inline function quartic_radius(θ,E,beta) 
     c=cos(θ);s=sin(θ)
-    den=T(0.5)*c^2*s^2+beta*T(0.25)*(c^4+s^4)
-    return (E/den)^T(0.25)
+    den=0.5*c^2*s^2+beta*0.25*(c^4+s^4)
+    return (E/den)^0.25
 end
 
 """
