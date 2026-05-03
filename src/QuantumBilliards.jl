@@ -89,6 +89,7 @@ include("billiards/circle_with_circle_holes.jl")
 include("billiards/star_with_hole.jl")
 include("billiards/stadium_within_stadium.jl")
 include("billiards/quartic_oscillator.jl")
+include("billiards/triangle_within_triangle.jl")
 # convenience billiard functions
 export CircleBilliard,make_quarter_circle,make_circle,make_circle_and_basis
 export Ellipse,make_quarter_ellipse,make_full_ellipse,make_ellipse_and_basis
@@ -110,6 +111,7 @@ export AfricaBilliard,make_africa_and_basis
 export C3Billiard,make_c3_and_basis
 export StarHoleBilliard,make_star_hole_and_basis
 export QuarticOscillatorBilliard,make_quartic_oscillator_and_basis
+export TriangleInTriangle,make_triangle_in_triangle_and_basis
 
 # general matrix helpers
 include("solvers/fulldecompositions.jl")
