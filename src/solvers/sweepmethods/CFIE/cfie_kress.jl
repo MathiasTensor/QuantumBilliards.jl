@@ -1,5 +1,4 @@
 # helpers for construct_matrices! to determine the bool kwarg for cfie_geom_cache to decide whether to include the log(w') correction
-@inline _is_nontrivial_grading(pts::BoundaryPointsCFIE{T}) where {T<:Real} =!isempty(pts.ws_der) && maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T))
 @inline _is_kress_graded(::CFIE_kress,pts::Vector{<:BoundaryPointsCFIE})=false
 @inline _is_kress_graded(::CFIE_kress_corners,pts::Vector{<:BoundaryPointsCFIE})=any(_is_nontrivial_grading,pts)
 @inline _is_kress_graded(::CFIE_kress_global_corners,pts::Vector{<:BoundaryPointsCFIE})=any(_is_nontrivial_grading,pts)
