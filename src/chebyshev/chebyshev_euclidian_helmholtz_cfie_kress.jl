@@ -314,7 +314,7 @@ order to avoid recomputing geometry-dependent quantities at every `k`.
 function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
-    Gs=_is_kress_graded(solver) ? [cfie_geom_cache(p,true) for p in comps] : [cfie_geom_cache(p,false) for p in comps]
+    Gs=[cfie_geom_cache(p,_is_nontrivial_grading(p)) for p in comps]
     blocks=Matrix{CFIE_kress_BlockCache{T}}(undef,nc,nc)
     global_rmin=typemax(T)
     global_rmax=zero(T)
@@ -354,10 +354,10 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
             logterm=copy(Ga.logterm)
             kappa_i=copy(Ga.kappa)
             Rkress=zeros(T,Ni,Ni)
-            if solver isa CFIE_kress
-                kress_R!(Rkress)
-            else
+            if _is_nontrivial_grading(pa)
                 kress_R_corner!(Rkress)
+            else
+                kress_R!(Rkress)
             end
             blocks[a,b]=CFIE_kress_BlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,logterm,kappa_i,Rkress)
         else

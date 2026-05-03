@@ -165,7 +165,7 @@ struct CFIE_kress_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     min_pts::Int64
     billiard::Bi 
     symmetry::Sym
-    kressq::Int # the grading parameter q in the Kress grading formula, which controls how strongly the nodes are clustered near the corners. A larger value of q results in stronger clustering, which can improve accuracy for problems with sharp corners. Typical values are in the range of 4 to 16, with 8 being a common choice for many problems.
+    kressq::Int # the grading parameter q in the Kress grading formula, which controls how strongly the nodes are clustered near the corners. A larger value of q results in stronger clustering, which can improve accuracy for problems with sharp corners.
 end
 
 """
@@ -185,10 +185,9 @@ forming one closed component. Typical examples are:
 Unlike `CFIE_kress_corners`, which applies a grading transformation to a single
 closed parameterized curve, this type treats the entire closed composite
 boundary globally:
-- all corner locations are detected,
-- one global graded periodic variable is introduced,
-- geometry is evaluated on the full composite boundary through a segment-aware
-  global map.
+- true corner locations are detected from tangent jumps,
+- one global periodic variable is introduced,
+- a global grading map is applied only when true corners are present,
 
 The resulting operator is again the CFIE Fredholm matrix
 
@@ -228,7 +227,7 @@ therefore:
 # When to use this type
 Use `CFIE_kress_global_corners` when:
 - a boundary component consists of multiple segments,
-- the closed component contains corners,
+- the closed component may contain true corners or smooth segment joins,
 - you want a Kress-corrected CFIE rather than Alpert panel quadrature.
 """
 struct CFIE_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
@@ -266,7 +265,7 @@ function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=
 end
 
 """
-    CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=8)
+    CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4)
 
 Constructor for CFIE_kress_corners solver. 
 
@@ -286,7 +285,7 @@ function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;
 end
 
 """
-    CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=8)
+    CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4)
 
 Constructor for CFIE_kress_global_corners solver.
 
@@ -631,40 +630,110 @@ end
 ############################
 
 """
-    _evaluate_points(solver::CFIE_kress_global_corners, comp, k, idx)
+    _evaluate_points_smooth_composite(solver::CFIE_kress_global_corners,comp,k,idx)
 
-Construct one globally graded periodic discretization for a closed composite
-boundary component consisting of multiple joined segments.
+Construct an ungraded periodic Kress discretization for a closed composite
+boundary component whose segment junctions are smooth (no true corners).
 
 Purpose
 -------
-This helper takes a vector of curve segments forming one closed component and
-turns them into a single `BoundaryPointsCFIE` object compatible with the global
-Kress CFIE assembly.
+This helper is the smooth-join fallback for `CFIE_kress_global_corners`. It
+treats multiple joined segments as one periodic boundary, but does not apply
+Kress grading. This is appropriate for geometries such as stadium billiards,
+where segment joins are tangent-continuous.
 
-Why global grading is needed
-----------------------------
-For Kress splitting to work correctly, the entire closed component must be
-treated as one periodic object. If one discretized each segment independently,
-the periodic logarithmic structure of the self-interaction kernel would be lost.
+The component is parameterized globally by `t ∈ [0,2π)` and evaluated via
+`_eval_composite_geom_global_t`.
 
 # Arguments
-- `solver::CFIE_kress_global_corners`
+- `solver::CFIE_kress_global_corners{T}`:
+  CFIE solver with global Kress infrastructure.
 - `comp::Vector{AbsCurve}`:
-  Segments forming one closed component.
-- `k`
-- `idx::Int`
+  Segments forming one closed boundary component with smooth joins.
+- `k::T`:
+  Real wavenumber.
+- `idx::Int`:
+  Boundary component index.
 
 # Returns
-- `BoundaryPointsCFIE`
+- `BoundaryPointsCFIE{T}`:
+  Periodic discretization with:
+  - uniform trapezoidal weights,
+  - `ws_der = 1` (no grading),
+  - derivatives with respect to global periodic parameter.
 """
-function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
-    # total length
+function _evaluate_points_smooth_composite(solver::CFIE_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     _,_,Ltot=component_lengths(comp)
-    # choose number of nodes
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
-    # enforce symmetry compatibility - for rotations require divisibility by the rotation order; for reflections by 4
+    needed=2
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        if sym isa Rotation
+            needed=lcm(needed,sym.n)
+        elseif hasproperty(sym,:axis)
+            needed=lcm(needed,4)
+        end
+    end
+    remN=mod(N,needed)
+    remN!=0&&(N+=needed-remN)
+    ts=[s(j,N) for j in 1:N]
+    h=T(two_pi)/T(N)
+    xy=Vector{SVector{2,T}}(undef,N)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    ds=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        q,γt,γtt=_eval_composite_geom_global_t(T,comp,ts[i])
+        xy[i]=q
+        tangent_1st[i]=γt
+        tangent_2nd[i]=γtt
+        ds[i]=hypot(γt[1],γt[2])*h
+    end
+    ws=fill(h,N)
+    ws_der=ones(T,N)
+    z=SVector(zero(T),zero(T))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
+end
+
+"""
+    _evaluate_points(solver::CFIE_kress_global_corners,comp,k,idx)
+
+Construct a periodic Kress discretization for a closed composite boundary
+component using global corner-aware grading when needed.
+
+Purpose
+-------
+This helper builds the boundary discretization for one composite component:
+- if true corners are detected, a global Kress grading map is applied,
+- if no true corners are present, it falls back to
+  `_evaluate_points_smooth_composite`.
+
+Corner detection is performed via `_component_corner_locations`, which uses
+tangent discontinuities to identify true geometric corners.
+
+# Arguments
+- `solver::CFIE_kress_global_corners{T}`:
+  CFIE solver with global Kress grading.
+- `comp::Vector{AbsCurve}`:
+  Segments forming one closed boundary component.
+- `k::T`:
+  Real wavenumber.
+- `idx::Int`:
+  Boundary component index.
+
+# Returns
+- `BoundaryPointsCFIE{T}`:
+  Periodic discretization with:
+  - global Kress grading (`ws_der = jac`) if corners exist,
+  - or uniform discretization if the component is smooth.
+"""
+function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    corners=_component_corner_locations(T,comp)
+    isempty(corners) && return _evaluate_points_smooth_composite(solver,comp,k,idx)
+    _,_,Ltot=component_lengths(comp)
+    bs=solver.pts_scaling_factor
+    N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
     needed=1
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
@@ -675,34 +744,26 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
         end
     end
     remN=mod(N,needed)
-    remN!=0 && (N+=needed-remN)
-    # build corner locations
-    corners=_component_corner_locations(T,comp)
-    # global graded nodes
+    remN!=0&&(N+=needed-remN)
     σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq)
-    # allocate outputs
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
     @inbounds for i in 1:N
         q,γt,γtt=_eval_composite_geom_global_t(T,comp,tmap[i])
-        # combine geometry derivatives with grading derivatives
         xy[i]=q
         tangent_1st[i]=γt*jac[i]
         tangent_2nd[i]=γtt*(jac[i]^2)+γt*jac2[i]
     end
+    h=T(two_pi)/T(N)
     ds=Vector{T}(undef,N)
-    # Kress weights
-    h=T(two_pi/N)
     @inbounds for i in 1:N
-        tx=tangent_1st[i][1]
-        ty=tangent_1st[i][2]
-        ds[i]=hypot(tx,ty)*h
+        ds[i]=hypot(tangent_1st[i][1],tangent_1st[i][2])*h
     end
-    ts=σ  # computational nodes
-    ws=fill(h,N) # trapezoidal weights
-    ws_der=jac # w'(σ)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
+    ws=fill(h,N)
+    ws_der=jac
+    z=SVector(zero(T),zero(T))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
 ####################

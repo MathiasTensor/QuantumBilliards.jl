@@ -1,7 +1,8 @@
 # helpers for construct_matrices! to determine the bool kwarg for cfie_geom_cache to decide whether to include the log(w') correction
-@inline _is_kress_graded(::CFIE_kress)=false
-@inline _is_kress_graded(::CFIE_kress_corners)=true
-@inline _is_kress_graded(::CFIE_kress_global_corners)=true
+@inline _is_nontrivial_grading(pts::BoundaryPointsCFIE{T}) where {T<:Real} =!isempty(pts.ws_der) && maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T))
+@inline _is_kress_graded(::CFIE_kress,pts::Vector{<:BoundaryPointsCFIE})=false
+@inline _is_kress_graded(::CFIE_kress_corners,pts::Vector{<:BoundaryPointsCFIE})=any(_is_nontrivial_grading,pts)
+@inline _is_kress_graded(::CFIE_kress_global_corners,pts::Vector{<:BoundaryPointsCFIE})=any(_is_nontrivial_grading,pts)
 
 """
     CFIEKressWorkspace{T,M}
@@ -75,9 +76,9 @@ For each component it builds:
 
 # Arguments
 - `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`:
-  Determines whether the smooth or graded Kress correction should be used, and
-  whether the geometry cache includes the extra logarithmic correction coming
-  from the grading Jacobian.
+  Determines which Kress correction family is used. Whether a component is
+  actually treated as graded is inferred from its `ws_der`; components with
+  `ws_der ≈ 1` use the ordinary smooth-periodic logarithmic cache.
 - `pts::Vector{BoundaryPointsCFIE{T}}`:
   Boundary discretization for all connected components of the billiard.
 
@@ -87,7 +88,7 @@ For each component it builds:
 function build_cfie_kress_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Rmat=build_Rmat_kress(solver,pts)
-    Gs=_is_kress_graded(solver) ? [cfie_geom_cache(p,true) for p in pts] : [cfie_geom_cache(p,false) for p in pts]
+    Gs=[cfie_geom_cache(p, _is_nontrivial_grading(p)) for p in pts]
     parr=[_panel_arrays_cache(p) for p in pts]
     Ntot=offs[end]-1
     return CFIEKressWorkspace(offs,Rmat,Gs,parr,Ntot)
@@ -134,8 +135,10 @@ end
 """
     build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_corners}, pts)
 
-Build the global block-diagonal Kress logarithmic correction matrix for the
-graded-corner CFIE-Kress formulations.
+Build the global block-diagonal Kress logarithmic correction matrix for
+corner-capable CFIE-Kress formulations. Components whose node sets are genuinely
+graded should use the corner-compatible Kress block; ungraded smooth-periodic
+components may use the ordinary periodic block.
 
 In the graded-corner versions of the Kress method, the computational nodes are
 not uniform in the physical parameter. Instead, a graded variable is introduced
@@ -159,15 +162,21 @@ As in the smooth case, the global correction matrix is block diagonal:
 
 # Returns
 - `Rmat::Matrix{T}`:
-  Global block-diagonal graded Kress correction matrix.
+  Global block-diagonal Kress correction matrix. Each component block is chosen
+  from `kress_R_corner!` if that component is genuinely graded, otherwise from
+  the ordinary smooth-periodic `kress_R!`.
 """
 function build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     Rmat=zeros(T,Ntot,Ntot)
-    for a in 1:length(pts)
+    for a in eachindex(pts)
         ra=offs[a]:(offs[a+1]-1)
-        kress_R_corner!(@view Rmat[ra,ra])
+        if _is_nontrivial_grading(pts[a])
+            kress_R_corner!(@view Rmat[ra,ra])
+        else
+            kress_R!(@view Rmat[ra,ra])
+        end
     end
     return Rmat
 end
@@ -506,7 +515,7 @@ end
 
 function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
-    Gs=_is_kress_graded(solver) ? [cfie_geom_cache(p,true) for p in pts] : [cfie_geom_cache(p,false) for p in pts]
+    Gs=[cfie_geom_cache(p, _is_nontrivial_grading(p)) for p in pts]
     parr=[_panel_arrays_cache(p) for p in pts]
     return construct_matrices!(solver,A,pts,Rmat,Gs,parr,offs,k;multithreaded=multithreaded)
 end
@@ -517,7 +526,7 @@ end
 
 function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     offs=component_offsets(pts)
-    Gs=_is_kress_graded(solver) ? [cfie_geom_cache(p,true) for p in pts] : [cfie_geom_cache(p,false) for p in pts]
+    Gs=[cfie_geom_cache(p, _is_nontrivial_grading(p)) for p in pts]
     parr=[_panel_arrays_cache(p) for p in pts]
     return construct_matrices!(solver,A,A1,A2,pts,Rmat,Gs,parr,offs,k;multithreaded=multithreaded)
 end

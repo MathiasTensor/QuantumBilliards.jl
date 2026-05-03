@@ -397,6 +397,40 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
+"""
+    _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+
+Construct an ungraded periodic Nyström discretization for a smooth composite
+boundary component.
+
+This is the fallback path used by `DLP_kress_global_corners` when the boundary is
+stored as several curve pieces, but no corner/junction grading points are
+detected. In that case the component is treated as a smooth closed curve written
+in composite form.
+
+# Mathematical role
+The composite boundary is parameterized by a global periodic variable
+
+    t ∈ [0, 2π),
+
+which is mapped to the appropriate segment and local segment parameter by
+`_eval_composite_geom_global_t`. Since no grading is applied, the computational
+variable is also the physical global parameter.
+
+# Arguments
+- `solver`:
+  The DLP-Kress global-composite solver.
+- `comp`:
+  Vector of curve pieces forming one smooth closed boundary component.
+- `k`:
+  Wavenumber controlling the boundary resolution.
+- `idx`:
+  Component index stored in the returned `BoundaryPointsCFIE`.
+
+# Returns
+- `BoundaryPointsCFIE{T}`:
+  Ungraded periodic boundary discretization of the composite component.
+"""
 function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     _,_,Ltot=component_lengths(comp)
     bs=solver.pts_scaling_factor
@@ -432,10 +466,10 @@ function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},c
 end
 
 """
-    _evaluate_points(solver::DLP_kress_global_corners{T}, comp::Vector{C}, k::T, idx::Int)
+    _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
 
 Construct a globally graded Nyström discretization for a composite boundary
-with corners using the Kress grading transformation.
+with points clustering near corner/joins locations.
 
 This function  extends the smooth periodic discretization to piecewise smooth
 boundaries by introducing a grading map that clusters nodes near corner

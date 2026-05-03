@@ -598,32 +598,19 @@ function component_lengths(comp::Vector)
     return lens,cum,cum[end]
 end
 
-#=
-# Build global corner locations in σ ∈ [0,2π)
-# Each segment junction is treated as a "corner" for grading.
-# If segment j ends at arc-length s = cum[j+1], then its σ-location is:
-# σ = 2π * (cum[j+1]/Ltot)
-# We include σ=0 explicitly (periodic corner).
-function _component_corner_locations(::Type{T},comp::Vector) where {T<:Real}
-    lens,cum,Ltot=component_lengths(comp)
-    corners=T[zero(T)]
-    for j in 1:length(comp)-1
-        push!(corners,T(two_pi)*(cum[j+1]/Ltot))
-    end
-    return corners
-end
-=#
-
+# the logic for both start and end functions is to calculate the tangents to determine whether we have a true corner or a smooth join. 
+# We use these to compute the angle between them at the junctions. If the angle is larger than a specified tolerance, we consider it a true corner.
 @inline function _unit_tangent_at_start(crv,::Type{T}) where {T<:Real}
     v=SVector{2,T}(tangent(crv,zero(T)))
     return v/hypot(v[1],v[2])
 end
-
 @inline function _unit_tangent_at_end(crv,::Type{T}) where {T<:Real}
     v=SVector{2,T}(tangent(crv,one(T)))
     return v/hypot(v[1],v[2])
 end
 
+# compute the angle between the unit tangents at the junction of two segments. This is used to determine if we have a true corner or a smooth join.
+# It can be a bit crude for angle > tol since it is not used afterward.
 @inline function _junction_angle(cleft,cright,::Type{T}) where {T<:Real}
     tL=_unit_tangent_at_end(cleft,T)
     tR=_unit_tangent_at_start(cright,T)
