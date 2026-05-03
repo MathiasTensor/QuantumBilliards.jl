@@ -51,7 +51,7 @@ struct DLPKressWorkspace{T<:Real,M<:AbstractMatrix{T}}
 end
 
 """
-    DLP_kress{T,Bi,Sym,Gr} <: SweepSolver
+    DLP_kress{T,Bi,Sym} <: SweepSolver
 
 Solver type for the Kress-corrected double-layer Fredholm formulation on a
 single smooth closed boundary component.
@@ -107,7 +107,7 @@ and treated by the precomputed Kress `R` matrix.
 
 For cornered geometries use `DLP_kress_global_corners`.
 """
-struct DLP_kress{T<:Real,Bi<:AbsBilliard,Sym,Gr}<:SweepSolver
+struct DLP_kress{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     sampler::Vector{LinearNodes}
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
