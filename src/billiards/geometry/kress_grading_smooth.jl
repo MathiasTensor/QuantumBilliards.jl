@@ -77,8 +77,7 @@ struct SmoothPeriodicGrading{T<:Real}
     alpha_curv::T
 end
 
-function SmoothPeriodicGrading(;fourier_modes=12,speed_strength=0.8,curvature_strength=0.05,
-    oversample=16,alpha_speed=0.5,alpha_curv=0.25)
+function SmoothPeriodicGrading(;fourier_modes=12,speed_strength=1.0,curvature_strength=0.0,oversample=32,alpha_speed=1.0,alpha_curv=0.25)
     T=promote_type(typeof(speed_strength),typeof(curvature_strength),typeof(alpha_speed),typeof(alpha_curv))
     return SmoothPeriodicGrading{T}(fourier_modes,T(speed_strength),T(curvature_strength),oversample,T(alpha_speed),T(alpha_curv))
 end
@@ -199,7 +198,11 @@ end
 function build_reparametrization_map(crv,N::Int,grading::SmoothPeriodicGrading)
     M=grading.oversample*N
     _,speed,κ=compute_speed_and_curvature(crv,M)
-    ρraw=@. 1+grading.speed_strength*speed^grading.alpha_speed+grading.curvature_strength*κ^grading.alpha_curv
+    cs=clamp(Float64(grading.speed_strength),0.0,1.0)
+    speedpow=@. speed^grading.alpha_speed
+    ρspeed=@. (1-cs)+cs*speedpow
+    ρcurv=@. 1+grading.curvature_strength*κ^grading.alpha_curv
+    ρraw=@. ρspeed*ρcurv
     ρ=smooth_positive_density(ρraw,grading.fourier_modes)
     ρ′=spectral_derivative_2π(ρ)
     dθ=two_pi/M
