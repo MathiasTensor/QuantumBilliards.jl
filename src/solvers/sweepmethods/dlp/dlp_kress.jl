@@ -197,8 +197,9 @@ function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiar
 end
 
 # a bit convoluted, because this flag is for the log correction die to corner grading, not the smooth grading, but it is what it is
-@inline _is_dlp_kress_graded(s::DLP_kress)=false
-@inline _is_dlp_kress_graded(::DLP_kress_global_corners)=true
+@inline _is_dlp_kress_graded(::DLP_kress,pts::BoundaryPointsCFIE)=false
+@inline _is_dlp_kress_graded(::DLP_kress_global_corners,pts::BoundaryPointsCFIE)=_is_nontrivial_grading(pts)
+@inline _is_nontrivial_grading(pts::BoundaryPointsCFIE{T}) where {T<:Real}=maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T))
 
 """
     build_dlp_kress_workspace(solver,pts)
@@ -238,7 +239,7 @@ multiple `k` values, such as in:
 """
 function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
     Rmat=build_Rmat_dlp_kress(solver,pts)
-    G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     parr=_panel_arrays_cache(pts)
     N=length(pts.xy)
     return DLPKressWorkspace(Rmat,G,parr,N)
@@ -310,7 +311,7 @@ corner-aware correction matrix must therefore reflect the graded periodic mesh.
 function build_Rmat_dlp_kress(solver::DLP_kress_global_corners,pts::BoundaryPointsCFIE{T}) where {T<:Real}
     N=length(pts.xy)
     Rmat=zeros(T,N,N)
-    kress_R_corner!(Rmat)
+    _is_nontrivial_grading(pts) ? kress_R_corner!(Rmat) : kress_R!(Rmat)
     return Rmat
 end
 
@@ -396,6 +397,40 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
+function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    _,_,Ltot=component_lengths(comp)
+    bs=solver.pts_scaling_factor
+    N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
+    needed=2
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        if sym isa Rotation
+            needed=lcm(needed,sym.n)
+        elseif sym isa Reflection
+            needed=lcm(needed,4)
+        end
+    end
+    remN=mod(N,needed)
+    remN!=0&&(N+=needed-remN)
+    ts=[s(j,N) for j in 1:N]
+    xy=Vector{SVector{2,T}}(undef,N)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    h=T(two_pi)/T(N)
+    ds=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        q,γt,γtt=_eval_composite_geom_global_t(T,comp,ts[i])
+        xy[i]=q
+        tangent_1st[i]=γt
+        tangent_2nd[i]=γtt
+        ds[i]=hypot(γt[1],γt[2])*h
+    end
+    ws=fill(h,N)
+    ws_der=ones(T,N)
+    z=SVector(zero(T),zero(T))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
+end
+
 """
     _evaluate_points(solver::DLP_kress_global_corners{T}, comp::Vector{C}, k::T, idx::Int)
 
@@ -446,6 +481,8 @@ These encode the transformed measure separately.
 - `BoundaryPointsCFIE{T}`
 """
 function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+    corners=_component_corner_locations(T,comp)
+    isempty(corners) && return _evaluate_points_smooth_composite(solver,comp,k,idx)
     _,_,Ltot=component_lengths(comp)
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
@@ -459,8 +496,7 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
         end
     end
     remN=mod(N,needed)
-    remN!=0 && (N+=needed-remN)
-    corners=_component_corner_locations(T,comp)
+    remN!=0&&(N+=needed-remN)
     σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq)
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
@@ -474,14 +510,11 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
     h=T(two_pi)/T(N)
     ds=Vector{T}(undef,N)
     @inbounds for i in 1:N
-        tx=tangent_1st[i][1]
-        ty=tangent_1st[i][2]
-        ds[i]=hypot(tx,ty)*h
+        ds[i]=hypot(tangent_1st[i][1],tangent_1st[i][2])*h
     end
-    ts=σ
     ws=fill(h,N)
-    ws_der=jac
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
+    z=SVector(zero(T),zero(T))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,ws,jac,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -1007,7 +1040,7 @@ end
 Convenience wrapper using a precomputed Kress correction matrix `Rmat`.
 """
 function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     parr=_panel_arrays_cache(pts)
     ws=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
     return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
@@ -1118,7 +1151,7 @@ function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A
 end
 
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     parr=_panel_arrays_cache(pts)
     construct_fredholm_matrix!(solver,A,pts,Rmat,G,parr,k;multithreaded=multithreaded)
 end
@@ -1128,7 +1161,7 @@ function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A
 end
 
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     parr=_panel_arrays_cache(pts)
     construct_fredholm_matrix_derivatives!(solver,A,A1,A2,pts,Rmat,G,parr,k;multithreaded=multithreaded)
 end

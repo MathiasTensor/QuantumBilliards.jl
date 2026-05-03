@@ -110,7 +110,7 @@ fixed boundary discretization.
 - `DLPKressBlockSystemCache{T}`
 """
 function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
-    G=_is_dlp_kress_graded(solver) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     N=length(pts.xy)
     R=copy(G.R)
     invR=copy(G.invR)
@@ -119,10 +119,10 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
     logterm=copy(G.logterm)
     kappa=copy(G.kappa)
     Rkress=zeros(T,N,N)
-    if solver isa DLP_kress
-        kress_R!(Rkress)
-    else
+    if _is_dlp_kress_graded(solver,pts)
         kress_R_corner!(Rkress)
+    else
+        kress_R!(Rkress)
     end
     rmin0=typemax(T)
     rmax0=zero(T)
