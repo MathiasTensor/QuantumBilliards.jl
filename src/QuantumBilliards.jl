@@ -48,7 +48,6 @@ export GaussLegendreNodes,LinearNodes,FourierNodes,PolarSampler,sample_points,ra
 include("billiards/geometry/kress_grading_single_corner.jl") # dont export anything from this file, it's just for internal use in kress grading
 include("billiards/geometry/kress_grading_global_multi_corner.jl") # dont export anything from this file, it's just for internal use in kress grading
 include("billiards/geometry/alpert_endpoint_grading.jl") # dont export anything from this file, it's just for internal use in alpert endpoint grading
-include("billiards/geometry/kress_grading_smooth.jl") # dont export anything from this file, it's just for internal use in smooth grading
 include("billiards/geometry/boundarypoints.jl")
 export BoundaryPoints,boundary_matrix_size,boundary_coords,kress_R!,kress_R_corner!
 export BoundaryPointsCFIE,CFIEPanelArrays,_panel_arrays_cache,component_offsets,component_lengths,CFIEGeomCache,cfie_geom_cache

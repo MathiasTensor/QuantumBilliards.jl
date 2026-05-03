@@ -90,13 +90,6 @@ double-layer boundary operator using Kress's singular splitting.
 - `symmetry::Sym`:
   Optional symmetry reduction descriptor. In practice this mostly affects node
   count compatibility conditions, but can be used with Beyn for proper desymmetrization.
-- `grading::Gr`:
-  Optional smooth periodic grading descriptor. If `nothing`, the solver uses the
-  standard uniform periodic Kress nodes. If `grading isa SmoothPeriodicGrading`,
-  the computational Kress grid remains uniform in `σ`, while the physical curve
-  is evaluated at a redistributed parameter `θ=W(σ)`. The ordinary periodic
-  Kress `R` matrix is still used; grading enters only through `xy`, `γ_σ`,
-  `γ_σσ`, and `ds`.
 
 # Mathematical setting
 This type is meant for the periodic smooth-boundary Kress machinery, where the
@@ -123,8 +116,6 @@ struct DLP_kress{T<:Real,Bi<:AbsBilliard,Sym,Gr}<:SweepSolver
     min_pts::Int64
     billiard::Bi
     symmetry::Sym
-    # extra info for smooth Kress grading
-    grading::Gr
 end
 
 """
@@ -191,12 +182,11 @@ struct DLP_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     kressq::Int
 end
 
-function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,use_smooth_grading::Bool=false,fourier_modes::Int=12,speed_strength::T=zero(T),curvature_strength::T=zero(T),oversample::Int=16,alpha_speed::T=T(0.5),alpha_curv::T=T(0.25)) where {T<:Real,Bi<:AbsBilliard}
+function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    grading=use_smooth_grading ? SmoothPeriodicGrading(fourier_modes=fourier_modes,speed_strength=speed_strength,curvature_strength=curvature_strength,oversample=oversample,alpha_speed=alpha_speed,alpha_curv=alpha_curv) : nothing
-    return DLP_kress{T,Bi,Sym,typeof(grading)}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,grading)
+    return DLP_kress{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
 function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
@@ -206,10 +196,8 @@ function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiar
     return DLP_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
 end
 
-# a bit convoluted, because this flag is for the log correction die to corner grading, not the smooth grading, but it is what it is
 @inline _is_dlp_kress_graded(::DLP_kress)=false
 @inline _is_dlp_kress_graded(::DLP_kress_global_corners)=true
-@inline _has_smooth_grading(s::DLP_kress)=!isnothing(s.grading) # this one is for smooth grading
 
 """
     build_dlp_kress_workspace(solver,pts)
@@ -326,76 +314,61 @@ function build_Rmat_dlp_kress(solver::DLP_kress_global_corners,pts::BoundaryPoin
 end
 
 """
-    _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int)
+    _evaluate_points(solver::DLP_kress{T}, crv::C, k::T, idx::Int)
 
-Construct the periodic Nyström boundary discretization for a single smooth
-closed curve in the DLP-Kress solver.
+Construct a smooth periodic Nyström discretization of a single closed curve
+for the DLP-Kress solver.
 
-The computational Kress variable is always the uniform periodic variable
-
-    σ_j = 2π(j-1)/N,
-
-so the usual periodic Kress logarithmic correction matrix remains valid. If
-`solver.grading === nothing`, the physical curve parameter is simply
-
-    θ_j = σ_j.
-
-If `solver.grading isa SmoothPeriodicGrading`, the curve is instead evaluated at
-
-    θ_j = W(σ_j),
-
-where `W` is a smooth monotone periodic reparametrization.
+This function builds the full `BoundaryPointsCFIE` object required for assembly
+of the Kress-corrected double-layer operator. It assumes a single smooth,
+periodic boundary and uses a uniform parameter grid in the Kress variable
+`t ∈ [0,2π)`.
 
 # Mathematical role
-The discretization supplies all geometry needed by the Kress-corrected
-double-layer operator:
-
-- boundary nodes `xy`,
-- first derivatives with respect to the computational variable `σ`,
-- second derivatives with respect to `σ`,
-- uniform periodic quadrature weights `ws`,
-- arclength weights `ds`.
-
-For smooth grading, derivatives are transformed by the chain rule,
-
-    γ_σ  = γ_θ W',
-    γ_σσ = γ_θθ(W')² + γ_θ W'',
-
-and
-
-    ds_j = |γ_σ(σ_j)| 2π/N.
+The boundary is discretized using a periodic trapezoidal rule combined with
+Kress logarithmic singularity subtraction. The discretization must therefore
+provide:
+- boundary coordinates,
+- first and second derivatives with respect to the Kress parameter,
+- quadrature weights in the periodic variable,
+- local arclength increments.
 
 # Resolution strategy
-The node count is chosen as
+The number of nodes is chosen as:
+    N ≈ k * L / (2π)
+scaled by `pts_scaling_factor`, and enforced to satisfy:
+- N ≥ min_pts,
+- compatibility with symmetry (e.g. rotational periodicity),
+- evenness required by periodic Kress quadrature.
 
-    N ≈ k L b / (2π),
+# Parameterization details
+- Nodes are generated in the Kress variable `t ∈ [0,2π)`.
+- Geometry is evaluated in a normalized parameter, so derivatives are rescaled:
+    γ'(t)  = γ'(σ)/(2π)
+    γ''(t) = γ''(σ)/(2π)^2
 
-where `L` is the curve length and `b = solver.pts_scaling_factor[1]`. The final
-`N` is adjusted to satisfy minimum-size and symmetry-compatibility constraints.
-
-# Important convention
-`pts.ts` stores `σ`, not the physical parameter `θ`. Thus smooth grading changes
-only the geometry and Jacobian data, not the periodic Kress grid itself.
+# Quadrature structure
+- `ws = 2π/N` are uniform periodic weights,
+- `ws_der = 1` since no grading is used.
 
 # Arguments
-- `solver`: smooth DLP-Kress solver instance.
-- `crv`: smooth closed curve.
-- `k`: wavenumber controlling the boundary resolution.
-- `idx`: boundary component index label.
+- `solver`: smooth DLP-Kress solver instance
+- `crv`: smooth closed curve
+- `k`: wavenumber controlling resolution
+- `idx`: component index label
 
 # Returns
-- `BoundaryPointsCFIE{T}` containing the periodic Kress nodes, transformed
-  derivatives, quadrature weights, and arclength weights.
+- `BoundaryPointsCFIE{T}` containing geometry, derivatives, and quadrature data
 
 # Notes
-This function is valid only for smooth single-component boundaries. For piecewise
-smooth boundaries with corners, use `DLP_kress_global_corners`.
+This function is valid only for smooth, single-component boundaries.
+For corners, use `DLP_kress_global_corners`.
 """
 function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    needed=2 # smooth periodic Kress wants even N; reflection symmetry wants divisibility by 4
+    needed=2 # periodic smooth Kress wants even N; reflection symmetry wants divisibility by 4
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         if sym isa Rotation
@@ -406,41 +379,17 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    if _has_smooth_grading(solver)
-        σ,θ,Wp,Wpp=build_reparametrization_map(crv,N,solver.grading)
-        t=θ./two_pi
-        xy=curve(crv,t)
-        γθ=tangent(crv,t)./two_pi
-        γθθ=tangent_2(crv,t)./(two_pi^2)
-        tangent_1st=Vector{SVector{2,T}}(undef,N)
-        tangent_2nd=Vector{SVector{2,T}}(undef,N)
-        h=T(two_pi)/T(N)
-        ds=Vector{T}(undef,N)
-        @inbounds for i in 1:N
-            w1=T(Wp[i])
-            w2=T(Wpp[i])
-            tangent_1st[i]=γθ[i]*w1
-            tangent_2nd[i]=γθθ[i]*(w1^2)+γθ[i]*w2
-            ds[i]=hypot(tangent_1st[i][1],tangent_1st[i][2])*h
-        end
-        ws=fill(h,N)
-        ws_der=T.(Wp)
-        z=SVector(zero(T),zero(T))
-        return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,T.(σ),ws,ws_der,ds,idx,true,z,z,z,z)
-    else
-        ts=[s(j,N) for j in 1:N]
-        ts_rescaled=ts./two_pi
-        xy=curve(crv,ts_rescaled)
-        tangent_1st=tangent(crv,ts_rescaled)./two_pi
-        tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi^2)
-        ss=arc_length(crv,ts_rescaled)
-        ds=diff(ss)
-        append!(ds,L+ss[1]-ss[end])
-        ws=fill(T(two_pi/N),N)
-        ws_der=ones(T,N)
-        z=SVector(zero(T),zero(T))
-        return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
-    end
+    ts=[s(j,N) for j in 1:N]
+    ts_rescaled=ts./two_pi
+    xy=curve(crv,ts_rescaled)
+    tangent_1st=tangent(crv,ts_rescaled)./(two_pi)
+    tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi)^2
+    ss=arc_length(crv,ts_rescaled)
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
+    ws=fill(T(two_pi/N),N)
+    ws_der=ones(T,N)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 """
