@@ -48,14 +48,14 @@
 
 const TWO_PI=2*pi
 
-@inline _wrap_to_2pi(x::T) where {T<:Real}=(y=mod(x,T(TWO_PI));y<zero(T)?y+T(TWO_PI):y)
+@inline _wrap_to_2pi(x::T) where {T<:Real}=(y=mod(x,T(TWO_PI));y<zero(T) ? y+T(TWO_PI):y)
 
 @inline function _sort_unique_corners(::Type{T},corners_in) where {T<:Real}
     isempty(corners_in)&&return T[]
     cs=T[_wrap_to_2pi(T(c)) for c in corners_in];sort!(cs)
     out=T[cs[1]]
     @inbounds for j in 2:length(cs)
-        abs(cs[j]-out[end])>sqrt(eps(T))&&push!(out,cs[j])
+        abs(cs[j]-out[end])>sqrt(eps(T)) && push!(out,cs[j])
     end
     return out
 end
