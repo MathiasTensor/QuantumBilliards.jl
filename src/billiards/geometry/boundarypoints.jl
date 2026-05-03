@@ -598,6 +598,7 @@ function component_lengths(comp::Vector)
     return lens,cum,cum[end]
 end
 
+#=
 # Build global corner locations in σ ∈ [0,2π)
 # Each segment junction is treated as a "corner" for grading.
 # If segment j ends at arc-length s = cum[j+1], then its σ-location is:
@@ -610,6 +611,63 @@ function _component_corner_locations(::Type{T},comp::Vector) where {T<:Real}
         push!(corners,T(two_pi)*(cum[j+1]/Ltot))
     end
     return corners
+end
+=#
+
+@inline function _unit_tangent_at_start(crv,::Type{T}) where {T<:Real}
+    v=SVector{2,T}(tangent(crv,zero(T)))
+    return v/hypot(v[1],v[2])
+end
+
+@inline function _unit_tangent_at_end(crv,::Type{T}) where {T<:Real}
+    v=SVector{2,T}(tangent(crv,one(T)))
+    return v/hypot(v[1],v[2])
+end
+
+@inline function _junction_angle(cleft,cright,::Type{T}) where {T<:Real}
+    tL=_unit_tangent_at_end(cleft,T)
+    tR=_unit_tangent_at_start(cright,T)
+    cr=tL[1]*tR[2]-tL[2]*tR[1]
+    dt=clamp(tL[1]*tR[1]+tL[2]*tR[2],-one(T),one(T))
+    return atan(abs(cr),dt)
+end
+
+@inline function _is_true_corner(cleft,cright,::Type{T};angle_tol=T(1e-8)) where {T<:Real}
+    return _junction_angle(cleft,cright,T)>angle_tol
+end
+
+# A junction is treated as a true corner only when the unit tangent leaving the
+# left segment and the unit tangent entering the right segment have a nonzero
+# angle larger than `angle_tol`. Smooth joins, such as the line-arc joins in a
+# properly oriented stadium, are therefore not graded.
+#
+# Locations are returned in the global periodic parameter σ ∈ [0,2π), with σ=0
+# used for the periodic seam when the last-to-first join is a true corner.
+function _component_corner_locations(::Type{T},comp::Vector;angle_tol=T(1e-8)) where {T<:Real}
+    _,cum,Ltot=component_lengths(comp)
+    corners=T[]
+    m=length(comp)
+    _is_true_corner(comp[end],comp[1],T;angle_tol=angle_tol)&&push!(corners,zero(T))
+    @inbounds for j in 1:m-1
+        if _is_true_corner(comp[j],comp[j+1],T;angle_tol=angle_tol)
+            push!(corners,T(two_pi)*cum[j+1]/Ltot)
+        end
+    end
+    return corners
+end
+
+# debugging tool to see if we picked up corners/joins correctly
+function print_component_junctions(comp::Vector;T=Float64,angle_tol=1e-8)
+    _,cum,Ltot=component_lengths(comp)
+    m=length(comp)
+    println("junction diagnostics:")
+    @inbounds for j in 1:m
+        jr=j==m ? 1 : j+1
+        σ=j==m ? zero(T) : T(two_pi)*cum[j+1]/Ltot
+        a=_junction_angle(comp[j],comp[jr],T)
+        flag=a>T(angle_tol) ? "TRUE CORNER" : "smooth join"
+        println("  $j -> $jr : σ = $σ, angle = $a, $flag")
+    end
 end
 
 # Given a BoundaryPointsCFIE discretization, compute the outward normal vectors at each point.
