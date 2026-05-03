@@ -90,13 +90,6 @@ double-layer boundary operator using Kress's singular splitting.
 - `symmetry::Sym`:
   Optional symmetry reduction descriptor. In practice this mostly affects node
   count compatibility conditions, but can be used with Beyn for proper desymmetrization.
-- `grading::Gr`:
-  Optional smooth periodic grading descriptor. If `nothing`, the solver uses the
-  standard uniform periodic Kress nodes. If `grading isa SmoothPeriodicGrading`,
-  the computational Kress grid remains uniform in `σ`, while the physical curve
-  is evaluated at a redistributed parameter `θ=W(σ)`. The ordinary periodic
-  Kress `R` matrix is still used; grading enters only through `xy`, `γ_σ`,
-  `γ_σσ`, and `ds`.
 
 # Mathematical setting
 This type is meant for the periodic smooth-boundary Kress machinery, where the
@@ -123,8 +116,6 @@ struct DLP_kress{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     min_pts::Int64
     billiard::Bi
     symmetry::Sym
-    # extra info for smooth Kress grading
-    grading::Gr
 end
 
 """
@@ -191,12 +182,11 @@ struct DLP_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     kressq::Int
 end
 
-function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,use_smooth_grading::Bool=false,fourier_modes::Int=12,speed_strength::T=zero(T),curvature_strength::T=zero(T),oversample::Int=16,alpha_speed::T=T(0.5),alpha_curv::T=T(0.25)) where {T<:Real,Bi<:AbsBilliard}
+function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    grading=use_smooth_grading ? SmoothPeriodicGrading(fourier_modes=fourier_modes,speed_strength=speed_strength,curvature_strength=curvature_strength,oversample=oversample,alpha_speed=alpha_speed,alpha_curv=alpha_curv) : nothing
-    return DLP_kress{T,Bi,Sym,typeof(grading)}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,grading)
+    return DLP_kress{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
 function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
@@ -207,9 +197,8 @@ function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiar
 end
 
 # a bit convoluted, because this flag is for the log correction die to corner grading, not the smooth grading, but it is what it is
-@inline _is_dlp_kress_graded(::DLP_kress)=false
+@inline _is_dlp_kress_graded(s::DLP_kress)=false
 @inline _is_dlp_kress_graded(::DLP_kress_global_corners)=true
-@inline _has_smooth_grading(s::DLP_kress)=!isnothing(s.grading) # this one is for smooth grading
 
 """
     build_dlp_kress_workspace(solver,pts)
@@ -335,16 +324,7 @@ The computational Kress variable is always the uniform periodic variable
 
     σ_j = 2π(j-1)/N,
 
-so the usual periodic Kress logarithmic correction matrix remains valid. If
-`solver.grading === nothing`, the physical curve parameter is simply
-
-    θ_j = σ_j.
-
-If `solver.grading isa SmoothPeriodicGrading`, the curve is instead evaluated at
-
-    θ_j = W(σ_j),
-
-where `W` is a smooth monotone periodic reparametrization.
+so the usual periodic Kress logarithmic correction matrix remains valid. The geometry is evaluated at these uniform nodes, and the chain rule is applied to compute the necessary derivatives and arclength weights.
 
 # Mathematical role
 The discretization supplies all geometry needed by the Kress-corrected
@@ -372,10 +352,6 @@ The node count is chosen as
 
 where `L` is the curve length and `b = solver.pts_scaling_factor[1]`. The final
 `N` is adjusted to satisfy minimum-size and symmetry-compatibility constraints.
-
-# Important convention
-`pts.ts` stores `σ`, not the physical parameter `θ`. Thus smooth grading changes
-only the geometry and Jacobian data, not the periodic Kress grid itself.
 
 # Arguments
 - `solver`: smooth DLP-Kress solver instance.
@@ -406,41 +382,18 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    if _has_smooth_grading(solver)
-        σ,θ,Wp,Wpp=build_reparametrization_map(crv,N,solver.grading)
-        t=θ./two_pi
-        xy=curve(crv,t)
-        γθ=tangent(crv,t)./two_pi
-        γθθ=tangent_2(crv,t)./(two_pi^2)
-        tangent_1st=Vector{SVector{2,T}}(undef,N)
-        tangent_2nd=Vector{SVector{2,T}}(undef,N)
-        h=T(two_pi)/T(N)
-        ds=Vector{T}(undef,N)
-        @inbounds for i in 1:N
-            w1=T(Wp[i])
-            w2=T(Wpp[i])
-            tangent_1st[i]=γθ[i]*w1
-            tangent_2nd[i]=γθθ[i]*(w1^2)+γθ[i]*w2
-            ds[i]=hypot(tangent_1st[i][1],tangent_1st[i][2])*h
-        end
-        ws=fill(h,N)
-        ws_der=T.(Wp)
-        z=SVector(zero(T),zero(T))
-        return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,T.(σ),ws,ws_der,ds,idx,true,z,z,z,z)
-    else
-        ts=[s(j,N) for j in 1:N]
-        ts_rescaled=ts./two_pi
-        xy=curve(crv,ts_rescaled)
-        tangent_1st=tangent(crv,ts_rescaled)./two_pi
-        tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi^2)
-        ss=arc_length(crv,ts_rescaled)
-        ds=diff(ss)
-        append!(ds,L+ss[1]-ss[end])
-        ws=fill(T(two_pi/N),N)
-        ws_der=ones(T,N)
-        z=SVector(zero(T),zero(T))
-        return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
-    end
+    ts=[s(j,N) for j in 1:N]
+    ts_rescaled=ts./two_pi
+    xy=curve(crv,ts_rescaled)
+    tangent_1st=tangent(crv,ts_rescaled)./two_pi
+    tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi^2)
+    ss=arc_length(crv,ts_rescaled)
+    ds=diff(ss)
+    append!(ds,L+ss[1]-ss[end])
+    ws=fill(T(two_pi/N),N)
+    ws_der=ones(T,N)
+    z=SVector(zero(T),zero(T))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
 """
