@@ -61,28 +61,31 @@ Constructs a full mushroom billiard with a rectangular stem and a circular cap.
   - `boundary::Vector{Union{LineSegment{T}, CircleSegment{T}}}`: The boundary segments of the full mushroom.
   - `corners::Vector{SVector{2,T}}`: The corner points of the stem.
 """
-function make_full_mushroom(stem_width::T, stem_height::T, cap_radius::T; x0=zero(T), y0=zero(T), rot_angle=zero(T)) where {T<:Real}
-    origin = SVector(x0 + stem_width/2, y0)
-    # Define the cap: a half circle with radius `cap_radius` centered at (0, 0)
-    cap_segment = CircleSegment(cap_radius, Float64(pi), Float64(2*pi), zero(T), zero(T); origin=origin, rot_angle=rot_angle) # corrected from before wrong -pi, pi for shift angle and arc
-    
-    # Define the stem: a rectangle with width `stem_width` and height `stem_height`
-    stem_top_right_corner = SVector(stem_width/2, zero(T))
-    stem_bottom_right_corner = SVector(stem_width/2, -stem_height)
-    stem_bottom_left_corner = SVector(-stem_width/2, -stem_height)
-    stem_top_left_corner = SVector(-stem_width/2, zero(T))
-    
-    # Line segments for the stem
-    stem_right_side = LineSegment(stem_bottom_right_corner, stem_top_right_corner; origin=origin, rot_angle=rot_angle)
-    stem_bottom_side = LineSegment(stem_bottom_left_corner, stem_bottom_right_corner; origin=origin, rot_angle=rot_angle)
-    stem_left_side = LineSegment(stem_top_left_corner, stem_bottom_left_corner; origin=origin, rot_angle=rot_angle)
-    cap_connector_right = LineSegment(stem_top_right_corner, SVector(cap_radius, zero(T)); origin=origin, rot_angle=rot_angle) # wrong: cap_connector_right = LineSegment(SVector(cap_radius, zero(T)), stem_top_right_corner; origin=origin, rot_angle=rot_angle)
-    cap_connector_left = LineSegment(SVector(-cap_radius, zero(T)), stem_top_left_corner; origin=origin, rot_angle=rot_angle)
-
-    # Starts with AbsRealCurve counterclockwise
-    boundary = Union{LineSegment, CircleSegment, VirtualLineSegment}[stem_bottom_side, stem_right_side, cap_connector_right, cap_segment, cap_connector_left, stem_left_side]
-    corners = [stem_top_right_corner, stem_bottom_right_corner, stem_bottom_left_corner, stem_top_left_corner]
-    return boundary, corners
+function make_full_mushroom(stem_width::T,stem_height::T,cap_radius::T;x0=zero(T),y0=zero(T),rot_angle=zero(T)) where {T<:Real}
+    origin=SVector(x0,y0)
+    w2=stem_width/T(2)
+    cap_center=SVector(w2,zero(T))
+    cap_left=CircleSegment(cap_radius,T(pi/2),T(pi/2),cap_center[1],cap_center[2];origin=origin,rot_angle=rot_angle)
+    conn_left=LineSegment(SVector(w2-cap_radius,zero(T)),SVector(zero(T),zero(T));origin=origin,rot_angle=rot_angle)
+    stem_left=LineSegment(SVector(zero(T),zero(T)),SVector(zero(T),-stem_height);origin=origin,rot_angle=rot_angle)
+    bottom_left=LineSegment(SVector(zero(T),-stem_height),SVector(w2,-stem_height);origin=origin,rot_angle=rot_angle)
+    bottom_right=LineSegment(SVector(w2,-stem_height),SVector(stem_width,-stem_height);origin=origin,rot_angle=rot_angle)
+    stem_right=LineSegment(SVector(stem_width,-stem_height),SVector(stem_width,zero(T));origin=origin,rot_angle=rot_angle)
+    conn_right=LineSegment(SVector(stem_width,zero(T)),SVector(w2+cap_radius,zero(T));origin=origin,rot_angle=rot_angle)
+    cap_right=CircleSegment(cap_radius,T(pi/2),zero(T),cap_center[1],cap_center[2];origin=origin,rot_angle=rot_angle)
+    boundary=Union{LineSegment,CircleSegment,VirtualLineSegment}[
+        cap_left,conn_left,stem_left,bottom_left,
+        bottom_right,stem_right,conn_right,cap_right
+    ]
+    corners=SVector{2,T}[
+        SVector(w2-cap_radius,zero(T)),
+        SVector(zero(T),zero(T)),
+        SVector(zero(T),-stem_height),
+        SVector(stem_width,-stem_height),
+        SVector(stem_width,zero(T)),
+        SVector(w2+cap_radius,zero(T))
+    ]
+    return boundary,corners
 end
 
 """
