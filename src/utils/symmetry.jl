@@ -129,23 +129,23 @@ function XYReflection(parity_x,parity_y)
     return Reflection(reflect_x∘reflect_y,[parity_x,parity_y],:origin)
 end
 
-#########################################################################
-############ SYMMETRY UTILITIES FOR UNIFORM COMP ts SPACINGS ############
-#########################################################################
+#####################################################################
+############ SYMMETRY UTILITIES FOR KRESS DESYMMETRIZED #############
+#####################################################################
 
 @inline _idx_mod1(i::Int,N::Int)=mod1(i,N)
 @inline _idx_rot_ccw(q::Int,N::Int,n::Int,l::Int)=_idx_mod1(q+l*(N÷n),N) # q -> R^l(q)
-@inline _idx_reflect_y_ccw(q::Int,N::Int)=_idx_mod1(N-q+1,N)  # x -> -x
-@inline _idx_reflect_x_ccw(q::Int,N::Int)=_idx_mod1(N÷2-q+1,N) # y -> -y
+@inline _idx_reflect_y_ccw(q::Int,N::Int)=_idx_mod1(N-q+1,N) # y -> -y
+@inline _idx_reflect_x_ccw(q::Int,N::Int)=_idx_mod1(N÷2-q+1,N) # x -> -x
 @inline _idx_rotate_pi_ccw(q::Int,N::Int)=_idx_mod1(q+N÷2,N)  # x,y -> -x,-y
 
 function x_reflection_orbit(q::Int,N::Int,px)
-    qx=_idx_reflect_y_ccw(q,N)   # x -> -x
+    qx=_idx_reflect_x_ccw(q,N)   # x -> -x
     return ([q,qx],[1,px])
 end
 
 function y_reflection_orbit(q::Int,N::Int,py)
-    qy=_idx_reflect_x_ccw(q,N)   # y -> -y
+    qy=_idx_reflect_y_ccw(q,N)   # y -> -y
     return ([q,qy],[1,py])
 end
 
@@ -207,11 +207,13 @@ end
 #   fund_to_scale[b]   = corresponding phase factors
 function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where {T<:Real}
     if sym.axis===:y_axis
+        # YReflection: y -> -y
         @assert iseven(N)
         Ifund=collect(1:N÷2)
         p=Complex{T}(sym.parity,0)
         orbit=q->([q,_idx_reflect_y_ccw(q,N)],[one(Complex{T}),p])
     elseif sym.axis===:x_axis
+        # XReflection: x -> -x
         @assert iseven(N)
         Ifund=collect(1:N÷2)
         p=Complex{T}(sym.parity,0)
@@ -313,12 +315,12 @@ function _has_node_on_reflection_axis(pts,sym::Reflection,billiard::Bi;tol=sqrt(
     sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
     sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
     @inbounds for p in pts.xy
-        if sym.axis===:y_axis && abs(p[1]-sx)<tol
-            return true
-        elseif sym.axis===:x_axis && abs(p[2]-sy)<tol
-            return true
-        elseif sym.axis===:origin && (abs(p[1]-sx)<tol || abs(p[2]-sy)<tol)
-            return true
+       if sym.axis===:y_axis          # y -> -y, fixed line y = sy
+            abs(p[2]-sy)<tol && return true
+        elseif sym.axis===:x_axis      # x -> -x, fixed line x = sx
+            abs(p[1]-sx)<tol && return true
+        elseif sym.axis===:origin
+            (abs(p[1]-sx)<tol || abs(p[2]-sy)<tol) && return true
         end
     end
     return false
