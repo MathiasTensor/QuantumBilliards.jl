@@ -452,6 +452,11 @@ formulations on curves and panels.
   Parameter values associated with the discretization nodes. For periodic
   curves, these are typically distributed over `[0, 2π]`.
 
+- `tphys::Vector{T}`:
+  Physical/global boundary parameter values corresponding to the nodes. Needed for
+  multi-component boundaries with symmetries for desymmetrization since they are 
+  usually heavily graded near corners.
+
 - `ws::Vector{T}`:
   Quadrature weights associated with the parameter nodes `ts`.
 
@@ -484,6 +489,7 @@ struct BoundaryPointsCFIE{T}<:AbsPoints where {T<:Real}
     tangent::Vector{SVector{2,T}} # tangents evaluated at the new mesh points
     tangent_2::Vector{SVector{2,T}} # derivatives of tangents evaluated at new mesh points
     ts::Vector{T} # parametrization that needs to go from [0,2π]
+    tphys::Vector{T} # physical/global boundary parameter t(σ) 
     ws::Vector{T} # the weights for the quadrature at ts
     ws_der::Vector{T} # the derivatives of the weights for the quadrature at ts
     ds::Vector{T} # diffs between crv lengths at ts

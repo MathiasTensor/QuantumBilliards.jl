@@ -448,6 +448,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
     ts=reverse(pts.ts)
+    tmap=reverse(pts.tmap)
     ws=reverse(pts.ws)
     ws_der=reverse(pts.ws_der)
     ds=reverse(pts.ds)
@@ -455,7 +456,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     xR=pts.xL
     tL=-pts.tR
     tR=-pts.tL
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,ws,ws_der,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,tmap,ws,ws_der,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
 end
 
 ###############
@@ -531,7 +532,7 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    ts=[s(k,N) for k in 1:N]
+    ts=[s_mid(k,N) for k in 1:N]
     ts_rescaled=ts./two_pi # b/c our curves and tangents are defined on [0,1]
     xy=curve(crv,ts_rescaled) 
     tangent_1st=tangent(crv,ts_rescaled)./(two_pi) # ! Rescaled tangents due to chain rule ∂γ/∂θ = ∂γ/∂u * ∂u/∂θ = ∂γ/∂u * 1/(2π)
@@ -541,7 +542,7 @@ function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N) # unused, legacy
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 """
@@ -623,7 +624,7 @@ function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) wh
     ts=σ
     ws=fill(h,N)
     ws_der=jac
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,tmap,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 ############################
@@ -678,7 +679,7 @@ function _evaluate_points_smooth_composite(solver::CFIE_kress_global_corners{T},
     end
     remN=mod(N,needed)
     remN!=0&&(N+=needed-remN)
-    ts=[s(j,N) for j in 1:N]
+    ts=[s_mid(j,N) for j in 1:N]
     h=T(two_pi)/T(N)
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
@@ -694,7 +695,7 @@ function _evaluate_points_smooth_composite(solver::CFIE_kress_global_corners{T},
     ws=fill(h,N)
     ws_der=ones(T,N)
     z=SVector(zero(T),zero(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -764,7 +765,7 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
     ws=fill(h,N)
     ws_der=jac
     z=SVector(zero(T),zero(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,ws,ws_der,ds,idx,true,z,z,z,z)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,tmap,ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
 ####################
@@ -952,7 +953,7 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N)
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)),SVector(zero(T),zero(T)))
 end
 
 """
@@ -1058,9 +1059,11 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
     ds=Vector{T}(undef,N)
+    tmap=Vector{T}(undef,N)
     @inbounds for j in 1:N
         σ=sig[j]
         u,jac,jac2=_panel_sigma_to_u_jac(solver,σ)
+        tmap[j]=u
         q=curve(crv,u)
         tu=tangent(crv,u)
         t2u=tangent_2(crv,u)
@@ -1075,7 +1078,7 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
     xR=curve(crv,one(T))
     tL=tangent(crv,zero(T))
     tR=tangent(crv,one(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,sig,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,sig,tmap,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
 end
 
 """

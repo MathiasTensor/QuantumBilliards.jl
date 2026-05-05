@@ -379,7 +379,7 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     ws=fill(T(two_pi/N),N)
     ws_der=ones(T,N)
     z=SVector(zero(T),zero(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -447,7 +447,7 @@ function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},c
     ws=fill(h,N)
     ws_der=ones(T,N)
     z=SVector(zero(T),zero(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,ws,ws_der,ds,idx,true,z,z,z,z)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -533,7 +533,7 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
     end
     ws=fill(h,N)
     z=SVector(zero(T),zero(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,ws,jac,ds,idx,true,z,z,z,z)
+    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,σ,tmap,ws,jac,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -1169,7 +1169,6 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
     end
     for b in 1:m
         j=Ifund[b]
-        wj=rws.speed[j]*pts.ws[j]
         @inbounds for a in 1:m
             i=Ifund[a]
             xi=rws.xs[i]
@@ -1178,7 +1177,8 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
                 q=rws.fund_to_full[b][ℓ]
                 q==j && continue
                 scale=rws.fund_to_scale[b][ℓ]
-                D[a,b]+=_regular_dlp_image_D(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wj,k,scale)
+                wq=rws.speed[q]*pts.ws[q]
+                D[a,b]+=_regular_dlp_image_D(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wq,k,scale)
             end
         end
     end
@@ -1322,7 +1322,6 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
     end
     for b in 1:m
         j=Ifund[b]
-        wj=rws.speed[j]*pts.ws[j]
         @inbounds for a in 1:m
             i=Ifund[a]
             xi=rws.xs[i]
@@ -1331,7 +1330,8 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
                 q=rws.fund_to_full[b][ℓ]
                 q==j && continue
                 scale=rws.fund_to_scale[b][ℓ]
-                d,d1,d2=_regular_dlp_image_D_derivs(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wj,k,scale)
+                wq=rws.speed[q]*pts.ws[q]
+                d,d1,d2=_regular_dlp_image_D_derivs(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wq,k,scale)
                 D[a,b]+=d
                 D1[a,b]+=d1
                 D2[a,b]+=d2
