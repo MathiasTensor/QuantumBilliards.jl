@@ -65,6 +65,10 @@ full-boundary Kress logarithmic singular quadrature.
 struct DLPKressReducedWorkspace{T<:Real,M<:AbstractMatrix{T}}
     full::DLPKressWorkspace{T,M}
     Ifund::Vector{Int}
+    full_to_fund::Vector{Int}
+    full_to_scale::Vector{Complex{T}}
+    fund_to_full::Vector{Vector{Int}}
+    fund_to_scale::Vector{Vector{Complex{T}}}
     xs::Vector{T}
     ys::Vector{T}
     nx::Vector{T}
@@ -691,17 +695,17 @@ function dlp_kress_component_normals(pts::BoundaryPointsCFIE{T}) where {T<:Real}
     return nx,ny,speed
 end
 
-function build_dlp_kress_reduced_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};tol::T=T(1e-12)) where {T<:Real}
+function build_dlp_kress_reduced_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
     full=build_dlp_kress_workspace_full(solver,pts)
-    Ifund=fundamental_indices(pts,solver.symmetry;billiard=solver.billiard,tol=tol)
+    Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=periodic_symmetry_index_orbits(T,length(pts.xy),solver.symmetry)
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
     nx,ny,speed=dlp_kress_component_normals(pts)
-    return DLPKressReducedWorkspace(full,Ifund,xs,ys,nx,ny,speed,length(Ifund))
+    return DLPKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,speed,length(Ifund))
 end
 
-function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};tol::T=T(1e-12)) where {T<:Real}
-    _dlp_kress_use_reduced(solver) ? build_dlp_kress_reduced_workspace(solver,pts;tol=tol) : build_dlp_kress_workspace_full(solver,pts)
+function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    _dlp_kress_use_reduced(solver) ? build_dlp_kress_reduced_workspace(solver,pts) : build_dlp_kress_workspace_full(solver,pts)
 end
 
 @inline _workspace_dim(ws::DLPKressWorkspace)=ws.N
@@ -1163,15 +1167,18 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
             end
         end
     end
-    imgs=Vector{Tuple{T,T,T,T,Complex{T}}}()
     for b in 1:m
         j=Ifund[b]
-        _image_sources!(imgs,rws.xs[j],rws.ys[j],rws.nx[j],rws.ny[j],solver.symmetry,solver.billiard)
         wj=rws.speed[j]*pts.ws[j]
         @inbounds for a in 1:m
-            i=Ifund[a];xi=rws.xs[i];yi=rws.ys[i]
-            for img in imgs
-                D[a,b]+=_regular_dlp_image_D(xi,yi,img[1],img[2],img[3],img[4],wj,k,img[5])
+            i=Ifund[a]
+            xi=rws.xs[i]
+            yi=rws.ys[i]
+            for ℓ in eachindex(rws.fund_to_full[b])
+                q=rws.fund_to_full[b][ℓ]
+                q==j && continue
+                scale=rws.fund_to_scale[b][ℓ]
+                D[a,b]+=_regular_dlp_image_D(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wj,k,scale)
             end
         end
     end
@@ -1313,17 +1320,21 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
             end
         end
     end
-    imgs=Vector{Tuple{T,T,T,T,Complex{T}}}()
     for b in 1:m
         j=Ifund[b]
-        _image_sources!(imgs,rws.xs[j],rws.ys[j],rws.nx[j],rws.ny[j],solver.symmetry,solver.billiard)
         wj=rws.speed[j]*pts.ws[j]
         @inbounds for a in 1:m
             i=Ifund[a]
-            xi=rws.xs[i];yi=rws.ys[i]
-            for img in imgs
-                d,d1,d2=_regular_dlp_image_D_derivs(xi,yi,img[1],img[2],img[3],img[4],wj,k,img[5])
-                D[a,b]+=d;D1[a,b]+=d1;D2[a,b]+=d2
+            xi=rws.xs[i]
+            yi=rws.ys[i]
+            for ℓ in eachindex(rws.fund_to_full[b])
+                q=rws.fund_to_full[b][ℓ]
+                q==j && continue
+                scale=rws.fund_to_scale[b][ℓ]
+                d,d1,d2=_regular_dlp_image_D_derivs(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wj,k,scale)
+                D[a,b]+=d
+                D1[a,b]+=d1
+                D2[a,b]+=d2
             end
         end
     end
@@ -1501,11 +1512,11 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
         G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
         parr=_panel_arrays_cache(pts)
         full=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
-        Ifund=fundamental_indices(pts,solver.symmetry;billiard=solver.billiard)
+        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=periodic_symmetry_index_orbits(T,length(pts.xy),solver.symmetry)
         xs=getindex.(pts.xy,1)
         ys=getindex.(pts.xy,2)
         nx,ny,speed=dlp_kress_component_normals(pts)
-        rws=DLPKressReducedWorkspace(full,Ifund,xs,ys,nx,ny,speed,length(Ifund))
+        rws=DLPKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,speed,length(Ifund))
         return adjoint_fredholm_matrix!(A,D,solver,pts,rws,k;multithreaded=multithreaded)
     end
 end
@@ -1898,7 +1909,7 @@ Vector-of-k overload returns:
   vector of boundary discretizations used at those wavenumbers.
 """
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    ws= if isnothing(solver.symmetry)
+    ws=if isnothing(solver.symmetry)
         G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
         parr=_panel_arrays_cache(pts)
         DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
@@ -1906,11 +1917,11 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,
         G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
         parr=_panel_arrays_cache(pts)
         full=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
-        Ifund=fundamental_indices(pts,solver.symmetry;billiard=solver.billiard)
+        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=periodic_symmetry_index_orbits(T,length(pts.xy),solver.symmetry)
         xs=getindex.(pts.xy,1)
         ys=getindex.(pts.xy,2)
         nx,ny,speed=dlp_kress_component_normals(pts)
-        DLPKressReducedWorkspace(full,Ifund,xs,ys,nx,ny,speed,length(Ifund))
+        DLPKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,speed,length(Ifund))
     end
     return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end

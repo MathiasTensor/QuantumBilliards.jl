@@ -129,54 +129,73 @@ function XYReflection(parity_x,parity_y)
     return Reflection(reflect_x∘reflect_y,[parity_x,parity_y],:origin)
 end
 
-function fundamental_indices(pts::BoundaryPointsCFIE{T},sym;billiard=nothing,tol::T=T(1e-12)) where {T<:Real}
-    isnothing(sym)&&return collect(eachindex(pts.xy))
-    xy=pts.xy
-    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
-    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
-    if sym isa Reflection
-        sym.axis===:y_axis && return findall(p->p[1]>sx+tol,xy)
-        sym.axis===:x_axis && return findall(p->p[2]>sy+tol,xy)
-        sym.axis===:origin && return findall(p->p[1]>sx+tol&&p[2]>sy+tol,xy)
-    elseif sym isa Rotation
-        cx,cy=sym.center
-        θmax=T(two_pi)/T(sym.n)
-        return findall(p->begin
-            θ=mod(atan(p[2]-T(cy),p[1]-T(cx)),T(two_pi))
-            θ>=tol&&θ<θmax-tol
-        end,xy)
+@inline _mod1(i::Int,N::Int)=mod(i-1,N)+1
+# Periodic midpoint index maps for a CCW full boundary.
+# These assume the symmetry-compatible N choice.
+@inline _idx_reflect_y_axis(q::Int,N::Int)=_mod1(N-q+1,N)  # x -> -x
+@inline _idx_reflect_x_axis(q::Int,N::Int)=_mod1(N÷2-q+1,N) # y -> -y
+@inline _idx_rotate_pi(q::Int,N::Int)=_mod1(q+N÷2,N) # rotation by π (C₂)
+@inline _idx_rotate(q::Int,N::Int,n::Int,l::Int)=_mod1(q+l*(N÷n),N) # rotation by 2πl/n (Cₙ)
+
+function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where {T<:Real}
+    if sym.axis===:y_axis
+        @assert iseven(N)
+        m=N÷2
+        Ifund=collect(1:m)
+        p=Complex{T}(sym.parity,0)
+        orbit(q)=([q,_periodic_idx_reflect_y_axis(q,N)],[one(Complex{T}),p])
+    elseif sym.axis===:x_axis
+        @assert iseven(N)
+        m=N÷2
+        Ifund=collect(1:m)
+        p=Complex{T}(sym.parity,0)
+        orbit(q)=([q,_periodic_idx_reflect_x_axis(q,N)],[one(Complex{T}),p])
+    elseif sym.axis===:origin
+        @assert mod(N,4)==0
+        m=N÷4
+        Ifund=collect(1:m)
+        σx,σy=sym.parity
+        px=Complex{T}(σx,0)
+        py=Complex{T}(σy,0)
+        orbit(q)=([q,_periodic_idx_reflect_y_axis(q,N),_periodic_idx_reflect_x_axis(q,N),_periodic_idx_rotate_pi(q,N)],[one(Complex{T}),px,py,px*py])
+    else
+        error("Unsupported reflection axis $(sym.axis)")
     end
-    error("Unsupported symmetry $(typeof(sym))")
+    return _build_periodic_orbit_maps(T,N,Ifund,orbit)
 end
 
-@inline function _image_sources!(out,x::T,y::T,nx::T,ny::T,sym,billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
-    empty!(out)
-    isnothing(sym) && return out
-    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
-    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
-    if sym isa Reflection
-        if sym.axis===:y_axis
-            push!(out,(_x_reflect(x,sx),y,_x_reflect_normal(nx,ny)...,Complex{T}(sym.parity)))
-        elseif sym.axis===:x_axis
-            push!(out,(x,_y_reflect(y,sy),_y_reflect_normal(nx,ny)...,Complex{T}(sym.parity)))
-        elseif sym.axis===:origin
-            σx,σy=sym.parity
-            push!(out,(_x_reflect(x,sx),y,_x_reflect_normal(nx,ny)...,Complex{T}(σx)))
-            push!(out,(x,_y_reflect(y,sy),_y_reflect_normal(nx,ny)...,Complex{T}(σy)))
-            push!(out,(_x_reflect(x,sx),_y_reflect(y,sy),_xy_reflect_normal(nx,ny)...,Complex{T}(σx*σy)))
+function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Rotation) where {T<:Real}
+    n=sym.n
+    @assert mod(N,n)==0
+    m=N÷n
+    Ifund=collect(1:m)
+    _,_,χ=_rotation_tables(T,sym.n,sym.m)
+    orbit(q)=([_periodic_idx_rotate(q,N,n,l) for l in 0:n-1],[χ[l+1] for l in 0:n-1])
+    return _build_periodic_orbit_maps(T,N,Ifund,orbit)
+end
+
+function _build_periodic_orbit_maps(::Type{T},N::Int,Ifund::Vector{Int},orbit) where {T<:Real}
+    m=length(Ifund)
+    full_to_fund=zeros(Int,N)
+    full_to_scale=Vector{Complex{T}}(undef,N)
+    fund_to_full=Vector{Vector{Int}}(undef,m)
+    fund_to_scale=Vector{Vector{Complex{T}}}(undef,m)
+    @inbounds for b in 1:m
+        q=Ifund[b]
+        qs,ss=orbit(q)
+        fund_to_full[b]=qs
+        fund_to_scale[b]=ss
+        for ℓ in eachindex(qs)
+            qi=qs[ℓ]
+            if full_to_fund[qi]!=0
+                error("Periodic symmetry orbit collision at full index $qi.")
+            end
+            full_to_fund[qi]=b
+            full_to_scale[qi]=ss[ℓ]
         end
-    elseif sym isa Rotation
-        ctab,stab,χ=_rotation_tables(T,sym.n,sym.m)
-        cx,cy=sym.center
-        for l in 1:sym.n-1
-            xr,yr=_rot_point(x,y,T(cx),T(cy),ctab[l+1],stab[l+1])
-            nxr,nyr=_rot_vec(nx,ny,ctab[l+1],stab[l+1])
-            push!(out,(xr,yr,nxr,nyr,χ[l+1]))
-        end
-    else
-        error("Unsupported symmetry $(typeof(sym))")
     end
-    return out
+    all(full_to_fund.>0) || error("Periodic symmetry orbit map did not cover all $N indices.")
+    return Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale
 end
 
 """
