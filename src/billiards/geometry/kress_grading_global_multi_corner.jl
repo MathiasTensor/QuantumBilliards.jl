@@ -107,7 +107,7 @@ function _corner_interval(corners::Vector{T},x::T) where {T<:Real}
     return left,right
 end
 
-function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=4) where {T<:Real}
+function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=3,minsep_tol=1e-12) where {T<:Real}
     qT=T(q);qT>one(T)||error("Require q>1.")
     corners=_sort_unique_corners(T,corners_in)
     h=T(TWO_PI)/T(N)
@@ -119,22 +119,29 @@ function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=4) where {T
     if isempty(corners)
         return σ,copy(σ),ones(T,N),zeros(T,N),fill(h,N)
     end
-    tmap=Vector{T}(undef,N)
-    jac=Vector{T}(undef,N)
-    jac2=Vector{T}(undef,N)
-    wq=Vector{T}(undef,N)
-    @inbounds for i in 1:N
-        x=σ[i]
-        left,right=_corner_interval(corners,x)
-        L=right-left
-        u=(x-left)/L
-        v=_kress_smoothstep(u,qT)
-        vp=_kress_smoothstep_prime(u,qT)
-        vpp=_kress_smoothstep_doubleprime(u,qT)
-        tmap[i]=_wrap_to_2pi(left+L*v)
-        jac[i]=vp
-        jac2[i]=vpp/L
-        wq[i]=h*jac[i]
+    while qT>one(T)
+        tmap=Vector{T}(undef,N)
+        jac=Vector{T}(undef,N)
+        jac2=Vector{T}(undef,N)
+        wq=Vector{T}(undef,N)
+        @inbounds for i in 1:N
+            x=σ[i]
+            left,right=_corner_interval(corners,x)
+            L=right-left
+            u=(x-left)/L
+            v=_kress_smoothstep(u,qT)
+            vp=_kress_smoothstep_prime(u,qT)
+            vpp=_kress_smoothstep_doubleprime(u,qT)
+            tmap[i]=_wrap_to_2pi(left+L*v)
+            jac[i]=vp
+            jac2[i]=vpp/L
+            wq[i]=h*jac[i]
+        end
+        minsep=_min_periodic_spacing_sorted(tmap)
+        minsep>=minsep_tol && return σ,tmap,jac,jac2,wq
+        qnew=max(one(T),qT*0.75) # multiply by 3/4 each time to reduce it until it gives larger than min separation
+        @warn "Kress grading nodes too close; reducing q." q_old=qT q_new=qnew minsep=minsep minsep_tol=minsep_tol N=N
+        qT=qnew
     end
-    return σ,tmap,jac,jac2,wq
+    error("Kress grading is impossible: q reached 1 while min periodic spacing stayed below minsep_tol=$(minsep_tol).")
 end

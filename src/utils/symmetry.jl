@@ -285,6 +285,129 @@ function _build_periodic_orbit_maps(::Type{T},N::Int,Ifund::Vector{Int},orbit) w
     return Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale
 end
 
+# helper to determine that a point does not lie on a symmetry line, as reflections or similar logic can map it onto itself,
+# blowing up 1/d or log(d)
+function _has_node_on_reflection_axis(pts,sym::Reflection,billiard::Bi;tol=sqrt(eps(eltype(first(pts.xy))))) where {Bi<:AbsBilliard}
+    T=eltype(first(pts.xy))
+    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
+    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
+    @inbounds for p in pts.xy
+        if sym.axis===:y_axis && abs(p[1]-sx)<tol
+            return true
+        elseif sym.axis===:x_axis && abs(p[2]-sy)<tol
+            return true
+        elseif sym.axis===:origin && (abs(p[1]-sx)<tol || abs(p[2]-sy)<tol)
+            return true
+        end
+    end
+    return false
+end
+
+"""
+    symmetry_index_orbits(::Type{T}, pts, sym, billiard; tol=T(1e-12), window=12)
+
+Construct symmetry orbits and reduced-index maps for a periodic boundary
+discretization.
+
+This function identifies which boundary nodes belong to the same symmetry orbit
+under reflections or rotations and builds the mappings needed for symmetry-
+reduced boundary integral formulations.
+
+Unlike purely analytic periodic-index formulas, this implementation is robust to:
+- Kress grading,
+- Alpert endpoint grading,
+- nonuniform periodic parameterizations,
+- small floating-point drift.
+
+The periodic index relations are used only as initial guesses. The
+final symmetry image index is determined by a small local geometric search around
+that predicted location, making the construction stable even for strongly graded
+meshes.
+
+Arguments
+---------
+- `pts`: Any boundary-point object with field
+    pts.xy :: Vector{SVector{2,T}}
+    containing periodically ordered boundary nodes.
+- `sym`:
+    Symmetry descriptor (`Reflection` or `Rotation`).
+- `billiard`:
+    Geometry object used to extract symmetry-axis locations such as
+    `x_axis` and `y_axis`.
+
+# Kwargs
+- `tol`:
+    Geometric matching tolerance used during the local search.
+- `window`:
+    Half-width of the local periodic search window around the
+    predicted symmetry index.
+"""
+function symmetry_index_orbits(::Type{T},pts,sym,billiard;tol::T=T(1e-12),window::Int=12) where {T<:Real}
+    N=length(pts.xy)
+    xy=pts.xy
+    if sym isa Reflection
+        sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
+        sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
+        if sym.axis===:y_axis
+            @assert iseven(N)
+            Ifund=collect(1:N÷2)
+            p=Complex{T}(sym.parity,0)
+            orbit=q->begin
+                qx=_local_match_index(_x_reflect(xy[q][1],sx),xy[q][2],xy,_idx_reflect_y_axis(q,N);window=window,tol=tol)
+                return ([q,qx],[one(Complex{T}),p])
+            end
+        elseif sym.axis===:x_axis
+            @assert iseven(N)
+            Ifund=collect(1:N÷2)
+            p=Complex{T}(sym.parity,0)
+            orbit=q->begin
+                qy=_local_match_index(xy[q][1],_y_reflect(xy[q][2],sy),xy,_idx_reflect_x_axis(q,N);window=window,tol=tol)
+                return ([q,qy],[one(Complex{T}),p])
+            end
+        elseif sym.axis===:origin
+            @assert mod(N,4)==0
+            Ifund=collect(1:N÷4)
+            σx,σy=sym.parity
+            px=Complex{T}(σx,0)
+            py=Complex{T}(σy,0)
+            orbit=q->begin
+                qx=_local_match_index(_x_reflect(xy[q][1],sx),xy[q][2],xy,_idx_reflect_y_axis(q,N);window=window,tol=tol)
+                qy=_local_match_index(xy[q][1],_y_reflect(xy[q][2],sy),xy,_idx_reflect_x_axis(q,N);window=window,tol=tol)
+                qxy=_local_match_index(_x_reflect(xy[q][1],sx),_y_reflect(xy[q][2],sy),xy,_idx_rotate_pi(q,N);window=window,tol=tol)
+                return ([q,qx,qy,qxy],[one(Complex{T}),px,py,px*py])
+            end
+
+        else
+            error("Unsupported reflection axis $(sym.axis)")
+        end
+        return _build_periodic_orbit_maps(T,N,Ifund,orbit)
+    end
+    if sym isa Rotation
+        n=sym.n
+        @assert mod(N,n)==0
+        Ifund=collect(1:N÷n)
+        cos_tab,sin_tab,χ=_rotation_tables(T,n,sym.m)
+        cx=T(sym.center[1])
+        cy=T(sym.center[2])
+        orbit=q->begin
+            qs=Vector{Int}(undef,n)
+            ss=Vector{Complex{T}}(undef,n)
+            qs[1]=q
+            ss[1]=χ[1]
+            @inbounds for l in 1:n-1
+                xr,yr=_rot_point(xy[q][1],xy[q][2],cx,cy,cos_tab[l+1],sin_tab[l+1])
+                qs[l+1]=_local_match_index(xr,yr,xy,_idx_rotate(q,N,n,l);window=window,tol=tol)
+                ss[l+1]=χ[l+1]
+            end
+            return qs,ss
+        end
+
+        return _build_periodic_orbit_maps(T,N,Ifund,orbit)
+    end
+
+    error("Unknown symmetry type $(typeof(sym))")
+end
+
 """
     apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries,billiard::Bi; same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 

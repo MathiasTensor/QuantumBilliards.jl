@@ -56,26 +56,46 @@ end
     nump=app*b-a*bpp
     return T(TWO_PI*(nump*den-2*num*denp)/den^3)
 end
+
+# helper to determine the minimal spacings, if too small it causes issues with solvers and 
+# especially desymmetrization. Best to have a threashold for smallest distance, say 1e-12
+@inline function _min_periodic_spacing_sorted(xs::Vector{T}) where {T<:Real}
+    N=length(xs)
+    N<=1 && return typemax(T)
+    dmin=typemax(T)
+    @inbounds for i in 1:N-1
+        dmin=min(dmin,xs[i+1]-xs[i])
+    end
+    return min(dmin,T(TWO_PI)+xs[1]-xs[end])
+end
+
 # Computes the Kress graded nodes and weights for a given number of points `N`
 # and grading parameter `q`, using a periodic grid that works for both even and
 # odd N.
-function kress_graded_nodes_data(::Type{T},N::Int;q=8) where {T<:Real}
+function kress_graded_nodes_data(::Type{T},N::Int;q=3,minsep_tol=1e-12) where {T<:Real}
     qT=T(q)
     qT>one(T) || error("Require q>1 for Kress grading.")
-    σ=Vector{T}(undef,N)
-    s=Vector{T}(undef,N)
-    a=Vector{T}(undef,N)
-    a2=Vector{T}(undef,N)
-    wq=Vector{T}(undef,N)
     h=T(TWO_PI)/T(N)
-    δ=h/T(2)   # midpoint shift: avoids sampling the corner exactly
-    for k in 1:N
-        σ[k]=δ + T(k-1)*h
-        s[k]=_kress_w(σ[k],qT)
-        a[k]=_kress_wprime(σ[k],qT)
-        a2[k]=_kress_wdoubleprime(σ[k],qT)
-        wq[k]=h*a[k]
+    δ=h/T(2)
+    while qT>one(T)
+        σ=Vector{T}(undef,N)
+        s=Vector{T}(undef,N)
+        a=Vector{T}(undef,N)
+        a2=Vector{T}(undef,N)
+        wq=Vector{T}(undef,N)
+        @inbounds for k in 1:N
+            σ[k]=δ+T(k-1)*h
+            s[k]=_kress_w(σ[k],qT)
+            a[k]=_kress_wprime(σ[k],qT)
+            a2[k]=_kress_wdoubleprime(σ[k],qT)
+            wq[k]=h*a[k]
+        end
+        minsep=_min_periodic_spacing_sorted(s)
+        minsep>=minsep_tol && return σ,s,a,a2,wq
+        qnew=max(one(T),qT*0.75)
+        @warn "Kress grading nodes too close; reducing q." q_old=qT q_new=qnew minsep=minsep minsep_tol=minsep_tol N=N
+        qT=qnew
     end
-    return σ,s,a,a2,wq
+    error("Kress grading is impossible: q reached 1 while min periodic spacing stayed below minsep_tol=$(minsep_tol).")
 end
 

@@ -183,6 +183,8 @@ but now built on a globally graded boundary parameter.
 - `kressq::Int`:
   Grading parameter controlling how strongly nodes are clustered near corners.
   Larger values correspond to stronger smoothing of endpoint singular behavior.
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 
 # Mathematical setting
 This type assumes:
@@ -207,6 +209,7 @@ struct DLP_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     billiard::Bi
     symmetry::Sym
     kressq::Int
+    min_t_spacing::Real
 end
 
 function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:AbsBilliard}
@@ -216,11 +219,11 @@ function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=2
     return DLP_kress{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
-function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
+function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    return DLP_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
+    return DLP_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq,min_t_spacing)
 end
 
 # a bit convoluted, because this flag is for the log correction die to corner grading, not the smooth grading, but it is what it is
@@ -516,7 +519,7 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
     end
     remN=mod(N,needed)
     remN!=0&&(N+=needed-remN)
-    σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq)
+    σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq,minsep_tol=solver.min_t_spacing)
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
@@ -697,7 +700,7 @@ end
 
 function build_dlp_kress_reduced_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
     full=build_dlp_kress_workspace_full(solver,pts)
-    Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=periodic_symmetry_index_orbits(T,length(pts.xy),solver.symmetry)
+    Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
     xs=getindex.(pts.xy,1)
     ys=getindex.(pts.xy,2)
     nx,ny,speed=dlp_kress_component_normals(pts)
@@ -1512,7 +1515,7 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
         G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
         parr=_panel_arrays_cache(pts)
         full=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
-        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=periodic_symmetry_index_orbits(T,length(pts.xy),solver.symmetry)
+        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
         xs=getindex.(pts.xy,1)
         ys=getindex.(pts.xy,2)
         nx,ny,speed=dlp_kress_component_normals(pts)
@@ -1917,7 +1920,7 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,
         G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
         parr=_panel_arrays_cache(pts)
         full=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
-        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=periodic_symmetry_index_orbits(T,length(pts.xy),solver.symmetry)
+        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
         xs=getindex.(pts.xy,1)
         ys=getindex.(pts.xy,2)
         nx,ny,speed=dlp_kress_component_normals(pts)

@@ -21,14 +21,14 @@
 # ============================================================
 
 # u(σ): grading map from computational parameter σ to panel u
-@inline function _panel_grade_map(σ::T,q::Int) where {T<:Real}
+@inline function _panel_grade_map(σ::T,q::T) where {T<:Real}
     a=σ^q
     b=(one(T)-σ)^q
     return a/(a+b)
 end
 # du/dσ: first derivative of grading map. This is the Jacobian used to scale tangents and arc-length.
 # Closed form: du/dσ = q σ^(q-1) (1-σ)^(q-1) / (σ^q + (1-σ)^q)^2
-@inline function _panel_grade_map_prime(σ::T,q::Int) where {T<:Real}
+@inline function _panel_grade_map_prime(σ::T,q::T) where {T<:Real}
     a=σ^q
     b=(one(T)-σ)^q
     den=a+b
@@ -38,7 +38,7 @@ end
 # Needed for transforming second derivatives of geometry:
 #   γ''(σ) = γ''(u)*(du/dσ)^2 + γ'(u)*(d²u/dσ²)
 # Used in tangent_2 construction.
-@inline function _panel_grade_map_doubleprime(σ::T,q::Int) where {T<:Real}
+@inline function _panel_grade_map_doubleprime(σ::T,q::T) where {T<:Real}
     qT=T(q)
     omσ=one(T)-σ
     a=σ^q

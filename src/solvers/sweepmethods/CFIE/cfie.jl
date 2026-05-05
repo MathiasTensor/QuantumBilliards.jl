@@ -143,6 +143,8 @@ its Jacobian.
   Optional symmetry descriptor.
 - `kressq::Int`:
   Kress grading strength. Larger values cluster more points near corners/endpoints.
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 
 # Important practical note
 For Float64 arithmetic, aggressive grading can become numerically unstable if
@@ -166,6 +168,7 @@ struct CFIE_kress_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     billiard::Bi 
     symmetry::Sym
     kressq::Int # the grading parameter q in the Kress grading formula, which controls how strongly the nodes are clustered near the corners. A larger value of q results in stronger clustering, which can improve accuracy for problems with sharp corners.
+    min_t_spacing::Real
 end
 
 """
@@ -214,6 +217,8 @@ but now assembled on a globally graded periodic mesh.
   Optional symmetry descriptor.
 - `kressq::Int`:
   Global Kress grading strength parameter.
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 
 # Why this type exists
 For composite boundaries, the Kress logarithmic splitting only works correctly
@@ -240,6 +245,7 @@ struct CFIE_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym} <: CFIE
     billiard::Bi
     symmetry::Sym
     kressq::Int
+    min_t_spacing::Real
 end
 
 """
@@ -276,12 +282,14 @@ Constructor for CFIE_kress_corners solver.
 - `eps`: Unused internally.
 - `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
 - `kressq`: The grading parameter q in Kress's grading technique, which controls the clustering of discretization points near the corners. Default is 4. !!! DO NOT PUSH THIS PAST 4 IN FLOAT64
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 """
-function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:AbsBilliard}
     bs=typeof(pts_scaling_factor)==T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    return CFIE_kress_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
+    return CFIE_kress_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq,min_t_spacing)
 end
 
 """
@@ -295,13 +303,15 @@ Constructor for CFIE_kress_global_corners solver.
 - `min_pts`: Minimum number of discretization points on the boundary, which ensures that even for low wavenumbers or short boundaries, we have enough points to accurately represent the geometry and solve the integral equation. Practically irrelevant since we will always be above this value. Default is 20.
 - `eps`: Unused internally.
 - `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
-- `kressq`: The grading parameter q in the global Kress grading technique, which controls the clustering of discretization points near the corners. Default is 8.
+- `kressq`: The grading parameter q in the global Kress grading technique, which controls the clustering of discretization points near the corners. Default is 4.
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 """
-function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    return CFIE_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq)
+    return CFIE_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq,min_t_spacing)
 end
 
 #################################
@@ -351,6 +361,8 @@ quadrature rules rather than a global dense `R` matrix.
   Order of the Alpert correction rule.
 - `alpertq::Int`:
   Panel grading strength parameter used in the endpoint clustering map.
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 
 # Mathematical viewpoint
 Where the Kress method removes the logarithmic singularity through an analytic
@@ -377,6 +389,7 @@ struct CFIE_alpert{T<:Real,Bi<:AbsBilliard,Sym}<:CFIE
     symmetry::Sym
     alpert_order::Int
     alpertq::Int
+    min_t_spacing::Real
 end
 
 """
@@ -392,16 +405,18 @@ Constructor for CFIE_alpert solver.
 - `symmetry`: Symmetry information for the billiard, which can be used to reduce the computational cost by exploiting symmetries in the geometry. It can be `nothing` if no symmetry is present or an instance of a type that implements `AbsSymmetry` if symmetries are present. Default is `nothing`.
 - `alpert_order`: The order of the Alpert quadrature correction to use for near interactions. Supported values are 2, 3, 4, 5, 6, 8, 10, 12, 14, and 16. Default is 12.
 - `alpertq`: The grading strength parameter for the Alpert quadrature. Default is 4.
+- `min_t_spacing::T`: Minimal spacing in ts parametrization after grading such
+  that there are no solver or symmetry issues due to desymmetrization.
 
 # Output:
 - An instance of the `CFIE_alpert` solver initialized with the provided parameters.
 """
-function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=12,alpertq::Int=4) where {T<:Real,Bi<:AbsBilliard}
+function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts::Int=20,eps::T=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,alpert_order::Int=12,alpertq::Int=4,min_t_spacing=1e-12) where {T<:Real,Bi<:AbsBilliard}
     !(alpert_order in (2,3,4,5,6,8,10,12,14,16)) && error("Alpert order not currently supported")
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[LinearNodes()]
     Sym=typeof(symmetry)
-    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order,alpertq)
+    return CFIE_alpert{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,alpert_order,alpertq,min_t_spacing)
 end
 
 #### use N even for the algorithm - equidistant parameters ####
@@ -1038,7 +1053,7 @@ are stored explicitly in the returned `BoundaryPointsCFIE`.
 # Returns
 - `BoundaryPointsCFIE`
 """
-function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int;minsep_tol=T(1e-12)) where {T<:Real,C<:AbsCurve}
     L=crv.length
     bs=solver.pts_scaling_factor
     N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
@@ -1048,37 +1063,47 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) whe
         if sym isa Rotation
             needed=lcm(needed,sym.n)
         elseif hasproperty(sym,:axis)
-            needed=lcm(needed,4) # handles x/y/origin reflection symmetry cleanly
+            needed=lcm(needed,4)
         end
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
     hσ=inv(T(N))
     sig=[T(j-0.5)/T(N) for j in 1:N]
-    xy=Vector{SVector{2,T}}(undef,N)
-    tangent_1st=Vector{SVector{2,T}}(undef,N)
-    tangent_2nd=Vector{SVector{2,T}}(undef,N)
-    ds=Vector{T}(undef,N)
-    tmap=Vector{T}(undef,N)
-    @inbounds for j in 1:N
-        σ=sig[j]
-        u,jac,jac2=_panel_sigma_to_u_jac(solver,σ)
-        tmap[j]=u
-        q=curve(crv,u)
-        tu=tangent(crv,u)
-        t2u=tangent_2(crv,u)
-        xy[j]=q
-        tangent_1st[j]=tu*jac
-        tangent_2nd[j]=t2u*(jac^2)+tu*jac2
-        ds[j]=sqrt((tu[1]*jac)^2+(tu[2]*jac)^2)*hσ
+    qT=T(solver.alpertq)
+    while qT>one(T)
+        xy=Vector{SVector{2,T}}(undef,N)
+        tangent_1st=Vector{SVector{2,T}}(undef,N)
+        tangent_2nd=Vector{SVector{2,T}}(undef,N)
+        ds=Vector{T}(undef,N)
+        tmap=Vector{T}(undef,N)
+        @inbounds for j in 1:N
+            σ=sig[j]
+            u,jac,jac2=_panel_sigma_to_u_jac(solver,σ,qT)
+            tmap[j]=u
+            q=curve(crv,u)
+            tu=tangent(crv,u)
+            t2u=tangent_2(crv,u)
+            xy[j]=q
+            tangent_1st[j]=tu*jac
+            tangent_2nd[j]=t2u*(jac^2)+tu*jac2
+            ds[j]=hypot(tu[1]*jac,tu[2]*jac)*hσ
+        end
+        minsep=minimum(diff(tmap))
+        if minsep>=minsep_tol
+            ws=fill(hσ,N)
+            ws_der=ones(T,N)
+            xL=curve(crv,zero(T))
+            xR=curve(crv,one(T))
+            tL=tangent(crv,zero(T))
+            tR=tangent(crv,one(T))
+            return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,sig,tmap,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
+        end
+        qnew=max(one(T),T(0.75)*qT)
+        @warn "Alpert panel grading nodes too close; reducing q." q_old=qT q_new=qnew minsep=minsep minsep_tol=minsep_tol N=N
+        qT=qnew
     end
-    ws=fill(hσ,N)
-    ws_der=ones(T,N)
-    xL=curve(crv,zero(T))
-    xR=curve(crv,one(T))
-    tL=tangent(crv,zero(T))
-    tR=tangent(crv,one(T))
-    return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,sig,tmap,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
+    error("Alpert grading impossible: q reached 1 while min panel parameter spacing stayed below $minsep_tol.")
 end
 
 """
