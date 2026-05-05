@@ -51,6 +51,29 @@ struct DLPKressWorkspace{T<:Real,M<:AbstractMatrix{T}}
 end
 
 """
+
+    DLPKressReducedWorkspace{T,M}
+
+Reduced DLP-Kress workspace for symmetry-image assembly.
+The boundary points `pts` are still the full Kress boundary discretization, so
+the Kress logarithmic split is built on the full periodic grid. The reduced
+matrix is assembled only on the indices `Ifund`, and the missing symmetry copies
+of each source point are added as regular image-kernel contributions.
+This avoids constructing the full complex Fredholm matrix while preserving the
+full-boundary Kress logarithmic singular quadrature.
+"""
+struct DLPKressReducedWorkspace{T<:Real,M<:AbstractMatrix{T}}
+    full::DLPKressWorkspace{T,M}
+    Ifund::Vector{Int}
+    xs::Vector{T}
+    ys::Vector{T}
+    nx::Vector{T}
+    ny::Vector{T}
+    speed::Vector{T}
+    m::Int
+end
+
+"""
     DLP_kress{T,Bi,Sym} <: SweepSolver
 
 Solver type for the Kress-corrected double-layer Fredholm formulation on a
@@ -200,50 +223,8 @@ end
 @inline _is_dlp_kress_graded(::DLP_kress,pts::BoundaryPointsCFIE)=false
 @inline _is_dlp_kress_graded(::DLP_kress_global_corners,pts::BoundaryPointsCFIE)=_is_nontrivial_grading(pts)
 @inline _is_nontrivial_grading(pts::BoundaryPointsCFIE{T}) where {T<:Real}=maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T))
-
-"""
-    build_dlp_kress_workspace(solver,pts)
-
-Build and return a `DLPKressWorkspace` for a fixed boundary discretization.
-
-This function collects all geometry-dependent ingredients needed for repeated
-matrix assembly:
-
-1. the Kress correction matrix `Rmat`,
-2. the pairwise geometry cache `G`,
-3. the unpacked panel arrays `parr`,
-4. the matrix size `N`.
-
-# Arguments
-- `solver::Union{DLP_kress,DLP_kress_global_corners}`:
-  Determines whether the smooth or corner-graded Kress correction is built and
-  whether the geometry cache includes grading-aware logarithmic corrections.
-- `pts::BoundaryPointsCFIE{T}`:
-  Boundary discretization returned by `evaluate_points`.
-
-# Returns
-- `DLPKressWorkspace{T}`
-
-# Why this function exists
-Repeatedly constructing `Rmat` and the pairwise geometry cache is expensive.
-This builder should be used whenever the same boundary points will be reused for
-multiple `k` values, such as in:
-- k-sweeps,
-- Newton refinement,
-- Krylov-based EBIM routines.
-
-# Notes
-`pts` must already be compatible with the solver type:
-- smooth periodic for `DLP_kress`,
-- graded periodic discretization for `DLP_kress_global_corners`, with either even or odd size depending on the chosen symmetry-compatible node count.
-"""
-function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
-    Rmat=build_Rmat_dlp_kress(solver,pts)
-    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
-    parr=_panel_arrays_cache(pts)
-    N=length(pts.xy)
-    return DLPKressWorkspace(Rmat,G,parr,N)
-end
+# Use symmetry images with DLP Kress solvers when we only need a subspace and therefore dint need the full Fredholm matrix 
+@inline _dlp_kress_use_reduced(solver::Union{DLP_kress,DLP_kress_global_corners})=!isnothing(solver.symmetry)
 
 """
     build_Rmat_dlp_kress(solver::DLP_kress,pts)
@@ -383,7 +364,7 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    ts=[s(j,N) for j in 1:N]
+    ts=[s_mid(j,N) for j in 1:N]
     ts_rescaled=ts./two_pi
     xy=curve(crv,ts_rescaled)
     tangent_1st=tangent(crv,ts_rescaled)./two_pi
@@ -446,7 +427,7 @@ function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},c
     end
     remN=mod(N,needed)
     remN!=0&&(N+=needed-remN)
-    ts=[s(j,N) for j in 1:N]
+    ts=[s_mid(j,N) for j in 1:N]
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
@@ -643,6 +624,92 @@ function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) 
     # Use a CFIE-type solver for multiply connected geometries.
     error("DLP_kress_global_corners supports exactly one outer boundary component.")
 end
+
+"""
+    build_dlp_kress_workspace_full(solver,pts)
+
+Build and return a `DLPKressWorkspace` for a fixed full boundary discretization.
+
+This function collects all geometry-dependent ingredients needed for repeated
+matrix assembly:
+
+1. the Kress correction matrix `Rmat`,
+2. the pairwise geometry cache `G`,
+3. the unpacked panel arrays `parr`,
+4. the matrix size `N`.
+
+# Arguments
+- `solver::Union{DLP_kress,DLP_kress_global_corners}`:
+  Determines whether the smooth or corner-graded Kress correction is built and
+  whether the geometry cache includes grading-aware logarithmic corrections.
+- `pts::BoundaryPointsCFIE{T}`:
+  Boundary discretization returned by `evaluate_points`.
+
+# Returns
+- `DLPKressWorkspace{T}`
+
+# Why this function exists
+Repeatedly constructing `Rmat` and the pairwise geometry cache is expensive.
+This builder should be used whenever the same boundary points will be reused for
+multiple `k` values, such as in:
+- k-sweeps,
+- Newton refinement,
+- Krylov-based EBIM functions.
+
+# Notes
+`pts` must already be compatible with the solver type:
+- smooth periodic for `DLP_kress`,
+- graded periodic discretization for `DLP_kress_global_corners`, with either even or odd size depending on the chosen symmetry-compatible node count.
+"""
+function build_dlp_kress_workspace_full(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    Rmat=build_Rmat_dlp_kress(solver,pts)
+    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+    parr=_panel_arrays_cache(pts)
+    N=length(pts.xy)
+    return DLPKressWorkspace(Rmat,G,parr,N)
+end
+
+
+#    dlp_kress_component_normals(pts)
+#
+# Return outward normals and speeds for a full DLP-Kress boundary discretization.
+# The normal is computed from the stored tangent by the convention `(tx,ty) ->
+# (ty,-tx)`, matching the source-normal DLP kernel used in the Kress assembly.
+function dlp_kress_component_normals(pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    N=length(pts.xy)
+    nx=Vector{T}(undef,N)
+    ny=Vector{T}(undef,N)
+    speed=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        tx=pts.tangent[i][1]
+        ty=pts.tangent[i][2]
+        sp=hypot(tx,ty)
+        speed[i]=sp
+        nx[i]=ty/sp
+        ny[i]=-tx/sp
+    end
+    return nx,ny,speed
+end
+
+function build_dlp_kress_reduced_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};tol::T=T(1e-12)) where {T<:Real}
+    full=build_dlp_kress_workspace_full(solver,pts)
+    Ifund=fundamental_indices(pts,solver.symmetry;billiard=solver.billiard,tol=tol)
+    xs=getindex.(pts.xy,1)
+    ys=getindex.(pts.xy,2)
+    nx,ny,speed=dlp_kress_component_normals(pts)
+    return DLPKressReducedWorkspace(full,Ifund,xs,ys,nx,ny,speed,length(Ifund))
+end
+
+function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};tol::T=T(1e-12)) where {T<:Real}
+    _dlp_kress_use_reduced(solver) ? build_dlp_kress_reduced_workspace(solver,pts;tol=tol) : build_dlp_kress_workspace_full(solver,pts)
+end
+
+@inline _workspace_dim(ws::DLPKressWorkspace)=ws.N
+@inline _workspace_dim(ws::DLPKressReducedWorkspace)=ws.m
+
+###############################################
+############# NO SYMMETRY PATHWAY #############
+###############################################
 
 """
     construct_dlp_matrix!(solver, D, pts, Rmat, G, k; multithreaded=true)
@@ -1000,6 +1067,329 @@ function construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kres
     return F,F1,F2
 end
 
+#################################################
+############# DESYMMETRIZED PATHWAY #############
+#################################################
+
+@inline function _regular_dlp_image_D(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,k::T,scale::Complex{T}) where {T<:Real}
+    dx=xi-xj;dy=yi-yj
+    r=hypot(dx,dy)
+    r<eps(T) && return zero(Complex{T})
+    c=(nxj*dx+nyj*dy)/r
+    return scale*Complex{T}(0,k/2)*c*H(1,k*r)*wj
+end
+
+@inline function _regular_dlp_image_D_derivs(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,k::T,scale::Complex{T}) where {T<:Real}
+    dx=xi-xj;dy=yi-yj
+    r=hypot(dx,dy)
+    r<eps(T) && return zero(Complex{T}),zero(Complex{T}),zero(Complex{T})
+    c=(nxj*dx+nyj*dy)/r
+    kr=k*r
+    h0,h1=hankel_pair01(kr)
+    D=scale*Complex{T}(0,k/2)*c*h1*wj
+    D1=scale*Complex{T}(0,1/2)*c*(kr*h0)*wj
+    D2=scale*Complex{T}(0,1/2)*c*(r*h0-k*r^2*h1)*wj
+    return D,D1,D2
+end
+
+"""
+    construct_dlp_matrix!(solver, D, pts, rws, k; multithreaded=true)
+
+Assemble the reduced, symmetry-desymmetrized DLP matrix.
+
+This is the memory-saving symmetry path for `DLP_kress` and
+`DLP_kress_global_corners`. The full boundary discretization `pts` is retained,
+and the full Kress logarithmic correction is still used for interactions between
+fundamental-domain nodes. However, the output matrix `D` is only `m × m`, where
+
+    m = length(rws.Ifund).
+
+For fundamental-domain row/column indices `a,b`, with full-boundary indices
+
+    i = rws.Ifund[a],
+    j = rws.Ifund[b],
+
+the same physical-copy contribution is assembled with the full Kress split
+
+    D[a,b] = D_full[i,j].
+
+The missing symmetry copies of source node `j` are then added as regular image
+kernel contributions. These image terms are nonsingular with respect to the
+fundamental source point and therefore do not use the Kress logarithmic
+correction.
+
+# Important indexing convention
+`D` is already reduced. Its indices are fundamental-domain indices `a,b`, not
+full-boundary indices `i,j`. Full-boundary indices are used only to access the
+geometry cache, Kress matrix, quadrature weights, and image-source data.
+
+# Inputs
+- `solver`:
+  `DLP_kress` or `DLP_kress_global_corners` with a non-`nothing` symmetry.
+- `D`:
+  Preallocated `m × m` complex matrix to receive the reduced DLP operator.
+- `pts`:
+  Full boundary discretization.
+- `rws`:
+  Reduced workspace containing the full workspace, fundamental indices, and
+  source-image geometry.
+- `k`:
+  Real wavenumber.
+- `multithreaded`:
+  Enables threaded assembly of the same-copy fundamental block.
+
+# Returns
+- `D`, modified in place.
+"""
+function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    m=rws.m
+    @assert size(D,1)==m&&size(D,2)==m
+    Rmat=rws.full.Rmat;G=rws.full.G;Ifund=rws.Ifund
+    αL1=-k*inv_two_pi;αL2=Complex{T}(0,k/2)
+    fill!(D,zero(Complex{T}))
+    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+        j=Ifund[b]
+        @inbounds for a in 1:m
+            i=Ifund[a]
+            if i==j
+                D[a,b]=Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
+            else
+                r=G.R[i,j];invr=G.invR[i,j];lt=G.logterm[i,j];inn=G.inner[i,j]
+                _,h1=hankel_pair01(k*r)
+                j1=real(h1)
+                l1=αL1*inn*j1*invr
+                l2=αL2*inn*h1*invr-l1*lt
+                D[a,b]=Rmat[i,j]*l1+pts.ws[j]*l2
+            end
+        end
+    end
+    imgs=Vector{Tuple{T,T,T,T,Complex{T}}}()
+    for b in 1:m
+        j=Ifund[b]
+        _image_sources!(imgs,rws.xs[j],rws.ys[j],rws.nx[j],rws.ny[j],solver.symmetry,solver.billiard)
+        wj=rws.speed[j]*pts.ws[j]
+        @inbounds for a in 1:m
+            i=Ifund[a];xi=rws.xs[i];yi=rws.ys[i]
+            for img in imgs
+                D[a,b]+=_regular_dlp_image_D(xi,yi,img[1],img[2],img[3],img[4],wj,k,img[5])
+            end
+        end
+    end
+    return D
+end
+
+"""
+    construct_fredholm_matrix!(solver, F, pts, rws, k; multithreaded=true)
+
+Assemble the reduced, symmetry-desymmetrized Fredholm matrix
+
+    F(k) = I - D(k).
+
+This method first assembles the reduced DLP matrix with
+
+    construct_dlp_matrix!(solver, F, pts, rws, k),
+
+using `F` as a temporary storage buffer. It then converts the result in place to
+the Fredholm second-kind matrix by applying
+
+    F .= -F
+    F[a,a] += 1.
+
+The resulting matrix acts only on the symmetry-reduced unknowns supported on the
+fundamental boundary indices `rws.Ifund`. The same-copy singular interaction is
+Kress corrected on the full periodic grid, while all symmetry images are added
+as regular nonsingular DLP image kernels.
+
+# Important indexing convention
+The output `F` is `m × m` and is already reduced. Its rows and columns are
+fundamental-domain indices, not full-boundary node indices.
+
+# Inputs
+- `solver`:
+  `DLP_kress` or `DLP_kress_global_corners`.
+- `F`:
+  Preallocated `m × m` complex matrix.
+- `pts`:
+  Full boundary discretization.
+- `rws`:
+  Reduced DLP-Kress workspace.
+- `k`:
+  Real wavenumber.
+- `multithreaded`:
+  Passed to the reduced DLP assembly.
+
+# Returns
+- `F`, modified in place.
+"""
+function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_dlp_matrix!(solver,F,pts,rws,k;multithreaded=multithreaded)
+    @inbounds for j in axes(F,2),i in axes(F,1)
+        F[i,j]*=-1
+    end
+    @inbounds for i in axes(F,1)
+        F[i,i]+=one(Complex{T})
+    end
+    return F
+end
+
+"""
+    construct_dlp_matrix_derivatives!(solver, D, D1, D2, pts, rws, k; multithreaded=true)
+
+Assemble the reduced DLP matrix and its first two derivatives with respect to
+the wavenumber `k`.
+
+This is the symmetry-reduced analogue of the full-boundary derivative
+constructor. It computes, in place,
+
+    D  = D(k),
+    D1 = dD/dk,
+    D2 = d²D/dk²,
+
+on the fundamental-domain index set `rws.Ifund`.
+
+# Assembly structure
+For the same physical copy of each fundamental source node, the entries are
+computed from the full Kress split using full-boundary indices
+
+    i = rws.Ifund[a],
+    j = rws.Ifund[b].
+
+For symmetry images of source node `j`, the image kernels are regular and are
+added directly to `D`, `D1`, and `D2` through `_regular_dlp_image_D_derivs`.
+
+# Important indexing convention
+`D`, `D1`, and `D2` are already reduced `m × m` matrices. Their indices are
+fundamental-domain indices `a,b`. Full-boundary indices `i,j` are used only for
+accessing cached full-grid geometry, Kress correction entries, quadrature
+weights, normals, speeds, and image sources.
+
+# Inputs
+- `solver`:
+  `DLP_kress` or `DLP_kress_global_corners`.
+- `D`, `D1`, `D2`:
+  Preallocated `m × m` complex matrices.
+- `pts`:
+  Full boundary discretization.
+- `rws`:
+  Reduced DLP-Kress workspace.
+- `k`:
+  Real wavenumber.
+- `multithreaded`:
+  Enables threaded assembly of the same-copy fundamental block.
+
+# Returns
+- `(D, D1, D2)`, modified in place.
+"""
+function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},D1::AbstractMatrix{Complex{T}},D2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    m=rws.m
+    @assert size(D,1)==m&&size(D,2)==m
+    full=rws.full
+    Rmat=full.Rmat
+    G=full.G
+    Ifund=rws.Ifund
+    αL1=-k*inv_two_pi
+    αL2=Complex{T}(0,k/2)
+    fill!(D,zero(Complex{T}));fill!(D1,zero(Complex{T}));fill!(D2,zero(Complex{T}))
+    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+        j=Ifund[b]
+        @inbounds for a in 1:m
+            i=Ifund[a]
+            if i==j
+                D[a,b]=Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
+            else
+                r=G.R[i,j];invr=G.invR[i,j];lt=G.logterm[i,j];inn=G.inner[i,j]
+                kr=k*r
+                h0,h1=hankel_pair01(kr)
+                j0=real(h0);j1=real(h1)
+                l1=αL1*inn*j1*invr
+                l2=αL2*inn*h1*invr-l1*lt
+                D[a,b]=Rmat[i,j]*l1+pts.ws[j]*l2
+                l1_1=-(inn*k*j0)*inv_two_pi
+                l1_2=(inn*(k*r*j1-j0))*inv_two_pi
+                l2_1=(inn*k*(lt*j0+im*pi*h0))*inv_two_pi
+                l2_2=(inn*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*inv_two_pi
+                D1[a,b]=Rmat[i,j]*l1_1+pts.ws[j]*l2_1
+                D2[a,b]=Rmat[i,j]*l1_2+pts.ws[j]*l2_2
+            end
+        end
+    end
+    imgs=Vector{Tuple{T,T,T,T,Complex{T}}}()
+    for b in 1:m
+        j=Ifund[b]
+        _image_sources!(imgs,rws.xs[j],rws.ys[j],rws.nx[j],rws.ny[j],solver.symmetry,solver.billiard)
+        wj=rws.speed[j]*pts.ws[j]
+        @inbounds for a in 1:m
+            i=Ifund[a]
+            xi=rws.xs[i];yi=rws.ys[i]
+            for img in imgs
+                d,d1,d2=_regular_dlp_image_D_derivs(xi,yi,img[1],img[2],img[3],img[4],wj,k,img[5])
+                D[a,b]+=d;D1[a,b]+=d1;D2[a,b]+=d2
+            end
+        end
+    end
+    return D,D1,D2
+end
+
+"""
+    construct_fredholm_matrix_derivatives!(solver, F, F1, F2, pts, rws, k; multithreaded=true)
+
+Assemble the reduced Fredholm matrix
+
+    F(k) = I - D(k)
+
+and its first two derivatives with respect to `k`.
+
+The buffers `F`, `F1`, and `F2` are first filled with the reduced DLP quantities
+
+    D, dD/dk, d²D/dk²,
+
+by calling `construct_dlp_matrix_derivatives!`. They are then converted in place
+to the Fredholm quantities
+
+    F  = I - D,
+    F1 = -dD/dk,
+    F2 = -d²D/dk².
+
+This is the desymmetrized derivative assembly path used for determinant,
+Newton, EBIM, or singular-value workflows when symmetry reduction is active. The
+same-copy part uses the full-grid Kress correction, while symmetry images are
+added as regular nonsingular contributions.
+
+# Important indexing convention
+All output matrices are reduced `m × m` matrices indexed by fundamental-domain
+indices. Full-boundary indices enter only through `rws.Ifund` when reading
+geometry and quadrature data from the full workspace.
+
+# Inputs
+- `solver`:
+  `DLP_kress` or `DLP_kress_global_corners`.
+- `F`, `F1`, `F2`:
+  Preallocated `m × m` complex matrices.
+- `pts`:
+  Full boundary discretization.
+- `rws`:
+  Reduced DLP-Kress workspace.
+- `k`:
+  Real wavenumber.
+- `multithreaded`:
+  Passed to the reduced DLP derivative assembly.
+
+# Returns
+- `(F, F1, F2)`, modified in place.
+"""
+function construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},F1::AbstractMatrix{Complex{T}},F2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_dlp_matrix_derivatives!(solver,F,F1,F2,pts,rws,k;multithreaded=multithreaded)
+    @inbounds for j in axes(F,2),i in axes(F,1)
+        F[i,j]*=-1
+        F1[i,j]*=-1
+        F2[i,j]*=-1
+    end
+    @inbounds for i in axes(F,1)
+        F[i,i]+=one(Complex{T})
+    end
+    return F,F1,F2
+end
+
 ########################################
 ######### NEEDED FOR HUSIMIS ###########
 ########################################
@@ -1027,7 +1417,7 @@ where `W = diag(ds)`. Entrywise,
 
     D'ᵢⱼ = Dⱼᵢ dsⱼ / dsᵢ.
 
-This routine assembles
+This function assembles
 
     A = I - D'
 
@@ -1057,6 +1447,33 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
     return A
 end
 
+# this version uses the reduced workspace to save memory. Since geometrical information is full boundary
+# we need the fundamental indexes to get the right ds and to index into D.
+function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    m=rws.m
+    # construct the reduced DLP Kress matrix first, then we need fundamental domain idxs and ds to do adjoint
+    construct_dlp_matrix!(solver,D,pts,rws,k;multithreaded=multithreaded)
+    Ifund=rws.Ifund
+    ds=pts.ds
+    # D is already reduced:
+    #   D[a,b] = D_full[Ifund[a], Ifund[b]] plus symmetry images.
+    #
+    # The adjoint is
+    #   D_adj[a,b] = D[b,a] * ds[Ifund[b]] / ds[Ifund[a]]
+    #
+    # because row a corresponds to target i=Ifund[a],
+    # and column b corresponds to source j=Ifund[b].
+    @inbounds for b in 1:m, a in 1:m
+        i=Ifund[a]
+        j=Ifund[b]
+        A[a,b]=-D[b,a]*ds[j]/ds[i]
+    end
+    @inbounds for a in 1:m
+        A[a,a]+=one(Complex{T})
+    end
+    return A
+end
+
 """
     adjoint_fredholm_matrix!(A, solver, pts, k; multithreaded=true)
 
@@ -1072,12 +1489,25 @@ end
     adjoint_fredholm_matrix!(A, solver, pts, Rmat, k; multithreaded=true)
 
 Convenience wrapper using a precomputed Kress correction matrix `Rmat`.
+It is symmetry aware and will build the appropriate geometry cache for the given solver and boundary discretization.
 """
 function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
-    parr=_panel_arrays_cache(pts)
-    ws=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
-    return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
+    if isnothing(solver.symmetry)
+        G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+        parr=_panel_arrays_cache(pts)
+        ws=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
+        return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
+    else
+        G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+        parr=_panel_arrays_cache(pts)
+        full=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
+        Ifund=fundamental_indices(pts,solver.symmetry;billiard=solver.billiard)
+        xs=getindex.(pts.xy,1)
+        ys=getindex.(pts.xy,2)
+        nx,ny,speed=dlp_kress_component_normals(pts)
+        rws=DLPKressReducedWorkspace(full,Ifund,xs,ys,nx,ny,speed,length(Ifund))
+        return adjoint_fredholm_matrix!(A,D,solver,pts,rws,k;multithreaded=multithreaded)
+    end
 end
 
 ##########################################
@@ -1096,7 +1526,7 @@ requested, its first two derivatives with respect to the wavenumber k.
 Overview
 --------
 These methods are the public assembly layer sitting above the low-level DLP
-routines. They all build the same operator family, namely the Fredholm
+functions. They all build the same operator family, namely the Fredholm
 second-kind matrix
 
     A(k) = I - D(k),
@@ -1154,7 +1584,7 @@ Common positional inputs:
   supplied.
 - `basis`:
   A basis object, typically `AbstractHankelBasis()`, included to satisfy the
-  generic interface used by accelerated spectral routines.
+  generic interface used by accelerated spectral functions.
 - `k`:
   Real wavenumber.
 - `multithreaded::Bool=true`:
@@ -1210,6 +1640,31 @@ function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},b
     construct_matrices!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
     return A,dA,ddA
 end
+
+###############################################
+############ DESYMMETRIZED PATHWAY ############
+###############################################
+
+function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_fredholm_matrix!(solver,A,pts,rws,k;multithreaded=multithreaded)
+end
+
+function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_matrices!(solver,A,pts,rws,k;multithreaded=multithreaded)
+    return A
+end
+
+function construct_matrices(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    A=Matrix{Complex{T}}(undef,rws.m,rws.m)
+    construct_matrices!(solver,basis,A,pts,rws,k;multithreaded=multithreaded)
+    return A
+end
+
+function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    construct_fredholm_matrix_derivatives!(solver,A,dA,ddA,pts,rws,k;multithreaded=multithreaded)
+end
+
+###############################################
 
 """
     solve(solver,basis,pts,k;multithreaded=true,use_krylov=true,which=:det)
@@ -1312,10 +1767,10 @@ Its precise meaning depends on `which`:
 - for `:det_argmin`, the backend-specific scalar used in determinant minimization.
 """
 function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
-    N=length(pts.xy)
-    A=Matrix{Complex{T}}(undef,N,N)
-    @blas_1 Rmat=build_Rmat_dlp_kress(solver,pts)
-    @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
+    ws=build_dlp_kress_workspace(solver,pts)
+    n=ws isa DLPKressReducedWorkspace ? ws.m : ws.N
+    A=Matrix{Complex{T}}(undef,n,n)
+    @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
@@ -1335,6 +1790,23 @@ function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::Ab
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
+###############################################
+############ DESYMMETRIZED PATHWAY ############
+###############################################
+
+function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+    A=Matrix{Complex{T}}(undef,rws.m,rws.m)
+    @blas_1 construct_matrices!(solver,A,pts,rws,k;multithreaded=multithreaded)
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
+end
+
+function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_matrices!(solver,A,pts,rws,k;multithreaded=multithreaded)
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
+end
+
+###############################################
+
 """
     solve_vect(solver,basis,A,pts,k,Rmat;multithreaded=true)
     solve_vect(solver,basis,A,pts,ws,k;multithreaded=true)
@@ -1344,7 +1816,7 @@ end
 
 Compute the smallest singular value of the DLP-Kress Fredholm matrix together
 with the associated right singular vector. 
-For a given wavenumber k, these routines compute the singular value decomposition
+For a given wavenumber k, these functions compute the singular value decomposition
 
     A = U Σ V*.
 
@@ -1426,39 +1898,49 @@ Vector-of-k overload returns:
   vector of boundary discretizations used at those wavenumbers.
 """
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    D=similar(A)
-    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
-    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
-    return σ,u
+    ws= if isnothing(solver.symmetry)
+        G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+        parr=_panel_arrays_cache(pts)
+        DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
+    else
+        G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
+        parr=_panel_arrays_cache(pts)
+        full=DLPKressWorkspace(Rmat,G,parr,length(pts.xy))
+        Ifund=fundamental_indices(pts,solver.symmetry;billiard=solver.billiard)
+        xs=getindex.(pts.xy,1)
+        ys=getindex.(pts.xy,2)
+        nx,ny,speed=dlp_kress_component_normals(pts)
+        DLPKressReducedWorkspace(full,Ifund,xs,ys,nx,ny,speed,length(Ifund))
+    end
+    return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+    n=_workspace_dim(ws)
     D=similar(A)
     @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    A=Matrix{Complex{T}}(undef,ws.N,ws.N); D=similar(A)
-    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
-    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
-    return σ,u
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+    n=_workspace_dim(ws)
+    A=Matrix{Complex{T}}(undef,n,n)
+    return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
-    N=length(pts.xy); A=Matrix{Complex{T}}(undef,N,N); D=similar(A)
-    Rmat=build_Rmat_dlp_kress(solver,pts)
-    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=multithreaded)
-    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
-    return σ,u
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+    ws=build_dlp_kress_workspace(solver,pts)
+    return solve_vect(solver,basis,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     kref=maximum(ks)
     pts=evaluate_points(solver,billiard,kref)
     ws=build_dlp_kress_workspace(solver,pts)
-    A=Matrix{Complex{T}}(undef,ws.N,ws.N); D=similar(A)
+    n=_workspace_dim(ws)
+    A=Matrix{Complex{T}}(undef,n,n)
+    D=similar(A)
     us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsCFIE{T}}(undef,length(ks))
     p=Progress(length(ks),desc="Adjoint DLP boundary functions...")
@@ -1472,9 +1954,12 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::
     return us_all,pts_all
 end
 
+###############################################
+
 # INTERNAL - for checking allocation patterns and execution time of the single-k solve variants. Not intended for public use.
-function solve_INFO(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
-    A=Matrix{Complex{T}}(undef,ws.N,ws.N)
+function solve_INFO(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPointsCFIE{T},ws::Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+    N=_workspace_dim(ws)  
+    A=Matrix{Complex{T}}(undef,N,N)
     t0=time()
     @info "Building boundary operator A from cached DLP-Kress workspace..."
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
@@ -1497,9 +1982,10 @@ end
 
 # INTERNAL debugging function to check the consistency of the DLP Kress split.
 function debug_dlp_split_error(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    D=Matrix{Complex{T}}(undef,ws.N,ws.N)
-    Dlog=Matrix{Complex{T}}(undef,ws.N,ws.N)
-    Dsmooth=Matrix{Complex{T}}(undef,ws.N,ws.N)
+    N=_workspace_dim(ws)
+    D=Matrix{Complex{T}}(undef,N,N)
+    Dlog=Matrix{Complex{T}}(undef,N,N)
+    Dsmooth=Matrix{Complex{T}}(undef,N,N)
     construct_dlp_matrix!(solver,D,pts,ws.Rmat,ws.G,k;multithreaded=multithreaded)
     construct_dlp_split!(solver,Dlog,Dsmooth,pts,ws.Rmat,ws.G,ws.parr,k;multithreaded=multithreaded)
     Δ=D-(Dlog+Dsmooth)

@@ -129,6 +129,56 @@ function XYReflection(parity_x,parity_y)
     return Reflection(reflect_x∘reflect_y,[parity_x,parity_y],:origin)
 end
 
+function fundamental_indices(pts::BoundaryPointsCFIE{T},sym;billiard=nothing,tol::T=T(1e-12)) where {T<:Real}
+    isnothing(sym)&&return collect(eachindex(pts.xy))
+    xy=pts.xy
+    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
+    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
+    if sym isa Reflection
+        sym.axis===:y_axis && return findall(p->p[1]>sx+tol,xy)
+        sym.axis===:x_axis && return findall(p->p[2]>sy+tol,xy)
+        sym.axis===:origin && return findall(p->p[1]>sx+tol&&p[2]>sy+tol,xy)
+    elseif sym isa Rotation
+        cx,cy=sym.center
+        θmax=T(two_pi)/T(sym.n)
+        return findall(p->begin
+            θ=mod(atan(p[2]-T(cy),p[1]-T(cx)),T(two_pi))
+            θ>=tol&&θ<θmax-tol
+        end,xy)
+    end
+    error("Unsupported symmetry $(typeof(sym))")
+end
+
+@inline function _image_sources!(out,x::T,y::T,nx::T,ny::T,sym,billiard::Bi) where {T<:Real,Bi<:AbsBilliard}
+    empty!(out)
+    isnothing(sym) && return out
+    sx=hasproperty(billiard,:x_axis) ? T(getproperty(billiard,:x_axis)) : zero(T)
+    sy=hasproperty(billiard,:y_axis) ? T(getproperty(billiard,:y_axis)) : zero(T)
+    if sym isa Reflection
+        if sym.axis===:y_axis
+            push!(out,(_x_reflect(x,sx),y,_x_reflect_normal(nx,ny)...,Complex{T}(sym.parity)))
+        elseif sym.axis===:x_axis
+            push!(out,(x,_y_reflect(y,sy),_y_reflect_normal(nx,ny)...,Complex{T}(sym.parity)))
+        elseif sym.axis===:origin
+            σx,σy=sym.parity
+            push!(out,(_x_reflect(x,sx),y,_x_reflect_normal(nx,ny)...,Complex{T}(σx)))
+            push!(out,(x,_y_reflect(y,sy),_y_reflect_normal(nx,ny)...,Complex{T}(σy)))
+            push!(out,(_x_reflect(x,sx),_y_reflect(y,sy),_xy_reflect_normal(nx,ny)...,Complex{T}(σx*σy)))
+        end
+    elseif sym isa Rotation
+        ctab,stab,χ=_rotation_tables(T,sym.n,sym.m)
+        cx,cy=sym.center
+        for l in 1:sym.n-1
+            xr,yr=_rot_point(x,y,T(cx),T(cy),ctab[l+1],stab[l+1])
+            nxr,nyr=_rot_vec(nx,ny,ctab[l+1],stab[l+1])
+            push!(out,(xr,yr,nxr,nyr,χ[l+1]))
+        end
+    else
+        error("Unsupported symmetry $(typeof(sym))")
+    end
+    return out
+end
+
 """
     apply_symmetries_to_boundary_points(pts::BoundaryPoints{T},symmetries,billiard::Bi; same_direction::Bool=true) where {Bi<:AbsBilliard,T<:Real}
 

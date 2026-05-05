@@ -405,7 +405,8 @@ function CFIE_alpert(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts
 end
 
 #### use N even for the algorithm - equidistant parameters ####
-s(k::Int,N::Int)=two_pi*k/N
+@inline s(k::Int,N::Int)=two_pi*k/N
+@inline s_mid(k::Int,N::Int)=two_pi*(k-0.5)/N # midpoint version of the equispaced nodes to avoid sampling 0
 
 
 """

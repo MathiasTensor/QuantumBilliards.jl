@@ -52,7 +52,8 @@ function _k_sweep_prepare(solver::Union{DLP_kress,DLP_kress_global_corners},basi
     pts=evaluate_points(solver,billiard,kmax)
     ws=build_dlp_kress_workspace(solver,pts)
     T=eltype(pts.ws)
-    A=Matrix{Complex{T}}(undef,ws.N,ws.N)
+    N=_matrix_size(ws)
+    A=Matrix{Complex{T}}(undef,N,N)
     solve_first=k->solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     return solve_first,solve_one
@@ -222,6 +223,7 @@ end
 @inline _matrix_size(ws::CFIEKressWorkspace)=ws.Ntot
 @inline _matrix_size(ws::CFIEAlpertWorkspace)=ws.Ntot
 @inline _matrix_size(ws::DLPKressWorkspace)=ws.N
+@inline _matrix_size(ws::DLPKressReducedWorkspace)=ws.m
 
 function _newton_buffers(::Type{T},N::Int) where {T<:Real}
     A=Matrix{Complex{T}}(undef,N,N)
@@ -256,7 +258,7 @@ function _prepare_newton_refinement(solver::Union{DLP_kress,DLP_kress_global_cor
     ws=build_dlp_kress_workspace(solver,pts)
     N=_matrix_size(ws)
     A,dA,ddA,G,H,H2,W=_newton_buffers(T,N)
-    assemble=kk->construct_matrices!(solver,basis,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
+    assemble=kk->construct_matrices!(solver,A,dA,ddA,pts,ws,kk;multithreaded=multithreaded_matrices)
     return assemble,A,dA,ddA,G,H,H2,W
 end
 
