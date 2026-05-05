@@ -72,24 +72,29 @@ Constructs the full rectangle billiard with specified width and height.
   - `corners::Vector{SVector{2,T}}`: The corner points of the full rectangle.
 """
 function make_full_rectangle(width,height;x0=0.0,y0=0.0,rot_angle=0.0)
-    type=typeof(width)
+    T=typeof(width)
     origin=SVector(x0,y0)
-    # Define the corners of the full rectangle
-    half_width=width/2
-    half_height=height/2
-    bottom_left=SVector(-half_width,-half_height)
-    bottom_right=SVector(half_width,-half_height)
-    top_right=SVector(half_width,half_height)
-    top_left=SVector(-half_width,half_height)
-    # Line segments for the full rectangle
-    bottom_side=LineSegment(bottom_left,bottom_right;origin=origin,rot_angle=rot_angle)
-    right_side=LineSegment(bottom_right,top_right;origin=origin,rot_angle=rot_angle)
-    top_side=LineSegment(top_right,top_left;origin=origin,rot_angle=rot_angle)
-    left_side=LineSegment(top_left,bottom_left;origin=origin,rot_angle=rot_angle)
-    # Counterclockwise
-    boundary = Union{LineSegment{type}}[bottom_side,right_side,top_side,left_side]
-    corners=[bottom_left,bottom_right,top_right,top_left]
-    return boundary, corners
+    hw=width/2
+    hh=height/2
+    mr=SVector(hw,zero(T))
+    tr=SVector(hw,hh)
+    mt=SVector(zero(T),hh)
+    tl=SVector(-hw,hh)
+    ml=SVector(-hw,zero(T))
+    bl=SVector(-hw,-hh)
+    mb=SVector(zero(T),-hh)
+    br=SVector(hw,-hh)
+    s1=LineSegment(mr,tr;origin=origin,rot_angle=rot_angle)
+    s2=LineSegment(tr,mt;origin=origin,rot_angle=rot_angle)
+    s3=LineSegment(mt,tl;origin=origin,rot_angle=rot_angle)
+    s4=LineSegment(tl,ml;origin=origin,rot_angle=rot_angle)
+    s5=LineSegment(ml,bl;origin=origin,rot_angle=rot_angle)
+    s6=LineSegment(bl,mb;origin=origin,rot_angle=rot_angle)
+    s7=LineSegment(mb,br;origin=origin,rot_angle=rot_angle)
+    s8=LineSegment(br,mr;origin=origin,rot_angle=rot_angle)
+    boundary=LineSegment{T}[s1,s2,s3,s4,s5,s6,s7,s8]
+    corners=SVector{2,T}[tr,tl,bl,br]
+    return boundary,corners
 end
 
 """
