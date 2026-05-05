@@ -307,13 +307,11 @@ end
     return mod1(j,N)
 end
 
-@inline function _local_match_index(x::T,y::T,xy,j0::Int;window::Int=12,tol::T=T(1e-12)) where {T<:Real}
-    N=length(xy)
-    best=_periodic_index(j0,N)
+@inline function _match_index_global(x::T,y::T,xy;tol::T=T(1e-12)) where {T<:Real}
+    best=1
     bestd2=typemax(T)
     tol2=tol*tol
-    @inbounds for δ in -window:window
-        j=_periodic_index(j0+δ,N)
+    @inbounds for j in eachindex(xy)
         dx=xy[j][1]-x
         dy=xy[j][2]-y
         d2=dx*dx+dy*dy
@@ -322,7 +320,9 @@ end
             best=j
         end
     end
-    bestd2<=tol2 || error("Could not match symmetry image locally. Best distance = $(sqrt(bestd2)), tol = $tol, predicted index = $j0, window = $window")
+    bestd2<=tol2 || error("Could not match symmetry image globally. " *
+    "Best distance = $(sqrt(bestd2)), tol = $tol")
+
     return best
 end
 
@@ -376,16 +376,16 @@ function symmetry_index_orbits(::Type{T},pts,sym,billiard;tol::T=T(1e-12),window
             Ifund=collect(1:N÷2)
             p=Complex{T}(sym.parity,0)
             orbit=q->begin
-                qx=_local_match_index(_x_reflect(xy[q][1],sx),xy[q][2],xy,_idx_reflect_y_axis(q,N);window=window,tol=tol)
-                return ([q,qx],[one(Complex{T}),p])
+                qx=_match_index_global(_x_reflect(xy[q][1],sx),xy[q][2],xy;tol=tol)
+                ([q,qx],[one(Complex{T}),p])
             end
         elseif sym.axis===:x_axis
             @assert iseven(N)
             Ifund=collect(1:N÷2)
             p=Complex{T}(sym.parity,0)
             orbit=q->begin
-                qy=_local_match_index(xy[q][1],_y_reflect(xy[q][2],sy),xy,_idx_reflect_x_axis(q,N);window=window,tol=tol)
-                return ([q,qy],[one(Complex{T}),p])
+                qy=_match_index_global(xy[q][1],_y_reflect(xy[q][2],sy),xy;tol=tol)
+                ([q,qy],[one(Complex{T}),p])
             end
         elseif sym.axis===:origin
             @assert mod(N,4)==0
@@ -394,12 +394,11 @@ function symmetry_index_orbits(::Type{T},pts,sym,billiard;tol::T=T(1e-12),window
             px=Complex{T}(σx,0)
             py=Complex{T}(σy,0)
             orbit=q->begin
-                qx=_local_match_index(_x_reflect(xy[q][1],sx),xy[q][2],xy,_idx_reflect_y_axis(q,N);window=window,tol=tol)
-                qy=_local_match_index(xy[q][1],_y_reflect(xy[q][2],sy),xy,_idx_reflect_x_axis(q,N);window=window,tol=tol)
-                qxy=_local_match_index(_x_reflect(xy[q][1],sx),_y_reflect(xy[q][2],sy),xy,_idx_rotate_pi(q,N);window=window,tol=tol)
-                return ([q,qx,qy,qxy],[one(Complex{T}),px,py,px*py])
+                qx  = _match_index_global(_x_reflect(xy[q][1],sx), xy[q][2], xy; tol=tol)
+                qy  = _match_index_global(xy[q][1], _y_reflect(xy[q][2],sy), xy; tol=tol)
+                qxy = _match_index_global(_x_reflect(xy[q][1],sx), _y_reflect(xy[q][2],sy), xy; tol=tol)
+                ([q,qx,qy,qxy],[one(Complex{T}),px,py,px*py])
             end
-
         else
             error("Unsupported reflection axis $(sym.axis)")
         end
