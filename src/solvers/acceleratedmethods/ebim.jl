@@ -1121,7 +1121,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
 end
 
 """
-    solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,pts::BoundaryPoints,k;multithreaded::Bool=true)
+    solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,pts,k;multithreaded::Bool=true)
 
 A debug routine that solves the generalized eigenproblem `(A, dA)` at wavenumber `k`, then applies
 both first- and second-order corrections to refine the approximate roots. Specifically,
@@ -1135,7 +1135,7 @@ and `|corr₁ + corr₂|`.
 
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The EBIM solver config.
-- `pts::BoundaryPoints`: Boundary geometry.
+- `pts`: Boundary geometry.
 - `k`: Wavenumber for the eigenproblem.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
@@ -1146,7 +1146,7 @@ and `|corr₁ + corr₂|`.
    3. `λ_corrected_2 = k + corr₁ + corr₂` (2nd-order),
    4. `tens_2 = corr₁ + corr₂`.
 """
-function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
+function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     λ,VR,VL=generalized_eigen_all(A,dA)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
