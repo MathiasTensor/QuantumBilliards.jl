@@ -137,19 +137,58 @@ end
 @inline _idx_rotate_pi(q::Int,N::Int)=_mod1(q+N÷2,N) # rotation by π (C₂)
 @inline _idx_rotate(q::Int,N::Int,n::Int,l::Int)=_mod1(q+l*(N÷n),N) # rotation by 2πl/n (Cₙ)
 
+# ------------------------------------------------------------------------------
+# periodic_symmetry_index_orbits(::Type{T}, N, sym::Reflection)
+#
+# Build periodic symmetry orbits for reflection symmetries on a cyclic boundary
+# discretization of size N.
+#
+# The boundary nodes are indexed periodically:
+#     q ∈ {1,...,N}
+#
+# A reflection symmetry partitions these indices into orbits:
+#     orbit(q) = {q, g(q), ...}
+#
+# where g is the reflection map (x→-x, y→-y, or both).
+#
+# Each orbit carries a parity (phase factor):
+#     χ ∈ {+1, -1}
+#
+# so that boundary unknowns satisfy:
+#     u(g(q)) = χ * u(q)
+#
+# Supported symmetries:
+#   :y_axis   → reflection x → -x
+#   :x_axis   → reflection y → -y
+#   :origin   → combined reflections (C₂ symmetry)
+#
+# Orbit sizes:
+#   - :y_axis, :x_axis → 2-element orbits
+#   - :origin          → 4-element orbits
+#
+# Constraints:
+#   - even N required for :x_axis and :y_axis
+#   - N % 4 == 0 required for :origin
+#
+# where:
+#   Ifund[b]           = representative index of orbit b
+#   full_to_fund[q]    = fundamental index corresponding to full index q
+#   full_to_scale[q]   = phase factor mapping full → fundamental
+#   fund_to_full[b]    = full indices in orbit b
+#   fund_to_scale[b]   = corresponding phase factors
 function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where {T<:Real}
     if sym.axis===:y_axis
         @assert iseven(N)
         m=N÷2
         Ifund=collect(1:m)
         p=Complex{T}(sym.parity,0)
-        orbit(q)=([q,_periodic_idx_reflect_y_axis(q,N)],[one(Complex{T}),p])
+        orbit=q->([q,_idx_reflect_y_axis(q,N)],[one(Complex{T}),p])
     elseif sym.axis===:x_axis
         @assert iseven(N)
         m=N÷2
         Ifund=collect(1:m)
         p=Complex{T}(sym.parity,0)
-        orbit(q)=([q,_periodic_idx_reflect_x_axis(q,N)],[one(Complex{T}),p])
+        orbit=q->([q,_idx_reflect_x_axis(q,N)],[one(Complex{T}),p])
     elseif sym.axis===:origin
         @assert mod(N,4)==0
         m=N÷4
@@ -157,23 +196,67 @@ function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where 
         σx,σy=sym.parity
         px=Complex{T}(σx,0)
         py=Complex{T}(σy,0)
-        orbit(q)=([q,_periodic_idx_reflect_y_axis(q,N),_periodic_idx_reflect_x_axis(q,N),_periodic_idx_rotate_pi(q,N)],[one(Complex{T}),px,py,px*py])
+        orbit=q->([q,_idx_reflect_y_axis(q,N),_idx_reflect_x_axis(q,N),_idx_rotate_pi(q,N)],[one(Complex{T}),px,py,px*py])
     else
         error("Unsupported reflection axis $(sym.axis)")
     end
     return _build_periodic_orbit_maps(T,N,Ifund,orbit)
 end
 
+# ------------------------------------------------------------------------------
+# periodic_symmetry_index_orbits(::Type{T}, N, sym::Rotation)
+#
+# Build periodic symmetry orbits for rotational symmetry (Cₙ) on a cyclic
+# boundary discretization of size N.
+#
+# The periodic indexing is:
+#     q ∈ {1,...,N}
+#
+# A rotation of order n acts as:
+#     q ↦ q + l*(N/n)  (mod N),   l = 0,...,n-1
+#
+# producing orbits:
+#     orbit(q) = {q, R(q), R²(q), ..., Rⁿ⁻¹(q)}
+#
+# Each orbit carries a representation phase:
+#     χ_l = exp(2π i m l / n)
+#
+# so that boundary unknowns satisfy:
+#     u(R^l(q)) = χ_l * u(q)
+#
+# Constraints:
+#   - N must be divisible by n
 function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Rotation) where {T<:Real}
     n=sym.n
     @assert mod(N,n)==0
     m=N÷n
     Ifund=collect(1:m)
     _,_,χ=_rotation_tables(T,sym.n,sym.m)
-    orbit(q)=([_periodic_idx_rotate(q,N,n,l) for l in 0:n-1],[χ[l+1] for l in 0:n-1])
+    orbit=q->([_idx_rotate(q,N,n,l) for l in 0:n-1],[χ[l+1] for l in 0:n-1])
     return _build_periodic_orbit_maps(T,N,Ifund,orbit)
 end
 
+# ------------------------------------------------------------------------------
+# _build_periodic_orbit_maps(::Type{T}, N, Ifund, orbit)
+#
+# Construct full ↔ fundamental index mappings from an orbit generator.
+#
+# Input:
+#   Ifund  = vector of fundamental indices (orbit representatives)
+#   orbit  = function:
+#              orbit(q) -> (qs, ss)
+#            where:
+#              qs = full indices in orbit of q
+#              ss = corresponding complex scaling factors
+#
+# Construction:
+#   For each fundamental index q = Ifund[b]:
+#     fund_to_full[b]  = qs
+#     fund_to_scale[b] = ss
+#
+#   For each qi in qs:
+#     full_to_fund[qi]  = b
+#     full_to_scale[qi] = ss[ℓ]
 function _build_periodic_orbit_maps(::Type{T},N::Int,Ifund::Vector{Int},orbit) where {T<:Real}
     m=length(Ifund)
     full_to_fund=zeros(Int,N)
