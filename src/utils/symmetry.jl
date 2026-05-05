@@ -133,26 +133,32 @@ end
 ############ SYMMETRY UTILITIES FOR KRESS DESYMMETRIZED #############
 #####################################################################
 
+# general helper
 @inline _idx_mod1(i::Int,N::Int)=mod1(i,N)
+
+# rotation helpers
 @inline _idx_rot_ccw(q::Int,N::Int,n::Int,l::Int)=_idx_mod1(q+l*(N÷n),N)
-@inline _idx_reflect_x_ccw(q::Int,N::Int)=_idx_mod1(N÷2-q+1,N)
-@inline _idx_reflect_y_ccw(q::Int,N::Int)=_idx_mod1(N-q+1,N)
 @inline _idx_rotate_pi_ccw(q::Int,N::Int)=_idx_mod1(q+N÷2,N)
+# reflection helpers for x/y reflection when we have quarter maps.
+@inline _idx_reflect_x_quarter_ccw(q::Int,N::Int)=_idx_mod1(N÷2-q+1,N) # x -> -x
+@inline _idx_reflect_y_quarter_ccw(q::Int,N::Int)=_idx_mod1(N-q+1,N)   # y -> -y
+# reflection helper for xy reflection when we have half maps, which is not part of xy reflection
+@inline _idx_reflect_half_ccw(q::Int,N::Int)=mod1(N-q+1,N)
 
 function x_reflection_orbit(q::Int,N::Int,px)
-    qx=_idx_reflect_x_ccw(q,N)   # x -> -x
+    qx=_idx_reflect_half_ccw(q,N)
     return ([q,qx],[1,px])
 end
 
 function y_reflection_orbit(q::Int,N::Int,py)
-    qy=_idx_reflect_y_ccw(q,N)   # y -> -y
+    qy=_idx_reflect_half_ccw(q,N)
     return ([q,qy],[1,py])
 end
 
 function xy_reflection_orbit(q::Int,N::Int,px,py)
-    qx=_idx_reflect_y_ccw(q,N)   # x -> -x
-    qy=_idx_reflect_x_ccw(q,N)   # y -> -y
-    qxy=_idx_reflect_xy_ccw(q,N)  # x -> -x, y -> -y
+    qx=_idx_reflect_x_quarter_ccw(q,N)
+    qy=_idx_reflect_y_quarter_ccw(q,N)
+    qxy=_idx_rotate_pi_ccw(q,N)
     return ([q,qx,qy,qxy],[1,px,py,px*py])
 end
 
@@ -210,12 +216,12 @@ function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where 
         @assert iseven(N)
         Ifund=collect(1:N÷2)
         p=Complex{T}(sym.parity,0)
-        orbit=q->([q,_idx_reflect_x_ccw(q,N)],[one(Complex{T}),p])
+        orbit=q->([q,_idx_reflect_half_ccw(q,N)],[one(Complex{T}),p])
     elseif sym.axis===:x_axis
         @assert iseven(N)
         Ifund=collect(1:N÷2)
         p=Complex{T}(sym.parity,0)
-        orbit=q->([q,_idx_reflect_y_ccw(q,N)],[one(Complex{T}),p])
+        orbit=q->([q,_idx_reflect_half_ccw(q,N)],[one(Complex{T}),p])
     elseif sym.axis===:origin
         @assert mod(N,4)==0
         Ifund=collect(1:N÷4)
