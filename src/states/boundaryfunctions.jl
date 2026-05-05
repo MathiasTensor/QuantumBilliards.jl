@@ -467,7 +467,7 @@ The layer potential is constructed on the domain desymmetrized with `fundamental
 """
 function symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     isnothing(solver.symmetry) && return pts,layer_pot
-    u_full=apply_symmetries_to_boundary_function(layer_pot,[pts],solver.symmetry)
+    u_full=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
     return pts,u_full
 end
 
