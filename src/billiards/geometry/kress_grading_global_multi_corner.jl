@@ -112,7 +112,8 @@ function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=4) where {T
     corners=_sort_unique_corners(T,corners_in)
     h=T(TWO_PI)/T(N)
     σ=Vector{T}(undef,N)
-    δ=_choose_sigma_shift(T,h,corners)
+    #δ=_choose_sigma_shift(T,h,corners)
+    δ=h/2
     @inbounds for k in 1:N;σ[k]=_wrap_to_2pi(δ+T(k-1)*h);end
     sort!(σ)
     if isempty(corners)
