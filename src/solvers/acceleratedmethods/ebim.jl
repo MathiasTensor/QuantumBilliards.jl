@@ -1147,29 +1147,38 @@ and `|corr₁ + corr₂|`.
    4. `tens_2 = corr₁ + corr₂`.
 """
 function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    A,dA,ddA=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
-    λ,VR,VL=generalized_eigen_all(A,dA)
+    N=boundary_matrix_size(pts)
+    A=Matrix{ComplexF64}(undef,N,N)
+    dA=Matrix{ComplexF64}(undef,N,N)
+    ddA=Matrix{ComplexF64}(undef,N,N)
+    fill!(A,0.0+0.0im)
+    fill!(dA,0.0+0.0im)
+    fill!(ddA,0.0+0.0im)
+    @blas_1 construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
+    @blas_multi MAX_BLAS_THREADS λ,VR,VL=generalized_eigen_all(A,dA)
     valid_indices=.!isnan.(λ).&.!isinf.(λ)
     λ=λ[valid_indices]
-    sort_order=sortperm(abs.(λ)) 
+    VR=VR[:,valid_indices]
+    VL=VL[:,valid_indices]
+    sort_order=sortperm(abs.(λ))
     λ=λ[sort_order]
     VR=VR[:,sort_order]
     VL=VL[:,sort_order]
-    T=eltype(λ)
-    corr_1=Vector{T}(undef,length(λ))
-    corr_2=Vector{T}(undef,length(λ))
-    for i in eachindex(λ)
+    CT=eltype(λ)
+    corr_1=Vector{CT}(undef,length(λ))
+    corr_2=Vector{CT}(undef,length(λ))
+    buf=Vector{CT}(undef,N)
+    @blas_multi MAX_BLAS_THREADS for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        buf=similar(v_right)
         mul!(buf,ddA,v_right)
         numerator=dot(v_left,buf)
         mul!(buf,dA,v_right)
         denominator=dot(v_left,buf)
         corr_1[i]=-λ[i]
-        corr_2[i]=-0.5*corr_1[i]^2*(numerator/denominator)
+        corr_2[i]=abs(denominator)>1e-15 ? -0.5*corr_1[i]^2*(numerator/denominator) : zero(CT)
     end
-    λ_corrected_1=k.+corr_1
+    λ_corrected_1=complex(k).+corr_1
     λ_corrected_2=λ_corrected_1.+corr_2
     tens_1=corr_1
     tens_2=corr_1.+corr_2
