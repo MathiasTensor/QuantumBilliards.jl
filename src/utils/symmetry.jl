@@ -134,10 +134,10 @@ end
 #####################################################################
 
 @inline _idx_mod1(i::Int,N::Int)=mod1(i,N)
-@inline _idx_rot_ccw(q::Int,N::Int,n::Int,l::Int)=_idx_mod1(q+l*(N÷n),N) # q -> R^l(q)
-@inline _idx_reflect_y_ccw(q::Int,N::Int)=_idx_mod1(N-q+1,N) # y -> -y
-@inline _idx_reflect_x_ccw(q::Int,N::Int)=_idx_mod1(N÷2-q+1,N) # x -> -x
-@inline _idx_rotate_pi_ccw(q::Int,N::Int)=_idx_mod1(q+N÷2,N)  # x,y -> -x,-y
+@inline _idx_rot_ccw(q::Int,N::Int,n::Int,l::Int)=_idx_mod1(q+l*(N÷n),N)
+@inline _idx_reflect_x_ccw(q::Int,N::Int)=_idx_mod1(N÷2-q+1,N)
+@inline _idx_reflect_y_ccw(q::Int,N::Int)=_idx_mod1(N-q+1,N)
+@inline _idx_rotate_pi_ccw(q::Int,N::Int)=_idx_mod1(q+N÷2,N)
 
 function x_reflection_orbit(q::Int,N::Int,px)
     qx=_idx_reflect_x_ccw(q,N)   # x -> -x
@@ -207,28 +207,28 @@ end
 #   fund_to_scale[b]   = corresponding phase factors
 function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where {T<:Real}
     if sym.axis===:y_axis
-        # YReflection: y -> -y
-        @assert iseven(N)
-        Ifund=collect(1:N÷2)
-        p=Complex{T}(sym.parity,0)
-        orbit=q->([q,_idx_reflect_y_ccw(q,N)],[one(Complex{T}),p])
-    elseif sym.axis===:x_axis
-        # XReflection: x -> -x
         @assert iseven(N)
         Ifund=collect(1:N÷2)
         p=Complex{T}(sym.parity,0)
         orbit=q->([q,_idx_reflect_x_ccw(q,N)],[one(Complex{T}),p])
+    elseif sym.axis===:x_axis
+        @assert iseven(N)
+        Ifund=collect(1:N÷2)
+        p=Complex{T}(sym.parity,0)
+        orbit=q->([q,_idx_reflect_y_ccw(q,N)],[one(Complex{T}),p])
     elseif sym.axis===:origin
         @assert mod(N,4)==0
         Ifund=collect(1:N÷4)
         σx,σy=sym.parity
         px=Complex{T}(σx,0)
         py=Complex{T}(σy,0)
-        orbit=q->([q,_idx_reflect_y_ccw(q,N),_idx_reflect_x_ccw(q,N),_idx_rotate_pi_ccw(q,N)],[one(Complex{T}),px,py,px*py])
+        orbit=q->([q,_idx_reflect_x_ccw(q,N),_idx_reflect_y_ccw(q,N),_idx_rotate_pi_ccw(q,N)],
+                  [one(Complex{T}),px,py,px*py])
     else
         error("Unsupported reflection axis $(sym.axis)")
     end
     return _build_periodic_orbit_maps(T,N,Ifund,orbit)
+
 end
 
 # ------------------------------------------------------------------------------
@@ -259,7 +259,15 @@ function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Rotation) where {T
     @assert mod(N,n)==0
     Ifund=collect(1:N÷n)
     _,_,χ=_rotation_tables(T,n,sym.m)
-    orbit=q->rotation_orbit(q,N,n,χ)
+    orbit=q->begin
+        qs=Vector{Int}(undef,n)
+        ss=Vector{Complex{T}}(undef,n)
+        @inbounds for l in 0:n-1
+            qs[l+1]=_idx_rot_ccw(q,N,n,l)
+            ss[l+1]=χ[l+1]
+        end
+        return qs,ss
+    end
     return _build_periodic_orbit_maps(T,N,Ifund,orbit)
 end
 
