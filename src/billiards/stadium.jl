@@ -22,13 +22,20 @@ end
 
 function make_full_stadium(half_width;radius=one(half_width),x0=zero(half_width),y0=zero(half_width),rot_angle=zero(half_width))
     origin=SVector(x0,y0)
-    type=typeof(half_width)
-    corners=[SVector(half_width,radius),SVector(-half_width,radius),SVector(-half_width,-radius),SVector(half_width,-radius)]
-    circle1=CircleSegment(radius,1.0*pi, -pi*0.5,half_width,zero(type);origin=origin,rot_angle=rot_angle)
-    line1=LineSegment(corners[1],corners[2];origin=origin,rot_angle=rot_angle)
-    circle2=CircleSegment(radius,1.0*pi, pi*0.5,-half_width,zero(type);origin=origin,rot_angle=rot_angle)
-    line2=LineSegment(corners[3],corners[4];origin=origin,rot_angle=rot_angle)
-    boundary=Union{LineSegment,CircleSegment}[circle1,line1,circle2,line2]
+    T=typeof(half_width)
+    p1=SVector(half_width+radius,zero(T))
+    p2=SVector(half_width,radius)
+    p3=SVector(-half_width,radius)
+    p4=SVector(-half_width-radius,zero(T))
+    p5=SVector(-half_width,-radius)
+    p6=SVector(half_width,-radius)
+    arc1=CircleSegment(radius,T(pi/2),zero(T),half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    line1=LineSegment(p2,p3;origin=origin,rot_angle=rot_angle)
+    arc2=CircleSegment(radius,T(pi),T(pi/2),-half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    line2=LineSegment(p5,p6;origin=origin,rot_angle=rot_angle)
+    arc3=CircleSegment(radius,T(pi/2),T(3pi/2),half_width,zero(T);origin=origin,rot_angle=rot_angle)
+    boundary=Union{LineSegment,CircleSegment}[arc1,line1,arc2,line2,arc3]
+    corners=SVector{2,T}[p2,p3,p5,p6]
     return boundary,corners
 end
 
