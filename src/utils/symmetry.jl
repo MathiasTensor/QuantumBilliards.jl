@@ -303,6 +303,29 @@ function _has_node_on_reflection_axis(pts,sym::Reflection,billiard::Bi;tol=sqrt(
     return false
 end
 
+@inline function _periodic_index(j::Int,N::Int)
+    return mod1(j,N)
+end
+
+@inline function _local_match_index(x::T,y::T,xy,j0::Int;window::Int=12,tol::T=T(1e-12)) where {T<:Real}
+    N=length(xy)
+    best=_periodic_index(j0,N)
+    bestd2=typemax(T)
+    tol2=tol*tol
+    @inbounds for δ in -window:window
+        j=_periodic_index(j0+δ,N)
+        dx=xy[j][1]-x
+        dy=xy[j][2]-y
+        d2=dx*dx+dy*dy
+        if d2<bestd2
+            bestd2=d2
+            best=j
+        end
+    end
+    bestd2<=tol2 || error("Could not match symmetry image locally. Best distance = $(sqrt(bestd2)), tol = $tol, predicted index = $j0, window = $window")
+    return best
+end
+
 """
     symmetry_index_orbits(::Type{T}, pts, sym, billiard; tol=T(1e-12), window=12)
 
