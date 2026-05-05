@@ -191,15 +191,15 @@ end
 
 EBIM solve using the `idx`-th Chebyshev-cached matrix triple from `cache`.
 """
-function solve!(solver::EBIMSolver,A::AbstractMatrix{ComplexF64},dA::AbstractMatrix{ComplexF64},ddA::AbstractMatrix{ComplexF64},pts,k,dk,cache::EBIMChebBatchCache,idx::Int;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true,nev::Int=5)
+function solve!(solver::EBIMSolver,A::AbstractMatrix{ComplexF64},dA::AbstractMatrix{ComplexF64},ddA::AbstractMatrix{ComplexF64},pts,k,dk,cache::EBIMChebBatchCache,idx::Int;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true,nev::Int=5,return_imag_part::Bool=false)
     fill!(A,0.0+0.0im)
     fill!(dA,0.0+0.0im)
     fill!(ddA,0.0+0.0im)
     construct_ebim_cheb_matrix_at!(A,dA,ddA,solver,pts,cache,idx;multithreaded=multithreaded)
     if use_krylov
-        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded,nev=nev)
+        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded,nev=nev,return_imag_part=return_imag_part)
     else
-        return solve_full!(solver,A,dA,ddA,pts,k,dk;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded)
+        return solve_full!(solver,A,dA,ddA,pts,k,dk;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded,return_imag_part=return_imag_part)
     end
 end
 
@@ -244,7 +244,9 @@ For each accepted generalized eigenpair, the code uses
     ε₁ = -λ
 
 - second-order correction:
-    ε₂ = -1/2 * Re[(u† ddA v) / (u† dA v)]
+    ε₂ = -1/2 * ε₁² * [(u† ddA v) / (u† dA v)]
+
+- (Optional Re) of the final wavenumber for error estimate
 
 where:
 - `v` is the right generalized eigenvector,
@@ -283,6 +285,7 @@ and the associated “tension-like” scalar returned by this function is
 - `multithreaded::Bool=true`:
   Currently included for API consistency. Matrix assembly does not happen here,
   so this flag is not used internally in this function.
+- `return_imag_part::Bool=false`: Whether to return the imaginary part of the corrected eigenvalues (wavenumbers) in the output. By default, only the real part is returned, but setting this to true will include the imaginary part as well, which can be useful for errors.
 
 # Returns
 - `λ_corrected::Vector{RT}`:
@@ -305,22 +308,24 @@ This is the dense all-eigenpairs variant. It is appropriate when:
 For larger systems or when only a few nearby eigenvalues are needed, see
 `solve_krylov!`.
 """
-function solve_full!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true) where {T<:Real}
+function solve_full!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true,return_imag_part::Bool=false) where {T<:Real}
     if use_lapack_raw
         @blas_multi MAX_BLAS_THREADS λ,VR,VL=generalized_eigen_all_LAPACK_LEGACY(A,dA)
     else
         @blas_multi MAX_BLAS_THREADS λ,VR,VL=generalized_eigen_all(A,dA)
     end
-    RT=eltype(real.(λ))
+    CT=eltype(λ)
+    RT=real(CT)
+    KT=return_imag_part ? CT : RT
     valid=(abs.(real.(λ)).<dk).&(abs.(imag.(λ)).<dk)
     if !any(valid)
-        return Vector{RT}(),Vector{RT}()
+        return Vector{KT}(),Vector{RT}()
     end
-    λ=real.(λ[valid])
+    λ=λ[valid]
     VR=VR[:,valid]
     VL=VL[:,valid]
-    corr_1=Vector{RT}(undef,length(λ))
-    corr_2=Vector{RT}(undef,length(λ))
+    corr_1=Vector{CT}(undef,length(λ))
+    corr_2=Vector{CT}(undef,length(λ))
     buf=similar(VR,eltype(ddA),size(ddA,1))  # reusable buffer
     for i in eachindex(λ)
         v_right=VR[:,i]
@@ -334,21 +339,19 @@ function solve_full!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::Abstra
         corr_1[i]= -λ[i]
         # optional safety guard 
         if abs(denominator)>1e-15
-            corr_2[i]= -0.5*corr_1[i]^2*real(numerator/denominator)
+            corr_2[i]= -0.5*corr_1[i]^2*(numerator/denominator)
         else
-            corr_2[i]=zero(RT)
+            corr_2[i]=zero(CT)
         end
     end
-    λ_corrected=k.+corr_1.+corr_2
+    λ_corrected=k.+(return_imag_part ? corr_1.+corr_2 : real.(corr_1.+corr_2))
     tens=abs.(corr_1.+corr_2)
     return λ_corrected,tens
 end
 
 
 """
-    solve_krylov!(solver, A, dA, ddA, pts, k, dk;
-                  multithreaded=true, nev=5, tol=1e-14,
-                  maxiter=5000, krylovdim=min(40,max(40,2*nev+1)))
+    solve_krylov!(solver, A, dA, ddA, pts, k, dk; multithreaded=true, nev=5, tol=1e-14, maxiter=5000, krylovdim=min(40,max(40,2*nev+1)), return_imag_part::Bool=false)
 
 Shift-invert Krylov EBIM solve for a small number of nearby eigenvalues. 
 This variant is usually preferable when the matrix is too large for a full generalized eigendecomposition.
@@ -383,15 +386,16 @@ then pairs the two eigenvector families by eigenvalue proximity.
 # Mathematical correction formula
 Exactly as in `solve_full!`, the function uses
 
-- ε₁ = -Re(λ)
-- ε₂ = -1/2 * ε₁² * Re[(u† ddA v) / (u† dA v)]
+- ε₁ = -(λ)
+- ε₂ = -1/2 * ε₁² * [(u† ddA v) / (u† dA v)]
+- (Optional Re) of the final wavenumber for error estimate
 
 and returns
 
 - corrected eigenvalue estimate `k + ε₁ + ε₂`,
 - tension `|ε₁ + ε₂|`.
 
-The real part is explicitly used in the first-order correction since the target
+The real part is optionally explicitly used in the first-order correction since the target
 is a real wavenumber correction.
 
 # Inputs
@@ -418,11 +422,12 @@ is a real wavenumber correction.
   Maximum Krylov iterations.
 - `krylovdim`:
   Krylov subspace dimension used by `eigsolve`.
+- `return_imag_part::Bool=false`: Whether to return the imaginary part of the corrected eigenvalues (wavenumbers) in the output. By default, only the real part is returned, but setting this to true will include the imaginary part as well, which can be useful for errors.
 
 # Returns
-- `λ_out::Vector{RT}`:
+- `λ_out::Vector{Union{T,Complex{T}}}`:
   Corrected wavenumber estimates accepted inside the `dk` window.
-- `tens_out::Vector{RT}`:
+- `tens_out::Vector{Union{T,Complex{T}}}`:
   Corresponding EBIM tensions.
 
 # Acceptance logic
@@ -431,8 +436,10 @@ After recovering `λ = 1/μ`, only candidates with
 - `|Im(λ)| < dk`
 are accepted.
 """
-function solve_krylov!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1))) where {T<:Real}
+function solve_krylov!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;multithreaded::Bool=true,nev::Int=5,tol=1e-14,maxiter=5000,krylovdim::Int=min(40,max(40,2*nev+1)),return_imag_part::Bool=false) where {T<:Real}
     CT=eltype(A)
+    RT=real(CT)
+    KT=return_imag_part ? CT : RT
     n=size(A,1)
     @blas_multi MAX_BLAS_THREADS F=lu!(A) # enables fast solves with A (shift–invert) by creating triangular matrices to internally act on vectors. This is an expensive n(O^3) operation. Reuses A's storage; adjoint(F) gives fast solves with A'. We use lu! since A is not reused in this scope 
     @blas_1 begin
@@ -469,8 +476,7 @@ function solve_krylov!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::Abst
         # Pair left and right sets by closeness in μ (using conjugation to be robust for complex arithmetic)
         perm=@inbounds [argmin(abs.(μl.-conj(μrj))) for μrj in μr] # if stable solve then this should perfectly align the left and right eigenvectors
         ULlist=ULlist[perm]
-        RT=real(CT)
-        λ_out=Vector{RT}(undef,nev) # at most we will have nev
+        λ_out=Vector{KT}(undef,nev) # at most we will have nev
         tens_out=Vector{RT}(undef,nev)
         m=0 # keeps track of valid eigvals, if in the end 0 empty interval
         buf=zeros(CT,n) # reusable temp array used with mul! to always overwrite previous result
@@ -486,20 +492,21 @@ function solve_krylov!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::Abst
             den=dot(u,buf)   # denominator = u' * dA * v  (bi-orthogonal pairing; scaling cancels in the ratio)
             # first-order: ε1 = -λ  (since A v = λ dA v with λ = -ε to first order)
             # second-order: ε2 = -0.5 ε1^2 * (u' ddA v)/(u' dA v)
-            c1=-real(λj)
-            c2=zero(RT)
+            c1=-(λj)
+            c2=zero(CT)
             if abs(den)>1e-15 # soft guard
-                c2-=0.5*c1^2*real(num/den) # second-order correction (scale-invariant thanks to the ratio)
+                c2-=0.5*c1^2*(num/den) # second-order correction (scale-invariant thanks to the ratio)
             end
             t=c1+c2
             abst=abs(t)
-            if abst<dk # acceptance window in the (Re λ, Im λ) plane
+            kc=complex(k)+t
+            if abs(real(kc)-k)<dk # accept corrected root whose real part lies in the local k-window
                 m+=1
-                λ_out[m]=k+t # corrected k = k + ε1 + ε2 
+                λ_out[m]=return_imag_part ? kc : real(kc) # corrected k = k + ε1 + ε2 
                 tens_out[m]=abst # tension ≈ |ε1 + ε2|
             end
         end
-        if m==0;return RT[],RT[];end # if it happens to be empty solve in dk, return empty
+        if m==0;return KT[],RT[];end # if it happens to be empty solve in dk, return empty. tens is real
         resize!(λ_out,m);resize!(tens_out,m) # since nev > expected eigvals in dk due to added padding, trim it
         return λ_out,tens_out
     end
@@ -684,25 +691,30 @@ function solve_full_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::A
         println("%%%%%%%%%%%%%%%%%%%")
         return Vector{L}(),Vector{L}()
     end
-    λ=real.(λ[valid])
+    λ=λ[valid]
+    CT=eltype(λ)
+    RT=real(CT)
     VR=VR[:,valid]
     VL=VL[:,valid]
-    corr_1=Vector{L}(undef,length(λ))
-    corr_2=Vector{L}(undef,length(λ))
+    corr_1=Vector{CT}(undef,length(λ))
+    corr_2=Vector{CT}(undef,length(λ))
     @info "Corrections to the eigenvalues and eigenvectors..."
     s_corr=time()
     @time for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        t_v_left=transpose(v_left)
-        numerator=t_v_left*ddA*v_right
-        denominator=t_v_left*dA*v_right
+        buf=similar(v_right)
+        mul!(buf,ddA,v_right)
+        numerator=dot(v_left,buf)
+        mul!(buf,dA,v_right)
+        denominator=dot(v_left,buf)
         @info "Denominator for index $i : $denominator"
         corr_1[i]=-λ[i]
-        corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
+        corr_2[i]=abs(denominator)>1e-15 ? -0.5*corr_1[i]^2*(numerator/denominator) : zero(CT)
+        @info "Correction for index $i : ε₁ = $(corr_1[i]), ε₂ = $(corr_2[i]), total = $(corr_1[i]+corr_2[i])"
     end
     e_corr=time()
-    λ_corrected=k.+corr_1.+corr_2
+    λ_corrected=complex(k).+corr_1.+corr_2
     tens=abs.(corr_1.+corr_2)
     e=time()
     total_time=e-s
@@ -801,7 +813,7 @@ function solve_krylov_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA:
     if nacc==0
         t2=time()
         @info "Timings: construct=$(t1-t0)s, factor+eigs=$(t2-t1)s, total=$(t2-t0)s"
-        return RT[],RT[]
+        return CT[],RT[]
     end
     λ=λ[acc]
     VR=VR[acc]
@@ -810,7 +822,7 @@ function solve_krylov_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA:
     rel_bound_all=κ_all.*eps(RT)
     @info "Median eigenvalue condition number: $(median(κ_all))"
     @info "Median lower bound on relative eigenvalue error: $(median(rel_bound_all))"
-    λ_out=Vector{RT}(undef,nacc)
+    λ_out=Vector{CT}(undef,nacc)
     tens=Vector{RT}(undef,nacc)
     m=0
     @info "Second-order corrections..."
@@ -824,17 +836,21 @@ function solve_krylov_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA:
         mul!(buf,dA,v)
         den=dot(u,buf)
         @info "Denominator for index $j : $den"
-        c1=-real(λj)
-        c2=-0.5*c1^2*real(num/den)
+        c1=-λj
+        c2=zero(CT)
+        if abs(den)>1e-15
+            c2-=0.5*c1^2*(num/den)
+        end
+        kc=complex(k)+c1+c2
         m+=1
-        λ_out[m]=k+c1+c2
+        λ_out[m]=kc
         tens[m]=abs(c1+c2)
+        @info "Correction" j=j λ=λj k_corrected=kc imag_k=imag(kc) tension=tens[m]
     end
     t3=time()
     @info "Timings: construct=$(t1-t0)s, factor+eigs=$(t2-t1)s, corrections=$(t3-t2)s, total=$(t3-t0)s"
     return λ_out,tens
 end
-
 
 """
     solve!(solver, A, dA, ddA, pts, k, dk;
@@ -876,6 +892,8 @@ for the supplied solver and boundary discretization, then dispatches to either:
   Selects Krylov or full generalized eigensolve.
 - `nev::Int=5`:
   Number of requested eigenpairs for the Krylov backend.
+- `return_imag_part::Bool=false`:
+  Whether to return the imaginary part of the corrected eigenvalues (wavenumbers) in the output. By default, only the real part is returned, but setting this to true will include the imaginary part as well, which can be useful for errors.  
 
 # Returns
 - corrected wavenumber estimates,
@@ -885,13 +903,13 @@ for the supplied solver and boundary discretization, then dispatches to either:
 - Use `use_krylov=true` for large matrices and local searches.
 - Use `use_krylov=false` for smaller dense problems.
 """
-function solve!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true,nev::Int=5) where {T<:Real}
+function solve!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts,k,dk;use_lapack_raw::Bool=false,multithreaded::Bool=true,use_krylov::Bool=true,nev::Int=5,return_imag_part::Bool=false) where {T<:Real}
     basis=AbstractHankelBasis()
     @blas_1 construct_matrices!(solver,basis,A,dA,ddA,pts,k;multithreaded=multithreaded)
     if use_krylov
-        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded,nev=nev)
+        return solve_krylov!(solver,A,dA,ddA,pts,k,dk;multithreaded=multithreaded,nev=nev,return_imag_part=return_imag_part)
     else
-        return solve_full!(solver,A,dA,ddA,pts,k,dk;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded)
+        return solve_full!(solver,A,dA,ddA,pts,k,dk;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded,return_imag_part=return_imag_part)
     end
 end
 
@@ -932,7 +950,7 @@ function solve_INFO!(solver::EBIMSolver,A::AbstractMatrix{Complex{T}},dA::Abstra
     end
 end
 
-function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::Vector{T},ten_right::Vector{T},control_left::Vector{Bool},kl::T,kr::T;tol::T=T(1e-5)) where {T<:Real}
+function overlap_and_merge_ebim!(k_left::Vector{K},ten_left::Vector{T},k_right::Vector{K},ten_right::Vector{T},control_left::Vector{Bool},kl::T,kr::T;tol::T=T(1e-5)) where {K<:Number,T<:Real}
     isempty(k_right) && return nothing
     if isempty(k_left)
         append!(k_left,k_right)
@@ -945,9 +963,9 @@ function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::
         tj=ten_right[j]
         hit=false
         for i in eachindex(k_left)
-            if abs(k_left[i]-kj)<=tol
+            if abs(real(k_left[i])-real(kj))<=tol
                 hit=true
-                if tj < ten_left[i]
+                if tj<ten_left[i]
                     k_left[i]=kj
                     ten_left[i]=tj
                 end
@@ -961,7 +979,7 @@ function overlap_and_merge_ebim!(k_left::Vector{T},ten_left::Vector{T},k_right::
             push!(control_left,false)
         end
     end
-    p=sortperm(k_left)
+    p=sortperm(real.(k_left))
     k_left[:]=k_left[p]
     ten_left[:]=ten_left[p]
     control_left[:]=control_left[p]
@@ -989,22 +1007,23 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - `use_krylov::Bool=true`: Use Krylov-based shift–invert solver instead of full generalized EVP.
 - `seg_reuse_frac::T=0.95`: Controls segment size; geometry is reused while `k` stays within this fraction of the segment’s upper bound.
 - `solve_info::Bool=true`: Print detailed information during the solve process.
+- `return_imag_part::Bool=false`: Whether to return the imaginary part of the corrected eigenvalues (wavenumbers) in the output. By default, only the real part is returned, but setting this to true will include the imaginary part as well, which can be useful for errors.
+
+# Chebyshev specific kwargs:
 - `use_chebyshev::Bool=false`: Use Chebyshev interpolation for matrix assembly across segments.
 - `n_panels::Int=15000`: Number of panels for Chebyshev interpolation if `use_chebyshev=true`.
 - `M::Int=5`: Number of Chebyshev modes for interpolation if `use_chebyshev=true`.
 - `cheb_param_strategy::Symbol=:global`: Strategy for Chebyshev parameter selection. Options are `:global` for using the spectrum's maximum k value to decide panelization and M for Chebyshev polynomials, then `:segment` if we want to adaptively choose parameters for each segment (good for large intervals with varying k density). Third is `:manual` where it will provide the user's initial kwarg `n_panels` and `M` for all segments without adaptation.
-
-# Chebyshev specific kwargs:
-- cheb_tol::Real=1e-10: Tolerance for Chebyshev parameter tuning
-- max_iter::Int=10: Maximum iterations for Chebyshev parameter tuning
-- sampling_points::Int=50_000: Number of points to sample for Chebyshev parameter tuning
-- grading::Symbol=:uniform: Grading strategy for Chebyshev panels, by default uniform, can be :uniform or :geometric
-- grow_panels::Real=1.5: Growth factor for number of panels
-- grow_M::Int=2: Growth factor for degree of Chebyshev polynomials
-- verbose_cheb_panelization::Bool=false: Whether to print detailed information during Chebyshev panelization
+- `cheb_tol::Real=1e-13`: Tolerance for Chebyshev parameter tuning (if using Chebyshev).
+- `max_iter::Int=20`: Maximum iterations for Chebyshev parameter tuning (if using Chebyshev).
+- `sampling_points::Int=50_000`: Number of points to sample for Chebyshev parameter tuning (if using Chebyshev).
+- `grading::Symbol=:uniform`: Grading strategy for Chebyshev panels, by default uniform, can be `:uniform` or `:geometric` (if using Chebyshev).
+- `grow_panels::Real=1.5`: Growth factor for number of panels during Chebyshev parameter tuning (if using Chebyshev).
+- `grow_M::Int=2`: Growth factor for degree of Chebyshev polynomials during Chebyshev parameter tuning (if using Chebyshev).
+- `verbose_cheb_panelization::Bool=false`: Whether to print detailed information during Chebyshev panelization (if using Chebyshev).
 
 # Returns
-- `λs::Vector{T}`: Corrected eigenvalues (wavenumbers).
+- `λs::Vector{T} or Vector{Complex{T}}`: Corrected eigenvalues (wavenumbers).
 - `tensions::Vector{T}`: Corresponding tension values (error estimates).
 
 # Notes
@@ -1013,23 +1032,24 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
 - Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false) where {T<:Real,Bi<:AbsBilliard}
-    ks=T[]
-    dks=T[]
+function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-4),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+    ks=T[] # these are pts on the real axis (centers of EBIM windows)
+    dks=T[] # these are the half-widths of the EBIM windows, which can be k-dependent
     k=k1
-    while k<k2
+    while k<k2 # populate the k grid with variable step size dk(k)
         push!(ks,k)
         Δk=dk(k)
         push!(dks,Δk)
         k+=Δk
     end
-    nevs=Int[]
+    nevs=Int[] # number of eigenvalues to request from the solver at each k, based on Weyl's law with padding. Is it a crude estimate
     for i in eachindex(ks)
         k=ks[i]
         Δk=dks[i]
         push!(nevs,Int(ceil((billiard.area*k/(2*pi)-billiard.length/(4*pi))*Δk))+10)
     end
-    isempty(ks) && return T[],T[]
+    K=return_imag_part ? Complex{T} : T
+    isempty(ks) && return K[],T[]
     pts0=evaluate_points(solver,billiard,ks[1])
     println("compute_spectrum...")
     println("Total k points: $(length(ks))")
@@ -1048,7 +1068,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
     elseif use_chebyshev && cheb_param_strategy==:manual
         @info "Using manual Chebyshev parameters: n_panels=$n_panels, M=$M for all segments."
     end
-    results=Vector{Tuple{Vector{T},Vector{T}}}(undef,length(ks))
+    results=Vector{Tuple{Vector{K},Vector{T}}}(undef,length(ks))
     p=Progress(length(ks),1)
     seg_first=1
     while seg_first<=length(ks)
@@ -1071,20 +1091,20 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
             end
             cache=build_ebim_cheb_cache(solver,pts,segks;n_panels=n_panels,M=M,grading=grading)
             for (loc,i) in enumerate(seg_first:seg_last)
-                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i],cache,loc;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i])
+                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i],cache,loc;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i],return_imag_part=return_imag_part)
                 results[i]=(λs,tens)
                 next!(p)
             end
         else
             for i in seg_first:seg_last
-                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i])
+                λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i];use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i],return_imag_part=return_imag_part)
                 results[i]=(λs,tens)
                 next!(p)
             end
         end
         seg_first=seg_last+1
     end
-    λs_all=T[]
+    λs_all=K[]
     tensions_all=T[]
     control=Bool[]
     for i in eachindex(ks)
@@ -1092,46 +1112,39 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
         isempty(λs) && continue
         overlap_and_merge_ebim!(λs_all,tensions_all,λs,tens,control,ks[i]-dks[i],ks[i]+dks[i];tol=tol)
     end
-    isempty(λs_all) && return T[],T[]
-    keep=[k1<=λ<=k2 for λ in λs_all]
+    isempty(λs_all) && return K[],T[]
+    keep=[k1<=real(λ)<=k2 for λ in λs_all] # since im part is a discretization error we should only check if Re part is inside the interval
+    # weird hack? that can cause issues if we want to glue together 2 results from compute_spectrum_ebim on the edges of the interval, but for now we can live with it and if we want to do something more robust we can add a small buffer to k1 and k2 here
     λs_all=λs_all[keep]
     tensions_all=tensions_all[keep]
     return λs_all,tensions_all
 end
 
 """
-    solve_DEBUG_w_2nd_order_corrections(
-        solver::ExpandedBoundaryIntegralMethod,
-        basis::Ba,
-        pts::BoundaryPoints,
-        k;
-        kernel_fun=(:default, :first, :second)
-    ) -> (Vector{T}, Vector{T}, Vector{T}, Vector{T})
+    solve_DEBUG_w_2nd_order_corrections(solver::ExpandedBoundaryIntegralMethod,pts::BoundaryPoints,k;multithreaded::Bool=true)
 
 A debug routine that solves the generalized eigenproblem `(A, dA)` at wavenumber `k`, then applies
-**both first- and second-order** corrections to refine the approximate roots. Specifically,
+both first- and second-order corrections to refine the approximate roots. Specifically,
 it extracts λ from `A*x = λ dA*x`, then does:
 
   corr₁[i] = -λ[i]
-  corr₂[i] = -0.5 * corr₁[i]^2 * real( (v_leftᵀ ddA v_right) / (v_leftᵀ dA v_right) )
+  corr₂[i] = -0.5 * corr₁[i]^2 * ( (v_leftᵀ ddA v_right) / (v_leftᵀ dA v_right) )
 
 Hence two sets of corrected wavenumbers: `k + corr₁` and `k + corr₁ + corr₂`. Tensions are `|corr₁|`
 and `|corr₁ + corr₂|`.
 
 # Arguments
 - `solver::ExpandedBoundaryIntegralMethod`: The EBIM solver config.
-- `basis::Ba`: Basis function type.
 - `pts::BoundaryPoints`: Boundary geometry.
 - `k`: Wavenumber for the eigenproblem.
-- `kernel_fun`: A triple `(base, first, second)` or custom functions for kernel & derivatives.
 - `multithreaded::Bool=true`: If the matrix construction should be multithreaded.
 
-# Returns
+# Returns (all complex since we want to capture the imaginary part of the corrections as well, which can be useful for error estimation):
 - `(λ_corrected_1, tens_1, λ_corrected_2, tens_2)`: 
    1. `λ_corrected_1 = k + corr₁` (1st-order),
-   2. `tens_1 = abs(corr₁)`,
+   2. `tens_1 = corr₁`,
    3. `λ_corrected_2 = k + corr₁ + corr₂` (2nd-order),
-   4. `tens_2 = abs(corr₁ + corr₂)`.
+   4. `tens_2 = corr₁ + corr₂`.
 """
 function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
     A,dA,ddA=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
@@ -1140,27 +1153,31 @@ function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts::B
     λ=λ[valid_indices]
     sort_order=sortperm(abs.(λ)) 
     λ=λ[sort_order]
-    T=eltype(real.(λ))
-    λ=real.(λ)
+    VR=VR[:,sort_order]
+    VL=VL[:,sort_order]
+    T=eltype(λ)
     corr_1=Vector{T}(undef,length(λ))
     corr_2=Vector{T}(undef,length(λ))
     for i in eachindex(λ)
         v_right=VR[:,i]
         v_left=VL[:,i]
-        numerator=transpose(v_left)*ddA*v_right
-        denominator=transpose(v_left)*dA*v_right
+        buf=similar(v_right)
+        mul!(buf,ddA,v_right)
+        numerator=dot(v_left,buf)
+        mul!(buf,dA,v_right)
+        denominator=dot(v_left,buf)
         corr_1[i]=-λ[i]
-        corr_2[i]=-0.5*corr_1[i]^2*real(numerator/denominator)
+        corr_2[i]=-0.5*corr_1[i]^2*(numerator/denominator)
     end
     λ_corrected_1=k.+corr_1
     λ_corrected_2=λ_corrected_1.+corr_2
-    tens_1=abs.(corr_1)
-    tens_2=abs.(corr_1.+corr_2)
+    tens_1=corr_1
+    tens_2=corr_1.+corr_2
     return λ_corrected_1,tens_1,λ_corrected_2,tens_2
 end
 
 """
-    ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
+    ebim_inv_diff(kvals::Vector{T}) where {T<:Number}
 
 Computes the inverse of the differences between consecutive elements in `kvals`. This inverts the small differences between the ks very close to the correct eigenvalues and serves as a visual aid or potential criteria for finding missing levels.
 
@@ -1171,82 +1188,106 @@ Computes the inverse of the differences between consecutive elements in `kvals`.
 - `Vector{T}`: The `kvals` vector excluding its last element.
 - `Vector{T}`: The inverse of the differences between consecutive elements in `kvals`.
 """
-function ebim_inv_diff(kvals::Vector{T}) where {T<:Real}
-    kvals_diff=diff(kvals)
-    kvals=kvals[1:end-1]
-    return kvals,T(1.0)./kvals_diff
+function ebim_inv_diff(kvals::Vector{K},tens::Vector{C}) where {K<:Number,C<:Number}
+    p=sortperm(real.(kvals))
+    kvals=kvals[p]
+    tens=tens[p]
+    dr=diff(real.(kvals))
+    invspacing=one(real(K))./dr
+    return kvals[1:end-1],invspacing,tens[1:end-1]
 end
 
 """
-    visualize_ebim_sweep(solver::ExpandedBoundaryIntegralMethod,basis::Ba,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    visualize_ebim_sweep(solver::EBIMSolver,billiard::Bi,k1,k2;dk=(k)->0.05*k^(-1/3),multithreaded::Bool=false,multithreaded_ks::Bool=true,tension_cutoff=1.0)
 
-Debugging Function to sweep through a range of `k` values and evaluate the smallest tension for each `k` using the EBIM method. This function identifies corrected `k` values based on the generalized eigenvalue problem and associated tensions, collecting those with the smallest tensions for further analysis.
+Debugging and visualization tool for EBIM spectral searches over a wavenumber interval.
 
-# Usage
-hankel_basis=AbstractHankelBasis()
-@time ks_debug,tens_debug,ks_debug_small,tens_debug_small=QuantumBilliards.visualize_ebim_sweep(ebim_solver,hankel_basis,billiard,k1,k2;dk=dk)
-scatter!(ax,ks_debug,log10.(tens_debug), color=:blue, marker=:xcross)
--> This gives a sequence of points that fall on a vertical line when close to an actual eigenvalue. 
+This routine performs a sweep over `k ∈ [k1,k2]`, solves the EBIM generalized
+eigenproblem at each sample point, and extracts the smallest first- and second-order
+corrections to identify nearby eigenvalues.
 
-# Arguments
-- `solver::ExpandedBoundaryIntegralMethod`: The solver configuration for the EBIM method.
-- `basis::Ba`: The basis function, a subtype of `AbstractHankelBasis`.
-- `billiard::Bi`: The billiard geometry, a subtype of `AbsBilliard`.
-- `k1`: The initial value of `k` for the sweep.
-- `k2`: The final value of `k` for the sweep.
-- `dk::Function`: A function defining the step size as a function of `k` (default: `(k) -> (0.05 * k^(-1/3))`).
-- `multithreaded::Bool=false`: If the matrix construction should be multithreaded.
-- `multithreaded_ks::Bool=true`: If the ks loop should be rather multithreaded.
+Unlike the production solver, this function keeps the full complex corrections,
+which is crucial for diagnosing:
+- discretization error,
+- conditioning issues,
+- spurious roots,
+- convergence quality of the EBIM expansion.
+
+For each `k`:
+- the smallest-magnitude correction (first and second order),
+- filtered by `|ε| < tension_cutoff`.
+
+The output is then postprocessed by:
+- sorting by `Re(k)`,
+- computing inverse spacings:
+  
+      1 / Δ(Re(k))
+
+which highlight eigenvalue clustering.
 
 # Returns
-- `Vector{T}`: All corrected `k` values with low tensions throughout the sweep (`ks_all`).
-- `Vector{T}`: Inverse tension corresponding to `ks_all` (`tens_all`), which represent the inverse distances between consecutive `ks_all`. Aa large number indicates that we are probably close to an eigenvalue since solution of the ebim sweep tend to accumulate there.
+The function returns:
+    (kplot_1, invspacing_1, tens_1,
+     kplot_2, invspacing_2, tens_2)
+where:
+- `kplot_1`, `kplot_2`:
+    Complex corrected wavenumbers (first and second order),
+    sorted by real part and trimmed for spacing analysis.
+- `invspacing_1`, `invspacing_2`:
+    Inverse spacings computed from `Re(k)`:
+        invspacing[i] = 1 / (Re(k[i+1]) - Re(k[i]))
+    Large values indicate clustering → likely eigenvalues.
+- `tens_1`, `tens_2`:
+    Complex corrections:
+        tens_1 = ε₁
+        tens_2 = ε₁ + ε₂
 """
-function visualize_ebim_sweep(solver::EBIMSolver,billiard::Bi,k1,k2;dk=(k)->(0.05*k^(-1/3)),multithreaded::Bool=false,multithreaded_ks::Bool=true) where {Bi<:AbsBilliard}
-    k=k1
-    T=eltype(k1)
-    ks=T[] # these are the evaluation points
-    push!(ks,k1)
+function visualize_ebim_sweep(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk=(k)->0.05*k^(-1/3),multithreaded::Bool=false,multithreaded_ks::Bool=true,tension_cutoff::Real=1.0) where {T<:Real,Bi<:AbsBilliard}
+    ks=T[]
     k=k1
     while k<k2
-        k+=dk(k)
         push!(ks,k)
+        k+=dk(k)
     end
-    ks_all_1=Vector{Union{T,Missing}}(missing,length(ks))
-    ks_all_2=Vector{Union{T,Missing}}(missing,length(ks))
-    tens_all_1=Vector{Union{T,Missing}}(missing,length(ks))
-    tens_all_2=Vector{Union{T,Missing}}(missing,length(ks))
-    all_pts=Vector{BoundaryPoints{T}}(undef,length(ks))
-    @showprogress desc="Calculating boundary points..." for i in eachindex(ks) 
+    push!(ks,k2)
+    CT=Complex{T}
+    ks_all_1=Vector{Union{CT,Missing}}(missing,length(ks))
+    ks_all_2=Vector{Union{CT,Missing}}(missing,length(ks))
+    tens_all_1=Vector{Union{CT,Missing}}(missing,length(ks))
+    tens_all_2=Vector{Union{CT,Missing}}(missing,length(ks))
+    all_pts=Vector{typeof(evaluate_points(solver,billiard,ks[1]))}(undef,length(ks))
+    @showprogress desc="Calculating boundary points..." for i in eachindex(ks)
         all_pts[i]=evaluate_points(solver,billiard,ks[i])
     end
-    @info "EBIM smallest tens..."
-    p=Progress(length(ks),1)
+    @info "EBIM smallest complex corrections..."
+    pbar=Progress(length(ks),1)
     @use_threads multithreading=multithreaded_ks for i in eachindex(ks)
-        ks1,tens1,ks2,tens2=solve_DEBUG_w_2nd_order_corrections(solver,AbstractHankelBasis(),all_pts[i],ks[i],multithreaded=multithreaded)
-        idx1=findmin(tens1)[2]
-        idx2=findmin(tens2)[2]
-        if log10(tens1[idx1])<0.0
-            ks_all_1[i]=ks1[idx1]
-            tens_all_1[i]=tens1[idx1]   
+        k1c,t1,k2c,t2=solve_DEBUG_w_2nd_order_corrections(
+            solver,
+            AbstractHankelBasis(),
+            all_pts[i],
+            ks[i];
+            multithreaded=multithreaded,
+        )
+        idx1=findmin(abs.(t1))[2]
+        idx2=findmin(abs.(t2))[2]
+        if abs(t1[idx1])<tension_cutoff
+            ks_all_1[i]=k1c[idx1]
+            tens_all_1[i]=t1[idx1]
         end
-        if log10(tens2[idx2])<0.0
-            ks_all_2[i]=ks2[idx2]
-            tens_all_2[i]=tens2[idx2]
+        if abs(t2[idx2])<tension_cutoff
+            ks_all_2[i]=k2c[idx2]
+            tens_all_2[i]=t2[idx2]
         end
-        next!(p)
+        next!(pbar)
     end
-    ks_all_1=skipmissing(ks_all_1)|>collect
-    tens_all_1=skipmissing(tens_all_1)|>collect
-    ks_all_2=skipmissing(ks_all_2)|>collect
-    tens_all_2=skipmissing(tens_all_2)|>collect
-    _,logtens_1=ebim_inv_diff(ks_all_1)
-    _,logtens_2=ebim_inv_diff(ks_all_2)
-    idxs1=findall(x->x>0.0,logtens_1)
-    idxs2=findall(x->x>0.0,logtens_2)
-    logtens_1=logtens_1[idxs1]
-    logtens_2=logtens_2[idxs2]
-    ks_all_1=ks_all_1[idxs1]
-    ks_all_2=ks_all_2[idxs2]
-    return ks_all_1,logtens_1, ks_all_2,logtens_2
+    ks_all_1=collect(skipmissing(ks_all_1))
+    tens_all_1=collect(skipmissing(tens_all_1))
+    ks_all_2=collect(skipmissing(ks_all_2))
+    tens_all_2=collect(skipmissing(tens_all_2))
+    kplot_1,invspacing_1,tplot_1=ebim_inv_diff(ks_all_1,tens_all_1)
+    kplot_2,invspacing_2,tplot_2=ebim_inv_diff(ks_all_2,tens_all_2)
+    keep1=findall(isfinite,invspacing_1)
+    keep2=findall(isfinite,invspacing_2)
+    return kplot_1[keep1],invspacing_1[keep1],tplot_1[keep1],kplot_2[keep2],invspacing_2[keep2],tplot_2[keep2]
 end

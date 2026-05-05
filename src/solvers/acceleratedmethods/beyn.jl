@@ -284,6 +284,8 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE
         r_tmp=r+r
         while r_tmp<N # do again the ldiv + axpy accumulation with larger r until some sv < svd_tol. This does not require another Fredholm matrix construction since the same T(zj) can be used for larger r.
             V,X,A0,A1=beyn_buffer_matrices(T,N,r_tmp,rng)
+            Wproj=similar(V)
+            _CFIE_project_V_subspace!(solver,pts,V,Wproj)
             xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
             @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)  
                 ldiv!(X,Fs[j],V)
@@ -412,6 +414,8 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_c
     N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
+    Vproj=similar(V)
+    _CFIE_project_V_subspace!(solver,pts,V,Vproj)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
     construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=true) # construct the T(zj) matrices for each contour point zj.
@@ -578,7 +582,7 @@ end
 ########################
 
 """
-    compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,billiard::Bi,k1::T,k2::T;kwargs...)
+    compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;kwargs...)
 
 Compute all eigenpairs in [k1,k2] via a two-phase Beyn workflow:
 Phase 1: (per Weyl-balanced disk) build Fredholm matrices along the contour, run Beyn to get provisional eigenvalues λ and subspaces (Uk, Y).
@@ -611,9 +615,10 @@ Phase 2: validate each λ by computing residuals ||A(λ)φ|| (φ=Uk*Y[:,j]), kee
 - grading::Symbol=:uniform: Grading strategy for Chebyshev panels, by default uniform, can be :uniform or :geometric
 - grow_panels::Real=1.5: Growth factor for number of panels
 - grow_M::Int=2: Growth factor for degree of Chebyshev polynomials
+- return_imag_part::Bool=false: If the imaginary part of the k is also returned, it is the measure of discretization error
 
 # Returns:
-ks      :: Vector{T}                   – kept real wavenumbers Re(λ)
+ks      :: Vector{T} or Vector{Complex{T}} – kept real or complex wavenumbers (λ)
 tens    :: Vector{T}                   – raw residuals ||A(λ)φ||
 us      :: Vector{Vector{Complex{T}}}  – kept DLP densities φ (one per eigenvalue)
 pts     :: Vector{pts_type}            - matching boundary points object per φ based on what pts the solver uses
@@ -625,7 +630,7 @@ tensN   :: Vector{T}                   – normalized residuals (scale-free)
    • r is the probe rank for Beyn (auto-bumped internally if saturated).
    • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
 """
-function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
     fundamental=!isnothing(solver.symmetry)
     basis=AbstractHankelBasis()
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
@@ -684,21 +689,21 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
             next!(p)
         end
     end
-    ks_list=Vector{Vector{T}}(undef,length(k0))
+    ks_list=return_imag_part ? Vector{Vector{Complex{T}}}(undef,length(k0)) : Vector{Vector{T}}(undef,length(k0))
     tens_list=Vector{Vector{T}}(undef,length(k0))
     tensN_list=Vector{Vector{T}}(undef,length(k0))
     phi_list=Vector{Matrix{Complex{T}}}(undef,length(k0))
     @benchit timeit=do_per_solve_INFO "Residuals/tensions pass" begin
         @inbounds @showprogress for i in eachindex(k0)
             if isempty(λs[i])
-                ks_list[i]=T[]
+                ks_list[i]=return_imag_part ? Complex{T}[] : T[]
                 tens_list[i]=T[]
                 tensN_list[i]=T[]
                 phi_list[i]=Matrix{Complex{T}}(undef,boundary_matrix_size(all_pts[i]),0)
                 continue
             end
             idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded_matrix)
-            ks_list[i]=real.(λs[i][idx])
+            ks_list[i]=return_imag_part ? λs[i][idx] : real.(λs[i][idx])
             tens_list[i]=traw
             tensN_list[i]=tnorm
             phi_list[i]=Matrix(Φ_kept)
@@ -714,7 +719,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
         offs[i]=offs[i-1]+n_by_win[i-1]
     end
     ntot=offs[end]+n_by_win[end]
-    ks_all=Vector{T}(undef,ntot)
+    ks_all=return_imag_part ? Vector{Complex{T}}(undef,ntot) : Vector{T}(undef,ntot)
     tens_all=Vector{T}(undef,ntot)
     tensN_all=Vector{T}(undef,ntot)
     us_all=Vector{Vector{Complex{T}}}(undef,ntot)
