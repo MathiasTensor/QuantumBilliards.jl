@@ -465,9 +465,30 @@ Symmetrize a DLP-Kress layer potential defined on a CFIE boundary component to t
 The symmetry is applied to the boundary function but not to the boundary points since the CFIE boundary points are already defined on the full boundary. 
 The layer potential is constructed on the domain desymmetrized with `fundamental_indices`, so only they should be symmetrized.
 """
-function symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi;tol::T=T(1e-12)) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     isnothing(solver.symmetry) && return pts,layer_pot
-    u_full=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
+    Ifund=fundamental_indices(pts,solver.symmetry;billiard=billiard,tol=tol)
+    @assert length(layer_pot)==length(Ifund)
+    xs=getindex.(pts.xy,1)
+    ys=getindex.(pts.xy,2)
+    nx,ny,_=dlp_kress_component_normals(pts)
+    u_full=zeros(N,length(pts.xy))
+    imgs=Vector{Tuple{T,T,T,T,Complex{T}}}()
+    @inbounds for b in eachindex(Ifund)
+        j=Ifund[b]
+        # original fundamental node
+        u_full[j]=layer_pot[b]
+        empty!(imgs)
+        _image_sources!(imgs,xs[j],ys[j],nx[j],ny[j],solver.symmetry,solver.billiard)
+        for img in imgs
+            ximg,yimg,_,_,scale=img
+            q=argmin(@. hypot(xs-ximg,ys-yimg))
+            if hypot(xs[q]-ximg,ys[q]-yimg)>tol
+                error("Could not match symmetry image to full node.")
+            end
+            u_full[q]=scale*layer_pot[b]
+        end
+    end
     return pts,u_full
 end
 
