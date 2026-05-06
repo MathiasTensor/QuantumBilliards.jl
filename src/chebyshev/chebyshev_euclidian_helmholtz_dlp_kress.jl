@@ -537,6 +537,7 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
             for l in eachindex(rw.fund_to_full[b])
                 qimg=rw.fund_to_full[b][l]
                 qimg==j && continue
+                qimg==i && continue
                 scale=rw.fund_to_scale[b][l]
                 r=blk.R[i,qimg]
                 invr=blk.invR[i,qimg]
@@ -718,6 +719,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
             for l in eachindex(rw.fund_to_full[b])
                 qimg=rw.fund_to_full[b][l]
                 qimg==j && continue
+                qimg==i && continue
                 scale=rw.fund_to_scale[b][l]
                 r=blk.R[i,qimg]
                 invr=blk.invR[i,qimg]
