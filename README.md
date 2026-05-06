@@ -27,7 +27,7 @@ Focus is on the balance between **performance** and **spectral resolution**, wit
 
 ## Methods
 
-### Boundary Integral Methods (DLP / CFIE)
+### Boundary Integral Methods (DLP / CFIE) and Basis Type sweeps
 
 The Helmholtz problem
 
@@ -46,6 +46,10 @@ typically in the presence of holes.
 **+** Accurate, flexible, stable
 **−** Dense matrices, expensive assembly  
 
+Examples
+- example_circle_eigval_convergence.jl
+- example_bim_ebim_psm_dm.jl
+
 ---
 
 ### EBIM (Expanded Boundary Integral Method)
@@ -63,6 +67,9 @@ with second-order corrections.
 **+** Efficient for medium scale spectrum computations, works with Krylov for GEVP 
 **−** Finicky to deal with, requires checking interval size to not lose eigenvalues  
 
+Examples
+- example_bim_ebim_psm_dm.jl
+
 ---
 
 ### Vergini–Saraceno (Scaling Method)
@@ -72,7 +79,12 @@ Basis expansion near k_0:
 F c = μ G c
 
 **+** Extremely fast, gets many nearby levels per solve
-**−** Basis-dependent, less robust for complex (non-convex) geometries  
+**−** Basis-dependent, less robust for complex (non-convex) geometries as convergence is not guaranteed 
+
+Examples:
+- example_dlp_kress_vergini_saraceno.jl
+- example_spectrum.jl
+- example_ellipse_cap_mushroom.jl
 
 ---
 
@@ -86,9 +98,15 @@ where we construct A_0 and A_1
 
 **+** Finds all eigenvalues in a region  
 **+** Very effective when Vergini–Saraceno fails  
-**+** Naturally supports desymmetrized domains via subspace projections (Kress/Alpert)
-**−** Slower (not by much) than Vergini–Saraceno, as always needs to form and invert the full size matrix regardles of subspace projection
+**+** Naturally supports desymmetrized domains via subspace projections (Kress/Alpert) or even desymmerized kernels with DLP kress solvers
+**−** Slower (not by much) than Vergini–Saraceno, as always needs to form and invert the full size matrix (CFIE Kress / Alpert) regardles of subspace projection
 **−** Requires contour tuning (nq, but it varies slowly and is typically very small around 40-45) along with svd toleranance for A_0, but this is best left to default kwargs
+
+Examples:
+- example_beyn_kress.jl
+- example_beyn_alpert.jl
+- example_circle_with_hole.jl
+- example_kress_teardrop.jl
 
 ---
 
@@ -120,7 +138,7 @@ Supports many billiards:
 - **Assembly dominates →** Chebyshev interpolation  
 
 In practice:
-- VS is fastest when it applies.
+- VS is fastest when it applies - but window size determines accuracy!
 - Beyn is the most robust fallback and works on desymmetrized domains for all BIE type solvers.
 - EBIM is best for systematic checking in medium sized intervals.
 
@@ -133,7 +151,7 @@ Symmetry reduction reduces problem size and improves performance, but:
 - the spectrum splits into symmetry sectors -> removing degeneracies.
 - level counting must match the reduced domain -> only get parts of the full spectrum for that irrep.
 
-Some solvers (e.g. Kress, Alpert) assume periodic parametrizations and do not directly support desymmetrization. Beyn provides a natural workaround in these cases, but still requires full matrix assembly and inversion (lu!).
+Some solvers (e.g. CFIE Kress, Alpert) assume periodic parametrizations and do not directly support desymmetrization. Beyn provides a natural workaround in these cases, but still requires full matrix assembly and inversion (lu!).
 
 **Use symmetry whenever possible for improved performance and removal of degeneracies**
 
@@ -157,6 +175,7 @@ Active development focused on:
 - integration into the QuantumChaosJulia ecosystem
     1. https://github.com/Quantum-Chaos-Julia/BilliardGeometry.jl
 - neutrino billiards
+-   1. lu! with HSS algorithm for Beyn since Fredholm matrix should have mature support 
     1. Relativistic Quantum Chaos in Neutrino Billiards, Dietz B. (https://arxiv.org/pdf/2604.13003)
 - Hyperbolic kernel - Legendre Q via mpmath and seeding w/ Taylor series center expansion (Done, currently used in a paper, add after publication)  
 - Fast computation of high frequency Dirichlet eigenmodes via the spectral flow of the interior Neumann-to-Dirichlet map, Barnett A., Hassell A. 2011 https://arxiv.org/abs/1112.5665
