@@ -212,11 +212,8 @@ function _CFIE_project_V_subspace!(solver::Union{CFIE_kress,CFIE_kress_corners,C
     apply_projection!(V,W,maps,solver.symmetry)
     return V
 end
-# Overload for the case where we have a single BoundaryPointsCFIE instead of a vector, which can happen in simpler geometries without holes. This ensures that the projection is applied correctly even when the input is not a vector of boundary point sets.
+# This Kress implementation has proper kernel desymmetrization like standard BoundaryIntegralMethod
 function _CFIE_project_V_subspace!(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
-    isnothing(solver.symmetry) && return V
-    maps=build_symmetry_maps(pts,solver.symmetry)
-    apply_projection!(V,W,maps,solver.symmetry)
     return V
 end
 # this one has desymmetrization already built in in matrix construction stage, so dont do anything here
@@ -351,7 +348,7 @@ end
 #   - This function does not check residuals or remove spurious λ.
 #     Use `residual_and_norm_select` afterwards for filtering.
 function solve_vect(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels=15000,M=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
-    N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
+    N=boundary_matrix_size_for_solver(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
@@ -373,7 +370,7 @@ end
 # -------------------------------------------------------------
 
 function solve(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
-    N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
+    N=boundary_matrix_size_for_solver(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
@@ -411,7 +408,7 @@ end
 #   - Phi::Matrix{Complex{T}}: The eigenvectors corresponding to the eigenvalues
 #   - tens::Vector{T}: The residuals ||A(k)v(k)||
 function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels=15000,M=5) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=boundary_matrix_size(pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
+    N=boundary_matrix_size_for_solver(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     Vproj=similar(V)
@@ -699,7 +696,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
                 ks_list[i]=return_imag_part ? Complex{T}[] : T[]
                 tens_list[i]=T[]
                 tensN_list[i]=T[]
-                phi_list[i]=Matrix{Complex{T}}(undef,boundary_matrix_size(all_pts[i]),0)
+                phi_list[i]=Matrix{Complex{T}}(undef,boundary_matrix_size_for_solver(solver,all_pts[i]),0)
                 continue
             end
             idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded_matrix)

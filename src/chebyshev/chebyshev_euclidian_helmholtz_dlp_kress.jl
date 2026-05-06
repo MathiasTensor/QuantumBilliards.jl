@@ -309,6 +309,15 @@ struct DLPKressChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
     Mk::Int
 end
 
+struct DLPKressReducedChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
+    direct::DLPKressReducedWorkspace{T,MatT}
+    fullcheb::DLPKressChebWorkspace{T,MatT}
+    m::Int
+end
+
+@inline _cheb_workspace_dim(ws::DLPKressChebWorkspace)=ws.block_cache.block.N
+@inline _cheb_workspace_dim(ws::DLPKressReducedChebWorkspace)=ws.m
+
 """
     build_dlp_kress_cheb_workspace(solver,pts,direct,ks;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,pad=(0.95,1.05),plan_nthreads=1,ntls=Threads.nthreads())
 
@@ -346,6 +355,10 @@ function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_glo
     plans0,plans1,plansj0,plansj1=build_DLP_kress_plans(ks,block_cache.rmin,block_cache.rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
     bessel_ws=DLP_H0_H1_J0_J1_BesselWorkspace(length(ks);ntls=ntls)
     return DLPKressChebWorkspace{T,MatT}(direct,block_cache,plans0,plans1,plansj0,plansj1,bessel_ws,ks,length(ks))
+end
+function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressReducedWorkspace{T,MatT},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
+    fullcheb=build_dlp_kress_cheb_workspace(solver,pts,direct.full,ks;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad,plan_nthreads=plan_nthreads,ntls=ntls)
+    return DLPKressReducedChebWorkspace{T,MatT}(direct,fullcheb,direct.m)
 end
 
 """
@@ -390,6 +403,20 @@ If pidx is zero, the distance is below the interpolation cutoff and direct evalu
 @inline function _h1_j1_at_pidx_t!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,r::Float64,plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan})
     h1_j1_multi_ks_at_r!(h1vals,j1vals,plans1,plansj1,pidx,t,r)
     return nothing
+end
+
+@inline function _regular_dlp_image_D_complex(inn::T,invr::T,wj::T,k::ComplexF64,h1::ComplexF64,scale::Complex{T}) where {T<:Real}
+    return ComplexF64(scale)*(0.5im*k)*inn*invr*h1*wj
+end
+
+@inline function _regular_dlp_image_D_derivs_complex(inn::T,invr::T,r::T,wj::T,k::ComplexF64,h0::ComplexF64,h1::ComplexF64,scale::Complex{T}) where {T<:Real}
+    sc=ComplexF64(scale)
+    common=sc*0.5im*inn*invr*wj
+    kr=k*r
+    D=common*k*h1
+    D1=common*(kr*h0)
+    D2=common*(r*h0-k*r^2*h1)
+    return D,D1,D2
 end
 
 """
@@ -453,6 +480,72 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
                 l1_ji=αL1*inn_ji*j1*invr
                 l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
                 Ds[m][j,i]=Rij*l1_ji+wi*l2_ji
+            end
+        end
+    end
+    return nothing
+end
+
+function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+    fullws=rws.fullcheb
+    blk=fullws.block_cache.block
+    rw=rws.direct
+    Mk=fullws.Mk
+    m=rw.m
+    Ifund=rw.Ifund
+    @inbounds for q in 1:Mk
+        fill!(Ds[q],0.0+0.0im)
+        for a in 1:m
+            i=Ifund[a]
+            Ds[q][a,a]=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+        end
+    end
+    h1_tls=fullws.bessel_ws.h1_tls
+    j1_tls=fullws.bessel_ws.j1_tls
+    ks=fullws.ks
+    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+        tid=Threads.threadid()
+        h1vals=h1_tls[tid]
+        j1vals=j1_tls[tid]
+        j=Ifund[b]
+        @inbounds for a in 1:m
+            i=Ifund[a]
+            i==j && continue
+            r=blk.R[i,j]
+            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans1,fullws.plansj1)
+            invr=blk.invR[i,j]
+            lt=blk.logterm[i,j]
+            inn=blk.inner[i,j]
+            Rij=blk.Rkress[i,j]
+            wj=blk.wi[j]
+            for q in 1:Mk
+                k=ks[q]
+                αL1=-k*_INV_TWO_PI
+                αL2=0.5im*k
+                l1=αL1*inn*j1vals[q]*invr
+                l2=αL2*inn*h1vals[q]*invr-l1*lt
+                Ds[q][a,b]=Rij*l1+wj*l2
+            end
+        end
+    end
+    @inbounds for b in 1:m
+        j=Ifund[b]
+        h1vals=fullws.bessel_ws.h1_tls[1]
+        j1vals=fullws.bessel_ws.j1_tls[1]
+        for a in 1:m
+            i=Ifund[a]
+            for l in eachindex(rw.fund_to_full[b])
+                qimg=rw.fund_to_full[b][l]
+                qimg==j && continue
+                scale=rw.fund_to_scale[b][l]
+                r=blk.R[i,qimg]
+                invr=blk.invR[i,qimg]
+                inn=blk.inner[i,qimg]
+                wq=blk.wi[qimg]
+                _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,qimg],blk.tloc[i,qimg],r,fullws.plans1,fullws.plansj1)
+                for q in 1:Mk
+                    Ds[q][a,b]+=_regular_dlp_image_D_complex(inn,invr,wq,ks[q],h1vals[q],scale)
+                end
             end
         end
     end
@@ -556,6 +649,93 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
     return nothing
 end
 
+function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},D1s::Vector{<:AbstractMatrix{ComplexF64}},D2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+    fullws=rws.fullcheb
+    blk=fullws.block_cache.block
+    rw=rws.direct
+    Mk=fullws.Mk
+    m=rw.m
+    Ifund=rw.Ifund
+    @inbounds for q in 1:Mk
+        fill!(Ds[q],0.0+0.0im)
+        fill!(D1s[q],0.0+0.0im)
+        fill!(D2s[q],0.0+0.0im)
+        for a in 1:m
+            i=Ifund[a]
+            Ds[q][a,a]=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+        end
+    end
+    h0_tls=fullws.bessel_ws.h0_tls
+    h1_tls=fullws.bessel_ws.h1_tls
+    j0_tls=fullws.bessel_ws.j0_tls
+    j1_tls=fullws.bessel_ws.j1_tls
+    ks=fullws.ks
+    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+        tid=Threads.threadid()
+        h0vals=h0_tls[tid]
+        h1vals=h1_tls[tid]
+        j0vals=j0_tls[tid]
+        j1vals=j1_tls[tid]
+        j=Ifund[b]
+        @inbounds for a in 1:m
+            i=Ifund[a]
+            i==j && continue
+            r=blk.R[i,j]
+            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
+            invr=blk.invR[i,j]
+            lt=blk.logterm[i,j]
+            inn=blk.inner[i,j]
+            Rij=blk.Rkress[i,j]
+            wj=blk.wi[j]
+            for q in 1:Mk
+                k=ks[q]
+                h0=h0vals[q]
+                h1=h1vals[q]
+                j0=j0vals[q]
+                j1=j1vals[q]
+                αL1=-k*_INV_TWO_PI
+                αL2=0.5im*k
+                l1=αL1*inn*j1*invr
+                l2=αL2*inn*h1*invr-l1*lt
+                Ds[q][a,b]=Rij*l1+wj*l2
+                l1_1=-(inn*k*j0)*_INV_TWO_PI
+                l1_2=(inn*(k*r*j1-j0))*_INV_TWO_PI
+                l2_1=(inn*k*(lt*j0+im*pi*h0))*_INV_TWO_PI
+                l2_2=(inn*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*_INV_TWO_PI
+                D1s[q][a,b]=Rij*l1_1+wj*l2_1
+                D2s[q][a,b]=Rij*l1_2+wj*l2_2
+            end
+        end
+    end
+    @inbounds for b in 1:m
+        j=Ifund[b]
+        h0vals=fullws.bessel_ws.h0_tls[1]
+        h1vals=fullws.bessel_ws.h1_tls[1]
+        j0vals=fullws.bessel_ws.j0_tls[1]
+        j1vals=fullws.bessel_ws.j1_tls[1]
+        for a in 1:m
+            i=Ifund[a]
+            for l in eachindex(rw.fund_to_full[b])
+                qimg=rw.fund_to_full[b][l]
+                qimg==j && continue
+                scale=rw.fund_to_scale[b][l]
+                r=blk.R[i,qimg]
+                invr=blk.invR[i,qimg]
+                inn=blk.inner[i,qimg]
+                wq=blk.wi[qimg]
+                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,qimg],blk.tloc[i,qimg],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
+                for q in 1:Mk
+                    d,d1,d2=_regular_dlp_image_D_derivs_complex(inn,invr,r,wq,ks[q],h0vals[q],h1vals[q],scale)
+                    Ds[q][a,b]+=d
+                    D1s[q][a,b]+=d1
+                    D2s[q][a,b]+=d2
+                end
+            end
+        end
+    end
+    return nothing
+end
+
 """
     construct_dlp_kress_matrices_chebyshev!(Fs,pts,ws;multithreaded=true)
     construct_dlp_kress_matrices_derivatives_chebyshev!(Fs,F1s,F2s,pts,ws;multithreaded=true)
@@ -586,7 +766,7 @@ assemble the Kress-corrected DLP matrices and then convert them in place to
 # Returns
 - `nothing`
 """
-function construct_dlp_kress_matrices_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function construct_dlp_kress_matrices_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressChebWorkspace{T},DLPKressReducedChebWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
     _construct_dlp_kress_matrices_chebyshev!(Fs,pts,ws;multithreaded=multithreaded)
     @inbounds for m in eachindex(Fs),j in axes(Fs[m],2),i in axes(Fs[m],1)
         Fs[m][i,j]*=-1
@@ -597,7 +777,7 @@ function construct_dlp_kress_matrices_chebyshev!(Fs::Vector{<:AbstractMatrix{Com
     return nothing
 end
 
-function construct_dlp_kress_matrices_derivatives_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},F1s::Vector{<:AbstractMatrix{ComplexF64}},F2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function construct_dlp_kress_matrices_derivatives_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},F1s::Vector{<:AbstractMatrix{ComplexF64}},F2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressChebWorkspace{T},DLPKressReducedChebWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
     _construct_dlp_kress_matrices_derivatives_chebyshev!(Fs,F1s,F2s,pts,ws;multithreaded=multithreaded)
     @inbounds for m in eachindex(Fs),j in axes(Fs[m],2),i in axes(Fs[m],1)
         Fs[m][i,j]*=-1
@@ -645,18 +825,16 @@ wavenumbers, writing the results in place.
 """
 function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
-    @assert length(Tbufs)==Mk
-    if use_chebyshev
-        @blas_1 begin
-            @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
-            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
-            @inbounds for j in eachindex(Tbufs)
-                fill!(Tbufs[j],0.0+0.0im)
-            end
-            @benchit timeit=timeit "DLP_kress Chebyshev" construct_dlp_kress_matrices_chebyshev!(Tbufs,pts,chebws;multithreaded=multithreaded)
+    use_chebyshev || error("Direct DLP-Kress complex-k construction is not implemented.")
+    @blas_1 begin
+        @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
+        @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+        n=_cheb_workspace_dim(chebws)
+        @inbounds for q in eachindex(Tbufs)
+            @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-Kress workspace requires ($n,$n)."
+            fill!(Tbufs[q],0.0+0.0im)
         end
-    else
-        @error("Direct matrix construction is only for real k currently")
+        @benchit timeit=timeit "DLP_kress Chebyshev" construct_dlp_kress_matrices_chebyshev!(Tbufs,pts,chebws;multithreaded=multithreaded)
     end
     return nothing
 end
@@ -713,22 +891,20 @@ DLP-Kress pathway based on interpolation plans for:
 """
 function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
-    @assert length(Tbufs)==Mk
-    @assert length(dTbufs)==Mk
-    @assert length(ddTbufs)==Mk
-    if use_chebyshev
-        @blas_1 begin
-            @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
-            @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
-            @inbounds for j in eachindex(Tbufs)
-                fill!(Tbufs[j],0.0+0.0im)
-                fill!(dTbufs[j],0.0+0.0im)
-                fill!(ddTbufs[j],0.0+0.0im)
-            end
-            @benchit timeit=timeit "DLP_kress Derivatives Chebyshev" construct_dlp_kress_matrices_derivatives_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,chebws;multithreaded=multithreaded)
+    use_chebyshev || error("Direct DLP-Kress complex-k derivative construction is not implemented.")
+    @blas_1 begin
+        @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
+        @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+        n=_cheb_workspace_dim(chebws)
+        @inbounds for q in eachindex(Tbufs)
+            @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-Kress workspace requires ($n,$n)."
+            @assert size(dTbufs[q])==(n,n)
+            @assert size(ddTbufs[q])==(n,n)
+            fill!(Tbufs[q],0.0+0.0im)
+            fill!(dTbufs[q],0.0+0.0im)
+            fill!(ddTbufs[q],0.0+0.0im)
         end
-    else
-        @error("Direct derivative matrix construction is only for real k currently")
+        @benchit timeit=timeit "DLP_kress Derivatives Chebyshev" construct_dlp_kress_matrices_derivatives_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,chebws;multithreaded=multithreaded)
     end
     return nothing
 end

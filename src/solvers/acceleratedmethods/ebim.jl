@@ -22,6 +22,14 @@ const EBIMSolver=Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners
 ################# CHEBYSHEV INTERPOLATION PATHWAY #################
 ###################################################################
 
+# extremely nasty hack to get the reduced matrix sizes for certain solvers (like DLP kress with or wihtout corners) that generate the full pts but the matrix size is desymmetrized on the kernel level due to symmetry node mappins. Cant put this into geometry julia file since it needs solver information. This should not take much runtime so it is ok.
+@inline boundary_matrix_size_for_solver(solver,pts)=boundary_matrix_size(pts)
+function boundary_matrix_size_for_solver(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T}) where {T<:Real}
+    isnothing(solver.symmetry) && return length(pts.xy)
+    Ifund,_,_,_,_=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
+    return length(Ifund)
+end
+
 """
 
     EBIMChebBatchCache{W}
@@ -41,8 +49,8 @@ end
 # EBIM needs 3 matrix families (A,dA,ddA), so the effective batch cap is reduced.
 @inline _ebim_batch_cap(max_batch_matrices::Int)=max(1,max_batch_matrices÷3)
 @inline _ebim_complex_ks(ks)=ComplexF64.(ks) # to guarantee it gets the correct type for cache
-@inline function allocate_ebim_cheb_matrices(cache::EBIMChebBatchCache,pts)
-    N=boundary_matrix_size(pts)
+@inline function allocate_ebim_cheb_matrices(solver::EBIMSolver,cache::EBIMChebBatchCache,pts)
+    N=boundary_matrix_size_for_solver(solver,pts)
     Mk=length(cache.ks)
     As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:Mk]
     dAs=[Matrix{ComplexF64}(undef,N,N) for _ in 1:Mk]
@@ -135,7 +143,7 @@ Returns:
 - `(As,dAs,ddAs)`
 """
 function construct_ebim_cheb_matrices(solver::EBIMSolver,pts,cache::EBIMChebBatchCache;multithreaded::Bool=true)
-    As,dAs,ddAs=allocate_ebim_cheb_matrices(cache,pts)
+    As,dAs,ddAs=allocate_ebim_cheb_matrices(solver,cache,pts)
     construct_ebim_cheb_matrices!(As,dAs,ddAs,solver,pts,cache;multithreaded=multithreaded)
     return As,dAs,ddAs
 end
@@ -165,10 +173,19 @@ function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{Complex
     return nothing
 end
 
-function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache,idx::Int;multithreaded::Bool=true) where {T<:Real}
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache{<:DLPKressChebWorkspace},idx::Int;multithreaded::Bool=true) where {T<:Real}
     ws=cache.ws
     ws1=typeof(ws)(ws.direct,ws.block_cache,[ws.plans0[idx]],[ws.plans1[idx]],[ws.plansj0[idx]],[ws.plansj1[idx]],DLP_H0_H1_J0_J1_BesselWorkspace(1;ntls=length(ws.bessel_ws.h0_tls)),[ws.ks[idx]],1)
     construct_dlp_kress_matrices_derivatives_chebyshev!([A],[dA],[ddA],pts,ws1;multithreaded=multithreaded)
+    return nothing
+end
+
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache{<:DLPKressReducedChebWorkspace},idx::Int;multithreaded::Bool=true) where {T<:Real}
+    rws=cache.ws
+    fws=rws.fullcheb
+    fws1=typeof(fws)(fws.direct,fws.block_cache,[fws.plans0[idx]],[fws.plans1[idx]],[fws.plansj0[idx]],[fws.plansj1[idx]],DLP_H0_H1_J0_J1_BesselWorkspace(1;ntls=length(fws.bessel_ws.h0_tls)),[fws.ks[idx]],1,)
+    rws1=typeof(rws)(rws.direct,fws1,rws.m)
+    construct_dlp_kress_matrices_derivatives_chebyshev!([A],[dA],[ddA],pts,rws1;multithreaded=multithreaded)
     return nothing
 end
 
@@ -1053,7 +1070,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
     pts0=evaluate_points(solver,billiard,ks[1])
     println("compute_spectrum...")
     println("Total k points: $(length(ks))")
-    N0=boundary_matrix_size(pts0)
+    N0=boundary_matrix_size_for_solver(solver,pts0)
     A0=Matrix{ComplexF64}(undef,N0,N0)
     dA0=Matrix{ComplexF64}(undef,N0,N0)
     ddA0=Matrix{ComplexF64}(undef,N0,N0)
@@ -1077,7 +1094,7 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
             seg_last+=1
         end
         pts=seg_first==1 ? pts0 : evaluate_points(solver,billiard,ks[seg_last])
-        N=boundary_matrix_size(pts)
+        N=boundary_matrix_size_for_solver(solver,pts)
         A=Matrix{ComplexF64}(undef,N,N)
         dA=Matrix{ComplexF64}(undef,N,N)
         ddA=Matrix{ComplexF64}(undef,N,N)
@@ -1147,7 +1164,7 @@ and `|corr₁ + corr₂|`.
    4. `tens_2 = corr₁ + corr₂`.
 """
 function solve_DEBUG_w_2nd_order_corrections(solver::EBIMSolver,basis::Ba,pts,k;multithreaded::Bool=true) where {Ba<:AbstractHankelBasis}
-    N=boundary_matrix_size(pts)
+    N=boundary_matrix_size_for_solver(solver,pts)
     A=Matrix{ComplexF64}(undef,N,N)
     dA=Matrix{ComplexF64}(undef,N,N)
     ddA=Matrix{ComplexF64}(undef,N,N)
