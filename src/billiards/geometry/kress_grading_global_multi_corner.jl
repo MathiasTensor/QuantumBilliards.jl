@@ -139,7 +139,7 @@ function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=3,minsep_to
         end
         minsep=_min_periodic_spacing_sorted(tmap)
         minsep>=minsep_tol && return σ,tmap,jac,jac2,wq
-        qnew=max(one(T),qT*0.75) # multiply by 3/4 each time to reduce it until it gives larger than min separation
+        qnew=max(one(T),qT*0.9) # multiply by 0.9 each time to reduce it until it gives larger than min separation
         @warn "Kress grading nodes too close; reducing q." q_old=qT q_new=qnew minsep=minsep minsep_tol=minsep_tol N=N
         qT=qnew
     end

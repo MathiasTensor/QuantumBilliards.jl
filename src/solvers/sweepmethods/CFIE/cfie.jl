@@ -1099,7 +1099,7 @@ function _evaluate_points_panel(solver::CFIE_alpert{T},crv::C,k::T,idx::Int;mins
             tR=tangent(crv,one(T))
             return BoundaryPointsCFIE(xy,tangent_1st,tangent_2nd,sig,tmap,ws,ws_der,ds,idx,false,xL,xR,tL,tR)
         end
-        qnew=max(one(T),T(0.75)*qT)
+        qnew=max(one(T),T(0.9)*qT)
         @warn "Alpert panel grading nodes too close; reducing q." q_old=qT q_new=qnew minsep=minsep minsep_tol=minsep_tol N=N
         qT=qnew
     end
