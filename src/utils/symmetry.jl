@@ -228,8 +228,7 @@ function periodic_symmetry_index_orbits(::Type{T},N::Int,sym::Reflection) where 
         σx,σy=sym.parity
         px=Complex{T}(σx,0)
         py=Complex{T}(σy,0)
-        orbit=q->([q,_idx_reflect_x_ccw(q,N),_idx_reflect_y_ccw(q,N),_idx_rotate_pi_ccw(q,N)],
-                  [one(Complex{T}),px,py,px*py])
+        orbit=q->([q,_idx_reflect_x_quarter_ccw(q,N),_idx_reflect_y_quarter_ccw(q,N),_idx_rotate_pi_ccw(q,N)],[one(Complex{T}),px,py,px*py])
     else
         error("Unsupported reflection axis $(sym.axis)")
     end
