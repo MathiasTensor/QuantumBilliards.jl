@@ -493,58 +493,46 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
     Mk=fullws.Mk
     m=rw.m
     Ifund=rw.Ifund
+    ks=fullws.ks
     @inbounds for q in 1:Mk
         fill!(Ds[q],0.0+0.0im)
-        for a in 1:m
-            i=Ifund[a]
-            Ds[q][a,a]=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
-        end
     end
     h1_tls=fullws.bessel_ws.h1_tls
     j1_tls=fullws.bessel_ws.j1_tls
-    ks=fullws.ks
     @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
         tid=Threads.threadid()
         h1vals=h1_tls[tid]
         j1vals=j1_tls[tid]
-        j=Ifund[b]
+        imgs=rw.fund_to_full[b]
+        scales=rw.fund_to_scale[b]
         @inbounds for a in 1:m
             i=Ifund[a]
-            i==j && continue
-            r=blk.R[i,j]
-            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans1,fullws.plansj1)
-            invr=blk.invR[i,j]
-            lt=blk.logterm[i,j]
-            inn=blk.inner[i,j]
-            Rij=blk.Rkress[i,j]
-            wj=blk.wi[j]
-            for q in 1:Mk
-                k=ks[q]
-                αL1=-k*_INV_TWO_PI
-                αL2=0.5im*k
-                l1=αL1*inn*j1vals[q]*invr
-                l2=αL2*inn*h1vals[q]*invr-l1*lt
-                Ds[q][a,b]=Rij*l1+wj*l2
-            end
-        end
-    end
-    @inbounds for b in 1:m
-        j=Ifund[b]
-        h1vals=fullws.bessel_ws.h1_tls[1]
-        j1vals=fullws.bessel_ws.j1_tls[1]
-        for a in 1:m
-            i=Ifund[a]
-            for l in eachindex(rw.fund_to_full[b])
-                qimg=rw.fund_to_full[b][l]
-                qimg==j && continue
-                scale=rw.fund_to_scale[b][l]
-                r=blk.R[i,qimg]
-                invr=blk.invR[i,qimg]
-                inn=blk.inner[i,qimg]
-                wq=pts.ws[qimg]
-                _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,qimg],blk.tloc[i,qimg],r,fullws.plans1,fullws.plansj1)
+            for l in eachindex(imgs)
+                j=imgs[l]
+                scale=ComplexF64(scales[l])
+                if i==j
+                    d0=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+                    for q in 1:Mk
+                        Ds[q][a,b]+=scale*d0
+                    end
+                    continue
+                end
+                r=blk.R[i,j]
+                invr=blk.invR[i,j]
+                lt=blk.logterm[i,j]
+                inn=blk.inner[i,j]
+                Rij=blk.Rkress[i,j]
+                wj=blk.wi[j]
+                _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans1,fullws.plansj1)
                 for q in 1:Mk
-                    Ds[q][a,b]+=_regular_dlp_image_D_complex(inn,invr,wq,ks[q],h1vals[q],scale)
+                    k=ks[q]
+                    αL1=-k*_INV_TWO_PI
+                    αL2=0.5im*k
+                    h1=h1vals[q]
+                    j1=j1vals[q]
+                    l1=αL1*inn*j1*invr
+                    l2=αL2*inn*h1*invr-l1*lt
+                    Ds[q][a,b]+=scale*(Rij*l1+wj*l2)
                 end
             end
         end
@@ -656,79 +644,60 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
     Mk=fullws.Mk
     m=rw.m
     Ifund=rw.Ifund
+    ks=fullws.ks
     @inbounds for q in 1:Mk
         fill!(Ds[q],0.0+0.0im)
         fill!(D1s[q],0.0+0.0im)
         fill!(D2s[q],0.0+0.0im)
-        for a in 1:m
-            i=Ifund[a]
-            Ds[q][a,a]=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
-        end
     end
     h0_tls=fullws.bessel_ws.h0_tls
     h1_tls=fullws.bessel_ws.h1_tls
     j0_tls=fullws.bessel_ws.j0_tls
     j1_tls=fullws.bessel_ws.j1_tls
-    ks=fullws.ks
     @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
         j0vals=j0_tls[tid]
         j1vals=j1_tls[tid]
-        j=Ifund[b]
+        imgs=rw.fund_to_full[b]
+        scales=rw.fund_to_scale[b]
         @inbounds for a in 1:m
             i=Ifund[a]
-            i==j && continue
-            r=blk.R[i,j]
-            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
-            invr=blk.invR[i,j]
-            lt=blk.logterm[i,j]
-            inn=blk.inner[i,j]
-            Rij=blk.Rkress[i,j]
-            wj=blk.wi[j]
-            for q in 1:Mk
-                k=ks[q]
-                h0=h0vals[q]
-                h1=h1vals[q]
-                j0=j0vals[q]
-                j1=j1vals[q]
-                αL1=-k*_INV_TWO_PI
-                αL2=0.5im*k
-                l1=αL1*inn*j1*invr
-                l2=αL2*inn*h1*invr-l1*lt
-                Ds[q][a,b]=Rij*l1+wj*l2
-                l1_1=-(inn*k*j0)*_INV_TWO_PI
-                l1_2=(inn*(k*r*j1-j0))*_INV_TWO_PI
-                l2_1=(inn*k*(lt*j0+im*pi*h0))*_INV_TWO_PI
-                l2_2=(inn*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*_INV_TWO_PI
-                D1s[q][a,b]=Rij*l1_1+wj*l2_1
-                D2s[q][a,b]=Rij*l1_2+wj*l2_2
-            end
-        end
-    end
-    @inbounds for b in 1:m
-        j=Ifund[b]
-        h0vals=fullws.bessel_ws.h0_tls[1]
-        h1vals=fullws.bessel_ws.h1_tls[1]
-        j0vals=fullws.bessel_ws.j0_tls[1]
-        j1vals=fullws.bessel_ws.j1_tls[1]
-        for a in 1:m
-            i=Ifund[a]
-            for l in eachindex(rw.fund_to_full[b])
-                qimg=rw.fund_to_full[b][l]
-                qimg==j && continue
-                scale=rw.fund_to_scale[b][l]
-                r=blk.R[i,qimg]
-                invr=blk.invR[i,qimg]
-                inn=blk.inner[i,qimg]
-                wq=pts.ws[qimg]
-                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,qimg],blk.tloc[i,qimg],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
+            for l in eachindex(imgs)
+                j=imgs[l]
+                scale=ComplexF64(scales[l])
+                if i==j
+                    d0=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+                    for q in 1:Mk
+                        Ds[q][a,b]+=scale*d0
+                    end
+                    continue
+                end
+                r=blk.R[i,j]
+                invr=blk.invR[i,j]
+                lt=blk.logterm[i,j]
+                inn=blk.inner[i,j]
+                Rij=blk.Rkress[i,j]
+                wj=blk.wi[j]
+                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
                 for q in 1:Mk
-                    d,d1,d2=_regular_dlp_image_D_derivs_complex(inn,invr,r,wq,ks[q],h0vals[q],h1vals[q],scale)
-                    Ds[q][a,b]+=d
-                    D1s[q][a,b]+=d1
-                    D2s[q][a,b]+=d2
+                    k=ks[q]
+                    h0=h0vals[q]
+                    h1=h1vals[q]
+                    j0=j0vals[q]
+                    j1=j1vals[q]
+                    αL1=-k*_INV_TWO_PI
+                    αL2=0.5im*k
+                    l1=αL1*inn*j1*invr
+                    l2=αL2*inn*h1*invr-l1*lt
+                    l1_1=-(inn*k*j0)*_INV_TWO_PI
+                    l1_2=(inn*(k*r*j1-j0))*_INV_TWO_PI
+                    l2_1=(inn*k*(lt*j0+im*pi*h0))*_INV_TWO_PI
+                    l2_2=(inn*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*_INV_TWO_PI
+                    Ds[q][a,b]+=scale*(Rij*l1+wj*l2)
+                    D1s[q][a,b]+=scale*(Rij*l1_1+wj*l2_1)
+                    D2s[q][a,b]+=scale*(Rij*l1_2+wj*l2_2)
                 end
             end
         end
