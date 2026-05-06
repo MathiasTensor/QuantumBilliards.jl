@@ -542,7 +542,7 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
                 r=blk.R[i,qimg]
                 invr=blk.invR[i,qimg]
                 inn=blk.inner[i,qimg]
-                wq=blk.wi[qimg]
+                wq=pts.ds[qimg]
                 _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,qimg],blk.tloc[i,qimg],r,fullws.plans1,fullws.plansj1)
                 for q in 1:Mk
                     Ds[q][a,b]+=_regular_dlp_image_D_complex(inn,invr,wq,ks[q],h1vals[q],scale)
@@ -724,7 +724,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
                 r=blk.R[i,qimg]
                 invr=blk.invR[i,qimg]
                 inn=blk.inner[i,qimg]
-                wq=blk.wi[qimg]
+                wq=pts.ds[qimg]
                 _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,qimg],blk.tloc[i,qimg],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
                 for q in 1:Mk
                     d,d1,d2=_regular_dlp_image_D_derivs_complex(inn,invr,r,wq,ks[q],h0vals[q],h1vals[q],scale)
