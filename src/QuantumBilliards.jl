@@ -123,9 +123,9 @@ export filter_matrix!,basis_matrix,gradient_matrices,basis_and_gradient_matrices
 include("states/gradients.jl")
 
 # Sweep methods
-include("solvers/sweepmethods/basis_sweep/particularsolutionsmethod.jl")
+include("solvers/sweepmethods/BASIS_SWEEP/particularsolutionsmethod.jl")
 export ParticularSolutionsMethod,solve_full,solve,solve_vect,solve_INFO,evaluate_points,construct_matrices,construct_matrices_benchmark
-include("solvers/sweepmethods/basis_sweep/decompositionmethod.jl")
+include("solvers/sweepmethods/BASIS_SWEEP/decompositionmethod.jl")
 export DecompositionMethod
 include("solvers/sweepmethods/dlp/dlp.jl")
 export BoundaryIntegralMethod,AbstractHankelBasis,default_helmholtz_kernel_matrix,default_helmholtz_kernel_derivative_matrix,default_helmholtz_kernel_second_derivative_matrix,compute_kernel_matrix,compute_kernel_matrix!,compute_kernel_matrix_with_derivatives!
