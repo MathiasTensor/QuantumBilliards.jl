@@ -127,10 +127,10 @@ include("solvers/sweepmethods/BASIS_SWEEP/particularsolutionsmethod.jl")
 export ParticularSolutionsMethod,solve_full,solve,solve_vect,solve_INFO,evaluate_points,construct_matrices,construct_matrices_benchmark
 include("solvers/sweepmethods/BASIS_SWEEP/decompositionmethod.jl")
 export DecompositionMethod
-include("solvers/sweepmethods/dlp/dlp.jl")
+include("solvers/sweepmethods/DLP/dlp.jl")
 export BoundaryIntegralMethod,AbstractHankelBasis,default_helmholtz_kernel_matrix,default_helmholtz_kernel_derivative_matrix,default_helmholtz_kernel_second_derivative_matrix,compute_kernel_matrix,compute_kernel_matrix!,compute_kernel_matrix_with_derivatives!
 export fredholm_matrix!,fredholm_matrix_with_derivatives!,fredholm_matrix,fredholm_matrix_with_derivatives,construct_matrices!
-include("solvers/sweepmethods/dlp/dlp_kress.jl")
+include("solvers/sweepmethods/DLP/dlp_kress.jl")
 export DLPKressWorkspace,DLP_kress,DLP_kress_global_corners,build_dlp_kress_workspace,build_Rmat_dlp_kress
 export construct_dlp_matrix!,construct_dlp_split!,construct_fredholm_matrix!,construct_dlp_matrix_derivatives!,construct_fredholm_matrix_derivatives!
 
@@ -146,13 +146,13 @@ export eval_j!,eval_h1x,eval_h,eval_j,eval_h1x_multi_ks!,eval_h_multi_ks!,eval_j
 export h0_h1_j0_j1_multi_ks_at_r!,h0_h1_multi_ks_at_r!
 
 # CFIE
-include("solvers/sweepmethods/cfie/alpert_table.jl")
+include("solvers/sweepmethods/CFIE/alpert_table.jl")
 export AlpertLogRule,alpert_log_rule
-include("solvers/sweepmethods/cfie/cfie.jl")
+include("solvers/sweepmethods/CFIE/cfie.jl")
 export CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert
-include("solvers/sweepmethods/cfie/cfie_kress.jl")
+include("solvers/sweepmethods/CFIE/cfie_kress.jl")
 export CFIEKressWorkspace,build_cfie_kress_workspace,build_Rmat_kress,plot_boundary_with_weight_INFO
-include("solvers/sweepmethods/cfie/cfie_alpert.jl")
+include("solvers/sweepmethods/CFIE/cfie_alpert.jl")
 export AlpertPeriodicCache,AlpertSmoothPanelCache,CFIEAlpertWorkspace,build_cfie_alpert_workspace,estimate_cfie_alpert_cheb_rbounds
 
 # Chebyshev machinery - applied to specific kernels
