@@ -1086,12 +1086,15 @@ function overlap_and_merge_ebim!(k_left::Vector{K},ten_left::Vector{T},k_right::
         end
         push!(new_k,k_all[best])
         push!(new_t,ten_all[best])
-        push!(new_c,any(ctrl_all[block]) || length(block)>1,)
+        push!(new_c,any(ctrl_all[block]) || length(block)>1)
         i=j+1
     end
-    k_left[:]=new_k
-    ten_left[:]=new_t
-    control_left[:]=new_c
+    empty!(k_left)
+    empty!(ten_left)
+    empty!(control_left)
+    append!(k_left,new_k)
+    append!(ten_left,new_t)
+    append!(control_left,new_c)
     return nothing
 end
 
