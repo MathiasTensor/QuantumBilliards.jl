@@ -174,7 +174,7 @@ Some solvers (e.g. CFIE Kress, Alpert) assume periodic parametrizations and do n
 Active development focused on:
 - integration into the QuantumChaosJulia ecosystem
     1. https://github.com/Quantum-Chaos-Julia/BilliardGeometry.jl
-- neutrino billiards
+-   1. Reduce allocations in Beyn buffer matrices and temp matrices, we should just view into the largest k array matrix buffer.
 -   1. lu! with HSS algorithm for Beyn since Fredholm matrix should have mature support 
     1. Relativistic Quantum Chaos in Neutrino Billiards, Dietz B. (https://arxiv.org/pdf/2604.13003)
 - Hyperbolic kernel - Legendre Q via mpmath and seeding w/ Taylor series center expansion (Done, currently used in a paper, add after publication)  
