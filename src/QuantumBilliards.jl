@@ -123,7 +123,7 @@ export filter_matrix!,basis_matrix,gradient_matrices,basis_and_gradient_matrices
 include("states/gradients.jl")
 
 # Sweep methods
-include("solvers/sweepmethods/basis_sweep/particularsolutionsmethod.jl")
+include("solvers/sweepmethods/basis_sweep_a/particularsolutionsmethod.jl")
 export ParticularSolutionsMethod,solve_full,solve,solve_vect,solve_INFO,evaluate_points,construct_matrices,construct_matrices_benchmark
 include("solvers/sweepmethods/basis_sweep/decompositionmethod.jl")
 export DecompositionMethod
