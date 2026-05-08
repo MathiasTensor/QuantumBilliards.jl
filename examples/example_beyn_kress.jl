@@ -33,7 +33,7 @@ geometry=:star
 #     N ≈ k * L * b / (2π)
 #
 # so b behaves like "points per wavelength" on the boundary discretization.
-b=15.0 # b can be relatively small to get very good accuracy (1e-14-1e-15 im part - proxy for accuracy) for smooth geometries since Kress
+b=8.0 # b can be relatively small to get very good accuracy (1e-14-1e-15 im part - proxy for accuracy) for smooth geometries since Kress
 # has spectral convergence on smooth boundaries. 
 
 # Beyn search window [k1,k2]. For demo purposes we keep it small enough to run comfortably.

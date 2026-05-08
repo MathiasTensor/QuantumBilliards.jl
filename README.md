@@ -176,6 +176,7 @@ Active development focused on:
     1. https://github.com/Quantum-Chaos-Julia/BilliardGeometry.jl
 -   1. Reduce allocations in Beyn buffer matrices and temp matrices, we should just view into the largest k array matrix buffer.
 -   1. lu! with HSS algorithm for Beyn since Fredholm matrix should have mature support 
+-   1. Real Green's function kernel (as discussed by B\"acker:  (Habilitationsschrift) Eigenfunctions in chaotic quantum systems, Backer A., 2007, in the section on sources of spurious solutions) to halve the node count in Beyn with layer post-processing to get rid of them.
     1. Relativistic Quantum Chaos in Neutrino Billiards, Dietz B. (https://arxiv.org/pdf/2604.13003)
 - Hyperbolic kernel - Legendre Q via mpmath and seeding w/ Taylor series center expansion (Done, currently used in a paper, add after publication)  
 - Fast computation of high frequency Dirichlet eigenmodes via the spectral flow of the interior Neumann-to-Dirichlet map, Barnett A., Hassell A. 2011 https://arxiv.org/abs/1112.5665
