@@ -808,7 +808,7 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{Matrix{ComplexF64}}
                 _h1_j1_at_pidx_t!(h1vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans1,plansj1)
                 c1=scale*Rij*inn*invr
                 c2=scale*wj*inn*invr
-                c3=scale*wj*lt
+                c3=c2*lt
                 for q in 1:Mk
                     l1=αL1s[q]*j1vals[q]
                     accs[q]+=c1*l1+c2*αL2s[q]*h1vals[q]-c3*l1
