@@ -468,6 +468,9 @@ locating the corresponding Chebyshev panel on the fly from `plans0[1]`.
     return nothing
 end
 
+# these are used for the Alpert correction nodes, which are off-grid and thus require raw `r`-based evaluation rather than direct Chebyshev lookup
+# the distances `r` are typically small, so we use the small-`z` series expansions.
+
 """
     _dlp_terms_h01(TT,k,r,inn,invr,w,h0,h1)
 
