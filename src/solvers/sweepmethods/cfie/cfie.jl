@@ -972,45 +972,31 @@ function _evaluate_points_periodic(solver::CFIE_alpert{T},crv::C,k::T,idx::Int) 
 end
 
 """
-    _panel_sigma_to_u_jac(solver::CFIE_alpert, σ)
+    _panel_sigma_to_u_jac(solver::CFIE_alpert, σ, q)
 
-Map an Alpert computational panel coordinate `σ` to the physical panel
-parameter `u`, together with the first and second derivatives of the map.
+Map the Alpert computational panel coordinate `σ ∈ [0,1]` to the physical
+panel parameter `u`, together with the first and second derivatives of the
+grading map.
 
-Purpose
--------
-The Alpert panel discretization uses a graded coordinate map near endpoints.
-This helper provides:
-- `u = u(σ)`,
-- `du/dσ`,
-- `d²u/dσ²`,
+This helper is used by the adaptive Alpert panel discretization, where the
+grading strength `q` may be reduced dynamically if endpoint clustering becomes
+too aggressive.
 
-which are then used to transform geometry derivatives from the physical panel
-parameter to the computational panel variable.
+Returns `(u, jac, jac2)` where:
+- `u = u(σ)` is the physical panel coordinate,
+- `jac = du/dσ`,
+- `jac2 = d²u/dσ²`.
 
-# Arguments
-- `solver::CFIE_alpert`
-- `σ`:
-  Computational coordinate on the panel.
-
-# Returns
-- `(u, jac, jac2)`
-
-  where:
-  - `u`   is the physical panel coordinate,
-  - `jac` is `du/dσ`,
-  - `jac2` is `d²u/dσ²`.
-
-# Notes
-The grading strength is controlled by `solver.alpertq`.
+These quantities are used to transform geometric derivatives via the chain rule.
 """
-@inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}
-    q=solver.alpertq   # acts as grading strength parameter
+@inline function _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T,q::T) where {T<:Real}
     u=_panel_grade_map(σ,q)
     jac=_panel_grade_map_prime(σ,q)
     jac2=_panel_grade_map_doubleprime(σ,q)
     return u,jac,jac2
 end
+
+@inline _panel_sigma_to_u_jac(solver::CFIE_alpert{T},σ::T) where {T<:Real}=_panel_sigma_to_u_jac(solver,σ,T(solver.alpertq))
 
 """
     _evaluate_points_panel(solver::CFIE_alpert, crv, k, idx)
