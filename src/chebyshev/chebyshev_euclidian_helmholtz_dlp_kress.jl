@@ -1029,7 +1029,6 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{Matrix{
                 cD3=scale*wj*inn*invr*lt
                 cR=scale*Rij*inn*_INV_TWO_PI
                 cW=scale*wj*inn*_INV_TWO_PI
-                wr=k*r
                 for q in 1:Mk
                     kq=ks[q]
                     h0=h0vals[q]
