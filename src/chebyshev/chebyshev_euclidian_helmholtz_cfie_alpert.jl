@@ -502,80 +502,62 @@ available Hankel values `h0 = H₀^(1)(k r)` and `h1 = H₁^(1)(k r)`.
     return s0,s1,s2
 end
 
-"""
-    _assemble_self_alpert_periodic_cheb!(As,pts,G,C,blk,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=true)
-    _assemble_self_alpert_periodic_cheb_deriv!(As,A1s,A2s,pts,G,C,blk,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=true)
+# Return `true` if nodes `i` and `j` are within the excluded Alpert near
+# stencil on a periodic component.
 
-Assemble the self-interaction block for one periodic CFIE-Alpert component
-using Chebyshev-accelerated Hankel evaluation.
+# The distance is measured cyclically,
 
-The value-only form assembles:
-- `A(k)`
+#    dper = min(abs(i-j), N - abs(i-j)),
+#
+# and the pair is treated as near-singular if `dper < a`.
+#
+# This predicate is used in the optimized periodic self-block assembly to skip
+# the naive trapezoidal contribution on the Alpert replacement stencil. The
+# missing near entries are then supplied only through the Alpert correction nodes
+# and interpolation weights.
+@inline _periodic_near(i::Int,j::Int,N::Int,a::Int)=begin
+    d=abs(i-j)
+    min(d,N-d)<a
+end
 
-The derivative-aware form additionally assembles:
-- `A1(k)=dA/dk`
-- `A2(k)=d²A/dk²`
-
-# Arguments
-- `As`, `A1s`, `A2s`: Output matrices, one per wavenumber.
-- `pts::BoundaryPointsCFIE{T}`:
-  Periodic boundary component.
-- `G::CFIEGeomCache{T}`: Pairwise geometry cache for this component.
-- `C::AlpertPeriodicCache{T}`: Periodic Alpert self-correction cache.
-- `blk::CFIE_alpert_BlockCache{T}`: Block cache for the self block, used for Chebyshev lookup on node-node pairs.
-- `row_range::UnitRange{Int}`: Global row/column range occupied by this component.
-- `ks::Vector{ComplexF64}`: Wavenumbers being assembled simultaneously.
-- `rule::AlpertLogRule{T}`: Alpert logarithmic correction rule.
-- `plans0`, `plans1`: Chebyshev Hankel plans for `H₀^(1)` and `H₁^(1)`.
-- `h0_tls`, `h1_tls`: Thread-local temporary arrays for interpolated Hankel values.
-- `multithreaded::Bool=true`: Enables threaded row-parallel assembly.
-
-# Returns
-- `nothing`
-"""
+# Assemble the value-only periodic self-interaction block for CFIE-Alpert using
+# Chebyshev-interpolated Hankel values.
+# 1. inserts the identity contribution on the diagonal,
+# 2. adds the naive trapezoidal CFIE contribution only for pairs outside the
+#    periodic Alpert near stencil,
+# 3. adds the positive and negative Alpert correction-node contributions using
+#    the interpolation weights in `C`.
 function _assemble_self_alpert_periodic_cheb!(As::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},blk::CFIE_alpert_BlockCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
-    αS=ComplexF64(0,0.5)
     iks=Vector{ComplexF64}(undef,Mk)
+    αS=ComplexF64(0,0.5)
     @inbounds for m in 1:Mk
-        αD[m]=0.5im*ks[m]
-        iks[m]=1im*ks[m]
+        k=ks[m]
+        αD[m]=0.5im*k
+        iks[m]=1im*k
     end
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
     rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     offsp=C.offsp;wtp=C.wtp;offsm=C.offsm;wtm=C.wtm
     N=length(pts.xy);h=pts.ws[1];a=rule.a;jcorr=rule.j;ninterp=C.ninterp
     r0=first(row_range)-1
-    @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
         gi=r0+i
         @inbounds for m in 1:Mk
-            As[m][gi,gi]+=one(ComplexF64)
+            As[m][gi,gi]+=1.0+0im
         end
         @inbounds for j in 1:N
-            j==i && continue
+            (j==i || _periodic_near(i,j,N,a)) && continue
             gj=r0+j
             _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
-            inn=inner[i,j]
-            invrij=invR[i,j]
-            sj=speed[j]
+            cD=h*inner[i,j]*invR[i,j]
+            cS=h*speed[j]
             for m in 1:Mk
-                As[m][gi,gj]-=h*(αD[m]*inn*h1vals[m]*invrij)+iks[m]*(h*(αS*h0vals[m]*sj))
-            end
-        end
-        @inbounds for s in (-a+1):(a-1)
-            s==0 && continue
-            j=mod1(i+s,N)
-            gj=r0+j
-            _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
-            inn=inner[i,j]
-            invrij=invR[i,j]
-            sj=speed[j]
-            for m in 1:Mk
-                As[m][gi,gj]+=h*(αD[m]*inn*h1vals[m]*invrij)+iks[m]*(h*(αS*h0vals[m]*sj))
+                As[m][gi,gj]-=cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m])
             end
         end
         @inbounds for p in 1:jcorr
@@ -583,8 +565,10 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{Matrix{ComplexF64}},pts
             r=rp[p,i]
             if isfinite(r)
                 _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
+                cD=fac*innp[p,i]/r
+                cS=fac*sp[p,i]
                 for m in 1:Mk
-                    coeff=-(fac*(αD[m]*innp[p,i]*h1vals[m]/r))-iks[m]*(fac*(αS*h0vals[m]*sp[p,i]))
+                    coeff=-(cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m]))
                     for q in 1:ninterp
                         As[m][gi,r0+mod1(i+offsp[p,q],N)]+=coeff*wtp[p,q]
                     end
@@ -593,8 +577,10 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{Matrix{ComplexF64}},pts
             r=rm[p,i]
             if isfinite(r)
                 _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
+                cD=fac*innm[p,i]/r
+                cS=fac*sm[p,i]
                 for m in 1:Mk
-                    coeff=-(fac*(αD[m]*innm[p,i]*h1vals[m]/r))-iks[m]*(fac*(αS*h0vals[m]*sm[p,i]))
+                    coeff=-(cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m]))
                     for q in 1:ninterp
                         As[m][gi,r0+mod1(i+offsm[p,q],N)]+=coeff*wtm[p,q]
                     end
@@ -605,139 +591,30 @@ function _assemble_self_alpert_periodic_cheb!(As::Vector{Matrix{ComplexF64}},pts
     return nothing
 end
 
+# Assemble the periodic CFIE-Alpert self-interaction block and its first two
+# wavenumber derivatives.
+#
+# For every `k = ks[m]`, this fills As[m]  = A(k), A1s[m] = dA/dk, A2s[m] = d²A/dk²,
+# 
+# for the local periodic component block. The operator convention is
+#     A(k) = I - (D(k) + i*k*S(k)),
+# so the derivatives are
+#     A′(k)  = -(D′(k) + i*S(k) + i*k*S′(k)),
+#     A′′(k) = -(D′′(k) + 2i*S′(k) + i*k*S′′(k)).
 function _assemble_self_alpert_periodic_cheb_deriv!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertPeriodicCache{T},blk::CFIE_alpert_BlockCache{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     iks=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
         iks[m]=1im*ks[m]
     end
+    im1=ComplexF64(0,1)
+    im2=ComplexF64(0,2)
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
     rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     offsp=C.offsp;wtp=C.wtp;offsm=C.offsm;wtm=C.wtm
     N=length(pts.xy);h=pts.ws[1];a=rule.a;jcorr=rule.j;ninterp=C.ninterp
     r0=first(row_range)-1
-    @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
-        tid=Threads.threadid()
-        h0vals=h0_tls[tid]
-        h1vals=h1_tls[tid]
-        gi=r0+i
-        @inbounds for m in 1:Mk
-            As[m][gi,gi]+=one(ComplexF64)
-        end
-        @inbounds for j in 1:N
-            j==i && continue
-            gj=r0+j
-            _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
-            r=R[i,j];invr=invR[i,j];inn=inner[i,j];sj=speed[j]
-            for m in 1:Mk
-                d0,d1,d2=_dlp_terms_h01(T,ks[m],r,inn,invr,h,h0vals[m],h1vals[m])
-                s0,s1,s2=_slp_terms_h01(T,ks[m],r,sj,h,h0vals[m],h1vals[m])
-                As[m][gi,gj]-=d0+iks[m]*s0
-                A1s[m][gi,gj]-=d1+ComplexF64(0,1)*s0+iks[m]*s1
-                A2s[m][gi,gj]-=d2+ComplexF64(0,2)*s1+iks[m]*s2
-            end
-        end
-        @inbounds for q in (-a+1):(a-1)
-            q==0 && continue
-            j=mod1(i+q,N);gj=r0+j
-            _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
-            r=R[i,j];invr=invR[i,j];inn=inner[i,j];sj=speed[j]
-            for m in 1:Mk
-                d0,d1,d2=_dlp_terms_h01(T,ks[m],r,inn,invr,h,h0vals[m],h1vals[m])
-                s0,s1,s2=_slp_terms_h01(T,ks[m],r,sj,h,h0vals[m],h1vals[m])
-                As[m][gi,gj]+=d0+iks[m]*s0
-                A1s[m][gi,gj]+=d1+ComplexF64(0,1)*s0+iks[m]*s1
-                A2s[m][gi,gj]+=d2+ComplexF64(0,2)*s1+iks[m]*s2
-            end
-        end
-        @inbounds for p in 1:jcorr
-            fac=h*rule.w[p]
-            r=rp[p,i]
-            if isfinite(r)
-                _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
-                for m in 1:Mk
-                    d0,d1,d2=_dlp_terms_h01(T,ks[m],r,innp[p,i],inv(r),fac,h0vals[m],h1vals[m])
-                    s0,s1,s2=_slp_terms_h01(T,ks[m],r,sp[p,i],fac,h0vals[m],h1vals[m])
-                    for q in 1:ninterp
-                        gq=r0+mod1(i+offsp[p,q],N);ww=wtp[p,q]
-                        As[m][gi,gq]-=(d0+iks[m]*s0)*ww
-                        A1s[m][gi,gq]-=(d1+ComplexF64(0,1)*s0+iks[m]*s1)*ww
-                        A2s[m][gi,gq]-=(d2+ComplexF64(0,2)*s1+iks[m]*s2)*ww
-                    end
-                end
-            end
-            r=rm[p,i]
-            if isfinite(r)
-                _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
-                for m in 1:Mk
-                    d0,d1,d2=_dlp_terms_h01(T,ks[m],r,innm[p,i],inv(r),fac,h0vals[m],h1vals[m])
-                    s0,s1,s2=_slp_terms_h01(T,ks[m],r,sm[p,i],fac,h0vals[m],h1vals[m])
-                    for q in 1:ninterp
-                        gq=r0+mod1(i+offsm[p,q],N);ww=wtm[p,q]
-                        As[m][gi,gq]-=(d0+iks[m]*s0)*ww
-                        A1s[m][gi,gq]-=(d1+ComplexF64(0,1)*s0+iks[m]*s1)*ww
-                        A2s[m][gi,gq]-=(d2+ComplexF64(0,2)*s1+iks[m]*s2)*ww
-                    end
-                end
-            end
-        end
-    end
-    return nothing
-end
-
-"""
-    _assemble_self_alpert_smooth_panel_cheb!(solver,As,pts,G,C,X,Y,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=true)
-    _assemble_self_alpert_smooth_panel_cheb_deriv!(solver,As,A1s,A2s,pts,G,C,P,row_range,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=true)
-
-Assemble the self-interaction block for one open smooth CFIE-Alpert panel
-using Chebyshev-accelerated Hankel evaluation.
-
-The value-only form assembles:
-- `A(k)`
-
-The derivative-aware form additionally assembles:
-- `A1(k)=dA/dk`
-- `A2(k)=d²A/dk²`
-
-# Arguments
-- `solver::CFIE_alpert{T}`: CFIE-Alpert solver.
-- `As`, `A1s`, `A2s`: Output matrices, one per wavenumber.
-- `pts::BoundaryPointsCFIE{T}`: Open smooth boundary panel.
-- `G::CFIEGeomCache{T}`: Pairwise geometry cache for this panel.
-- `C::AlpertSmoothPanelCache{T}`: Open-panel Alpert self-correction cache.
-- `X`, `Y`: Flat coordinate arrays for the panel, used by the value-only form.
-- `P::CFIEPanelArrays{T}`: Flat panel arrays used by the derivative-aware form.
-- `row_range::UnitRange{Int}`: Global row/column range occupied by this panel.
-- `ks::Vector{ComplexF64}`: Wavenumbers being assembled simultaneously.
-- `rule::AlpertLogRule{T}`: Alpert logarithmic correction rule.
-- `plans0`, `plans1`: Chebyshev Hankel plans for `H₀^(1)` and `H₁^(1)`.
-- `h0_tls`, `h1_tls`: Thread-local temporary arrays for interpolated Hankel values.
-- `coeff_tls`: Thread-local coefficient work vectors used during correction scattering in the value-only form.
-- `multithreaded::Bool=true`: Enables threaded row-parallel assembly.
-
-# Returns
-- `nothing`
-"""
-function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},X::Vector{T},Y::Vector{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
-    Mk=length(ks)
-    αD=Vector{ComplexF64}(undef,Mk)
-    iks=Vector{ComplexF64}(undef,Mk)
-    αS=0.5im
-    @inbounds for m in 1:Mk
-        αD[m]=0.5im*ks[m]
-        iks[m]=1im*ks[m]
-    end
-    R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm
-    sp=C.sp;sm=C.sm
-    idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
-    N=length(X)
-    hσ=pts.ws[1]
-    a=rule.a
-    jcorr=rule.j
-    pinterp=size(idxp,3)
-    r0=first(row_range)-1
-    @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
+    @use_threads multithreading=multithreaded for i in 1:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
@@ -746,36 +623,38 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
             As[m][gi,gi]+=1.0+0im
         end
         @inbounds for j in 1:N
-            j==i && continue
-            abs(j-i)<a && continue
+            (j==i || _periodic_near(i,j,N,a)) && continue
             gj=r0+j
-            rij=R[i,j]
-            _h0_h1_at_r!(h0vals,h1vals,Float64(rij),plans0,plans1)
-            wij=pts.ws[j]
-            inn=inner[i,j]
-            invrij=invR[i,j]
-            sj=speed[j]
+            _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
+            r=R[i,j];invr=invR[i,j];inn=inner[i,j];sj=speed[j]
             for m in 1:Mk
-                dval=wij*(αD[m]*inn*h1vals[m]*invrij)
-                sval=wij*sj*(αS*h0vals[m])
-                As[m][gi,gj]-=dval+iks[m]*sval
+                d0,d1,d2=_dlp_terms_h01(T,ks[m],r,inn,invr,h,h0vals[m],h1vals[m])
+                s0,s1,s2=_slp_terms_h01(T,ks[m],r,sj,h,h0vals[m],h1vals[m])
+                As[m][gi,gj]-=d0+iks[m]*s0
+                A1s[m][gi,gj]-=d1+im1*s0+iks[m]*s1
+                A2s[m][gi,gj]-=d2+im2*s1+iks[m]*s2
             end
         end
         @inbounds for p in 1:jcorr
-            fac=hσ*rule.w[p]
+            fac=h*rule.w[p]
             r=rp[p,i]
             if isfinite(r)
                 _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
                 invr=inv(r)
                 inn=innp[p,i]
                 spp=sp[p,i]
-
                 for m in 1:Mk
-                    dval=fac*(αD[m]*inn*h1vals[m]*invr)
-                    sval=fac*(αS*h0vals[m]*spp)
-                    coeff=-(dval+iks[m]*sval)
-                    for q in 1:pinterp
-                        As[m][gi,row_range[idxp[p,i,q]]]+=coeff*wtp[p,i,q]
+                    d0,d1,d2=_dlp_terms_h01(T,ks[m],r,inn,invr,fac,h0vals[m],h1vals[m])
+                    s0,s1,s2=_slp_terms_h01(T,ks[m],r,spp,fac,h0vals[m],h1vals[m])
+                    a0=-(d0+iks[m]*s0)
+                    a1=-(d1+im1*s0+iks[m]*s1)
+                    a2=-(d2+im2*s1+iks[m]*s2)
+                    for q in 1:ninterp
+                        gq=r0+mod1(i+offsp[p,q],N)
+                        ww=wtp[p,q]
+                        As[m][gi,gq]+=a0*ww
+                        A1s[m][gi,gq]+=a1*ww
+                        A2s[m][gi,gq]+=a2*ww
                     end
                 end
             end
@@ -786,9 +665,89 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
                 inn=innm[p,i]
                 smm=sm[p,i]
                 for m in 1:Mk
-                    dval=fac*(αD[m]*inn*h1vals[m]*invr)
-                    sval=fac*(αS*h0vals[m]*smm)
-                    coeff=-(dval+iks[m]*sval)
+                    d0,d1,d2=_dlp_terms_h01(T,ks[m],r,inn,invr,fac,h0vals[m],h1vals[m])
+                    s0,s1,s2=_slp_terms_h01(T,ks[m],r,smm,fac,h0vals[m],h1vals[m])
+                    a0=-(d0+iks[m]*s0)
+                    a1=-(d1+im1*s0+iks[m]*s1)
+                    a2=-(d2+im2*s1+iks[m]*s2)
+                    for q in 1:ninterp
+                        gq=r0+mod1(i+offsm[p,q],N)
+                        ww=wtm[p,q]
+                        As[m][gi,gq]+=a0*ww
+                        A1s[m][gi,gq]+=a1*ww
+                        A2s[m][gi,gq]+=a2*ww
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+# For each target node inserts the identity contribution, adds the
+# naive CFIE trapezoidal interaction only outside the local Alpert exclusion
+# stencil `abs(i-j) < rule.a`, and then scatters the Alpert correction-node
+# contributions using the interpolation indices and weights stored in `C`.
+function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},X::Vector{T},Y::Vector{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},coeff_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+    Mk=length(ks)
+    αD=Vector{ComplexF64}(undef,Mk)
+    iks=Vector{ComplexF64}(undef,Mk)
+    αS=ComplexF64(0,0.5)
+    @inbounds for m in 1:Mk
+        k=ks[m]
+        αD[m]=0.5im*k
+        iks[m]=1im*k
+    end
+    R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
+    idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
+    w=pts.ws
+    N=length(X)
+    hσ=w[1]
+    a=rule.a
+    jcorr=rule.j
+    pinterp=size(idxp,3)
+    r0=first(row_range)-1
+    @use_threads multithreading=multithreaded for i in 1:N
+        tid=Threads.threadid()
+        h0vals=h0_tls[tid]
+        h1vals=h1_tls[tid]
+        gi=r0+i
+        @inbounds for m in 1:Mk
+            As[m][gi,gi]+=1.0+0im
+        end
+        @inbounds for j in 1:N
+            (j==i || abs(j-i)<a) && continue
+            gj=r0+j
+            r=R[i,j]
+            _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
+            cD=w[j]*inner[i,j]*invR[i,j]
+            cS=w[j]*speed[j]
+            for m in 1:Mk
+                As[m][gi,gj]-=cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m])
+            end
+        end
+        @inbounds for p in 1:jcorr
+            fac=hσ*rule.w[p]
+            r=rp[p,i]
+            if isfinite(r)
+                _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
+                cD=fac*innp[p,i]*inv(r)
+                cS=fac*sp[p,i]
+                for m in 1:Mk
+                    coeff=-(cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m]))
+                    for q in 1:pinterp
+                        As[m][gi,row_range[idxp[p,i,q]]]+=coeff*wtp[p,i,q]
+                    end
+                end
+            end
+            r=rm[p,i]
+            if isfinite(r)
+                _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
+                cD=fac*innm[p,i]*inv(r)
+                cS=fac*sm[p,i]
+                for m in 1:Mk
+                    coeff=-(cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m]))
                     for q in 1:pinterp
                         As[m][gi,row_range[idxm[p,i,q]]]+=coeff*wtm[p,i,q]
                     end
@@ -799,23 +758,37 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
     return nothing
 end
 
+# For each `k = ks[m]`, fills As[m]  = A(k), A1s[m] = dA/dk, A2s[m] = d²A/dk²,
+#     A(k) = I - (D(k) + i*k*S(k)).
+# The naive trapezoidal loop excludes the local Alpert stencil
+# `abs(i-j) < rule.a`; the excluded contribution is replaced by the Alpert
+# correction-node quadrature stored in `C`.
+#
+# The derivative formulas use the already-interpolated values
+#   `H₀^(1)(k*r)` and `H₁^(1)(k*r)` and apply
+#    A′(k)  = -(D′(k) + i*S(k) + i*k*S′(k)),
+#    A′′(k) = -(D′′(k) + 2i*S′(k) + i*k*S′′(k)).
 function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},P::CFIEPanelArrays{T},row_range::UnitRange{Int},ks::Vector{ComplexF64},rule::AlpertLogRule{T},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     iks=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
         iks[m]=1im*ks[m]
     end
+    im1=ComplexF64(0,1)
+    im2=ComplexF64(0,2)
+    halfim=ComplexF64(0,0.5)
+    mhalfim=ComplexF64(0,-0.5)
     X=P.X
     w=pts.ws
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm
-    sp=C.sp;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
     idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
     N=length(X)
     hσ=w[1]
     a=rule.a
     jcorr=rule.j
-    @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
+    pinterp=size(idxp,3)
+    @use_threads multithreading=multithreaded for i in 1:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
@@ -824,17 +797,28 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
             As[m][gi,gi]+=1.0+0im
         end
         @inbounds for j in 1:N
-            j==i && continue
-            abs(j-i)<a && continue
+            (j==i || abs(j-i)<a) && continue
             gj=row_range[j]
-            rij=R[i,j]
-            _h0_h1_at_r!(h0vals,h1vals,Float64(rij),plans0,plans1)
+            r=R[i,j]
+            _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
+            wd=w[j]
+            cD=wd*inner[i,j]
+            cDoverR=cD*invR[i,j]
+            cS=wd*speed[j]
             for m in 1:Mk
-                d0,d1,d2=_dlp_terms_h01(T,ks[m],rij,inner[i,j],invR[i,j],w[j],h0vals[m],h1vals[m])
-                s0,s1,s2=_slp_terms_h01(T,ks[m],rij,one(T),w[j]*speed[j],h0vals[m],h1vals[m])
-                As[m][gi,gj]-=d0+iks[m]*s0
-                A1s[m][gi,gj]-=d1+ComplexF64(0,1)*s0+iks[m]*s1
-                A2s[m][gi,gj]-=d2+ComplexF64(0,2)*s1+iks[m]*s2
+                k=ks[m]
+                h0=h0vals[m]
+                h1=h1vals[m]
+                ik=iks[m]
+                d0=halfim*k*cDoverR*h1
+                d1=halfim*cD*k*h0
+                d2=halfim*cD*(h0-k*r*h1)
+                s0=halfim*cS*h0
+                s1=mhalfim*cS*r*h1
+                s2=halfim*cS*r*(h1-k*r*h0)/k
+                As[m][gi,gj]-=d0+ik*s0
+                A1s[m][gi,gj]-=d1+im1*s0+ik*s1
+                A2s[m][gi,gj]-=d2+im2*s1+ik*s2
             end
         end
         @inbounds for p in 1:jcorr
@@ -842,14 +826,24 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
             r=rp[p,i]
             if isfinite(r)
                 _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
-                invr=inv(r)
+                cD=fac*innp[p,i]
+                cDoverR=cD*inv(r)
+                cS=fac*sp[p,i]
                 for m in 1:Mk
-                    d0,d1,d2=_dlp_terms_h01(T,ks[m],r,innp[p,i],invr,fac,h0vals[m],h1vals[m])
-                    s0,s1,s2=_slp_terms_h01(T,ks[m],r,sp[p,i],fac,h0vals[m],h1vals[m])
-                    a0=-(d0+iks[m]*s0)
-                    a1=-(d1+ComplexF64(0,1)*s0+iks[m]*s1)
-                    a2=-(d2+ComplexF64(0,2)*s1+iks[m]*s2)
-                    for q in axes(idxp,3)
+                    k=ks[m]
+                    h0=h0vals[m]
+                    h1=h1vals[m]
+                    ik=iks[m]
+                    d0=halfim*k*cDoverR*h1
+                    d1=halfim*cD*k*h0
+                    d2=halfim*cD*(h0-k*r*h1)
+                    s0=halfim*cS*h0
+                    s1=mhalfim*cS*r*h1
+                    s2=halfim*cS*r*(h1-k*r*h0)/k
+                    a0=-(d0+ik*s0)
+                    a1=-(d1+im1*s0+ik*s1)
+                    a2=-(d2+im2*s1+ik*s2)
+                    for q in 1:pinterp
                         gq=row_range[idxp[p,i,q]]
                         ww=wtp[p,i,q]
                         As[m][gi,gq]+=a0*ww
@@ -861,14 +855,24 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
             r=rm[p,i]
             if isfinite(r)
                 _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
-                invr=inv(r)
+                cD=fac*innm[p,i]
+                cDoverR=cD*inv(r)
+                cS=fac*sm[p,i]
                 for m in 1:Mk
-                    d0,d1,d2=_dlp_terms_h01(T,ks[m],r,innm[p,i],invr,fac,h0vals[m],h1vals[m])
-                    s0,s1,s2=_slp_terms_h01(T,ks[m],r,sm[p,i],fac,h0vals[m],h1vals[m])
-                    a0=-(d0+iks[m]*s0)
-                    a1=-(d1+ComplexF64(0,1)*s0+iks[m]*s1)
-                    a2=-(d2+ComplexF64(0,2)*s1+iks[m]*s2)
-                    for q in axes(idxm,3)
+                    k=ks[m]
+                    h0=h0vals[m]
+                    h1=h1vals[m]
+                    ik=iks[m]
+                    d0=halfim*k*cDoverR*h1
+                    d1=halfim*cD*k*h0
+                    d2=halfim*cD*(h0-k*r*h1)
+                    s0=halfim*cS*h0
+                    s1=mhalfim*cS*r*h1
+                    s2=halfim*cS*r*(h1-k*r*h0)/k
+                    a0=-(d0+ik*s0)
+                    a1=-(d1+im1*s0+ik*s1)
+                    a2=-(d2+im2*s1+ik*s2)
+                    for q in 1:pinterp
                         gq=row_range[idxm[p,i,q]]
                         ww=wtm[p,i,q]
                         As[m][gi,gq]+=a0*ww
@@ -882,111 +886,117 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
     return nothing
 end
 
-"""
-    _assemble_all_offpanel_naive!(As,pts,offs,parr,ks,plans0,plans1,h0_tls,h1_tls;multithreaded=true)
-    _assemble_all_offpanel_naive_deriv!(As,A1s,A2s,pts,offs,parr,ks,plans0,plans1,h0_tls,h1_tls;multithreaded=true)
-
-Assemble all smooth off-panel and off-component CFIE-Alpert interactions using
-Chebyshev-accelerated Hankel evaluation.
-
-The value-only form assembles:
-- `A(k)`
-
-The derivative-aware form additionally assembles:
-- `A1(k)=dA/dk`
-- `A2(k)=d²A/dk²`
-
-# Arguments
-- `As`, `A1s`, `A2s`: Output matrices, one per wavenumber.
-- `pts::Vector{BoundaryPointsCFIE{T}}`: Boundary discretization for all components/panels.
-- `offs::Vector{Int}`: Global component offsets in the assembled matrix.
-- `parr::Vector{CFIEPanelArrays{T}}`: Flat panel-array caches for all components/panels.
-- `ks::Vector{ComplexF64}`: Wavenumbers being assembled simultaneously.
-- `plans0`, `plans1`: Chebyshev Hankel plans for `H₀^(1)` and `H₁^(1)`.
-- `h0_tls`, `h1_tls`: Thread-local temporary arrays for interpolated Hankel values.
-- `multithreaded::Bool=true`: Enables threaded row-parallel assembly within each ordered block.
-
-# Returns
-- `nothing`
-"""
-function _assemble_all_offpanel_naive!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+# It uses `CFIEAlpertBlockSystemCache` to reuse all geometry-dependent quantities:
+# distances, inverse distances, DLP numerators, source weights, source speeds,
+# global row/column offsets, and Chebyshev panel lookup data.
+# For each off-diagonal block `(a,b)`, `a != b`, it writes
+#     A_ij(k) -= D_ij(k) + i*k*S_ij(k),
+# where
+#     D_ij(k) = w_j * (i*k/2) * inner_ij * H₁^(1)(k*r_ij) / r_ij,
+#     S_ij(k) = w_j * (i/2)   * speed_j * H₀^(1)(k*r_ij).
+function _assemble_all_offpanel_blockcache!(As::Vector{Matrix{ComplexF64}},block_cache::CFIEAlpertBlockSystemCache{T},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     αD=Vector{ComplexF64}(undef,Mk)
     iks=Vector{ComplexF64}(undef,Mk)
+    αS=ComplexF64(0,0.5)
     @inbounds for m in 1:Mk
-        αD[m]=0.5im*ks[m]
-        iks[m]=1im*ks[m]
+        k=ks[m]
+        αD[m]=0.5im*k
+        iks[m]=1im*k
     end
-    αS=0.5im
-    for aidx in eachindex(pts)
-        ra=offs[aidx]:(offs[aidx+1]-1);Pa=parr[aidx]
-        Xa=Pa.X;Ya=Pa.Y;Na=length(Xa)
-        for bidx in eachindex(pts)
-            bidx==aidx && continue
-            pb=pts[bidx];rb=offs[bidx]:(offs[bidx+1]-1);Pb=parr[bidx]
-            Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s;wb=pb.ws;Nb=length(Xb)
-            @use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-                tid=Threads.threadid()
-                h0vals=h0_tls[tid]
-                h1vals=h1_tls[tid]
-                gi=ra[i]
-                xi=Xa[i];yi=Ya[i]
-                @inbounds for j in 1:Nb
-                    dx=xi-Xb[j];dy=yi-Yb[j]
-                    r2=muladd(dx,dx,dy*dy)
-                    r2<=(eps(T))^2 && continue
-                    r=sqrt(r2);invr=inv(r)
-                    inn=dYb[j]*dx-dXb[j]*dy
-                    _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
-                    wd=wb[j];wsj=wd*sb[j]
-                    gj=rb[j]
-                    for m in 1:Mk
-                        dval=wd*(αD[m]*inn*h1vals[m]*invr)
-                        sval=wsj*(αS*h0vals[m])
-                        As[m][gi,gj]-=dval+iks[m]*sval
-                    end
+    blocks=block_cache.blocks
+    nc=size(blocks,1)
+    @inbounds for a in 1:nc, b in 1:nc
+        a==b && continue
+        blk=blocks[a,b]
+        R=blk.R
+        invR=blk.invR
+        inner=blk.inner
+        wj=blk.wj
+        sj=blk.speed_j
+        ro=blk.row_offset
+        co=blk.col_offset
+        @use_threads multithreading=multithreaded for i in 1:blk.Ni
+            tid=Threads.threadid()
+            h0vals=h0_tls[tid]
+            h1vals=h1_tls[tid]
+            gi=ro+i-1
+            @inbounds for j in 1:blk.Nj
+                r=R[i,j]
+                r<=eps(T) && continue
+                gj=co+j-1
+                _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
+                cD=wj[j]*inner[i,j]*invR[i,j]
+                cS=wj[j]*sj[j]
+                for m in 1:Mk
+                    As[m][gi,gj]-=cD*αD[m]*h1vals[m]+iks[m]*(cS*αS*h0vals[m])
                 end
             end
         end
     end
+
     return nothing
 end
 
-function _assemble_all_offpanel_naive_deriv!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},offs::Vector{Int},parr::Vector{CFIEPanelArrays{T}},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
+# For every `k = ks[m]`, fills the off-block contributions to
+#    As[m]  = A(k),
+#    A1s[m] = dA/dk,
+#    A2s[m] = d²A/dk²,
+# with the operator convention
+#    A(k) = I - (D(k) + i*k*S(k)).
+# The derivative formulas are
+#    A′(k)  = -(D′(k) + i*S(k) + i*k*S′(k)),
+#    A′′(k) = -(D′′(k) + 2i*S′(k) + i*k*S′′(k)).
+function _assemble_all_offpanel_blockcache_deriv!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},block_cache::CFIEAlpertBlockSystemCache{T},ks::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}};multithreaded::Bool=true) where {T<:Real}
     Mk=length(ks)
     iks=Vector{ComplexF64}(undef,Mk)
     @inbounds for m in 1:Mk
         iks[m]=1im*ks[m]
     end
-    for aidx in eachindex(pts)
-        ra=offs[aidx]:(offs[aidx+1]-1);Pa=parr[aidx]
-        Xa=Pa.X;Ya=Pa.Y;Na=length(Xa)
-        for bidx in eachindex(pts)
-            bidx==aidx && continue
-            pb=pts[bidx];rb=offs[bidx]:(offs[bidx+1]-1);Pb=parr[bidx]
-            Xb=Pb.X;Yb=Pb.Y;dXb=Pb.dX;dYb=Pb.dY;sb=Pb.s;wb=pb.ws;Nb=length(Xb)
-            @use_threads multithreading=(multithreaded && Na>=16) for i in 1:Na
-                tid=Threads.threadid()
-                h0vals=h0_tls[tid]
-                h1vals=h1_tls[tid]
-                gi=ra[i]
-                xi=Xa[i];yi=Ya[i]
-                @inbounds for j in 1:Nb
-                    dx=xi-Xb[j];dy=yi-Yb[j]
-                    r2=muladd(dx,dx,dy*dy)
-                    r2<=(eps(T))^2 && continue
-                    r=sqrt(r2);invr=inv(r)
-                    inn=dYb[j]*dx-dXb[j]*dy
-                    _h0_h1_at_r!(h0vals,h1vals,Float64(r),plans0,plans1)
-                    wd=wb[j]
-                    gj=rb[j]
-                    for m in 1:Mk
-                        d0,d1,d2=_dlp_terms_h01(T,ks[m],r,inn,invr,wd,h0vals[m],h1vals[m])
-                        s0,s1,s2=_slp_terms_h01(T,ks[m],r,one(T),wd*sb[j],h0vals[m],h1vals[m])
-                        As[m][gi,gj]-=d0+iks[m]*s0
-                        A1s[m][gi,gj]-=d1+ComplexF64(0,1)*s0+iks[m]*s1
-                        A2s[m][gi,gj]-=d2+ComplexF64(0,2)*s1+iks[m]*s2
-                    end
+    im1=ComplexF64(0,1)
+    im2=ComplexF64(0,2)
+    halfim=ComplexF64(0,0.5)
+    mhalfim=ComplexF64(0,-0.5)
+    blocks=block_cache.blocks
+    nc=size(blocks,1)
+    @inbounds for a in 1:nc, b in 1:nc
+        a==b && continue
+        blk=blocks[a,b]
+        R=blk.R
+        invR=blk.invR
+        inner=blk.inner
+        wj=blk.wj
+        sj=blk.speed_j
+        ro=blk.row_offset
+        co=blk.col_offset
+        @use_threads multithreading=multithreaded for i in 1:blk.Ni
+            tid=Threads.threadid()
+            h0vals=h0_tls[tid]
+            h1vals=h1_tls[tid]
+            gi=ro+i-1
+            @inbounds for j in 1:blk.Nj
+                r=R[i,j]
+                r<=eps(T) && continue
+                gj=co+j-1
+                invr=invR[i,j]
+                _h0_h1_at_entry!(h0vals,h1vals,blk,i,j,plans0,plans1)
+                cD=wj[j]*inner[i,j]
+                cDoverR=cD*invr
+                cS=wj[j]*sj[j]
+                for m in 1:Mk
+                    k=ks[m]
+                    h0=h0vals[m]
+                    h1=h1vals[m]
+                    ik=iks[m]
+                    d0=halfim*k*cDoverR*h1
+                    d1=halfim*cD*k*h0
+                    d2=halfim*cD*(h0-k*r*h1)
+                    s0=halfim*cS*h0
+                    s1=mhalfim*cS*r*h1
+                    s2=halfim*cS*r*(h1-k*r*h0)/k
+                    As[m][gi,gj]-=d0+ik*s0
+                    A1s[m][gi,gj]-=d1+im1*s0+ik*s1
+                    A2s[m][gi,gj]-=d2+im2*s1+ik*s2
                 end
             end
         end
@@ -1050,7 +1060,7 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{Matrix{Comple
             _assemble_self_alpert_smooth_panel_cheb!(solver,As,pts[a],Gs[a],Cs[a]::AlpertSmoothPanelCache{T},ws.block_cache.Xs[a],ws.block_cache.Ys[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls,coeff_tls;multithreaded=multithreaded)
         end
     end
-    _assemble_all_offpanel_naive!(As,pts,offs,parr,ks,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+    _assemble_all_offpanel_blockcache!(As,ws.block_cache,ks,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
     return nothing
 end
 
@@ -1109,7 +1119,7 @@ function compute_kernel_matrices_CFIE_alpert_chebyshev!(As::Vector{Matrix{Comple
             _assemble_self_alpert_smooth_panel_cheb_deriv!(solver,As,A1s,A2s,pts[a],Gs[a],Cs[a]::AlpertSmoothPanelCache{T},parr[a],ra,ks,rule,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
         end
     end
-    _assemble_all_offpanel_naive_deriv!(As,A1s,A2s,pts,offs,parr,ks,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
+    _assemble_all_offpanel_blockcache_deriv!(As,A1s,A2s,ws.block_cache,ks,plans0,plans1,h0_tls,h1_tls;multithreaded=multithreaded)
     return nothing
 end
 
