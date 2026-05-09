@@ -214,25 +214,25 @@ function CFIE_H0_H1_J0_J1_BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())
 end
 
 """
-    build_CFIE_plans_kress(ks,rmin,rmax;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,nthreads=1)
+    build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,nthreads::Int=1)
 
 Build Chebyshev interpolation plans for all special functions needed by
 CFIE-Kress assembly over a collection of wavenumbers.
 
-For each `k` this constructs four plans over the common distance interval
-`[rmin,rmax]`:
-- `H₀^(1)(k r)`
-- `H₁^(1)(k r)`
-- `J₀(k r)`
-- `J₁(k r)`
+For each `k`, this constructs:
+- `H₀^(1)(k r)` on `[rmin,rmax]`,
+- `H₁^(1)(k r)` on `[rmin,rmax]`,
+- `J₀(k r)` on `[0,rmax]`,
+- `J₁(k r)` on `[0,rmax]`.
 
-The Bessel-J plans are needed because, for complex `k`, the Kress split should
-not be implemented by taking real parts of the Hankels.
+The Hankel plans use the positive cutoff interval because the Hankels are
+singular near zero. The Bessel-J plans start at zero because `J₀` and `J₁` are
+regular there.
 
 # Returns
 - `(plans0,plans1,plansj0,plansj1)`
 """
-function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
+function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,nthreads::Int=1)
     Mk=length(ks)
     plans0=Vector{ChebHankelPlanH}(undef,Mk)
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
@@ -241,10 +241,10 @@ function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax:
     if nthreads<=1 || Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
-            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+            plansj0[m]=plan_j(0,k,0.0,rmax;npanels=npanels_j,M=M_j)
+            plansj1[m]=plan_j(1,k,0.0,rmax;npanels=npanels_j,M=M_j)
         end
     else
         nt=min(nthreads,Mk)
@@ -260,10 +260,10 @@ function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax:
         Threads.@threads for tid in 1:nt
             @inbounds for m in chunks[tid]
                 k=ComplexF64(ks[m])
-                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+                plansj0[m]=plan_j(0,k,0.0,rmax;npanels=npanels_j,M=M_j)
+                plansj1[m]=plan_j(1,k,0.0,rmax;npanels=npanels_j,M=M_j)
             end
         end
     end
@@ -271,7 +271,7 @@ function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax:
 end
 
 """
-    build_cfie_kress_block_caches(comps;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,pad=(0.95,1.05))
+    build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels_h::Int=10000,M_h::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
 
 Build the Chebyshev block-cache system for CFIE-Kress assembly.
 
@@ -297,21 +297,17 @@ order to avoid recomputing geometry-dependent quantities at every `k`.
   The boundary discretization, given as a vector of `BoundaryPointsCFIE` objects,
   one for each connected component. Each `BoundaryPointsCFIE` contains the
   geometry and quadrature data for that component.
-- `npanels::Int`:
-  Number of Chebyshev panels to use for the distance interpolation (default: `10000`).
-- `M::Int`:
-  Chebyshev interpolation order (default: `5`).
-- `grading::Symbol`:
-  Grading type for the distance panels (default: `:uniform`).
-- `geo_ratio::Real`:
-  Geometric growth ratio for panel sizes if grading is used (default: `1.05`).
+- `npanels_h::Int`:
+  Number of Chebyshev panels for the Hankel-based interpolation (default: `10000`).
+- `M_h::Int`:
+  Chebyshev interpolation order for the Hankel-based interpolation (default: `5`).
 - `pad::Tuple{T,T}`:
   Safety padding factors for the minimum and maximum distances when determining the interpolation interval (default: `(0.95, 1.05)`).
 
 # Returns
 - `CFIEBlockSystemCache{T}`
 """
-function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
+function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels_h::Int=10000,M_h::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
     Gs=[cfie_geom_cache(p,_is_nontrivial_grading(p)) for p in comps]
@@ -404,7 +400,7 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
     global_rmin_geom=Float64(global_rmin)
     global_rmax_geom=Float64(global_rmax)
     global_rmin_cheb=isnothing(rmin_cheb) ? global_rmin_geom : max(Float64(rmin_cheb),global_rmin_geom)
-    pref_plan=plan_h(0,1,1.0+0im,global_rmin_cheb,global_rmax_geom;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,global_rmin_cheb,global_rmax_geom;npanels=npanels_h,M=M_h)
     pans=pref_plan.panels
     for a in 1:nc, b in 1:nc
         blk=blocks[a,b]
@@ -929,7 +925,7 @@ function compute_kernel_matrices_CFIE_kress_chebyshev!(A::Matrix{ComplexF64},A1:
 end
 
 """
-    construct_boundary_matrices!(Tbufs,solver,pts,zj;multithreaded=true,use_chebyshev=true,n_panels=15000,M=5,timeit=false)
+    construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
 
 Assemble CFIE-Kress boundary matrices for a collection of complex
 wavenumbers, writing the results in place.
@@ -953,23 +949,27 @@ wavenumbers, writing the results in place.
   If `true`, uses Chebyshev interpolation for the Hankel and Bessel special
   functions. Currently this is the only supported path for complex
   wavenumbers.
-- `n_panels::Int=15000`:
-  Number of distance panels used in the Chebyshev interpolation plans.
-- `M::Int=5`:
-  Chebyshev interpolation order per panel.
+- `n_panels_h::Int=15000`:
+  Number of distance panels used in the Chebyshev interpolation plans for Hankel functions.
+- `M_h::Int=5`:
+  Chebyshev interpolation order per panel for Hankel functions.
+- `n_panels_j::Int=3000`:
+  Number of distance panels used in the Chebyshev interpolation plans for Bessel functions.
+- `M_j::Int=5`:
+  Chebyshev interpolation order per panel for Bessel functions.
 - `timeit::Bool=false`:
   If `true`, enables timing instrumentation via `@benchit`.
 
 # Returns
 - `nothing`
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=:uniform)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h)
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
@@ -983,7 +983,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
 end
 
 """
-    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
 
 Assemble CFIE-Kress boundary matrices and their first two derivatives with
 respect to the wavenumber for a collection of complex wavenumbers, writing the
@@ -1023,25 +1023,29 @@ CFIE-Kress pathway based on interpolation plans for:
   If `true`, uses Chebyshev interpolation for the Hankel and Bessel special
   functions. Currently this is the only supported path for complex
   wavenumbers.
-- `n_panels::Int=15000`:
-  Number of distance panels used in the Chebyshev interpolation plans.
-- `M::Int=5`:
-  Chebyshev interpolation order per panel.
+- `n_panels_h::Int=15000`:
+  Number of distance panels used in the Chebyshev interpolation plans for Hankel functions.
+- `M_h::Int=5`:
+  Chebyshev interpolation order per panel for Hankel functions.
+- `n_panels_j::Int=3000`:
+  Number of distance panels used in the Chebyshev interpolation plans for Bessel functions.
+- `M_j::Int=5`:
+  Chebyshev interpolation order per panel for Bessel functions.
 - `timeit::Bool=false`:
   If `true`, enables timing instrumentation via `@benchit`.
 
 # Returns
 - `nothing`
 """
-function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     @assert length(dTbufs)==Mk
     @assert length(ddTbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=:uniform)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=:uniform,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h)
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)

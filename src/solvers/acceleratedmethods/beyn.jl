@@ -234,8 +234,10 @@ end
 #   - svd_tol::Real: Tolerance for the SVD truncation
 #   - rng::AbstractRNG: Random number generator
 #   - use_chebyshev::Bool: Whether to use the Chebyshev Hankel evaluation or the standard one (for low k one can use no interpolations)
-#   - n_panels::Int: Number of Chebyshev panels to use (try 2000 for k≈3000 and rmax≈4.0)
-#   - M::Int: Degree of Chebyshev polynomials to use (try 200 for k≈3000 and rmax≈4.0)
+#   - n_panels_h::Int: Number of panels for the Hankel interpolation (if use_chebyshev=true)
+#   - M_h::Int: Order of the Chebyshev interpolation for the Hankel functions (if use_chebyshev=true)
+#   - n_panels_j::Int: Number of panels for the Bessel J interpolation (if use_chebyshev=true)
+#   - M_j::Int: Order of the Chebyshev interpolation for the Bessel J functions (if use_chebyshev=true)
 #   - info::Bool: Whether to print info messages
 #   - multithreaded::Bool: Whether to use multithreading in the kernel matrix assembly
 #
@@ -243,14 +245,14 @@ end
 #   1) Forms A0 = (1/2πi)∮ T(z)^{-1} V dz and A1 = (1/2πi)∮ z T(z)^{-1} V dz via LU solves.
 #   2) Rank rk determined by Σ[i] ≥ svd_tol (strict absolute threshold).
 #   3) If rk == 0, return empty matrices to signal “no roots in window”.
-function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_chebyshev=true,n_panels=15000,M=5,info::Bool=false,multithreaded::Bool=true) where {T<:Real}
+function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),use_chebyshev=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,info::Bool=false,multithreaded::Bool=true) where {T<:Real}
     θ=range(zero(T),TWO_PI;length=nq+1)[1:end-1] # remove last point
     ej=cis.(θ) # unit circle points
     zj=k0.+R.*ej # contour points
     wj=(R/nq).*ej # contour weights
     #TODO Make the Fredholm matrices working buffers from outside to prevent large allocations in a loop (only for RAM critical applications since this is a small part of the actual execution time)
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
-    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=info) # construct the T(zj) matrices for each contour point zj.
+    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=info) # construct the T(zj) matrices for each contour point zj.
     # Allocate the buffers for the Beyn method. These are used in the matrix construction and then in the contour integrations to avoid repeated allocations. The matrices are sized according to the expected number of eigenvalues r and the size of the Fredholm matrices N.
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     W=similar(V)
@@ -331,7 +333,10 @@ end
 #   - res_tol::Real    : residual tolerance (not used directly here)
 #   - rng              : random generator
 #   - use_chebyshev    : use Chebyshev Hankel evaluation (fast at large k)
-#   - n_panels, M      : Chebyshev grid parameters
+#   - n_panels_h::Int   : number of Chebyshev panels for Hankel evaluation
+#   - M_h::Int         : degree of Chebyshev polynomials for Hankel evaluation
+#   - n_panels_j::Int   : number of Chebyshev panels for Bessel J evaluation
+#   - M_j::Int         : degree of Chebyshev polynomials for Bessel J evaluation
 #   - multithreaded    : whether to use multithreading in kernel assembly
 #   - auto_discard_spurious : unused - legacy
 #   - info::Bool       : whether to print time execution messages during execution
@@ -347,9 +352,9 @@ end
 # Notes:
 #   - This function does not check residuals or remove spurious λ.
 #     Use `residual_and_norm_select` afterwards for filtering.
-function solve_vect(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels=15000,M=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve_vect(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=boundary_matrix_size_for_solver(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
-    B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
+    B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k,dk,pts
@@ -369,9 +374,9 @@ end
 #     them in statistics or physical interpretation.
 # -------------------------------------------------------------
 
-function solve(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
+function solve(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k::Complex{T},dk::T;multithreaded::Bool=true,nq::Int=32,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),auto_discard_spurious::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,info::Bool=false) where {Ba<:AbstractHankelBasis} where {T<:Real}
     N=boundary_matrix_size_for_solver(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
-    B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
+    B,Uk=construct_B_matrix(solver,pts,N,k,dk,nq=nq,r=r,svd_tol=svd_tol,rng=rng,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded,info=info) # here is where the core of the algorithm is found. Constructs B from step 5 in ref p.14
     if isempty(B) # rk==0
         @info "no_roots_in_window" k0=k R=dk nq=nq svd_tol=svd_tol
         return Complex{T}[]
@@ -400,14 +405,16 @@ end
 #   - use_adaptive_svd_tol::Bool: Whether to use adaptive svd tolerance based on maximum singular value
 #   - auto_discard_spurious::Bool: Whether to automatically discard spurious eigenvalues based on residuals
 #   - use_chebyshev::Bool: Whether to use chebyshev hankel evaluations 
-#   - n_panels::Int: Number of chebyshev panels to use
-#   - M::Int: Degree of chebyshev polynomials to use
+#   - n_panels_h::Int: Number of chebyshev panels for Hankel evaluation in the residual calculation
+#   - M_h::Int: Degree of chebyshev polynomials for Hankel evaluation in the residual calculation
+#   - n_panels_j::Int: Number of chebyshev panels for Bessel J evaluation in the residual calculation
+#   - M_j::Int: Degree of chebyshev polynomials for Bessel J evaluation in the residual calculation
 #
 # Outputs:
 #   - λ::Vector{Complex{T}}: The eigenvalues found inside the contour
 #   - Phi::Matrix{Complex{T}}: The eigenvectors corresponding to the eigenvalues
 #   - tens::Vector{T}: The residuals ||A(k)v(k)||
-function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels=15000,M=5) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},basis::Ba,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=48,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,use_chebyshev=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5) where {Ba<:AbstractHankelBasis,T<:Real}
     N=boundary_matrix_size_for_solver(solver,pts) # get the size of the boundary matrix based on the type of pts (BoundaryPoints or Vector{BoundaryPointsCFIE})
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
@@ -415,7 +422,7 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_c
     _CFIE_project_V_subspace!(solver,pts,V,Vproj)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
-    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=true) # construct the T(zj) matrices for each contour point zj.
+    construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=true) # construct the T(zj) matrices for each contour point zj.
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
@@ -473,7 +480,7 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_c
                 continue
             end
             fill!(Tbuf_check[1],0.0+0.0im)
-            construct_boundary_matrices!(Tbuf_check,solver,pts,[λ[j]];multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false) # construct the T(λ[j]) matrix for the eigenvalue λ[j] to check the residual
+            construct_boundary_matrices!(Tbuf_check,solver,pts,[λ[j]];multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=false) # construct the T(λ[j]) matrix for the eigenvalue λ[j] to check the residual
             @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,Tbuf_check[1],@view(Phi[:,j]))
             ybuf_norm=norm(ybuf)
             @info "k=$((λ[j])) ||A(k)v(k)|| = $(ybuf_norm)"
@@ -526,8 +533,10 @@ end
 #   - auto_discard_spurious::Bool=true: Whether to automatically discard spurious eigenvalues based on residuals
 #   - collect_logs::Bool=false: Whether to collect logs of the selection process
 #   - use_chebyshev::Bool=true: Whether to use Chebyshev Hankel evaluations
-#   - n_panels::Int=2000: Number of Chebyshev panels
-#   - M::Int=300: Degree of Chebyshev polynomials
+#   - n_panels_h::Int=15000: Number of Chebyshev panels for Hankel evaluation in the residual calculation
+#   - M_h::Int=5: Degree of Chebyshev polynomials for Hankel evaluation in the residual calculation
+#   - n_panels_j::Int=3000: Number of Chebyshev panels for Bessel J evaluation in the residual calculation
+#   - M_j::Int=5: Degree of Chebyshev polynomials for Bessel J evaluation in the residual calculation
 #   - multithreaded::Bool=true: Whether to use multithreading in kernel assembly
 #
 # Outputs:
@@ -536,7 +545,7 @@ end
 #   - tens::Vector{T}: Residual norms ||Aφ||
 #   - tensN::Vector{T}: Normalized residuals
 #   - logs::Vector{String}: Logs of the selection process (if collect_logs is true)
-function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,multithreaded::Bool=true) where {T<:Real}
+function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::Union{BoundaryPoints{T},Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,multithreaded::Bool=true) where {T<:Real}
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
     y=Vector{Complex{T}}(undef,N)
@@ -545,7 +554,7 @@ function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kres
     tensN=Vector{T}(undef,rk)
     logs=collect_logs ? String[] : nothing
     Tbufs=[zeros(Complex{T},N,N) for _ in eachindex(λ)]
-    construct_boundary_matrices!(Tbufs,solver,pts,λ;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,timeit=false)
+    construct_boundary_matrices!(Tbufs,solver,pts,λ;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=false)
     vecnorm= matnorm===:one ? (v->norm(v,1)) : matnorm===:two ? (v->norm(v)) : (v->norm(v,Inf))
     @inbounds for j in 1:rk
         λj=λ[j]
@@ -602,14 +611,15 @@ Phase 2: validate each λ by computing residuals ||A(λ)φ|| (φ=Uk*Y[:,j]), kee
 - multithreaded_matrix::Bool=false: Whether to use multithreading in matrix assembly
 - use_adaptive_svd_tol::Bool=false: Whether to use adaptive svd tolerance based on maximum singular value
 - use_chebyshev::Bool=true: Whether to use Chebyshev Hankel evaluations
-- n_panels_init::Int=2000: Number of Chebyshev panels as initial guess
-- M_init::Int=300: Degree of Chebyshev polynomials as initial guess
+- n_panels_h::Int=15000: Number of Chebyshev panels for Hankel functions as initial guess
+- M_h::Int=5: Degree of Chebyshev polynomials for Hankel functions as initial guess
+- n_panels_j::Int=3000: Number of Chebyshev panels for Bessel functions as initial guess
+- M_j::Int=5: Degree of Chebyshev polynomials for Bessel functions as initial guess
 - do_INFO_init::Bool=true: Whether to run a diagnostic Beyn solve on the last window
 - do_per_solve_INFO::Bool=false: Whether to run the diagnostics on each solve
 - cheb_tol::Real=1e-10: Tolerance for Chebyshev parameter tuning
 - max_iter::Int=10: Maximum iterations for Chebyshev parameter tuning
 - sampling_points::Int=50_000: Number of points to sample for Chebyshev parameter tuning
-- grading::Symbol=:uniform: Grading strategy for Chebyshev panels, by default uniform, can be :uniform or :geometric
 - grow_panels::Real=1.5: Growth factor for number of panels
 - grow_M::Int=2: Growth factor for degree of Chebyshev polynomials
 - return_imag_part::Bool=false: If the imaginary part of the k is also returned, it is the measure of discretization error
@@ -627,7 +637,7 @@ tensN   :: Vector{T}                   – normalized residuals (scale-free)
    • r is the probe rank for Beyn (auto-bumped internally if saturated).
    • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
 """
-function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_init=15000,M_init=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
     fundamental=!isnothing(solver.symmetry)
     basis=AbstractHankelBasis()
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
@@ -659,24 +669,23 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
     Ys=Vector{Matrix{Complex{T}}}(undef,length(k0))
     k0s=Vector{Complex{T}}(undef,length(k0))
     Rs=Vector{T}(undef,length(k0))
-    n_panels=n_panels_init
-    M=M_init
     if use_chebyshev
-        imax=argmax(real.(k0).+ R)
+        imax=argmax(real.(k0).+R)
         θref=range(zero(T),TWO_PI;length=nq+1)[1:end-1]
         zj_ref=k0[imax].+R[imax].*cis.(θref)
-        n_panels,M,_=chebyshev_params(solver,all_pts[imax],zj_ref;tol=cheb_tol,n_panels_init=n_panels_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=do_per_solve_INFO)
+        cheb_out=chebyshev_params(solver,all_pts[imax],zj_ref;tol=cheb_tol,npanels_h_init=n_panels_h,M_h_init=M_h,npanels_j_init=n_panels_j,M_j_init=M_j,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=do_per_solve_INFO)
+        n_panels_h,M_h,n_panels_j,M_j=cheb_out[1],cheb_out[2],cheb_out[3],cheb_out[4]
     end
     if do_INFO_init
         mid=cld(length(k0),2)
         @benchit timeit=do_INFO_init "solve_INFO representative disk" begin
-            _=solve_INFO(solver,basis,all_pts[mid],complex(k0[mid]),R[mid];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M)
+            _=solve_INFO(solver,basis,all_pts[mid],complex(k0[mid]),R[mid];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,use_adaptive_svd_tol=use_adaptive_svd_tol,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j)
         end
     end
     p=Progress(length(k0),1)
     @time "Beyn pass (all disks)" begin
         @inbounds for i in eachindex(k0)
-            λ,Uk,Y,κ,δ,ptsi=solve_vect(solver,basis,all_pts[i],complex(k0[i]),R[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,info=do_per_solve_INFO)
+            λ,Uk,Y,κ,δ,ptsi=solve_vect(solver,basis,all_pts[i],complex(k0[i]),R[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,info=do_per_solve_INFO)
             λs[i]=λ
             Uks[i]=Uk
             Ys[i]=Y
@@ -699,7 +708,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
                 phi_list[i]=Matrix{Complex{T}}(undef,boundary_matrix_size_for_solver(solver,all_pts[i]),0)
                 continue
             end
-            idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels=n_panels,M=M,multithreaded=multithreaded_matrix)
+            idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded_matrix)
             ks_list[i]=return_imag_part ? λs[i][idx] : real.(λs[i][idx])
             tens_list[i]=traw
             tensN_list[i]=tnorm

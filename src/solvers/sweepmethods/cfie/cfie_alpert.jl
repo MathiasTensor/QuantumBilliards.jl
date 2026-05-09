@@ -1075,42 +1075,48 @@ Assemble the self-interaction block for one open smooth panel using Alpert
 endpoint-aware correction.
 
 # Mathematical structure
-For open panels, the near correction differs from the periodic case:
-- the near band `|j-i| < a` is treated differently because endpoint effects
-  break periodic symmetry,
-- the local correction nodes are interpolated through explicit per-target
-  interpolation.
-
-The function:
-1. adds the identity,
-2. adds either the naive or near-modified DLP/CFIE contribution depending on
-   whether `|j-i| < a`,
-3. adds the positive and negative Alpert correction-node contributions through
-   the open-panel interpolation.
-
+For open panels, the near correction follows Barnett/Alpert logic:
+- add the identity,
+- add the naive CFIE contribution only outside the skipped near band
+  `abs(j-i) < rule.a`,
+- replace the skipped near-band contribution by Alpert correction nodes,
+  scattered back through endpoint-aware interpolation weights.
+  
 # Returns
 - `A`, modified in place.
 """
 function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
-    αD=Complex{T}(0,k/2);αS=Complex{T}(0,one(T)/2);ik=Complex{T}(0,k)
-    X=getindex.(pts.xy,1);Y=getindex.(pts.xy,2);w=pts.ws
-    R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
-    idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
+    αD=Complex{T}(0,k/2)
+    αS=Complex{T}(0,one(T)/2)
+    ik=Complex{T}(0,k)
+    w=pts.ws
+    R=G.R
+    invR=G.invR
+    inner=G.inner
+    speed=G.speed
+    rp=C.rp
+    rm=C.rm
+    innp=C.innp
+    innm=C.innm
+    sp=C.sp
+    sm=C.sm
+    idxp=C.idxp
+    wtp=C.wtp
+    idxm=C.idxm
+    wtm=C.wtm
     r0=first(row_range)-1
-    N=length(X);hσ=w[1];a=rule.a;jcorr=rule.j;pinterp=size(idxp,3)
+    N=length(pts.xy)
+    hσ=w[1]
+    jcorr=rule.j
     @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
         gi=r0+i
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
+            abs(j-i)<rule.a && continue
             r=R[i,j]
             h0,h1=hankel_pair01(k*r)
-            if abs(j-i)<a
-                A[gi,r0+j]+=w[j]*(αD*inner[i,j]*h1*invR[i,j])
-            else
-                A[gi,r0+j]-=w[j]*(αD*inner[i,j]*h1*invR[i,j])+ik*((w[j]*speed[j])*(αS*h0))
-            end
+            A[gi,r0+j]-=w[j]*(αD*inner[i,j]*h1*invR[i,j])+ik*((w[j]*speed[j])*(αS*h0))
         end
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
@@ -1118,7 +1124,7 @@ function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::Boundary
             if isfinite(r)
                 h0,h1=hankel_pair01(k*r)
                 coeff=-(fac*(αD*innp[p,i]*h1/r))-ik*(fac*(αS*h0*sp[p,i]))
-                for m in 1:pinterp
+                for m in axes(idxp,3)
                     A[gi,r0+idxp[p,i,m]]+=coeff*wtp[p,i,m]
                 end
             end
@@ -1126,7 +1132,7 @@ function _assemble_self_alpert_smooth_panel!(A::Matrix{Complex{T}},pts::Boundary
             if isfinite(r)
                 h0,h1=hankel_pair01(k*r)
                 coeff=-(fac*(αD*innm[p,i]*h1/r))-ik*(fac*(αS*h0*sm[p,i]))
-                for m in 1:pinterp
+                for m in axes(idxm,3)
                     A[gi,r0+idxm[p,i,m]]+=coeff*wtm[p,i,m]
                 end
             end
@@ -1150,28 +1156,36 @@ performed as before.
 """
 function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C::AlpertSmoothPanelCache{T},P::CFIEPanelArrays{T},row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     ik=Complex{T}(0,k)
-    X=P.X;Y=P.Y;w=pts.ws
-    R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
-    idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
-    N=length(X);hσ=w[1];a=rule.a;jcorr=rule.j
+    w=pts.ws
+    R=G.R
+    invR=G.invR
+    inner=G.inner
+    speed=G.speed
+    rp=C.rp
+    rm=C.rm
+    innp=C.innp
+    innm=C.innm
+    sp=C.sp
+    sm=C.sm
+    idxp=C.idxp
+    wtp=C.wtp
+    idxm=C.idxm
+    wtm=C.wtm
+    N=length(P.X)
+    hσ=w[1]
+    jcorr=rule.j
     QuantumBilliards.@use_threads multithreading=(multithreaded && N>=16) for i in 1:N
         gi=row_range[i]
         A[gi,gi]+=one(Complex{T})
         @inbounds for j in 1:N
             j==i && continue
+            abs(j-i)<rule.a && continue
             gj=row_range[j]
             d0,d1,d2,h0,h1=_dlp_terms(T,k,R[i,j],inner[i,j],invR[i,j],w[j])
-            if abs(j-i)<a
-                A[gi,gj]+=d0
-                A1[gi,gj]+=d1
-                A2[gi,gj]+=d2
-            else
-                s0,s1,s2=_slp_terms(T,k,R[i,j],one(T),w[j]*speed[j],h0,h1)
-                A[gi,gj]-=d0+ik*s0
-                A1[gi,gj]-=d1+Complex{T}(0,1)*s0+ik*s1
-                A2[gi,gj]-=d2+Complex{T}(0,2)*s1+ik*s2
-            end
+            s0,s1,s2=_slp_terms(T,k,R[i,j],speed[j],w[j],h0,h1)
+            A[gi,gj]-=d0+ik*s0
+            A1[gi,gj]-=d1+Complex{T}(0,1)*s0+ik*s1
+            A2[gi,gj]-=d2+Complex{T}(0,2)*s1+ik*s2
         end
         @inbounds for p in 1:jcorr
             fac=hσ*rule.w[p]
@@ -1180,10 +1194,11 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
                 d0,d1,d2,h0,h1=_dlp_terms(T,k,r,innp[p,i],inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,sp[p,i],fac,h0,h1)
                 for m in axes(idxp,3)
-                    gq=row_range[idxp[p,i,m]];ww=wtp[p,i,m]
-                    A[gi,gq]+=(d0-ik*s0)*ww
-                    A1[gi,gq]+=(d1-(Complex{T}(0,1)*s0+ik*s1))*ww
-                    A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*ww
+                    gq=row_range[idxp[p,i,m]]
+                    ww=wtp[p,i,m]
+                    A[gi,gq]-=(d0+ik*s0)*ww
+                    A1[gi,gq]-=(d1+Complex{T}(0,1)*s0+ik*s1)*ww
+                    A2[gi,gq]-=(d2+Complex{T}(0,2)*s1+ik*s2)*ww
                 end
             end
             r=rm[p,i]
@@ -1191,17 +1206,17 @@ function _assemble_self_alpert_smooth_panel_deriv!(A::AbstractMatrix{Complex{T}}
                 d0,d1,d2,h0,h1=_dlp_terms(T,k,r,innm[p,i],inv(r),fac)
                 s0,s1,s2=_slp_terms(T,k,r,sm[p,i],fac,h0,h1)
                 for m in axes(idxm,3)
-                    gq=row_range[idxm[p,i,m]];ww=wtm[p,i,m]
-                    A[gi,gq]+=(d0-ik*s0)*ww
-                    A1[gi,gq]+=(d1-(Complex{T}(0,1)*s0+ik*s1))*ww
-                    A2[gi,gq]+=(d2-(Complex{T}(0,2)*s1+ik*s2))*ww
+                    gq=row_range[idxm[p,i,m]]
+                    ww=wtm[p,i,m]
+                    A[gi,gq]-=(d0+ik*s0)*ww
+                    A1[gi,gq]-=(d1+Complex{T}(0,1)*s0+ik*s1)*ww
+                    A2[gi,gq]-=(d2+Complex{T}(0,2)*s1+ik*s2)*ww
                 end
             end
         end
     end
     return A,A1,A2
 end
-
 
 """
     _assemble_self_alpert!(solver, A, pts, G, C, row_range, k, rule; multithreaded=true)
@@ -1219,7 +1234,7 @@ explicitly on cache type.
 function _assemble_self_alpert!(solver::CFIE_alpert{T},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},G::CFIEGeomCache{T},C,row_range::UnitRange{Int},k::T,rule::AlpertLogRule{T};multithreaded::Bool=true) where {T<:Real}
     pts.is_periodic ?
         _assemble_self_alpert_periodic!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded) :
-        _assemble_self_alpert_smooth_panel!(solver,A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
+        _assemble_self_alpert_smooth_panel!(A,pts,G,C,row_range,k,rule;multithreaded=multithreaded)
 end
 
 

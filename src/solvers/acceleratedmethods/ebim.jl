@@ -67,39 +67,39 @@ construction over the wavenumbers `ks`.
 Returns:
 - `EBIMChebBatchCache`
 """
-function build_ebim_cheb_cache(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ks;n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,timeit::Bool=false) where {T<:Real}
+function build_ebim_cheb_cache(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},ks;n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     zks=_ebim_complex_ks(ks)
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
     plans0=Vector{ChebHankelPlanH}(undef,length(zks))
     plans1=Vector{ChebHankelPlanH}(undef,length(zks))
     @benchit timeit=timeit "EBIM BIM deriv plans" Threads.@threads for i in eachindex(zks)
-        plans0[i]=plan_h(0,1,zks[i],rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
-        plans1[i]=plan_h(1,1,zks[i],rmin,rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+        plans0[i]=plan_h(0,1,zks[i],rmin,rmax;npanels=n_panels_h,M=M_h)
+        plans1[i]=plan_h(1,1,zks[i],rmin,rmax;npanels=n_panels_h,M=M_h)
     end
     ws=DLPDerivChebWorkspace(T,length(zks))
     return EBIMChebBatchCache((plans0,plans1,ws),zks)
 end
 
-function build_ebim_cheb_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},ks;n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+function build_ebim_cheb_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},ks;n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
     zks=_ebim_complex_ks(ks)
-    @benchit timeit=timeit "EBIM DLP_kress direct workspace" directws=build_dlp_kress_workspace(solver,pts)
-    @benchit timeit=timeit "EBIM DLP_kress cheb workspace" ws=build_dlp_kress_cheb_workspace(solver,pts,directws,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,plan_nthreads=plan_nthreads,ntls=ntls)
+    @benchit timeit=timeit "EBIM DLP_kress direct workspace" directws=build_dlp_kress_workspace(solver, pts)
+    @benchit timeit=timeit "EBIM DLP_kress cheb workspace" ws=build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver,pts,directws,zks;npanels_h=n_panels_h,npanels_j=n_panels_j,M_h=M_h,M_j=M_j,plan_nthreads=plan_nthreads,ntls=ntls)
     return EBIMChebBatchCache(ws,zks)
 end
 
-function build_ebim_cheb_cache(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},ks;n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+function build_ebim_cheb_cache(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},ks;n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
     zks=_ebim_complex_ks(ks)
-    @benchit timeit=timeit "EBIM CFIE_kress cheb block cache" block_cache=build_cfie_kress_block_caches(solver,pts;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
-    @benchit timeit=timeit "EBIM CFIE_kress plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zks,block_cache.rmin,block_cache.rmax;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
+    @benchit timeit=timeit "EBIM CFIE_kress cheb block cache" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h)
+    @benchit timeit=timeit "EBIM CFIE_kress plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zks,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=plan_nthreads)
     ws=(block_cache=block_cache,plans0=plans0,plans1=plans1,plans2=plans2,plans3=plans3,bessel_ws=CFIE_H0_H1_J0_J1_BesselWorkspace(length(zks);ntls=ntls))
     return EBIMChebBatchCache(ws,zks)
 end
 
 function build_ebim_cheb_cache(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},ks;
-n_panels::Int=15000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,pad=(T(0.95),T(1.05)),plan_nthreads::Int=Threads.nthreads(),ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
     zks=_ebim_complex_ks(ks)
     @benchit timeit=timeit "EBIM CFIE_alpert direct workspace" directws=build_cfie_alpert_workspace(solver,pts)
-    @benchit timeit=timeit "EBIM CFIE_alpert cheb workspace" ws=build_cfie_alpert_cheb_workspace(solver,pts,directws,zks;npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad,plan_nthreads=plan_nthreads,ntls=ntls)
+    @benchit timeit=timeit "EBIM CFIE_alpert cheb workspace" ws=build_cfie_alpert_cheb_workspace(solver,pts,directws,zks;npanels=n_panels_h,M=M_h,pad=pad,plan_nthreads=plan_nthreads,ntls=ntls)
     return EBIMChebBatchCache(ws,zks)
 end
 
@@ -173,14 +173,14 @@ function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{Complex
     return nothing
 end
 
-function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache{<:DLPKressChebWorkspace},idx::Int;multithreaded::Bool=true) where {T<:Real}
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache{<:DLPKressH0H1J0J1ChebWorkspace},idx::Int;multithreaded::Bool=true) where {T<:Real}
     ws=cache.ws
     ws1=typeof(ws)(ws.direct,ws.block_cache,[ws.plans0[idx]],[ws.plans1[idx]],[ws.plansj0[idx]],[ws.plansj1[idx]],DLP_H0_H1_J0_J1_BesselWorkspace(1;ntls=length(ws.bessel_ws.h0_tls)),[ws.ks[idx]],1)
     construct_dlp_kress_matrices_derivatives_chebyshev!([A],[dA],[ddA],pts,ws1;multithreaded=multithreaded)
     return nothing
 end
 
-function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache{<:DLPKressReducedChebWorkspace},idx::Int;multithreaded::Bool=true) where {T<:Real}
+function construct_ebim_cheb_matrix_at!(A::Matrix{ComplexF64},dA::Matrix{ComplexF64},ddA::Matrix{ComplexF64},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},cache::EBIMChebBatchCache{<:DLPKressReducedH0H1J0J1ChebWorkspace},idx::Int;multithreaded::Bool=true) where {T<:Real}
     rws=cache.ws
     fws=rws.fullcheb
     fws1=typeof(fws)(fws.direct,fws.block_cache,[fws.plans0[idx]],[fws.plans1[idx]],[fws.plansj0[idx]],[fws.plansj1[idx]],DLP_H0_H1_J0_J1_BesselWorkspace(1;ntls=length(fws.bessel_ws.h0_tls)),[fws.ks[idx]],1,)
@@ -1123,13 +1123,14 @@ The interval is partitioned into segments, and for each segment the boundary geo
 
 # Chebyshev specific kwargs:
 - `use_chebyshev::Bool=false`: Use Chebyshev interpolation for matrix assembly across segments.
-- `n_panels::Int=15000`: Number of panels for Chebyshev interpolation if `use_chebyshev=true`.
-- `M::Int=5`: Number of Chebyshev modes for interpolation if `use_chebyshev=true`.
+- `n_panels_h::Int=15000`: Initial number of panels for the Hankel function interpolation (if using Chebyshev).
+- `M_h::Int=5`: Initial degree of Chebyshev polynomials for the Hankel function interpolation (if using Chebyshev).
+- `n_panels_j::Int=3000`: Initial number of panels for the Bessel J function interpolation (if using Chebyshev).
+- `M_j::Int=5`: Initial degree of Chebyshev polynomials for the Bessel J function interpolation (if using Chebyshev).
 - `cheb_param_strategy::Symbol=:global`: Strategy for Chebyshev parameter selection. Options are `:global` for using the spectrum's maximum k value to decide panelization and M for Chebyshev polynomials, then `:segment` if we want to adaptively choose parameters for each segment (good for large intervals with varying k density). Third is `:manual` where it will provide the user's initial kwarg `n_panels` and `M` for all segments without adaptation.
 - `cheb_tol::Real=1e-13`: Tolerance for Chebyshev parameter tuning (if using Chebyshev).
 - `max_iter::Int=20`: Maximum iterations for Chebyshev parameter tuning (if using Chebyshev).
 - `sampling_points::Int=50_000`: Number of points to sample for Chebyshev parameter tuning (if using Chebyshev).
-- `grading::Symbol=:uniform`: Grading strategy for Chebyshev panels, by default uniform, can be `:uniform` or `:geometric` (if using Chebyshev).
 - `grow_panels::Real=1.5`: Growth factor for number of panels during Chebyshev parameter tuning (if using Chebyshev).
 - `grow_M::Int=2`: Growth factor for degree of Chebyshev polynomials during Chebyshev parameter tuning (if using Chebyshev).
 - `verbose_cheb_panelization::Bool=false`: Whether to print detailed information during Chebyshev panelization (if using Chebyshev).
@@ -1144,7 +1145,7 @@ The interval is partitioned into segments, and for each segment the boundary geo
 - Left/right eigenvectors are complex in general; Hermitian pairing is used internally.
 - Matrix buffers are reused within each segment to avoid repeated allocations.
 """
-function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-5),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels::Int=15000,M::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grading::Symbol=:uniform,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Function=(k->0.05*k^(-1/3)),tol=T(1e-5),use_lapack_raw::Bool=false,multithreaded_matrices::Bool=false,use_krylov::Bool=true,seg_reuse_frac::T=T(0.95),solve_info::Bool=true,use_chebyshev::Bool=false,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,cheb_param_strategy::Symbol=:global,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,verbose_cheb_panelization::Bool=false,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
     ks=T[] # these are pts on the real axis (centers of EBIM windows)
     dks=T[] # these are the half-widths of the EBIM windows, which can be k-dependent
     k=k1
@@ -1176,9 +1177,8 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
     if use_chebyshev && cheb_param_strategy==:global
         kref=ks[end]
         pts_ref=evaluate_points(solver,billiard,kref)
-        n_panels,M,_=chebyshev_params(solver,pts_ref,ComplexF64[kref];tol=cheb_tol,n_panels_init=n_panels,M_init=M,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
-    elseif use_chebyshev && cheb_param_strategy==:manual
-        @info "Using manual Chebyshev parameters: n_panels=$n_panels, M=$M for all segments."
+        cheb_out=chebyshev_params(solver,pts_ref,ComplexF64[kref];tol=cheb_tol,npanels_h_init=n_panels_h,M_h_init=M_h,npanels_j_init=n_panels_j,M_j_init=M_j,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+        n_panels_h,M_h,n_panels_j,M_j=cheb_out[1],cheb_out[2],cheb_out[3],cheb_out[4]
     end
     results=Vector{Tuple{Vector{K},Vector{T}}}(undef,length(ks))
     p=Progress(length(ks),1)
@@ -1197,11 +1197,10 @@ function compute_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::F
             segks=ks[seg_first:seg_last]
             if cheb_param_strategy==:segment
                 kref=segks[end]
-                np_init=n_panels
-                M_init=M
-                n_panels,M,_=chebyshev_params(solver,pts,ComplexF64[kref];tol=cheb_tol,n_panels_init=np_init,M_init=M_init,grading=grading,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+                cheb_out=chebyshev_params(solver,pts,ComplexF64[kref];tol=cheb_tol,npanels_h_init=n_panels_h,M_h_init=M_h,npanels_j_init=n_panels_j,M_j_init=M_j,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=verbose_cheb_panelization)
+                n_panels_h,M_h,n_panels_j,M_j=cheb_out[1],cheb_out[2],cheb_out[3],cheb_out[4]
             end
-            cache=build_ebim_cheb_cache(solver,pts,segks;n_panels=n_panels,M=M,grading=grading)
+            cache=build_ebim_cheb_cache(solver,pts,segks;n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j)
             for (loc,i) in enumerate(seg_first:seg_last)
                 λs,tens=solve!(solver,A,dA,ddA,pts,ks[i],dks[i],cache,loc;use_lapack_raw=use_lapack_raw,multithreaded=multithreaded_matrices,use_krylov=use_krylov,nev=nevs[i],return_imag_part=return_imag_part)
                 results[i]=(λs,tens)

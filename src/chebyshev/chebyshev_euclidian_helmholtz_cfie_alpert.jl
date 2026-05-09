@@ -2,7 +2,7 @@ _TWO_PI=2*pi
 _INV_TWO_PI=1/_TWO_PI
 
 """
-    build_CFIE_plans_alpert(ks,rmin,rmax;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,nthreads=1)
+    build_CFIE_plans_alpert(ks,rmin,rmax;npanels=10000,M=5,nthreads=1)
 
 Build Chebyshev interpolation plans for the special functions needed by
 CFIE-Alpert assembly over a collection of wavenumbers.
@@ -20,7 +20,7 @@ handled by Alpert’s hybrid quadrature rather than analytic Kress splitting.
   Wavenumbers for which the CFIE-Alpert operator will be assembled.
 - `rmin, rmax`:
   Distance interval on which the Chebyshev interpolation must be valid.
-- `npanels, M, grading, geo_ratio`:
+- `npanels, M`:
   Parameters passed to the Chebyshev Hankel plan builder.
 - `nthreads::Int=1`:
   Number of threads used when building the plans.
@@ -29,15 +29,15 @@ handled by Alpert’s hybrid quadrature rather than analytic Kress splitting.
 - `(plans0,plans1)`:
   Chebyshev plans for `H₀^(1)` and `H₁^(1)` for all supplied wavenumbers.
 """
-function build_CFIE_plans_alpert(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
+function build_CFIE_plans_alpert(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,nthreads::Int=1)
     Mk=length(ks)
     plans0=Vector{ChebHankelPlanH}(undef,Mk)
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
     if nthreads<=1 || Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
-            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M)
+            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M)
         end
     else
         nt=min(nthreads,Mk)
@@ -53,8 +53,8 @@ function build_CFIE_plans_alpert(ks::AbstractVector{<:Number},rmin::Float64,rmax
         Threads.@threads for tid in 1:nt
             @inbounds for m in chunks[tid]
                 k=ComplexF64(ks[m])
-                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M)
+                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M)
             end
         end
     end
@@ -206,7 +206,7 @@ struct CFIEAlpertBlockSystemCache{T<:Real}
 end
     
 """
-    build_cfie_alpert_block_caches(solver,pts;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,pad=(0.95,1.05))
+    build_cfie_alpert_block_caches(solver,pts;npanels=10000,M=5,pad=(0.95,1.05))
 
 Build the Chebyshev block-cache system for CFIE-Alpert assembly.
 
@@ -224,7 +224,7 @@ the Chebyshev-accelerated Alpert assembly.
 - `solver::CFIE_alpert`
 - `pts::Vector{BoundaryPointsCFIE{T}}`
 - `rmin, rmax::T`: These global rmin and rmax must come from outside as they correct bounds due to off-grid Alpert nodes, and are used to build the Chebyshev plans. They can be estimated from the direct Alpert workspace using `estimate_cfie_alpert_cheb_rbounds`.
-- `npanels, M, grading, geo_ratio`:
+- `npanels, M`:
   Parameters passed to the Chebyshev Hankel plan builder, used here to determine
   the panel layout for the blockwise interpolation metadata.
 - `pad`:
@@ -234,7 +234,7 @@ the Chebyshev-accelerated Alpert assembly.
 # Returns
 - `CFIEAlpertBlockSystemCache{T}`
 """
-function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},rmin::T,rmax::T;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05))) where {T<:Real}
+function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},rmin::T,rmax::T;npanels::Int=10000,M::Int=5,pad=(T(0.95),T(1.05))) where {T<:Real}
     offs=component_offsets(pts)
     Gs=[cfie_geom_cache(p) for p in pts]
     rule=alpert_log_rule(T,solver.alpert_order)
@@ -294,7 +294,7 @@ function build_cfie_alpert_block_caches(solver::CFIE_alpert{T},pts::Vector{Bound
         tloc=Matrix{Float64}(undef,Ni,Nj)
         blocks[a,b]=CFIE_alpert_BlockCache{T}(same,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,selfcache)
     end
-    pref_plan=plan_h(0,1,1.0+0im,Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,Float64(rmin),Float64(rmax);npanels=npanels,M=M)
     pans=pref_plan.panels
     for a in 1:nc,b in 1:nc
         blk=blocks[a,b]
@@ -358,7 +358,7 @@ struct CFIEAlpertChebWorkspace{T<:Real}
 end
 
 """
-    build_cfie_alpert_cheb_workspace(solver,pts,direct,ks;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,pad=(0.95,1.05),plan_nthreads=1,ntls=Threads.nthreads())
+    build_cfie_alpert_cheb_workspace(solver,pts,direct,ks;npanels=10000,M=5,pad=(0.95,1.05),plan_nthreads=1,ntls=Threads.nthreads())
 
 Build the full reusable Chebyshev workspace for CFIE-Alpert assembly.
 
@@ -375,7 +375,7 @@ This function combines:
   Prebuilt direct Alpert workspace.
 - `ks::Vector{ComplexF64}`:
   Wavenumbers for which the workspace will be used.
-- `npanels, M, grading, geo_ratio`:
+- `npanels, M`:
   Parameters passed to the Chebyshev Hankel plan builder.
 - `pad`:
   Safety padding factors for the minimum and maximum distances used in the Chebyshev plans, applied to the blockwise extrema.
@@ -387,12 +387,12 @@ This function combines:
 # Returns
 - `CFIEAlpertChebWorkspace{T}`
 """
-function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},direct::CFIEAlpertWorkspace{T},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real}
+function build_cfie_alpert_cheb_workspace(solver::CFIE_alpert{T},pts::Vector{BoundaryPointsCFIE{T}},direct::CFIEAlpertWorkspace{T},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real}
     rmin_raw,rmax=estimate_cfie_alpert_cheb_rbounds(direct;pad=pad)
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(ks))
     rmin=max(rmin_raw,rmin_cheb)
-    block_cache=build_cfie_alpert_block_caches(solver,pts,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
-    plans0,plans1=build_CFIE_plans_alpert(ks,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
+    block_cache=build_cfie_alpert_block_caches(solver,pts,rmin,rmax;npanels=npanels,M=M,pad=pad)
+    plans0,plans1=build_CFIE_plans_alpert(ks,rmin,rmax;npanels=npanels,M=M,nthreads=plan_nthreads)
     bessel_ws=CFIE_H0_H1_BesselWorkspace(length(ks);ntls=ntls)
     return CFIEAlpertChebWorkspace{T}(direct,block_cache,plans0,plans1,bessel_ws,ks,length(ks))
 end
@@ -728,40 +728,37 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
         iks[m]=1im*ks[m]
     end
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm
+    sp=C.sp;sm=C.sm
     idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
-    N=length(X);hσ=pts.ws[1];a=rule.a;jcorr=rule.j;pinterp=size(idxp,3)
+    N=length(X)
+    hσ=pts.ws[1]
+    a=rule.a
+    jcorr=rule.j
+    pinterp=size(idxp,3)
     r0=first(row_range)-1
     @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
         gi=r0+i
-        xi=X[i];yi=Y[i]
         @inbounds for m in 1:Mk
             As[m][gi,gi]+=1.0+0im
         end
         @inbounds for j in 1:N
             j==i && continue
+            abs(j-i)<a && continue
             gj=r0+j
-            _h0_h1_at_r!(h0vals,h1vals,Float64(R[i,j]),plans0,plans1)
-            if abs(j-i)<a
-                wij=pts.ws[j]
-                inn=inner[i,j]
-                invrij=invR[i,j]
-                for m in 1:Mk
-                    As[m][gi,gj]+=wij*(αD[m]*inn*h1vals[m]*invrij)
-                end
-            else
-                wij=pts.ws[j]
-                inn=inner[i,j]
-                invrij=invR[i,j]
-                sj=speed[j]
-                for m in 1:Mk
-                    dval=wij*(αD[m]*inn*h1vals[m]*invrij)
-                    sval=(wij*sj)*(αS*h0vals[m])
-                    As[m][gi,gj]-=(dval+iks[m]*sval)
-                end
+            rij=R[i,j]
+            _h0_h1_at_r!(h0vals,h1vals,Float64(rij),plans0,plans1)
+            wij=pts.ws[j]
+            inn=inner[i,j]
+            invrij=invR[i,j]
+            sj=speed[j]
+            for m in 1:Mk
+                dval=wij*(αD[m]*inn*h1vals[m]*invrij)
+                sval=wij*sj*(αS*h0vals[m])
+                As[m][gi,gj]-=dval+iks[m]*sval
             end
         end
         @inbounds for p in 1:jcorr
@@ -772,8 +769,11 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
                 invr=inv(r)
                 inn=innp[p,i]
                 spp=sp[p,i]
+
                 for m in 1:Mk
-                    coeff=-(fac*(αD[m]*inn*h1vals[m]*invr))-iks[m]*(fac*(αS*h0vals[m]*spp))
+                    dval=fac*(αD[m]*inn*h1vals[m]*invr)
+                    sval=fac*(αS*h0vals[m]*spp)
+                    coeff=-(dval+iks[m]*sval)
                     for q in 1:pinterp
                         As[m][gi,row_range[idxp[p,i,q]]]+=coeff*wtp[p,i,q]
                     end
@@ -786,7 +786,9 @@ function _assemble_self_alpert_smooth_panel_cheb!(solver::CFIE_alpert{T},As::Vec
                 inn=innm[p,i]
                 smm=sm[p,i]
                 for m in 1:Mk
-                    coeff=-(fac*(αD[m]*inn*h1vals[m]*invr))-iks[m]*(fac*(αS*h0vals[m]*smm))
+                    dval=fac*(αD[m]*inn*h1vals[m]*invr)
+                    sval=fac*(αS*h0vals[m]*smm)
+                    coeff=-(dval+iks[m]*sval)
                     for q in 1:pinterp
                         As[m][gi,row_range[idxm[p,i,q]]]+=coeff*wtm[p,i,q]
                     end
@@ -803,11 +805,16 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
     @inbounds for m in 1:Mk
         iks[m]=1im*ks[m]
     end
-    X=P.X;w=pts.ws
+    X=P.X
+    w=pts.ws
     R=G.R;invR=G.invR;inner=G.inner;speed=G.speed
-    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm;sp=C.sp;sm=C.sm
+    rp=C.rp;rm=C.rm;innp=C.innp;innm=C.innm
+    sp=C.sp;sm=C.sm
     idxp=C.idxp;wtp=C.wtp;idxm=C.idxm;wtm=C.wtm
-    N=length(X);hσ=w[1];a=rule.a;jcorr=rule.j
+    N=length(X)
+    hσ=w[1]
+    a=rule.a
+    jcorr=rule.j
     @use_threads multithreading=(multithreaded && N>=16) for i in 1:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
@@ -818,25 +825,16 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
         end
         @inbounds for j in 1:N
             j==i && continue
+            abs(j-i)<a && continue
             gj=row_range[j]
             rij=R[i,j]
             _h0_h1_at_r!(h0vals,h1vals,Float64(rij),plans0,plans1)
-            d0j,d1j,d2j=zero(ComplexF64),zero(ComplexF64),zero(ComplexF64)
-            if abs(j-i)<a
-                for m in 1:Mk
-                    d0,d1,d2=_dlp_terms_h01(T,ks[m],rij,inner[i,j],invR[i,j],w[j],h0vals[m],h1vals[m])
-                    As[m][gi,gj]+=d0
-                    A1s[m][gi,gj]+=d1
-                    A2s[m][gi,gj]+=d2
-                end
-            else
-                for m in 1:Mk
-                    d0,d1,d2=_dlp_terms_h01(T,ks[m],rij,inner[i,j],invR[i,j],w[j],h0vals[m],h1vals[m])
-                    s0,s1,s2=_slp_terms_h01(T,ks[m],rij,one(T),w[j]*speed[j],h0vals[m],h1vals[m])
-                    As[m][gi,gj]-=d0+iks[m]*s0
-                    A1s[m][gi,gj]-=d1+ComplexF64(0,1)*s0+iks[m]*s1
-                    A2s[m][gi,gj]-=d2+ComplexF64(0,2)*s1+iks[m]*s2
-                end
+            for m in 1:Mk
+                d0,d1,d2=_dlp_terms_h01(T,ks[m],rij,inner[i,j],invR[i,j],w[j],h0vals[m],h1vals[m])
+                s0,s1,s2=_slp_terms_h01(T,ks[m],rij,one(T),w[j]*speed[j],h0vals[m],h1vals[m])
+                As[m][gi,gj]-=d0+iks[m]*s0
+                A1s[m][gi,gj]-=d1+ComplexF64(0,1)*s0+iks[m]*s1
+                A2s[m][gi,gj]-=d2+ComplexF64(0,2)*s1+iks[m]*s2
             end
         end
         @inbounds for p in 1:jcorr
@@ -848,12 +846,15 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
                 for m in 1:Mk
                     d0,d1,d2=_dlp_terms_h01(T,ks[m],r,innp[p,i],invr,fac,h0vals[m],h1vals[m])
                     s0,s1,s2=_slp_terms_h01(T,ks[m],r,sp[p,i],fac,h0vals[m],h1vals[m])
+                    a0=-(d0+iks[m]*s0)
+                    a1=-(d1+ComplexF64(0,1)*s0+iks[m]*s1)
+                    a2=-(d2+ComplexF64(0,2)*s1+iks[m]*s2)
                     for q in axes(idxp,3)
                         gq=row_range[idxp[p,i,q]]
                         ww=wtp[p,i,q]
-                        As[m][gi,gq]+=(d0-iks[m]*s0)*ww
-                        A1s[m][gi,gq]+=(d1-(ComplexF64(0,1)*s0+iks[m]*s1))*ww
-                        A2s[m][gi,gq]+=(d2-(ComplexF64(0,2)*s1+iks[m]*s2))*ww
+                        As[m][gi,gq]+=a0*ww
+                        A1s[m][gi,gq]+=a1*ww
+                        A2s[m][gi,gq]+=a2*ww
                     end
                 end
             end
@@ -864,12 +865,15 @@ function _assemble_self_alpert_smooth_panel_cheb_deriv!(solver::CFIE_alpert{T},A
                 for m in 1:Mk
                     d0,d1,d2=_dlp_terms_h01(T,ks[m],r,innm[p,i],invr,fac,h0vals[m],h1vals[m])
                     s0,s1,s2=_slp_terms_h01(T,ks[m],r,sm[p,i],fac,h0vals[m],h1vals[m])
+                    a0=-(d0+iks[m]*s0)
+                    a1=-(d1+ComplexF64(0,1)*s0+iks[m]*s1)
+                    a2=-(d2+ComplexF64(0,2)*s1+iks[m]*s2)
                     for q in axes(idxm,3)
                         gq=row_range[idxm[p,i,q]]
                         ww=wtm[p,i,q]
-                        As[m][gi,gq]+=(d0-iks[m]*s0)*ww
-                        A1s[m][gi,gq]+=(d1-(ComplexF64(0,1)*s0+iks[m]*s1))*ww
-                        A2s[m][gi,gq]+=(d2-(ComplexF64(0,2)*s1+iks[m]*s2))*ww
+                        As[m][gi,gq]+=a0*ww
+                        A1s[m][gi,gq]+=a1*ww
+                        A2s[m][gi,gq]+=a2*ww
                     end
                 end
             end
@@ -1235,13 +1239,13 @@ wavenumbers, writing the results in place.
 # Returns
 - `nothing`
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
             @benchit timeit=timeit "CFIE_alpert Direct Workspace" directws=build_cfie_alpert_workspace(solver,pts)
-            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels_h,M=M_h,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
@@ -1290,17 +1294,21 @@ CFIE-Alpert pathway based on interpolation plans for:
 - `use_chebyshev::Bool=true`:
   If `true`, uses Chebyshev interpolation for special-function evaluation.
   Currently this is the only supported path for complex wavenumbers.
-- `n_panels::Int=15000`:
-  Number of panels used in the Chebyshev interpolation of special functions.
-- `M::Int=5`:
-  Chebyshev interpolation order per panel.
+- `n_panels_h::Int=15000`:
+  Number of panels used in the Chebyshev interpolation of special functions for the H₀^(1) and H₁^(1) kernels.
+- `M_h::Int=5`:
+  Chebyshev interpolation order per panel for the H₀^(1) and H₁^(1) kernels.
+- `n_panels_j::Int=3000`:
+  Number of panels used in the Chebyshev interpolation of special functions for the J₀ and J₁ kernels. UNUSED HERE
+- `M_j::Int=5`:
+  Chebyshev interpolation order per panel for the J₀ and J₁ kernels. UNUSED HERE
 - `timeit::Bool=false`:
   If `true`, enables timing instrumentation via `@benchit`.
 
 # Returns
 - `nothing`
 """
-function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},zj::Vector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     Mk=length(zj)
     @assert length(Tbufs)==Mk
     @assert length(dTbufs)==Mk
@@ -1308,7 +1316,7 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
     if use_chebyshev
         @blas_1 begin
             @benchit timeit=timeit "CFIE_alpert Direct Workspace" directws=build_cfie_alpert_workspace(solver,pts)
-            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_alpert Chebyshev Workspace" chebws=build_cfie_alpert_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels_h,M=M_h,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
                 fill!(dTbufs[j],0.0+0.0im)

@@ -11,7 +11,7 @@ evaluation.
 This is a lightweight version of the CFIE Chebyshev machinery, since only Y₀
 is required.
 """
-function build_slp_wavefunction_cheb_plan(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=15_000,M::Int=5,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1),grading::Symbol=:uniform) where {T<:Real}
+function build_slp_wavefunction_cheb_plan(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=15_000,M::Int=5,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1)) where {T<:Real}
     hx=length(x_grid)>1 ? abs(x_grid[2]-x_grid[1]) : one(T)
     hy=length(y_grid)>1 ? abs(y_grid[2]-y_grid[1]) : one(T)
     hgrid=min(hx,hy)
@@ -20,12 +20,12 @@ function build_slp_wavefunction_cheb_plan(k::T,bd::Union{BoundaryPoints{T},Bound
     dx=maximum(x_grid)-minimum(x_grid)
     dy=maximum(y_grid)-minimum(y_grid)
     rmax=rmax_pad*hypot(dx,dy)
-    plan=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading)
+    plan=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M)
     return SLPWavefunctionChebPlan{T}(plan,T(rmin),T(rmax))
 end
 
 """
-    chebyshev_params_slp(k, bd, x_grid, y_grid; n_panels_init=15_000, M_init=5, tol=1e-12, sampling_points=20_000, max_iter=20, grow_panels=1.5, grow_M=2, rmin_factor=0.5, rmax_pad=1.01, grading=:uniform, geo_ratio=1.05, verbose=false)
+    chebyshev_params_slp(k, bd, x_grid, y_grid; n_panels_init=15_000, M_init=5, tol=1e-12, sampling_points=20_000, max_iter=20, grow_panels=1.5, grow_M=2, rmin_factor=0.5, rmax_pad=1.01, verbose=false)
 
 Tune Chebyshev parameters for SLP wavefunction reconstruction.
 
@@ -36,7 +36,7 @@ Returns:
 
     n_panels, M, plan, max_err
 """
-function chebyshev_params_slp(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),grading::Symbol=:uniform,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params_slp(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),verbose::Bool=false) where {T<:Real}
     hbdry=minimum(bd.ds)
     rmin=max(rmin_factor*hbdry,T(1e-12))
     dx=maximum(x_grid)-minimum(x_grid)
@@ -49,12 +49,12 @@ function chebyshev_params_slp(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFI
     rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     n_panels=n_panels_init
     M=M_init
-    plan=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+    plan=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
     approx=Vector{Float64}(undef,sampling_points)
     exact=Vector{Float64}(undef,sampling_points)
     max_err=Inf
     for it in 1:max_iter
-        plan=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+        plan=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
         Threads.@threads for i in eachindex(rs)
             r=rs[i]
             p=_find_panel(plan,r)
@@ -201,10 +201,10 @@ function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_k
     nmask=length(pts_masked_indices)
     cheb_plans=use_chebyshev ? Vector{SLPWavefunctionChebPlan{T}}(undef,length(ks)) : fill(nothing,length(ks))
     if use_chebyshev
-        cheb_npanels,cheb_M,_,max_err=chebyshev_params_slp(k_max,vec_bdPoints[idx_max],x_grid,y_grid;tol=tol_cheb,verbose=cheb_verbose,grading=:uniform)
+        cheb_npanels,cheb_M,_,max_err=chebyshev_params_slp(k_max,vec_bdPoints[idx_max],x_grid,y_grid;tol=tol_cheb,verbose=cheb_verbose)
         @info "Using SLP wavefunction Chebyshev parameters" cheb_npanels cheb_M max_err
         @inbounds for i in eachindex(ks)
-            cheb_plans[i]=build_slp_wavefunction_cheb_plan(ks[i],vec_bdPoints[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M,grading=:uniform)
+            cheb_plans[i]=build_slp_wavefunction_cheb_plan(ks[i],vec_bdPoints[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M)
         end
     end
     S=eltype(vec_us[1])<:Real ? typ : Complex{typ}
@@ -295,9 +295,7 @@ struct CFIEWavefunctionCache{T<:Real}
 end
 
 """
-    build_cfie_wavefunction_cheb_plan(k, cache, x_grid, y_grid;
-        npanels=256, M=16, grading=:uniform,
-        rmin_factor=0.7, rmax_pad=1.1)
+    build_cfie_wavefunction_cheb_plan(k, cache, x_grid, y_grid; npanels=256, M=16, rmin_factor=0.7, rmax_pad=1.1)
 
 Build the Chebyshev interpolation plan used during CFIE wavefunction
 postprocessing.
@@ -323,8 +321,6 @@ the plotting grid and the boundary nodes.
   Number of radial Chebyshev panels.
 - `M`:
   Chebyshev degree on each panel.
-- `grading`:
-  Radial panel grading. For wavefunction plotting this is usually `:uniform`.
 - `rmin_factor`:
   Safety factor multiplying the smaller of plotting-grid spacing and boundary
   spacing to define the interpolation lower radius.
@@ -335,7 +331,7 @@ the plotting grid and the boundary nodes.
 - `CFIEWavefunctionChebPlan{T}`:
   A pair of Chebyshev Hankel plans for `H₀` and `H₁`.
 """
-function build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=256,M::Int=16,grading::Symbol=:uniform,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1)) where {T<:Real}
+function build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=256,M::Int=16,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1)) where {T<:Real}
     hx=length(x_grid)>1 ? abs(x_grid[2]-x_grid[1]) : one(T)
     hy=length(y_grid)>1 ? abs(y_grid[2]-y_grid[1]) : one(T)
     hgrid=min(hx,hy) # plotting-grid resolution
@@ -344,13 +340,13 @@ function build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},
     dx=maximum(x_grid)-minimum(x_grid)
     dy=maximum(y_grid)-minimum(y_grid)
     rmax=rmax_pad*hypot(dx,dy)
-    h0=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading)
-    h1=plan_h(1,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M,grading=grading)
+    h0=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M)
+    h1=plan_h(1,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M)
     return CFIEWavefunctionChebPlan{T}(h0,h1,T(rmin),T(rmax))
 end
 
 """
-    chebyshev_params_cfie(k, cache, x_grid, y_grid; n_panels_init=15000, M_init=5, grading=:uniform, tol=1e-12, sampling_points=20000, max_iter=20, grow_panels=1.5, grow_M=2, geo_ratio=1.05, rmin_factor=0.5, rmax_pad=1.01, verbose=false)
+    chebyshev_params_cfie(k, cache, x_grid, y_grid; n_panels_init=15000, M_init=5, tol=1e-12, sampling_points=20000, max_iter=20, grow_panels=1.5, grow_M=2, rmin_factor=0.5, rmax_pad=1.01, verbose=false)
 
 Tune the Chebyshev parameters for CFIE wavefunction reconstruction.
 This function tests piecewise-Chebyshev approximations of
@@ -378,8 +374,6 @@ plotting job.
   Initial number of radial Chebyshev panels.
 - `M_init`:
   Initial Chebyshev degree per panel.
-- `grading`:
-  Radial panel grading, usually `:uniform`.
 - `tol`:
   Maximum allowed interpolation error for both `H₀` and `H₁`.
 - `sampling_points`:
@@ -390,8 +384,6 @@ plotting job.
   Multiplicative panel-growth factor when increasing panel count.
 - `grow_M`:
   Additive degree increment used every fifth iteration.
-- `geo_ratio`:
-  Geometric grading ratio, only relevant if `grading != :uniform`.
 - `rmin_factor`:
   Safety factor applied to the boundary spacing when estimating the lower
   radius.
@@ -414,7 +406,7 @@ plotting job.
 - `max_err1`:
   Final maximum interpolation error for `H₁`.
 """
-function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),verbose::Bool=false) where {T<:Real}
+function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),verbose::Bool=false) where {T<:Real}
     hbdry=cache.hmin
     rmin=max(rmin_factor*hbdry,T(1e-12))
     dx=maximum(x_grid)-minimum(x_grid)
@@ -426,8 +418,8 @@ function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::Abst
     rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
     n_panels=n_panels_init
     M=M_init
-    plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
-    plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+    plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
+    plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
     approx0=Vector{ComplexF64}(undef,sampling_points)
     approx1=Vector{ComplexF64}(undef,sampling_points)
     exact0=Vector{ComplexF64}(undef,sampling_points)
@@ -435,8 +427,8 @@ function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::Abst
     max_err0=Inf
     max_err1=Inf
     for it in 1:max_iter
-        plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
-        plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+        plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
+        plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
         Threads.@threads for i in eachindex(rs)
             r=rs[i]
             p0=_find_panel(plan0,r)

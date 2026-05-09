@@ -89,7 +89,7 @@ struct DLPKressBlockSystemCache{T<:Real}
 end
 
 """
-    build_dlp_kress_block_cache(solver,pts;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,pad=(0.95,1.05))
+    build_dlp_kress_block_cache(solver,pts;npanels=10000,M=5,pad=(0.95,1.05))
 
 Build the Chebyshev geometry/interpolation cache for DLP-Kress assembly on a
 fixed boundary discretization.
@@ -99,7 +99,7 @@ fixed boundary discretization.
   Determines whether the smooth or corner-graded Kress correction is used.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization for the single outer boundary.
-- `npanels, M, grading, geo_ratio`:
+- `npanels, M:
   Parameters used to build a reference Chebyshev panelization over the distance
   interval.
 - `pad`:
@@ -109,7 +109,7 @@ fixed boundary discretization.
 # Returns
 - `DLPKressBlockSystemCache{T}`
 """
-function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
+function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     N=length(pts.xy)
     R=copy(G.R)
@@ -140,7 +140,7 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
     rmin_cheb_loc=isnothing(rmin_cheb) ? rrmin : max(Float64(rmin_cheb),rrmin)
     pidx=Matrix{Int32}(undef,N,N)
     tloc=Matrix{Float64}(undef,N,N)
-    pref_plan=plan_h(0,1,1.0+0im,rmin_cheb_loc,rrmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+    pref_plan=plan_h(0,1,1.0+0im,rmin_cheb_loc,rrmax;npanels=npanels,M=M)
     pans=pref_plan.panels
     @inbounds for j in 1:N,i in 1:N
         if i==j
@@ -164,10 +164,74 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
 end
 
 """
-    build_DLP_kress_plans(ks,rmin,rmax;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,nthreads=1)
+    build_DLP_kress_plans_h1_j1(ks,rmin,rmax;npanels_h=10000,npanels_j=10000,M_h=5,M_j=5,nthreads=1)
 
 Build Chebyshev interpolation plans for the special functions required by the
 DLP-Kress assembly over a collection of wavenumbers.
+
+For each `k`, this constructs plans for:
+- `H₁^(1)(k r)`
+- `J₁(k r)`
+
+Unlike the Alpert case, the Kress logarithmic split genuinely requires the
+Bessel `J` functions in addition to the Hankel functions. In particular, for
+complex wavenumbers one must not replace `J₁` by `real(H₁^(1))`, 
+so separate Chebyshev plans are built.
+
+# Arguments
+- `ks`:
+  Wavenumbers for which the DLP-Kress operator will be assembled.
+- `rmin, rmax`:
+  Distance interval on which the Chebyshev interpolation must be valid.
+- `npanels_h, npanels_j, M_h, M_j`:
+  Note: the `npanels` and `M` parameters are decoupled for the Hankel and Bessel plans since the Bessel functions 
+  require fewer panels/terms for the same accuracy, so separate parameters are provided for each.
+  Parameters passed to the Chebyshev plan builders.
+- `nthreads::Int=1`:
+  Number of threads used when building the plans.
+
+# Returns
+- `(plans1,plansj1)`:
+  Chebyshev plans for `H₁^(1)` and `J₁`.
+"""
+function build_DLP_kress_plans_h1_j1(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels_h::Int=10000,npanels_j::Int=10000,M_h::Int=5,M_j::Int=5,nthreads::Int=1)
+    Mk=length(ks)
+    plans1=Vector{ChebHankelPlanH}(undef,Mk)
+    plansj1=Vector{ChebJPlan}(undef,Mk)
+    if nthreads<=1 || Mk==1
+        @inbounds for m in 1:Mk
+            k=ComplexF64(ks[m])
+            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+            plansj1[m]=plan_j(1,k,0.0,rmax;npanels=npanels_j,M=M_j) # rmin=0 since J has no issue there
+        end
+    else
+        nt=min(nthreads,Mk)
+        chunks=Vector{UnitRange{Int}}(undef,nt)
+        base=div(Mk,nt)
+        remn=rem(Mk,nt)
+        s=1
+        for t in 1:nt
+            len=base+(t<=remn ? 1 : 0)
+            chunks[t]=s:(s+len-1)
+            s+=len
+        end
+        Threads.@threads for tid in 1:nt
+            @inbounds for m in chunks[tid]
+                k=ComplexF64(ks[m])
+                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+                plansj1[m]=plan_j(1,k,0.0,rmax;npanels=npanels_j,M=M_j)  # rmin=0 since J has no issue there
+            end
+        end
+    end
+    return plans1,plansj1
+end
+
+"""
+    build_DLP_kress_plans_h0_h1_j0_j1(ks,rmin,rmax;npanels_h=10000,npanels_j=10000,M_h=5,M_j=5,nthreads=1)
+
+Build Chebyshev interpolation plans for the special functions required by the
+DLP-Kress assembly over a collection of wavenumbers. For use in EBIM where the
+derivatives require both `H₀^(1)` and `H₁^(1)` as well as `J₀` and `J₁`.
 
 For each `k`, this constructs plans for:
 - `H₀^(1)(k r)`
@@ -185,8 +249,9 @@ complex wavenumbers one must not replace `J₀`/`J₁` by `real(H₀^(1))` or
   Wavenumbers for which the DLP-Kress operator will be assembled.
 - `rmin, rmax`:
   Distance interval on which the Chebyshev interpolation must be valid.
-- `npanels, M, grading, geo_ratio`:
-  Parameters passed to the Chebyshev plan builders.
+- `npanels_h, npanels_j, M_h, M_j`: 
+  Note: the `npanels` and `M` parameters are decoupled for the Hankel and Bessel plans since the Bessel functions 
+  require fewer panels/terms for the same accuracy, so separate parameters are provided for each.  Parameters passed to the Chebyshev plan builders.
 - `nthreads::Int=1`:
   Number of threads used when building the plans.
 
@@ -194,7 +259,7 @@ complex wavenumbers one must not replace `J₀`/`J₁` by `real(H₀^(1))` or
 - `(plans0,plans1,plansj0,plansj1)`:
   Chebyshev plans for `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁`.
 """
-function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,nthreads::Int=1)
+function build_DLP_kress_plans_h0_h1_j0_j1(ks::AbstractVector{<:Number},rmin::Float64,rmax::Float64;npanels_h::Int=10000,npanels_j::Int=10000,M_h::Int=5,M_j::Int=5,nthreads::Int=1)
     Mk=length(ks)
     plans0=Vector{ChebHankelPlanH}(undef,Mk)
     plans1=Vector{ChebHankelPlanH}(undef,Mk)
@@ -203,10 +268,10 @@ function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::
     if nthreads<=1 || Mk==1
         @inbounds for m in 1:Mk
             k=ComplexF64(ks[m])
-            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-            plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+            plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+            plansj0[m]=plan_j(0,k,0.0,rmax;npanels=npanels_j,M=M_j) # rmin=0 since J has no issue there
+            plansj1[m]=plan_j(1,k,0.0,rmax;npanels=npanels_j,M=M_j)  # rmin=0 since J has no issue there
         end
     else
         nt=min(nthreads,Mk)
@@ -222,10 +287,10 @@ function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::
         Threads.@threads for tid in 1:nt
             @inbounds for m in chunks[tid]
                 k=ComplexF64(ks[m])
-                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plansj0[m]=plan_j(0,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
-                plansj1[m]=plan_j(1,k,rmin,rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio)
+                plans0[m]=plan_h(0,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+                plans1[m]=plan_h(1,1,k,rmin,rmax;npanels=npanels_h,M=M_h)
+                plansj0[m]=plan_j(0,k,0.0,rmax;npanels=npanels_j,M=M_j) # rmin=0 since J has no issue there
+                plansj1[m]=plan_j(1,k,0.0,rmax;npanels=npanels_j,M=M_j)  # rmin=0 since J has no issue there
             end
         end
     end
@@ -233,10 +298,43 @@ function build_DLP_kress_plans(ks::AbstractVector{<:Number},rmin::Float64,rmax::
 end
 
 """
+    DLP_H1_J1_BesselWorkspace
+
+Thread-local scratch workspace for Chebyshev-based DLP-Kress special-function
+evaluation over multiple wavenumbers (`Mk` of them). 
+
+This workspace stores reusable temporary arrays for:
+- `H₁^(1)(k r)`
+- `J₁(k r)`
+
+evaluated at one geometric distance `r` across a collection of wavenumbers.
+
+The Kress logarithmic split genuinely requires both Hankel and Bessel `J`
+functions for complex k, so all four temporary vectors are stored explicitly.
+
+# Fields
+- `h1_tls`:
+  Thread-local storage for interpolated `H₁^(1)` values.
+- `j1_tls`:
+  Thread-local storage for interpolated `J₁` values.
+"""
+struct DLP_H1_J1_BesselWorkspace
+    h1_tls::Vector{Vector{ComplexF64}}
+    j1_tls::Vector{Vector{ComplexF64}}
+end
+
+function DLP_H1_J1_BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())
+    h1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    j1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    return DLP_H1_J1_BesselWorkspace(h1_tls,j1_tls)
+end
+
+"""
     DLP_H0_H1_J0_J1_BesselWorkspace
 
 Thread-local scratch workspace for Chebyshev-based DLP-Kress special-function
-evaluation over multiple wavenumbers.
+evaluation over multiple wavenumbers (`Mk` of them). Used in EBIM since the derivatives
+require all four bessel/hankel evaluations.
 
 This workspace stores reusable temporary arrays for:
 - `H₀^(1)(k r)`
@@ -275,29 +373,75 @@ function DLP_H0_H1_J0_J1_BesselWorkspace(Mk::Int;ntls::Int=Threads.nthreads())
 end
 
 """
-    DLPKressChebWorkspace{T,MatT}
+    DLPKressH1J1ChebWorkspace{T,MatT}
 
-Reusable workspace for Chebyshev-accelerated DLP-Kress assembly on a fixed
-boundary discretization and a fixed set of wavenumbers.
+Reusable value-only Chebyshev workspace for DLP-Kress assembly on the full
+boundary.
+
+This workspace is used when only the Fredholm matrix `F(k)=I-D(k)` is needed.
+The Kress logarithmic split for the DLP value requires only
+
+    H₁^(1)(k r),   J₁(k r),
+
+so this workspace stores only the corresponding Chebyshev plans and temporary
+thread-local buffers. This avoids building unnecessary `H₀` and `J₀` plans.
 
 # Fields
 - `direct::DLPKressWorkspace{T,MatT}`:
-  Original direct DLP-Kress workspace containing geometry and Kress data used by
-  the non-Chebyshev assembly route.
+  Direct full-boundary DLP-Kress workspace for the same geometry.
 - `block_cache::DLPKressBlockSystemCache{T}`:
-  Chebyshev-side geometry/interpolation cache.
+  Geometry, Kress, and Hankel-panel lookup cache.
+- `plans1::Vector{ChebHankelPlanH}`:
+  Chebyshev plans for `H₁^(1)(k r)`.
+- `plansj1::Vector{ChebJPlan}`:
+  Chebyshev plans for `J₁(k r)`.
+- `bessel_ws::DLP_H1_J1_BesselWorkspace`:
+  Thread-local buffers for `H₁` and `J₁`.
+- `ks::Vector{ComplexF64}`:
+  Wavenumbers associated with the plans.
+- `Mk::Int`:
+  Number of wavenumbers.
+"""
+struct DLPKressH1J1ChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
+    direct::DLPKressWorkspace{T,MatT}
+    block_cache::DLPKressBlockSystemCache{T}
+    plans1::Vector{ChebHankelPlanH}
+    plansj1::Vector{ChebJPlan}
+    bessel_ws::DLP_H1_J1_BesselWorkspace
+    ks::Vector{ComplexF64}
+    Mk::Int
+end
+
+"""
+    DLPKressH0H1J0J1ChebWorkspace{T,MatT}
+
+Reusable derivative-aware Chebyshev workspace for DLP-Kress assembly on the full
+boundary.
+
+This workspace is used when assembling `D(k)` together with its first two
+wavenumber derivatives. The derivative formulas require
+
+    H₀^(1)(k r), H₁^(1)(k r), J₀(k r), J₁(k r),
+
+so all four plan families and thread-local buffers are stored.
+
+# Fields
+- `direct::DLPKressWorkspace{T,MatT}`:
+  Direct full-boundary DLP-Kress workspace for the same geometry.
+- `block_cache::DLPKressBlockSystemCache{T}`:
+  Geometry, Kress, and Hankel-panel lookup cache.
 - `plans0`, `plans1`:
   Chebyshev plans for `H₀^(1)` and `H₁^(1)`.
 - `plansj0`, `plansj1`:
   Chebyshev plans for `J₀` and `J₁`.
 - `bessel_ws::DLP_H0_H1_J0_J1_BesselWorkspace`:
-  Thread-local temporary storage for interpolated special-function values.
+  Thread-local buffers for all four special functions.
 - `ks::Vector{ComplexF64}`:
-  Wavenumbers associated with the plans in this workspace.
+  Wavenumbers associated with the plans.
 - `Mk::Int`:
   Number of wavenumbers.
 """
-struct DLPKressChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
+struct DLPKressH0H1J0J1ChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
     direct::DLPKressWorkspace{T,MatT}
     block_cache::DLPKressBlockSystemCache{T}
     plans0::Vector{ChebHankelPlanH}
@@ -309,56 +453,159 @@ struct DLPKressChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
     Mk::Int
 end
 
-struct DLPKressReducedChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
+"""
+    DLPKressReducedH1J1ChebWorkspace{T,MatT}
+
+Reduced-symmetry value-only Chebyshev workspace for DLP-Kress assembly.
+
+This wraps a full-boundary `DLPKressH1J1ChebWorkspace` and a reduced direct
+workspace. The full workspace supplies geometry, Kress data, and special-function
+plans, while the reduced workspace supplies the fundamental-index/image mapping.
+
+# Fields
+- `direct::DLPKressReducedWorkspace{T,MatT}`:
+  Reduced direct workspace containing symmetry/image data.
+- `fullcheb::DLPKressH1J1ChebWorkspace{T,MatT}`:
+  Full-boundary value-only Chebyshev workspace.
+- `m::Int`:
+  Reduced matrix dimension.
+"""
+struct DLPKressReducedH1J1ChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
     direct::DLPKressReducedWorkspace{T,MatT}
-    fullcheb::DLPKressChebWorkspace{T,MatT}
+    fullcheb::DLPKressH1J1ChebWorkspace{T,MatT}
     m::Int
 end
 
-@inline _cheb_workspace_dim(ws::DLPKressChebWorkspace)=ws.block_cache.block.N
-@inline _cheb_workspace_dim(ws::DLPKressReducedChebWorkspace)=ws.m
+"""
+    DLPKressReducedH0H1J0J1ChebWorkspace{T,MatT}
+
+Reduced-symmetry derivative-aware Chebyshev workspace for DLP-Kress assembly.
+
+This wraps a full-boundary derivative workspace and a reduced direct workspace.
+It is used when assembling reduced Fredholm matrices and their first two
+wavenumber derivatives.
+
+# Fields
+- `direct::DLPKressReducedWorkspace{T,MatT}`:
+  Reduced direct workspace containing symmetry/image data.
+- `fullcheb::DLPKressH0H1J0J1ChebWorkspace{T,MatT}`:
+  Full-boundary derivative-aware Chebyshev workspace.
+- `m::Int`:
+  Reduced matrix dimension.
+"""
+struct DLPKressReducedH0H1J0J1ChebWorkspace{T<:Real,MatT<:AbstractMatrix{T}}
+    direct::DLPKressReducedWorkspace{T,MatT}
+    fullcheb::DLPKressH0H1J0J1ChebWorkspace{T,MatT}
+    m::Int
+end
+
+const DLPKressValueChebWorkspace=Union{DLPKressH1J1ChebWorkspace,DLPKressReducedH1J1ChebWorkspace}
+const DLPKressDerivativeChebWorkspace=Union{DLPKressH0H1J0J1ChebWorkspace,DLPKressReducedH0H1J0J1ChebWorkspace}
+
+@inline _cheb_workspace_dim(ws::DLPKressH1J1ChebWorkspace)=ws.block_cache.block.N
+@inline _cheb_workspace_dim(ws::DLPKressH0H1J0J1ChebWorkspace)=ws.block_cache.block.N
+@inline _cheb_workspace_dim(ws::DLPKressReducedH1J1ChebWorkspace)=ws.m
+@inline _cheb_workspace_dim(ws::DLPKressReducedH0H1J0J1ChebWorkspace)=ws.m
 
 """
-    build_dlp_kress_cheb_workspace(solver,pts,direct,ks;npanels=10000,M=5,grading=:uniform,geo_ratio=1.05,pad=(0.95,1.05),plan_nthreads=1,ntls=Threads.nthreads())
+    build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
 
-Build the reusable Chebyshev workspace for DLP-Kress assembly on a fixed
-boundary discretization and a fixed set of wavenumbers.
+Build the value-only Chebyshev workspace for DLP-Kress assembly.
 
-This combines:
-- the direct DLP-Kress workspace,
-- a Kress-aware geometry/interpolation cache,
-- Chebyshev plans for `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁`,
-- thread-local temporary buffers for multi-`k` assembly.
+This constructs:
+- the DLP-Kress geometry/block cache,
+- Chebyshev plans for `H₁^(1)(k r)`,
+- Chebyshev plans for `J₁(k r)`,
+- thread-local buffers for value-only multi-`k` assembly.
+
+Use this when only the Fredholm matrices `F(k)=I-D(k)` are required.
+
 # Arguments
-- `solver::Union{DLP_kress{T},DLP_kress_global_corners{T}}`:
-  Determines whether the smooth or corner-graded Kress correction is used.
+- `solver`:
+  DLP-Kress solver, smooth or globally corner-graded.
 - `pts::BoundaryPointsCFIE{T}`:
-  Boundary discretization for the single outer boundary.
+  Boundary discretization.
 - `direct::DLPKressWorkspace{T,MatT}`:
-  Prebuilt direct DLP-Kress workspace for the same geometry, used to extract the original geometry and Kress data for reuse in the Chebyshev assembly.
+  Full direct DLP-Kress workspace for the same geometry.
 - `ks::Vector{ComplexF64}`:
-  Wavenumbers for which the DLP-Kress operator will be assembled, and for which the Chebyshev plans will be built.
-- `npanels, M, grading, geo_ratio`:
-  Parameters passed to the Chebyshev plan builders.
+  Wavenumbers for which plans are built.
+- `npanels_h`, `npanels_j`:
+  Number of Chebyshev panels for Hankel and Bessel-J plans.
+- `M_h`, `M_j`:
+  Chebyshev degree for Hankel and Bessel-J plans.
 - `pad`:
-  Multiplicative safety padding applied to the minimum and maximum off-diagonal distances before constructing the interpolation interval.
-- `plan_nthreads::Int=1`:
-  Number of threads used when building the Chebyshev plans.
-- `ntls::Int=Threads.nthreads()`:
-  Number of thread-local buffers allocated for the Bessel/Hankel workspace, which should ideally match the number of threads used during assembly to avoid contention.
+  Multiplicative padding for the global Hankel interpolation interval.
+- `rmin_cheb`:
+  Optional lower cutoff for Hankel interpolation. Distances below this use the
+  low-`z`/direct path.
+- `plan_nthreads`:
+  Number of threads used to build the plans.
+- `ntls`:
+  Number of thread-local special-function buffers.
 
 # Returns
-- `DLPKressChebWorkspace{T,MatT}`
+- `DLPKressH1J1ChebWorkspace{T,MatT}`
 """
-function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
-    block_cache=build_dlp_kress_block_cache(solver,pts;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad)
-    plans0,plans1,plansj0,plansj1=build_DLP_kress_plans(ks,block_cache.rmin,block_cache.rmax;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=plan_nthreads)
-    bessel_ws=DLP_H0_H1_J0_J1_BesselWorkspace(length(ks);ntls=ntls)
-    return DLPKressChebWorkspace{T,MatT}(direct,block_cache,plans0,plans1,plansj0,plansj1,bessel_ws,ks,length(ks))
+function build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
+    block_cache=build_dlp_kress_block_cache(solver,pts;npanels=npanels_h,M=M_h,pad=pad,rmin_cheb=rmin_cheb)
+    plans1,plansj1=build_DLP_kress_plans_h1_j1(ks,block_cache.rmin,block_cache.rmax;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,nthreads=plan_nthreads)
+    bessel_ws=DLP_H1_J1_BesselWorkspace(length(ks);ntls=ntls)
+    return DLPKressH1J1ChebWorkspace{T,MatT}(direct,block_cache,plans1,plansj1,bessel_ws,ks,length(ks))
 end
-function build_dlp_kress_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressReducedWorkspace{T,MatT},ks::Vector{ComplexF64};npanels::Int=10000,M::Int=5,grading::Symbol=:uniform,geo_ratio::Real=1.05,pad=(T(0.95),T(1.05)),plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
-    fullcheb=build_dlp_kress_cheb_workspace(solver,pts,direct.full,ks;npanels=npanels,M=M,grading=grading,geo_ratio=geo_ratio,pad=pad,plan_nthreads=plan_nthreads,ntls=ntls)
-    return DLPKressReducedChebWorkspace{T,MatT}(direct,fullcheb,direct.m)
+
+"""
+    build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
+
+Build the derivative-aware Chebyshev workspace for DLP-Kress assembly.
+
+This constructs:
+- the DLP-Kress geometry/block cache,
+- Chebyshev plans for `H₀^(1)(k r)` and `H₁^(1)(k r)`,
+- Chebyshev plans for `J₀(k r)` and `J₁(k r)`,
+- thread-local buffers for derivative-aware multi-`k` assembly.
+
+Use this when `F(k)`, `dF/dk`, and `d²F/dk²` are required.
+
+# Returns
+- `DLPKressH0H1J0J1ChebWorkspace{T,MatT}`
+"""
+function build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
+    block_cache=build_dlp_kress_block_cache(solver,pts;npanels=npanels_h,M=M_h,pad=pad,rmin_cheb=rmin_cheb)
+    plans0,plans1,plansj0,plansj1=build_DLP_kress_plans_h0_h1_j0_j1(ks,block_cache.rmin,block_cache.rmax;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,nthreads=plan_nthreads)
+    bessel_ws=DLP_H0_H1_J0_J1_BesselWorkspace(length(ks);ntls=ntls)
+    return DLPKressH0H1J0J1ChebWorkspace{T,MatT}(direct,block_cache,plans0,plans1,plansj0,plansj1,bessel_ws,ks,length(ks))
+end
+
+"""
+    build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressReducedWorkspace{T,MatT},ks::Vector{ComplexF64};kwargs...) where {T<:Real,MatT<:AbstractMatrix{T}}
+
+Build the reduced-symmetry value-only Chebyshev workspace.
+
+This first builds the full-boundary `H₁/J₁` Chebyshev workspace using
+`direct.full`, then wraps it with the reduced workspace metadata.
+
+# Returns
+- `DLPKressReducedH1J1ChebWorkspace`
+"""
+function build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressReducedWorkspace{T,MatT},ks::Vector{ComplexF64};kwargs...) where {T<:Real,MatT<:AbstractMatrix{T}}
+    fullcheb=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,direct.full,ks;kwargs...)
+    return DLPKressReducedH1J1ChebWorkspace{T,MatT}(direct,fullcheb,direct.m)
+end
+
+"""
+    build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressReducedWorkspace{T,MatT},ks::Vector{ComplexF64};kwargs...) where {T<:Real,MatT<:AbstractMatrix{T}}
+
+Build the reduced-symmetry derivative-aware Chebyshev workspace.
+
+This first builds the full-boundary `H₀/H₁/J₀/J₁` Chebyshev workspace using
+`direct.full`, then wraps it with the reduced workspace metadata.
+
+# Returns
+- `DLPKressReducedH0H1J0J1ChebWorkspace`
+"""
+function build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressReducedWorkspace{T,MatT},ks::Vector{ComplexF64};kwargs...) where {T<:Real,MatT<:AbstractMatrix{T}}
+    fullcheb=build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver,pts,direct.full,ks;kwargs...)
+    return DLPKressReducedH0H1J0J1ChebWorkspace{T,MatT}(direct,fullcheb,direct.m)
 end
 
 """
@@ -433,7 +680,7 @@ double-layer operator `D(k)`. One dense matrix is filled for each wavenumber in
   Output matrices, one for each wavenumber in `ws.ks`.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization. Included for API consistency with the direct route.
-- `ws::DLPKressChebWorkspace{T}`:
+- `ws::DLPKressH1J1ChebWorkspace{T}`:
   Prebuilt Chebyshev workspace.
 - `multithreaded::Bool=true`:
   Enables threaded off-diagonal assembly when beneficial.
@@ -441,7 +688,7 @@ double-layer operator `D(k)`. One dense matrix is filled for each wavenumber in
 # Returns
 - `nothing`
 """
-function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressH1J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     Mk=ws.Mk
     blk=ws.block_cache.block
     N=blk.N
@@ -486,7 +733,7 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
     return nothing
 end
 
-function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedH1J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     fullws=rws.fullcheb
     blk=fullws.block_cache.block
     rw=rws.direct
@@ -564,7 +811,7 @@ using Chebyshev-interpolated evaluations of `H₀^(1)`, `H₁^(1)`, `J₀`, and
   Output matrices for `d²D/dk²`.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization. Included for API consistency.
-- `ws::DLPKressChebWorkspace{T}`:
+- `ws::DLPKressH0H1J0J1ChebWorkspace{T}`:
   Prebuilt Chebyshev workspace.
 - `multithreaded::Bool=true`:
   Enables threaded off-diagonal assembly when beneficial.
@@ -572,7 +819,7 @@ using Chebyshev-interpolated evaluations of `H₀^(1)`, `H₁^(1)`, `J₀`, and
 # Returns
 - `nothing`
 """
-function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},D1s::Vector{<:AbstractMatrix{ComplexF64}},D2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},D1s::Vector{<:AbstractMatrix{ComplexF64}},D2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressH0H1J0J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     Mk=ws.Mk
     blk=ws.block_cache.block
     N=blk.N
@@ -637,7 +884,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
     return nothing
 end
 
-function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},D1s::Vector{<:AbstractMatrix{ComplexF64}},D2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},D1s::Vector{<:AbstractMatrix{ComplexF64}},D2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedH0H1J0J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     fullws=rws.fullcheb
     blk=fullws.block_cache.block
     rw=rws.direct
@@ -727,15 +974,15 @@ assemble the Kress-corrected DLP matrices and then convert them in place to
   Output matrices for `d²F/dk²` in the derivative-aware form.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization. Included for API consistency.
-- `ws::DLPKressChebWorkspace{T}`:
-  Prebuilt Chebyshev workspace.
+- `ws::DLPKressValueChebWorkspace` and `DLPKressDerivativeChebWorkspace`:
+  Prebuilt Chebyshev workspace based on if we need derivatives or not.
 - `multithreaded::Bool=true`:
   Enables threaded assembly where beneficial.
 
 # Returns
 - `nothing`
 """
-function construct_dlp_kress_matrices_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressChebWorkspace{T},DLPKressReducedChebWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
+function construct_dlp_kress_matrices_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressH1J1ChebWorkspace{T},DLPKressReducedH1J1ChebWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
     _construct_dlp_kress_matrices_chebyshev!(Fs,pts,ws;multithreaded=multithreaded)
     @inbounds for m in eachindex(Fs),j in axes(Fs[m],2),i in axes(Fs[m],1)
         Fs[m][i,j]*=-1
@@ -746,7 +993,7 @@ function construct_dlp_kress_matrices_chebyshev!(Fs::Vector{<:AbstractMatrix{Com
     return nothing
 end
 
-function construct_dlp_kress_matrices_derivatives_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},F1s::Vector{<:AbstractMatrix{ComplexF64}},F2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressChebWorkspace{T},DLPKressReducedChebWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
+function construct_dlp_kress_matrices_derivatives_chebyshev!(Fs::Vector{<:AbstractMatrix{ComplexF64}},F1s::Vector{<:AbstractMatrix{ComplexF64}},F2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::Union{DLPKressH0H1J0J1ChebWorkspace{T},DLPKressReducedH0H1J0J1ChebWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
     _construct_dlp_kress_matrices_derivatives_chebyshev!(Fs,F1s,F2s,pts,ws;multithreaded=multithreaded)
     @inbounds for m in eachindex(Fs),j in axes(Fs[m],2),i in axes(Fs[m],1)
         Fs[m][i,j]*=-1
@@ -759,111 +1006,28 @@ function construct_dlp_kress_matrices_derivatives_chebyshev!(Fs::Vector{<:Abstra
     return nothing
 end
 
-"""
-    construct_boundary_matrices!(Tbufs,solver,pts,zj;multithreaded=true,use_chebyshev=true,n_panels=15000,M=5,timeit=false)
-
-Assemble DLP-Kress Fredholm boundary matrices for a collection of complex
-wavenumbers, writing the results in place.
-
-# Arguments
-- `Tbufs::Vector{Matrix{ComplexF64}}`:
-  Output matrices, one for each wavenumber in `zj`. Each matrix is overwritten.
-- `solver::Union{DLP_kress,DLP_kress_global_corners}`:
-  DLP-Kress solver describing the smooth or globally corner-graded boundary
-  discretization.
-- `pts::BoundaryPointsCFIE{T}`:
-  Boundary discretization for the single outer boundary component.
-- `zj::AbstractVector{ComplexF64}`:
-  Wavenumbers at which the Fredholm matrices are assembled.
-
-# Keyword Arguments
-- `multithreaded::Bool=true`:
-  Enables threaded off-diagonal assembly when beneficial.
-- `use_chebyshev::Bool=true`:
-  If `true`, uses the Chebyshev-accelerated complex-`k` assembly path.
-  Currently this is the only supported route for complex wavenumbers.
-- `n_panels::Int=15000`:
-  Number of distance panels used in the Chebyshev interpolation plans.
-- `M::Int=5`:
-  Chebyshev interpolation order per panel.
-- `timeit::Bool=false`:
-  Enables timing instrumentation through `@benchit`.
-
-# Returns
-- `nothing`
-"""
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
-    Mk=length(zj)
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     use_chebyshev || error("Direct DLP-Kress complex-k construction is not implemented.")
     @blas_1 begin
         @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
-        @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+        @benchit timeit=timeit "DLP_kress H1/J1 Chebyshev Workspace" chebws=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels_h=n_panels_h,npanels_j=n_panels_j,M_h=M_h,M_j=M_j,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
         n=_cheb_workspace_dim(chebws)
         @inbounds for q in eachindex(Tbufs)
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-Kress workspace requires ($n,$n)."
             fill!(Tbufs[q],0.0+0.0im)
         end
-        @benchit timeit=timeit "DLP_kress Chebyshev" construct_dlp_kress_matrices_chebyshev!(Tbufs,pts,chebws;multithreaded=multithreaded)
+        @benchit timeit=timeit "DLP_kress H1/J1 Chebyshev" construct_dlp_kress_matrices_chebyshev!(Tbufs,pts,chebws;multithreaded=multithreaded)
     end
+
     return nothing
 end
 
-"""
-    construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
-
-Assemble DLP-Kress Fredholm boundary matrices and their first two derivatives
-with respect to the wavenumber for a collection of complex wavenumbers, writing
-the results in place.
-
-For each stored wavenumber `zj[m]`, this function fills:
-- `Tbufs[m]`   with the Fredholm matrix `F(zj[m])`,
-- `dTbufs[m]`  with the first derivative `dF/dk`,
-- `ddTbufs[m]` with the second derivative `d²F/dk²`.
-
-When `use_chebyshev=true`, the construction uses the Chebyshev-accelerated
-DLP-Kress pathway based on interpolation plans for:
-- `H₀^(1)(k r)`
-- `H₁^(1)(k r)`
-- `J₀(k r)`
-- `J₁(k r)`
-
-# Arguments
-- `Tbufs::Vector{Matrix{ComplexF64}}`:
-  Output Fredholm matrices, one for each wavenumber in `zj`.
-- `dTbufs::Vector{Matrix{ComplexF64}}`:
-  Output first-derivative matrices, one for each wavenumber in `zj`.
-- `ddTbufs::Vector{Matrix{ComplexF64}}`:
-  Output second-derivative matrices, one for each wavenumber in `zj`.
-- `solver::Union{DLP_kress,DLP_kress_global_corners}`:
-  DLP-Kress solver describing the smooth or globally corner-graded boundary
-  discretization.
-- `pts::BoundaryPointsCFIE{T}`:
-  Boundary discretization for the single outer boundary component.
-- `zj::AbstractVector{ComplexF64}`:
-  Wavenumbers at which the Fredholm matrices and derivatives are assembled.
-
-# Keyword Arguments
-- `multithreaded::Bool=true`:
-  Enables threaded off-diagonal assembly when beneficial.
-- `use_chebyshev::Bool=true`:
-  If `true`, uses the Chebyshev-accelerated complex-`k` derivative assembly
-  route. Currently this is the only supported route for complex wavenumbers.
-- `n_panels::Int=15000`:
-  Number of distance panels used in the Chebyshev interpolation plans.
-- `M::Int=5`:
-  Chebyshev interpolation order per panel.
-- `timeit::Bool=false`:
-  Enables timing instrumentation through `@benchit`.
-
-# Returns
-- `nothing`
-"""
-function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
-    Mk=length(zj)
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     use_chebyshev || error("Direct DLP-Kress complex-k derivative construction is not implemented.")
     @blas_1 begin
         @benchit timeit=timeit "DLP_kress Workspace" directws=build_dlp_kress_workspace(solver,pts)
-        @benchit timeit=timeit "DLP_kress Chebyshev Workspace" chebws=build_dlp_kress_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels=n_panels,M=M,grading=:uniform,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+        @benchit timeit=timeit "DLP_kress H0/H1/J0/J1 Chebyshev Workspace" chebws=
+            build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver,pts,directws,ComplexF64.(zj);npanels_h=n_panels_h,npanels_j=n_panels_j,M_h=M_h,M_j=M_j,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
         n=_cheb_workspace_dim(chebws)
         @inbounds for q in eachindex(Tbufs)
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-Kress workspace requires ($n,$n)."
@@ -873,7 +1037,7 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
             fill!(dTbufs[q],0.0+0.0im)
             fill!(ddTbufs[q],0.0+0.0im)
         end
-        @benchit timeit=timeit "DLP_kress Derivatives Chebyshev" construct_dlp_kress_matrices_derivatives_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,chebws;multithreaded=multithreaded)
+        @benchit timeit=timeit "DLP_kress H0/H1/J0/J1 Derivatives Chebyshev" construct_dlp_kress_matrices_derivatives_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,chebws;multithreaded=multithreaded)
     end
     return nothing
 end

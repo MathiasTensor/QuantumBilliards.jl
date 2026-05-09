@@ -25,11 +25,6 @@
 # 3.  _breaks_uniform(rmin,rmax,np)
 #       Generate np uniformly sized panels, returning np+1 breakpoints.
 #
-# 4.  _breaks_geometric(rmin,rmax,np;ratio)
-#       Generate geometrically graded panels whose widths grow as ratio^(i−1).
-#       This grading is critical for resolving near-singular and strongly
-#       oscillatory kernels (Hankel, Legendre Q) without excessive panel count.
-#
 # Usage Pattern
 # -------------
 # These routines are intentionally minimal: they know nothing about the
@@ -39,13 +34,13 @@
 #   • evaluate f(r) at Chebyshev nodes on each panel;
 #   • use _chebfit! to obtain Chebyshev coefficients;
 #   • evaluate the function later with _cheb_clenshaw;
-#   • divide the domain using _breaks_uniform or _breaks_geometric depending on
+#   • divide the domain using _breaks_uniform depending on
 #     the expected oscillatory behavior.
 #
 # All functions are allocation-free inside tight loops and suitable for
 # multi-threaded vectorized usage.
 #
-# MO / 03-23-26
+# MO/8/5/26
 ###############################################################################
 
 # =============================================================================
@@ -102,45 +97,6 @@ end
     b=Vector{Float64}(undef,np+1)
     @inbounds for i in 0:np
         b[i+1]=muladd(i,h,rmin)
-    end
-    b[end]=rmax
-    return b
-end
-
-# =============================================================================
-# Generate geometrically graded panel breakpoints between rmin and rmax.
-# The interval [rmin, rmax] is divided into np panels with exponentially
-# increasing widths controlled by the ratio parameter.
-#
-# Panel i width ∝ ratio^(i-1), i=1..np
-#
-# Inputs
-#   rmin  :: Float64    # lower bound (>0)
-#   rmax  :: Float64    # upper bound (>rmin)
-#   np    :: Int        # number of panels
-#   ratio :: Float64=1.05 # geometric growth factor (>1 for expanding panels)
-#
-# Output
-#   b :: Vector{Float64}  # length np+1, monotonically increasing, b[1]=rmin,
-#                         # b[end]=rmax
-#
-# Implementation details
-#   - Constructs relative widths `s[i]` as a geometric sequence.
-#   - Normalizes total length by scaling with base = (rmax - rmin)/sum(s).
-#   - Returns exact rmax at the last breakpoint to avoid accumulation error.
-#   - The mild geometric grading helps resolve steep near-origin behavior
-#     (e.g., oscillatory Bessel/Hankel terms) with fewer panels.
-# =============================================================================
-@inline function _breaks_geometric(rmin::Float64,rmax::Float64,np::Int;ratio::Float64=1.05)::Vector{Float64}
-    s=ones(Float64,np)
-    @inbounds for i in 2:np
-        s[i]=s[i-1]*ratio
-    end
-    base=(rmax-rmin)/sum(s)
-    b=Vector{Float64}(undef,np+1)
-    b[1]=rmin
-    @inbounds for i in 1:np
-        b[i+1]=b[i]+base*s[i]
     end
     b[end]=rmax
     return b

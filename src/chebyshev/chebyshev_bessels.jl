@@ -115,8 +115,7 @@
 #   - precompute_geom
 #   - panel_and_geom
 #
-# Uniform panel layouts use O(1) arithmetic lookup, while nonuniform layouts
-# use a binary search over panel endpoints.
+# Uniform panel layouts use O(1) arithmetic lookup.
 #
 # ---------------------------------------------------------------------------
 # MULTI-k EVALUATION API
@@ -144,7 +143,7 @@
 # These routines are intentionally written as the “special-function layer” under
 # the matrix constructors, so that future changes in the low-z strategy,
 # interpolation cutoffs, or direct-evaluation policy can be made here without
-# touching the assembly code.
+# touching the matrix assembly code.
 #
 # ---------------------------------------------------------------------------
 # THREADING / PERFORMANCE NOTES
@@ -214,13 +213,25 @@
 #
 # The goal is that assembly files should not contain detailed logic about when
 # to interpolate, when to use a series, or when to call direct special
-# functions. They should only pass:
+# functions. They should pass only the geometry-side quantities needed by the
+# relevant evaluator:
 #
-#   (pidx, t, r, invsqrt, plans, output buffers)
+#   - Hankel evaluators:
+#         (pidx_h, t_h, r, invsqrt, plans, output buffers)
 #
-# and let this core decide how the function value is actually produced.
+#   - Bessel-J evaluators:
+#         (r, plans, output buffers)
 #
-# MO/18/4/26
+# The Hankel family may use a precomputed panel index and local coordinate,
+# because its interpolation grid is often fine and has a near-zero cutoff.
+# The Bessel-J family is regular at r = 0 and may use a separate, coarser
+# interpolation grid, so it locates its own panel directly from r.
+#
+# This keeps the assembly code independent of the low-z strategy, interpolation
+# cutoffs, and the fact that Hankel and Bessel-J plans may use different radial
+# panelizations.
+#
+# MO/8/5/26
 #############################################################################
 
 const γ=MathConstants.eulergamma
@@ -333,7 +344,7 @@ function _build_table_h!(ν::Int,κ::Int,k::ComplexF64,a::Float64,b::Float64;M::
 end
 
 function _build_table_j!(ν::Int,k::Float64,a::Float64,b::Float64;M::Int=16)::ChebJTable
-    @assert a>0 && b>a "a=$(a), b=$(b)" 
+    @assert a>=0 && b>a "a=$(a), b=$(b)" 
     f1=Vector{ComplexF64}(undef,M+1)
     @inbounds for j in 0:M
         t=cospi(j/M) 
@@ -347,7 +358,7 @@ function _build_table_j!(ν::Int,k::Float64,a::Float64,b::Float64;M::Int=16)::Ch
 end
 
 function _build_table_j!(ν::Int,k::ComplexF64,a::Float64,b::Float64;M::Int=16)::ChebJTable
-    @assert a>0 && b>a "a=$(a), b=$(b)" 
+    @assert a>=0 && b>a "a=$(a), b=$(b)" 
     f1=Vector{ComplexF64}(undef,M+1)
     @inbounds for j in 0:M
         t=cospi(j/M) 
@@ -366,7 +377,6 @@ struct ChebHankelPlanH1x
     panels::Vector{ChebHankelTableH1x}
     rmin::Float64
     rmax::Float64
-    grading::Symbol
     dr::Float64
     invdr::Float64
     npanels::Int
@@ -379,7 +389,6 @@ struct ChebHankelPlanH
     panels::Vector{ChebHankelTableH}
     rmin::Float64
     rmax::Float64
-    grading::Symbol
     dr::Float64
     invdr::Float64
     npanels::Int
@@ -391,7 +400,6 @@ struct ChebJPlan
     panels::Vector{ChebJTable}
     rmin::Float64
     rmax::Float64
-    grading::Symbol
     dr::Float64
     invdr::Float64
     npanels::Int
@@ -399,32 +407,28 @@ end
 
 # =============================================================================
 # Build a piecewise-Chebyshev plan for G1(r) = sqrt(r) * H1x(k * r) over r ∈ [rmin,rmax].
-# The interval is split into `npanels` either uniformly or with geometric growth.
+# The interval is split into `npanels` uniformly. 
 # Each panel stores M+1 Chebyshev coefficients (degree M). This plan is reused for the unscaled hankel function.
 #
 # Inputs
 #   k :: ComplexF64
 #   rmin,rmax :: Float64      # 0 < rmin < rmax
-#   npanels :: Int
-#   M :: Int
-#   grading :: Symbol         # :uniform or :geometric
-#   geo_ratio :: Real         # panel-size ratio for :geometric
+#   npanels :: Int          # number of panels
+#   M :: Int order of the Chebyshev polynomial for each panel
 #
 # Output
 #   ChebHankelPlanH1x(k, panels)
 # =============================================================================
-function plan_h1x(k::ComplexF64,rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebHankelPlanH1x
+function plan_h1x(k::ComplexF64,rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16)::ChebHankelPlanH1x
     @assert rmin>0 && rmax>rmin
-    br= grading===:uniform ?
-        _breaks_uniform(rmin,rmax,npanels) :
-        _breaks_geometric(rmin,rmax,npanels;ratio=geo_ratio) # breakpoints for panels. These are the same for all k, so we can reuse them if we build multiple plans for different k's but the same geometry.
+    br=_breaks_uniform(rmin,rmax,npanels) 
     panels=Vector{ChebHankelTableH1x}(undef,npanels)
     @inbounds Threads.@threads for i in 1:npanels
         panels[i]=_build_table_h1x!(k,br[i],br[i+1];M=M)
     end
-    dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
-    invdr= grading===:uniform ? inv(dr) : 0.0
-    return ChebHankelPlanH1x(k,panels,rmin,rmax,grading,dr,invdr,npanels)
+    dr=(rmax-rmin)/npanels
+    invdr=inv(dr)
+    return ChebHankelPlanH1x(k,panels,rmin,rmax,dr,invdr,npanels)
 end
 
 # =============================================================================
@@ -432,7 +436,7 @@ end
 #   H_ν^(1)(k r)
 # over r ∈ [rmin,rmax], with k real.
 #
-# The interval is split into `npanels` either uniformly or with geometric growth.
+# The interval is split into `npanels` uniformly.
 # Each panel stores M+1 Chebyshev coefficients (degree M) for the direct,
 # unscaled Hankel values. This path is intended for real-k applications such as
 # CFIE/BIM, where the exponential scaling used in the complex-k route is not
@@ -448,33 +452,28 @@ end
 #   rmin,rmax :: Float64
 #       # 0 < rmin < rmax
 #   npanels :: Int
-#   M :: Int
-#   grading :: Symbol
-#       # :uniform or :geometric
-#   geo_ratio :: Real
-#       # panel-size ratio for :geometric
+#       # number of panels
+#   M :: Int order of the Chebyshev polynomial for each panel
 #
 # Output
 #   ChebHankelPlanH(κ,k,ν,panels,...) containing the panelized Chebyshev tables.
 # =============================================================================
-function plan_h(ν::Int,κ::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebHankelPlanH
+function plan_h(ν::Int,κ::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16)::ChebHankelPlanH
     @assert rmin>0 && rmax>rmin
-    br= grading===:uniform ?
-        _breaks_uniform(rmin,rmax,npanels) :
-        _breaks_geometric(rmin,rmax,npanels;ratio=geo_ratio) # breakpoints for panels. These are the same for all k, so we can reuse them if we build multiple plans for different k's but the same geometry.
+    br=_breaks_uniform(rmin,rmax,npanels) 
     panels=Vector{ChebHankelTableH}(undef,npanels)
     @inbounds Threads.@threads for i in 1:npanels
         panels[i]=_build_table_h!(ν,κ,k,br[i],br[i+1];M=M)
     end
-    dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
-    invdr= grading===:uniform ? inv(dr) : 0.0
-    return ChebHankelPlanH(k,ν,κ,panels,rmin,rmax,grading,dr,invdr,npanels)
+    dr=(rmax-rmin)/npanels
+    invdr=inv(dr)
+    return ChebHankelPlanH(k,ν,κ,panels,rmin,rmax,dr,invdr,npanels)
 end
 
 # =============================================================================
 # Build a piecewise-Chebyshev plan for the Bessel function J_ν(k r) over r ∈ [rmin,rmax].
 #
-# The interval is split into `npanels` either uniformly or with geometric growth. 
+# The interval is split into `npanels` uniformly. 
 # Each panel stores M+1 Chebyshev coefficients (degree M) for the Bessel function values.
 # This is intended for use in the CFIE when evaluating the interior Dirichlet Green’s function, which involves J_ν(k r).
 # 
@@ -486,28 +485,25 @@ end
 #   rmin,rmax :: Float64
 #       # 0 < rmin < rmax
 #   npanels :: Int
-#   M :: Int
-#   grading :: Symbol
-#       # :uniform or :geometric
-#   geo_ratio :: Real
-#       # panel-size ratio for :geometric
+#       # number of panels
+#   M :: Int order of the Chebyshev polynomial for each panel
+
 # Output
 #   ChebJPlan(k,ν,panels,...) containing the panelized Chebyshev tables for J_ν(k r).
 # =============================================================================
-function plan_j(ν::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16,grading::Symbol=:uniform,geo_ratio::Real=1.05)::ChebJPlan
-    @assert rmin>0 && rmax>rmin
-    br= grading===:uniform ?
-        _breaks_uniform(rmin,rmax,npanels) :
-        _breaks_geometric(rmin,rmax,npanels;ratio=geo_ratio) # breakpoints for panels. These are the same for all k, so we can reuse them if we build multiple plans for different k's but the same geometry.
+function plan_j(ν::Int,k::Union{Float64,ComplexF64},rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16)::ChebJPlan
+    @assert rmin>=0 && rmax>rmin
+    br=_breaks_uniform(rmin,rmax,npanels) 
     panels=Vector{ChebJTable}(undef,npanels)
     @inbounds Threads.@threads for i in 1:npanels
         panels[i]=_build_table_j!(ν,k,br[i],br[i+1];M=M)
     end
-    dr= grading===:uniform ? (rmax-rmin)/npanels : 0.0 # only used for uniform grading, geometric grading doesn't have a fixed panel width so we set dr=0 and invdr=0 
-    invdr= grading===:uniform ? inv(dr) : 0.0
-    return ChebJPlan(k,ν,panels,rmin,rmax,grading,dr,invdr,npanels)
+    dr=(rmax-rmin)/npanels 
+    invdr=inv(dr)
+    return ChebJPlan(k,ν,panels,rmin,rmax,dr,invdr,npanels)
 end
 
+# LEGACY SINCE WE NOW HAVE CUTOFFS FOR SMALL Z
 # =============================================================================
 # Locate the panel index p such that panels[p].a ≤ r ≤ panels[p].b.
 #
@@ -550,8 +546,7 @@ end
 # =============================================================================
 # Fast panel lookup for uniformly graded Chebyshev plans.
 #
-# For plans constructed with grading === :uniform, the panels are equally spaced
-# over [rmin, rmax], so the panel index can be obtained in O(1) time using a
+# Panels are equally spaced over [rmin, rmax], so the panel index can be obtained in O(1) time using a
 # direct arithmetic mapping instead of a binary search.
 #
 # The mapping is:
@@ -560,8 +555,7 @@ end
 #
 # Inputs
 #   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
-#          # plan with uniform panel spacing (pl.grading === :uniform)
-#          # must contain fields rmin, invdr, npanels
+#          # plan with uniform panel spacing; must contain fields rmin, invdr, npanels
 #   r  :: Float64
 #          # query radius (must lie within [pl.rmin, pl.rmax])
 #
@@ -585,35 +579,23 @@ end
 # =============================================================================
 # Unified panel lookup for Chebyshev plans.
 #
-# Dispatches to either:
-#   - O(1) arithmetic lookup for uniform panels
-#   - O(log Np) binary search for nonuniform (e.g. geometric) panels
+#  - O(1) arithmetic lookup for uniform panels
 #
 # This function provides a consistent interface for locating the panel index
-# p such that r ∈ [panels[p].a, panels[p].b], regardless of grading type.
+# p such that r ∈ [panels[p].a, panels[p].b].
 #
 # Inputs
 #   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
-#          # Chebyshev plan containing panels and grading information
+#          # Chebyshev plan containing panels
 #   r  :: Float64
 #          # query radius (must lie within plan range)
 #
 # Output
 #   Int
-#          # panel index p corresponding to r
-#
-# Behavior
-#   - If pl.grading === :uniform:
-#         uses direct O(1) lookup (_find_panel_uniform)
-#   - Otherwise:
-#         uses binary search over panel intervals (_find_panel_binary)
+#   # panel index p corresponding to r
 # =============================================================================
 @inline function _find_panel(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r::Float64)::Int
-    if pl.grading===:uniform
-        return _find_panel_uniform(pl,r)
-    else
-        return _find_panel_binary(pl.panels,r)
-    end
+    return _find_panel_uniform(pl,r)
 end
 
 # =============================================================================
@@ -625,19 +607,13 @@ end
 #
 # Inputs
 #   pl    :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
-#             # plan containing `panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}` and grading information
+#             # plan containing `panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}` 
 #   rvec  :: AbstractVector{Float64}
 #             # radii (each must satisfy pl.panels[1].a ≤ r ≤ pl.panels[end].b)
 #
 # Output
 #   pidx  :: Vector{Int32}
 #             # pidx[i] = index of panel that contains rvec[i]
-#
-# Implementation details
-#   - Each thread processes a chunk of `rvec` independently.
-#   - Calls `_find_panel` for each rvec[i].
-#   - All outputs are computed in place; no allocations except the result vector.
-#   - Complexity: O(length(rvec) * log Np).
 # =============================================================================
 function panel_indices(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Vector{Int32}
     p=similar(rvec,Int32)
@@ -692,7 +668,7 @@ end
 # an extra pass over rvec and redundant memory traffic.
 #
 # Inputs
-#   pl   :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}  # Chebyshev plan with panels and grading info
+#   pl   :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}  # Chebyshev plan with panels
 #   rvec :: Vector{Float64}  # radii (must lie in [panels[1].a, panels[end].b])
 #
 # Outputs
@@ -701,8 +677,7 @@ end
 #   invsqrt :: Vector{Float64}
 #
 # Notes
-#   - Uses an inlined binary search per element (same as _find_panel) to
-#     minimize overhead.
+#   - Uses uniform O(1) arithmetic lookup per element.
 #   - Forces no allocations inside the threaded loop.
 # =============================================================================
 function panel_and_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Tuple{Vector{Int32},Vector{Float64},Vector{Float64}}
@@ -710,47 +685,18 @@ function panel_and_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r
     pidx=Vector{Int32}(undef,n)
     t=Vector{Float64}(undef,n)
     invsqrt=Vector{Float64}(undef,n)
-    if pl.grading===:uniform
-        rmin=pl.rmin
-        dr=pl.dr
-        invdr=pl.invdr
-        np=pl.npanels
-        @inbounds Threads.@threads for i in eachindex(rvec)
-            r=rvec[i]
-            p=Int(floor((r-rmin)*invdr))+1
-            p=ifelse(p<1,1,ifelse(p>np,np,p))
-            pidx[i]=Int32(p)
-            center=rmin+(p-0.5)*dr
-            t[i]=2*(r-center)*invdr
-            invsqrt[i]=inv(sqrt(r))
-        end
-    else
-        pans=pl.panels
-        nP=length(pans)
-        @inbounds Threads.@threads for i in eachindex(rvec)
-            r=rvec[i]
-            lo=1
-            hi=nP
-            mid=0
-            while lo<=hi
-                mid=(lo+hi)>>>1
-                P=pans[mid]
-                if r<P.a
-                    hi=mid-1
-                elseif r>P.b
-                    lo=mid+1
-                else
-                    break
-                end
-            end
-            if !(pans[mid].a<=r<=pans[mid].b)
-                error("r=$r outside plan range [$(pans[1].a), $(pans[end].b)]")
-            end
-            P=pans[mid]
-            pidx[i]=Int32(mid)
-            t[i]=(2*r-(P.b+P.a))/(P.b-P.a)
-            invsqrt[i]=inv(sqrt(r))
-        end
+    rmin=pl.rmin
+    dr=pl.dr
+    invdr=pl.invdr
+    np=pl.npanels
+    @inbounds Threads.@threads for i in eachindex(rvec)
+        r=rvec[i]
+        p=Int(floor((r-rmin)*invdr))+1
+        p=ifelse(p<1,1,ifelse(p>np,np,p))
+        pidx[i]=Int32(p)
+        center=rmin+(p-0.5)*dr
+        t[i]=2*(r-center)*invdr
+        invsqrt[i]=inv(sqrt(r))
     end
     return pidx,t,invsqrt
 end
@@ -915,11 +861,8 @@ function eval_h!(H1::AbstractVector{ComplexF64},pl::ChebHankelPlanH,r::AbstractV
 end
 
 # =============================================================================
-# Fast evaluation of the Bessel function J_ν(k r) for the same radius r across
-# multiple real or complex wavenumbers (one per plan).
-#
-# Each plan stores the direct unscaled Bessel values on the same panel
-# partition, so the same `pidx` and `t` may be reused across all plans.
+# Fast evaluation of the Bessel function J_ν(k r) for the same many radii r across
+# for a single plan.
 #
 # Inputs
 #   J     :: AbstractVector{ComplexF64}
@@ -1139,31 +1082,63 @@ end
 # Evaluate the Bessel function J_ν(k r) for the same radius r across multiple
 # wavenumbers (one per plan).
 #
-# Each plan stores the direct unscaled Bessel coefficients on the same panel
-# partition, so the same `pidx` and `t` may be reused across all plans.
+# Unlike the Hankel evaluators, this function does NOT accept a precomputed
+# `(pidx,t)` pair from the geometry cache.
+#
+# Reason:
+#   The Hankel and Bessel plans may use different panelizations. Hankel functions 
+# typically require a much finer radial discretization because:
+#
+#   - H₀^(1), H₁^(1) are singular / near-singular as z = k r → 0,
+#   - oscillatory behavior is harder to resolve accurately,
+#   - the small-z region often requires a direct-evaluation fallback.
+#
+# By contrast, the Bessel J family is entire and regular at the origin:
+#
+#   J₀(0)=1,
+#   J₁(0)=0,
+#
+# so it can safely use a much coarser and often separate interpolation grid,
+# by default beginning at r=0.
+#
+# Therefore reusing the Hankel `(pidx,t)` would be incorrect whenever the
+# Hankel and J plans were built with different:
+#
+#   - rmin
+#   - npanels
+#   - panel breakpoints
+#
+# Instead, this function determines the J-panel directly from `r` using the
+# first J plan, computes the corresponding local Chebyshev coordinate, and then
+# reuses that J-local `(pidx,t)` across all J plans.
+#
+# Assumption
+# ----------
+# All plans in `plans` must share the same panelization, i.e. identical:
+#
+#   - rmin / rmax
+#   - npanels
+#   - uniform panel breakpoints
+#
+# This is normally guaranteed by constructing them through the same builder.
 #
 # Inputs
-#   out  :: AbstractVector{ComplexF64}
-#           # length == length(plans)
-#   plans:: AbstractVector{ChebJPlan}
-#           # Chebyshev plans for J_ν(k r) at fixed k
-#   r    :: Float64
-#           # radius for this evaluation point (unused; kept for API symmetry)
-#   pidx :: Int32
-#           # panel index for r
-#   t    :: Float64
-#           # Chebyshev coordinate for r
+#   out   :: AbstractVector{ComplexF64} : Output buffer.
+#   plans :: AbstractVector{ChebJPlan} : Collection of Chebyshev plans for J_ν(k_m r), one plan per wavenumber.
+#   r     :: Float64 : Physical radius at which all J values are evaluated.
+#
 # Output
-#   out[m] = J_ν(k_m r) for m = 1..length(plans).
+#   Fills:
+#       out[m] = J_ν(k_m r)
+#   for all stored wavenumbers.
 # =============================================================================
-function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebJPlan},r::Float64,pidx::Int32,t::Float64)
+@inline function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebJPlan},r::Float64)
+    pl0=plans[1]
+    p=_find_panel(pl0,r)
+    P=pl0.panels[p]
+    t=(2*r-(P.b+P.a))/(P.b-P.a)
     @inbounds for m in eachindex(plans)
-        plan_m=plans[m]
-        if pidx==0
-            out[m]=SpecialFunctions.besselj(plan_m.ν,ComplexF64(plan_m.k)*r)
-        else
-            out[m]=_cheb_clenshaw(plan_m.panels[pidx].c,t)
-        end
+        out[m]=_cheb_clenshaw(plans[m].panels[p].c,t)
     end
     return nothing
 end
@@ -1173,7 +1148,7 @@ end
 ############################################################
 
 """
-    h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx,t)
+    h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,r::Float64)
 
 Evaluate `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁` for all wavenumbers at one fixed
 distance panel/location, writing the results in place.
@@ -1211,40 +1186,25 @@ require `J₀` and `J₁`, so they are interpolated separately.
   Chebyshev plans for `J₀`.
 - `plansj1::AbstractVector{ChebJPlan}`:
   Chebyshev plans for `J₁`.
-- `pidx::Int32`:
-  Panel index containing the current distance.
-- `t::Float64`:
-  Local Chebyshev coordinate in that panel.
+- `pidx_h::Int32`:
+  Panel index containing the current distance for Hankel functions.
+- `t_h::Float64`:
+  Local Chebyshev coordinate in that panel for Hankel functions.
+- `r::Float64`:
+  Physical radius at which all values are evaluated.
 
 # Returns
 - `nothing`
 """
-@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64,r::Float64)
-    @inbounds for m in eachindex(plans0)
-        z=ComplexF64(plans0[m].k)*r
-        az=abs(z)
-        if az<hankel_z_chebyshev_cutoff_small_z
-            h0vals[m]=_small_h0_series(z)
-            h1vals[m]=_small_h1_series(z)
-            j0vals[m]=SpecialFunctions.besselj(0,z)
-            j1vals[m]=SpecialFunctions.besselj(1,z)
-        elseif az<hankel_z_chebyshev_cutoff || pidx==0
-            h0vals[m]=SpecialFunctions.besselh(0,1,z)
-            h1vals[m]=SpecialFunctions.besselh(1,1,z)
-            j0vals[m]=SpecialFunctions.besselj(0,z)
-            j1vals[m]=SpecialFunctions.besselj(1,z)
-        else
-            h0vals[m]=_cheb_clenshaw(plans0[m].panels[pidx].c,t)
-            h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
-            j0vals[m]=_cheb_clenshaw(plansj0[m].panels[pidx].c,t)
-            j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
-        end
-    end
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,r::Float64)
+    h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,pidx_h,t_h,r)
+    eval_j_multi_ks!(j0vals,plansj0,r)
+    eval_j_multi_ks!(j1vals,plansj1,r)
     return nothing
 end
 
 """
-    h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,pidx,t)
+    h0_h1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64,r::Float64)
 
 Evaluate `H₀^(1)` and `H₁^(1)` for all wavenumbers at one fixed distance
 panel/location, writing the results in place.
@@ -1290,12 +1250,14 @@ Since the smooth inter-component assembly uses only the Hankel terms, the Bessel
 end
 
 """
-        h1_j1_multi_ks_at_r!(h1vals,j1vals,plans1,plansj1,pidx,t,r)
+        h1_j1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,r::Float64)
 
 Evaluate `H₁^(1)` and `J₁` for all wavenumbers at one fixed distance panel/location, writing the results in place.
 This is the reduced special-function evaluator used in off-component CFIE-Kress blocks, where the kernel is smooth and no Kress logarithmic split is needed. Since the smooth inter-component assembly uses only the Hankel terms, the Bessel `J₀` values are not required.
 
-If `pidx==0`, the evaluation point is close to zero and the small-argument series expansions are used for all wavenumbers. Otherwise, the Chebyshev expansions are evaluated with Clenshaw recurrence. This is to avoid too many panels, which would cause unnecessary overhead in the Chebyshev evaluation and also workspace construction.
+The Hankel part uses `pidx_h,t_h` and may fall back to the small-z/direct path.
+The J part locates its own panel from `r`, because the J grid may differ from
+the Hankel grid.
 
 # Arguments
 - `h1vals::AbstractVector{ComplexF64}`:
@@ -1306,36 +1268,24 @@ If `pidx==0`, the evaluation point is close to zero and the small-argument serie
   Chebyshev plans for `H₁^(1)`.
 - `plansj1::AbstractVector{ChebJPlan}`:
   Chebyshev plans for `J₁`.
-- `pidx::Int32`:
-  Panel index for the active distance.
-- `t::Float64`:
-  Local Chebyshev coordinate in that panel.
+- `pidx_h::Int32`:
+  Hankel panel index for the active distance.
+- `t_h::Float64`:
+  Hankel local Chebyshev coordinate.
 - `r::Float64`:
   Distance at which to evaluate the functions.
 
 # Returns
 - `nothing`
 """
-@inline function h1_j1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan},pidx::Int32,t::Float64,r::Float64)
-    @inbounds for m in eachindex(plans1)
-        z=ComplexF64(plans1[m].k)*r
-        az=abs(z)
-        if az<hankel_z_chebyshev_cutoff_small_z
-            h1vals[m]=_small_h1_series(z)
-            j1vals[m]=SpecialFunctions.besselj(1,z)
-        elseif az<hankel_z_chebyshev_cutoff || pidx==0
-            h1vals[m]=SpecialFunctions.hankelh1(1,z)
-            j1vals[m]=SpecialFunctions.besselj(1,z)
-        else
-            h1vals[m]=_cheb_clenshaw(plans1[m].panels[pidx].c,t)
-            j1vals[m]=_cheb_clenshaw(plansj1[m].panels[pidx].c,t)
-        end
-    end
+@inline function h1_j1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,r::Float64)
+    eval_h_multi_ks!(h1vals,plans1,r,pidx_h,t_h)
+    eval_j_multi_ks!(j1vals,plansj1,r)
     return nothing
 end
 
 """
-    h0_h1_h2_at_r(plan0,plan1,pidx,t,r)
+    h0_h1_h2_at_r(plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,pidx::Int32,t::Float64,r::Float64)
 
 Evaluate `H₀^(1)`, `H₁^(1)`, and `H₂^(1)` at one fixed distance for a single
 wavenumber, returning the values directly.
@@ -1393,7 +1343,8 @@ function evaluation.
 end
 
 """
-    h0_h1_h2_multi_ks_at_r!(h0vals,h1vals,h2vals,plans0,plans1,pidx,t,r)
+    h0_h1_h2_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},h2vals::AbstractVector{ComplexF64},
+    plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64,r::Float64)
 
 Evaluate `H₀^(1)`, `H₁^(1)`, and `H₂^(1)` for all wavenumbers at one fixed
 distance panel/location, writing the results in place.
@@ -1460,7 +1411,7 @@ evaluation to avoid loss of accuracy.
 end
 
 """
-        h1_multi_ks_at_r!(h1vals,phases,plans,pidx,t,invsqrt,r,ab)
+        h1_multi_ks_at_r!(hvals::AbstractVector{ComplexF64},phases::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,ab::AbstractVector{NTuple{2,Float64}})
 
 Evaluate `H₁^(1)` for all wavenumbers at one fixed distance panel/location, writing the results in place. Only used for standard DLP kernel where we need only H₁^(1) and not J₁, but we want to use the scaled Chebyshev expansions for complex k. The `phases` vector is used to store the exp(-i k r) factors for each wavenumber, which can be reused across multiple evaluations at the same radius.
 
@@ -1505,7 +1456,7 @@ If `pidx==0`, the evaluation point is close to zero and the small-argument serie
 end
 
 """
-    h1_at_r(plan,pidx,t,invsqrt,r,a,b)
+    h1_at_r(plan::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,a::Float64,b::Float64)
 
 Evaluate `H₁^(1)` at one fixed distance for a single complex wavenumber using
 the scaled-Hankel Chebyshev plan, returning the unscaled value directly.

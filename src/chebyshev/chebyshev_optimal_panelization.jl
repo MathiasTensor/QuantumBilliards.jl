@@ -1,3 +1,78 @@
+# checks errors for H0/H1 Chebyshev plans against exact SpecialFunctions.besselh values at sampled radii
+# there are 2 similar functions for H0/H1 and J0/J1 since they use different plan types (due to Hankels being much more difficult to handle) 
+# and eval functions, but the logic is the same. There is also the legacy H1x function for old BIM code
+@inline function _cheb_tloc(plan,r)
+    if r<plan.rmin
+        return Int32(0),0.0
+    end
+    p=_find_panel(plan,r)
+    P=plan.panels[p]
+    return Int32(p),(2*r-(P.b+P.a))/(P.b-P.a)
+end
+
+function _check_H0H1_errors!(err0,err1,plans0,plans1,ks,rs)
+    nz=length(ks)
+    Threads.@threads for j in 1:nz
+        e0=0.0
+        e1=0.0
+        k=ComplexF64(ks[j])
+        @inbounds for r in rs
+            p0,t0=_cheb_tloc(plans0[j],r)
+            p1,t1=_cheb_tloc(plans1[j],r)
+            z=k*r
+            e0=max(e0,abs(eval_h(plans0[j],p0,t0,r)-SpecialFunctions.besselh(0,1,z)))
+            e1=max(e1,abs(eval_h(plans1[j],p1,t1,r)-SpecialFunctions.besselh(1,1,z)))
+        end
+        err0[j]=e0
+        err1[j]=e1
+    end
+    return err0,err1
+end
+
+function _check_J0J1_errors!(err0,err1,plans0,plans1,ks,rs)
+    nz=length(ks)
+    Threads.@threads for j in 1:nz
+        e0=0.0
+        e1=0.0
+        k=ComplexF64(ks[j])
+        @inbounds for r in rs
+            p0,t0=_cheb_tloc(plans0[j],r)
+            p1,t1=_cheb_tloc(plans1[j],r)
+            z=k*r
+            e0=max(e0,abs(eval_j(plans0[j],p0,t0,r)-SpecialFunctions.besselj(0,z)))
+            e1=max(e1,abs(eval_j(plans1[j],p1,t1,r)-SpecialFunctions.besselj(1,z)))
+        end
+        err0[j]=e0
+        err1[j]=e1
+    end
+    return err0,err1
+end
+
+function _check_H1x_errors!(err,plans,ks,rs)
+    nz=length(ks)
+    Threads.@threads for j in 1:nz
+        e=0.0
+        k=ComplexF64(ks[j])
+        buf=Vector{ComplexF64}(undef,length(rs))
+        pidx=Vector{Int32}(undef,length(rs))
+        tloc=Vector{Float64}(undef,length(rs))
+        invsqrt=Vector{Float64}(undef,length(rs))
+        @inbounds for i in eachindex(rs)
+            r=rs[i]
+            p,t=_cheb_tloc(plans[j],r)
+            pidx[i]=p
+            tloc[i]=t
+            invsqrt[i]=inv(sqrt(r))
+        end
+        eval_h1x!(buf,plans[j],rs,pidx,tloc,invsqrt)
+        @inbounds for i in eachindex(rs)
+            e=max(e,abs(buf[i]-SpecialFunctions.besselhx(1,1,k*rs[i])))
+        end
+        err[j]=e
+    end
+    return err
+end
+
 # chebyshev_params
 # Determine suitable Chebyshev panel count and polynomial degree for the
 # scaled Hankel kernel H1x used in the BoundaryIntegralMethod (BIM).
@@ -26,12 +101,14 @@
 #       Complex frequencies (e.g. Beyn contour nodes).
 #
 # Keyword options:
-#   - n_panels_init:
-#       Initial number of Chebyshev panels.
-#   - M_init:
-#       Initial polynomial degree per panel.
-#   - grading:
-#       Panel distribution strategy (:uniform or geometric).
+#   - npanels_h_init:
+#       Initial number of Chebyshev panels for H1x interpolation.
+#   - M_h_init:
+#       Initial polynomial degree for H1x interpolation.
+#   - npanels_j_init:
+#       Initial number of Chebyshev panels for Bessel J interpolation (if needed).
+#   - M_j_init:
+#       Initial polynomial degree for Bessel J interpolation (if needed).
 #   - tol:
 #       Target max absolute error.
 #   - sampling_points:
@@ -42,82 +119,30 @@
 #       Multiplicative growth factor for panel count.
 #   - grow_M:
 #       Additive increase of polynomial degree.
-#   - geo_ratio:
-#       Ratio for geometric grading.
 #   - verbose:
 #       Print progress information.
-#
-# Outputs:
-#   - n_panels::Int:
-#       Tuned number of panels.
-#   - M::Int:
-#       Tuned polynomial degree.
-#   - plans::Vector{ChebHankelPlanH1x}:
-#       Chebyshev plans for each zj.
-#   - max_errs::Vector{Float64}:
-#       Max error per zj.
-function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
     rmin_raw,rmax=estimate_rmin_rmax(pts,solver.symmetry)
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
     rmin_interp=max(Float64(rmin_raw),rmin_cheb)
-    @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_raw),Float64(rmax);length=sampling_points))
+    @info "Estimated Chebyshev radial bounds " rmin_raw rmax rmin_cheb rmin_interp
+    rs=collect(range(rmin_interp,Float64(rmax);length=sampling_points))
     nz=length(zj)
-    n_panels=n_panels_init
-    M=M_init
+    n=npanels_h_init
+    M=M_h_init
     plans=Vector{ChebHankelPlanH1x}(undef,nz)
-    approx=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact=Matrix{ComplexF64}(undef,sampling_points,nz)
-    max_errs=fill(Inf,nz)
+    err=fill(Inf,nz)
     for it in 1:max_iter
         Threads.@threads for j in eachindex(zj)
-            plans[j]=plan_h1x(ComplexF64(zj[j]),rmin_interp,Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio)
+            plans[j]=plan_h1x(ComplexF64(zj[j]),rmin_interp,Float64(rmax);npanels=n,M=M)
         end
-        Threads.@threads for j in eachindex(zj)
-            pidx=Vector{Int32}(undef,sampling_points)
-            tloc=Vector{Float64}(undef,sampling_points)
-            invsqrt=Vector{Float64}(undef,sampling_points)
-            @inbounds for i in eachindex(rs)
-                r=rs[i]
-                invsqrt[i]=inv(sqrt(r))
-                if r<rmin_interp
-                    pidx[i]=Int32(0)
-                    tloc[i]=0.0
-                else
-                    p=_find_panel(plans[j],r)
-                    P=plans[j].panels[p]
-                    pidx[i]=Int32(p)
-                    tloc[i]=(2r-(P.b+P.a))/(P.b-P.a)
-                end
-            end
-            eval_h1x!(view(approx,:,j),plans[j],rs,pidx,tloc,invsqrt)
-        end
-        Threads.@threads for j in eachindex(zj)
-            @inbounds for i in eachindex(rs)
-                exact[i,j]=SpecialFunctions.besselhx(1,1,ComplexF64(zj[j])*rs[i])
-            end
-        end
-        @inbounds for j in 1:nz
-            max_errs[j]=maximum(abs.(view(approx,:,j).-view(exact,:,j)))
-        end
-        if verbose
-            j0=argmax(max_errs)
-            Δ0=abs.(view(approx,:,j0).-view(exact,:,j0))
-            e0,i0=findmax(Δ0)
-            @info "Worst H1x | n_panels M" e0 n_panels M
-            println()
-        end
-        if all(err->err<tol,max_errs)
-            return n_panels,M,plans,max_errs
-        end
-        if it%5==0
-            M+=grow_M
-        else
-            n_panels=ceil(Int,grow_panels*n_panels)
-        end
+        _check_H1x_errors!(err,plans,zj,rs)
+        verbose && @info "Worst H1x | n_panels M" maximum(err) n M
+        all(<(tol),err) && return n,M,0,0,plans,err
+        it%5==0 ? (M+=grow_M) : (n=ceil(Int,grow_panels*n))
     end
-    @warn "Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
-    return n_panels,M,plans,max_errs
+    @warn "BIM Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
+    return n,M,0,0,plans,err
 end
 
 # chebyshev_params
@@ -145,12 +170,14 @@ end
 #       Complex wavenumbers (e.g. Beyn contour nodes).
 #
 # Keyword options:
-#   - n_panels_init:
-#       Initial number of Chebyshev panels.
-#   - M_init:
-#       Initial polynomial degree.
-#   - grading:
-#       Panel distribution strategy.
+#   - npanels_h_init:
+#       Initial panel count for Hankel function interpolation.
+#   - M_h_init:
+#       Initial polynomial degree for Hankel function interpolation.
+#   - npanels_j_init:
+#       Initial panel count for Bessel J function interpolation (if needed).
+#   - M_j_init:
+#       Initial polynomial degree for Bessel J function interpolation (if needed).
 #   - tol:
 #       Target max absolute error.
 #   - sampling_points:
@@ -161,135 +188,49 @@ end
 #       Multiplicative growth factor for panels.
 #   - grow_M:
 #       Additive growth for polynomial degree.
-#   - geo_ratio:
-#       Geometric grading ratio.
 #   - verbose:
 #       Print tuning progress.
-#
-# Outputs:
-#   - n_panels::Int
-#   - M::Int
-#   - plans0::Vector{ChebHankelPlanH}   (H0)
-#   - plans1::Vector{ChebHankelPlanH}   (H1)
-#   - plans2::Vector{ChebJPlan}         (J0)
-#   - plans3::Vector{ChebJPlan}         (J1)
-#   - max_errs0::Vector{Float64}
-#   - max_errs1::Vector{Float64}
-#   - max_errs2::Vector{Float64}
-#   - max_errs3::Vector{Float64}
-function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    if solver isa CFIE_kress || solver isa CFIE_kress_corners || solver isa CFIE_kress_global_corners
-        block_cache=build_cfie_kress_block_caches(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
-    else
-        block_cache=build_dlp_kress_block_cache(solver,pts;npanels=16,M=4,grading=grading,geo_ratio=geo_ratio)
-    end
-    rmin_raw,rmax=block_cache.rmin,block_cache.rmax
+function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
-    rmin_interp=max(Float64(rmin_raw),rmin_cheb)
-    @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
+    ptsv=pts isa Vector ? pts : [pts]
+    pts1=pts isa Vector ? (length(pts)==1 ? pts[1] : error("DLP_kress expects one BoundaryPointsCFIE component.")) : pts
+    block_cache=solver isa Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners} ?
+    build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,rmin_cheb=rmin_cheb) :
+    build_dlp_kress_block_cache(solver,pts1;npanels=16,M=4,rmin_cheb=rmin_cheb)
+    rmin_h=block_cache.rmin
+    rmax=block_cache.rmax
+    rsH=collect(range(Float64(rmin_h),Float64(rmax);length=sampling_points))
+    rsJ=collect(range(0.0,Float64(rmax);length=sampling_points))
     nz=length(zj)
-    n_panels=n_panels_init
-    M=M_init
+    nh=npanels_h_init
+    nj=npanels_j_init
+    Mh=M_h_init
+    Mj=M_j_init
     plans0=Vector{ChebHankelPlanH}(undef,nz)
     plans1=Vector{ChebHankelPlanH}(undef,nz)
-    plans2=Vector{ChebJPlan}(undef,nz)
-    plans3=Vector{ChebJPlan}(undef,nz)
-    approx0=Matrix{ComplexF64}(undef,sampling_points,nz)
-    approx1=Matrix{ComplexF64}(undef,sampling_points,nz)
-    approx2=Matrix{ComplexF64}(undef,sampling_points,nz)
-    approx3=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact0=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact1=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact2=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact3=Matrix{ComplexF64}(undef,sampling_points,nz)
-    max_errs0=fill(Inf,nz)
-    max_errs1=fill(Inf,nz)
-    max_errs2=fill(Inf,nz)
-    max_errs3=fill(Inf,nz)
+    plansj0=Vector{ChebJPlan}(undef,nz)
+    plansj1=Vector{ChebJPlan}(undef,nz)
+    errH0=fill(Inf,nz)
+    errH1=fill(Inf,nz)
+    errJ0=fill(Inf,nz)
+    errJ1=fill(Inf,nz)
     for it in 1:max_iter
-        plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin_interp,Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
-        Threads.@threads for j in eachindex(zj)
-            pidx0=Vector{Int32}(undef,sampling_points);tloc0=Vector{Float64}(undef,sampling_points)
-            pidx1=Vector{Int32}(undef,sampling_points);tloc1=Vector{Float64}(undef,sampling_points)
-            pidx2=Vector{Int32}(undef,sampling_points);tloc2=Vector{Float64}(undef,sampling_points)
-            pidx3=Vector{Int32}(undef,sampling_points);tloc3=Vector{Float64}(undef,sampling_points)
-            @inbounds for i in eachindex(rs)
-                r=rs[i]
-                if r<rmin_interp
-                    pidx0[i]=Int32(0);tloc0[i]=0.0
-                    pidx1[i]=Int32(0);tloc1[i]=0.0
-                    pidx2[i]=Int32(0);tloc2[i]=0.0
-                    pidx3[i]=Int32(0);tloc3[i]=0.0
-                else
-                    p0=_find_panel(plans0[j],r);P0=plans0[j].panels[p0]
-                    p1=_find_panel(plans1[j],r);P1=plans1[j].panels[p1]
-                    p2=_find_panel(plans2[j],r);P2=plans2[j].panels[p2]
-                    p3=_find_panel(plans3[j],r);P3=plans3[j].panels[p3]
-                    pidx0[i]=Int32(p0);tloc0[i]=(2*r-(P0.b+P0.a))/(P0.b-P0.a)
-                    pidx1[i]=Int32(p1);tloc1[i]=(2*r-(P1.b+P1.a))/(P1.b-P1.a)
-                    pidx2[i]=Int32(p2);tloc2[i]=(2*r-(P2.b+P2.a))/(P2.b-P2.a)
-                    pidx3[i]=Int32(p3);tloc3[i]=(2*r-(P3.b+P3.a))/(P3.b-P3.a)
-                end
-            end
-            @inbounds for i in eachindex(rs)
-                r=rs[i]
-                approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
-                approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
-                approx2[i,j]=eval_j(plans2[j],pidx2[i],tloc2[i],r)
-                approx3[i,j]=eval_j(plans3[j],pidx3[i],tloc3[i],r)
-            end
+        plans0,plans1,plansj0,plansj1=build_CFIE_plans_kress(zj,Float64(rmin_h),Float64(rmax);npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj,nthreads=Threads.nthreads())
+        _check_H0H1_errors!(errH0,errH1,plans0,plans1,zj,rsH)
+        _check_J0J1_errors!(errJ0,errJ1,plansj0,plansj1,zj,rsJ)
+        okH=all(<(tol),errH0)&&all(<(tol),errH1)
+        okJ=all(<(tol),errJ0)&&all(<(tol),errJ1)
+        verbose && @info "Worst Kress H0 H1 J0 J1 | nh Mh nj Mj" maximum(errH0) maximum(errH1) maximum(errJ0) maximum(errJ1) nh Mh nj Mj
+        okH&&okJ && return nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1
+        if !okH
+            it%5==0 ? (Mh+=grow_M) : (nh=ceil(Int,grow_panels*nh))
         end
-        Threads.@threads for j in eachindex(zj)
-            @inbounds for i in eachindex(rs)
-                z=ComplexF64(zj[j])*rs[i]
-                exact0[i,j]=SpecialFunctions.besselh(0,1,z)
-                exact1[i,j]=SpecialFunctions.besselh(1,1,z)
-                exact2[i,j]=SpecialFunctions.besselj(0,z)
-                exact3[i,j]=SpecialFunctions.besselj(1,z)
-            end
-        end
-        @inbounds for j in 1:nz
-            Δ0=abs.(view(approx0,:,j).-view(exact0,:,j))
-            Δ1=abs.(view(approx1,:,j).-view(exact1,:,j))
-            Δ2=abs.(view(approx2,:,j).-view(exact2,:,j))
-            Δ3=abs.(view(approx3,:,j).-view(exact3,:,j))
-            max_errs0[j]=maximum(Δ0)
-            max_errs1[j]=maximum(Δ1)
-            max_errs2[j]=maximum(Δ2)
-            max_errs3[j]=maximum(Δ3)
-        end
-        if verbose
-            j0=argmax(max_errs0)
-            j1=argmax(max_errs1)
-            j2=argmax(max_errs2)
-            j3=argmax(max_errs3)
-            z0=ComplexF64(zj[j0]).*rs
-            z1=ComplexF64(zj[j1]).*rs
-            z2=ComplexF64(zj[j2]).*rs
-            z3=ComplexF64(zj[j3]).*rs
-            Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
-            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
-            Δ2=abs.(view(approx2,:,j2).-view(exact2,:,j2))
-            Δ3=abs.(view(approx3,:,j3).-view(exact3,:,j3))
-            e0,i0=findmax(Δ0)
-            e1,i1=findmax(Δ1)
-            e2,i2=findmax(Δ2)
-            e3,i3=findmax(Δ3)
-            @info "Worst H0, H1, J0, J1 | n_panels M" e0 e1 e2 e3 n_panels M
-            println()
-        end
-        if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1) && all(err->err<tol,max_errs2) && all(err->err<tol,max_errs3)
-            return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
-        end
-        if it%5==0
-            M+=grow_M
-        else
-            n_panels=ceil(Int,grow_panels*n_panels)
+        if !okJ
+            it%5==0 ? (Mj+=grow_M) : (nj=ceil(Int,grow_panels*nj))
         end
     end
-    @warn "Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
-    return n_panels,M,plans0,plans1,plans2,plans3,max_errs0,max_errs1,max_errs2,max_errs3
+    @warn "Kress Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
+    return nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1
 end
 
 # chebyshev_params
@@ -317,108 +258,50 @@ end
 #       Initial number of Chebyshev panels.
 #   - M_init:
 #       Initial panel degree.
-#   - grading:
-#       Panel grading mode.
 #   - tol:
 #       Required max absolute error tolerance.
 #   - sampling_points:
 #       Number of radii sampled in [rmin,rmax].
 #   - max_iter:
 #       Maximum tuning iterations.
+#   - npanels_h_init:
+#       Initial panel count for Hankel function interpolation.
+#   - M_h_init:
+#       Initial polynomial degree for Hankel function interpolation.
+#   - npanels_j_init:
+#       Initial panel count for Bessel J function interpolation (if needed).
+#   - M_j_init:
+#       Initial polynomial degree for Bessel J function interpolation (if needed).
 #   - grow_panels:
 #       Multiplicative growth factor for panel count.
 #   - grow_M:
 #       Additive growth for polynomial degree.
-#   - geo_ratio:
-#       Geometric grading ratio if applicable.
 #   - verbose:
 #       Whether to print progress info.
-#
-# Outputs:
-#   - n_panels::Int
-#   - M::Int
-#   - plans0::Vector{ChebHankelPlanH}
-#   - plans1::Vector{ChebHankelPlanH}
-#   - max_errs0::Vector{Float64}
-#   - max_errs1::Vector{Float64}
-function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};n_panels_init::Int=15_000,M_init::Int=5,grading::Symbol=:uniform,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,geo_ratio::Real=1.05,verbose::Bool=false) where {T<:Real}
-    ws=build_cfie_alpert_workspace(solver,pts)
+function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
+    ptsv=pts isa Vector ? pts : [pts]
+    ws=build_cfie_alpert_workspace(solver,ptsv)
     rmin_raw,rmax=estimate_cfie_alpert_cheb_rbounds(ws)
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
-    rmin_interp=max(Float64(rmin_raw),rmin_cheb)
-    @info "Estimated Chebyshev radial bounds " rmin_raw=rmin_raw rmax=rmax rmin_cheb=rmin_cheb rmin_interp=rmin_interp
-    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
+    rmin=max(Float64(rmin_raw),rmin_cheb)
+    @info "Estimated Alpert Chebyshev radial bounds " rmin_raw rmax rmin_cheb rmin
+    rs=collect(range(rmin,Float64(rmax);length=sampling_points))
     nz=length(zj)
-    n_panels=n_panels_init
-    M=M_init
+    nh=npanels_h_init
+    Mh=M_h_init
+    nj=npanels_j_init
+    Mj=M_j_init
     plans0=Vector{ChebHankelPlanH}(undef,nz)
     plans1=Vector{ChebHankelPlanH}(undef,nz)
-    approx0=Matrix{ComplexF64}(undef,sampling_points,nz)
-    approx1=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact0=Matrix{ComplexF64}(undef,sampling_points,nz)
-    exact1=Matrix{ComplexF64}(undef,sampling_points,nz)
-    max_errs0=fill(Inf,nz)
-    max_errs1=fill(Inf,nz)
+    err0=fill(Inf,nz)
+    err1=fill(Inf,nz)
     for it in 1:max_iter
-        plans0,plans1=build_CFIE_plans_alpert(zj,rmin_interp,Float64(rmax);npanels=n_panels,M=M,grading=grading,geo_ratio=geo_ratio,nthreads=Threads.nthreads())
-        Threads.@threads for j in eachindex(zj)
-            pidx0=Vector{Int32}(undef,sampling_points)
-            tloc0=Vector{Float64}(undef,sampling_points)
-            pidx1=Vector{Int32}(undef,sampling_points)
-            tloc1=Vector{Float64}(undef,sampling_points)
-            @inbounds for i in eachindex(rs)
-                r=rs[i]
-                if r<rmin_interp
-                    pidx0[i]=Int32(0);tloc0[i]=0.0
-                    pidx1[i]=Int32(0);tloc1[i]=0.0
-                else
-                    p0=_find_panel(plans0[j],r);P0=plans0[j].panels[p0]
-                    p1=_find_panel(plans1[j],r);P1=plans1[j].panels[p1]
-                    pidx0[i]=Int32(p0);tloc0[i]=(2*r-(P0.b+P0.a))/(P0.b-P0.a)
-                    pidx1[i]=Int32(p1);tloc1[i]=(2*r-(P1.b+P1.a))/(P1.b-P1.a)
-                end
-            end
-            @inbounds for i in eachindex(rs)
-                r=rs[i]
-                approx0[i,j]=eval_h(plans0[j],pidx0[i],tloc0[i],r)
-                approx1[i,j]=eval_h(plans1[j],pidx1[i],tloc1[i],r)
-            end
-        end
-        Threads.@threads for j in eachindex(zj)
-            @inbounds for i in eachindex(rs)
-                z=ComplexF64(zj[j])*rs[i]
-                exact0[i,j]=SpecialFunctions.besselh(0,1,z)
-                exact1[i,j]=SpecialFunctions.besselh(1,1,z)
-            end
-        end
-        @inbounds for j in 1:nz
-            Δ0=abs.(view(approx0,:,j).-view(exact0,:,j))
-            Δ1=abs.(view(approx1,:,j).-view(exact1,:,j))
-            max_errs0[j]=maximum(Δ0)
-            max_errs1[j]=maximum(Δ1)
-        end
-        if verbose
-            j0=argmax(max_errs0)
-            j1=argmax(max_errs1)
-            z0=ComplexF64(zj[j0]).*rs
-            z1=ComplexF64(zj[j1]).*rs
-            Δ0=abs.(view(approx0,:,j0).-view(exact0,:,j0))
-            Δ1=abs.(view(approx1,:,j1).-view(exact1,:,j1))
-            e0,i0=findmax(Δ0)
-            e1,i1=findmax(Δ1)
-            @info "Worst H0 H1 | n_panels M" e0 e1 n_panels M
-            @info "Location of worst H1 error" j=j1 i=i1 r=rs[i1] z=z1[i1] err=e1
-            println()
-        end
-        if all(err->err<tol,max_errs0) && all(err->err<tol,max_errs1)
-            return n_panels,M,plans0,plans1,max_errs0,max_errs1
-        end
-        if it%5==0
-            M+=grow_M
-        else
-            n_panels=ceil(Int,grow_panels*n_panels)
-        end
+        plans0,plans1=build_CFIE_plans_alpert(zj,rmin,Float64(rmax);npanels=nh,M=Mh,nthreads=Threads.nthreads())
+        _check_H0H1_errors!(err0,err1,plans0,plans1,zj,rs)
+        verbose && @info "Worst Alpert H0 H1 | npanels_h M_h" maximum(err0) maximum(err1) nh Mh
+        all(<(tol),err0)&&all(<(tol),err1) && return nh,Mh,0,0,plans0,plans1,err0,err1
+        it%5==0 ? (Mh+=grow_M) : (nh=ceil(Int,grow_panels*nh))
     end
     @warn "CFIE_alpert Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
-    return n_panels,M,plans0,plans1,max_errs0,max_errs1
+    return nh,Mh,0,0,plans0,plans1,err0,err1
 end

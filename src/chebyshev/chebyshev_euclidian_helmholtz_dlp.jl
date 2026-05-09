@@ -1413,11 +1413,11 @@ a single pass through the geometric distances appearing in the matrix entries.
   The matrices are written in place into `Tbufs`.
 """
 function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
-zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry) # estimate geometry extents for hankel plan creation on panels
     plans=Vector{ChebHankelPlanH1x}(undef,length(zj))
     @benchit timeit=timeit "DLP plans" Threads.@threads for i in eachindex(plans) # precompute plans for all contour points. This creates for each zj[i] a piecewise Chebyshev approximation of H1x(z) on [rmin,rmax]
-        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels,M=M,grading=:uniform)
+        plans[i]=plan_h1x(zj[i],rmin,rmax,npanels=n_panels_h,M=M_h)
     end
     if use_chebyshev # use the chebyshev hankel evaluations for matrix construction. This is faster for large k values where standard hankel evaluations are slow and allocate a lot.
         @blas_1 begin
@@ -1464,8 +1464,10 @@ Note: The direct route for complex ks is not yet supported!
 # Keyword arguments
 - `multithreaded::Bool=true`: Whether to use threaded assembly loops.
 - `use_chebyshev::Bool=true`: If `true`, use piecewise-Chebyshev Hankel interpolation for matrix construction. If `false`, use the direct special-function route instead.
-- `n_panels::Int=15000`: Number of radial panels used in the Chebyshev plans.
-- `M::Int=5`: Chebyshev polynomial degree per panel.
+- `n_panels_h::Int=15000`: Number of radial panels used in the Chebyshev plans for H₀ and H₁.
+- `M_h::Int=5`: Chebyshev polynomial degree per panel for H₀ and H₁.
+- `n_panels_j::Int=3000`: Number of radial panels used in the Chebyshev plans for the direct route. UNUSED HERE
+- `M_j::Int=5`: Chebyshev polynomial degree per panel for the direct route. UNUSED HERE
 - `timeit::Bool=false`: Whether to print timing information for plan construction and assembly.
 
 # Returns
@@ -1475,14 +1477,14 @@ Note: The direct route for complex ks is not yet supported!
   - `dTbufs`,
   - `ddTbufs`.
 """
-function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels::Int=15000,M::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Complex{T}}},dTbufs::Vector{Matrix{Complex{T}}},ddTbufs::Vector{Matrix{Complex{T}}},solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     if use_chebyshev
         rmin,rmax=estimate_rmin_rmax(pts,solver.symmetry)
         plans0=Vector{ChebHankelPlanH}(undef,length(zj))
         plans1=Vector{ChebHankelPlanH}(undef,length(zj))
         @benchit timeit=timeit "DLP deriv plans" Threads.@threads for i in eachindex(zj)
-            plans0[i]=plan_h(0,1,ComplexF64(zj[i]),rmin,rmax;npanels=n_panels,M=M,grading=:uniform)
-            plans1[i]=plan_h(1,1,ComplexF64(zj[i]),rmin,rmax;npanels=n_panels,M=M,grading=:uniform)
+            plans0[i]=plan_h(0,1,ComplexF64(zj[i]),rmin,rmax;npanels=n_panels_h,M=M_h)
+            plans1[i]=plan_h(1,1,ComplexF64(zj[i]),rmin,rmax;npanels=n_panels_h,M=M_h)
         end
         ws=DLPDerivChebWorkspace(T,length(zj))
         @blas_1 begin
