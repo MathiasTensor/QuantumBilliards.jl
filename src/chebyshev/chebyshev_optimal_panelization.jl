@@ -195,7 +195,7 @@ function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress
     ptsv=pts isa Vector ? pts : [pts]
     pts1=pts isa Vector ? (length(pts)==1 ? pts[1] : error("DLP_kress expects one BoundaryPointsCFIE component.")) : pts
     block_cache=solver isa Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners} ?
-    build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,rmin_cheb=rmin_cheb) :
+    build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb) :
     build_dlp_kress_block_cache(solver,pts1;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
     rmin_h=block_cache.rmin
     rmax=block_cache.rmax

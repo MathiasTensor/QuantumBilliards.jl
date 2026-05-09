@@ -81,10 +81,16 @@ precomputed distance panel.
 - `wj::Vector{T}`:
   Source-side quadrature weights.
 - `pidx::Matrix{Int32}`:
-  Chebyshev panel index for each pair `(i,j)`. This tells the interpolation
+  Chebyshev panel index for each pair `(i,j)` for Hankels. This tells the interpolation
   evaluator which distance panel contains `R[i,j]`.
 - `tloc::Matrix{Float64}`:
-  Local Chebyshev coordinate in `[-1,1]` for each pair `(i,j)` inside the chosen
+  Local Chebyshev coordinate in `[-1,1]` for each pair `(i,j)` for Hankels inside the chosen
+  panel.
+- `pidxj::Matrix{Int32}`:
+  Chebyshev panel index for each pair `(j,i)` for Bessel J. This tells the interpolation
+  evaluator which distance panel contains `R[j,i]`.
+- `tlocj::Matrix{Float64}`:
+  Local Chebyshev coordinate in `[-1,1]` for each pair `(j,i)` for Bessel J inside the chosen
   panel.
 - `logterm::Union{Nothing,Matrix{T}}`:
   Same-component logarithmic Kress split term. `nothing` for off-component
@@ -112,6 +118,8 @@ struct CFIE_kress_BlockCache{T<:Real}
     wj::Vector{T}
     pidx::Matrix{Int32}
     tloc::Matrix{Float64}
+    pidxj::Matrix{Int32}
+    tlocj::Matrix{Float64}
     logterm::Union{Nothing,Matrix{T}}
     kappa_i::Union{Nothing,Vector{T}}
     Rkress::Union{Nothing,Matrix{T}}
@@ -271,7 +279,7 @@ function build_CFIE_plans_kress(ks::AbstractVector{<:Number},rmin::Float64,rmax:
 end
 
 """
-    build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels_h::Int=10000,M_h::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
+    build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
 
 Build the Chebyshev block-cache system for CFIE-Kress assembly.
 
@@ -301,38 +309,32 @@ order to avoid recomputing geometry-dependent quantities at every `k`.
   Number of Chebyshev panels for the Hankel-based interpolation (default: `10000`).
 - `M_h::Int`:
   Chebyshev interpolation order for the Hankel-based interpolation (default: `5`).
+- `npanels_j::Int`:
+  Number of Chebyshev panels for the Bessel-J-based interpolation (default: `3000`).
+- `M_j::Int`:
+  Chebyshev interpolation order for the Bessel-J-based interpolation (default: `5`).
 - `pad::Tuple{T,T}`:
   Safety padding factors for the minimum and maximum distances when determining the interpolation interval (default: `(0.95, 1.05)`).
 
 # Returns
 - `CFIEBlockSystemCache{T}`
 """
-function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels_h::Int=10000,M_h::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
+function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPointsCFIE{T}};npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
     Gs=[cfie_geom_cache(p,_is_nontrivial_grading(p)) for p in comps]
     blocks=Matrix{CFIE_kress_BlockCache{T}}(undef,nc,nc)
     global_rmin=typemax(T)
     global_rmax=zero(T)
-    for a in 1:nc, b in 1:nc
-        pa=comps[a]
-        pb=comps[b]
-        Ga=Gs[a]
-        Gb=Gs[b]
-        Ni=length(pa.xy)
-        Nj=length(pb.xy)
-        same=(a==b)
+    for a in 1:nc,b in 1:nc
+        pa=comps[a]; pb=comps[b]; Ga=Gs[a]; Gb=Gs[b]
+        Ni=length(pa.xy); Nj=length(pb.xy); same=(a==b)
         if same
-            R=copy(Ga.R)
-            invR=copy(Ga.invR)
-            inner=copy(Ga.inner)
-            speed_i=copy(Ga.speed)
-            speed_j=copy(Ga.speed)
-            wi=copy(pa.ws)
-            wj=copy(pa.ws)
-            rmin_blk=typemax(T)
-            rmax_blk=zero(T)
-            @inbounds for j in 1:Nj, i in 1:Ni
+            R=copy(Ga.R); invR=copy(Ga.invR); inner=copy(Ga.inner)
+            speed_i=copy(Ga.speed); speed_j=copy(Ga.speed)
+            wi=copy(pa.ws); wj=copy(pa.ws)
+            rmin_blk=typemax(T); rmax_blk=zero(T)
+            @inbounds for j in 1:Nj,i in 1:Ni
                 i==j && continue
                 rij=R[i,j]
                 if rij>eps(T)
@@ -340,85 +342,65 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
                     rij>rmax_blk && (rmax_blk=rij)
                 end
             end
-            @assert isfinite(rmin_blk) && rmax_blk>zero(T)
-            rmin_blk=pad[1]*rmin_blk
-            rmax_blk=pad[2]*rmax_blk
-            global_rmin=min(global_rmin,rmin_blk)
-            global_rmax=max(global_rmax,rmax_blk)
-            pidx=Matrix{Int32}(undef,Ni,Nj)
-            tloc=Matrix{Float64}(undef,Ni,Nj)
-            logterm=copy(Ga.logterm)
-            kappa_i=copy(Ga.kappa)
+            rmin_blk*=pad[1]; rmax_blk*=pad[2]
+            global_rmin=min(global_rmin,rmin_blk); global_rmax=max(global_rmax,rmax_blk)
+            pidx=Matrix{Int32}(undef,Ni,Nj); tloc=Matrix{Float64}(undef,Ni,Nj)
+            pidxj=Matrix{Int32}(undef,Ni,Nj); tlocj=Matrix{Float64}(undef,Ni,Nj)
+            logterm=copy(Ga.logterm); kappa_i=copy(Ga.kappa)
             Rkress=zeros(T,Ni,Ni)
-            if _is_nontrivial_grading(pa)
-                kress_R_corner!(Rkress)
-            else
-                kress_R!(Rkress)
-            end
-            blocks[a,b]=CFIE_kress_BlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,logterm,kappa_i,Rkress)
+            _is_nontrivial_grading(pa) ? kress_R_corner!(Rkress) : kress_R!(Rkress)
+            blocks[a,b]=CFIE_kress_BlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,pidxj,tlocj,logterm,kappa_i,Rkress)
         else
-            Xa=getindex.(pa.xy,1)
-            Ya=getindex.(pa.xy,2)
-            Xb=getindex.(pb.xy,1)
-            Yb=getindex.(pb.xy,2)
-            dXb=getindex.(pb.tangent,1)
-            dYb=getindex.(pb.tangent,2)
-            R=Matrix{T}(undef,Ni,Nj)
-            invR=Matrix{T}(undef,Ni,Nj)
-            inner=Matrix{T}(undef,Ni,Nj)
-            @inbounds for j in 1:Nj, i in 1:Ni
-                dx=Xa[i]-Xb[j]
-                dy=Ya[i]-Yb[j]
-                rij=hypot(dx,dy)
-                R[i,j]=rij
-                invR[i,j]=rij>eps(T) ? inv(rij) : zero(T)
+            Xa=getindex.(pa.xy,1); Ya=getindex.(pa.xy,2)
+            Xb=getindex.(pb.xy,1); Yb=getindex.(pb.xy,2)
+            dXb=getindex.(pb.tangent,1); dYb=getindex.(pb.tangent,2)
+            R=Matrix{T}(undef,Ni,Nj); invR=Matrix{T}(undef,Ni,Nj); inner=Matrix{T}(undef,Ni,Nj)
+            @inbounds for j in 1:Nj,i in 1:Ni
+                dx=Xa[i]-Xb[j]; dy=Ya[i]-Yb[j]; rij=hypot(dx,dy)
+                R[i,j]=rij; invR[i,j]=rij>eps(T) ? inv(rij) : zero(T)
                 inner[i,j]=dYb[j]*dx-dXb[j]*dy
             end
-            speed_i=copy(Ga.speed)
-            speed_j=copy(Gb.speed)
-            wi=copy(pa.ws)
-            wj=copy(pb.ws)
-            rmin_blk=typemax(T)
-            rmax_blk=zero(T)
-            @inbounds for j in 1:Nj, i in 1:Ni
+            speed_i=copy(Ga.speed); speed_j=copy(Gb.speed)
+            wi=copy(pa.ws); wj=copy(pb.ws)
+            rmin_blk=typemax(T); rmax_blk=zero(T)
+            @inbounds for j in 1:Nj,i in 1:Ni
                 rij=R[i,j]
                 if rij>eps(T)
                     rij<rmin_blk && (rmin_blk=rij)
                     rij>rmax_blk && (rmax_blk=rij)
                 end
             end
-            @assert isfinite(rmin_blk) && rmax_blk>zero(T)
-            rmin_blk=pad[1]*rmin_blk
-            rmax_blk=pad[2]*rmax_blk
-            global_rmin=min(global_rmin,rmin_blk)
-            global_rmax=max(global_rmax,rmax_blk)
-            pidx=Matrix{Int32}(undef,Ni,Nj)
-            tloc=Matrix{Float64}(undef,Ni,Nj)
-            blocks[a,b]=CFIE_kress_BlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,nothing,nothing,nothing)
+            rmin_blk*=pad[1];rmax_blk*=pad[2]
+            global_rmin=min(global_rmin,rmin_blk); global_rmax=max(global_rmax,rmax_blk)
+            pidx=Matrix{Int32}(undef,Ni,Nj); tloc=Matrix{Float64}(undef,Ni,Nj)
+            pidxj=Matrix{Int32}(undef,Ni,Nj); tlocj=Matrix{Float64}(undef,Ni,Nj)
+            blocks[a,b]=CFIE_kress_BlockCache{T}(false,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,pidxj,tlocj,nothing,nothing,nothing)
         end
     end
     global_rmin_geom=Float64(global_rmin)
     global_rmax_geom=Float64(global_rmax)
     global_rmin_cheb=isnothing(rmin_cheb) ? global_rmin_geom : max(Float64(rmin_cheb),global_rmin_geom)
-    pref_plan=plan_h(0,1,1.0+0im,global_rmin_cheb,global_rmax_geom;npanels=npanels_h,M=M_h)
-    pans=pref_plan.panels
-    for a in 1:nc, b in 1:nc
+    pref_h=plan_h(0,1,1.0+0im,global_rmin_cheb,global_rmax_geom;npanels=npanels_h,M=M_h)
+    pref_j=plan_j(0,1.0+0im,0.0,global_rmax_geom;npanels=npanels_j,M=M_j)
+    pansh=pref_h.panels; pansj=pref_j.panels
+    for a in 1:nc,b in 1:nc
         blk=blocks[a,b]
-        @inbounds for j in 1:blk.Nj, i in 1:blk.Ni
+        @inbounds for j in 1:blk.Nj,i in 1:blk.Ni
             if blk.same && i==j
-                blk.pidx[i,j]=Int32(1)
-                blk.tloc[i,j]=0.0
+                blk.pidx[i,j]=Int32(1);blk.tloc[i,j]=0.0
+                blk.pidxj[i,j]=Int32(1);blk.tlocj[i,j]=0.0
             else
                 rij=Float64(blk.R[i,j])
                 if rij<global_rmin_cheb
-                    blk.pidx[i,j]=Int32(0)
-                    blk.tloc[i,j]=0.0
+                    blk.pidx[i,j]=Int32(0);blk.tloc[i,j]=0.0
                 else
-                    p=_find_panel(pref_plan,rij)
-                    P=pans[p]
+                    p=_find_panel(pref_h,rij);P=pansh[p]
                     blk.pidx[i,j]=Int32(p)
                     blk.tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
                 end
+                pj=_find_panel(pref_j,rij);Pj=pansj[pj]
+                blk.pidxj[i,j]=Int32(pj)
+                blk.tlocj[i,j]=(2*rij-(Pj.b+Pj.a))/(Pj.b-Pj.a)
             end
         end
     end
@@ -473,21 +455,17 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         αL1[m]=-km*_INV_TWO_PI
         αL2[m]=0.5im*km
         iks[m]=1im*km
-        fill!(As[m],0)
+        fill!(As[m],0.0+0.0im)
     end
     αM1=-_INV_TWO_PI
     αM2=0.5im
     blocks=block_cache.blocks
     nc=size(blocks,1)
     function same_block_col!(blk::CFIE_kress_BlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64},j0vals::Vector{ComplexF64},j1vals::Vector{ComplexF64}) where {T<:Real}
-        ro=blk.row_offset
-        co=blk.col_offset
-        sj=blk.speed_j[j]
-        wj=blk.wj[j]
-        gj=co+j-1
-        gi=ro+j-1
-        κj=blk.kappa_i[j]
-        rjj=blk.Rkress[j,j]
+        ro=blk.row_offset;co=blk.col_offset
+        sj=blk.speed_j[j];wj=blk.wj[j]
+        gj=co+j-1;gi=ro+j-1
+        κj=blk.kappa_i[j];rjj=blk.Rkress[j,j]
         @inbounds for m in 1:Mk
             km=ks[m]
             dval=ComplexF64(wj*κj,0.0)
@@ -498,38 +476,22 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         end
         @inbounds for i in (j+1):blk.Ni
             gi=ro+i-1
-            invr=blk.invR[i,j]
-            r=blk.R[i,j]
-            p=blk.pidx[i,j]
-            t=blk.tloc[i,j]
-            lt=blk.logterm[i,j]
-            rijR=blk.Rkress[i,j]
-            inn_ij=blk.inner[i,j]
-            inn_ji=blk.inner[j,i]
-            si=blk.speed_i[i]
-            wi=blk.wi[i]
-            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t,Float64(r))
+            r=blk.R[i,j];invr=blk.invR[i,j];lt=blk.logterm[i,j];Rij=blk.Rkress[i,j]
+            inn_ij=blk.inner[i,j];inn_ji=blk.inner[j,i]
+            si=blk.speed_i[i];wi=blk.wi[i]
+            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],Float64(r))
+            cD1ij=Rij*inn_ij*invr;cD2ij=wj*inn_ij*invr;cD3ij=wj*lt*inn_ij*invr
+            cD1ji=Rij*inn_ji*invr;cD2ji=wi*inn_ji*invr;cD3ji=wi*lt*inn_ji*invr
+            cS1j=Rij*sj;cS2j=wj*sj;cS3j=wj*sj*lt
+            cS1i=Rij*si;cS2i=wi*si;cS3i=wi*si*lt
             for m in 1:Mk
-                h0=h0vals[m]
-                h1=h1vals[m]
-                j0=j0vals[m]
-                j1=j1vals[m]
-                βL1=αL1[m]*j1*invr
-                βL2=αL2[m]*h1*invr
-                βM1=αM1*j0
-                βM2=αM2*h0
-                l1ij=βL1*inn_ij
-                l1ji=βL1*inn_ji
-                l2ij=βL2*inn_ij-l1ij*lt
-                l2ji=βL2*inn_ji-l1ji*lt
-                dvalij=rijR*l1ij+wj*l2ij
-                dvalji=rijR*l1ji+wi*l2ji
-                m1j=βM1*sj
-                m1i=βM1*si
-                m2j=βM2*sj-m1j*lt
-                m2i=βM2*si-m1i*lt
-                svalij=rijR*m1j+wj*m2j
-                svalji=rijR*m1i+wi*m2i
+                h0=h0vals[m];h1=h1vals[m];j0=j0vals[m];j1=j1vals[m]
+                L1=αL1[m]*j1;L2=αL2[m]*h1
+                M1=αM1*j0;M2=αM2*h0
+                dvalij=cD1ij*L1+cD2ij*L2-cD3ij*L1
+                dvalji=cD1ji*L1+cD2ji*L2-cD3ji*L1
+                svalij=cS1j*M1+cS2j*M2-cS3j*M1
+                svalji=cS1i*M1+cS2i*M2-cS3i*M1
                 As[m][gi,gj]=-(dvalij+iks[m]*svalij)
                 As[m][gj,gi]=-(dvalji+iks[m]*svalji)
             end
@@ -537,24 +499,17 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
         return nothing
     end
     function off_block_col!(blk::CFIE_kress_BlockCache{T},j::Int,h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64}) where {T<:Real}
-        ro=blk.row_offset
-        co=blk.col_offset
-        sj=blk.speed_j[j]
-        wj=blk.wj[j]
-        gj=co+j-1
+        ro=blk.row_offset;co=blk.col_offset
+        sj=blk.speed_j[j];wj=blk.wj[j];gj=co+j-1
         @inbounds for i in 1:blk.Ni
             gi=ro+i-1
-            invr=blk.invR[i,j]
-            inn=blk.inner[i,j]
-            r=blk.R[i,j]
-            p=blk.pidx[i,j]
-            t=blk.tloc[i,j]
-            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t,Float64(r))
+            r=blk.R[i,j];invr=blk.invR[i,j];inn=blk.inner[i,j]
+            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,blk.pidx[i,j],blk.tloc[i,j],Float64(r))
+            cD=wj*inn*invr
+            cS=wj*sj
             for m in 1:Mk
-                h0=h0vals[m]
-                h1=h1vals[m]
-                dval=wj*(αL2[m]*inn*h1*invr)
-                sval=wj*(αM2*h0*sj)
+                dval=cD*αL2[m]*h1vals[m]
+                sval=cS*αM2*h0vals[m]
                 As[m][gi,gj]=-(dval+iks[m]*sval)
             end
         end
@@ -567,7 +522,7 @@ function _all_k_nosymm_CFIE_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vecto
             same_block_col!(blk,j,h0_tls[tid],h1_tls[tid],j0_tls[tid],j1_tls[tid])
         end
     end
-    for a in 1:nc, b in 1:nc
+    for a in 1:nc,b in 1:nc
         a==b && continue
         blk=blocks[a,b]
         @use_threads multithreading=multithreaded for j in 1:blk.Nj
@@ -665,73 +620,63 @@ function _all_k_nosymm_CFIE_chebyshev_deriv!(As::Vector{Matrix{ComplexF64}},A1s:
         rjj=blk.Rkress[j,j]
         @inbounds for m in 1:Mk
             km=ks[m]
-            dval=ComplexF64(wj*κj,0.0)
+            dval=ComplexF64(wj*κj,0)
             m1=αM1*sj
             m2=((0.5im-_EULER_OVER_PI)-_INV_TWO_PI*log((km^2/4)*(sj^2)))*sj
-            sval=ComplexF64(rjj*m1,0.0)+wj*m2
-            m2_1=-(sj/(π*km))
-            m2_2=(sj/(π*km^2))
-            sval1=wj*m2_1
-            sval2=wj*m2_2
-            As[m][gi,gj]=1.0-(dval+iks[m]*sval)
+            sval=ComplexF64(rjj*m1,0)+wj*m2
+            sval1=wj*(-sj/(pi*km))
+            sval2=wj*(sj/(pi*km^2))
+            As[m][gi,gj]=1-(dval+iks[m]*sval)
             A1s[m][gi,gj]=-(1im*sval+iks[m]*sval1)
             A2s[m][gi,gj]=-(2im*sval1+iks[m]*sval2)
         end
         @inbounds for i in (j+1):blk.Ni
             gi=ro+i-1
-            invr=blk.invR[i,j]
             r=blk.R[i,j]
-            p=blk.pidx[i,j]
-            t=blk.tloc[i,j]
+            invr=blk.invR[i,j]
             lt=blk.logterm[i,j]
-            rijR=blk.Rkress[i,j]
+            Rij=blk.Rkress[i,j]
             inn_ij=blk.inner[i,j]
             inn_ji=blk.inner[j,i]
             si=blk.speed_i[i]
             wi=blk.wi[i]
-            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,p,t,Float64(r))
-            for m in 1:Mk
+            h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plans2,plans3,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],Float64(r))
+            cDRij=Rij*inn_ij*invr
+            cDWij=wj*inn_ij*invr
+            cDLij=wj*lt*inn_ij*invr
+            cDRji=Rij*inn_ji*invr
+            cDWji=wi*inn_ji*invr
+            cDLji=wi*lt*inn_ji*invr
+            cRij=Rij*inn_ij*_INV_TWO_PI
+            cWij=wj*inn_ij*_INV_TWO_PI
+            cRji=Rij*inn_ji*_INV_TWO_PI
+            cWji=wi*inn_ji*_INV_TWO_PI
+            cSij=wj*sj
+            cSji=wi*si
+            cSRij=Rij*sj
+            cSRji=Rij*si
+            @inbounds for m in 1:Mk
                 km=ks[m]
                 h0=h0vals[m]
                 h1=h1vals[m]
                 j0=j0vals[m]
                 j1=j1vals[m]
-                l1_ij=αL1[m]*inn_ij*j1*invr
-                l2_ij=αL2[m]*inn_ij*h1*invr-l1_ij*lt
-                dval_ij=rijR*l1_ij+wj*l2_ij
-                l1_ij_1=-(inn_ij*km*j0)*_INV_TWO_PI
-                l1_ij_2=(inn_ij*(km*r*j1-j0))*_INV_TWO_PI
-                l2_ij_1=(inn_ij*km*(lt*j0+1im*π*h0))*_INV_TWO_PI
-                l2_ij_2=(inn_ij*(lt*(j0-km*r*j1)+1im*π*(h0-km*r*h1)))*_INV_TWO_PI
-                dval_ij_1=rijR*l1_ij_1+wj*l2_ij_1
-                dval_ij_2=rijR*l1_ij_2+wj*l2_ij_2
-                l1_ji=αL1[m]*inn_ji*j1*invr
-                l2_ji=αL2[m]*inn_ji*h1*invr-l1_ji*lt
-                dval_ji=rijR*l1_ji+wi*l2_ji
-                l1_ji_1=-(inn_ji*km*j0)*_INV_TWO_PI
-                l1_ji_2=(inn_ji*(km*r*j1-j0))*_INV_TWO_PI
-                l2_ji_1=(inn_ji*km*(lt*j0+1im*π*h0))*_INV_TWO_PI
-                l2_ji_2=(inn_ji*(lt*(j0-km*r*j1)+1im*π*(h0-km*r*h1)))*_INV_TWO_PI
-                dval_ji_1=rijR*l1_ji_1+wi*l2_ji_1
-                dval_ji_2=rijR*l1_ji_2+wi*l2_ji_2
-                m1_ij=αM1*j0*sj
-                m2_ij=αM2*h0*sj-m1_ij*lt
-                sval_ij=rijR*m1_ij+wj*m2_ij
-                m1_ij_1=(r*sj*j1)*_INV_TWO_PI
-                m1_ij_2=(r*sj*(km*r*j0-j1))*_INV_TWO_PI/km
-                m2_ij_1=-(r*sj*(lt*j1+1im*π*h1))*_INV_TWO_PI
-                m2_ij_2=(r*sj*(lt*(j1-km*r*j0)-1im*π*km*r*h0+1im*π*h1))*_INV_TWO_PI/km
-                sval_ij_1=rijR*m1_ij_1+wj*m2_ij_1
-                sval_ij_2=rijR*m1_ij_2+wj*m2_ij_2
-                m1_ji=αM1*j0*si
-                m2_ji=αM2*h0*si-m1_ji*lt
-                sval_ji=rijR*m1_ji+wi*m2_ji
-                m1_ji_1=(r*si*j1)*_INV_TWO_PI
-                m1_ji_2=(r*si*(km*r*j0-j1))*_INV_TWO_PI/km
-                m2_ji_1=-(r*si*(lt*j1+1im*π*h1))*_INV_TWO_PI
-                m2_ji_2=(r*si*(lt*(j1-km*r*j0)-1im*π*km*r*h0+1im*π*h1))*_INV_TWO_PI/km
-                sval_ji_1=rijR*m1_ji_1+wi*m2_ji_1
-                sval_ji_2=rijR*m1_ji_2+wi*m2_ji_2
+                kr=km*r
+                L1=αL1[m]*j1
+                M1=αM1*j0
+                M2=αM2*h0
+                dval_ij=cDRij*L1+cDWij*αL2[m]*h1-cDLij*L1
+                dval_ji=cDRji*L1+cDWji*αL2[m]*h1-cDLji*L1
+                dval_ij_1=-cRij*km*j0+cWij*km*(lt*j0+1im*pi*h0)
+                dval_ji_1=-cRji*km*j0+cWji*km*(lt*j0+1im*pi*h0)
+                dval_ij_2=cRij*(kr*j1-j0)+cWij*(lt*(j0-kr*j1)+1im*pi*(h0-kr*h1))
+                dval_ji_2=cRji*(kr*j1-j0)+cWji*(lt*(j0-kr*j1)+1im*pi*(h0-kr*h1))
+                sval_ij=cSRij*M1+cSij*M2-cSij*lt*M1
+                sval_ji=cSRji*M1+cSji*M2-cSji*lt*M1
+                sval_ij_1=(r*sj*_INV_TWO_PI)*(Rij*j1-wj*(lt*j1+1im*pi*h1))
+                sval_ji_1=(r*si*_INV_TWO_PI)*(Rij*j1-wi*(lt*j1+1im*pi*h1))
+                sval_ij_2=(r*sj*_INV_TWO_PI/km)*(Rij*(kr*j0-j1)+wj*(lt*(j1-kr*j0)+1im*pi*(h1-kr*h0)))
+                sval_ji_2=(r*si*_INV_TWO_PI/km)*(Rij*(kr*j0-j1)+wi*(lt*(j1-kr*j0)+1im*pi*(h1-kr*h0)))
                 As[m][gi,gj]=-(dval_ij+iks[m]*sval_ij)
                 A1s[m][gi,gj]=-(dval_ij_1+1im*sval_ij+iks[m]*sval_ij_1)
                 A2s[m][gi,gj]=-(dval_ij_2+2im*sval_ij_1+iks[m]*sval_ij_2)
@@ -753,19 +698,20 @@ function _all_k_nosymm_CFIE_chebyshev_deriv!(As::Vector{Matrix{ComplexF64}},A1s:
             r=blk.R[i,j]
             invr=blk.invR[i,j]
             inn=blk.inner[i,j]
-            p=blk.pidx[i,j]
-            t=blk.tloc[i,j]
-            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t,Float64(r))
-            for m in 1:Mk
+            h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,blk.pidx[i,j],blk.tloc[i,j],Float64(r))
+            cD=wj*inn*invr
+            cD1=wj*inn
+            cS=wj*sj
+            @inbounds for m in 1:Mk
                 km=ks[m]
                 h0=h0vals[m]
                 h1=h1vals[m]
-                dval=wj*(0.5im*km*inn*h1*invr)
-                dval1=wj*(-(0.5im)*inn*km*h0)
-                dval2=wj*(-(0.5im)*inn*(h0-km*r*h1))
-                sval=wj*(0.5im*h0*sj)
-                sval1=wj*(-(0.5im)*r*h1*sj)
-                sval2=wj*((0.5im)*r*(h1-km*r*h0)*sj/km)
+                dval=cD*αL2[m]*h1
+                dval1=-(0.5im)*cD1*km*h0
+                dval2=-(0.5im)*cD1*(h0-km*r*h1)
+                sval=cS*αM2*h0
+                sval1=-(0.5im)*cS*r*h1
+                sval2=(0.5im)*cS*r*(h1-km*r*h0)/km
                 As[m][gi,gj]=-(dval+iks[m]*sval)
                 A1s[m][gi,gj]=-(dval1+1im*sval+iks[m]*sval1)
                 A2s[m][gi,gj]=-(dval2+2im*sval1+iks[m]*sval2)
@@ -780,7 +726,7 @@ function _all_k_nosymm_CFIE_chebyshev_deriv!(As::Vector{Matrix{ComplexF64}},A1s:
             same_block_col_deriv!(blk,j,h0_tls[tid],h1_tls[tid],j0_tls[tid],j1_tls[tid])
         end
     end
-    for a in 1:nc, b in 1:nc
+    for a in 1:nc,b in 1:nc
         a==b && continue
         blk=blocks[a,b]
         @use_threads multithreading=multithreaded for j in 1:blk.Nj
@@ -968,7 +914,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h)
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j)
             @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
@@ -1044,7 +990,7 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
     @assert length(ddTbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h)
+            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j)
             @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
