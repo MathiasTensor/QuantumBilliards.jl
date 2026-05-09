@@ -749,12 +749,14 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{Matrix{ComplexF64}}
             Rij=Rkress[i,j]
             wj=wi[j]
             wii=wi[i]
-            c1ij=Rij*inn_ij*invr
-            c2ij=wj*inn_ij*invr
-            c3ij=wj*lt
-            c1ji=Rij*inn_ji*invr
-            c2ji=wii*inn_ji*invr
-            c3ji=wii*lt
+            cD_ij=inn_ij*invr
+            cD_ji=inn_ji*invr
+            c1ij=Rij*cD_ij
+            c2ij=wj*cD_ij
+            c3ij=wj*lt*cD_ij
+            c1ji=Rij*cD_ji
+            c2ji=wii*cD_ji
+            c3ji=wii*lt*cD_ji
             for q in 1:Mk
                 l1=αL1s[q]*j1vals[q]
                 hterm=αL2s[q]*h1vals[q]
