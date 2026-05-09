@@ -687,7 +687,7 @@ double-layer operator `D(k)`. One dense matrix is filled for each wavenumber in
 `ws.ks`.
 
 # Arguments
-- `Ds::Vector{<:AbstractMatrix{ComplexF64}}`:
+- `Ds::Vector{Matrix{ComplexF64}}`:
   Output matrices, one for each wavenumber in `ws.ks`.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization. Included for API consistency with the direct route.
@@ -699,45 +699,67 @@ double-layer operator `D(k)`. One dense matrix is filled for each wavenumber in
 # Returns
 - `nothing`
 """
-function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressH1J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},ws::DLPKressH1J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     Mk=ws.Mk
     blk=ws.block_cache.block
     N=blk.N
-    @inbounds for m in 1:Mk
-        fill!(Ds[m],0.0+0im)
-        for i in 1:N
-            Ds[m][i,i]=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
-        end
+    ks=ws.ks
+    @inbounds for q in 1:Mk
+        fill!(Ds[q],0.0+0.0im)
+    end
+    αL1s=Vector{ComplexF64}(undef,Mk)
+    αL2s=Vector{ComplexF64}(undef,Mk)
+    @inbounds for q in 1:Mk
+        k=ks[q]
+        αL1s[q]=-k*_INV_TWO_PI
+        αL2s[q]=0.5im*k
     end
     h1_tls=ws.bessel_ws.h1_tls
     j1_tls=ws.bessel_ws.j1_tls
-    ks=ws.ks
+    plans1=ws.plans1
+    plansj1=ws.plansj1
+    R=blk.R
+    invRmat=blk.invR
+    logterm=blk.logterm
+    inner=blk.inner
+    Rkress=blk.Rkress
+    wi=blk.wi
+    pidx=blk.pidx
+    tloc=blk.tloc
+    pidxj=blk.pidxj
+    tlocj=blk.tlocj
+    kappa=blk.kappa
+    @inbounds for q in 1:Mk
+        Dq=Ds[q]
+        for i in 1:N
+            Dq[i,i]=ComplexF64(wi[i]*kappa[i],0.0)
+        end
+    end
     @use_threads multithreading=multithreaded for j in 2:N
         tid=Threads.threadid()
         h1vals=h1_tls[tid]
         j1vals=j1_tls[tid]
         @inbounds for i in 1:j-1
-            r=blk.R[i,j]
-            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],r,ws.plans1,ws.plansj1)
-            invr=blk.invR[i,j]
-            lt=blk.logterm[i,j]
-            inn_ij=blk.inner[i,j]
-            inn_ji=blk.inner[j,i]
-            Rij=blk.Rkress[i,j]
-            wj=blk.wi[j]
-            wi=blk.wi[i]
-            for m in 1:Mk
-                k=ks[m]
-                αL1=-k*_INV_TWO_PI
-                αL2=0.5im*k
-                h1=h1vals[m]
-                j1=j1vals[m]
-                l1_ij=αL1*inn_ij*j1*invr
-                l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
-                Ds[m][i,j]=Rij*l1_ij+wj*l2_ij
-                l1_ji=αL1*inn_ji*j1*invr
-                l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
-                Ds[m][j,i]=Rij*l1_ji+wi*l2_ji
+            r=R[i,j]
+            _h1_j1_at_pidx_t!(h1vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans1,plansj1)
+            invr=invRmat[i,j]
+            lt=logterm[i,j]
+            inn_ij=inner[i,j]
+            inn_ji=inner[j,i]
+            Rij=Rkress[i,j]
+            wj=wi[j]
+            wii=wi[i]
+            c1ij=Rij*inn_ij*invr
+            c2ij=wj*inn_ij*invr
+            c3ij=wj*lt
+            c1ji=Rij*inn_ji*invr
+            c2ji=wii*inn_ji*invr
+            c3ji=wii*lt
+            for q in 1:Mk
+                l1=αL1s[q]*j1vals[q]
+                hterm=αL2s[q]*h1vals[q]
+                Ds[q][i,j]=c1ij*l1+c2ij*hterm-c3ij*l1
+                Ds[q][j,i]=c1ji*l1+c2ji*hterm-c3ji*l1
             end
         end
     end
@@ -838,11 +860,11 @@ using Chebyshev-interpolated evaluations of `H₀^(1)`, `H₁^(1)`, `J₀`, and
 `J₁`.
 
 # Arguments
-- `Ds::Vector{<:AbstractMatrix{ComplexF64}}`:
+- `Ds::Vector{Matrix{ComplexF64}}`:
   Output matrices for `D(k)`.
-- `D1s::Vector{<:AbstractMatrix{ComplexF64}}`:
+- `D1s::Vector{Matrix{ComplexF64}}`:
   Output matrices for `dD/dk`.
-- `D2s::Vector{<:AbstractMatrix{ComplexF64}}`:
+- `D2s::Vector{Matrix{ComplexF64}}`:
   Output matrices for `d²D/dk²`.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization. Included for API consistency.
@@ -858,68 +880,75 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
     Mk=ws.Mk
     blk=ws.block_cache.block
     N=blk.N
-    @inbounds for m in 1:Mk
-        fill!(Ds[m],0.0+0im)
-        fill!(D1s[m],0.0+0im)
-        fill!(D2s[m],0.0+0im)
+    ks=ws.ks
+    R=blk.R;invRmat=blk.invR;logterm=blk.logterm;inner=blk.inner;Rkress=blk.Rkress;wi=blk.wi;kappa=blk.kappa
+    pidx=blk.pidx;tloc=blk.tloc;pidxj=blk.pidxj;tlocj=blk.tlocj
+    plans0=ws.plans0;plans1=ws.plans1;plansj0=ws.plansj0;plansj1=ws.plansj1
+    αL1s=Vector{ComplexF64}(undef,Mk)
+    αL2s=Vector{ComplexF64}(undef,Mk)
+    kcs=Vector{ComplexF64}(undef,Mk)
+    @inbounds for q in 1:Mk
+        fill!(Ds[q],0.0+0.0im)
+        fill!(D1s[q],0.0+0.0im)
+        fill!(D2s[q],0.0+0.0im)
+        k=ks[q]
+        αL1s[q]=-k*_INV_TWO_PI
+        αL2s[q]=0.5im*k
+        kcs[q]=k*_INV_TWO_PI
         for i in 1:N
-            Ds[m][i,i]=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+            Ds[q][i,i]=ComplexF64(wi[i]*kappa[i],0.0)
         end
     end
     h0_tls=ws.bessel_ws.h0_tls
     h1_tls=ws.bessel_ws.h1_tls
     j0_tls=ws.bessel_ws.j0_tls
     j1_tls=ws.bessel_ws.j1_tls
-    ks=ws.ks
     @use_threads multithreading=multithreaded for j in 2:N
         tid=Threads.threadid()
-        h0vals=h0_tls[tid]
-        h1vals=h1_tls[tid]
-        j0vals=j0_tls[tid]
-        j1vals=j1_tls[tid]
+        h0vals=h0_tls[tid];h1vals=h1_tls[tid];j0vals=j0_tls[tid];j1vals=j1_tls[tid]
         @inbounds for i in 1:j-1
-            r=blk.R[i,j]
-            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],r,ws.plans0,ws.plans1,ws.plansj0,ws.plansj1)
-            invr=blk.invR[i,j]
-            lt=blk.logterm[i,j]
-            inn_ij=blk.inner[i,j]
-            inn_ji=blk.inner[j,i]
-            Rij=blk.Rkress[i,j]
-            wj=blk.wi[j]
-            wi=blk.wi[i]
-            for m in 1:Mk
-                k=ks[m]
-                αL1=-k*_INV_TWO_PI
-                αL2=0.5im*k
-                h0=h0vals[m]
-                h1=h1vals[m]
-                j0=j0vals[m]
-                j1=j1vals[m]
-                l1_ij=αL1*inn_ij*j1*invr
-                l2_ij=αL2*inn_ij*h1*invr-l1_ij*lt
-                Ds[m][i,j]=Rij*l1_ij+wj*l2_ij
-                l1_ij_1=-(inn_ij*k*j0)*_INV_TWO_PI
-                l1_ij_2=(inn_ij*(k*r*j1-j0))*_INV_TWO_PI
-                l2_ij_1=(inn_ij*k*(lt*j0+im*pi*h0))*_INV_TWO_PI
-                l2_ij_2=(inn_ij*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*_INV_TWO_PI
-                D1s[m][i,j]=Rij*l1_ij_1+wj*l2_ij_1
-                D2s[m][i,j]=Rij*l1_ij_2+wj*l2_ij_2
-                l1_ji=αL1*inn_ji*j1*invr
-                l2_ji=αL2*inn_ji*h1*invr-l1_ji*lt
-                Ds[m][j,i]=Rij*l1_ji+wi*l2_ji
-                l1_ji_1=-(inn_ji*k*j0)*_INV_TWO_PI
-                l1_ji_2=(inn_ji*(k*r*j1-j0))*_INV_TWO_PI
-                l2_ji_1=(inn_ji*k*(lt*j0+im*pi*h0))*_INV_TWO_PI
-                l2_ji_2=(inn_ji*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*_INV_TWO_PI
-                D1s[m][j,i]=Rij*l1_ji_1+wi*l2_ji_1
-                D2s[m][j,i]=Rij*l1_ji_2+wi*l2_ji_2
+            r=R[i,j]
+            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans0,plans1,plansj0,plansj1)
+            invr=invRmat[i,j]
+            lt=logterm[i,j]
+            Rij=Rkress[i,j]
+            wj=wi[j]
+            wii=wi[i]
+            inn_ij=inner[i,j]
+            inn_ji=inner[j,i]
+            cD_ij=inn_ij*invr
+            cD_ji=inn_ji*invr
+            c1_ij=Rij*cD_ij
+            c1_ji=Rij*cD_ji
+            c2_ij=wj*cD_ij
+            c2_ji=wii*cD_ji
+            c3_ij=wj*lt*cD_ij
+            c3_ji=wii*lt*cD_ji
+            d1j0_ij=-inn_ij
+            d1j0_ji=-inn_ji
+            d1h0_ij=im*pi*inn_ij
+            d1h0_ji=im*pi*inn_ji
+            d2pref_ij=_INV_TWO_PI*inn_ij
+            d2pref_ji=_INV_TWO_PI*inn_ji
+            @inbounds for q in 1:Mk
+                k=ks[q]
+                h0=h0vals[q];h1=h1vals[q];j0=j0vals[q];j1=j1vals[q]
+                l1=αL1s[q]*j1
+                Ds[q][i,j]=c1_ij*l1+c2_ij*αL2s[q]*h1-c3_ij*l1
+                Ds[q][j,i]=c1_ji*l1+c2_ji*αL2s[q]*h1-c3_ji*l1
+                D1s[q][i,j]=kcs[q]*(Rij*d1j0_ij*j0+wj*(lt*inn_ij*j0+d1h0_ij*h0))
+                D1s[q][j,i]=kcs[q]*(Rij*d1j0_ji*j0+wii*(lt*inn_ji*j0+d1h0_ji*h0))
+                u=j0-k*r*j1
+                v=h0-k*r*h1
+                D2s[q][i,j]=d2pref_ij*(Rij*(-u)+wj*(lt*u+im*pi*v))
+                D2s[q][j,i]=d2pref_ji*(Rij*(-u)+wii*(lt*u+im*pi*v))
             end
         end
     end
     return nothing
 end
 
-function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:AbstractMatrix{ComplexF64}},D1s::Vector{<:AbstractMatrix{ComplexF64}},D2s::Vector{<:AbstractMatrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedH0H1J0J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{Matrix{ComplexF64}},D1s::Vector{Matrix{ComplexF64}},D2s::Vector{Matrix{ComplexF64}},pts::BoundaryPointsCFIE{T},rws::DLPKressReducedH0H1J0J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     fullws=rws.fullcheb
     blk=fullws.block_cache.block
     rw=rws.direct
@@ -932,55 +961,91 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
         fill!(D1s[q],0.0+0.0im)
         fill!(D2s[q],0.0+0.0im)
     end
+    αL1s=Vector{ComplexF64}(undef,Mk)
+    αL2s=Vector{ComplexF64}(undef,Mk)
+    @inbounds for q in 1:Mk
+        k=ks[q]
+        αL1s[q]=-k*_INV_TWO_PI
+        αL2s[q]=0.5im*k
+    end
+    ntls=length(fullws.bessel_ws.h0_tls)
+    acc_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    acc1_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
+    acc2_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
     h0_tls=fullws.bessel_ws.h0_tls
     h1_tls=fullws.bessel_ws.h1_tls
     j0_tls=fullws.bessel_ws.j0_tls
     j1_tls=fullws.bessel_ws.j1_tls
+    plans0=fullws.plans0
+    plans1=fullws.plans1
+    plansj0=fullws.plansj0
+    plansj1=fullws.plansj1
+    R=blk.R
+    invRmat=blk.invR
+    logterm=blk.logterm
+    inner=blk.inner
+    Rkress=blk.Rkress
+    wi=blk.wi
+    pidx=blk.pidx
+    tloc=blk.tloc
+    pidxj=blk.pidxj
+    tlocj=blk.tlocj
+    kappa=blk.kappa
     @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
         j0vals=j0_tls[tid]
         j1vals=j1_tls[tid]
+        acc=acc_tls[tid]
+        acc1=acc1_tls[tid]
+        acc2=acc2_tls[tid]
         imgs=rw.fund_to_full[b]
         scales=rw.fund_to_scale[b]
         @inbounds for a in 1:m
+            fill!(acc,0.0+0.0im)
+            fill!(acc1,0.0+0.0im)
+            fill!(acc2,0.0+0.0im)
             i=Ifund[a]
             for l in eachindex(imgs)
                 j=imgs[l]
                 scale=ComplexF64(scales[l])
                 if i==j
-                    d0=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+                    d0=scale*ComplexF64(wi[i]*kappa[i],0.0)
                     for q in 1:Mk
-                        Ds[q][a,b]+=scale*d0
+                        acc[q]+=d0
                     end
                     continue
                 end
-                r=blk.R[i,j]
-                invr=blk.invR[i,j]
-                lt=blk.logterm[i,j]
-                inn=blk.inner[i,j]
-                Rij=blk.Rkress[i,j]
-                wj=blk.wi[j]
-                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
+                r=R[i,j]
+                invr=invRmat[i,j]
+                lt=logterm[i,j]
+                inn=inner[i,j]
+                Rij=Rkress[i,j]
+                wj=wi[j]
+                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans0,plans1,plansj0,plansj1)
+                cD1=scale*Rij*inn*invr
+                cD2=scale*wj*inn*invr
+                cD3=scale*wj*inn*invr*lt
+                cR=scale*Rij*inn*_INV_TWO_PI
+                cW=scale*wj*inn*_INV_TWO_PI
+                wr=k*r
                 for q in 1:Mk
-                    k=ks[q]
+                    kq=ks[q]
                     h0=h0vals[q]
                     h1=h1vals[q]
                     j0=j0vals[q]
                     j1=j1vals[q]
-                    αL1=-k*_INV_TWO_PI
-                    αL2=0.5im*k
-                    l1=αL1*inn*j1*invr
-                    l2=αL2*inn*h1*invr-l1*lt
-                    l1_1=-(inn*k*j0)*_INV_TWO_PI
-                    l1_2=(inn*(k*r*j1-j0))*_INV_TWO_PI
-                    l2_1=(inn*k*(lt*j0+im*pi*h0))*_INV_TWO_PI
-                    l2_2=(inn*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*_INV_TWO_PI
-                    Ds[q][a,b]+=scale*(Rij*l1+wj*l2)
-                    D1s[q][a,b]+=scale*(Rij*l1_1+wj*l2_1)
-                    D2s[q][a,b]+=scale*(Rij*l1_2+wj*l2_2)
+                    l1=αL1s[q]*j1
+                    acc[q]+=cD1*l1+cD2*αL2s[q]*h1-cD3*l1
+                    acc1[q]+=cR*(-kq*j0)+cW*(kq*(lt*j0+im*pi*h0))
+                    acc2[q]+=cR*(kq*r*j1-j0)+cW*(lt*(j0-kq*r*j1)+im*pi*(h0-kq*r*h1))
                 end
+            end
+            for q in 1:Mk
+                Ds[q][a,b]=acc[q]
+                D1s[q][a,b]=acc1[q]
+                D2s[q][a,b]=acc2[q]
             end
         end
     end
