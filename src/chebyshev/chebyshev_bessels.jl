@@ -984,9 +984,6 @@ end
 #           # approximation of J_ν(k r)
 # =============================================================================
 @inline function eval_j(pl::ChebJPlan,pidx::Int32,t::Float64,r::Float64)
-    if pidx==0
-        return SpecialFunctions.besselj(pl.ν,ComplexF64(pl.k)*r)
-    end
     return _cheb_clenshaw(pl.panels[pidx].c,t)
 end
 
@@ -1082,63 +1079,18 @@ end
 # Evaluate the Bessel function J_ν(k r) for the same radius r across multiple
 # wavenumbers (one per plan).
 #
-# Unlike the Hankel evaluators, this function does NOT accept a precomputed
-# `(pidx,t)` pair from the geometry cache.
-#
-# Reason:
-#   The Hankel and Bessel plans may use different panelizations. Hankel functions 
-# typically require a much finer radial discretization because:
-#
-#   - H₀^(1), H₁^(1) are singular / near-singular as z = k r → 0,
-#   - oscillatory behavior is harder to resolve accurately,
-#   - the small-z region often requires a direct-evaluation fallback.
-#
-# By contrast, the Bessel J family is entire and regular at the origin:
-#
-#   J₀(0)=1,
-#   J₁(0)=0,
-#
-# so it can safely use a much coarser and often separate interpolation grid,
-# by default beginning at r=0.
-#
-# Therefore reusing the Hankel `(pidx,t)` would be incorrect whenever the
-# Hankel and J plans were built with different:
-#
-#   - rmin
-#   - npanels
-#   - panel breakpoints
-#
-# Instead, this function determines the J-panel directly from `r` using the
-# first J plan, computes the corresponding local Chebyshev coordinate, and then
-# reuses that J-local `(pidx,t)` across all J plans.
-#
-# Assumption
-# ----------
-# All plans in `plans` must share the same panelization, i.e. identical:
-#
-#   - rmin / rmax
-#   - npanels
-#   - uniform panel breakpoints
-#
-# This is normally guaranteed by constructing them through the same builder.
-#
 # Inputs
 #   out   :: AbstractVector{ComplexF64} : Output buffer.
 #   plans :: AbstractVector{ChebJPlan} : Collection of Chebyshev plans for J_ν(k_m r), one plan per wavenumber.
-#   r     :: Float64 : Physical radius at which all J values are evaluated.
+#   pidx  :: Int32 : Panel index for the J plans, determined by r and the first plan's panelization.
+#   t     :: Float64 : Mapped Chebyshev coordinate for r in the identified panel.
 #
 # Output
-#   Fills:
-#       out[m] = J_ν(k_m r)
-#   for all stored wavenumbers.
+#   Fills: out[m] = J_ν(k_m r) for all stored wavenumbers.
 # =============================================================================
-@inline function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebJPlan},r::Float64)
-    pl0=plans[1]
-    p=_find_panel(pl0,r)
-    P=pl0.panels[p]
-    t=(2*r-(P.b+P.a))/(P.b-P.a)
+@inline function eval_j_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebJPlan},pidx::Int32,t::Float64)
     @inbounds for m in eachindex(plans)
-        out[m]=_cheb_clenshaw(plans[m].panels[p].c,t)
+        out[m]=_cheb_clenshaw(plans[m].panels[pidx].c,t)
     end
     return nothing
 end
@@ -1190,16 +1142,20 @@ require `J₀` and `J₁`, so they are interpolated separately.
   Panel index containing the current distance for Hankel functions.
 - `t_h::Float64`:
   Local Chebyshev coordinate in that panel for Hankel functions.
+- `pidx_j::Int32`:
+  Panel index containing the current distance for Bessel functions.
+- `t_j::Float64`:
+  Local Chebyshev coordinate in that panel for Bessel functions.
 - `r::Float64`:
   Physical radius at which all values are evaluated.
 
 # Returns
 - `nothing`
 """
-@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,r::Float64)
+@inline function h0_h1_j0_j1_multi_ks_at_r!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,pidx_j::Int32,t_j::Float64,r::Float64)
     h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,pidx_h,t_h,r)
-    eval_j_multi_ks!(j0vals,plansj0,r)
-    eval_j_multi_ks!(j1vals,plansj1,r)
+    eval_j_multi_ks!(j0vals,plansj0,pidx_j,t_j)
+    eval_j_multi_ks!(j1vals,plansj1,pidx_j,t_j)
     return nothing
 end
 
@@ -1255,10 +1211,6 @@ end
 Evaluate `H₁^(1)` and `J₁` for all wavenumbers at one fixed distance panel/location, writing the results in place.
 This is the reduced special-function evaluator used in off-component CFIE-Kress blocks, where the kernel is smooth and no Kress logarithmic split is needed. Since the smooth inter-component assembly uses only the Hankel terms, the Bessel `J₀` values are not required.
 
-The Hankel part uses `pidx_h,t_h` and may fall back to the small-z/direct path.
-The J part locates its own panel from `r`, because the J grid may differ from
-the Hankel grid.
-
 # Arguments
 - `h1vals::AbstractVector{ComplexF64}`:
   Output vector for the `H₁^(1)` values.
@@ -1272,15 +1224,19 @@ the Hankel grid.
   Hankel panel index for the active distance.
 - `t_h::Float64`:
   Hankel local Chebyshev coordinate.
+- `pidx_j::Int32`:
+  J panel index for the active distance.
+- `t_j::Float64`:
+  J local Chebyshev coordinate.
 - `r::Float64`:
   Distance at which to evaluate the functions.
 
 # Returns
 - `nothing`
 """
-@inline function h1_j1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,r::Float64)
+@inline function h1_j1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan},pidx_h::Int32,t_h::Float64,pidx_j::Int32,t_j::Float64,r::Float64)
     eval_h_multi_ks!(h1vals,plans1,r,pidx_h,t_h)
-    eval_j_multi_ks!(j1vals,plansj1,r)
+    eval_j_multi_ks!(j1vals,plansj1,pidx_j,t_j)
     return nothing
 end
 

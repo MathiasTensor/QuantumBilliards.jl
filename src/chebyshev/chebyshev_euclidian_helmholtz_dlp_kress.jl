@@ -38,9 +38,13 @@ For a fixed node pair `(i,j)`, the matrix assembly only needs:
 - `wi::Vector{T}`:
   Quadrature weights.
 - `pidx::Matrix{Int32}`:
-  Chebyshev panel index for each pair `(i,j)`.
+  Chebyshev panel index for H Bessel of each pair `(i,j)`.
 - `tloc::Matrix{Float64}`:
-  Local Chebyshev coordinate in `[-1,1]` for each pair `(i,j)`.
+  Local Chebyshev coordinate in `[-1,1]` for H Bessel of each pair `(i,j)`.
+- `pidxj::Matrix{Int32}`:
+  Chebyshev panel index for the J Bessel of each pair `(i,j)`.
+- `tlocj::Matrix{Float64}`:
+  Local Chebyshev coordinate in `[-1,1]` for the J Bessel of each pair `(i,j)`.
 - `logterm::Matrix{T}`:
   Kress logarithmic split term.
 - `kappa::Vector{T}`:
@@ -56,6 +60,8 @@ struct DLP_kress_BlockCache{T<:Real}
     wi::Vector{T}
     pidx::Matrix{Int32}
     tloc::Matrix{Float64}
+    pidxj::Matrix{Int32}
+    tlocj::Matrix{Float64}
     logterm::Matrix{T}
     kappa::Vector{T}
     Rkress::Matrix{T}
@@ -99,9 +105,10 @@ fixed boundary discretization.
   Determines whether the smooth or corner-graded Kress correction is used.
 - `pts::BoundaryPointsCFIE{T}`:
   Boundary discretization for the single outer boundary.
-- `npanels, M:
-  Parameters used to build a reference Chebyshev panelization over the distance
-  interval.
+- `npanels_h::Int=10000, M_h::Int=5`:
+  Chebyshev plan parameters for the Hankel function interpolation.
+- `npanels_j::Int=10000, M_j::Int=5`:
+  Chebyshev plan parameters for the Bessel function interpolation.
 - `pad`:
   Multiplicative safety padding applied to the minimum and maximum off-diagonal
   distances before constructing the interpolation interval.
@@ -109,7 +116,7 @@ fixed boundary discretization.
 # Returns
 - `DLPKressBlockSystemCache{T}`
 """
-function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels::Int=10000,M::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
+function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T};npanels_h::Int=10000,npanels_j::Int=10000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     G=_is_dlp_kress_graded(solver,pts) ? cfie_geom_cache(pts,true) : cfie_geom_cache(pts,false)
     N=length(pts.xy)
     R=copy(G.R)
@@ -138,28 +145,39 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
     rrmin=Float64(pad[1]*rmin0)
     rrmax=Float64(pad[2]*rmax0)
     rmin_cheb_loc=isnothing(rmin_cheb) ? rrmin : max(Float64(rmin_cheb),rrmin)
-    pidx=Matrix{Int32}(undef,N,N)
-    tloc=Matrix{Float64}(undef,N,N)
-    pref_plan=plan_h(0,1,1.0+0im,rmin_cheb_loc,rrmax;npanels=npanels,M=M)
-    pans=pref_plan.panels
-    @inbounds for j in 1:N,i in 1:N
+    pidx=Matrix{Int32}(undef,N,N) # H Bessel panel index
+    tloc=Matrix{Float64}(undef,N,N) # H Bessel local coordinate
+    pidxj=Matrix{Int32}(undef,N,N) # J Bessel panel index
+    tlocj=Matrix{Float64}(undef,N,N) # J Bessel local coordinate
+    pref_plan_h=plan_h(0,1,1.0+0im,rmin_cheb_loc,rrmax;npanels=npanels_h,M=M_h)
+    pref_plan_j=plan_j(1,1.0+0im,0.0,rrmax;npanels=npanels_j,M=M_j) 
+    pansh=pref_plan_h.panels
+    pansj=pref_plan_j.panels
+    @inbounds for j in 1:N, i in 1:N
         if i==j
             pidx[i,j]=Int32(1)
             tloc[i,j]=0.0
+            pidxj[i,j]=Int32(1)
+            tlocj[i,j]=0.0
         else
             rij=Float64(R[i,j])
             if rij<rmin_cheb_loc
                 pidx[i,j]=Int32(0)
                 tloc[i,j]=0.0
             else
-                p=_find_panel(pref_plan,rij)
-                P=pans[p]
+                p=_find_panel(pref_plan_h,rij)
+                P=pansh[p]
                 pidx[i,j]=Int32(p)
                 tloc[i,j]=(2*rij-(P.b+P.a))/(P.b-P.a)
             end
+            pj=_find_panel(pref_plan_j,rij)
+            Pj=pansj[pj]
+            pidxj[i,j]=Int32(pj)
+            tlocj[i,j]=(2*rij-(Pj.b+Pj.a))/(Pj.b-Pj.a)
         end
+
     end
-    blk=DLP_kress_BlockCache{T}(N,R,invR,inner,wi,pidx,tloc,logterm,kappa,Rkress)
+    blk=DLP_kress_BlockCache{T}(N,R,invR,inner,wi,pidx,tloc,pidxj,tlocj,logterm,kappa,Rkress)
     return DLPKressBlockSystemCache{T}(blk,rmin_cheb_loc,rrmax)
 end
 
@@ -547,7 +565,7 @@ Use this when only the Fredholm matrices `F(k)=I-D(k)` are required.
 - `DLPKressH1J1ChebWorkspace{T,MatT}`
 """
 function build_dlp_kress_h1_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
-    block_cache=build_dlp_kress_block_cache(solver,pts;npanels=npanels_h,M=M_h,pad=pad,rmin_cheb=rmin_cheb)
+    block_cache=build_dlp_kress_block_cache(solver,pts;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     plans1,plansj1=build_DLP_kress_plans_h1_j1(ks,block_cache.rmin,block_cache.rmax;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,nthreads=plan_nthreads)
     bessel_ws=DLP_H1_J1_BesselWorkspace(length(ks);ntls=ntls)
     return DLPKressH1J1ChebWorkspace{T,MatT}(direct,block_cache,plans1,plansj1,bessel_ws,ks,length(ks))
@@ -570,7 +588,7 @@ Use this when `F(k)`, `dF/dk`, and `d²F/dk²` are required.
 - `DLPKressH0H1J0J1ChebWorkspace{T,MatT}`
 """
 function build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},DLP_kress_global_corners{T}},pts::BoundaryPointsCFIE{T},direct::DLPKressWorkspace{T,MatT},ks::Vector{ComplexF64};npanels_h::Int=10000,npanels_j::Int=2000,M_h::Int=5,M_j::Int=5,pad=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,plan_nthreads::Int=1,ntls::Int=Threads.nthreads()) where {T<:Real,MatT<:AbstractMatrix{T}}
-    block_cache=build_dlp_kress_block_cache(solver,pts;npanels=npanels_h,M=M_h,pad=pad,rmin_cheb=rmin_cheb)
+    block_cache=build_dlp_kress_block_cache(solver,pts;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     plans0,plans1,plansj0,plansj1=build_DLP_kress_plans_h0_h1_j0_j1(ks,block_cache.rmin,block_cache.rmax;npanels_h=npanels_h,npanels_j=npanels_j,M_h=M_h,M_j=M_j,nthreads=plan_nthreads)
     bessel_ws=DLP_H0_H1_J0_J1_BesselWorkspace(length(ks);ntls=ntls)
     return DLPKressH0H1J0J1ChebWorkspace{T,MatT}(direct,block_cache,plans0,plans1,plansj0,plansj1,bessel_ws,ks,length(ks))
@@ -609,7 +627,7 @@ function build_dlp_kress_h0_h1_j0_j1_cheb_workspace(solver::Union{DLP_kress{T},D
 end
 
 """
-    _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx,t,r,plans0,plans1,plansj0,plansj1)
+    _h0_h1_j0_j1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx_h::Int32,t_h::Float64,pidx_j::Int32,t_j::Float64,r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan})
 
 Evaluate `H₀^(1)`, `H₁^(1)`, `J₀`, and `J₁` for all wavenumbers at one fixed
 Chebyshev panel/location, writing the results in place.
@@ -626,44 +644,37 @@ For each stored wavenumber `k_m`, the function interpolates:
 - `J₀(k_m r)`
 - `J₁(k_m r)`
 
-If pidx is zero, the distance is below the interpolation cutoff and direct evaluation is used instead to avoid accuracy issues and having too many panels to resolve the small z=k*r region.
+If `pidx_h` is zero (Hankels), the distance is below the interpolation cutoff and direct evaluation is used instead to avoid accuracy issues and having too many panels to resolve the small z=k*r region.
 
 # Returns
 - `nothing`
 """
-@inline function _h0_h1_j0_j1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan})
-    h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx,t,r)
+@inline function _h0_h1_j0_j1_at_pidx_t!(h0vals::AbstractVector{ComplexF64},h1vals::AbstractVector{ComplexF64},j0vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx_h::Int32,t_h::Float64,pidx_j::Int32,t_j::Float64,r::Float64,plans0::AbstractVector{ChebHankelPlanH},plans1::AbstractVector{ChebHankelPlanH},plansj0::AbstractVector{ChebJPlan},plansj1::AbstractVector{ChebJPlan})
+    h0_h1_j0_j1_multi_ks_at_r!(h0vals,h1vals,j0vals,j1vals,plans0,plans1,plansj0,plansj1,pidx_h,t_h,pidx_j,t_j,r)
     return nothing
 end
 
 """
-    _h1_j1_at_pidx_t!(h1vals,j1vals,pidx,t,r,plans1,plansj1)
+    function _h1_j1_at_pidx_t!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx_h::Int32,t_h::Float64,pidx_j::Int32,t_j::Float64,r::Float64,plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan})
 
-Evaluate `H₁^(1)` and `J₁` for all wavenumbers at one fixed Chebyshev
-panel/location, writing the results in place. 
+Evaluate `H₁^(1)` and `J₁` for all stored wavenumbers at one fixed distance
+`r`, writing the results in place.
 
-If pidx is zero, the distance is below the interpolation cutoff and direct evaluation is used instead to avoid accuracy issues and having too many panels to resolve the small z=k*r region.
+The Hankel and Bessel-J interpolants may use different radial panelizations, so
+this helper receives separate cached Chebyshev panel data:
+- `(pidx_h, t_h)` for the Hankel plan,
+- `(pidx_j, t_j)` for the Bessel-J plan.
+
+If `pidx_h == 0`, the Hankel evaluation falls back to the small-`z` / direct
+path. The Bessel-J plan is regular at `r = 0`, so it normally uses its cached
+J-panel directly.
 
 # Returns
 - `nothing`
 """
-@inline function _h1_j1_at_pidx_t!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx::Int32,t::Float64,r::Float64,plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan})
-    h1_j1_multi_ks_at_r!(h1vals,j1vals,plans1,plansj1,pidx,t,r)
+@inline function _h1_j1_at_pidx_t!(h1vals::AbstractVector{ComplexF64},j1vals::AbstractVector{ComplexF64},pidx_h::Int32,t_h::Float64,pidx_j::Int32,t_j::Float64,r::Float64,plans1::AbstractVector{ChebHankelPlanH},plansj1::AbstractVector{ChebJPlan})
+    h1_j1_multi_ks_at_r!(h1vals,j1vals,plans1,plansj1,pidx_h,t_h,pidx_j,t_j,r)
     return nothing
-end
-
-@inline function _regular_dlp_image_D_complex(inn::T,invr::T,wj::T,k::ComplexF64,h1::ComplexF64,scale::Complex{T}) where {T<:Real}
-    return ComplexF64(scale)*(0.5im*k)*inn*invr*h1*wj
-end
-
-@inline function _regular_dlp_image_D_derivs_complex(inn::T,invr::T,r::T,wj::T,k::ComplexF64,h0::ComplexF64,h1::ComplexF64,scale::Complex{T}) where {T<:Real}
-    sc=ComplexF64(scale)
-    common=sc*0.5im*inn*invr*wj
-    kr=k*r
-    D=common*k*h1
-    D1=common*(kr*h0)
-    D2=common*(r*h0-k*r^2*h1)
-    return D,D1,D2
 end
 
 """
@@ -701,13 +712,13 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
     h1_tls=ws.bessel_ws.h1_tls
     j1_tls=ws.bessel_ws.j1_tls
     ks=ws.ks
-    @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
+    @use_threads multithreading=multithreaded for j in 2:N
         tid=Threads.threadid()
         h1vals=h1_tls[tid]
         j1vals=j1_tls[tid]
         @inbounds for i in 1:j-1
             r=blk.R[i,j]
-            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,ws.plans1,ws.plansj1)
+            _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],r,ws.plans1,ws.plansj1)
             invr=blk.invR[i,j]
             lt=blk.logterm[i,j]
             inn_ij=blk.inner[i,j]
@@ -746,21 +757,23 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
     end
     h1_tls=fullws.bessel_ws.h1_tls
     j1_tls=fullws.bessel_ws.j1_tls
-    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+    @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h1vals=h1_tls[tid]
         j1vals=j1_tls[tid]
         imgs=rw.fund_to_full[b]
         scales=rw.fund_to_scale[b]
+        accs=zeros(ComplexF64,Mk)
         @inbounds for a in 1:m
+            fill!(accs,0.0+0.0im)
             i=Ifund[a]
             for l in eachindex(imgs)
                 j=imgs[l]
                 scale=ComplexF64(scales[l])
                 if i==j
-                    d0=ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
+                    d0=scale*ComplexF64(blk.wi[i]*blk.kappa[i],0.0)
                     for q in 1:Mk
-                        Ds[q][a,b]+=scale*d0
+                        accs[q]+=d0
                     end
                     continue
                 end
@@ -770,7 +783,10 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
                 inn=blk.inner[i,j]
                 Rij=blk.Rkress[i,j]
                 wj=blk.wi[j]
-                _h1_j1_at_pidx_t!(h1vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans1,fullws.plansj1)
+                _h1_j1_at_pidx_t!(h1vals,j1vals,
+                    blk.pidx[i,j],blk.tloc[i,j],
+                    blk.pidxj[i,j],blk.tlocj[i,j],
+                    r,fullws.plans1,fullws.plansj1)
                 for q in 1:Mk
                     k=ks[q]
                     αL1=-k*_INV_TWO_PI
@@ -779,8 +795,11 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{<:AbstractMatrix{Co
                     j1=j1vals[q]
                     l1=αL1*inn*j1*invr
                     l2=αL2*inn*h1*invr-l1*lt
-                    Ds[q][a,b]+=scale*(Rij*l1+wj*l2)
+                    accs[q]+=scale*(Rij*l1+wj*l2)
                 end
+            end
+            for q in 1:Mk
+                Ds[q][a,b]=accs[q]
             end
         end
     end
@@ -836,7 +855,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
     j0_tls=ws.bessel_ws.j0_tls
     j1_tls=ws.bessel_ws.j1_tls
     ks=ws.ks
-    @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
+    @use_threads multithreading=multithreaded for j in 2:N
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
@@ -844,7 +863,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
         j1vals=j1_tls[tid]
         @inbounds for i in 1:j-1
             r=blk.R[i,j]
-            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,ws.plans0,ws.plans1,ws.plansj0,ws.plansj1)
+            _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],r,ws.plans0,ws.plans1,ws.plansj0,ws.plansj1)
             invr=blk.invR[i,j]
             lt=blk.logterm[i,j]
             inn_ij=blk.inner[i,j]
@@ -901,7 +920,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
     h1_tls=fullws.bessel_ws.h1_tls
     j0_tls=fullws.bessel_ws.j0_tls
     j1_tls=fullws.bessel_ws.j1_tls
-    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+    @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
         h1vals=h1_tls[tid]
@@ -927,7 +946,7 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{<:Abstr
                 inn=blk.inner[i,j]
                 Rij=blk.Rkress[i,j]
                 wj=blk.wi[j]
-                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
+                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,blk.pidx[i,j],blk.tloc[i,j],blk.pidxj[i,j],blk.tlocj[i,j],r,fullws.plans0,fullws.plans1,fullws.plansj0,fullws.plansj1)
                 for q in 1:Mk
                     k=ks[q]
                     h0=h0vals[q]
