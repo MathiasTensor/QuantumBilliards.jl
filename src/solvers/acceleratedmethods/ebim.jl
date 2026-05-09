@@ -1105,6 +1105,8 @@ Compute the spectrum and corresponding tensions of a billiard problem using the 
 
 The interval is partitioned into segments, and for each segment the boundary geometry is constructed only once (at the segment’s upper wavenumber) and reused for all `k` values within that segment. This reduces geometric and allocation overhead while maintaining accuracy.
 
+NOTE v0.1: Should be used on desymmetrized geometries due to merging logic flagging degeneracies as tension check candidates for removal!
+
 # Arguments
 - `solver::EBIMSolver`: Boundary integral solver (e.g. BIM, Kress, Alpert variants).
 - `billiard::Bi`: Billiard geometry.

@@ -2,6 +2,7 @@
 
 A Julia library for computing eigenvalues, eigenfunctions and Husimi functions of 2D quantum billiards using boundary integral and basis-expansion methods.
 
+**See examples folder for most common and practical uses of this library!**
 **Manual coming soon!!!**
 
 ## Overview
@@ -19,7 +20,7 @@ Targets high-frequency spectral computations on smooth and piecewise-smooth doma
 - Contour methods (Beyn)
     1. An integral method for solving nonlinear eigenvalue problems, Wolf-Jürgen Beyn, 2010 https://arxiv.org/abs/1003.1580
 - Chebyshev-accelerated kernel assembly
-    1. Greengard's hank106.f code - panelization implementation
+    1. Greengard's hank106.f code - idea for panelization implementation
 
 Focus is on the balance between **performance** and **spectral resolution**, with a high-level API and low-level optimizations.
 
@@ -37,14 +38,10 @@ is reduced to
 
 A(k) σ = 0
 
-CFIE variants use
+CFIE variants use both the single and double layer superposition formulation for dealing with highly convex geometries and presence of holes.
 
-(α I + D(k) + i η S(k)) σ = 0
-
-typically in the presence of holes.
-
-**+** Accurate, flexible, stable
-**−** Dense matrices, expensive assembly  
+**+** Accurate (with refine_minina) and stable (easier to check correctness)
+**−** Dense matrices, expensive assembly and solve for each trial wavenumber
 
 Examples
 - example_circle_eigval_convergence.jl
@@ -65,7 +62,8 @@ A v = λ A’ v
 with second-order corrections.
 
 **+** Efficient for medium scale spectrum computations, works with Krylov for GEVP 
-**−** Finicky to deal with, requires checking interval size to not lose eigenvalues  
+**−** Finicky to deal with as it requires checking interval size to not lose eigenvalues 
+**+/-** Accuracy determined by both quadrature and window width, so the computational difficulty of the problem can be drastially reduced if one needs only <1% of mean level spacing of the unfolded spectrum.
 
 Examples
 - example_bim_ebim_psm_dm.jl
@@ -79,7 +77,8 @@ Basis expansion near k_0:
 F c = μ G c
 
 **+** Extremely fast, gets many nearby levels per solve
-**−** Basis-dependent, less robust for complex (non-convex) geometries as convergence is not guaranteed 
+**−** Basis-dependent, less robust for complex (non-convex) geometries as convergence is not guaranteed -> needs low k check with PSM/DM sweep to see if basis approach converged.
+**+/-** Accuracy determined by both quadrature and window width, so the computational difficulty of the problem can be drastially reduced if one needs only <1% of mean level spacing of the unfolded spectrum.
 
 Examples:
 - example_dlp_kress_vergini_saraceno.jl
@@ -96,11 +95,10 @@ A_p = (1 / 2πi) ∮ z^p T(z)^{-1} V dz
 
 where we construct A_0 and A_1
 
-**+** Finds all eigenvalues in a region  
-**+** Very effective when Vergini–Saraceno fails  
+**+** Finds all eigenvalues in a locally large region (disk of size R=0.5 spanning many smaller EBIM/VS windows)
+**+** Very effective when Vergini–Saraceno fails or when high--accuracy is needed (for high accuracy studies this is the defacto solver!)
 **+** Naturally supports desymmetrized domains via subspace projections (Kress/Alpert) or even desymmerized kernels with DLP kress solvers
-**−** Slower (not by much) than Vergini–Saraceno, as always needs to form and invert the full size matrix (CFIE Kress / Alpert) regardles of subspace projection
-**−** Requires contour tuning (nq, but it varies slowly and is typically very small around 40-45) along with svd toleranance for A_0, but this is best left to default kwargs
+**−** Slightly slower (not by much) than Vergini–Saraceno for CFIE Kress / Alpert as it always needs to form and invert the full size matrix regardles of subspace projection
 
 Examples:
 - example_beyn_kress.jl
@@ -117,8 +115,9 @@ Kernel approximation:
 f(x) ≈ Σ a_n T_n(x)
 
 **+** Faster repeated assembly, prioriziting smaller panels with lower degrees
+**+** Separate stragegies for J and H type of Bessel functions (J requires very low number of panels and low cheb poly degree)
 **+** Accuracy is given as a kwarg so that we dont overpanelize when many digits not needed
-**−** Slightly higher RAM usage due to panelization  
+**−** Slightly higher RAM usage due to panelization - but paid once upfront due to the architecture of Accelerated solvers segmenting the entire spectrum into intervals where the same geometry can be safely reused for many matrix evaluations.
 
 ---
 
@@ -176,7 +175,7 @@ Active development focused on:
     1. https://github.com/Quantum-Chaos-Julia/BilliardGeometry.jl
 -   1. Reduce allocations in Beyn buffer matrices and temp matrices, we should just view into the largest k array matrix buffer.
 -   1. lu! with HSS algorithm for Beyn since Fredholm matrix should have mature support 
--   1. Real Green's function kernel (as discussed by B\"acker:  (Habilitationsschrift) Eigenfunctions in chaotic quantum systems, Backer A., 2007, in the section on sources of spurious solutions) to halve the node count in Beyn with layer post-processing to get rid of them.
+-   1. Real Green's function kernel (as discussed by B\"acker:  (Habilitationsschrift) Eigenfunctions in chaotic quantum systems, Backer A., 2007, in the section on sources of spurious solutions) to halve the node count in Beyn with layer post-processing to get rid of extra spurious solutions.
     1. Relativistic Quantum Chaos in Neutrino Billiards, Dietz B. (https://arxiv.org/pdf/2604.13003)
 - Hyperbolic kernel - Legendre Q via mpmath and seeding w/ Taylor series center expansion (Done, currently used in a paper, add after publication)  
 - Fast computation of high frequency Dirichlet eigenmodes via the spectral flow of the interior Neumann-to-Dirichlet map, Barnett A., Hassell A. 2011 https://arxiv.org/abs/1112.5665
