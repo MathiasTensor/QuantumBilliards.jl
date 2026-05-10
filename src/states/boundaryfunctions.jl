@@ -496,26 +496,15 @@ end
 Expand a symmetry-reduced CFIE layer density to the full boundary.
 If `solver.symmetry === nothing`, this is a no-op.
 """
-function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},μred::AbstractVector{N},pts::Union{BoundaryPointsCFIE{T},Vector{<:BoundaryPointsCFIE{T}}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    isnothing(solver.symmetry) && return pts,μred
+function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{N},pts::Union{BoundaryPointsCFIE{T},Vector{<:BoundaryPointsCFIE{T}}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    isnothing(solver.symmetry) && return pts,layer_density
     comps=pts isa BoundaryPointsCFIE ? [pts] : pts
-    maps=build_symmetry_maps(comps,solver.symmetry)
-    Nfull=boundary_matrix_size(comps) # make full matrix finally even for desymm
-    μfull=Vector{promote_type(N,Complex{T})}(undef,Nfull)
-    visited=falses(Nfull)
-    r=0
-    @inbounds for g in 1:Nfull
-        visited[g] && continue
-        r+=1
-        orb=apply_symmetry_orbit_from_maps(maps,solver.symmetry,g)
-        for q in eachindex(orb.indices)
-            gg=orb.indices[q]
-            μfull[gg]=orb.scales[q]*μred[r]
-            visited[gg]=true
-        end
-    end
-    r==length(μred) || error("reduced density length mismatch: got $(length(μred)), expected $r")
-    return pts,μfull
+    Nfull=boundary_matrix_size(comps)
+    # solve_vect direct CFIE path already returns full-boundary density
+    length(layer_density)==Nfull && return pts,layer_density
+    # only reduced densities need expansion
+    layer_density=apply_symmetries_to_boundary_function(layer_density,pts,solver.symmetry)
+    return pts,layer_density
 end
 
 """
