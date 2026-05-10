@@ -120,9 +120,7 @@ where ∂Ω₁ is the outer boundary and subsequent ∂Ωᵢ are holes. `u` is i
 - Approximation of `∫Ω |ψ|² dx` over the full (possibly multiply connected) domain.
 """
 function _rellich(comps::Vector{BoundaryPointsCFIE{T}},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
-     length(u)==sum(length(c.xy) for c in comps) || error("u length does not match concatenated CFIE boundary components")
-    # require one object per connected component
-    length(unique(getfield.(comps,:compid)))==length(comps) || error("_rellich(comps, u, k) expects one BoundaryPointsCFIE per connected component")
+    length(u)==sum(length(c.xy) for c in comps) || error("u length does not match concatenated CFIE boundary components")
     acc=zero(T)
     p=1
     for c in comps
