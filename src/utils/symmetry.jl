@@ -931,7 +931,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                     rt2[j]=SVector{2,T}(ttx,tty)
                 end
                 push!(new_parts,BoundaryPointsCFIE(reverse(rxy),reverse(rt),reverse(rt2),
-                    reverse(c.ts),reverse(c.tmap),reverse(c.ws),reverse(c.ws_der),reverse(c.ds),
+                    reverse(c.ts),reverse(c.tphys),reverse(c.ws),reverse(c.ws_der),reverse(c.ds),
                     c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
@@ -950,7 +950,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                     rt2[j]=SVector{2,T}(ttx,tty)
                 end
                 push!(new_parts,BoundaryPointsCFIE(reverse(rxy),reverse(rt),reverse(rt2),
-                    reverse(c.ts),reverse(c.tmap),reverse(c.ws),reverse(c.ws_der),reverse(c.ds),
+                    reverse(c.ts),reverse(c.tphys),reverse(c.ws),reverse(c.ws_der),reverse(c.ds),
                     c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
@@ -967,7 +967,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                     rt2[j]=SVector{2,T}(_xy_reflect_tangent(tt[1],tt[2])...)
                 end
                 push!(new_parts,BoundaryPointsCFIE(rxy,rt,rt2,
-                    copy(c.ts),copy(c.tmap),copy(c.ws),copy(c.ws_der),copy(c.ds),
+                    copy(c.ts),copy(c.tphys),copy(c.ws),copy(c.ws_der),copy(c.ds),
                     c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
@@ -989,7 +989,7 @@ function apply_symmetries_to_boundary_points(pts::Vector{BoundaryPointsCFIE{T}},
                     rt2[j]=SVector{2,T}(cθ*tt[1]-sθ*tt[2],sθ*tt[1]+cθ*tt[2])
                 end
                 push!(new_parts,BoundaryPointsCFIE(rxy,rt,rt2,
-                    copy(c.ts),copy(c.tmap),copy(c.ws),copy(c.ws_der),copy(c.ds),
+                    copy(c.ts),copy(c.tphys),copy(c.ws),copy(c.ws_der),copy(c.ds),
                     c.compid,c.is_periodic,c.xL,c.xR,c.tL,c.tR))
             end
         end
