@@ -208,22 +208,22 @@ end
 #
 # Output:
 #   - The function modifies `V` in-place to contain the projected values.
-function _CFIE_project_V_subspace!(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+function _project_V_subspace!(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     isnothing(solver.symmetry) && return V
     maps=build_symmetry_maps(pts,solver.symmetry)
     apply_projection!(V,W,maps,solver.symmetry)
     return V
 end
 # Kress CFIE has desymm kernels
-function _CFIE_project_V_subspace!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+function _project_V_subspace!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     return V
 end
 # This Kress implementation has proper kernel desymmetrization like standard BoundaryIntegralMethod
-function _CFIE_project_V_subspace!(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+function _project_V_subspace!(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPointsCFIE{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     return V
 end
 # this one has desymmetrization already built in in matrix construction stage, so dont do anything here
-function _CFIE_project_V_subspace!(solver::Union{BoundaryIntegralMethod},pts::BoundaryPoints{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+function _project_V_subspace!(solver::Union{BoundaryIntegralMethod},pts::BoundaryPoints{T},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     return V
 end
 
@@ -262,7 +262,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE
     # Allocate the buffers for the Beyn method. These are used in the matrix construction and then in the contour integrations to avoid repeated allocations. The matrices are sized according to the expected number of eigenvalues r and the size of the Fredholm matrices N.
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     W=similar(V)
-    _CFIE_project_V_subspace!(solver,pts,V,W) # for CFIE/DLP Kress & Alpert we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem. 
+    _project_V_subspace!(solver,pts,V,W) # for CFIE/DLP Kress & Alpert we need to project the random V onto the symmetry subspace to ensure it is in the correct function space for the problem. For standard BIM this is not needed since we are already working with the outer boundary points which are the relevant ones for the eigenvalue problem. 
     # Now perform the Beyn contour integrations to form A0 and A1. To do this we need to solve T(zj) X = V for each zj and accumulate A0 += wj[j] * X, A1 += wj[j] * zj[j] * X. So as the first step we LU factor all T(zj) matrices to get the Fj factors which are used for ldiv! to efficiently solve the systems.
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs1[1];check=false) # just to get the type
     Fs=Vector{typeof(F1)}(undef,nq)
@@ -290,7 +290,7 @@ function construct_B_matrix(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE
         while r_tmp<N # do again the ldiv + axpy accumulation with larger r until some sv < svd_tol. This does not require another Fredholm matrix construction since the same T(zj) can be used for larger r.
             V,X,A0,A1=beyn_buffer_matrices(T,N,r_tmp,rng)
             Wproj=similar(V)
-            _CFIE_project_V_subspace!(solver,pts,V,Wproj)
+            _project_V_subspace!(solver,pts,V,Wproj)
             xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
             @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in eachindex(zj)  
                 ldiv!(X,Fs[j],V)
@@ -425,7 +425,7 @@ function solve_INFO(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_c
     θ=range(zero(T),TWO_PI;length=nq+1);θ=θ[1:end-1];ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej # contour points and weights
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     Vproj=similar(V)
-    _CFIE_project_V_subspace!(solver,pts,V,Vproj)
+    _project_V_subspace!(solver,pts,V,Vproj)
     @info "beyn:start" k0=k0 R=R nq=nq N=N r=r
     Tbufs1=[zeros(Complex{T},N,N) for _ in 1:nq] 
     construct_boundary_matrices!(Tbufs1,solver,pts,zj;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=true) # construct the T(zj) matrices for each contour point zj.
