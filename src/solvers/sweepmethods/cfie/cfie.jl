@@ -463,7 +463,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     tangent=reverse(-pts.tangent)
     tangent_2=reverse(pts.tangent_2)
     ts=reverse(pts.ts)
-    tmap=reverse(pts.tmap)
+    tphys=reverse(pts.tphys)
     ws=reverse(pts.ws)
     ws_der=reverse(pts.ws_der)
     ds=reverse(pts.ds)
@@ -471,7 +471,7 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPointsCFIE{T}) wh
     xR=pts.xL
     tL=-pts.tR
     tR=-pts.tL
-    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,tmap,ws,ws_der,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
+    return BoundaryPointsCFIE(xy,tangent,tangent_2,ts,tphys,ws,ws_der,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
 end
 
 ###############
