@@ -11,21 +11,20 @@ evaluation.
 This is a lightweight version of the CFIE Chebyshev machinery, since only Y₀
 is required.
 """
-function build_slp_wavefunction_cheb_plan(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=15_000,M::Int=5,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1)) where {T<:Real}
+@inline function build_slp_wavefunction_cheb_plan(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=4000,M::Int=5,rmin_factor::T=T(0.7),rmax_pad::T=T(1.05)) where {T<:Real}
     hx=length(x_grid)>1 ? abs(x_grid[2]-x_grid[1]) : one(T)
     hy=length(y_grid)>1 ? abs(y_grid[2]-y_grid[1]) : one(T)
     hgrid=min(hx,hy)
-    hbdry=minimum(bd.ds) # boundary spacing
-    rmin=max(rmin_factor*min(hgrid,hbdry),T(1e-12))
+    hbdry=minimum(bd.ds)
+    rmin=max(rmin_factor*min(hgrid,hbdry),T(hankel_z_chebyshev_cutoff)/k)
     dx=maximum(x_grid)-minimum(x_grid)
     dy=maximum(y_grid)-minimum(y_grid)
     rmax=rmax_pad*hypot(dx,dy)
-    plan=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M)
-    return SLPWavefunctionChebPlan{T}(plan,T(rmin),T(rmax))
+    return SLPWavefunctionChebPlan(plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M))
 end
 
 """
-    chebyshev_params_slp(k, bd, x_grid, y_grid; n_panels_init=15_000, M_init=5, tol=1e-12, sampling_points=20_000, max_iter=20, grow_panels=1.5, grow_M=2, rmin_factor=0.5, rmax_pad=1.01, verbose=false)
+    chebyshev_params_slp(k, bd, x_grid, y_grid; n_panels_init=15_000, M_init=5, tol=1e-12, sampling_points=20_000, max_iter=20, grow_panels=1.5, grow_M=2, rmin_factor=0.85, rmax_pad=1.1, verbose=false)
 
 Tune Chebyshev parameters for SLP wavefunction reconstruction.
 
@@ -36,55 +35,43 @@ Returns:
 
     n_panels, M, plan, max_err
 """
-function chebyshev_params_slp(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),verbose::Bool=false) where {T<:Real}
+function chebyshev_params_slp(k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=4000,M_init::Int=5,tol::Real=1e-6,sampling_points::Int=5000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.85),rmax_pad::T=T(1.1),verbose::Bool=false) where {T<:Real}
     hbdry=minimum(bd.ds)
-    rmin=max(rmin_factor*hbdry,T(1e-12))
+    rmin=max(rmin_factor*hbdry,T(hankel_z_chebyshev_cutoff)/k)
     dx=maximum(x_grid)-minimum(x_grid)
     dy=maximum(y_grid)-minimum(y_grid)
     rmax=rmax_pad*hypot(dx,dy)
-    # Avoid testing the logarithmic near-zero region in the Chebyshev interval.
-    rmin_cheb=T(hankel_z_chebyshev_cutoff)/abs(k)
-    rmin_interp=max(Float64(rmin),Float64(rmin_cheb))
-    @info "Estimated SLP wavefunction Chebyshev radial bounds" rmin rmax rmin_cheb rmin_interp
-    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
-    n_panels=n_panels_init
-    M=M_init
-    plan=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
+    rs=collect(range(Float64(rmin),Float64(rmax);length=sampling_points))
     approx=Vector{Float64}(undef,sampling_points)
     exact=Vector{Float64}(undef,sampling_points)
+    n_panels=n_panels_init
+    M=M_init
     max_err=Inf
     for it in 1:max_iter
-        plan=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
+        pl=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=n_panels,M=M)
         Threads.@threads for i in eachindex(rs)
             r=rs[i]
-            p=_find_panel(plan,r)
-            P=plan.panels[p]
+            pidx=Int32(_find_panel(pl,r))
+            P=pl.panels[pidx]
             t=(2*r-(P.b+P.a))/(P.b-P.a)
-            approx[i]=imag(eval_h(plan,Int32(p),t,r))
+            approx[i]=imag(_cheb_clenshaw(P.c,t))
             exact[i]=Bessels.bessely0(Float64(k)*r)
         end
         max_err=maximum(abs.(approx.-exact))
-        if verbose
-            iworst=argmax(abs.(approx.-exact))
-            @info "SLP wavefunction Chebyshev tuning" it n_panels M max_err
-            @info "Worst Y0" r=rs[iworst] z=Float64(k)*rs[iworst] err=abs(approx[iworst]-exact[iworst])
-        end
-        if max_err<tol
-            return n_panels,M,plan,max_err
-        end
-        if it%5==0
+        verbose && @info "SLP Cheb tuning" it n_panels M max_err
+        max_err<tol && return n_panels,M,pl,max_err
+        if it%4==0
             M+=grow_M
         else
             n_panels=ceil(Int,grow_panels*n_panels)
         end
     end
-    @warn "SLP wavefunction Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort." max_err n_panels M
-    return n_panels,M,plan,max_err
+    return n_panels,M,nothing,max_err
 end
 
 """
 
-    ϕ_slp(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector;float32_bessel::Bool=true,use_chebyshev::Bool=false,cheb::Union{SLPWavefunctionChebPlan{T},Nothing}=nothing) where {T<:Real}
+    ϕ_slp(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector;float32_bessel::Bool=true,use_chebyshev::Bool=false,cheb::Union{SLPWavefunctionChebPlan,Nothing}=nothing) where {T<:Real}
 
 Evaluate the single-layer potential (SLP) wavefunction at point `(x,y)`:
 
@@ -126,12 +113,12 @@ This is a unified implementation supporting:
 # Returns
 - `Ψ(x,y)` of type `eltype(u)`
 """
-@inline function ϕ_slp(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector;float32_bessel::Bool=true,use_chebyshev::Bool=false,cheb::Union{SLPWavefunctionChebPlan{T},Nothing}=nothing) where {T<:Real}
+@inline function ϕ_slp(x::T,y::T,k::T,bd::Union{BoundaryPoints{T},BoundaryPointsCFIE{T}},u::AbstractVector;float32_bessel::Bool=true,use_chebyshev::Bool=false,cheb::Union{SLPWavefunctionChebPlan,Nothing}=nothing) where {T<:Real}
     xy=bd.xy
     ds=bd.ds
     S=eltype(u)
     acc=zero(S)
-    tol2=use_chebyshev ? (T(100)*eps(T))^2 : float32_bessel ? (T(100)*eps(Float32))^2 : (T(100)*eps(T))^2
+    tol2=100*eps(T)
     @inbounds @fastmath for j in eachindex(u)
         p=xy[j]
         dx=x-p[1]
@@ -139,7 +126,7 @@ This is a unified implementation supporting:
         r2=muladd(dx,dx,dy*dy)
         r2<=tol2 && continue
         r=sqrt(r2)
-        y0= if use_chebyshev
+        y0=if use_chebyshev
             _eval_y0_slp_cheb(cheb,k,r)
         elseif float32_bessel
             T(Bessels.bessely0(Float32(k*r)))
@@ -179,55 +166,55 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4_096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
     k_max,idx_max=findmax(ks)
     typ=T
     L=billiard.length
-    b= b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
+    b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     if fundamental
         xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     else
         xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     end
-    dx,dy=xlim[2]-xlim[1],ylim[2]-ylim[1]
-    nx,ny=max(round(Int,k_max*dx*b/(2*pi)),512),max(round(Int,k_max*dy*b/(2*pi)),512)
-    x_grid,y_grid=collect(typ,range(xlim..., nx)),collect(typ,range(ylim..., ny))
-    pts=collect(SVector(x,y) for y in y_grid for x in x_grid)
-    sz=length(pts)
-    # Determine points inside the billiard only once if inside_only is true
-    pts_mask=inside_only ? points_in_billiard_polygon(pts,billiard,round(Int,sqrt(sz));fundamental_domain=fundamental) : fill(true,sz)
+    dx=xlim[2]-xlim[1]
+    dy=ylim[2]-ylim[1]
+    nx=max(round(Int,k_max*dx*b/(2*pi)),512)
+    ny=max(round(Int,k_max*dy*b/(2*pi)),512)
+    x_grid=collect(typ,range(xlim...,nx))
+    y_grid=collect(typ,range(ylim...,ny))
+    pts_mask=inside_only ? points_in_billiard_polygon([SVector(x,y) for y in y_grid for x in x_grid],billiard,round(Int,sqrt(nx*ny));fundamental_domain=fundamental) : fill(true,nx*ny)
     pts_masked_indices=findall(pts_mask)
-    NT=Threads.nthreads()
-    nmask=length(pts_masked_indices)
-    cheb_plans=use_chebyshev ? Vector{SLPWavefunctionChebPlan{T}}(undef,length(ks)) : fill(nothing,length(ks))
+    cheb_plans=use_chebyshev ? Vector{SLPWavefunctionChebPlan}(undef,length(ks)) : fill(nothing,length(ks))
     if use_chebyshev
         cheb_npanels,cheb_M,_,max_err=chebyshev_params_slp(k_max,vec_bdPoints[idx_max],x_grid,y_grid;tol=tol_cheb,verbose=cheb_verbose)
-        @info "Using SLP wavefunction Chebyshev parameters" cheb_npanels cheb_M max_err
+        @info "Using SLP wavefunction Cheb" cheb_npanels cheb_M max_err
         @inbounds for i in eachindex(ks)
             cheb_plans[i]=build_slp_wavefunction_cheb_plan(ks[i],vec_bdPoints[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M)
         end
     end
     S=eltype(vec_us[1])<:Real ? typ : Complex{typ}
-    Psi_flat=zeros(S,nx*ny) # overwritten each iteration since pts_masked_indices is the same for each k in ks
-    NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     Psi2ds=Vector{Matrix{S}}(undef,length(ks))
-    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
+    NT=Threads.nthreads()
+    nmask=length(pts_masked_indices)
+    NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
     q,r=divrem(nmask,NT_eff)
+    progress=Progress(length(ks),desc="Constructing wavefunction matrices...")
     @inbounds for i in eachindex(ks)
-        k,bdPoints,us=ks[i],vec_bdPoints[i],vec_us[i]
-        @fastmath begin
-            Threads.@threads :static for t in 1:NT_eff
-                # compute this thread's block [lo:hi]
-                lo=(t-1)*q+min(t-1,r) + 1
-                hi=lo+q-1+(t<=r ? 1 : 0)
-                @inbounds for jj in lo:hi
-                    idx=pts_masked_indices[jj] # each interior point [idx] -> (x,y)
-                    x,y=pts[idx]
-                    Psi_flat[idx]=ϕ_slp(x,y,k,bdPoints,us;float32_bessel=use_float_32,use_chebyshev=use_chebyshev,cheb=cheb_plans[i])
-                end
+        Psi_flat=zeros(S,nx*ny)
+        k=ks[i]
+        bd=vec_bdPoints[i]
+        us=vec_us[i]
+        Threads.@threads :static for t in 1:NT_eff
+            lo=(t-1)*q+min(t-1,r)+1
+            hi=lo+q-1+(t<=r ? 1 : 0)
+            for jj in lo:hi
+                idx=pts_masked_indices[jj]
+                ix=((idx-1)%nx)+1
+                iy=((idx-1)÷nx)+1
+                Psi_flat[idx]=ϕ_slp(x_grid[ix],y_grid[iy],k,bd,us;float32_bessel=use_float_32,use_chebyshev=use_chebyshev,cheb=use_chebyshev ? cheb_plans[i] : nothing)
             end
         end
-        Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
+        Psi2ds[i]=reshape(Psi_flat,nx,ny)
         next!(progress)
     end
     return Psi2ds,x_grid,y_grid

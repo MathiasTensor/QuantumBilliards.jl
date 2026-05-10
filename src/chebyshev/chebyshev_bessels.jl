@@ -1468,26 +1468,20 @@ end
 ################## CFIE WAVEFUNCTION EVALUATION ##################
 ##################################################################
 
-#    SLPWavefunctionChebPlan{T}
-#
-# Chebyhsev interpolation plain for SLP wavefunction reconstruction from DLP type kernels
-#
-# 
-struct SLPWavefunctionChebPlan{T}
-    plan::ChebHankelPlanH 
-    rmin::T
-    rmax::T
+# Chebyhsev interpolation plan for SLP wavefunction reconstruction from DLP type kernels
+struct SLPWavefunctionChebPlan
+    plan::ChebHankelPlanH
 end
 
-@inline function _eval_y0_slp_cheb(pl::SLPWavefunctionChebPlan{T},k::T,r::T) where {T<:Real}
-    rf=Float64(r)
-    if rf<Float64(pl.rmin) || rf>Float64(pl.rmax)
-        return T(Bessels.bessely0(k*r))
+@inline function _eval_y0_slp_cheb(pl::SLPWavefunctionChebPlan,k::T,r::T) where {T<:Real}
+    z=Float64(k*r)
+    if z<hankel_z_chebyshev_cutoff
+        return T(Bessels.bessely0(z))
     end
-    pidx=Int32(_find_panel(pl.plan,rf))
+    pidx=Int32(_find_panel(pl.plan,Float64(r)))
     P=pl.plan.panels[pidx]
-    t=(2*rf-(P.b+P.a))/(P.b-P.a)
-    # plan stores H₀⁽¹⁾(k r) = J₀(k r) + iY₀(k r)
+    t=(2*Float64(r)-(P.b+P.a))/(P.b-P.a)
+     # plan stores H₀⁽¹⁾(k r) = J₀(k r) + iY₀(k r)
     return T(imag(_cheb_clenshaw(P.c,t)))
 end
 

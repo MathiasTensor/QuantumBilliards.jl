@@ -4,7 +4,7 @@ using Printf
 using CairoMakie
 using ProgressMeter
 
-try_accelerated_blas!()
+try_MKL!()
 
 ################## USER PARAMS ###################
 
@@ -139,7 +139,6 @@ if method==:ebim_bim || method==:ebim_dlp_kress
         use_lapack_raw=false,            # use Julia/generalized eigen backend instead of raw LAPACK ggev in the dense solve branch (imporant for getting L and R eigenvectors)
         multithreaded_matrices=true,     # allow threaded matrix assembly for A, dA, ddA on each segment / center
         use_krylov=true,                 # use the shift-invert Krylov EBIM correction instead of the full dense generalized eigensolve
-        seg_reuse_frac=0.95,             # reuse one boundary discretization for a segment of nearby k values before rebuilding it
         solve_info=true,                 # print one detailed diagnostic INFO solve at the start of the EBIM run
         use_chebyshev=true,              # build derivative matrices with Chebyshev-accelerated Hankel evaluation instead of the direct pathway - since in demo ks are small there is no need
         cheb_param_strategy=:global,     # choose one Chebyshev panelization from the largest k in the interval and reuse it for all segments
