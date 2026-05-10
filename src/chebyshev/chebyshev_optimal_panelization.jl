@@ -193,7 +193,7 @@ end
 function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPointsCFIE{T}},BoundaryPointsCFIE{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
     rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
     ptsv=pts isa Vector ? pts : [pts]
-    pts1=(pts isa Vector) & solver isa Union{DLP_kress,DLP_kress_global_corners} ? (length(pts)==1 ? pts[1] : error("DLP_kress expects one BoundaryPointsCFIE component.")) : pts
+    pts1=((pts isa Vector) & (solver isa Union{DLP_kress,DLP_kress_global_corners})) ? (length(pts)==1 ? pts[1] : error("DLP_kress expects one BoundaryPointsCFIE component.")) : pts
     block_cache=solver isa Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners} ?
     build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb) :
     build_dlp_kress_block_cache(solver,pts1;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
