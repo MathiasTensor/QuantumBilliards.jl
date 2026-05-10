@@ -499,7 +499,7 @@ If `solver.symmetry === nothing`, this is a no-op.
 function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{N},pts::Union{BoundaryPointsCFIE{T},Vector{<:BoundaryPointsCFIE{T}}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     isnothing(solver.symmetry) && return pts,layer_density
     layer_density=apply_symmetries_to_boundary_function(layer_density,pts,solver.symmetry)
-    return pts_full,layer_density
+    return pts,layer_density
 end
 
 """
