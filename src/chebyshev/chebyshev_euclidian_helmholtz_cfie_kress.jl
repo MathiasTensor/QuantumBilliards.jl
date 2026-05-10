@@ -285,6 +285,24 @@ function build_reduced_orbit_infos(Ifund::Vector{Int},full_to_fund::Vector{Int},
     return infos
 end
 
+# just a helper for matrix size for desymmetrized CFIE solvers for ebim/beyn
+function cfie_reduced_orbit_size(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    isnothing(solver.symmetry) && return boundary_matrix_size(pts)
+    maps=build_symmetry_maps(pts,solver.symmetry)
+    N=boundary_matrix_size(pts)
+    visited=falses(N)
+    nfund=0
+    @inbounds for g in 1:N
+        visited[g] && continue
+        orb=apply_symmetry_orbit_from_maps(maps,solver.symmetry,g)
+        nfund+=1
+        for gg in orb.indices
+            visited[gg]=true
+        end
+    end
+    return nfund
+end
+
 """
     CFIEKressReducedWorkspace{T,S}
 
@@ -602,9 +620,10 @@ function build_CFIE_kress_reduced_workspace(solver::Union{CFIE_kress,CFIE_kress_
     fund_to_full=Vector{Vector{Int}}()
     fund_to_scale=Vector{Vector{Complex{T}}}()
     visited=falses(Nfull)
+    maps=build_symmetry_maps(pts,sym)
     @inbounds for g in 1:Nfull
         visited[g] && continue
-        orb=apply_symmetry_orbit(sym,g,Nfull)
+        orb=apply_symmetry_orbit_from_maps(maps,sym,g)
         orb_inds=orb.indices
         orb_scales=Complex{T}.(orb.scales)
         push!(Ifund,g)
@@ -1471,23 +1490,39 @@ Derivative single-`k` form:
 - Derivative forms also return `nothing`, with all destination matrices filled
   in place.
 """
-function compute_kernel_matrices_CFIE_kress_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _all_k_nosymm_CFIE_chebyshev!(As,pts,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
+function compute_kernel_matrices_CFIE_kress_chebyshev!(As::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},cache::Union{CFIEBlockSystemCache{T},CFIEKressReducedWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
+    if cache isa CFIEBlockSystemCache{T}
+        _all_k_nosymm_CFIE_chebyshev!(As,pts,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    else
+        _all_k_symm_CFIE_chebyshev!(As,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    end
     return nothing
 end
 
-function compute_kernel_matrices_CFIE_kress_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
+function compute_kernel_matrices_CFIE_kress_chebyshev!(A::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},cache::Union{CFIEBlockSystemCache{T},CFIEKressReducedWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
+    if cache isa CFIEBlockSystemCache{T}
+        _one_k_nosymm_CFIE_chebyshev!(A,pts,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    else
+        _one_k_symm_CFIE_chebyshev!(A,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    end
     return nothing
 end
 
-function compute_kernel_matrices_CFIE_kress_chebyshev!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _all_k_nosymm_CFIE_chebyshev_deriv!(As,A1s,A2s,pts,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
+function compute_kernel_matrices_CFIE_kress_chebyshev!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},pts::Vector{BoundaryPointsCFIE{T}},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},plans2::Vector{ChebJPlan},plans3::Vector{ChebJPlan},h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},cache::Union{CFIEBlockSystemCache{T},CFIEKressReducedWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
+    if cache isa CFIEBlockSystemCache{T}
+        _all_k_nosymm_CFIE_chebyshev_deriv!(As,A1s,A2s,pts,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    else
+        _all_k_symm_CFIE_chebyshev_deriv!(As,A1s,A2s,plans0,plans1,plans2,plans3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    end
     return nothing
 end
 
-function compute_kernel_matrices_CFIE_kress_chebyshev!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},block_cache::CFIEBlockSystemCache{T};multithreaded::Bool=true) where {T<:Real}
-    _one_k_nosymm_CFIE_chebyshev_deriv!(A,A1,A2,pts,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,block_cache;multithreaded=multithreaded)
+function compute_kernel_matrices_CFIE_kress_chebyshev!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},pts::Vector{BoundaryPointsCFIE{T}},plan0::ChebHankelPlanH,plan1::ChebHankelPlanH,plan2::ChebJPlan,plan3::ChebJPlan,h0_tls::Vector{Vector{ComplexF64}},h1_tls::Vector{Vector{ComplexF64}},j0_tls::Vector{Vector{ComplexF64}},j1_tls::Vector{Vector{ComplexF64}},cache::Union{CFIEBlockSystemCache{T},CFIEKressReducedWorkspace{T}};multithreaded::Bool=true) where {T<:Real}
+   if cache isa CFIEBlockSystemCache{T}
+        _one_k_nosymm_CFIE_chebyshev_deriv!(A,A1,A2,pts,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    else
+        _one_k_symm_CFIE_chebyshev_deriv!(A,A1,A2,plan0,plan1,plan2,plan3,h0_tls,h1_tls,j0_tls,j1_tls,cache;multithreaded=multithreaded)
+    end
     return nothing
 end
 
@@ -1535,13 +1570,15 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver::
     @assert length(Tbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Block Caches" cache=isnothing(solver.symmetry) ? build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j) : build_CFIE_kress_reduced_workspace(solver,pts,solver.symmetry;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j)
+            rmin= cache isa CFIEBlockSystemCache ? cache.rmin : cache.block_cache.rmin
+            rmax= cache isa CFIEBlockSystemCache ? cache.rmax : cache.block_cache.rmax
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin,rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
             end
-            @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
+            @benchit timeit=timeit "CFIE_kress Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,cache;multithreaded=multithreaded)
         end
     else
         @error("Direct matrix construction is only for real k currently")
@@ -1611,15 +1648,17 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
     @assert length(ddTbufs)==Mk
     if use_chebyshev
         @blas_1 begin
-            @benchit timeit=timeit "CFIE_kress Block Caches" block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j)
-            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,block_cache.rmin,block_cache.rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
+            @benchit timeit=timeit "CFIE_kress Block Caches" cache=isnothing(solver.symmetry) ? build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j) : build_CFIE_kress_reduced_workspace(solver,pts,solver.symmetry;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j)
+            rmin= cache isa CFIEBlockSystemCache ? cache.rmin : cache.block_cache.rmin
+            rmax= cache isa CFIEBlockSystemCache ? cache.rmax : cache.block_cache.rmax
+            @benchit timeit=timeit "CFIE_kress Plans" plans0,plans1,plans2,plans3=build_CFIE_plans_kress(zj,rmin,rmax;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,nthreads=Threads.nthreads())
             @benchit timeit=timeit "CFIE_kress Workspace" ws=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
             @inbounds for j in eachindex(Tbufs)
                 fill!(Tbufs[j],0.0+0.0im)
                 fill!(dTbufs[j],0.0+0.0im)
                 fill!(ddTbufs[j],0.0+0.0im)
             end
-            @benchit timeit=timeit "CFIE_kress Derivatives Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,block_cache;multithreaded=multithreaded)
+            @benchit timeit=timeit "CFIE_kress Derivatives Chebyshev" compute_kernel_matrices_CFIE_kress_chebyshev!(Tbufs,dTbufs,ddTbufs,pts,plans0,plans1,plans2,plans3,ws.h0_tls,ws.h1_tls,ws.j0_tls,ws.j1_tls,cache;multithreaded=multithreaded)
         end
     else
         @error("Direct derivative matrix construction is only for real k currently")

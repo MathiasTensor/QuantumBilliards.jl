@@ -29,6 +29,12 @@ function boundary_matrix_size_for_solver(solver::Union{DLP_kress,DLP_kress_globa
     Ifund,_,_,_,_=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
     return length(Ifund)
 end
+function boundary_matrix_size_for_solver(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert},pts::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    return cfie_reduced_orbit_size(solver,pts)
+end
+function boundary_matrix_size_for_solver(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert},pts::BoundaryPointsCFIE{T}) where {T<:Real} 
+    return boundary_matrix_size_for_solver(solver,[pts])
+end
 
 """
 
