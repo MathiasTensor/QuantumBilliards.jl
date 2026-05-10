@@ -197,21 +197,25 @@ function beyn_buffer_matrices(::Type{T},N::Int64,r::Int64,rng::G) where {T<:Real
     return V,X,A0,A1
 end
 
-# Applies the projection onto the symmetry subspace defined by `symmetry` to the buffer matrix `V` in the case of CFIE_kress, where the boundary points are represented by `BoundaryPointsCFIE`.
-# This is necessary because CFIE_kress requires working with the full domain, and we need to ensure that the buffer matrix respects the symmetry of the problem.
+# Applies the projection onto the symmetry subspace defined by `symmetry` to the buffer matrix `V` in the case of CFIE_Alpert, where the boundary points are represented by `BoundaryPointsCFIE`.
+# This is necessary because CFIE_alpert requires working with the full domain, and we need to ensure that the buffer matrix respects the symmetry of the problem.
 #
 # Inputs:
-#   - solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert}: The solver instance which may contain symmetry information.
-#   - pts::Vector{BoundaryPointsCFIE{T}}: The boundary points for the CFIE_kress / alpert method, which may consist of multiple components (e.g., outer boundary and holes).
+#   - solver::CFIE_alpert: The solver instance which may contain symmetry information.
+#   - pts::Vector{BoundaryPointsCFIE{T}}: The boundary points for the CFIE_alpert method, which may consist of multiple components (e.g., outer boundary and holes).
 #   - V::Matrix{Complex{T}}: The buffer matrix to be projected.
 #   - W::Matrix{Complex{T}}: Buffer matrix.
 #
 # Output:
 #   - The function modifies `V` in-place to contain the projected values.
-function _CFIE_project_V_subspace!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert},pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
+function _CFIE_project_V_subspace!(solver::CFIE_alpert,pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     isnothing(solver.symmetry) && return V
     maps=build_symmetry_maps(pts,solver.symmetry)
     apply_projection!(V,W,maps,solver.symmetry)
+    return V
+end
+# Kress CFIE has desymm kernels
+function _CFIE_project_V_subspace!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPointsCFIE{T}},V::AbstractMatrix{Complex{T}},W::AbstractMatrix{Complex{T}}) where {T<:Real}
     return V
 end
 # This Kress implementation has proper kernel desymmetrization like standard BoundaryIntegralMethod

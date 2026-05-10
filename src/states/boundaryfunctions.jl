@@ -426,140 +426,157 @@ end
 #########################################################################################################
 
 #######################################################################
-########## Symmetrize layer potentials and boundary points ############
+########## Symmetrize layer densities and boundary points ############
 #######################################################################
 
 """
-    symmetrize_layer_potential(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints{T},billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    symmetrize_layer_density(solver::BoundaryIntegralMethod,layer_density::AbstractVector{N},pts::BoundaryPoints{T},billiard::Bi) -> Tuple{BoundaryPoints{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
-Expand a `BoundaryIntegralMethod` layer potential from the symmetry-reduced
+Expand a `BoundaryIntegralMethod` layer density from the symmetry-reduced
 boundary to the full boundary.
 """
-function symmetrize_layer_potential(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function symmetrize_layer_density(solver::BoundaryIntegralMethod,layer_density::AbstractVector{N},pts::BoundaryPoints{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     # naive DLP has method of images / irrep projections so it works with fundamental domains.
     # Therefore we need to apply the symmetries to the boundary points and the boundary function to get the full boundary function on the full boundary.
     pts=apply_symmetries_to_boundary_points(pts,solver.symmetry,billiard)
-    u=apply_symmetries_to_boundary_function(layer_pot,solver.symmetry)
+    u=apply_symmetries_to_boundary_function(layer_density,solver.symmetry)
     return pts,u
 end
 
 """
-    symmetrize_layer_potential(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{N}}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    symmetrize_layer_density(solver::BoundaryIntegralMethod,layer_density::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{N}}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
-Batch version of `symmetrize_layer_potential` for `BoundaryIntegralMethod`.
+Batch version of `symmetrize_layer_density` for `BoundaryIntegralMethod`.
 """
-function symmetrize_layer_potential(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function symmetrize_layer_density(solver::BoundaryIntegralMethod,layer_density::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     us_all=Vector{Vector{N}}(undef,length(pts))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
         pts_all[i]=apply_symmetries_to_boundary_points(pts[i],solver.symmetry,billiard)
-        us_all[i]=apply_symmetries_to_boundary_function(layer_pot[i],solver.symmetry)
+        us_all[i]=apply_symmetries_to_boundary_function(layer_density[i],solver.symmetry)
     end
     return pts_all,us_all
 end
 
 """
-    symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) -> Tuple{BoundaryPointsCFIE{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    symmetrize_layer_density(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) -> Tuple{BoundaryPointsCFIE{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
-Symmetrize a DLP-Kress layer potential defined on a CFIE boundary component to the full boundary.
+Symmetrize a DLP-Kress layer density defined on a CFIE boundary component to the full boundary.
 The symmetry is applied to the boundary function but not to the boundary points since the CFIE boundary points are already defined on the full boundary. 
-The layer potential is constructed on the domain desymmetrized with `fundamental_indices`, so only they should be symmetrized.
+The layer density is constructed on the domain desymmetrized with `fundamental_indices`, so only they should be symmetrized.
 """
-function symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    isnothing(solver.symmetry) && return pts,layer_pot
+function symmetrize_layer_density(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    isnothing(solver.symmetry) && return pts,layer_density
     Ifund,full_to_fund,full_to_scale,_,_=symmetry_index_orbits(T,pts,solver.symmetry,billiard)
-    @assert length(layer_pot)==length(Ifund)
+    @assert length(layer_density)==length(Ifund)
     u_full=Vector{promote_type(N,Complex{T})}(undef,length(pts.xy))
     @inbounds for q in eachindex(pts.xy)
         a=full_to_fund[q]
         s=full_to_scale[q]
-        u_full[q]=s*layer_pot[a]
+        u_full[q]=s*layer_density[a]
     end
     return pts,u_full
 end
 
 """
-    symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPointsCFIE{T}},billiard::Bi;multithreaded::Bool=true) -> Tuple{Vector{BoundaryPointsCFIE{T}}, Vector{Vector{N}}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    symmetrize_layer_density(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPointsCFIE{T}},billiard::Bi;multithreaded::Bool=true) -> Tuple{Vector{BoundaryPointsCFIE{T}}, Vector{Vector{N}}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
-Batch version of `symmetrize_layer_potential` for DLP-Kress on CFIE boundaries.
+Batch version of `symmetrize_layer_density` for DLP-Kress on CFIE boundaries.
 """
-function symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPointsCFIE{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function symmetrize_layer_density(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPointsCFIE{T}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     us_all=Vector{Vector{N}}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
-        pts_all[i],us_all[i]=symmetrize_layer_potential(solver,layer_pot[i],pts[i],billiard)
+        pts_all[i],us_all[i]=symmetrize_layer_density(solver,layer_density[i],pts[i],billiard)
     end
     return pts_all,us_all
 end
 
 """
-    symmetrize_layer_potential(solver::Union{DLP_kress,DLP_kress_global_corners,CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_pot,pts,billiard::Bi) -> Tuple{typeof(pts), typeof(layer_pot)} where {Bi<:AbsBilliard}
+    symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{N},pts::Union{BoundaryPointsCFIE{T},Vector{<:BoundaryPointsCFIE{T}}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
-No-op symmetrization for full-boundary Kress/CFIE discretizations. The return is the same as input.
+Expand a symmetry-reduced CFIE layer density to the full boundary.
+If `solver.symmetry === nothing`, this is a no-op.
 """
-function symmetrize_layer_potential(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_pot,pts,billiard::Bi) where {Bi<:AbsBilliard}
-    # boundary is always full due to Kress splitting, therefore there is no symmetrization that needs to be done
-    return pts,layer_pot
+function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{N},pts::Union{BoundaryPointsCFIE{T},Vector{<:BoundaryPointsCFIE{T}}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    isnothing(solver.symmetry) && return pts,layer_density
+    pts_full=apply_symmetries_to_boundary_points(pts,solver.symmetry,billiard)
+    layer_density=apply_symmetries_to_boundary_function(layer_density,pts,solver.symmetry)
+    return pts_full,layer_density
+end
+
+"""
+     symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector,billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
+
+Bactched version of `symmetrize_layer_density` for CFIE solvers.
+"""
+function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector,billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
+    pts_all=Vector{Any}(undef,length(pts))
+    us_all=Vector{Any}(undef,length(layer_density))
+    @use_threads multithreading=multithreaded for i in eachindex(layer_density)
+        pts_all[i],us_all[i]=symmetrize_layer_density(solver,layer_density[i],pts[i],billiard)
+    end
+    return pts_all,us_all
 end
 
 #######################################################################
 
 """
-    boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints{T},k::T,billiard::Bi,) -> Tuple{BoundaryPoints{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    boundary_function(solver::BoundaryIntegralMethod,layer_density::AbstractVector{N},pts::BoundaryPoints{T},k::T,billiard::Bi,) -> Tuple{BoundaryPoints{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
 Normalize a `BoundaryIntegralMethod` boundary density by the Rellich norm.
-This is called after symmetrization of the layer potential, so the input `layer_pot` is already defined on the full boundary. 
+This is called after symmetrization of the layer density, so the input `layer_density` is already defined on the full boundary. 
 """
-function boundary_function(solver::BoundaryIntegralMethod,layer_pot::AbstractVector{N},pts::BoundaryPoints,k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    nrlz=_rellich(pts,layer_pot,k)
-    return pts,layer_pot./sqrt(nrlz)
+function boundary_function(solver::BoundaryIntegralMethod,layer_density::AbstractVector{N},pts::BoundaryPoints,k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    nrlz=_rellich(pts,layer_density,k)
+    return pts,layer_density./sqrt(nrlz)
 end
 
 """
-    boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{N}}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    boundary_function(solver::BoundaryIntegralMethod,layer_density::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) -> Tuple{Vector{BoundaryPoints{T}}, Vector{Vector{N}}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
 Batch Rellich-normalization for `BoundaryIntegralMethod` boundary densities.
-This is called after symmetrization of the layer potential, so the input `layer_pot` is already defined on the full boundary. 
+This is called after symmetrization of the layer density, so the input `layer_density` is already defined on the full boundary. 
 """
-function boundary_function(solver::BoundaryIntegralMethod,layer_pot::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::BoundaryIntegralMethod,layer_density::Vector{<:AbstractVector{N}},pts::Vector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     us_all=Vector{Vector{N}}(undef,length(pts))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
         pts_all[i]=pts[i]
-        nrlz=_rellich(pts[i],layer_pot[i],ks[i])
-        us_all[i]=layer_pot[i]./sqrt(nrlz)
+        nrlz=_rellich(pts[i],layer_density[i],ks[i])
+        us_all[i]=layer_density[i]./sqrt(nrlz)
     end
     return pts_all,us_all
 end
 
 """
-    boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi,k::T) -> Tuple{BoundaryPointsCFIE{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi,k::T) -> Tuple{BoundaryPointsCFIE{T}, Vector{N}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
 Return the Rellich-normalized DLP-Kress boundary function on a full boundary. 
-This is called after symmetrization of the layer potential, so the input `layer_pot` is already defined on the full boundary. 
+This is called after symmetrization of the layer density, so the input `layer_density` is already defined on the full boundary. 
 """
-function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{N},pts::BoundaryPointsCFIE{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     # the outer boundary is always concatenated to a single struct since no holes, so no need for batch overload
     # normalize with Rellich
-    nrlz=_rellich(pts,layer_pot,k)
-    return pts,layer_pot./sqrt(nrlz)
+    nrlz=_rellich(pts,layer_density,k)
+    return pts,layer_density./sqrt(nrlz)
 end
 
 """
-    boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) -> Tuple{Vector{typeof(pts[1])}, Vector{typeof(layer_pot[1])}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) -> Tuple{Vector{typeof(pts[1])}, Vector{typeof(layer_density[1])}} where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
 Batch Rellich-normalization for DLP-Kress boundary functions.
-This is called after symmetrization of the layer potential, so the input `layer_pot` is already defined on the full boundary. 
+This is called after symmetrization of the layer density, so the input `layer_density` is already defined on the full boundary. 
 """
-function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard,T<:Real}
+function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPointsCFIE},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard,T<:Real}
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
-    layer_pot_all=Vector{typeof(layer_pot[1])}(undef,length(pts))
+    layer_density_all=Vector{typeof(layer_density[1])}(undef,length(pts))
     @use_threads multithreading=multithreaded for i in eachindex(pts)
         pts_all[i]=pts[i]
-        nrlz=_rellich(pts[i],layer_pot[i],ks[i])
-        layer_pot_all[i]=layer_pot[i]./sqrt(nrlz)
+        nrlz=_rellich(pts[i],layer_density[i],ks[i])
+        layer_density_all[i]=layer_density[i]./sqrt(nrlz)
     end
-    return pts_all,layer_pot_all
+    return pts_all,layer_density_all
 end
 
 ####################################################################################################
@@ -798,7 +815,7 @@ end
 #
 # Mathematical meaning:
 # The hypersingular operator N is the normal derivative of the double-layer
-# potential taken on the boundary. Direct evaluation is difficult because its
+# density taken on the boundary. Direct evaluation is difficult because its
 # kernel is strongly singular. Maue's identity rewrites it in the regularized
 # form
 #
@@ -864,7 +881,7 @@ function hypersingular_maue_kress(solver::Union{CFIE_kress,CFIE_kress_corners,CF
     return vcat(out_parts...)
 end
 
-# boundary_function_hypersingular_part(solver, layer_pot, comps, ws, k)
+# boundary_function_hypersingular_part(solver, layer_density, comps, ws, k)
 #
 # Return the hypersingular part of the recovered physical boundary function for
 # the periodic CFIE-Kress family.
@@ -894,20 +911,20 @@ end
 # assemble the full identity
 #
 #     ∂_n ψ = -Nμ - i k (-1/2 I + K') μ
-function boundary_function_hypersingular_part(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
-    return hypersingular_maue_kress(solver,layer_pot,comps,ws,k)
+function boundary_function_hypersingular_part(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T) where {T<:Real}
+    return hypersingular_maue_kress(solver,layer_density,comps,ws,k)
 end
 
-# boundary_function_hypersingular_part(solver, layer_pot, comps, k)
+# boundary_function_hypersingular_part(solver, layer_density, comps, k)
 #
 # Convenience wrapper for `boundary_function_hypersingular_part` that builds the
 # CFIE-Kress workspace internally.
 #
 # Use this form when the hypersingular part is needed only once. For repeated
 # evaluations at the same discretization, the workspace-taking overload is more efficient
-function boundary_function_hypersingular_part(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},k::T) where {T<:Real}
+function boundary_function_hypersingular_part(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{Complex{T}},comps::Vector{BoundaryPointsCFIE{T}},k::T) where {T<:Real}
     ws=build_cfie_kress_workspace(solver,comps)
-    return boundary_function_hypersingular_part(solver,layer_pot,comps,ws,k)
+    return boundary_function_hypersingular_part(solver,layer_density,comps,ws,k)
 end
 
 # construct_cfie_kress_dlp_matrix!(solver, D, pts, Rmat, Gs, parr, offs, k; multithreaded=true)
@@ -1098,7 +1115,7 @@ function adjoint_K_action_from_dlp_matrix(D::AbstractMatrix{Complex{T}},μ::Abst
     return v
 end
 
-# cfie_kress_adjoint_K_action(solver, layer_pot, pts, ws, k; multithreaded=true)
+# cfie_kress_adjoint_K_action(solver, layer_density, pts, ws, k; multithreaded=true)
 #
 # Compute the adjoint double-layer action K'μ needed in the CFIE boundary
 # function recovery formula for the periodic Kress family.
@@ -1126,26 +1143,26 @@ end
 # Notes:
 # This function does not include the jump term `-μ/2`; it returns only the K'
 # part. The jump is inserted later in `boundary_function`.
-function cfie_kress_adjoint_K_action(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function cfie_kress_adjoint_K_action(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     Ntot=ws.Ntot
-    length(layer_pot)==Ntot || error("layer_pot length mismatch in cfie_kress_adjoint_K_action")
+    length(layer_density)==Ntot || error("layer_density length mismatch in cfie_kress_adjoint_K_action")
     D=Matrix{Complex{T}}(undef,Ntot,Ntot)
     construct_cfie_kress_dlp_matrix!(solver,D,pts,ws,k;multithreaded=multithreaded)
     ds=flatten_cfie_ds(pts)
-    return adjoint_K_action_from_dlp_matrix(D,layer_pot,ds)
+    return adjoint_K_action_from_dlp_matrix(D,layer_density,ds)
 end
 
-# cfie_kress_adjoint_K_action(solver, layer_pot, pts, k; multithreaded=true)
+# cfie_kress_adjoint_K_action(solver, layer_density, pts, k; multithreaded=true)
 #
 # Convenience wrapper for `cfie_kress_adjoint_K_action` that builds the
 # CFIE-Kress workspace internally. Useful when need only one application of adjoint K'.
-function cfie_kress_adjoint_K_action(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function cfie_kress_adjoint_K_action(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_cfie_kress_workspace(solver,pts)
-    return cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
+    return cfie_kress_adjoint_K_action(solver,layer_density,pts,ws,k;multithreaded=multithreaded)
 end
 
 """
-    boundary_function(solver, layer_pot, pts, ws, k; multithreaded=true)
+    boundary_function(solver, layer_density, pts, ws, k; multithreaded=true)
 
 Construct the Dirichlet boundary function
 
@@ -1157,8 +1174,8 @@ In this implementation the reconstructed wavefunction is represented as
     ψ = -(D + i k S) μ,
 
 where:
-- `D` is the double-layer potential,
-- `S` is the single-layer potential,
+- `D` is the double-layer,
+- `S` is the single-layer,
 - `μ` is the CFIE layer density.
 
 Taking the interior normal derivative gives
@@ -1196,7 +1213,7 @@ we obtain
 Inputs
 ------
 - `solver`: One of the periodic CFIE-Kress solvers, with or without corners.
-- `layer_pot`: Global CFIE density μ.
+- `layer_density`: Global CFIE density μ.
 - `pts`: Boundary discretization (one `BoundaryPointsCFIE` per connected component).
 - `ws`: Precomputed CFIE Kress workspace.
 - `k`: Wavenumber.
@@ -1204,40 +1221,40 @@ Inputs
 Output
 -------
     - `pts::Vector{BoundaryPointsCFIE{T}}`: the input boundary discretization, returned for convenience.
-    - `u ≈ ∂_n ψ ::Vector{Complex{T}}` at all boundary nodes, in the same ordering as `layer_pot`.
+    - `u ≈ ∂_n ψ ::Vector{Complex{T}}` at all boundary nodes, in the same ordering as `layer_density`.
 """
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    Nμ=hypersingular_maue_kress(solver,layer_pot,pts,ws,k)
-    Kpμ=cfie_kress_adjoint_K_action(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
-    u= -2*Nμ-Complex{T}(0,k).*(layer_pot+Kpμ)
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    Nμ=hypersingular_maue_kress(solver,layer_density,pts,ws,k)
+    Kpμ=cfie_kress_adjoint_K_action(solver,layer_density,pts,ws,k;multithreaded=multithreaded)
+    u= -2*Nμ-Complex{T}(0,k).*(layer_density+Kpμ)
     nrlz=_rellich(pts,u,k)
     return pts,u./sqrt(nrlz)
 end
 
 """
-    boundary_function(solver, layer_pot, pts, k; multithreaded=true)
+    boundary_function(solver, layer_density, pts, k; multithreaded=true)
 
 Recover the physical boundary function ∂_n ψ from the CFIE layer density,
 building the CFIE-Kress workspace internally.
 
-This is a convenience wrapper around `boundary_function(solver, layer_pot, pts, ws, k)`.
+This is a convenience wrapper around `boundary_function(solver, layer_density, pts, ws, k)`.
 """
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},billiard::Bi,k::T;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},billiard::Bi,k::T;multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     ws=build_cfie_kress_workspace(solver,pts)
-    return boundary_function(solver,layer_pot,pts,ws,k;multithreaded=multithreaded)
+    return boundary_function(solver,layer_density,pts,ws,k;multithreaded=multithreaded)
 end
 
 """
-    boundary_function(solver, layer_pot, pts, ks; multithreaded=true)
+    boundary_function(solver, layer_density, pts, ks; multithreaded=true)
 
 Recover the physical boundary function ∂_n ψ for multiple wavenumbers, building the CFIE-Kress workspace internally for each.
-This is a convenience wrapper around `boundary_function(solver, layer_pot, pts, ws, k)` that loops over multiple wavenumbers. The output is a vector of boundary functions, one per wavenumber.
+This is a convenience wrapper around `boundary_function(solver, layer_density, pts, ws, k)` that loops over multiple wavenumbers. The output is a vector of boundary functions, one per wavenumber.
 """
-function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_pot::AbstractVector{<:AbstractVector{Complex{T}}},pts::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},layer_density::AbstractVector{<:AbstractVector{Complex{T}}},pts::AbstractVector{<:AbstractVector{BoundaryPointsCFIE{T}}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     us=Vector{Vector{Complex{T}}}(undef,length(pts))
     for i in eachindex(ks)
         ws=build_cfie_kress_workspace(solver,pts[i])
-        _,u=boundary_function(solver,layer_pot[i],pts[i],ws,ks[i];multithreaded=multithreaded)
+        _,u=boundary_function(solver,layer_density[i],pts[i],ws,ks[i];multithreaded=multithreaded)
         us[i]=u
     end
     return pts,us

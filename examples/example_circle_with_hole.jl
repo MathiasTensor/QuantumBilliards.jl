@@ -79,7 +79,7 @@ println()
 
 # Formal consistency step. For full-boundary Kress/CFIE discretizations this is
 # a no-op, but it keeps the postprocessing pipeline identical to other solvers.
-@time "symmetrize layer potential" pts_all,us=symmetrize_layer_potential(
+@time "symmetrize layer density" pts_all,us=symmetrize_layer_density(
     solver,         # CFIE/DLP-style solver
     us,             # Beyn boundary densities
     pts_all,        # boundary discretizations from Beyn

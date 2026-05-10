@@ -148,7 +148,7 @@ println()
 # extra boundary-function object here.
 
 # normalize with Rellich (normal derivative route not implemented due to corners!)
-@time "symmetrize layer potential" pts_all,us_all=symmetrize_layer_potential(solver,us_all,pts_all,billiard)
+@time "symmetrize layer density" pts_all,us_all=symmetrize_layer_density(solver,us_all,pts_all,billiard)
 
 # do first 20 of them
 ks=ks_all[1:20]
@@ -158,7 +158,7 @@ pts_all=pts_all[1:20]
 Psi2ds,x_grid,y_grid=wavefunction_multi(
     solver,
     ks,                    # eigenvalues k for all states to be reconstructed
-    us,                    # layer potentials corresponding to each state
+    us,                    # layer densities corresponding to each state
     pts_all,               # boundary discretizations for each state (typically Vector{BoundaryPointsCFIE})
     billiard;              # billiard geometry used to build the common plotting grid and inside-mask
     b=5.0,                 # grid-density scaling: larger b -> finer x/y plotting grid

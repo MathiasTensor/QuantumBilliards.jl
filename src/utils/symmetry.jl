@@ -770,6 +770,54 @@ function build_symmetry_maps(pts::BoundaryPointsCFIE{T},sym;tol::T=T(1e-10)) whe
     build_symmetry_maps([pts],sym;tol=tol)
 end
 
+# helper function to build the inverse mapping from global CFIE matrix indices
+# to (component index, local index) pairs.
+#
+# The global CFIE unknown ordering concatenates all boundary components:
+#
+#   [comp₁ nodes ; comp₂ nodes ; ... ; comp_nc nodes]
+#
+# so component c occupies:
+#
+#   offs[c] : offs[c+1]-1
+#
+# with offs = component_offsets(comps).
+#
+# This helper precomputes the inverse lookup so that any global index g can be
+# resolved in O(1):
+#
+#   g -> (component, local index)
+#
+# which is needed for symmetry-reduced assembly, where an orbit map may send a
+# fundamental source node onto an arbitrary global boundary node that may lie on
+# a different connected component (including holes).
+#
+# Returns:
+#   g2c[g] = component index containing global node g
+#   g2l[g] = local node index within that component
+#
+# so that:
+#
+#   global index g == offs[g2c[g]] + g2l[g] - 1
+#
+# Construction cost is O(N), lookup cost is O(1).
+function global_to_component_local(comps::Vector{BoundaryPointsCFIE{T}}) where {T<:Real}
+    offs=component_offsets(comps)
+    N=offs[end]-1
+    g2c=Vector{Int}(undef,N)
+    g2l=Vector{Int}(undef,N)
+    @inbounds for c in 1:length(comps)
+        o=offs[c]
+        n=length(comps[c].xy)
+        for j in 1:n
+            g=o+j-1
+            g2c[g]=c
+            g2l[g]=j
+        end
+    end
+    return g2c,g2l
+end
+
 # apply_projection!
 # Apply the symmetry projector to a block of vectors `V`, writing through a
 # workspace `W` and copying the projected result back into `V`.

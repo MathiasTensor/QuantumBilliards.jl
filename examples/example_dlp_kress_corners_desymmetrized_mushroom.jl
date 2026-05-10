@@ -148,17 +148,17 @@ ks_bim=real.(ks_bim)
 # First solve the adjoint problem to get the u(s) on the fundamental domain.
 # Evaluate the layer potential at any point in the billiard to get the wavefunction ψ(x,y).
 # Project via symmetry in a given irrep onto the full boundary the u(s).
-@time "layer potential DLP Kress" us_all_dlp_kress,pts_all_dlp_kress=solve_vect(solver_dlp_kress,billiard,AbstractHankelBasis(),ks_dlp_kress)
-@time "symmetrize layer potential DLP Kress" pts_all_dlp_kress,us_all_dlp_kress=symmetrize_layer_potential(solver_dlp_kress,us_all_dlp_kress,pts_all_dlp_kress,billiard)
+@time "layer density DLP Kress" us_all_dlp_kress,pts_all_dlp_kress=solve_vect(solver_dlp_kress,billiard,AbstractHankelBasis(),ks_dlp_kress)
+@time "symmetrize layer density DLP Kress" pts_all_dlp_kress,us_all_dlp_kress=symmetrize_layer_density(solver_dlp_kress,us_all_dlp_kress,pts_all_dlp_kress,billiard)
 @time "boundary function construction DLP Kress" pts_bdry_dlp_kress,u_bdry_dlp_kress=boundary_function(solver_dlp_kress,us_all_dlp_kress,pts_all_dlp_kress,billiard,ks_dlp_kress)
 
-@time "layer potential BIM" us_all_bim,pts_all_bim=solve_vect(solver_bim,billiard,AbstractHankelBasis(),ks_bim)
-@time "symmetrize layer potential BIM" pts_all_bim,us_all_bim=symmetrize_layer_potential(solver_bim,us_all_bim,pts_all_bim,billiard)
+@time "layer density BIM" us_all_bim,pts_all_bim=solve_vect(solver_bim,billiard,AbstractHankelBasis(),ks_bim)
+@time "symmetrize layer density BIM" pts_all_bim,us_all_bim=symmetrize_layer_density(solver_bim,us_all_bim,pts_all_bim,billiard)
 @time "boundary function construction BIM" pts_bdry_bim,u_bdry_bim=boundary_function(solver_bim,us_all_bim,pts_all_bim,billiard,ks_bim)
 
 
 
-# Reconstruct real-space wavefunctions from boundary layer potentials.
+# Reconstruct real-space wavefunctions from boundary layer densities.
 #
 # inside_only=false:
 #   evaluate also outside the billiard

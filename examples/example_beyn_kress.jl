@@ -206,22 +206,22 @@ println()
 
 # the actual boundary function / normal derivative for the DLP / BoundaryIntegralMethod is u(s) = ∂_n ψ(s), 
 # which is what we need to construct the Husimis and also the physical boundary function for plotting. 
-# The layer potential returned by Beyn is μ, which is the density of the DLP or CFIE layer potential, 
+# The layer density returned by Beyn is μ, which is the density of the DLP or CFIE layer potential, 
 # so we need to actuall calculate the adjoint kernel smallest singular vectors to get the physical 
 # boundary function u(s) = ∂_n ψ(s) for the DLP / BoundaryIntegralMethod. This is done by first symmetrizing
-# the layer potential and then applying the rellich norm via boundary_function.
+# the layer density and then applying the rellich norm via boundary_function.
 
 # !!! NOTE: Remove for the case of CFIE since we dont use the adjoint kernel but rather use the normal derivative directly
 # It will give correct results if left here but it is just redundant
-@time "layer potential" us_all,pts_all=solve_vect(solver,billiard,AbstractHankelBasis(),ks)
-@time "symmetrize layer potential" pts_all,us_all=symmetrize_layer_potential(solver,us_all,pts_all,billiard)
+@time "layer density" us_all,pts_all=solve_vect(solver,billiard,AbstractHankelBasis(),ks)
+@time "symmetrize layer density" pts_all,us_all=symmetrize_layer_density(solver,us_all,pts_all,billiard)
 @time "boundary function construction" pts_bdry,u_bdry=boundary_function(solver,us_all,pts_all,billiard,ks)
 
 # Now construct interior wavefunction matrices ψ(x,y) on one common plotting grid.
 Psi2ds,x_grid,y_grid=wavefunction_multi(
     solver,                # dispatches differently based on solver type
     ks,                    # eigenvalues k for all states to be reconstructed
-    u_bdry,                # layer potentials / CFIE densities corresponding to each state
+    u_bdry,                # layer densities corresponding to each state
     pts_bdry,               # boundary discretizations for each state
     billiard;              # billiard geometry used to build the common plotting grid and inside-mask
     b=b,                   # grid-density scaling: larger b -> finer x/y plotting grid
@@ -242,7 +242,7 @@ Psi2ds,x_grid,y_grid=wavefunction_multi(
 # Husimi helper should handle the boundary data returned by the smooth workflow.
 Hs_list,ps_list,qs_list=husimi_functions_from_us_and_boundary_points(
     ks,          # eigenvalues k for labeling and scaling the Husimis
-    u_bdry,      # vector of physical boundary functions u(s) for each state (not layer potentials!)
+    u_bdry,      # vector of physical boundary functions u(s) for each state (not layer densities!)
     pts_bdry,      # corresponding arclength coordinates for each u(s)
     500,         # number of pts on s grid
     500;         # number of pts on p grid

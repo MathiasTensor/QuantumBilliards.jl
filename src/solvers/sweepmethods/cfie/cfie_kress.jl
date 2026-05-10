@@ -630,11 +630,11 @@ function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_cor
 end
 
 """
-    solve_vect(solver, basis, A, pts, k, Rmat; multithreaded=true)
-    solve_vect(solver, basis, A, pts, ws, k; multithreaded=true)
-    solve_vect(solver, basis, pts, ws, k; multithreaded=true)
-    solve_vect(solver, billiard, basis, pts, k; multithreaded=true)
-    solve_vect(solver, billiard, basis, ks::Vector; multithreaded=true)
+    solve_vect(solver, basis, A, pts, k, Rmat; multithreaded=true, tol=1e-12, maxiter=2000, krylovdim=40)
+    solve_vect(solver, basis, A, pts, ws, k; multithreaded=true, tol=1e-12, maxiter=2000, krylovdim=40)
+    solve_vect(solver, basis, pts, ws, k; multithreaded=true, tol=1e-12, maxiter=2000, krylovdim=40)
+    solve_vect(solver, billiard, basis, pts, k; multithreaded=true, tol=1e-12, maxiter=2000, krylovdim=40)
+    solve_vect(solver, billiard, basis, ks::Vector; multithreaded=true, tol=1e-12, maxiter=2000, krylovdim=40)
 
 Compute the smallest singular value of the CFIE-Kress matrix together with the
 corresponding right singular vector.
@@ -676,14 +676,22 @@ Overloads
 
 # Arguments
 - `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`
-- `basis::AbsBasis`
-- `A::AbstractMatrix{Complex{T}}`
-- `pts::Vector{BoundaryPointsCFIE{T}}`
-- `ws::CFIEKressWorkspace{T}`
-- `Rmat::AbstractMatrix{T}`
-- `k`
-- `ks::Vector{T}`
-- `multithreaded::Bool=true`
+- `basis::AbsBasis` : placeholder `AbstractHankelBasis()`
+- `A::AbstractMatrix{Complex{T}}` : preallocated matrix for assembly;
+- `pts::Vector{BoundaryPointsCFIE{T}}` : boundary discretization;
+  the geometry caches used for assembly will be built from this if not provided
+- `ws::CFIEKressWorkspace{T}` : prebuilt workspace containing geometry caches and `Rmat`;
+  if this is not provided, it will be built from `pts` (see `build_cfie_kress_workspace`)
+- `Rmat::AbstractMatrix{T}` : Kress matrix built from `pts` (see `build_Rmat_kress`)
+- `k` : wavenumber for the single-`k` forms
+- `ks::Vector{T}` : vector of wavenumbers for the batched form
+- `multithreaded::Bool=true` : whether to use multithreading for assembly;
+- `tol=1e-12` : tolerance for convergence of the Krylov solver;
+  ignored if `use_krylov=false`
+- `maxiter=2000`: maximum number of iterations for the Krylov solver;
+  ignored if `use_krylov=false`
+- `krylovdim=40`: dimension of the Krylov subspace used for approximating the smallest singular value;
+  ignored if `use_krylov=false`
 
 # Returns
 Single-`k` forms:
@@ -698,53 +706,41 @@ Vector-of-`k` form:
 - `pts_all`:
   discretizations used at each `k`
 """
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     A=Matrix{Complex{T}}(undef,Ntot,Ntot)
     @blas_1 Rmat=build_Rmat_kress(solver,pts)
     @blas_1 construct_matrices!(solver,A,pts,Rmat,k;multithreaded=multithreaded)
-    @blas_multi_then_1 MAX_BLAS_THREADS _,S,Vt=LAPACK.gesvd!('A','A',A)
-    idx=findmin(S)[2]
-    mu=S[idx]
-    u_mu=conj.(Vt[idx,:])
-    return mu,u_mu
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
     pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks[1])}}}(undef,length(ks))
     for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded)
+        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
         us_all[i]=u
         pts_all[i]=pts
     end
