@@ -1485,40 +1485,36 @@ end
     return T(imag(_cheb_clenshaw(P.c,t)))
 end
 
-#    CFIEWavefunctionChebPlan{T}
+#    CFIEWavefunctionChebPlan
 #
 # Chebyshev interpolation plan for CFIE wavefunction reconstruction.
 #
 # Stores one piecewise-Chebyshev plan for H₀^(1)(k r) and one for
 # H₁^(1)(k r) on the same radial interval. The plans are used only for
 # postprocessing/eigenfunction plotting, not for solving the boundary problem.
-struct CFIEWavefunctionChebPlan{T<:Real}
+struct CFIEWavefunctionChebPlan
     h0::ChebHankelPlanH
     h1::ChebHankelPlanH
-    rmin::T
-    rmax::T
 end
 
-#    _eval_h0h1_cfie_cheb(pl::CFIEWavefunctionChebPlan{T}, r::T)
+#    _eval_h0h1_cfie_cheb(pl::CFIEWavefunctionChebPlan,r::T)
 #
 # Evaluate (H₀^(1)(k r), H₁^(1)(k r)) using the CFIE wavefunction Chebyshev plan.
 # If r lies outside the interpolation interval, the function falls back to direct
 # special-function evaluation, with the small-argument Hankel series used near
 # k*r = 0. The H₀ and H₁ plans have identical radial panelization.
-@inline function _eval_h0h1_cfie_cheb(pl::CFIEWavefunctionChebPlan{T},r::T) where {T<:Real}
+@inline function _eval_h0h1_cfie_cheb(pl::CFIEWavefunctionChebPlan,r::T) where {T<:Real}
+    k=pl.h0.k
     rf=Float64(r)
-    if rf<pl.h0.rmin || rf>pl.h0.rmax
-        z=ComplexF64(pl.h0.k)*rf
-        if abs(z)<hankel_z_chebyshev_cutoff_small_z
-            return _small_h0_series(z),_small_h1_series(z)
-        else
-            return SpecialFunctions.besselh(0,1,z),SpecialFunctions.besselh(1,1,z)
-        end
+    z=ComplexF64(k)*rf
+    az=abs(z)
+    if az<hankel_z_chebyshev_cutoff_small_z
+        return _small_h0_series(z),_small_h1_series(z)
+    elseif az<hankel_z_chebyshev_cutoff || rf<pl.h0.rmin || rf>pl.h0.rmax
+        return SpecialFunctions.besselh(0,1,z),SpecialFunctions.besselh(1,1,z)
     end
-    pidx=_find_panel(pl.h0,rf)
+    pidx=Int32(_find_panel(pl.h0,rf))
     P=pl.h0.panels[pidx]
     t=(2*rf-(P.b+P.a))/(P.b-P.a)
-    h0=_cheb_clenshaw(P.c,t)
-    h1=_cheb_clenshaw(pl.h1.panels[pidx].c,t)
-    return h0,h1
+    return _cheb_clenshaw(P.c,t),_cheb_clenshaw(pl.h1.panels[pidx].c,t)
 end

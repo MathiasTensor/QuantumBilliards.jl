@@ -166,7 +166,7 @@ Constructs a sequence of 2D wavefunctions as matrices over the same sized grid f
 - `x_grid::Vector{T}`: Vector of x-coordinates for the grid.
 - `y_grid::Vector{T}`: Vector of y-coordinates for the grid.
 """
-function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-12,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
+function wavefunction_multi(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,VerginiSaraceno},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:Union{BoundaryPoints{T},BoundaryPointsCFIE{T}}},billiard::Bi;b::Union{Float64,Symbol}=:auto,inside_only::Bool=true,fundamental=true,MIN_CHUNK=4096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb=1e-8,cheb_verbose=true) where {Bi<:AbsBilliard,T<:Real}
     k_max,idx_max=findmax(ks)
     typ=T
     L=billiard.length
@@ -282,7 +282,7 @@ struct CFIEWavefunctionCache{T<:Real}
 end
 
 """
-    build_cfie_wavefunction_cheb_plan(k, cache, x_grid, y_grid; npanels=256, M=16, rmin_factor=0.7, rmax_pad=1.1)
+    build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=3000,M::Int=5,rmin_factor::T=T(0.85),rmax_pad::T=T(1.1)) where {T<:Real}
 
 Build the Chebyshev interpolation plan used during CFIE wavefunction
 postprocessing.
@@ -318,18 +318,14 @@ the plotting grid and the boundary nodes.
 - `CFIEWavefunctionChebPlan{T}`:
   A pair of Chebyshev Hankel plans for `H₀` and `H₁`.
 """
-function build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=256,M::Int=16,rmin_factor::T=T(0.7),rmax_pad::T=T(1.1)) where {T<:Real}
-    hx=length(x_grid)>1 ? abs(x_grid[2]-x_grid[1]) : one(T)
-    hy=length(y_grid)>1 ? abs(y_grid[2]-y_grid[1]) : one(T)
-    hgrid=min(hx,hy) # plotting-grid resolution
-    hbdry=cache.hmin # boundary-node arc spacing
-    rmin=max(rmin_factor*min(hgrid,hbdry),T(1e-12))
+function build_cfie_wavefunction_cheb_plan(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};npanels::Int=3000,M::Int=5,rmin_factor::T=T(0.85),rmax_pad::T=T(1.1)) where {T<:Real}
     dx=maximum(x_grid)-minimum(x_grid)
     dy=maximum(y_grid)-minimum(y_grid)
     rmax=rmax_pad*hypot(dx,dy)
+    rmin=max(rmin_factor*cache.hmin,T(hankel_z_chebyshev_cutoff)/k,T(1e-12))
     h0=plan_h(0,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M)
     h1=plan_h(1,1,Float64(k),Float64(rmin),Float64(rmax);npanels=npanels,M=M)
-    return CFIEWavefunctionChebPlan{T}(h0,h1,T(rmin),T(rmax))
+    return CFIEWavefunctionChebPlan(h0,h1)
 end
 
 """
@@ -393,20 +389,19 @@ plotting job.
 - `max_err1`:
   Final maximum interpolation error for `H₁`.
 """
-function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=15_000,M_init::Int=5,tol::Real=1e-12,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.5),rmax_pad::T=T(1.01),verbose::Bool=false) where {T<:Real}
-    hbdry=cache.hmin
-    rmin=max(rmin_factor*hbdry,T(1e-12))
+function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::AbstractVector{T},y_grid::AbstractVector{T};n_panels_init::Int=3000,M_init::Int=5,tol::Real=1e-8,sampling_points::Int=20_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,rmin_factor::T=T(0.85),rmax_pad::T=T(1.1),verbose::Bool=false) where {T<:Real}
     dx=maximum(x_grid)-minimum(x_grid)
     dy=maximum(y_grid)-minimum(y_grid)
     rmax=rmax_pad*hypot(dx,dy)
     rmin_cheb=T(hankel_z_chebyshev_cutoff)/abs(k)
-    rmin_interp=max(Float64(rmin),Float64(rmin_cheb))
-    @info "Estimated CFIE wavefunction Chebyshev radial bounds" rmin rmax rmin_cheb rmin_interp
-    rs=collect(range(Float64(rmin_interp),Float64(rmax);length=sampling_points))
+    rmin=max(rmin_factor*cache.hmin,rmin_cheb,T(1e-12))
+    rmin_interp=Float64(rmin)
+    @info "Estimated CFIE wavefunction Chebyshev radial bounds" hmin=cache.hmin rmin rmax rmin_cheb rmin_interp
+    rs=collect(range(rmin_interp,Float64(rmax);length=sampling_points))
     n_panels=n_panels_init
     M=M_init
-    plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
-    plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
+    plan0=plan_h(0,1,Float64(k),rmin_interp,Float64(rmax);npanels=n_panels,M=M)
+    plan1=plan_h(1,1,Float64(k),rmin_interp,Float64(rmax);npanels=n_panels,M=M)
     approx0=Vector{ComplexF64}(undef,sampling_points)
     approx1=Vector{ComplexF64}(undef,sampling_points)
     exact0=Vector{ComplexF64}(undef,sampling_points)
@@ -414,18 +409,15 @@ function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::Abst
     max_err0=Inf
     max_err1=Inf
     for it in 1:max_iter
-        plan0=plan_h(0,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
-        plan1=plan_h(1,1,Float64(k),Float64(rmin_interp),Float64(rmax);npanels=n_panels,M=M)
+        plan0=plan_h(0,1,Float64(k),rmin_interp,Float64(rmax);npanels=n_panels,M=M)
+        plan1=plan_h(1,1,Float64(k),rmin_interp,Float64(rmax);npanels=n_panels,M=M)
         Threads.@threads for i in eachindex(rs)
             r=rs[i]
-            p0=_find_panel(plan0,r)
-            P0=plan0.panels[p0]
-            t0=(2*r-(P0.b+P0.a))/(P0.b-P0.a)
-            p1=_find_panel(plan1,r)
-            P1=plan1.panels[p1]
-            t1=(2*r-(P1.b+P1.a))/(P1.b-P1.a)
-            approx0[i]=eval_h(plan0,Int32(p0),t0,r)
-            approx1[i]=eval_h(plan1,Int32(p1),t1,r)
+            p=_find_panel(plan0,r)
+            P=plan0.panels[p]
+            t=(2*r-(P.b+P.a))/(P.b-P.a)
+            approx0[i]=eval_h(plan0,Int32(p),t,r)
+            approx1[i]=eval_h(plan1,Int32(p),t,r)
             z=ComplexF64(k)*r
             exact0[i]=SpecialFunctions.besselh(0,1,z)
             exact1[i]=SpecialFunctions.besselh(1,1,z)
@@ -439,14 +431,8 @@ function chebyshev_params_cfie(k::T,cache::CFIEWavefunctionCache{T},x_grid::Abst
             @info "Worst H0" r=rs[i0] z=ComplexF64(k)*rs[i0] err=abs(approx0[i0]-exact0[i0])
             @info "Worst H1" r=rs[i1] z=ComplexF64(k)*rs[i1] err=abs(approx1[i1]-exact1[i1])
         end
-        if max_err0<tol && max_err1<tol
-            return n_panels,M,plan0,plan1,max_err0,max_err1
-        end
-        if it%5==0
-            M+=grow_M
-        else
-            n_panels=ceil(Int,grow_panels*n_panels)
-        end
+        max_err0<tol && max_err1<tol && return n_panels,M,plan0,plan1,max_err0,max_err1
+        it%5==0 ? (M+=grow_M) : (n_panels=ceil(Int,grow_panels*n_panels))
     end
     @warn "CFIE wavefunction Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort." max_err0 max_err1 n_panels M
     return n_panels,M,plan0,plan1,max_err0,max_err1
@@ -645,7 +631,11 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
     kmax,idx_max=findmax(ks)
     L=billiard.length
     b= b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
-    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
+    if fundamental
+        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
+    else
+        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
+    end
     dx=xlim[2]-xlim[1]
     dy=ylim[2]-ylim[1]
     nx=max(round(Int,kmax*dx*b/(2π)),512)
@@ -668,7 +658,7 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
     end
     cheb_plans=use_chebyshev ? Vector{CFIEWavefunctionChebPlan{T}}(undef,nstates) : fill(nothing,nstates)
     if use_chebyshev
-        cheb_npanels,cheb_M,plan1,max_err0,max_err1=chebyshev_params_cfie(kmax,caches[idx_max],x_grid,y_grid,verbose=cheb_verbose,tol=tol_cheb)
+        cheb_npanels,cheb_M,_,_,max_err0,max_err1=chebyshev_params_cfie(kmax,caches[idx_max],x_grid,y_grid;verbose=cheb_verbose,tol=tol_cheb)
         @inbounds for i in eachindex(ks)
             cheb_plans[i]=build_cfie_wavefunction_cheb_plan(ks[i],caches[i],x_grid,y_grid;npanels=cheb_npanels,M=cheb_M)
         end
