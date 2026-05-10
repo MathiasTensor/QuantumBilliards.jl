@@ -770,6 +770,36 @@ function build_symmetry_maps(pts::BoundaryPointsCFIE{T},sym;tol::T=T(1e-10)) whe
     build_symmetry_maps([pts],sym;tol=tol)
 end
 
+########## HELPERS FOR DETERMINING SYMMETRY ORBITS DURING ASSEMBLY ##########
+@inline _orbit_result(indices,scales)=(;indices=indices,scales=scales)
+
+function apply_symmetry_orbit_from_maps(maps::Dict{Symbol,Any},sym::Reflection,g::Int)
+    if sym.axis===:y_axis
+        return _orbit_result([g,maps[:x][g]],[1,sym.parity])
+    elseif sym.axis===:x_axis
+        return _orbit_result([g,maps[:y][g]],[1,sym.parity])
+    elseif sym.axis===:origin
+        σx,σy=sym.parity
+        return _orbit_result([g,maps[:x][g],maps[:y][g],maps[:xy][g]],[1,σx,σy,σx*σy])
+    else
+        error("Unknown reflection axis $(sym.axis)")
+    end
+end
+
+function apply_symmetry_orbit_from_maps(maps::Dict{Symbol,Any},sym::Rotation,g::Int)
+    rotmaps=maps[:rot]
+    χ=maps[:χ]
+    n=sym.n
+    inds=Vector{Int}(undef,n)
+    scales=Vector{eltype(χ)}(undef,n)
+    @inbounds for l in 1:n
+        inds[l]=rotmaps[l][g]
+        scales[l]=χ[l]
+    end
+    return _orbit_result(inds,scales)
+end
+################################################################################
+
 # helper function to build the inverse mapping from global CFIE matrix indices
 # to (component index, local index) pairs.
 #
