@@ -34,8 +34,8 @@ if which_solver==:beyn # (benchmark Beyn vs Vergini Saraceno, really similar per
     k1,                              # lower scan bound
     k2;                              # upper scan bound
     m=100,                           # target number of levels per planned window
-    Rmax=0.7,                        # cap on contour radius
-    nq=45,                           # number of contour nodes per disk
+    Rmax=0.5,                        # cap on contour radius
+    nq=40,                           # number of contour nodes per disk
     r=150,                           # Beyn probe rank / number of random test vectors
     svd_tol=1e-12,                   # SVD rank-detection threshold
     res_tol=1e-9,                    # residual tolerance for filtering roots

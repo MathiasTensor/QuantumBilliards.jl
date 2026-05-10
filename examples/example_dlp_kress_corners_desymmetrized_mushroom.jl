@@ -65,10 +65,6 @@ multithreaded_matrix=true
 # Direct Hankel evaluations become expensive, so we interpolate
 # the radial dependence using piecewise Chebyshev expansions.
 use_chebyshev=true
-# Initial number of radial panels
-n_panels_init=15000
-# Initial polynomial degree per panel
-M_init=5
 # Run one representative diagnostic solve before the full run
 # Useful to inspect interpolation quality and timings.
 do_INFO_init=true
@@ -107,9 +103,6 @@ ks_dlp_kress,tens_dlp_kress,us_all_dlp_kress,pts_all_dlp_kress,tensN_dlp_kress=c
     multithreaded_matrix=multithreaded_matrix,
     # enable Chebyshev Hankel interpolation
     use_chebyshev=use_chebyshev,
-    # initial interpolation parameters
-    n_panels_init=n_panels_init,
-    M_init=M_init,
     # diagnostics
     do_INFO_init=do_INFO_init,
     # interpolation target accuracy
@@ -130,8 +123,6 @@ ks_bim,tens_bim,us_all_bim,pts_all_bim,tensN_bim=compute_spectrum_beyn(
     auto_discard_spurious=auto_discard_spurious,
     multithreaded_matrix=multithreaded_matrix,
     use_chebyshev=use_chebyshev,
-    n_panels_init=n_panels_init,
-    M_init=M_init,
     do_INFO_init=do_INFO_init,
     cheb_tol=cheb_tol,
     return_imag_part=return_imag_part)

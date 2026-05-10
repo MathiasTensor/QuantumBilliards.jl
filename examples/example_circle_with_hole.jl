@@ -53,14 +53,11 @@ ks,tens,us,pts_all,tensN=compute_spectrum_beyn(
     auto_discard_spurious=true,     # discard high-residual candidates
     multithreaded_matrix=true,      # threaded matrix assembly
     use_chebyshev=true,             # use Chebyshev Hankel acceleration
-    n_panels_init=15000,            # initial Chebyshev radial panels
-    M_init=5,                       # initial Chebyshev degree
     do_INFO_init=true,              # one diagnostic representative disk
     do_per_solve_INFO=false,        # avoid verbose per-disk diagnostics
     cheb_tol=1e-13,                 # Chebyshev tuning tolerance
     max_iter=20,                    # maximum Chebyshev tuning iterations
     sampling_points=50_000,         # samples for Chebyshev tuning
-    grading=:uniform,               # radial panel grading
     grow_panels=1.5,                # panel growth factor
     grow_M=2,                       # degree growth factor
 )

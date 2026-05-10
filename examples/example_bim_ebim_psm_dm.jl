@@ -142,13 +142,10 @@ if method==:ebim_bim || method==:ebim_dlp_kress
         seg_reuse_frac=0.95,             # reuse one boundary discretization for a segment of nearby k values before rebuilding it
         solve_info=true,                 # print one detailed diagnostic INFO solve at the start of the EBIM run
         use_chebyshev=true,              # build derivative matrices with Chebyshev-accelerated Hankel evaluation instead of the direct pathway - since in demo ks are small there is no need
-        n_panels=15000,                  # initial number of Chebyshev radial panels used for special-function interpolation
-        M=5,                             # Chebyshev polynomial degree on each radial panel
         cheb_param_strategy=:global,     # choose one Chebyshev panelization from the largest k in the interval and reuse it for all segments
         cheb_tol=1e-13,                  # target tolerance used when auto-tuning Chebyshev interpolation parameters
         max_iter=20,                     # maximum number of refinement rounds when tuning Chebyshev parameters
         sampling_points=50_000,          # number of sample radii used to assess Chebyshev interpolation accuracy
-        grading=:uniform,                # panel spacing strategy in radius; :uniform is simplest and robust for this example
         grow_panels=1.5,                 # multiplicative growth factor when the tuning loop decides more panels are needed
         grow_M=2,                        # multiplicative growth factor when the tuning loop decides higher Chebyshev degree is needed
         verbose_cheb_panelization=false  # keep the Chebyshev tuning output quiet except for the main solve diagnostics

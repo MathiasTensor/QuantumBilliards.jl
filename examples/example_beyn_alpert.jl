@@ -116,14 +116,11 @@ ks_all,tens_all,us_all,pts_all,tensN=compute_spectrum_beyn(
     auto_discard_spurious=true, # whether to drop roots whose residual ||A(k)φ|| is too large
     multithreaded_matrix=true,  # whether boundary matrix assembly should use multithreading
     use_chebyshev=true,      # whether to use Chebyshev-accelerated Hankel evaluation for complex k
-    n_panels_init=15000,     # initial number of Chebyshev radial panels before optional tuning
-    M_init=5,                # initial Chebyshev polynomial degree before optional tuning
     do_INFO_init=true,       # whether to run one diagnostic solve_INFO on a representative disk
     do_per_solve_INFO=false, # whether to print timing / diagnostics during every solve
     cheb_tol=1e-13,          # tolerance used when tuning Chebyshev interpolation parameters
     max_iter=20,             # maximum number of refinement iterations in Chebyshev tuning
     sampling_points=50_000,  # number of sample points used when estimating Chebyshev accuracy
-    grading=:uniform,        # panel grading strategy for Chebyshev interpolation (:uniform or :geometric) 
     grow_panels=1.5,         # multiplicative growth factor when increasing the number of Chebyshev panels
     grow_M=2,                # multiplicative growth factor when increasing the Chebyshev degree
 )

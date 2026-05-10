@@ -28,8 +28,8 @@ k2_t=20.0
     k1,                              # lower scan bound
     k2;                              # upper scan bound
     m=100,                           # target number of levels per planned window
-    Rmax=0.7,                        # cap on contour radius
-    nq=45,                           # number of contour nodes per disk
+    Rmax=0.5,                        # cap on contour radius
+    nq=40,                           # number of contour nodes per disk
     r=150,                           # Beyn probe rank / number of random test vectors
     svd_tol=1e-12,                   # SVD rank-detection threshold
     res_tol=1e-9,                    # residual tolerance for filtering roots
@@ -90,8 +90,6 @@ save("DM_test_sweep.png",f)
     # better would be to make this one have a fixed numver of eigenvalues per interval, say 3-4
     use_krylov=true,
     use_chebyshev=false,
-    n_panels=15000,
-    M=5,
     cheb_tol=1e-13,
     multithreaded_matrices=true,
 )

@@ -127,14 +127,11 @@ function run_beyn(
     auto_discard_spurious=true, # whether to drop roots whose residual ||A(k)φ|| is too large
     multithreaded_matrix=true,  # whether boundary matrix assembly should use multithreading
     use_chebyshev=true,      # whether to use Chebyshev-accelerated Hankel evaluation for complex k
-    n_panels_init=15000,     # initial number of Chebyshev radial panels before optional tuning
-    M_init=5,                # initial Chebyshev polynomial degree before optional tuning
     do_INFO_init=true,       # whether to run one diagnostic solve_INFO on a representative disk
     do_per_solve_INFO=false, # whether to print timing / diagnostics during every solve
     cheb_tol=1e-13,          # tolerance used when tuning Chebyshev interpolation parameters
     max_iter=20,             # maximum number of refinement iterations in Chebyshev tuning
     sampling_points=50_000,  # number of sample points used when estimating Chebyshev accuracy
-    grading=:uniform,        # panel grading strategy for Chebyshev interpolation (:uniform or :geometric)
     grow_panels=1.5,         # multiplicative growth factor when increasing the number of Chebyshev panels
     grow_M=2,                # multiplicative growth factor when increasing the Chebyshev degree
 )
@@ -158,14 +155,11 @@ function run_beyn(
         auto_discard_spurious=auto_discard_spurious, # whether to remove large-residual roots
         multithreaded_matrix=multithreaded_matrix,   # matrix assembly threading flag
         use_chebyshev=use_chebyshev,     # use Chebyshev Hankel interpolation for complex contour evals
-        n_panels_init=n_panels_init,     # initial Chebyshev panel count
-        M_init=M_init,                   # initial Chebyshev degree
         do_INFO_init=do_INFO_init,       # run one representative diagnostic solve
         do_per_solve_INFO=do_per_solve_INFO, # verbose timings / diagnostics for every window
         cheb_tol=cheb_tol,               # Chebyshev tuning accuracy target
         max_iter=max_iter,               # max tuning iterations for Chebyshev parameters
         sampling_points=sampling_points, # sample count used in Chebyshev parameter selection
-        grading=grading,                 # panel grading strategy
         grow_panels=grow_panels,         # panel-count growth factor in Chebyshev tuning
         grow_M=grow_M                    # polynomial-degree growth factor in Chebyshev tuning
     )
@@ -192,8 +186,6 @@ ks,tens,us,pts_all,tensN=run_beyn(
     auto_discard_spurious=true,
     multithreaded_matrix=true,
     use_chebyshev=true,
-    n_panels_init=15000,
-    M_init=5,
     do_INFO_init=true,
     do_per_solve_INFO=false
 )
