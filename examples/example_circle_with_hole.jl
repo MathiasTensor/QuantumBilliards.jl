@@ -56,10 +56,6 @@ ks,tens,us,pts_all,tensN=compute_spectrum_beyn(
     do_INFO_init=true,              # one diagnostic representative disk
     do_per_solve_INFO=false,        # avoid verbose per-disk diagnostics
     cheb_tol=1e-13,                 # Chebyshev tuning tolerance
-    max_iter=20,                    # maximum Chebyshev tuning iterations
-    sampling_points=50_000,         # samples for Chebyshev tuning
-    grow_panels=1.5,                # panel growth factor
-    grow_M=2,                       # degree growth factor
 )
 
 println()

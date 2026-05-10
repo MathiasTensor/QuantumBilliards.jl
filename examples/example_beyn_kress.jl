@@ -211,8 +211,6 @@ println()
 # boundary function u(s) = ∂_n ψ(s) for the DLP / BoundaryIntegralMethod. This is done by first symmetrizing
 # the layer density and then applying the rellich norm via boundary_function.
 
-# !!! NOTE: Remove for the case of CFIE since we dont use the adjoint kernel but rather use the normal derivative directly
-# It will give correct results if left here but it is just redundant
 @time "layer density" us_all,pts_all=solve_vect(solver,billiard,AbstractHankelBasis(),ks)
 @time "symmetrize layer density" pts_all,us_all=symmetrize_layer_density(solver,us_all,pts_all,billiard)
 @time "boundary function construction" pts_bdry,u_bdry=boundary_function(solver,us_all,pts_all,billiard,ks)
@@ -285,7 +283,7 @@ figs=plot_wavefunctions_with_husimi(
 # for each closed boundary component)
 
 for (i,fig) in enumerate(figs)
-    save("wavefunctions_husimi_$(geometry)_$(nameof(typeof(solver))).png",fig)
+    save("wavefunctions_husimi_$(geometry)_$(nameof(typeof(solver)))_$(i).png",fig)
 end
 
 println("Done.")

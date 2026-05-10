@@ -107,10 +107,10 @@ ks_all,tens_all,us_all,pts_all,tensN=compute_spectrum_beyn(
     billiard,        # billiard geometry on which Weyl windows / collocation are built
     k1,              # left endpoint of the wavenumber interval to scan
     k2;              # right endpoint of the wavenumber interval to scan
-    m=50,                    # target number of eigenvalues per Weyl-planned contour window
-    Rmax=0.7,                # maximum contour radius; each planned window has half-width ≤ Rmax
-    nq=45,                   # number of trapezoidal quadrature nodes on each circular contour
-    r=100,                  # Beyn probe rank; should exceed expected number of roots in one window
+    m=100,                    # target number of eigenvalues per Weyl-planned contour window
+    Rmax=0.5,                # maximum contour radius; each planned window has half-width ≤ Rmax
+    nq=40,                   # number of trapezoidal quadrature nodes on each circular contour
+    r=120,                  # Beyn probe rank; should exceed expected number of roots in one window
     svd_tol=1e-12,           # singular-value cutoff used to detect the numerical rank of A0
     res_tol=1e-9,            # residual threshold for discarding spurious roots after contour solve
     auto_discard_spurious=true, # whether to drop roots whose residual ||A(k)φ|| is too large
@@ -119,10 +119,6 @@ ks_all,tens_all,us_all,pts_all,tensN=compute_spectrum_beyn(
     do_INFO_init=true,       # whether to run one diagnostic solve_INFO on a representative disk
     do_per_solve_INFO=false, # whether to print timing / diagnostics during every solve
     cheb_tol=1e-13,          # tolerance used when tuning Chebyshev interpolation parameters
-    max_iter=20,             # maximum number of refinement iterations in Chebyshev tuning
-    sampling_points=50_000,  # number of sample points used when estimating Chebyshev accuracy
-    grow_panels=1.5,         # multiplicative growth factor when increasing the number of Chebyshev panels
-    grow_M=2,                # multiplicative growth factor when increasing the Chebyshev degree
 )
 
 println("Running CFIE_alpert Beyn on $(nameof(typeof(billiard))) ...")
@@ -165,7 +161,6 @@ Psi2ds,x_grid,y_grid=wavefunction_multi(
     inside_only=true,      # evaluate ψ only at points inside the billiard; outside stays zero ->  for checking correctness 
     fundamental=false,     # if true use the fundamental-domain mask/limits, otherwise use the full billiard
     MIN_CHUNK=4096,        # minimum number of interior grid points assigned per thread chunk
-    float32_bessel=false   # if true use Float32 Bessel/Hankel evaluation inside ϕ_cfie for speed/memory
 )
 
 # Psi2ds = Vector of 2D wavefunction matrices, one per state
@@ -197,6 +192,6 @@ figs=plot_wavefunctions(
 )
 
 # figs = collection (e.g. Vector) of Makie Figure objects containing the plotted wavefunctions
-save("alpert_wavefunctions_$(geometry).png",figs[1])
+save("alpert_wavefunctions_$(geometry)_$(nameof(typeof(solver)))_$(i).png",figs[1])
 
 println("Done.")
