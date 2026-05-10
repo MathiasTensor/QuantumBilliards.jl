@@ -482,7 +482,7 @@ function flatten_cfie_wavefunction_cache(comps::Vector{BoundaryPointsCFIE{T}}) w
 end
 
 """
-    ϕ_cfie(xp::T, yp::T, k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false,use_chebyshev::Bool=false,cheb::Union{CFIEWavefunctionChebPlan{T},Nothing}=nothing) where {T<:Real} -> Complex{T}
+    ϕ_cfie(xp::T, yp::T, k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false,use_chebyshev::Bool=false,cheb::Union{CFIEWavefunctionChebPlan,Nothing}=nothing) where {T<:Real} -> Complex{T}
 
 Evaluate the CFIE reconstructed wavefunction at point `(xp, yp)` from a
 flattened boundary cache and boundary density `u`.
@@ -501,11 +501,11 @@ where
 - `u::AbstractVector{Complex{T}}`      : complex boundary density, same ordering as flattening
 - `float32_bessel::Bool`     : evaluate Hankels in Float32 and cast back
 - `use_chebyshev::Bool`      : use Chebyshev interpolation evaluation for Hankel functions
-- `cheb::Union{CFIEWavefunctionChebPlan{T},Nothing}` : precomputed Chebyshev plan for Hankel evaluation, required if `use_chebyshev=true`
+- `cheb::Union{CFIEWavefunctionChebPlan,Nothing}` : precomputed Chebyshev plan for Hankel evaluation, required if `use_chebyshev=true`
 # Returns
 - `Complex{T}`: the reconstructed wavefunction value at (xp, yp)
 """
-@inline function ϕ_cfie(xp::T,yp::T,k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false,use_chebyshev::Bool=false,cheb::Union{CFIEWavefunctionChebPlan{T},Nothing}=nothing) where {T<:Real}
+@inline function ϕ_cfie(xp::T,yp::T,k::T,cache::CFIEWavefunctionCache{T},u::AbstractVector{Complex{T}};float32_bessel::Bool=false,use_chebyshev::Bool=false,cheb::Union{CFIEWavefunctionChebPlan,Nothing}=nothing) where {T<:Real}
     x=cache.x
     y=cache.y
     tx=cache.tx
@@ -656,7 +656,7 @@ function wavefunction_multi(solver::Union{CFIE_kress,CFIE_alpert,CFIE_kress_corn
     @inbounds for i in 1:nstates
         caches[i]=flatten_cfie_wavefunction_cache(vec_comps[i])
     end
-    cheb_plans=use_chebyshev ? Vector{CFIEWavefunctionChebPlan{T}}(undef,nstates) : fill(nothing,nstates)
+    cheb_plans=use_chebyshev ? Vector{CFIEWavefunctionChebPlan}(undef,nstates) : fill(nothing,nstates)
     if use_chebyshev
         cheb_npanels,cheb_M,_,_,max_err0,max_err1=chebyshev_params_cfie(kmax,caches[idx_max],x_grid,y_grid;verbose=cheb_verbose,tol=tol_cheb)
         @inbounds for i in eachindex(ks)
