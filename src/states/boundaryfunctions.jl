@@ -511,8 +511,8 @@ end
 Bactched version of `symmetrize_layer_density` for CFIE solvers.
 """
 function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector,billiard::Bi;multithreaded::Bool=true) where {N<:Number,Bi<:AbsBilliard}
-    pts_all=Vector{Any}(undef,length(pts))
-    us_all=Vector{Any}(undef,length(layer_density))
+    pts_all=Vector{typeof(pts[1])}(undef,length(pts))
+    us_all=Vector{Vector{N}}(undef,length(layer_density))
     @use_threads multithreading=multithreaded for i in eachindex(layer_density)
         pts_all[i],us_all[i]=symmetrize_layer_density(solver,layer_density[i],pts[i],billiard)
     end
