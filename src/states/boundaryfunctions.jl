@@ -498,13 +498,15 @@ If `solver.symmetry === nothing`, this is a no-op.
 """
 function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners,CFIE_alpert},layer_density::AbstractVector{N},pts::Union{BoundaryPointsCFIE{T},Vector{<:BoundaryPointsCFIE{T}}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     isnothing(solver.symmetry) && return pts,layer_density
-    comps=pts isa BoundaryPointsCFIE ? [pts] : pts
-    Nfull=boundary_matrix_size(comps)
-    # solve_vect direct CFIE path already returns full-boundary density
-    length(layer_density)==Nfull && return pts,layer_density
-    # only reduced densities need expansion
-    layer_density=apply_symmetries_to_boundary_function(layer_density,pts,solver.symmetry)
-    return pts,layer_density
+    comps= pts isa BoundaryPointsCFIE ? BoundaryPointsCFIE{T}[pts] : collect(pts)
+    ws=build_cfie_kress_workspace(solver,comps)
+    !(length(layer_density)==ws.Nred) && @error "CFIE density length mismatch: got $(length(layer_density)), expected reduced $(ws.Nred)"
+     S=promote_type(N,Complex{T})
+    μfull=Vector{S}(undef,ws.Ntot)
+    @inbounds for g in 1:ws.Ntot
+        μfull[g]=ws.full_to_scale[g]*layer_density[ws.full_to_fund[g]]
+    end
+    return pts,μfull
 end
 
 """
