@@ -1948,26 +1948,6 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,
     return solve_vect(solver,basis,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
-    kref=maximum(ks)
-    pts=evaluate_points(solver,billiard,kref)
-    ws=build_dlp_kress_workspace(solver,pts)
-    n=_workspace_dim(ws)
-    A=Matrix{Complex{T}}(undef,n,n)
-    D=similar(A)
-    us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
-    pts_all=Vector{BoundaryPointsCFIE{T}}(undef,length(ks))
-    p=Progress(length(ks),desc="Adjoint DLP boundary functions...")
-    @showprogress "solve_vect DLP Kress" for i in eachindex(ks)
-        @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,ks[i];multithreaded=multithreaded)
-        _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
-        us_all[i]=u
-        pts_all[i]=pts
-        next!(p)
-    end
-    return us_all,pts_all
-end
-
 ###############################################
 
 # INTERNAL - for checking allocation patterns and execution time of the single-k solve variants. Not intended for public use.

@@ -1146,3 +1146,168 @@ end
 ########################################
 ########### SOLVE VECT BATCH ###########
 ########################################
+
+# helpers for chebyshwev solve_vect since we dont want to use the direct construction variants for adjoint fredholm construction. A bit hacky but it is what it is
+function adjoint_fredholm_matrix_from_dlp_chebyshev!(A::AbstractMatrix{ComplexF64},D::AbstractMatrix{ComplexF64},pts::BoundaryPointsCFIE{T},ws::DLPKressWorkspace{T}) where {T<:Real}
+    N=ws.N
+    ds=pts.ds
+    fill!(A,0.0+0.0im)
+    @inbounds for j in 1:N, i in 1:N
+        A[i,j]=-D[j,i]*ds[j]/ds[i]
+    end
+    @inbounds for i in 1:N
+        A[i,i]+=1.0+0.0im
+    end
+    return A
+end
+
+function adjoint_fredholm_matrix_from_dlp_chebyshev!(A::AbstractMatrix{ComplexF64},D::AbstractMatrix{ComplexF64},pts::BoundaryPointsCFIE{T},ws::DLPKressReducedWorkspace{T}) where {T<:Real}
+    m=ws.m
+    Ifund=ws.Ifund
+    ds=pts.ds
+    fill!(A,0.0+0.0im)
+    @inbounds for b in 1:m, a in 1:m
+        i=Ifund[a]
+        j=Ifund[b]
+        A[a,b]=-D[b,a]*ds[j]/ds[i]
+    end
+    @inbounds for a in 1:m
+        A[a,a]+=1.0+0.0im
+    end
+    return A
+end
+
+"""
+    solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},
+               billiard::Bi,
+               basis::Ba,
+               ks::Vector{T};
+               batch_size::Int=40,
+               multithreaded::Bool=true,
+               use_chebyshev::Bool=true,
+               cheb_tol::Real=1e-12,
+               npanels_h_init::Int=15_000,
+               M_h_init::Int=5,
+               npanels_j_init::Int=3_000,
+               M_j_init::Int=5,
+               sampling_points::Int=50_000,
+               max_iter::Int=20,
+               grow_panels::Real=1.5,
+               grow_M::Int=2,
+               cheb_verbose::Bool=false,
+               tol=1e-12,
+               maxiter::Int=2000,
+               krylovdim::Int=40)
+
+Compute DLP-Kress boundary densities for several wavenumbers `ks` by solving the
+adjoint Fredholm null-vector problem in batches.
+
+For each batch of wavenumbers, a single boundary discretization is constructed
+at
+
+    kmax = maximum(kbatch),
+
+and reused for all `k` in that batch. This avoids rebuilding boundary points for
+every eigenvalue while keeping the discretization fine enough for the largest
+wavenumber in the batch.
+
+For the DLP representation, the physical boundary function needed for
+wavefunction / Husimi reconstruction is obtained from the adjoint Fredholm
+operator
+
+    A_adj(k) = I - D(k)'_W,
+
+where the weighted adjoint is formed using the boundary quadrature weights,
+
+    D'_W = W^{-1} D(k)^T W.
+
+The returned vectors are the smallest right singular vectors of this adjoint
+Fredholm matrix.
+
+If `use_chebyshev=true`, the DLP kernel matrices `D(k)` are first assembled for
+all `k` in the batch using Chebyshev-interpolated evaluations of `H₁^(1)(kr)`
+and `J₁(kr)`. The adjoint Fredholm matrices are then formed from these already
+assembled DLP matrices.
+
+If `use_chebyshev=false`, each adjoint Fredholm matrix is assembled directly by
+the standard non-Chebyshev DLP-Kress route.
+
+Symmetry
+--------
+If `solver.symmetry !== nothing`, the DLP-Kress workspace is symmetry-reduced.
+The returned density vectors then live on the reduced/fundamental boundary
+degrees of freedom. They should be expanded later by `symmetrize_layer_density`
+before full-boundary reconstruction.
+
+Keyword arguments
+-----------------
+- `batch_size`:
+  Number of wavenumbers processed with one common discretization and, in the
+  Chebyshev path, one set of interpolation plans.
+
+- `multithreaded`:
+  Enables threaded matrix assembly.
+
+- `use_chebyshev`:
+  If `true`, use the Chebyshev-accelerated DLP-Kress assembly for each batch.
+
+- `cheb_tol`, `npanels_h_init`, `M_h_init`, `npanels_j_init`, `M_j_init`,
+  `sampling_points`, `max_iter`, `grow_panels`, `grow_M`, `cheb_verbose`:
+  Parameters forwarded to `chebyshev_params`, which tunes the Hankel/Bessel
+  interpolation plans for the current batch.
+
+- `tol`, `maxiter`, `krylovdim`:
+  Parameters forwarded to `smallest_nullvec_krylov!`.
+
+Returns
+-------
+- `us_all::Vector{Vector{ComplexF64}}`:
+  One adjoint-Fredholm null vector per wavenumber.
+
+- `pts_all::Vector{BoundaryPointsCFIE{T}}`:
+  Boundary discretization used for each returned density. Entries may repeat
+  within a batch because all states in the same batch share one `pts`.
+"""
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
+    Nk=length(ks)
+    us_all=Vector{Vector{ComplexF64}}(undef,Nk)
+    pts_all=Vector{BoundaryPointsCFIE{T}}(undef,Nk)
+    nb=_nbatches(Nk,batch_size)
+    @showprogress "solve_vect DLP Kress" for ibatch in 1:nb
+        i1=_batch_first(ibatch,batch_size)
+        i2=_batch_last(ibatch,batch_size,Nk)
+        inds=i1:i2
+        kbatch=@view ks[inds]
+        kmax=maximum(kbatch)
+        pts=evaluate_points(solver,billiard,kmax)
+        if use_chebyshev
+            zj=ComplexF64.(kbatch)
+            nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1=chebyshev_params(solver,pts,zj;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=cheb_verbose)
+            directws=build_dlp_kress_workspace(solver,pts)
+            chebws=build_dlp_kress_h1_j1_cheb_workspace(solver,pts,directws,zj;npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj,plan_nthreads=Threads.nthreads(),ntls=Threads.nthreads())
+            n=_cheb_workspace_dim(chebws)
+            Ds=[Matrix{ComplexF64}(undef,n,n) for _ in eachindex(zj)]
+            A=Matrix{ComplexF64}(undef,n,n)
+            _construct_dlp_kress_matrices_chebyshev!(Ds,pts,chebws;multithreaded=multithreaded)
+            ws_adj=chebws.direct
+            for (jlocal,jglobal) in enumerate(inds)
+                adjoint_fredholm_matrix_from_dlp_chebyshev!(A,Ds[jlocal],pts,ws_adj)
+                _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+                us_all[jglobal]=ComplexF64.(u)
+                pts_all[jglobal]=pts
+            end
+        else
+            ws=build_dlp_kress_workspace(solver,pts)
+            n=_workspace_dim(ws)
+            A=Matrix{Complex{T}}(undef,n,n)
+            D=similar(A)
+            for jglobal in inds
+                adjoint_fredholm_matrix!(A,D,solver,pts,ws,ks[jglobal];multithreaded=multithreaded)
+                _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+                us_all[jglobal]=ComplexF64.(u)
+                pts_all[jglobal]=pts
+            end
+        end
+    end
+    return us_all,pts_all
+end
