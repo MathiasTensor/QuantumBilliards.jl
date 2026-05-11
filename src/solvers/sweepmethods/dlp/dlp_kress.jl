@@ -1958,7 +1958,7 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},billiard::
     us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
     pts_all=Vector{BoundaryPointsCFIE{T}}(undef,length(ks))
     p=Progress(length(ks),desc="Adjoint DLP boundary functions...")
-    for i in eachindex(ks)
+    @showprogress "solve_vect DLP Kress" for i in eachindex(ks)
         @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,ks[i];multithreaded=multithreaded)
         _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
         us_all[i]=u

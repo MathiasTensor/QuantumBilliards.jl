@@ -1194,7 +1194,7 @@ function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Ve
     us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
     pts_all=Vector{BoundaryPoints{T}}(undef,length(ks))
     p=Progress(length(ks),desc="Adjoint BIM boundary functions...")
-    for i in eachindex(ks)
+    @showprogress "solve_vect BoundaryIntegralMethod" for i in eachindex(ks)
         @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[i];multithreaded=multithreaded)
         _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
         us_all[i]=u

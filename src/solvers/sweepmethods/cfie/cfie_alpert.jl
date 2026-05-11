@@ -1081,7 +1081,7 @@ For open panels, the near correction follows Barnett/Alpert logic:
   `abs(j-i) < rule.a`,
 - replace the skipped near-band contribution by Alpert correction nodes,
   scattered back through endpoint-aware interpolation weights.
-  
+
 # Returns
 - `A`, modified in place.
 """
@@ -1606,7 +1606,7 @@ end
 function solve_vect(solver::CFIE_alpert,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
     us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
     pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks[1])}}}(undef,length(ks))
-    for i in eachindex(ks)
+    @showprogress "solve_vect CFIE Alpert" for i in eachindex(ks)
         pts=evaluate_points(solver,billiard,ks[i])
         _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded)
         us_all[i]=u
