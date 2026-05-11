@@ -1187,23 +1187,6 @@ function solve_vect(solver::BoundaryIntegralMethod,basis::Ba,A::AbstractMatrix{C
     return σ,u
 end
 
-function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
-    kref=maximum(ks)
-    pts=evaluate_points(solver,billiard,kref)
-    N=length(pts.xy); A=Matrix{Complex{T}}(undef,N,N); D=similar(A)
-    us_all=Vector{Vector{Complex{T}}}(undef,length(ks))
-    pts_all=Vector{BoundaryPoints{T}}(undef,length(ks))
-    p=Progress(length(ks),desc="Adjoint BIM boundary functions...")
-    @showprogress "solve_vect BoundaryIntegralMethod" for i in eachindex(ks)
-        @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[i];multithreaded=multithreaded)
-        _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
-        us_all[i]=u
-        pts_all[i]=pts
-        next!(p)
-    end
-    return us_all,pts_all
-end
-
 # INTERNAL - only for testing performance of the solve workflow, not for actual use in the solver interface
 function solve_INFO(solver::BoundaryIntegralMethod,basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)

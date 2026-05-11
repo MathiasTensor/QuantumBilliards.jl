@@ -1496,3 +1496,120 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
     end
     return nothing
 end
+
+########################################
+########### SOLVE VECT BATCH ###########
+########################################
+
+"""
+    adjoint_fredholm_matrix_from_bim_chebyshev!(A,K,pts)
+
+Form the BIM adjoint Fredholm matrix from a raw Chebyshev-assembled DLP kernel.
+
+`K` is assumed to be the unweighted double-layer kernel matrix, before column
+multiplication by `pts.ds` and before adding the identity. The adjoint Fredholm
+matrix is assembled as
+
+    A[i,j] = -K[j,i] * ds[j],
+    A[i,i] += 1.
+
+This helper is intended only for the Chebyshev `solve_vect` route, where the raw
+kernel matrices are produced by `compute_kernel_matrices_DLP_chebyshev!`.
+"""
+function adjoint_fredholm_matrix_from_bim_chebyshev!(A::AbstractMatrix{ComplexF64},K::AbstractMatrix{ComplexF64},pts::BoundaryPoints{T}) where {T<:Real}
+    N=length(pts.xy)
+    ds=pts.ds
+    fill!(A,0.0+0.0im)
+    @inbounds for j in 1:N,i in 1:N
+        A[i,j]=-K[j,i]*ds[j]
+    end
+    @inbounds for i in 1:N
+        A[i,i]+=1.0+0.0im
+    end
+    return A
+end
+
+"""
+    solve_vect(solver::BoundaryIntegralMethod,billiard,basis,ks;
+               batch_size=40,
+               multithreaded=true,
+               use_chebyshev=true,
+               cheb_tol=1e-12,
+               npanels_h_init=15_000,
+               M_h_init=5,
+               sampling_points=50_000,
+               max_iter=20,
+               grow_panels=1.5,
+               grow_M=2,
+               cheb_verbose=false,
+               tol=1e-12,
+               maxiter=2000,
+               krylovdim=40)
+
+Compute BIM adjoint-Fredholm null vectors for several wavenumbers `ks`.
+
+The wavenumbers are processed in batches. For each batch, boundary points are
+constructed once at
+
+    kmax = maximum(kbatch),
+
+and reused for all states in that batch.
+
+If `use_chebyshev=true`, raw double-layer kernel matrices are assembled for all
+`k` in the batch using the scaled-Hankel Chebyshev route. Each raw kernel matrix
+is then converted to the adjoint Fredholm matrix
+
+    A_adj = I - K^*_W,
+
+implemented here as
+
+    A[i,j] = -K[j,i] * ds[j],
+    A[i,i] += 1.
+
+If `use_chebyshev=false`, the existing direct `adjoint_fredholm_matrix!` route
+is used.
+
+Returns
+-------
+- `us_all`: one adjoint null vector per wavenumber.
+- `pts_all`: boundary discretization used for each vector.
+"""
+function solve_vect(solver::BoundaryIntegralMethod,billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15_000,M_h_init::Int=5,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbstractHankelBasis,Bi<:AbsBilliard}
+    Nk=length(ks)
+    us_all=Vector{Vector{ComplexF64}}(undef,Nk)
+    pts_all=Vector{BoundaryPoints{T}}(undef,Nk)
+    nb=_nbatches(Nk,batch_size)
+    @showprogress "solve_vect BoundaryIntegralMethod" for ibatch in 1:nb
+        i1=_batch_first(ibatch,batch_size)
+        i2=_batch_last(ibatch,batch_size,Nk)
+        inds=i1:i2
+        kbatch=@view ks[inds]
+        kmax=maximum(kbatch)
+        pts=evaluate_points(solver,billiard,kmax)
+        N=length(pts.xy)
+        if use_chebyshev
+            zj=ComplexF64.(kbatch)
+            nh,Mh,_,_,plans,err=chebyshev_params(solver,pts,zj;npanels_h_init=npanels_h_init,M_h_init=M_h_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=cheb_verbose)
+            Ks=[Matrix{ComplexF64}(undef,N,N) for _ in eachindex(zj)]
+            A=Matrix{ComplexF64}(undef,N,N)
+            fill!.(Ks,0.0+0.0im)
+            compute_kernel_matrices_DLP_chebyshev!(Ks,pts,solver.symmetry,plans;multithreaded=multithreaded)
+            for (jlocal,jglobal) in enumerate(inds)
+                adjoint_fredholm_matrix_from_bim_chebyshev!(A,Ks[jlocal],pts)
+                _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+                us_all[jglobal]=ComplexF64.(u)
+                pts_all[jglobal]=pts
+            end
+        else
+            A=Matrix{Complex{T}}(undef,N,N)
+            D=similar(A)
+            for jglobal in inds
+                @blas_1 adjoint_fredholm_matrix!(A,D,pts,solver.symmetry,ks[jglobal];multithreaded=multithreaded)
+                _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+                us_all[jglobal]=ComplexF64.(u)
+                pts_all[jglobal]=pts
+            end
+        end
+    end
+    return us_all,pts_all
+end
