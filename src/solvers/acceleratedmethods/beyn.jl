@@ -667,8 +667,10 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
     do_INFO_init && @info "Weyl windows planned" intervals=intervals k0=k0 R=R
     nq<=15 && error("Do not use less than 15 contour nodes")
     all_pts=Vector{pts_type}(undef,length(k0))
-    @benchit timeit=do_per_solve_INFO "Point evaluation" for i in eachindex(k0)
-        all_pts[i]=evaluate_points(solver,billiard,real(k0[i]))
+    @benchit timeit=do_per_solve_INFO "Point evaluation" begin
+        @use_threads multithreading=true for i in eachindex(k0)
+            all_pts[i]=evaluate_points(solver,billiard,real(k0[i]))
+        end
     end
     λs=Vector{Vector{Complex{T}}}(undef,length(k0))
     Uks=Vector{Matrix{Complex{T}}}(undef,length(k0))
