@@ -165,3 +165,12 @@ function median(v::AbstractVector{T}) where {T<:Real}
         return (m1+m2)/2
     end
 end
+
+# Batch n objects into batches of size batch_size
+@inline function _nbatches(n::Int,batch_size::Int)
+    return cld(n,batch_size)
+end
+# Get the first index of the b-th batch
+@inline _batch_first(b::Int,batch_size::Int)=1+(b-1)*batch_size
+# Get the last index of the b-th batch, ensuring it does not exceed n
+@inline _batch_last(b::Int,batch_size::Int,n::Int)=min(b*batch_size,n)

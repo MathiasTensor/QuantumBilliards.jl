@@ -1528,3 +1528,181 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
     end
     return nothing
 end
+
+########################################
+########### SOLVE VECT BATCH ###########
+########################################
+
+"""
+    solve_vect(
+        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        billiard::Bi,
+        basis::Ba,
+        ks::Vector{T};
+        batch_size::Int=40,
+        multithreaded::Bool=true,
+        use_chebyshev::Bool=true,
+        cheb_tol::Real=1e-12,
+        npanels_h_init::Int=15_000,
+        M_h_init::Int=5,
+        npanels_j_init::Int=3_000,
+        M_j_init::Int=5,
+        sampling_points::Int=50_000,
+        max_iter::Int=20,
+        grow_panels::Real=1.5,
+        grow_M::Int=2,
+        cheb_verbose::Bool=false,
+        tol=1e-12,
+        maxiter::Int=2000,
+        krylovdim::Int=40,
+    ) -> (us_all, pts_all)
+
+Compute boundary singular vectors for a collection of real wavenumbers using
+the CFIE-Kress family of solvers.
+
+For each supplied wavenumber `k ∈ ks`, this constructs the CFIE
+Fredholm matrix
+
+    A(k) = I - ( D(k) + i k S(k) ),
+
+and computes its smallest right singular vector via
+`smallest_nullvec_krylov!`.
+
+This method is intended for post-processing workflows where one already has a
+collection of eigenvalues (for example from Beyn contour integration) and needs
+the corresponding boundary densities for wavefunction reconstruction, boundary
+function construction, or Husimi evaluation.
+
+To improve efficiency, wavenumbers are processed in batches.
+
+For each batch:
+
+- a single boundary discretization is constructed using the largest wavenumber
+  in that batch,
+- the same discretization is reused for all smaller wavenumbers in that batch,
+- matrices are assembled independently for each `k`.
+
+This avoids repeatedly rebuilding geometry discretizations and associated
+workspaces.
+
+Two matrix-construction routes are available:
+
+1. `use_chebyshev=true` (default)
+
+   Uses Chebyshev-interpolated special-function evaluation for accelerated
+   multi-wavenumber CFIE assembly.
+
+   For each batch:
+
+   - Chebyshev interpolation parameters are automatically tuned using
+     `chebyshev_params`,
+   - multi-`k` matrices are assembled with
+     `compute_kernel_matrices_CFIE_kress_chebyshev!`,
+   - the smallest singular vector is extracted from each assembled matrix.
+
+   This is typically the preferred route when many states are processed.
+
+2. `use_chebyshev=false`
+
+   Uses the direct single-wavenumber matrix construction path.
+
+   This avoids Chebyshev setup overhead but is generally slower for larger
+   batches.
+
+If symmetry reduction is enabled in the solver, the returned vectors are given
+in the reduced symmetry-adapted basis.
+
+# Arguments
+- `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`:
+  CFIE-Kress solver used for matrix construction.
+- `billiard::Bi`:
+  Geometry used to generate boundary discretization points.
+- `basis::Ba`:
+  Basis dispatch tag for solver consistency.
+- `ks::Vector{T}`:
+  Real wavenumbers at which boundary singular vectors are computed.
+
+# Keyword Arguments
+- `batch_size::Int=40`:
+  Number of wavenumbers processed together in one batch. Reduce if not enough RAM is available for large batches.
+- `multithreaded::Bool=true`:
+  Enables threaded matrix assembly where supported.
+- `use_chebyshev::Bool=true`:
+  Enables Chebyshev-accelerated multi-wavenumber assembly.
+- `cheb_tol::Real=1e-12`:
+  Target interpolation accuracy used by `chebyshev_params`.
+- `npanels_h_init::Int=15_000`:
+  Initial Hankel Chebyshev panel count.
+- `M_h_init::Int=5`:
+  Initial Hankel Chebyshev polynomial degree.
+- `npanels_j_init::Int=3_000`:
+  Initial Bessel-J Chebyshev panel count.
+- `M_j_init::Int=5`:
+  Initial Bessel-J Chebyshev polynomial degree.
+- `sampling_points::Int=50_000`:
+  Number of radial samples used for interpolation error checks.
+- `max_iter::Int=20`:
+  Maximum iterations for Chebyshev tuning.
+- `grow_panels::Real=1.5`:
+  Multiplicative panel-growth factor during tuning.
+- `grow_M::Int=2`:
+  Additive polynomial-degree growth during tuning.
+- `cheb_verbose::Bool=false`:
+  Print interpolation tuning diagnostics.
+- `tol=1e-12`:
+  Krylov convergence tolerance for smallest singular-vector extraction.
+- `maxiter::Int=2000`:
+  Maximum Krylov iterations.
+- `krylovdim::Int=40`:
+  Krylov subspace dimension.
+
+# Returns
+- `us_all::Vector{Vector{ComplexF64}}`:
+  Boundary singular vectors, one per supplied wavenumber.
+- `pts_all::Vector{Vector{BoundaryPointsCFIE{T}}}`:
+  Boundary discretizations corresponding to each returned vector.
+"""
+function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
+    Nk=length(ks)
+    us_all=Vector{Vector{ComplexF64}}(undef,Nk)
+    pts_all=Vector{Vector{BoundaryPointsCFIE{T}}}(undef,Nk)
+    nb=_nbatches(Nk,batch_size)
+    @showprogress "solve_vect CFIE Kress" for ibatch in 1:nb
+        i1=_batch_first(ibatch,batch_size)
+        i2=_batch_last(ibatch,batch_size,Nk)
+        inds=i1:i2
+        kbatch=@view ks[inds]
+        kmax=maximum(kbatch)
+        # One common discretization for the whole batch.
+        pts=evaluate_points(solver,billiard,kmax)
+        if use_chebyshev
+            zj=ComplexF64.(kbatch)
+            nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1=chebyshev_params(solver,pts,zj;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,verbose=cheb_verbose)
+            cache=if isnothing(solver.symmetry)
+                build_cfie_kress_block_caches(solver,pts;npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj)
+            else
+                build_CFIE_kress_reduced_workspace(solver,pts,solver.symmetry;npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj)
+            end
+            Mk=length(zj)
+            Nmat=cache isa CFIEBlockSystemCache ? cache.offsets[end] - 1 : length(cache.Ifund)
+            As=[Matrix{ComplexF64}(undef,Nmat,Nmat) for _ in 1:Mk]
+            bfs=CFIE_H0_H1_J0_J1_BesselWorkspace(Mk;ntls=Threads.nthreads())
+            compute_kernel_matrices_CFIE_kress_chebyshev!(As,pts,plans0,plans1,plansj0,plansj1,bfs.h0_tls,bfs.h1_tls,bfs.j0_tls,bfs.j1_tls,cache;multithreaded=multithreaded)
+            for (jlocal,jglobal) in enumerate(inds)
+                _,u,_=smallest_nullvec_krylov!(As[jlocal];nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+                us_all[jglobal]=ComplexF64.(u)
+                pts_all[jglobal]=pts
+            end
+        else
+            ws=build_cfie_kress_workspace(solver,pts)
+            Nmat=isnothing(ws.symmetry) ? ws.Ntot : ws.Nred
+            A=Matrix{Complex{T}}(undef,Nmat,Nmat)
+            for jglobal in inds
+                _,u=solve_vect(solver,basis,A,pts,ws,ks[jglobal];multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+                us_all[jglobal]=ComplexF64.(u)
+                pts_all[jglobal]=pts
+            end
+        end
+    end
+    return us_all,pts_all
+end

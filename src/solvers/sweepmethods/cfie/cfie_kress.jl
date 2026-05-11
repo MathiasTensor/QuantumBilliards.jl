@@ -1104,18 +1104,6 @@ function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_globa
     return σ,u
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
-    us_all=Vector{Vector{eltype(complex(ks[1]))}}(undef,length(ks))
-    pts_all=Vector{Vector{BoundaryPointsCFIE{eltype(ks[1])}}}(undef,length(ks))
-    @showprogress "solve_vect CFIE Kress" for i in eachindex(ks)
-        pts=evaluate_points(solver,billiard,ks[i])
-        _,u=solve_vect(solver,billiard,basis,pts,ks[i];multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
-        us_all[i]=u
-        pts_all[i]=pts
-    end
-    return us_all,pts_all
-end
-
 # INTERNAL - for benchmarking and diagnostics only; not a public API
 function solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPointsCFIE{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     N=isnothing(ws.symmetry) ? ws.Ntot : ws.Nred

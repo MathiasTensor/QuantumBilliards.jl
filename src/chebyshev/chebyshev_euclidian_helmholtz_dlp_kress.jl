@@ -1142,3 +1142,7 @@ function construct_boundary_matrices_with_derivatives!(Tbufs::Vector{Matrix{Comp
     end
     return nothing
 end
+
+########################################
+########### SOLVE VECT BATCH ###########
+########################################
