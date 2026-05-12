@@ -589,6 +589,128 @@ function residual_and_norm_select(solver::Union{BoundaryIntegralMethod,CFIE_kres
     return idx,Φ_kept,tens[idx],tensN[idx],(collect_logs ? logs : String[])
 end
 
+# Experimental fast spurious-root filter for Beyn eigenvalues.
+#
+# The idea is that genuine billiard eigenvalues should lie extremely close to
+# the real axis, while Beyn spurions have much larger |Im λ|. Instead of
+# computing the expensive residual for every candidate, we sort all
+# contour-inside candidates by decreasing |Im λ|, residual-check only this
+# suspicious tail, drop roots with ||A(λ)φ|| >= res_tol, and stop after `pad`
+# consecutive residual-good candidates.
+#
+# Inputs:
+#   λs[i]      : Beyn eigenvalues from window i
+#   Uks[i],Ys[i] : Beyn subspace/eigenvector factors, with φ_j = Uks[i]*Ys[i][:,j]
+#   k0s[i],Rs[i] : center/radius of the Beyn contour for window i
+#   all_pts[i]   : boundary discretization used for window i
+#
+# Important convention:
+#   residuals[i][j] is finite only for candidates explicitly checked here.
+#   Unchecked accepted candidates remain NaN.
+#
+# Returns:
+#   idx_keep[i]  : local indices of λs[i] that survive the filter
+#   residuals[i] : residuals aligned with idx_keep[i]; NaN means unchecked
+#
+# Experimental warning:
+#   This assumes the large-|Im λ| tail contains all relevant spurions and that,
+#   after enough consecutive residual-good candidates, the smaller-|Im λ| tail
+#   is clean. Keep `verbose=true` and validate against full residual checks
+#   when changing solver type, quadrature order, geometry, or k-range.
+function imag_k_check_EXPERIMENTAL(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},λs::Vector{Vector{Complex{T}}},Uks::Vector{Matrix{Complex{T}}},Ys::Vector{Matrix{Complex{T}}},k0s::Vector{Complex{T}},Rs::Vector{T},all_pts;res_tol::T,pad::Int=20,group_size::Int=100,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,multithreaded::Bool=true,verbose::Bool=true) where {T<:Real}
+    nw=length(λs)
+    idx_inside=Vector{Vector{Int}}(undef,nw)
+    idx_keep=Vector{Vector{Int}}(undef,nw)
+    residuals=Vector{Vector{T}}(undef,nw)
+    local_pos=Dict{Tuple{Int,Int},Int}()
+    candidates=Tuple{Int,Int,T,T}[] # (window index, local eigenvalue index, |Im λ|, Re λ)
+    # 1. Collect all contour-inside roots and rank by suspiciousness.
+    @inbounds for i in 1:nw
+        λi=λs[i]
+        idx_inside[i]=findall(j->abs(λi[j]-k0s[i])<=Rs[i],eachindex(λi))
+        idx_keep[i]=copy(idx_inside[i])
+        residuals[i]=fill(T(NaN),length(idx_inside[i]))
+        for (lp,j) in pairs(idx_inside[i])
+            local_pos[(i,j)]=lp
+            push!(candidates,(i,j,abs(imag(λi[j])),real(λi[j])))
+        end
+    end
+    # sort by |Im λ| descending to prioritize larger discretizations 
+    sort!(candidates;by=c->c[3],rev=true)
+    verbose && begin
+        @info "top imag candidates" first_candidates=candidates[1:min(10,length(candidates))]
+    end
+    drop=Dict{Tuple{Int,Int},Bool}()
+    checked=0
+    dropped=0
+    good_streak=0
+    stop_early=false
+    pos=1
+    # 2. Check only the suspicious large-|Im λ| tail in batches.
+    while pos<=length(candidates) && !stop_early
+        stop=min(pos+group_size-1,length(candidates))
+        # Suspicious roots, globally sorted by descending |Im λ|.
+        group=candidates[pos:stop]
+        # Residual lookup keyed by (window index, local eigenvalue index).
+        rdict=Dict{Tuple{Int,Int},T}()
+        # Residuals must be evaluated using the same discretization that produced
+        # the corresponding Beyn eigenpair, so split mixed batches by window.
+        for iwin in unique(c[1] for c in group)
+            sub=[c for c in group if c[1]==iwin]
+            isempty(sub) && continue
+            pts_ref=all_pts[iwin]
+            Nref=boundary_matrix_size_for_solver(solver,pts_ref)
+            # Batched A(λ) assembly for suspicious roots from this window.
+            λ_group=Complex{T}[λs[i][j] for (i,j,_,_) in sub]
+            Tbufs=[zeros(Complex{T},Nref,Nref) for _ in eachindex(λ_group)]
+            construct_boundary_matrices!(Tbufs,solver,pts_ref,λ_group;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=false)
+            ybuf=Vector{Complex{T}}(undef,Nref)
+            φbuf=Vector{Complex{T}}(undef,Nref)
+            @blas_multi_then_1 MAX_BLAS_THREADS begin 
+                @inbounds for q in eachindex(sub)
+                    i,j,_,_=sub[q]
+                    # Reconstruct Beyn eigenvector φ = Uk*Y[:,j].
+                    mul!(φbuf,Uks[i],@view(Ys[i][:,j]))
+                    # True residual ||A(λ)φ||.
+                    mul!(ybuf,Tbufs[q],φbuf)
+                    rdict[(i,j)]=norm(ybuf)
+                end
+            end
+        end
+        # Consume in original suspiciousness order.
+        @inbounds for c in group
+            i,j,imj,_=c
+            rj=rdict[(i,j)]
+            checked+=1
+            residuals[i][local_pos[(i,j)]]=rj
+            if rj>=res_tol
+                verbose && @info "DROP candidate" i=i j=j k=λs[i][j] abs_imag=imj residual=rj
+                drop[(i,j)]=true
+                dropped+=1
+                good_streak=0
+            else
+                good_streak+=1
+                # Once enough consecutive good roots appear, assume the smaller-|Im λ| tail is clean.
+                if good_streak>=pad
+                    verbose && @info "grouped tail residual check stopped" checked=checked dropped=dropped good_streak=good_streak last_imag=imj last_residual=rj
+                    stop_early=true
+                    break
+                end
+            end
+        end
+        pos=stop+1
+    end
+    # 3. Apply drops and keep residuals aligned with surviving roots.
+    @inbounds for i in 1:nw
+        old=idx_inside[i]
+        mask=[!get(drop,(i,j),false) for j in old]
+        idx_keep[i]=old[mask]
+        residuals[i]=residuals[i][mask]
+    end
+    verbose && @info "grouped tail residual check summary" checked=checked dropped=dropped total_candidates=length(candidates)
+    return idx_keep,residuals
+end
+
 ########################
 #### HIGH LEVEL API ####
 ########################
@@ -629,6 +751,7 @@ Phase 2: validate each λ by computing residuals ||A(λ)φ|| (φ=Uk*Y[:,j]), kee
 - grow_panels::Real=1.5: Growth factor for number of panels
 - grow_M::Int=2: Growth factor for degree of Chebyshev polynomials
 - return_imag_part::Bool=false: If the imaginary part of the k is also returned, it is the measure of discretization error
+- use_imag_check_EXPERIMENTAL::Bool=true: Whether to use the fast experimental spurious root filter based on |Im λ| before computing residuals. By default, this is turned on and can significantly reduce the number of expensive residual checks, but validate carefully when changing solver type, quadrature order, geometry, or k-range.
 
 # Returns:
 ks      :: Vector{T} or Vector{Complex{T}} – kept real or complex wavenumbers (λ)
@@ -643,7 +766,7 @@ tensN   :: Vector{T}                   – normalized residuals (scale-free)
    • r is the probe rank for Beyn (auto-bumped internally if saturated).
    • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
 """
-function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false,use_imag_check_EXPERIMENTAL::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     fundamental=!isnothing(solver.symmetry)
     basis=AbstractHankelBasis()
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
@@ -695,7 +818,7 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
     p=Progress(length(k0),1)
     @time "Beyn pass (all disks)" begin
         @inbounds for i in eachindex(k0)
-            λ,Uk,Y,κ,δ,ptsi=solve_vect(solver,basis,all_pts[i],complex(k0[i]),R[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,info=do_per_solve_INFO)
+            λ,Uk,Y,κ,δ,ptsi=solve_vect(solver,basis,all_pts[i],complex(k0[i]),R[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=Random.MersenneTwister(0),auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,info=do_per_solve_INFO)
             λs[i]=λ
             Uks[i]=Uk
             Ys[i]=Y
@@ -709,20 +832,48 @@ function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,C
     tens_list=Vector{Vector{T}}(undef,length(k0))
     tensN_list=Vector{Vector{T}}(undef,length(k0))
     phi_list=Vector{Matrix{Complex{T}}}(undef,length(k0))
-    @benchit timeit=do_per_solve_INFO "Residuals/tensions pass" begin
-        @inbounds @showprogress for i in eachindex(k0)
-            if isempty(λs[i])
-                ks_list[i]=return_imag_part ? Complex{T}[] : T[]
-                tens_list[i]=T[]
-                tensN_list[i]=T[]
-                phi_list[i]=Matrix{Complex{T}}(undef,boundary_matrix_size_for_solver(solver,all_pts[i]),0)
-                continue
+    residual_list=Vector{Vector{T}}(undef,length(k0))
+    idx_keep=Vector{Vector{Int}}(undef,length(k0))
+    if use_imag_check_EXPERIMENTAL
+        idx_keep,residuals=imag_k_check_EXPERIMENTAL(solver,λs,Uks,Ys,k0s,Rs,all_pts;res_tol=res_tol,pad=20,group_size=100,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded_matrix,verbose=do_per_solve_INFO)
+        # now idx_keep gives us those we keep
+        @benchit timeit=do_per_solve_INFO "Imag-check selection pass" begin
+            @inbounds @showprogress for i in eachindex(k0) # for each batch center k0
+                N=boundary_matrix_size_for_solver(solver,all_pts[i]) # matrix size for this batch 
+                if isempty(idx_keep[i])
+                    ks_list[i]=return_imag_part ? Complex{T}[] : T[]
+                    tens_list[i]=T[]
+                    tensN_list[i]=T[]
+                    phi_list[i]=Matrix{Complex{T}}(undef,N,0)
+                    continue
+                end
+                λi=λs[i];Uk=Uks[i];Y=Ys[i];κ=k0s[i];δ=Rs[i];idx=idx_keep[i]
+                Φ_kept=Matrix{Complex{T}}(undef,N,length(idx))
+                for (jj,j) in pairs(idx)
+                    @QuantumBilliards.blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φ_kept[:,jj]),Uk,@view(Y[:,j]))
+                end
+                ks_list[i]=return_imag_part ? λi[idx] : real.(λi[idx])
+                tens_list[i]=abs.(imag.(λi[idx])) # solver quadrature error proxy. Not a true residual norm
+                tensN_list[i]=residuals[i] # for those spurios that were checked and kept, this is the true residual norm ||A(λ)φ||. For unchecked accepted roots, this remains NaN.
+                phi_list[i]=Φ_kept
             end
-            idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded_matrix)
-            ks_list[i]=return_imag_part ? λs[i][idx] : real.(λs[i][idx])
-            tens_list[i]=traw
-            tensN_list[i]=tnorm
-            phi_list[i]=Matrix(Φ_kept)
+        end
+    else
+        @benchit timeit=do_per_solve_INFO "Residuals/tensions pass" begin
+            @inbounds @showprogress for i in eachindex(k0)
+                if isempty(λs[i])
+                    ks_list[i]=return_imag_part ? Complex{T}[] : T[]
+                    tens_list[i]=T[]
+                    tensN_list[i]=T[]
+                    phi_list[i]=Matrix{Complex{T}}(undef,boundary_matrix_size_for_solver(solver,all_pts[i]),0)
+                    continue
+                end
+                idx,Φ_kept,traw,tnorm,_=residual_and_norm_select(solver,λs[i],Uks[i],Ys[i],k0s[i],Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,multithreaded=multithreaded_matrix)
+                ks_list[i]=return_imag_part ? λs[i][idx] : real.(λs[i][idx])
+                tens_list[i]=traw
+                tensN_list[i]=tnorm
+                phi_list[i]=Matrix(Φ_kept)
+            end
         end
     end
     nw=length(phi_list)
