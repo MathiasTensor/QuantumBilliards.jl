@@ -58,7 +58,7 @@ Practical guidance
 - For very high k or intricate geometries, start conservative (smaller R, larger nq) and relax if safe.
 
 Added support for BoundaryPointsCFIE to handle domains with holes (e.g., annulus) where the CFIE_kress & other solver's formulation is needed.
-MO 29/3/26
+MO 13/5/26 - experimental support for an additional fast spurious root filter based on the imaginary part of λ before computing residuals.
 #TODO HSS with lu!
 #TODO Backer's idea (Numerical details of wavefunction computation) of using the real Green's function Y0 or a combo with the beta param to avoid spurious ols associated with Y0 -> this would halve the contour nodes since Fredholm matrix would have conjugation symmetry. This is similar toe the FEAST algorithm / Zoloterov filter where we can halve the nodes of real symmetric matrices
 =#
