@@ -729,10 +729,10 @@ Phase 2: validate each λ by computing residuals ||A(λ)φ|| (φ=Uk*Y[:,j]), kee
 - k2::T: Upper bound of the wavenumber interval
 
 # Keyword arguments:
-- m::Int=10: Wanted number of eigenvalues per Weyl window
-- Rmax::T=one(T): Maximum radius of the Weyl windows (careful not to choose m too large to go over the max windows size)
-- nq::Int=48: Number of quadrature points on the contour
-- r::Int=m+15: Number of expected eigenvalues inside each contour + padding to avoid rank saturation
+- m::Int=200: Wanted number of eigenvalues per Weyl window
+- Rmax::T=T(0.5): Maximum radius of the Weyl windows (careful not to choose m too large to go over the max windows size)
+- nq::Int=40: Number of quadrature points on the contour
+- r::Int=m+50: Number of expected eigenvalues inside each contour + padding to avoid rank saturation
 - svd_tol::Real=1e-12: Tolerance for the SVD truncation in Beyn
 - res_tol::Real=1e-9: Residual tolerance for discarding
 - spurious::Bool=true: Whether to discard spurious eigenvalues
@@ -766,7 +766,7 @@ tensN   :: Vector{T}                   – normalized residuals (scale-free)
    • r is the probe rank for Beyn (auto-bumped internally if saturated).
    • use_chebyshev turns on Chebyshev Hankel evaluation (faster at large k).
 """
-function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=one(T),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false,use_imag_check_EXPERIMENTAL::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+function compute_spectrum_beyn(solver::Union{BoundaryIntegralMethod,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert,DLP_kress,DLP_kress_global_corners},billiard::Bi,k1::T,k2::T;m::Int=50,Rmax::T=T(0.5),nq::Int=48,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,use_adaptive_svd_tol::Bool=false,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=3000,M_j::Int=5,do_INFO_init::Bool=true,do_per_solve_INFO::Bool=true,cheb_tol::Real=1e-13,max_iter::Int=20,sampling_points::Int=50_000,grow_panels::Real=1.5,grow_M::Int=2,return_imag_part::Bool=false,use_imag_check_EXPERIMENTAL::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     fundamental=!isnothing(solver.symmetry)
     basis=AbstractHankelBasis()
     intervals=plan_weyl_windows(billiard,k1,k2;m=m,fundamental=fundamental,Rmax=Rmax)
