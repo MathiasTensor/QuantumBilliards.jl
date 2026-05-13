@@ -625,14 +625,16 @@ function imag_k_check_EXPERIMENTAL(solver::Union{BoundaryIntegralMethod,CFIE_kre
     local_pos=Dict{Tuple{Int,Int},Int}()
     candidates=Tuple{Int,Int,T,T}[] # (window index, local eigenvalue index, |Im λ|, Re λ)
     # 1. Collect all contour-inside roots and rank by suspiciousness.
-    @inbounds for i in 1:nw
-        λi=λs[i]
-        idx_inside[i]=findall(j->abs(λi[j]-k0s[i])<=Rs[i],eachindex(λi))
-        idx_keep[i]=copy(idx_inside[i])
-        residuals[i]=fill(T(NaN),length(idx_inside[i]))
-        for (lp,j) in pairs(idx_inside[i])
-            local_pos[(i,j)]=lp
-            push!(candidates,(i,j,abs(imag(λi[j])),real(λi[j])))
+    @time "collect candidates and sort by |Im λ|" begin
+        @inbounds for i in 1:nw
+            λi=λs[i]
+            idx_inside[i]=findall(j->abs(λi[j]-k0s[i])<=Rs[i],eachindex(λi))
+            idx_keep[i]=copy(idx_inside[i])
+            residuals[i]=fill(T(NaN),length(idx_inside[i]))
+            for (lp,j) in pairs(idx_inside[i])
+                local_pos[(i,j)]=lp
+                push!(candidates,(i,j,abs(imag(λi[j])),real(λi[j])))
+            end
         end
     end
     # sort by |Im λ| descending to prioritize larger discretizations 
@@ -655,50 +657,54 @@ function imag_k_check_EXPERIMENTAL(solver::Union{BoundaryIntegralMethod,CFIE_kre
         rdict=Dict{Tuple{Int,Int},T}()
         # Residuals must be evaluated using the same discretization that produced
         # the corresponding Beyn eigenpair, so split mixed batches by window.
-        for iwin in unique(c[1] for c in group)
-            sub=[c for c in group if c[1]==iwin]
-            isempty(sub) && continue
-            pts_ref=all_pts[iwin]
-            Nref=boundary_matrix_size_for_solver(solver,pts_ref)
-            # Batched A(λ) assembly for suspicious roots from this window.
-            λ_group=Complex{T}[λs[i][j] for (i,j,_,_) in sub]
-            Tbufs=[zeros(Complex{T},Nref,Nref) for _ in eachindex(λ_group)]
-            construct_boundary_matrices!(Tbufs,solver,pts_ref,λ_group;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=false)
-            ybuf=Vector{Complex{T}}(undef,Nref)
-            φbuf=Vector{Complex{T}}(undef,Nref)
-            @blas_multi_then_1 MAX_BLAS_THREADS begin 
-                @inbounds for q in eachindex(sub)
-                    i,j,_,_=sub[q]
-                    # Reconstruct Beyn eigenvector φ = Uk*Y[:,j].
-                    mul!(φbuf,Uks[i],@view(Ys[i][:,j]))
-                    # True residual ||A(λ)φ||.
-                    mul!(ybuf,Tbufs[q],φbuf)
-                    rdict[(i,j)]=norm(ybuf)
+        @time "residual check for candidates with |Im λ| in [$(group[end][3]), $(group[1][3])]" begin
+            for iwin in unique(c[1] for c in group)
+                sub=[c for c in group if c[1]==iwin]
+                isempty(sub) && continue
+                pts_ref=all_pts[iwin]
+                Nref=boundary_matrix_size_for_solver(solver,pts_ref)
+                # Batched A(λ) assembly for suspicious roots from this window.
+                λ_group=Complex{T}[λs[i][j] for (i,j,_,_) in sub]
+                Tbufs=[zeros(Complex{T},Nref,Nref) for _ in eachindex(λ_group)]
+                construct_boundary_matrices!(Tbufs,solver,pts_ref,λ_group;multithreaded=multithreaded,use_chebyshev=use_chebyshev,n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,timeit=false)
+                ybuf=Vector{Complex{T}}(undef,Nref)
+                φbuf=Vector{Complex{T}}(undef,Nref)
+                @blas_multi_then_1 MAX_BLAS_THREADS begin 
+                    @inbounds for q in eachindex(sub)
+                        i,j,_,_=sub[q]
+                        # Reconstruct Beyn eigenvector φ = Uk*Y[:,j].
+                        mul!(φbuf,Uks[i],@view(Ys[i][:,j]))
+                        # True residual ||A(λ)φ||.
+                        mul!(ybuf,Tbufs[q],φbuf)
+                        rdict[(i,j)]=norm(ybuf)
+                    end
                 end
             end
         end
-        # Consume in original suspiciousness order.
-        @inbounds for c in group
-            i,j,imj,_=c
-            rj=rdict[(i,j)]
-            checked+=1
-            residuals[i][local_pos[(i,j)]]=rj
-            if rj>=res_tol
-                verbose && @info "DROP candidate" i=i j=j k=λs[i][j] abs_imag=imj residual=rj
-                drop[(i,j)]=true
-                dropped+=1
-                good_streak=0
-            else
-                good_streak+=1
-                # Once enough consecutive good roots appear, assume the smaller-|Im λ| tail is clean.
-                if good_streak>=pad
-                    verbose && @info "grouped tail residual check stopped" checked=checked dropped=dropped good_streak=good_streak last_imag=imj last_residual=rj
-                    stop_early=true
-                    break
+        @time "filter candidates with |Im λ| in [$(group[end][3]), $(group[1][3])]" begin
+            # Consume in original suspiciousness order.
+            @inbounds for c in group
+                i,j,imj,_=c
+                rj=rdict[(i,j)]
+                checked+=1
+                residuals[i][local_pos[(i,j)]]=rj
+                if rj>=res_tol
+                    verbose && @info "DROP candidate" i=i j=j k=λs[i][j] abs_imag=imj residual=rj
+                    drop[(i,j)]=true
+                    dropped+=1
+                    good_streak=0
+                else
+                    good_streak+=1
+                    # Once enough consecutive good roots appear, assume the smaller-|Im λ| tail is clean.
+                    if good_streak>=pad
+                        verbose && @info "grouped tail residual check stopped" checked=checked dropped=dropped good_streak=good_streak last_imag=imj last_residual=rj
+                        stop_early=true
+                        break
+                    end
                 end
             end
+            pos=stop+1
         end
-        pos=stop+1
     end
     # 3. Apply drops and keep residuals aligned with surviving roots.
     @inbounds for i in 1:nw
