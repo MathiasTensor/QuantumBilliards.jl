@@ -408,7 +408,7 @@ $RECYCLE.BIN/
 # VS Code workspace files
 *.code-workspace
 settings.json
-
+.VSCodeCounter/
 
 ## Acknowledgements
 # Many thanks to `https://gitignore.io/`, written and maintained by Joe Blau, which contributed much material to this gitignore file.
