@@ -1,4 +1,8 @@
-function boundary_limits(curves; grd=1000) 
+function pad_limits(xlim, ylim; padding=0.01)
+    return (xlim[1] - padding, xlim[2] + padding), (ylim[1] - padding, ylim[2] + padding)
+end
+
+function boundary_limits(curves; grd=1000, padding=0.01) 
     x_bnd = Vector{Any}()
     y_bnd = Vector{Any}()
     for crv in curves #names of variables not very nice
@@ -15,7 +19,7 @@ function boundary_limits(curves; grd=1000)
     #dx =  xlim[2] - xlim[1]
     ylim = extrema(y_bnd)
     #dy =  ylim[2] - ylim[1]
-    return xlim, ylim #,dx,dy
+    return pad_limits(xlim, ylim; padding=padding)
 end
 
 
