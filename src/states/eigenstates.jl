@@ -55,39 +55,3 @@ function compute_eigenstate(solver::AcceleratedSolver, basis::AbsBasis, billiard
     vec = X[:,idx]
     return Eigenstate(k_state, k, vec, ten, solver, basis_new, billiard)
 end
-
-struct EigenstateBundle{K,T,S,Ba,Bi} <: AbsState 
-    ks::Vector{K}
-    k_basis::K
-    X::Matrix{T}
-    tens::Vector{T}
-    dim::Int64
-    eps::T
-    solver::S
-    basis::Ba
-    billiard::Bi
-end
-
-function EigenstateBundle(ks, k_basis, X, tens, solver, basis, billiard)  
-    eps = set_precision(X[1,1])
-    type = eltype(X)
-    if  type <: Real
-        filtered_array = type.([abs(x)>eps ? x : zero(type) for x in X])
-    else 
-        filtered_array = X
-    end
-    return EigenstateBundle(ks, k_basis, filtered_array, tens, length(X[:,1]), eps, solver, basis, billiard)
-end
-
-function compute_eigenstate_bundle(solver::AcceleratedSolver, basis::AbsBasis, billiard::AbsBilliard, k; dk = 0.1, tol=0.1, multithreaded = true)
-    L = CompositeCurve(get_boundary_curves(billiard)).length
-    dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
-    basis_new = resize_basis(basis,billiard, dim, k)
-    pts = evaluate_points(solver, billiard, k)
-    ks, tens, X = solve_vectors(solver,basis_new, pts, k, dk; multithreaded)
-    idx = abs.(tens) .< tol
-    ks = ks[idx]
-    tens = tens[idx]
-    X = X[:,idx]
-    return EigenstateBundle(ks, k, X, tens, solver, basis_new, billiard)
-end

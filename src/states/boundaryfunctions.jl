@@ -78,33 +78,6 @@ function boundary_function(state::S;b=5.0) where {S<:AbsState}
 end
 =#
 
-function boundary_function(state_bundle::S; b=5.0, multithreaded = true) where {S<:EigenstateBundle}
-    let X = state_bundle.X, k_basis = state_bundle.k_basis, ks = state_bundle.ks, new_basis = state_bundle.basis, billiard=state_bundle.billiard 
-        type = eltype(X)
-        boundary = get_boundary_curves_with_ignored(billiard)
-        crv_lengths = [crv.length for crv in boundary]
-        sampler = FourierNodes([2,3,5],crv_lengths) 
-        L = CompositeCurve(boundary).length
-        N = max(round(Int, k_basis*L*b/(2*pi)), 512)
-        pts = boundary_coords(billiard, sampler, N)
-        dX, dY = gradient_matrices(new_basis, k_basis, pts.xy; multithreaded)
-        nx = getindex.(pts.normal,1)
-        ny = getindex.(pts.normal,2)
-        dX = nx .* dX 
-        dY = ny .* dY
-        U::Array{type,2} = dX .+ dY
-        u_bundle::Matrix{type} = U * X
-        for u in eachcol(u_bundle)
-            regularize!(u)
-        end
-        #compute the boundary norm
-        w = dot.(pts.normal, pts.xy) .* pts.ds
-        norms = [sum(abs2.(u_bundle[:,i]) .* w)/(2*ks[i]^2) for i in eachindex(ks)]
-        #println(norm)
-        us::Vector{Vector{type}} = [u for u in eachcol(u_bundle)]
-        return us, pts.s, norms
-    end
-end
 
 function momentum_function(u,s)
     fu = rfft(u)
@@ -118,15 +91,3 @@ function momentum_function(state::S; b=5.0, multithreaded = true) where {S<:AbsS
     return momentum_function(u,s)
 end
 
-#this can be optimized by usinf FFTW plans
-function momentum_function(state_bundle::S; b=5.0, multithreaded = true) where {S<:EigenstateBundle}
-    us, s, norms = boundary_function(state_bundle; b, multithreaded)
-    mf, ks = momentum_function(us[1],s)
-    type = eltype(mf)
-    mfs::Vector{Vector{type}} = [mf]
-    for i in 2:length(us)
-        mf, ks = momentum_function(us[i],s)
-        push!(mfs,mf)
-    end
-    return mfs, ks
-end
