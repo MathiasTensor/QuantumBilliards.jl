@@ -65,7 +65,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
 end
 
 function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9, multithreaded = true) where {S<:AbsState}
-    let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries, sym_qnumbers=state.basis.sym_qnumbers       
+    let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries     
         #println(new_basis.dim)
         type = eltype(state.vec)
         #try to find a lazy way to do this
@@ -83,7 +83,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
         if ~fundamental_domain 
             if ~isnothing(symmetries)
-                Psi2d, x_grid, y_grid = symmetrize_wavefunction(Psi2d,x_grid,y_grid,symmetries,sym_qnumbers)
+                Psi2d, x_grid, y_grid = symmetrize_wavefunction(Psi2d,x_grid,y_grid,symmetries,state.basis.sym_qnumbers)
             end
         end
         return Psi2d, x_grid, y_grid

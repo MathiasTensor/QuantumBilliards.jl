@@ -70,7 +70,7 @@ include("states/wavefunctions.jl")
 include("states/boundaryfunctions.jl")
 include("states/husimifunctions.jl")
 
-export wavefunction #wavefunction_norm 
+export wavefunction, compute_psi #wavefunction_norm 
 export get_boundary_curves_with_ignored, boundary_function, momentum_function, husimi_function
 
 

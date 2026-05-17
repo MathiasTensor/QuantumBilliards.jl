@@ -1,4 +1,4 @@
 using Test
-using QuantumBilliards
+using QuantumBilliards, BilliardGeometry
 
 include("solvertests.jl")
