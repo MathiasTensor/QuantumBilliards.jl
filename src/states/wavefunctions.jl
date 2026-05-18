@@ -2,6 +2,16 @@ function pad_limits(xlim, ylim; padding=0.01)
     return (xlim[1] - padding, xlim[2] + padding), (ylim[1] - padding, ylim[2] + padding)
 end
 
+function rectify_grid(grid)
+    type = eltype(grid)
+    if grid[1] <= zero(type) <= grid[end]
+        idx = argmin(abs.(grid))
+    return grid .- grid[idx] 
+    else
+        return grid
+    end
+end
+
 function boundary_limits(curves; grd=1000, padding=0.01) 
     x_bnd = Vector{Any}()
     y_bnd = Vector{Any}()
@@ -82,6 +92,9 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         ny = max(round(Int, k*dy*b/(2*pi)), 512)
         x_grid::Vector{type} = collect(type,range(xlim... , nx))
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
+        x_grid = rectify_grid(x_grid)
+        y_grid = rectify_grid(y_grid)
+
         Psi::Vector{type} = compute_psi(state,x_grid,y_grid; inside_only, memory_limit, multithreaded) 
         #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
         Psi2d::Array{type,2} = reshape(Psi, (nx,ny))
