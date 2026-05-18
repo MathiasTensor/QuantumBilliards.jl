@@ -138,7 +138,7 @@ function apply_symmetries_to_boundary_points(
 
     get_sym(::Type{S}) where S = symmetries[findfirst(s -> s isa S, symmetries)]
 
-    @inline function push_reflection!(sym::AbsReflection, reverse_orientation::Bool)
+    @inline function push_reflection!(sym::BilliardGeometry.AbsReflection, reverse_orientation::Bool)
         rxy = apply_symmetry(sym, bxy)
         rn  = apply_symmetry(sym, bn)
         if reverse_orientation
