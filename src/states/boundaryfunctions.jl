@@ -1,5 +1,4 @@
 
-#this takes care of singular points
 function regularize!(u)
     idx = findall(isnan, u)
     for i in idx
@@ -9,6 +8,17 @@ function regularize!(u)
             u[i] = (u[i+1] + u[end])/2.0
         end
     end
+end
+
+function _rellich(pts::BoundaryPoints{T},u::AbstractVector{N},k::T) where {N<:Number,T<:Real}
+    acc=zero(T)
+    @inbounds @simd for i in eachindex(u)
+        n=pts.normal[i]
+        xy=pts.xy[i]
+        w=(n[1]*xy[1]+n[2]*xy[2])*pts.ds[i]
+        acc+=w*abs2(u[i])
+    end
+    return acc/(2*k^2)
 end
 
 function boundary_function(state::S; b=5.0, multithreaded = true) where {S<:AbsState}
@@ -90,4 +100,3 @@ function momentum_function(state::S; b=5.0, multithreaded = true) where {S<:AbsS
     u, s, norm = boundary_function(state; b, multithreaded)
     return momentum_function(u,s)
 end
-
