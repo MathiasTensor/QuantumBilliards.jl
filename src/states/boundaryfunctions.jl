@@ -41,7 +41,9 @@ function boundary_function(state::S; b=5.0, multithreaded = true) where {S<:AbsS
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
         integrand = abs2.(u) .* w
-        norm = sum(integrand)/(2*k^2)
+        norm = _rellich(pts, u, k)
+        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
+        u = apply_symmetries_to_boundary_function(u, new_basis.symmetries, new_basis.sym_qnumbers)
         #println(norm)
         return u, pts.s::Vector{type}, norm
     end
