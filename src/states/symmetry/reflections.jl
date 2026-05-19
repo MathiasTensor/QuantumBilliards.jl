@@ -1,30 +1,52 @@
 
-function apply_symmetry_wf(Psi, x_grid, y_grid, sym::BilliardGeometry.XAxisReflection, qnumber::T) where T<:Real
-    y_ref = -reverse(y_grid)
-    Psi_ref = reverse(qnumber .* Psi; dims=2)
-    Psi = hcat(Psi_ref, Psi)
-    y_grid = vcat(y_ref, y_grid)  # was: append!(y_ref, y_grid)
-    return Psi, x_grid, y_grid
-end
+function apply_symmetries_to_wavefunction(
+    Psi, x_grid, y_grid,
+    symmetries::Vector{<:BilliardGeometry.AbsReflection},
+    sym_qnumbers::Vector{T}
+) where T<:Real
 
-function apply_symmetry_wf(Psi, x_grid, y_grid, sym::BilliardGeometry.YAxisReflection, qnumber::T) where T<:Real
-    x_ref = -reverse(x_grid)
-    Psi_ref = reverse(qnumber .* Psi; dims=1)
-    Psi = vcat(Psi_ref, Psi)
-    x_grid = vcat(x_ref, x_grid)  # was: append!(x_ref, x_grid)
-    return Psi, x_grid, y_grid
-end
+    has_x = any(s -> s isa BilliardGeometry.XAxisReflection, symmetries)
+    has_y = any(s -> s isa BilliardGeometry.YAxisReflection, symmetries)
 
-function apply_symmetries_to_wavefunction(Psi,x_grid,y_grid, symmetries::Vector{BilliardGeometry.AbsReflection}, sym_qnumbers::Vector{T}) where T<:Real
-    for (sym, qnumber) in zip(symmetries, sym_qnumbers)
-        if sym  isa BilliardGeometry.XAxisReflection
-            Psi, x_grid, y_grid = apply_symmetry_wf(Psi,x_grid,y_grid,sym,qnumber)
-        end
-        if sym  isa BilliardGeometry.YAxisReflection
-            Psi, x_grid, y_grid = apply_symmetry_wf(Psi,x_grid,y_grid,sym,qnumber)
-        end
+    get_qnum(::Type{S}) where S = sym_qnumbers[findfirst(s -> s isa S, symmetries)]
+
+    if has_x && has_y
+        pX = get_qnum(BilliardGeometry.XAxisReflection)
+        pY = get_qnum(BilliardGeometry.YAxisReflection)
+
+        # Q1(base) → Q2(Y-reflect) → Q3(XY-reflect) → Q4(X-reflect)
+        # expand along x first (Y-axis reflection: reflects x coordinates)
+        x_ref  = -reverse(x_grid)
+        Psi_xref = reverse(pY .* Psi; dims=1)
+        Psi_x  = hcat(Psi_xref, Psi) # wait - need to think in terms of matrix dims
+
+        # Psi is (nx, ny): rows=x, cols=y
+        # YAxisReflection: mirror x → prepend reversed rows, pY
+        Psi_Y   = reverse(pY .* Psi;  dims=1)   # Q2
+        Psi_XY  = reverse(pX .* Psi_Y; dims=2)  # Q3: also mirror y
+        Psi_X   = reverse(pX .* Psi;  dims=2)   # Q4
+
+        # CCW order: Q2(x-reversed), Q1(base) along x axis
+        # then Q3, Q4 along y axis
+        full_Psi = vcat(Psi_Y, Psi)               # expand x: [Q2; Q1]
+        full_Psi_XY = vcat(Psi_XY, Psi_X)         # expand x: [Q3; Q4]
+        full_Psi = hcat(full_Psi_XY, full_Psi)    # expand y: [Q3,Q4 | Q2,Q1] wait...
+
+        x_grid = vcat(-reverse(x_grid), x_grid)
+        y_grid = vcat(-reverse(y_grid), y_grid)
+
+        return full_Psi, x_grid, y_grid
+    elseif has_y
+        p = get_qnum(BilliardGeometry.YAxisReflection)
+        Psi_ref = reverse(p .* Psi; dims=2)
+        return hcat(Psi_ref, Psi), x_grid, vcat(-reverse(y_grid), y_grid)
+    elseif has_x
+        p = get_qnum(BilliardGeometry.XAxisReflection)
+        Psi_ref = reverse(p .* Psi; dims=1)
+        return vcat(Psi_ref, Psi), vcat(-reverse(x_grid), x_grid), y_grid
+    else
+        return Psi, x_grid, y_grid
     end
-    return Psi, x_grid, y_grid
 end
 
 
