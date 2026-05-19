@@ -94,14 +94,6 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         x_grid::Vector{type} = collect(type,range(xlim... , nx))
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
 
-        open("x_grid_output.txt", "w") do f
-            print(f, repr(x_grid))
-        end
-
-        open("y_grid_output.txt", "w") do f
-            print(f, repr(y_grid))
-        end
-        
         if ~isnothing(symmetries)
             has_x = any(s -> s isa BilliardGeometry.XAxisReflection, symmetries)
             has_y = any(s -> s isa BilliardGeometry.YAxisReflection, symmetries)
@@ -123,15 +115,6 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                 Psi2d, x_grid, y_grid = apply_symmetries_to_wavefunction(Psi2d,x_grid,y_grid,symmetries,state.basis.sym_qnumbers)
             end
         end
-
-        open("x_grid_sym_output.txt", "w") do f
-            print(f, repr(x_grid))
-        end
-
-        open("y_grid_sym_output.txt", "w") do f
-            print(f, repr(y_grid))
-        end
-
         return Psi2d, x_grid, y_grid
     end
 end
