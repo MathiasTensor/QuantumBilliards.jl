@@ -40,10 +40,11 @@ function boundary_function(state::S; b=5.0, multithreaded = true) where {S<:AbsS
         regularize!(u)
         #compute the boundary norm
         w = dot.(pts.normal, pts.xy) .* pts.ds
-        integrand = abs2.(u) .* w
         norm = _rellich(pts, u, k)
-        pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
-        u = apply_symmetries_to_boundary_function(u, new_basis.symmetries, new_basis.sym_qnumbers)
+        if isnothing(new_basis.symmetries) == false
+            pts = apply_symmetries_to_boundary_points(pts, new_basis.symmetries, billiard)
+            u = apply_symmetries_to_boundary_function(u, new_basis.symmetries, new_basis.sym_qnumbers)
+        end
         #println(norm)
         return u, pts.s::Vector{type}, norm
     end

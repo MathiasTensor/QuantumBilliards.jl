@@ -3,10 +3,12 @@ function pad_limits(xlim, ylim; padding=0.01)
 end
 
 function rectify_grid(grid)
+    #ds = grid[2] - grid[1]
     type = eltype(grid)
     if grid[1] <= zero(type) <= grid[end]
         idx = argmin(abs.(grid))
-    return grid .- grid[idx] 
+        new_grid = grid .- grid[idx] #.- ds/2.0
+        return filter(!iszero, new_grid)
     else
         return grid
     end
@@ -92,8 +94,19 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
         ny = max(round(Int, k*dy*b/(2*pi)), 512)
         x_grid::Vector{type} = collect(type,range(xlim... , nx))
         y_grid::Vector{type} = collect(type,range(ylim... , ny))
-        x_grid = rectify_grid(x_grid)
-        y_grid = rectify_grid(y_grid)
+        
+        if ~isnothing(symmetries)
+            has_x = any(s -> s isa BilliardGeometry.XAxisReflection, symmetries)
+            has_y = any(s -> s isa BilliardGeometry.YAxisReflection, symmetries)
+            if has_x
+            x_grid = rectify_grid(x_grid)
+            nx = length(x_grid)
+            end
+            if has_y
+                y_grid = rectify_grid(y_grid)
+                ny = length(y_grid)
+            end
+        end
 
         Psi::Vector{type} = compute_psi(state,x_grid,y_grid; inside_only, memory_limit, multithreaded) 
         #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
@@ -103,6 +116,8 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                 Psi2d, x_grid, y_grid = apply_symmetries_to_wavefunction(Psi2d,x_grid,y_grid,symmetries,state.basis.sym_qnumbers)
             end
         end
+        println(x_grid)
+        #println(y_grid)
         return Psi2d, x_grid, y_grid
     end
 end
