@@ -47,7 +47,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
         #estimate max memory needed for the matrices
         type = eltype(vec)
         memory = sizeof(type)*basis.dim*n_pts
-        Psi = fill(type(NaN), sz)
+        Psi = zeros(type,sz)
 
         if memory < memory_limit
             B = basis_matrix(basis, k, pts; multithreaded)
@@ -57,6 +57,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
             else
                 Psi .= Psi_pts
             end
+
         else
             println("Warning: memory limit of $(Base.format_bytes(memory_limit)) exceded $(Base.format_bytes(memory)).")
             if inside_only
@@ -65,7 +66,6 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
                         Psi[pts_mask] .+= vec[i].*basis_fun(basis,i,k,pts)
                     end
                 end
-                #Psi[.~pts_mask] .= NaN
             else
                 for i in eachindex(vec)
                     if abs(vec[i]) > eps 
@@ -73,7 +73,9 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
                     end
                 end
             end
-            #println("Psi type $(eltype(Psi)), $(memory_size(Psi))")
+        end
+        if inside_only
+            Psi[.!pts_mask] .= convert(type, NaN)
         end
         return Psi
     end
