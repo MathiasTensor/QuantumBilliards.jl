@@ -47,7 +47,7 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
         #estimate max memory needed for the matrices
         type = eltype(vec)
         memory = sizeof(type)*basis.dim*n_pts
-        Psi = zeros(type,sz)
+        Psi = fill(type(NaN), sz)
 
         if memory < memory_limit
             B = basis_matrix(basis, k, pts; multithreaded)
