@@ -116,7 +116,7 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
                 Psi2d, x_grid, y_grid = apply_symmetries_to_wavefunction(Psi2d,x_grid,y_grid,symmetries,state.basis.sym_qnumbers)
             end
         end
-        println(x_grid)
+        #println(x_grid)
         #println(y_grid)
         return Psi2d, x_grid, y_grid
     end
