@@ -133,6 +133,8 @@ export fredholm_matrix!,fredholm_matrix_with_derivatives!,fredholm_matrix,fredho
 include("solvers/sweepmethods/dlp/dlp_kress.jl")
 export DLPKressWorkspace,DLP_kress,DLP_kress_global_corners,build_dlp_kress_workspace,build_Rmat_dlp_kress
 export construct_dlp_matrix!,construct_dlp_split!,construct_fredholm_matrix!,construct_dlp_matrix_derivatives!,construct_fredholm_matrix_derivatives!
+include("solvers/sweepmethods/dlp/dlp_rcip.jl")
+export DLP_rcip,DLPRCIPPanelData,DLPRCIPDiscretization,assemble_dlp_rcip!,construct_rcip_fredholm!,build_rcip_blocks!,DLPRCIPLevelCache,DLPRCIPCornerCache,DLPRCIPWorkspace,make_dlp_rcip_workspace,make_corner_cache
 
 # Chebyshev machinery - general
 include("chebyshev/chebyshev_core.jl")
@@ -166,6 +168,8 @@ export CFIE_kress_BlockCache,CFIEBlockSystemCache,CFIE_H0_H1_J0_J1_BesselWorkspa
 export compute_kernel_matrices_CFIE_kress_chebyshev!
 include("chebyshev/chebyshev_euclidian_helmholtz_cfie_alpert.jl")
 export build_CFIE_plans_alpert,CFIE_alpert_BlockCache,CFIE_H0_H1_BesselWorkspace,build_cfie_alpert_block_caches,CFIEAlpertChebWorkspace,build_cfie_alpert_cheb_workspace,compute_kernel_matrices_CFIE_alpert_chebyshev!,compute_kernel_matrices_CFIE_alpert_chebyshev
+include("chebyshev/chebyshev_euclidian_helmholtz_dlp_rcip.jl")
+export construct_rcip_fredholm_chebyshev!,rcip_R_for_corner_complex!,assemble_dlp_rcip_complex!,assemble_dlp_rcip_chebyshev!,build_dlp_rcip_cheb_workspace,DLPRCIPH1J1ChebWorkspace
 include("chebyshev/chebyshev_optimal_panelization.jl")
 export chebyshev_params
 

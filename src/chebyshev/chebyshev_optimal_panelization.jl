@@ -10,6 +10,34 @@
     return Int32(p),(2*r-(P.b+P.a))/(P.b-P.a)
 end
 
+function _check_H1_errors!(err,plans,ks,rs)
+    nz=length(ks)
+    Threads.@threads for j in 1:nz
+        e=0.0
+        k=ComplexF64(ks[j])
+        @inbounds for r in rs
+            p,t=_cheb_tloc(plans[j],r)
+            e=max(e,abs(eval_h(plans[j],p,t,r)-SpecialFunctions.besselh(1,1,k*r)))
+        end
+        err[j]=e
+    end
+    return err
+end
+
+function _check_J1_errors!(err,plans,ks,rs)
+    nz=length(ks)
+    Threads.@threads for j in 1:nz
+        e=0.0
+        k=ComplexF64(ks[j])
+        @inbounds for r in rs
+            p,t=_j_panel_t_rcip(plans[j],r)
+            e=max(e,abs(eval_j(plans[j],p,t,r)-SpecialFunctions.besselj(1,k*r)))
+        end
+        err[j]=e
+    end
+    return err
+end
+
 function _check_H0H1_errors!(err0,err1,plans0,plans1,ks,rs)
     nz=length(ks)
     Threads.@threads for j in 1:nz
@@ -304,4 +332,97 @@ function chebyshev_params(solver::CFIE_alpert{T},pts::Union{Vector{BoundaryPoint
     end
     @warn "CFIE_alpert Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
     return nh,Mh,0,0,plans0,plans1,err0,err1
+end
+
+# chebyshev_params
+# Determine suitable Chebyshev panel counts and polynomial degrees for the
+# DLP-RCIP accelerated kernel evaluation (H1, J1).
+#
+# Logic:
+# - Estimate the global radial interval [rmin,rmax] from the RCIP geometry,
+#   including symmetry images if present.
+# - Enforce the usual Hankel low-z cutoff so H1 interpolation never enters
+#   the unstable near-zero region handled by the exact fallback evaluator.
+# - Sample many radii for:
+#
+#       H1 on [rmin_h,rmax]
+#       J1 on [0,rmax]
+#
+#   since J1 is regular at the origin.
+#
+# - Build Chebyshev plans for:
+#
+#       H1^(1)
+#       J1
+#
+#   for each complex contour wavenumber zj.
+# - Compare the interpolated values against exact SpecialFunctions values.
+# - Iteratively refine panel counts and polynomial degrees until the
+#   requested tolerance is achieved.
+#
+# Inputs:
+#   - solver::DLP_rcip:
+#       RCIP DLP solver containing symmetry information.
+#   - pts::DLPRCIPDiscretization{T,C}:
+#       RCIP boundary discretization.
+#   - zj::AbstractVector{Complex{T}}:
+#       Complex contour wavenumbers (e.g. Beyn contour nodes).
+#
+# Keyword options:
+#   - npanels_h_init:
+#       Initial Hankel H1 panel count.
+#   - M_h_init:
+#       Initial Hankel H1 polynomial degree.
+#   - npanels_j_init:
+#       Initial Bessel J1 panel count.
+#   - M_j_init:
+#       Initial Bessel J1 polynomial degree.
+#   - tol:
+#       Required maximum absolute interpolation error.
+#   - sampling_points:
+#       Number of sampled radii.
+#   - max_iter:
+#       Maximum tuning iterations.
+#   - grow_panels:
+#       Multiplicative panel-count growth factor.
+#   - grow_M:
+#       Additive polynomial-degree growth.
+#   - verbose:
+#       Print tuning diagnostics.
+function chebyshev_params(solver::DLP_rcip,pts::DLPRCIPDiscretization{T,C},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real,C}
+    rmin_raw,rmax=estimate_rmin_rmax(pts.bp,solver.symmetry)
+    rmin_cheb=minimum(hankel_z_chebyshev_cutoff./abs.(zj))
+    rmin_h=max(Float64(rmin_raw),Float64(rmin_cheb))
+    rsH=collect(range(rmin_h,Float64(rmax);length=sampling_points))
+    rsJ=collect(range(0.0,Float64(rmax);length=sampling_points))
+    nz=length(zj)
+    nh=npanels_h_init
+    nj=npanels_j_init
+    Mh=M_h_init
+    Mj=M_j_init
+    plans1=Vector{ChebHankelPlanH}(undef,nz)
+    plansj1=Vector{ChebJPlan}(undef,nz)
+    errH1=fill(Inf,nz)
+    errJ1=fill(Inf,nz)
+    for it in 1:max_iter
+        Threads.@threads for j in eachindex(zj)
+            k=ComplexF64(zj[j])
+            plans1[j]=plan_h(1,1,k,rmin_h,Float64(rmax);npanels=nh,M=Mh)
+            plansj1[j]=plan_j(1,k,0.0,Float64(rmax);npanels=nj,M=Mj)
+        end
+        _check_H1_errors!(errH1,plans1,zj,rsH)
+        _check_J1_errors!(errJ1,plansj1,zj,rsJ)
+        okH=all(<(tol),errH1)
+        okJ=all(<(tol),errJ1)
+        verbose && @info "Worst DLP-RCIP H1 J1 | nh Mh nj Mj" maximum(errH1) maximum(errJ1) nh Mh nj Mj
+        okH&&okJ && return nh,Mh,nj,Mj,plans1,plansj1,errH1,errJ1
+        if !okH
+            it%5==0 ? (Mh+=grow_M) : (nh=ceil(Int,grow_panels*nh))
+        end
+        if !okJ
+            it%5==0 ? (Mj+=grow_M) : (nj=ceil(Int,grow_panels*nj))
+        end
+    end
+    @warn "DLP_rcip Chebyshev tuning did not reach tol=$tol after $max_iter iterations."
+    return nh,Mh,nj,Mj,plans1,plansj1,errH1,errJ1
 end

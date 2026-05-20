@@ -35,9 +35,11 @@ end
 function boundary_matrix_size_for_solver(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_alpert},pts::BoundaryPointsCFIE{T}) where {T<:Real} 
     return boundary_matrix_size_for_solver(solver,[pts])
 end
+function boundary_matrix_size_for_solver(solver::DLP_rcip,pts::DLPRCIPDiscretization{T,C}) where {T<:Real,C<:AbsCurve}
+    return length(pts.bp.xy)
+end
 
 """
-
     EBIMChebBatchCache{W}
 
 Reusable Chebyshev batch cache for EBIM matrix construction.

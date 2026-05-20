@@ -1,3 +1,4 @@
+# THIS ONE IS JUST LEGACY FOR VerginiSaraceno, still usable though
 """
     solve_wavenumber(solver::SweepSolver,basis::AbsBasis,billiard::AbsBilliard,k::Real,dk::Real) -> Tuple{Real, Real}
 
@@ -65,6 +66,17 @@ function _k_sweep_prepare(solver::CFIE_alpert,basis::AbsBasis,billiard::AbsBilli
     T=eltype(first(pts).ws)
     A=Matrix{Complex{T}}(undef,ws.Ntot,ws.Ntot)
     solve_first=k->solve_INFO(solver,basis,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
+    return solve_first,solve_one
+end
+function _k_sweep_prepare(solver::DLP_rcip,basis::AbsBasis,billiard::AbsBilliard,ks;multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-10,which::Symbol=:det_argmin)
+    kmax=maximum(ks)
+    pts=evaluate_points(solver,billiard,kmax)
+    ws=make_dlp_rcip_workspace(solver,pts)
+    T=eltype(pts.bp.ds)
+    N=boundary_matrix_size(pts)
+    A=Matrix{Complex{T}}(undef,N,N)
+    solve_first=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     solve_one=k->solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded_matrices,use_krylov=use_krylov,which=which)
     return solve_first,solve_one
 end
@@ -224,6 +236,7 @@ end
 @inline _matrix_size(ws::CFIEAlpertWorkspace)=ws.Ntot
 @inline _matrix_size(ws::DLPKressWorkspace)=ws.N
 @inline _matrix_size(ws::DLPKressReducedWorkspace)=ws.m
+@inline _matrix_size(ws::DLPRCIPWorkspace)=boundary_matrix_size(ws.pts)
 
 function _newton_buffers(::Type{T},N::Int) where {T<:Real}
     A=Matrix{Complex{T}}(undef,N,N)
