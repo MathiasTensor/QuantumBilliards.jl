@@ -124,6 +124,10 @@
 #   Thus RCIP removes the corner-singularity resolution bottleneck
 #   without changing the asymptotic dense O(N²) complexity of the
 #   underlying boundary integral method.
+#
+#   Ref:
+#   - Helsing, J. Solving integral equations on piecewise smooth boundaries using the RCIP method: a tutorial; https://arxiv.org/abs/1207.6737
+#   - Helsing, J. A Fast and Stable Solver for Singular Integral Equations on Piecewise Smooth Curves; https://doi.org/10.1137/090779218
 #   MO 19/5/26 - added solve_vect
 #TODO Grouping corners into equaivalence clasees for reuse of rcip R matrix
 # ============================================================
