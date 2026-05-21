@@ -648,6 +648,9 @@ function assemble_dlp_rcip!(D::Matrix{Complex{T}},disc::DLPRCIPDiscretization{T,
             cx=T(s.center[1]);cy=T(s.center[2])
         end
     end
+    ctab=T[]
+    stab=T[]
+    χ=ComplexF64[]
     if have_rot
         ctab,stab,χ=_rotation_tables(T,nrot,mrot)
     end

@@ -217,7 +217,12 @@ function assemble_dlp_rcip_chebyshev!(Ds::Vector{Matrix{ComplexF64}},disc::DLPRC
             cy=T(s.center[2])
         end
     end
-    have_rot && (ctab,stab,χ=_rotation_tables(T,nrot,mrot))
+    ctab=T[]
+    stab=T[]
+    χ=ComplexF64[]
+    if have_rot
+        ctab,stab,χ=_rotation_tables(T,nrot,mrot)
+    end
     shift_x=disc.bp.shift_x
     shift_y=disc.bp.shift_y
     @use_threads multithreading=multithreaded for j in 1:N
