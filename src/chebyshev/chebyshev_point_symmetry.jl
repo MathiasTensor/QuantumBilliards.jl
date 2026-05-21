@@ -147,7 +147,7 @@ end
 # Outputs:
 #   rmin,rmax: estimated minimum and maximum distances between boundary points considering symmetry
 ##################################################################################
-function estimate_rmin_rmax(bp::BoundaryPoints{T},sym=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=3.0) where {T<:Real}
+function estimate_rmin_rmax(bp::BoundaryPoints{T},sym=nothing;pad=(T(0.9),T(1.1)),rmax_factor::Real=1.0) where {T<:Real}
     N=length(bp.xy);@assert N>1
     tol2=(eps(T))^2
     nth=Threads.nthreads()
