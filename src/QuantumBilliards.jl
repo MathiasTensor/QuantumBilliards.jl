@@ -23,6 +23,12 @@ using PyCall
 using Test
 using BenchmarkTools
 
+include("taylor/pycall_init.jl")
+function __init__()
+    __init_mpmath_specials__()
+    return nothing
+end
+
 #abstract types
 include("abstracttypes.jl")
 export CoordinateSystem,AbsBilliard,AbsCurve,AbsVirtualCurve,AbsRealCurve,AbsBasis,AbsFundamentalBasis,AbsSolver,AbsPoints,SweepSolver,AcceleratedSolver,AbsSampler,AbsState,StationaryState,AbsGrid,AbsSymmetry,AbsObservable,CFIE
@@ -225,7 +231,6 @@ include("solvers/gridmethods/phi_fdm.jl")
 export compute_extended_index,phiFD_Hamiltonian,compute_ϕ_fem_eigenmodes
 
 # magnetic helmholtz and hyperbolic metric helmholtz
-include("taylor/pycall_init.jl")
 include("taylor/patched_taylor_series_Q.jl")
 include("taylor/patched_taylor_series_U.jl")
 
