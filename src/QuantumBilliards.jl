@@ -20,6 +20,7 @@ using CoordinateTransformations # FIXME needs to go
 using Rotations #FIXME needs to go
 using CircularArrays
 using PyCall
+using Test
 using BenchmarkTools
 
 #abstract types
