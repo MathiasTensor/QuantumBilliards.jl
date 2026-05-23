@@ -139,10 +139,10 @@ function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
     _mpctx[].dps=dps
     nu_py=_mpc[](real(nu),imag(nu))
     d_py=_mpf[](d0)
-    z=_cosh[](d_py)
-    sh=_sinh[](d_py)
-    Qnu=_legenq[](nu_py,0,z;type=leg_type)
-    Qnu1=_legenq[](nu_py+1,0,z;type=leg_type)
+    z=_mp_cosh[](d_py)
+    sh=_mp_sinh[](d_py)
+    Qnu=_mp_legenq[](nu_py,0,z;type=leg_type)
+    Qnu1=_mp_legenq[](nu_py+1,0,z;type=leg_type)
     y0=(nu_py+1)*(Qnu1-z*Qnu)/sh
     u_re=pycall(_pyfloat[],Float64,Qnu.real)
     u_im=pycall(_pyfloat[],Float64,Qnu.imag)
@@ -1133,8 +1133,8 @@ function Q_ref_mpmath(nu::ComplexF64,d::Float64;dps::Int=80,leg_type::Int=3)
     _mpctx[].dps=dps
     nup=_mpc[](real(nu),imag(nu))
     dp=_mpf[](d)
-    z=_cosh[](dp)
-    Q=_legenq[](nup,0,z;type=leg_type)
+    z=_mp_cosh[](dp)
+    Q=_mp_legenq[](nup,0,z;type=leg_type)
     return ComplexF64(pycall(_pyfloat[],Float64,Q.real),pycall(_pyfloat[],Float64,Q.imag))
 end
 
@@ -1142,10 +1142,10 @@ function dQdd_ref_mpmath(nu::ComplexF64,d::Float64;dps::Int=80,leg_type::Int=3)
     _mpctx[].dps=dps
     nup=_mpc[](real(nu),imag(nu))
     dp=_mpf[](d)
-    z=_cosh[](dp)
-    sh=_sinh[](dp)
-    Q0=_legenq[](nup,0,z;type=leg_type)
-    Q1=_legenq[](nup+1,0,z;type=leg_type)
+    z=_mp_cosh[](dp)
+    sh=_mp_sinh[](dp)
+    Q0=_mp_legenq[](nup,0,z;type=leg_type)
+    Q1=_mp_legenq[](nup+1,0,z;type=leg_type)
     y=(nup+1)*(Q1-z*Q0)/sh
     return ComplexF64(pycall(_pyfloat[],Float64,y.real),pycall(_pyfloat[],Float64,y.imag))
 end

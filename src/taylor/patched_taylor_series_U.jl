@@ -144,7 +144,7 @@ end
 function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=100)
     _mpctx[].dps=dps
     νp=_mpc[](real(ν),imag(ν))
-    a=_cos[](_pi[]*νp)/(4*_pi[])
+    a=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
     return ComplexF64(pycall(_pyfloat[],Float64,a.real),pycall(_pyfloat[],Float64,a.imag))
 end
 
@@ -174,8 +174,8 @@ end
 function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=100)
     _mpctx[].dps=dps
     νp=_mpc[](real(ν),imag(ν))
-    a=_cos[](_pi[]*νp)/(4*_pi[])
-    R0=a*(_digamma[](νp+_mpf[](0.5))-2*_digamma[](_mpf[](1)))-_sin[](_pi[]*νp)/4
+    a=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
+    R0=a*(_mp_digamma[](νp+_mpf[](0.5))-2*_mp_digamma[](_mpf[](1)))-_mp_sin[](_mp_pi[]*νp)/4
     return ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag))
 end
 
@@ -228,10 +228,10 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
     z=s_py*s_py
     ν_py=_mpc[](real(ν),imag(ν))
     a_py=_mpf[](0.5)-ν_py
-    C=-1/(4*_gamma[](ν_py+_mpf[](0.5)))
-    U0=_hyperu[](a_py,1,z)
-    U1=_hyperu[](a_py+1,2,z)
-    ez=_exp[](-z/2)
+    C=-1/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
+    U0=_mp_hyperu[](a_py,1,z)
+    U1=_mp_hyperu[](a_py+1,2,z)
+    ez=_mp_exp[](-z/2)
     F=C*ez*U0
     Fz=C*ez*(-_mpf[](0.5)*U0-a_py*U1)
     G=F
@@ -1194,7 +1194,7 @@ function F_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
     z_py=_mpf[](z)
     ν_py=_mpc[](real(ν),imag(ν))
     a_py=_mpf[](0.5)-ν_py
-    F=-_exp[](-z_py/2)*_hyperu[](a_py,1,z_py)/(4*_gamma[](ν_py+_mpf[](0.5)))
+    F=-_mp_exp[](-z_py/2)*_mp_hyperu[](a_py,1,z_py)/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
     re=pycall(_pyfloat[],Float64,F.real)
     im=pycall(_pyfloat[],Float64,F.imag)
     return ComplexF64(re,im)

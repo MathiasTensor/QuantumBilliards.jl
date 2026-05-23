@@ -1,51 +1,21 @@
 # =============================================================================
 # Shared mpmath / PyCall initializers for special-function Taylor tables
 # =============================================================================
-if !isdefined(@__MODULE__,:_mp)
-    const _mp=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_mpctx)
-    const _mpctx=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_mpf)
-    const _mpf=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_mpc)
-    const _mpc=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_pyfloat)
-    const _pyfloat=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_cosh)
-    const _cosh=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_sinh)
-    const _sinh=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_legenq)
-    const _legenq=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_hyperu)
-    const _hyperu=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_gamma)
-    const _gamma=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_exp)
-    const _exp=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_cos)
-    const _cos=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_sin)
-    const _sin=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_digamma)
-    const _digamma=Ref{PyObject}()
-end
-if !isdefined(@__MODULE__,:_pi)
-    const _pi=Ref{PyObject}()
-end
+const _mp=Ref{PyObject}()
+const _mpctx=Ref{PyObject}()
+const _mpf=Ref{PyObject}()
+const _mpc=Ref{PyObject}()
+const _pyfloat=Ref{PyObject}()
+const _mp_cosh=Ref{PyObject}()
+const _mp_sinh=Ref{PyObject}()
+const _mp_legenq=Ref{PyObject}()
+const _mp_hyperu=Ref{PyObject}()
+const _mp_gamma=Ref{PyObject}()
+const _mp_exp=Ref{PyObject}()
+const _mp_cos=Ref{PyObject}()
+const _mp_sin=Ref{PyObject}()
+const _mp_digamma=Ref{PyObject}()
+const _mp_pi=Ref{PyObject}()
 
 function __init_mpmath_specials__()
     m=pyimport("mpmath")
@@ -54,16 +24,16 @@ function __init_mpmath_specials__()
     _mpf[]=m.mpf
     _mpc[]=m.mpc
     _pyfloat[]=pybuiltin("float")
-    _cosh[]=m.cosh
-    _sinh[]=m.sinh
-    _legenq[]=m.legenq
-    _hyperu[]=m.hyperu
-    _gamma[]=m.gamma
-    _exp[]=m.exp
-    _cos[]=m.cos
-    _sin[]=m.sin
-    _digamma[]=m.digamma
-    _pi[]=m.pi
+    _mp_cosh[]=m.cosh
+    _mp_sinh[]=m.sinh
+    _mp_legenq[]=m.legenq
+    _mp_hyperu[]=m.hyperu
+    _mp_gamma[]=m.gamma
+    _mp_exp[]=m.exp
+    _mp_cos[]=m.cos
+    _mp_sin[]=m.sin
+    _mp_digamma[]=m.digamma
+    _mp_pi[]=m.pi
     return nothing
 end
 
