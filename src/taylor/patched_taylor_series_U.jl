@@ -1,0 +1,1297 @@
+# =============================================================================
+# Fast Taylor-patch evaluator for the Landau-regularized magnetic Green radial
+# factor
+# =============================================================================
+# This file provides fast, allocation-free evaluation of the gauge-independent
+# radial factor
+#
+#     F(z;ν) = -exp(-z/2) U(1/2-ν,1,z) / (4 Γ(ν+1/2)),
+#
+# where
+#
+#     z = |x-y|² / b².
+#
+# This is the radial part of the regularized magnetic Green function
+#
+#     G_B(x,y;ν) = exp(iΦ(x,y)) F(|x-y|²/b²),
+#
+# with magnetic phase handled elsewhere.
+#
+# What this file contains
+# -----------------------
+#   - mpmath seeding for F and its derivative,
+#   - Taylor-patch propagation in s=sqrt(z),
+#   - small-z logarithmic expansion,
+#   - fast evaluators for F(z), Rν(z), and Fz(z).
+#
+# Mathematical split
+# ------------------
+# Near z=0,
+#
+#     F(z;ν) = aν log(z) + Rν(z),
+#     aν = cos(πν)/(4π),
+#
+# with finite part
+#
+#     Rν(0) = aν[ψ(ν+1/2)-2ψ(1)] - sin(πν)/4.
+#
+# The evaluator provides both F(z) and Rν(z). The Kress-specific combination
+# involving log(|x(t)-x(τ)|²/(4b²sin²((t-τ)/2))) belongs in the separate Kress
+# file.
+#
+# Taylor-patch strategy
+# Define
+#
+#     s = sqrt(z),
+#     G(s;ν) = F(s²;ν).
+#
+# Then
+#
+#     G''(s) = -G'(s)/s + (s² - 4ν)G(s).
+#
+# One high-precision mpmath seed G(s0),G'(s0) is used, and all remaining patch
+# coefficients are propagated in Julia.
+# MO 23/5/26
+# =============================================================================
+
+# uncomment these when testing this file in isolation, but they are already imported in QuantumBilliards.jl
+#using PyCall
+#using SpecialFunctions
+#using LinearAlgebra
+#using Test
+#using Random
+#using BenchmarkTools
+
+if !isdefined(@__MODULE__,:_mp)
+    const _mpctx=Ref{PyObject}()
+    const _mpf=Ref{PyObject}()
+    const _mpc=Ref{PyObject}()
+    const _hyperu=Ref{PyObject}()
+    const _gamma=Ref{PyObject}()
+    const _exp=Ref{PyObject}()
+    const _pyfloat=Ref{PyObject}()
+    const _cos=Ref{PyObject}()
+    const _sin=Ref{PyObject}()
+    const _digamma=Ref{PyObject}()
+    const _pi=Ref{PyObject}()
+end
+
+function __init_magnetic_u_mpmath__()
+    m=pyimport("mpmath")
+    _mpctx[]=m.mp
+    _mpf[]=m.mpf
+    _mpc[]=m.mpc
+    _hyperu[]=m.hyperu
+    _gamma[]=m.gamma
+    _exp[]=m.exp
+    _pyfloat[]=pybuiltin("float")
+    _cos[]=m.cos
+    _sin[]=m.sin
+    _digamma[]=m.digamma
+    _pi[]=m.pi
+    return nothing
+end
+
+const inv4π=1/(4*pi)
+
+# =============================================================================
+# magnetic_log_coeff
+#
+#   Return the coefficient of the logarithmic singularity of the regularized
+#   magnetic Green radial factor.
+#
+#   Near z=0,
+#
+#   F(z;ν) = a_ν log(z) + R_ν(z),
+#
+#   where R_ν is finite at z=0 and
+#
+#   a_ν = cos(πν)/(4π).
+#
+# Inputs
+#   ν::ComplexF64 Complex spectral parameter.
+#
+# Output
+#   ComplexF64 Logarithmic coefficient a_ν.
+#
+# Notes
+#   This is the radial coefficient only. The magnetic phase exp(iΦ) is applied
+#   separately during boundary-kernel assembly.
+# =============================================================================
+@inline magnetic_log_coeff(ν::ComplexF64)=cospi(ν)*inv4π
+
+# =============================================================================
+# magnetic_R0
+#
+# Purpose
+# Return the diagonal finite part R_ν(0) of the regularized magnetic Green
+# radial factor.
+#
+#   F(z;ν)=a_ν log(z)+R_ν(z),
+#
+#   the finite part is 
+#
+#   R_ν(0) = a_ν[ψ(ν+1/2)-2ψ(1)] - sin(πν)/4.
+#
+# Inputs
+#   ν::ComplexF64 Complex spectral parameter.
+#
+# Output
+#   ComplexF64 Finite part R_ν(0).
+#
+# Notes
+#   This Float64/SpecialFunctions version is cheap and sufficient for many
+#   uses. For high-accuracy small-z series construction, use
+#   `magnetic_R0_mpmath`.
+# =============================================================================
+@inline function magnetic_R0(ν::ComplexF64)
+    a=magnetic_log_coeff(ν)
+    return a*(digamma(ν+0.5)-2*digamma(1.0+0.0im))-sin(pi*ν)/4
+end
+
+# =============================================================================
+# magnetic_log_coeff_mpmath
+#
+# Purpose
+# High-precision mpmath version of `magnetic_log_coeff`.
+#
+# Why this exists
+# For large |ν|, computing a_ν in ComplexF64 can introduce a small error floor
+# in the z≈0 logarithmic branch. Since a_ν multiplies log(z), even a tiny
+# coefficient error can become visible at z≈1e-15.
+#
+# Inputs
+#   ν::ComplexF64 Complex spectral parameter.
+#
+# Keyword arguments
+#   dps::Int=100 Decimal precision used by mpmath.
+#
+# Output
+#   ComplexF64 High-precision-computed a_ν, rounded back to ComplexF64.
+# =============================================================================
+function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=100)
+    _mpctx[].dps=dps
+    νp=_mpc[](real(ν),imag(ν))
+    a=_cos[](_pi[]*νp)/(4*_pi[])
+    return ComplexF64(pycall(_pyfloat[],Float64,a.real),pycall(_pyfloat[],Float64,a.imag))
+end
+
+# =============================================================================
+# magnetic_R0_mpmath
+#
+# Purpose
+# High-precision mpmath version of `magnetic_R0`.
+#
+#       R_ν(0) = a_ν[ψ(ν+1/2)-2ψ(1)] - sin(πν)/4
+#
+# using mpmath arithmetic.
+#
+# Why this exists
+# The small-z branch is anchored by R_ν(0). If R_ν(0) is only computed with
+# ordinary ComplexF64 arithmetic, the small-z series inherits that error.
+#
+# Inputs
+#   ν::ComplexF64 Complex spectral parameter.
+#
+# Keyword arguments
+#   dps::Int=100 Decimal precision used by mpmath.
+#
+# Output
+#   ComplexF64 High-precision-computed R_ν(0), rounded back to ComplexF64.
+# =============================================================================
+function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=100)
+    _mpctx[].dps=dps
+    νp=_mpc[](real(ν),imag(ν))
+    a=_cos[](_pi[]*νp)/(4*_pi[])
+    R0=a*(_digamma[](νp+_mpf[](0.5))-2*_digamma[](_mpf[](1)))-_sin[](_pi[]*νp)/4
+    return ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag))
+end
+
+# =============================================================================
+# seed_G_Gp_mpmath
+#
+# Purpose
+#   Compute one high-precision seed for the Taylor-patch propagation of
+#
+#       G(s;ν) = F(s²;ν),
+#
+#   together with its derivative with respect to s:
+#
+#       G'(s;ν) = 2s F_z(s²;ν).
+#
+# The radial Green factor is
+#
+#       F(z;ν) = -exp(-z/2) U(1/2-ν,1,z) / (4Γ(ν+1/2)).
+#
+#   Differentiating with respect to z gives
+#
+#       F_z(z;ν) =
+#           C exp(-z/2) [-1/2 U(a,1,z) - a U(a+1,2,z)],
+#
+#   where
+#
+#       a = 1/2 - ν,
+#       C = -1/(4Γ(ν+1/2)).
+#
+# Why this is needed
+#   Direct calls to HypergeometricU are too expensive for every matrix entry.
+#   We therefore call mpmath only once per ν to seed the ODE propagation.
+#
+# Inputs
+#   s0::Float64 Seed location in the variable s=sqrt(z). Must satisfy s0>0.
+#
+#   ν::ComplexF64 Complex spectral parameter. For Beyn this will generally be complex.
+#
+# Keyword arguments
+#   dps::Int=80 Decimal precision used by mpmath for the seed evaluation.
+#
+# Output
+#   (G0,Gp0)::Tuple{ComplexF64,ComplexF64}
+#    G0  = G(s0;ν)
+#    Gp0 = dG/ds(s0;ν)
+# =============================================================================
+function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
+    _mpctx[].dps=dps
+    s_py=_mpf[](s0)
+    z=s_py*s_py
+    ν_py=_mpc[](real(ν),imag(ν))
+    a_py=_mpf[](0.5)-ν_py
+    C=-1/(4*_gamma[](ν_py+_mpf[](0.5)))
+    U0=_hyperu[](a_py,1,z)
+    U1=_hyperu[](a_py+1,2,z)
+    ez=_exp[](-z/2)
+    F=C*ez*U0
+    Fz=C*ez*(-_mpf[](0.5)*U0-a_py*U1)
+    G=F
+    Gp=2*s_py*Fz
+    Gre=pycall(_pyfloat[],Float64,G.real);Gim=pycall(_pyfloat[],Float64,G.imag)
+    Gpre=pycall(_pyfloat[],Float64,Gp.real);Gpim=pycall(_pyfloat[],Float64,Gp.imag)
+    return ComplexF64(Gre,Gim),ComplexF64(Gpre,Gpim)
+end
+
+# =============================================================================
+# horner_eval_col
+#
+# Purpose
+# Evaluate a Taylor polynomial stored as one column of a coefficient matrix.
+#
+# Coefficient convention
+#   If A[:,j] stores one Taylor patch, then
+#
+#   A[n+1,j] = coefficient of x^n.
+#
+#   This routine evaluates
+#
+#   p(x) = Σ_{n=0}^P A[n+1,j] x^n
+#
+#   by Horner multiplication.
+#
+# Inputs
+#   A::Matrix{ComplexF64} Matrix of Taylor coefficients. Each column is one patch.
+#
+#   j::Int Patch index / matrix column.
+#
+#   x::Float64 Local coordinate x=s-centers[j].
+#
+# Output
+#   ComplexF64 Polynomial value p(x).
+#
+# Performance note
+#   This avoids `@view(A[:,j])`, so scalar evaluation allocates zero bytes.
+# =============================================================================
+@inline function horner_eval_col(A::Matrix{ComplexF64},j::Int,x::Float64)
+    xx=ComplexF64(x,0.0)
+    acc=ComplexF64(0.0,0.0)
+    @inbounds for n in size(A,1):-1:1
+        acc=muladd(acc,xx,A[n,j])
+    end
+    return acc
+end
+
+# =============================================================================
+# horner_deriv_col
+#
+# Purpose
+# Evaluate the derivative of a Taylor polynomial stored as one column of a
+# coefficient matrix.
+#
+# Coefficient convention
+#
+#   p(x) = Σ_{n=0}^P A[n+1,j] x^n,
+#
+#   then this routine evaluates
+#
+#   p'(x) = Σ_{n=1}^P n A[n+1,j] x^(n-1).
+#
+# Inputs
+#   A::Matrix{ComplexF64} Matrix of Taylor coefficients.
+#
+#   j::Int Patch index / matrix column.
+#
+#   x::Float64 Local coordinate x=s-centers[j].
+#
+# Output
+#   ComplexF64 Derivative p'(x).
+#
+# Usage
+#   Used for G'(s) and hence F_z(z)=G'(sqrt(z))/(2sqrt(z)).
+# =============================================================================
+@inline function horner_deriv_col(A::Matrix{ComplexF64},j::Int,x::Float64)
+    P=size(A,1)-1
+    P==0 && return ComplexF64(0.0,0.0)
+    xx=ComplexF64(x,0.0)
+    acc=ComplexF64(P,0.0)*A[P+1,j]
+    @inbounds for n in (P-1):-1:1
+        acc=muladd(acc,xx,ComplexF64(n,0.0)*A[n+1,j])
+    end
+    return acc
+end
+
+# =============================================================================
+# horner_eval_vec
+#
+# Purpose
+#   Evaluate a polynomial stored in a coefficient vector.
+#
+# Coefficient convention
+#   v[n+1] is the coefficient of x^n, so the routine evaluates
+#
+#   p(x) = Σ_{n=0}^P v[n+1] x^n.
+#
+# Inputs
+#   v::Vector{ComplexF64} Coefficient vector.
+#
+#   x::Float64 Evaluation point.
+#
+# Output
+#   ComplexF64 Polynomial value.
+#
+# Usage
+#   Used mainly for the small-z power series A(z), B(z).
+# =============================================================================
+@inline function horner_eval_vec(v::Vector{ComplexF64},x::Float64)
+    xx=ComplexF64(x,0.0)
+    acc=ComplexF64(0.0,0.0)
+    @inbounds for n in length(v):-1:1
+        acc=muladd(acc,xx,v[n])
+    end
+    return acc
+end
+
+# =============================================================================
+# horner_deriv_vec
+#
+# Purpose
+# Evaluate the derivative of a polynomial stored in a coefficient vector.
+#
+# Coefficient convention
+#
+#  p(x)=Σ_{n=0}^P v[n+1]x^n,
+#
+#  then this routine evaluates p'(x).
+#
+# Inputs
+#   v::Vector{ComplexF64} Coefficient vector.
+#
+#   x::Float64 Evaluation point.
+#
+# Output
+#   ComplexF64 Derivative p'(x).
+#
+# Usage
+# Used in the small-z derivative F_z(z).
+# =============================================================================
+@inline function horner_deriv_vec(v::Vector{ComplexF64},x::Float64)
+    P=length(v)-1
+    P==0 && return ComplexF64(0.0,0.0)
+    xx=ComplexF64(x,0.0)
+    acc=ComplexF64(P,0.0)*v[P+1]
+    @inbounds for n in (P-1):-1:1
+        acc=muladd(acc,xx,ComplexF64(n,0.0)*v[n+1])
+    end
+    return acc
+end
+
+# =============================================================================
+# build_magnetic_patch_coeffs!
+#
+# Purpose
+# Generate one local Taylor patch for
+#
+#       G(s;ν)=F(s²;ν)
+#
+#   around a center s0.
+#
+# Differential equation
+# The transformed radial Green factor satisfies
+#
+#       G''(s) = -G'(s)/s + (s²-4ν)G(s).
+#
+#   We write
+#
+#       G(s0+h)=Σ g_n h^n.
+#
+#   The recurrence is obtained by expanding
+#
+#       1/(s0+h),
+#       (s0+h)²,
+#       G(s0+h),
+#       G'(s0+h),
+#       G''(s0+h),
+#
+#    and matching powers of h.
+#
+# Inputs
+#   g::Vector{ComplexF64} Output coefficient buffer of length P+1. On return,
+#   g[n+1] is the coefficient of h^n.
+#
+#   invs::Vector{ComplexF64} Scratch buffer of length P+1 storing coefficients of 1/(s0+h).
+#   Supplied externally to avoid allocations inside the patch loop.
+#
+#   ν::ComplexF64 Complex spectral parameter.
+#
+#   G0::ComplexF64 Value G(s0).
+#
+#   Gp0::ComplexF64 Derivative G'(s0).
+#
+#   s0::Float64 Patch center. Must be positive.
+# =============================================================================
+@inline function build_magnetic_patch_coeffs!(g::Vector{ComplexF64},invs::Vector{ComplexF64},ν::ComplexF64,G0::ComplexF64,Gp0::ComplexF64,s0::Float64)
+    P=length(g)-1
+    g[1]=G0
+    g[2]=Gp0
+    cc=ComplexF64(s0,0.0)
+    invcc=inv(cc)
+    invs[1]=invcc
+    @inbounds for m in 1:P
+        invs[m+1]=-invs[m]*invcc
+    end
+    c2=cc*cc
+    fourν=4ν
+    @inbounds for n in 0:(P-2)
+        rhs=ComplexF64(0.0,0.0)
+        for m in 0:n
+            rhs-=invs[m+1]*ComplexF64(n-m+1,0.0)*g[n-m+2]
+        end
+        rhs+=(c2-fourν)*g[n+1]
+        n>=1 && (rhs+=2cc*g[n])
+        n>=2 && (rhs+=g[n-1])
+        g[n+3]=rhs/ComplexF64((n+2)*(n+1),0.0)
+    end
+    return nothing
+end
+
+# =============================================================================
+# build_small_z_coeffs
+#
+# Purpose
+# Build coefficients for the small-z log representation
+#
+#       F(z;ν)=A(z)log(z)+B(z),
+#
+# where
+#
+#       A(z)=Σ A_m z^m,
+#       B(z)=Σ B_m z^m.
+#
+# Initial values
+# The leading coefficients are
+#
+#       A_0 = a_ν,
+#       B_0 = R_ν(0).
+#
+# Recurrence
+#   The coefficients are generated from the differential equation satisfied by
+#   F(z;ν). The logarithmic structure is necessary because z=0 is a
+#   singular point of the confluent hypergeometric equation.
+#
+# Inputs
+#   ν::ComplexF64 Complex spectral parameter.
+#
+#   R0::ComplexF64 Finite part R_ν(0), preferably computed with mpmath for accuracy.
+#
+# Keyword arguments
+#   M::Int=24 Maximum order of the small-z expansion. The returned arrays have length M+1.
+#
+#   prec::Int=256 BigFloat precision used while building the coefficients.
+#
+# Output
+#   (A,B)::Tuple{Vector{ComplexF64},Vector{ComplexF64}} Coefficient vectors for A(z) and B(z), rounded to ComplexF64.
+#
+# Notes
+#   In `_update_small_z!`, A[1] and B[1] are overwritten with mpmath-computed
+#   a_ν and R_ν(0). This prevents the small-z branch from inheriting a Float64
+#   error floor.
+# =============================================================================
+function build_small_z_coeffs(ν::ComplexF64,R0::ComplexF64;M::Int=24,prec::Int=256)
+    setprecision(BigFloat,prec) do
+        νb=Complex{BigFloat}(BigFloat(real(ν)),BigFloat(imag(ν)))
+        A=Vector{Complex{BigFloat}}(undef,M+1)
+        B=Vector{Complex{BigFloat}}(undef,M+1)
+        A[1]=Complex{BigFloat}(BigFloat(real(magnetic_log_coeff(ν))),BigFloat(imag(magnetic_log_coeff(ν))))
+        B[1]=Complex{BigFloat}(BigFloat(real(R0)),BigFloat(imag(R0)))
+        am1=zero(Complex{BigFloat})
+        bm1=zero(Complex{BigFloat})
+        for m in 0:(M-1)
+            den=Complex{BigFloat}(BigFloat((m+1)^2),zero(BigFloat))
+            ap1=(BigFloat("0.25")*am1-νb*A[m+1])/den
+            bp1=(-BigFloat(2*(m+1))*ap1-νb*B[m+1]+BigFloat("0.25")*bm1)/den
+            am1=A[m+1]
+            bm1=B[m+1]
+            A[m+2]=ap1
+            B[m+2]=bp1
+        end
+        return ComplexF64.(A),ComplexF64.(B)
+    end
+end
+
+# =============================================================================
+# MagneticGreenSTaylorTable
+#
+# Purpose
+#   Runtime table for fast evaluation of the Landau-regularized magnetic Green
+#   radial factor at one fixed value of ν.
+#
+# Stored function
+#   The table stores Taylor coefficients of
+#
+#       G(s;ν) = F(s²;ν),
+#
+#   where
+#
+#       F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/(4Γ(ν+1/2)).
+#
+# Small-z representation
+#   For z<zsmall, the table does not extrapolate the s-Taylor patches. Instead
+#   it evaluates the Frobenius/log expansion
+#
+#       F(z) = A(z)log(z)+B(z),
+#
+#   where the coefficients of A and B are stored in smallA and smallB.
+#
+# Fields
+#   ν::ComplexF64 Complex spectral parameter for which the table is built.
+#
+#   zmin,zmax::Float64 Valid z-interval for the s-Taylor patches.
+#
+#   zsmall::Float64 Threshold below which the small-z log-series branch is used. Usually zsmall=zmin.
+#
+#   smin,smax::Float64 Corresponding interval in s=sqrt(z).
+#
+#   h::Float64 Uniform patch spacing in s.
+#
+#   P::Int Taylor degree per patch.
+#
+#   centers::Vector{Float64} Patch centers in s.
+#
+#   gcoeffs::Matrix{ComplexF64} Taylor coefficients of G(s). Column j stores the coefficients for the
+#   patch centered at centers[j].
+#
+#   a_log::ComplexF64 Logarithmic coefficient aν=cos(πν)/(4π).
+#
+#   R0::ComplexF64 Finite regular part Rν(0).
+#
+#   smallA,smallB::Vector{ComplexF64}
+#   Coefficients of A(z) and B(z) in the small-z expansion
+#   F(z)=A(z)log(z)+B(z).
+# =============================================================================
+mutable struct MagneticGreenSTaylorTable
+    ν::ComplexF64
+    zmin::Float64
+    zmax::Float64
+    zsmall::Float64
+    smin::Float64
+    smax::Float64
+    h::Float64
+    P::Int
+    centers::Vector{Float64}
+    gcoeffs::Matrix{ComplexF64}
+    a_log::ComplexF64
+    R0::ComplexF64
+    smallA::Vector{ComplexF64}
+    smallB::Vector{ComplexF64}
+end
+
+# =============================================================================
+# MagneticGreenSPrecomp
+#
+# Purpose
+#  Store ν-independent table geometry for the s-Taylor representation.
+#
+# Fields
+#   zmin,zmax::Float64 The s-Taylor table covers z∈[zmin,zmax].
+#
+#   zsmall::Float64 Threshold below which the small-z log series is used.
+#
+#   smin,smax::Float64 sqrt(zmin), sqrt(zmax).
+#
+#   h::Float64 Uniform spacing of patch centers in s.
+#
+#   P::Int Taylor degree per patch.
+#
+#   Msmall::Int Number of small-z log-series coefficients minus one.
+#
+#   Npatch::Int Number of s-Taylor patches.
+#
+#   centers::Vector{Float64} Patch centers in the s variable.
+#
+# Usage
+#   Reuse this object for all ν values on a Beyn contour when zmin,zmax,h,P are
+#   fixed.
+# =============================================================================
+struct MagneticGreenSPrecomp
+    zmin::Float64
+    zmax::Float64
+    zsmall::Float64
+    smin::Float64
+    smax::Float64
+    h::Float64
+    P::Int
+    Msmall::Int
+    Npatch::Int
+    centers::Vector{Float64}
+end
+
+# =============================================================================
+# MagneticGreenSWorkspace
+#
+# Purpose
+# Scratch storage for Taylor-table construction.
+#
+# Fields
+#   gcoef::Vector{ComplexF64} Single-thread scratch buffer for one patch coefficient vector.
+#
+#   invs::Vector{ComplexF64} Single-thread scratch buffer for the expansion of 1/(s0+h).
+#
+#   gcoef_tls::Vector{Vector{ComplexF64}} Thread-local coefficient buffers for batched construction.
+#
+#   invs_tls::Vector{Vector{ComplexF64}} Thread-local inverse-series buffers for batched construction.
+#
+# Why it matters
+# Without these buffers, every patch construction would allocate temporary
+# vectors. In Beyn runs this would be catastrophic.
+# =============================================================================
+struct MagneticGreenSWorkspace
+    gcoef::Vector{ComplexF64}
+    invs::Vector{ComplexF64}
+    gcoef_tls::Vector{Vector{ComplexF64}}
+    invs_tls::Vector{Vector{ComplexF64}}
+end
+
+# =============================================================================
+# MagneticGreenSWorkspace(P; threaded=true)
+#
+# Purpose
+# Allocate scratch buffers for table construction.
+#
+# Inputs
+#   P::Int Taylor degree. Buffers of length P+1 are allocated.
+#
+# Keyword arguments
+#   threaded::Bool=true If true, allocate one pair of scratch buffers per Julia thread.
+#
+# Output
+#   MagneticGreenSWorkspace Workspace object used by `build_MagneticGreenSTaylorTable!`.
+# =============================================================================
+@inline function MagneticGreenSWorkspace(P::Int;threaded::Bool=true)
+    NT=threaded ? Threads.nthreads() : 1
+    return MagneticGreenSWorkspace(
+        Vector{ComplexF64}(undef,P+1),
+        Vector{ComplexF64}(undef,P+1),
+        [Vector{ComplexF64}(undef,P+1) for _ in 1:NT],
+        [Vector{ComplexF64}(undef,P+1) for _ in 1:NT],
+    )
+end
+
+# =============================================================================
+# build_MagneticGreenSPrecomp
+#
+# Purpose
+# Build the ν-independent s-grid and table configuration.
+#
+# Inputs / keyword arguments
+#   zmin::Float64=1e-3 Lower z value for the s-Taylor table.
+#
+#   zmax::Float64=900.0 Upper z value for the s-Taylor table. In production this should satisfy zmax ≥ max_{i,j}|x_i-x_j|²/b².
+#
+#   zsmall::Float64=zmin Threshold for switching to the small-z log-series branch.
+#
+#   h::Float64=0.00001 Uniform spacing in s=sqrt(z).
+#
+#   P::Int=6 Taylor degree per patch.
+#
+#   Msmall::Int=16 Order of the small-z log expansion.
+#
+# Output
+#   MagneticGreenSPrecomp Precomputed table layout.
+# =============================================================================
+function build_MagneticGreenSPrecomp(;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,h::Float64=0.00001,P::Int=6,Msmall::Int=16)
+    @assert zmin>0 && zmax>zmin && h>0 && P>=2
+    @assert 0<zsmall<=zmin
+    smin=sqrt(zmin);smax=sqrt(zmax)
+    Npatch=Int(ceil((smax-smin)/h))+1
+    centers=Vector{Float64}(undef,Npatch)
+    @inbounds for i in 1:Npatch
+        centers[i]=smin+(i-1)*h
+    end
+    centers[end]=smax
+    return MagneticGreenSPrecomp(zmin,zmax,zsmall,smin,smax,h,P,Msmall,Npatch,centers)
+end
+
+# =============================================================================
+# alloc_MagneticGreenSTaylorTable
+#
+# Purpose
+# Allocate one runtime Taylor table compatible with a precomputed s-grid.
+#
+# Inputs
+#   pre::MagneticGreenSPrecomp Table layout produced by `build_MagneticGreenSPrecomp`.
+#
+# Keyword arguments
+#   ν::ComplexF64=0+0im Initial spectral parameter used to initialize constants and small-z
+#   coefficients. The table should still be filled later with
+#   `build_MagneticGreenSTaylorTable!`.
+#
+# Output
+#   MagneticGreenSTaylorTable Table with allocated coefficient matrix.
+# =============================================================================
+@inline function alloc_MagneticGreenSTaylorTable(pre::MagneticGreenSPrecomp;ν::ComplexF64=0.0+0.0im)
+    gcoeffs=Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch)
+    R0=magnetic_R0(ν)
+    A,B=build_small_z_coeffs(ν,R0;M=pre.Msmall)
+    return MagneticGreenSTaylorTable(ν,pre.zmin,pre.zmax,pre.zsmall,pre.smin,pre.smax,pre.h,pre.P,pre.centers,gcoeffs,magnetic_log_coeff(ν),R0,A,B)
+end
+
+# =============================================================================
+# alloc_MagneticGreenSTaylorTables
+#
+# Purpose
+# Allocate several Taylor tables sharing the same s-grid.
+#
+# Inputs
+#   pre::MagneticGreenSPrecomp Shared table layout.
+#
+#   Nν::Int Number of tables to allocate.
+#
+# Keyword arguments
+#   ν::ComplexF64=0+0im Initial dummy spectral parameter.
+#
+# Output
+#   Vector{MagneticGreenSTaylorTable} One table per requested ν.
+# =============================================================================
+@inline function alloc_MagneticGreenSTaylorTables(pre::MagneticGreenSPrecomp,Nν::Int;ν::ComplexF64=0.0+0.0im)
+    tabs=Vector{MagneticGreenSTaylorTable}(undef,Nν)
+    @inbounds for i in 1:Nν
+        tabs[i]=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
+    end
+    return tabs
+end
+
+# =============================================================================
+# _magnetic_anchor_index
+#
+# Purpose
+# Choose the Taylor propagation anchor patch.
+#
+# Default choice
+#  If no anchor_s is supplied, use s_anchor ≈ sqrt(|ν|), clipped to [smin,smax].
+#
+# Logic
+#   For large |ν|, this tends to place the seed near the natural transition
+#   scale of the ODE. The table is then propagated both left and right.
+#
+# Inputs
+#   pre::MagneticGreenSPrecomp Table layout.
+#
+#   ν::ComplexF64 Spectral parameter.
+#
+#   anchor_s::Union{Nothing,Float64} Optional user-specified anchor in s.
+#
+# Output
+#   Int Patch index in 1:pre.Npatch.
+# =============================================================================
+@inline function _magnetic_anchor_index(pre::MagneticGreenSPrecomp,ν::ComplexF64,anchor_s::Union{Nothing,Float64})
+    s0=anchor_s===nothing ? sqrt(abs(ν)) : anchor_s
+    s0=clamp(s0,pre.smin,pre.smax)
+    return clamp(Int(round((s0-pre.smin)/pre.h))+1,1,pre.Npatch)
+end
+
+# =============================================================================
+# _update_small_z!
+#
+# Purpose
+# Update all ν-dependent small-z data inside an existing table.
+#
+# What is updated
+#   - tab.ν
+#   - tab.a_log
+#   - tab.R0
+#   - tab.smallA
+#   - tab.smallB
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Table to mutate.
+#
+#   pre::MagneticGreenSPrecomp Table layout, used mainly for Msmall.
+#
+#   ν::ComplexF64 New spectral parameter.
+#
+# Keyword arguments
+#   mp_dps::Int=100 mpmath precision for a_ν and Rν(0).
+# =============================================================================
+function _update_small_z!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ν::ComplexF64;mp_dps::Int=100)
+    tab.ν=ν
+    tab.a_log=magnetic_log_coeff_mpmath(ν;dps=mp_dps)
+    tab.R0=magnetic_R0_mpmath(ν;dps=mp_dps)
+    A,B=build_small_z_coeffs(ν,tab.R0;M=pre.Msmall)
+    A[1]=tab.a_log
+    B[1]=tab.R0
+    resize!(tab.smallA,length(A))
+    resize!(tab.smallB,length(B))
+    copyto!(tab.smallA,A)
+    copyto!(tab.smallB,B)
+    return nothing
+end
+
+# =============================================================================
+# build_MagneticGreenSTaylorTable!
+#
+# Purpose
+# Build the full Taylor table for one ν in preallocated storage.
+#
+# Algorithm
+#   1. Update the small-z branch constants and coefficients.
+#   2. Choose an anchor patch.
+#   3. Use mpmath once to compute G(s0),G'(s0).
+#   4. Build the anchor Taylor patch.
+#   5. Propagate to larger s using the Taylor polynomial at each previous patch.
+#   6. Propagate to smaller s similarly.
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Preallocated table to fill.
+#
+#   pre::MagneticGreenSPrecomp ν-independent table layout.
+#
+#   ws::MagneticGreenSWorkspace Scratch buffers.
+#
+#   ν::ComplexF64 Spectral parameter.
+#
+# Keyword arguments
+#   mp_dps::Int=80 mpmath precision for the seed and small-z constants.
+#
+#   anchor_s::Union{Nothing,Float64}=nothing Optional user-specified seed location in s.
+# =============================================================================
+function build_MagneticGreenSTaylorTable!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    @assert pre.P==tab.P && pre.Npatch==size(tab.gcoeffs,2)
+    @assert pre.centers===tab.centers
+    _update_small_z!(tab,pre,ν;mp_dps=mp_dps)
+    j0=_magnetic_anchor_index(pre,ν,anchor_s)
+    G0,Gp0=seed_G_Gp_mpmath(pre.centers[j0],ν;dps=mp_dps)
+    gcoef=ws.gcoef
+    invs=ws.invs
+    build_magnetic_patch_coeffs!(gcoef,invs,ν,G0,Gp0,pre.centers[j0])
+    @inbounds for n in 1:(pre.P+1)
+        tab.gcoeffs[n,j0]=gcoef[n]
+    end
+    @inbounds for j in (j0+1):pre.Npatch
+        h=pre.centers[j]-pre.centers[j-1]
+        G=horner_eval_col(tab.gcoeffs,j-1,h)
+        Gp=horner_deriv_col(tab.gcoeffs,j-1,h)
+        build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
+        for n in 1:(pre.P+1)
+            tab.gcoeffs[n,j]=gcoef[n]
+        end
+    end
+    @inbounds for j in (j0-1):-1:1
+        h=pre.centers[j]-pre.centers[j+1]
+        G=horner_eval_col(tab.gcoeffs,j+1,h)
+        Gp=horner_deriv_col(tab.gcoeffs,j+1,h)
+        build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
+        for n in 1:(pre.P+1)
+            tab.gcoeffs[n,j]=gcoef[n]
+        end
+    end
+    return nothing
+end
+
+# =============================================================================
+# build_MagneticGreenSTaylorTable
+#
+# Purpose
+# Convenience allocation-and-build wrapper for a single ν.
+#
+# Inputs
+#   ν::ComplexF64 Spectral parameter.
+#
+# Keyword arguments
+#   zmin,zmax,zsmall,h,P,Msmall,mp_dps,anchor_s Forwarded to the precomp/table builder.
+#
+# Output
+#   MagneticGreenSTaylorTable Fully built table.
+#
+# Notes
+# For production Beyn loops, prefer the in-place version to avoid repeated
+# allocations.
+# =============================================================================
+function build_MagneticGreenSTaylorTable(ν::ComplexF64;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,h::Float64=0.00001,P::Int=6,Msmall::Int=16,mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,h=h,P=P,Msmall=Msmall)
+    ws=MagneticGreenSWorkspace(P;threaded=false)
+    tab=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
+    build_MagneticGreenSTaylorTable!(tab,pre,ws,ν;mp_dps=mp_dps,anchor_s=anchor_s)
+    return tab
+end
+
+# =============================================================================
+# _mag_patch_index
+#
+# Purpose
+# Map an s value to a Taylor patch index.
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   s::Float64 Evaluation point in s=sqrt(z).
+#
+# Output
+#   Int Patch index.
+# =============================================================================
+@inline function _mag_patch_index(tab::MagneticGreenSTaylorTable,s::Float64)
+    if s<=tab.smin
+        return 1
+    elseif s>=tab.smax
+        return length(tab.centers)
+    else
+        t=(s-tab.smin)/tab.h
+        idx=Int(floor(t))+1
+        abs(t-round(t))<64*eps(t) && (idx=Int(round(t))+1)
+        return clamp(idx,1,length(tab.centers))
+    end
+end
+
+# =============================================================================
+# _small_F
+#
+# Purpose
+# Evaluate F(z;ν) for z<zsmall using the small-z log expansion.
+#
+# Formula
+# F(z)=A(z)log(z)+B(z).
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Table containing smallA/smallB.
+#
+#   z::Float64 Positive small z.
+#
+# Output
+#   ComplexF64  F(z;ν)
+# =============================================================================
+@inline function _small_F(tab::MagneticGreenSTaylorTable,z::Float64)
+    L=log(z)
+    A=horner_eval_vec(tab.smallA,z)
+    B=horner_eval_vec(tab.smallB,z)
+    return A*L+B
+end
+
+# =============================================================================
+# _small_R
+#
+# Purpose
+# Evaluate the regular remainder Rν(z) for z<zsmall.
+#
+# Formula
+# Rν(z)=F(z)-aν log(z) = (A(z)-aν)log(z)+B(z).
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Table containing small-z coefficients.
+#
+#   z::Float64 Positive small z.
+#
+# Output
+#   ComplexF64 Regular remainder Rν(z).
+# =============================================================================
+@inline function _small_R(tab::MagneticGreenSTaylorTable,z::Float64)
+    L=log(z)
+    A=horner_eval_vec(tab.smallA,z)
+    B=horner_eval_vec(tab.smallB,z)
+    return (A-tab.a_log)*L+B
+end
+
+# =============================================================================
+# _small_Fz
+#
+# Purpose
+# Evaluate dF/dz for z<zsmall.
+#
+# Formula
+#
+#   F(z)=A(z)log(z)+B(z),
+#
+#   then
+#
+#   F_z(z)=A'(z)log(z)+A(z)/z+B'(z).
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Table containing small-z coefficients.
+#
+#   z::Float64 Positive small z.
+#
+# Output
+#   ComplexF64 Derivative F_z(z;ν).
+# =============================================================================
+@inline function _small_Fz(tab::MagneticGreenSTaylorTable,z::Float64)
+    L=log(z)
+    A=horner_eval_vec(tab.smallA,z)
+    Ap=horner_deriv_vec(tab.smallA,z)
+    Bp=horner_deriv_vec(tab.smallB,z)
+    return Ap*L+A/z+Bp
+end
+
+# =============================================================================
+# _eval_G
+#
+# Purpose
+# Evaluate G(s;ν)=F(s²;ν) from the s-Taylor table.
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   s::Float64 Positive s value.
+#
+# Output
+#   ComplexF64 G(s;ν).
+# =============================================================================
+@inline function _eval_G(tab::MagneticGreenSTaylorTable,s::Float64)
+    idx=_mag_patch_index(tab,s)
+    return horner_eval_col(tab.gcoeffs,idx,s-tab.centers[idx])
+end
+
+# =============================================================================
+# _eval_dGds
+#
+# Purpose
+# Evaluate dG/ds from the s-Taylor table.
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   s::Float64 Positive s value.
+#
+# Output
+#   ComplexF64 G'(s;ν).
+# =============================================================================
+@inline function _eval_dGds(tab::MagneticGreenSTaylorTable,s::Float64)
+    idx=_mag_patch_index(tab,s)
+    return horner_deriv_col(tab.gcoeffs,idx,s-tab.centers[idx])
+end
+
+# =============================================================================
+# _eval_F
+#
+# Purpose
+# Evaluate the regularized radial magnetic Green factor F(z;ν).
+#
+# Strategy
+#   - If z<zsmall, use the small-z log expansion.
+#   - Otherwise, use G(s)=F(s²) with s=sqrt(z).
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   z::Float64 Dimensionless squared distance z=r²/b².
+#
+# Output
+#   ComplexF64 F(z;ν).
+# =============================================================================
+@inline function _eval_F(tab::MagneticGreenSTaylorTable,z::Float64)
+    z==0.0 && return ComplexF64(Inf,0.0)
+    z<tab.zsmall && return _small_F(tab,z)
+    return _eval_G(tab,sqrt(z))
+end
+
+# =============================================================================
+# _eval_R
+#
+# Purpose
+# Evaluate the regular remainder
+#
+# Rν(z)=F(z;ν)-aν log(z).
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   z::Float64 Dimensionless squared distance z=r²/b².
+#
+# Output
+#   ComplexF64 Rν(z), finite at z=0.
+#
+# Usage
+#   This is the main radial quantity needed in the SLP Kress smooth part.
+# =============================================================================
+@inline function _eval_R(tab::MagneticGreenSTaylorTable,z::Float64)
+    z==0.0 && return tab.R0
+    z<tab.zsmall && return _small_R(tab,z)
+    return _eval_F(tab,z)-tab.a_log*log(z)
+end
+
+# =============================================================================
+# _eval_Fz
+#
+# Purpose
+# Evaluate dF/dz.
+#
+# Strategy
+#   - If z<zsmall, use the differentiated small-z log series.
+#   - Otherwise, use
+#
+#  F_z(z)=G'(sqrt(z))/(2sqrt(z)).
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   z::Float64 Positive dimensionless squared distance.
+#
+# Output
+#   ComplexF64 F_z(z;ν).
+#
+# Notes
+#   Not needed for SLP assembly, but useful for DLP/normal derivatives later.
+# =============================================================================
+@inline function _eval_Fz(tab::MagneticGreenSTaylorTable,z::Float64)
+    z==0.0 && error("Fz is singular at z=0.")
+    z<tab.zsmall && return _small_Fz(tab,z)
+    s=sqrt(z)
+    return _eval_dGds(tab,s)/(2s)
+end
+
+# =============================================================================
+# _eval_F! / _eval_R! / _eval_Fz!
+#
+# Purpose
+# Vectorized, allocation-free evaluation for many z values.
+#
+# Inputs
+#   out::AbstractVector{ComplexF64} Preallocated output vector.
+#
+#   tab::MagneticGreenSTaylorTable Runtime table.
+#
+#   zvec::AbstractVector{Float64} Input z values.
+# =============================================================================
+function _eval_F!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTable,zvec::AbstractVector{Float64})
+    @inbounds for i in eachindex(zvec)
+        out[i]=_eval_F(tab,zvec[i])
+    end
+    return nothing
+end
+function _eval_R!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTable,zvec::AbstractVector{Float64})
+    @inbounds for i in eachindex(zvec)
+        out[i]=_eval_R(tab,zvec[i])
+    end
+    return nothing
+end
+function _eval_Fz!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTable,zvec::AbstractVector{Float64})
+    @inbounds for i in eachindex(zvec)
+        out[i]=_eval_Fz(tab,zvec[i])
+    end
+    return nothing
+end
+
+
+
+
+
+
+
+
+
+
+##############################
+########## TESTING ###########
+##############################
+
+# run only if file ran as a script
+if abspath(PROGRAM_FILE)==@__FILE__
+
+__init_magnetic_u_mpmath__()
+
+@inline function magnetic_test_zmax(b::T;D::T=T(10.0),safety::T=T(1.2)) where {T<:Real}
+    return safety*(D/b)^2
+end
+
+function F_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    _mpctx[].dps=dps
+    z_py=_mpf[](z)
+    ν_py=_mpc[](real(ν),imag(ν))
+    a_py=_mpf[](0.5)-ν_py
+    F=-_exp[](-z_py/2)*_hyperu[](a_py,1,z_py)/(4*_gamma[](ν_py+_mpf[](0.5)))
+    re=pycall(_pyfloat[],Float64,F.real)
+    im=pycall(_pyfloat[],Float64,F.imag)
+    return ComplexF64(re,im)
+end
+
+function magnetic_ztests(zmax::Float64;zsmall::Float64=1e-3)
+    candidates=[1e-15,1e-12,1e-9,1e-6,zsmall,1.5*zsmall,1e-2,3e-2,0.12,0.35,0.75,1.5,3.0,7.0,9.5,20.0,30.0,40.0,100.0,500.0,900.0,0.25*zmax,0.5*zmax,0.75*zmax,zmax]
+    return candidates[candidates.<=zmax]
+end
+
+function run_magnetic_green_taylor_test(;ν=ComplexF64(2003.37,0.5),zmin=1e-3,zsmall=1e-3,h=0.00001,P=6,Msmall=20,mp_dps=100,b=2.0)
+    ws=MagneticGreenSWorkspace(P;threaded=false)
+    zmax=magnetic_test_zmax(b;D=10.0,safety=1.2)
+    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,h=h,P=P,Msmall=Msmall)
+    tab=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
+
+    println("\nBuild:")
+    @time build_MagneticGreenSTaylorTable!(tab,pre,ws,ν;mp_dps=mp_dps)
+
+    ztests=magnetic_ztests(zmax)
+    N=1_000_000_00
+
+    maxrel=0.0
+    println("\nAccuracy:")
+    for z in ztests
+        ref=F_ref_mpmath(z,ν;dps=mp_dps)
+        val=_eval_F(tab,z)
+        err=abs(val-ref)
+        rel=err/max(abs(ref),eps(Float64))
+        maxrel=max(maxrel,rel)
+        println("z = ",z,"  abs err = ",err,"  rel err = ",rel)
+        @test rel < 5e-11 || err < 5e-13
+    end
+
+    for z in ztests
+        ref=F_ref_mpmath(z,ν;dps=mp_dps)-tab.a_log*log(z)
+        val=_eval_R(tab,z)
+        @test abs(val-ref)/max(abs(ref),eps(Float64))<5e-10
+    end
+
+    @test isfinite(real(tab.R0))
+    @test isfinite(imag(tab.R0))
+
+    rng=MersenneTwister(1234)
+    zvec=exp.(log(1e-15).+(log(zmax)-log(1e-15)).*rand(rng,N))
+    out=Vector{ComplexF64}(undef,length(zvec))
+
+    println("\nBenchmark scalar _eval_F:")
+    @btime _eval_F($tab,1.234)
+
+    println("\nBenchmark vector _eval_F! : $(N) evals:")
+    @btime _eval_F!($out,$tab,$zvec)
+
+    println("\nBenchmark vector _eval_R! : $(N) evals:")
+    @btime _eval_R!($out,$tab,$zvec)
+
+    println("\nBenchmark vector _eval_Fz! : $(N) evals:")
+    @btime _eval_Fz!($out,$tab,$zvec)
+
+    t=@belapsed _eval_F!($out,$tab,$zvec)
+    println("\nThroughput _eval_F!: ",length(zvec)/t/N," million evals/s")
+    println("ns/eval: ",1e9*t/length(zvec))
+    println("max relative error = ",maxrel)
+
+    return tab
+end
+
+@testset "MagneticGreenSTaylorTable" begin
+    tab=run_magnetic_green_taylor_test(;Msmall=30,mp_dps=120)
+end
+
+end

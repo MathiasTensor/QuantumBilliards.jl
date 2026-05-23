@@ -19,6 +19,8 @@ using LinearMaps
 using CoordinateTransformations # FIXME needs to go
 using Rotations #FIXME needs to go
 using CircularArrays
+using PyCall
+using BenchmarkTools
 
 #abstract types
 include("abstracttypes.jl")
@@ -220,5 +222,9 @@ include("solvers/gridmethods/fdm.jl")
 export FiniteElementMethod,compute_interior_index,FEM_Hamiltonian,compute_fem_eigenmodes,compute_boundary,compute_boundary_tension
 include("solvers/gridmethods/phi_fdm.jl")
 export compute_extended_index,phiFD_Hamiltonian,compute_ϕ_fem_eigenmodes
+
+# magnetic helmholtz and hyperbolic metric helmholtz
+include("taylor/patched_taylor_series_Q.jl")
+include("taylor/patched_taylor_series_U.jl")
 
 end
