@@ -27,6 +27,7 @@ KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 Bessels = "0.2.8 - 3"
@@ -52,7 +53,6 @@ BenchmarkTools = "1.8.0"
 PyCall = "1.96.4"
 
 [extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
