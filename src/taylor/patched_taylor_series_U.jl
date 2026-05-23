@@ -62,35 +62,7 @@
 #using Random
 #using BenchmarkTools
 
-if !isdefined(@__MODULE__,:_mp)
-    const _mpctx=Ref{PyObject}()
-    const _mpf=Ref{PyObject}()
-    const _mpc=Ref{PyObject}()
-    const _hyperu=Ref{PyObject}()
-    const _gamma=Ref{PyObject}()
-    const _exp=Ref{PyObject}()
-    const _pyfloat=Ref{PyObject}()
-    const _cos=Ref{PyObject}()
-    const _sin=Ref{PyObject}()
-    const _digamma=Ref{PyObject}()
-    const _pi=Ref{PyObject}()
-end
-
-function __init_magnetic_u_mpmath__()
-    m=pyimport("mpmath")
-    _mpctx[]=m.mp
-    _mpf[]=m.mpf
-    _mpc[]=m.mpc
-    _hyperu[]=m.hyperu
-    _gamma[]=m.gamma
-    _exp[]=m.exp
-    _pyfloat[]=pybuiltin("float")
-    _cos[]=m.cos
-    _sin[]=m.sin
-    _digamma[]=m.digamma
-    _pi[]=m.pi
-    return nothing
-end
+# also import the mpmath objects (since QuantumBilliards.jl has these in pycall_init.jl)
 
 const inv4π=1/(4*pi)
 

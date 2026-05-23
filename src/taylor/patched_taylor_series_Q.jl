@@ -32,32 +32,11 @@
 #using Random
 #using BenchmarkTools
 
+# also import the mpmath objects (since QuantumBilliards.jl has these in pycall_init.jl)
+
 const TWO_PI=2*pi
 
 # Import mpmath functions via PyCall for high-precision seeding (at d_min calls 2 calls to legenq are needed)
-if !isdefined(@__MODULE__,:_mp)
-    const _mp=Ref{PyObject}()
-    const _mpctx=Ref{PyObject}()
-    const _mpf=Ref{PyObject}()
-    const _mpc=Ref{PyObject}()
-    const _cosh=Ref{PyObject}()
-    const _sinh=Ref{PyObject}()
-    const _legenq=Ref{PyObject}()
-    const _pyfloat=Ref{PyObject}()
-end
-
-function __init_legendre_q_mpmath__()
-    m=pyimport("mpmath")
-    _mp[]=m
-    _mpctx[]=m.mp
-    _mpf[]=m.mpf
-    _mpc[]=m.mpc
-    _cosh[]=m.cosh
-    _sinh[]=m.sinh
-    _legenq[]=m.legenq
-    _pyfloat[]=pybuiltin("float")
-    return nothing
-end
 
 const inv2π=1.0/TWO_PI
 const Z_threshold=1.0+1e-14 # threshold for |z-1| smallness for the Legendre Q required for the SLP kernel
