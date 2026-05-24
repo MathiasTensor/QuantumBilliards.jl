@@ -1,6 +1,3 @@
-#include("../abstracttypes.jl")
-
-using CircularArrays
 
 function antisym_vec(x)
     v = reverse(-x[2:end])
@@ -55,36 +52,3 @@ function husimi_function(state::S;  b = 5.0, c = 10.0, w = 7.0) where {S<:AbsSta
     return husimi_function(k,u,s,L; c = c, w = w)
 end
 
-function husimi_function(state_bundle::S;  b = 5.0, c = 10.0, w = 7.0) where {S<:EigenstateBundle}
-    L = state_bundle.billiard.length
-    ks = state_bundle.ks
-    us, s, norm = boundary_function(state_bundle; b=b)
-    H, qs, ps = husimi_function(ks[1],us[1],s,L; c = c, w = w)
-    type = eltype(H)
-    Hs::Vector{Matrix{type}} = [H]
-    for i in 2:length(ks)
-        H, qs, ps = husimi_function(ks[i],us[i],s,L; c = c, w = w)
-        push!(Hs,H)
-    end
-    return Hs, qs, ps
-end
-#=
-function coherent(q,p,k,s,L,m::Int)
-    let x = s-q+m*L
-        a = (k/pi)^0.25
-        ft = exp(im*p*k*x) 
-        gauss = exp(-k/2*x^2)
-        return a*ft*gauss
-    end 
-end
-
-function coherent(q,p,k,s,L,m::Int,b::Complex)
-    let x = s-q+m*L
-        a = (k*imag(b)/pi)^0.25
-        ft = exp(im*p*k*x) 
-        fb = exp(im*real(b)/2*k*x^2)
-        gauss = exp(-imag(b)/2*k*x^2)
-        return a*ft*fb*gauss
-    end 
-end
-=#

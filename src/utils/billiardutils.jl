@@ -1,81 +1,53 @@
+"""
+    adapt_basis(triangle::Triangle, i::Integer) -> Tuple{Real, PolarCS, Nothing}
 
-function real_length(billiard::Bi) where Bi<:AbsBilliard
-    L = 0.0
-    for curve in billiard.fundamental_boundary
-        if typeof(curve) <: AbsRealCurve
-            L += curve.length
-        end
+Construct a polar coordinate system centered at the `i`-th corner of a triangle for use in corner-adapted basis functions.
+
+# Arguments
+- `triangle::Triangle`: The triangle geometry object.
+- `i::Integer`: The index of the edge (1-based) for which to compute the adapted coordinate system.
+
+# Returns
+- `angle::Real`: The internal angle at the selected corner.
+- `cs::PolarCS`: A polar coordinate system with origin at the corner and angle-aligned axis.
+- `symmetry::Nothing`: Placeholder for symmetry information (not used currently).
+"""
+function adapt_basis(triangle::T,i::Ti) where {T<:BilliardGeometry.TriangleBilliard,Ti<:Integer}
+    N=3
+    c=triangle.fundamental_domain.corners
+    i0=mod1(i,N)
+    i1=mod1(i+1,N)
+    a=c[i1]-c[i0]
+    rot_angle=atan(a[2],a[1])#angle(x_axis, a)
+    origin=c[i0]
+    cs=PolarCS(origin,rot_angle)
+    return triangle.fundamental_domain.angles[i0],cs,nothing
+end
+
+"""
+    make_triangle_and_basis(gamma, chi; edge_i=1) -> Tuple{Triangle, CornerAdaptedFourierBessel}
+
+Convenience function to create a triangle and construct a corner-adapted Fourier-Bessel basis at a selected edge.
+
+# Arguments
+- `gamma::Real`: Internal angle at the base corner (γ).
+- `chi::Real`: Shape control parameter, defines ratio β/α.
+- `edge_i::Integer=1`: Index of the real edge used to place and adapt the basis.
+
+# Returns
+- `tr::Triangle`: The constructed triangle object with virtual edges applied.
+- `basis::CornerAdaptedFourierBessel`: A Fourier-Bessel basis adapted to the corner opposite edge `edge_i`.
+"""
+function make_triangle_and_basis(gamma,chi; edge_i=1)
+    cor=TriangleBilliard(gamma,chi).fundamental_domain.corners
+    x0,y0=cor[mod1(edge_i+2,3)]
+    bcs = Vector{AbsBoundaryCondition}(undef,3)
+    for i in eachindex(bcs)
+        bcs[i] = QuantumSolverIgnore()
     end
-    return L 
+    bcs[edge_i]= SpecularReflection() 
+    tr=TriangleBilliard(gamma,chi;bcs,x0,y0)
+    angle,cs,symmetry=adapt_basis(tr,edge_i+2)
+    basis=CornerAdaptedFourierBessel(10,angle,cs,symmetry)
+    return tr, basis 
 end
-
-function virtual_length(billiard::Bi) where Bi<:AbsBilliard
-    L = 0.0
-    for curve in billiard.fundamental_boundary
-        if typeof(curve) <: AbsVirtualCurve
-            L += curve.length
-        end
-    end
-    return L 
-end
-
-function curve_edge_lengths(billiard::Bi) where Bi<:AbsBilliard
-    L = 0.0
-    res = [L]
-    for crv in billiard.full_boundary
-        if (typeof(crv) <: AbsRealCurve)
-            L += crv.length
-            push!(res,L)
-        end 
-    end
-    return res
-end
-
-
-function is_inside(billiard::Bi, pt; fundamental_domain = true ) where Bi<:AbsBilliard
-    if fundamental_domain 
-        boundary = billiard.fundamental_boundary  
-    else
-        boundary = billiard.full_boundary
-    end
-    return all(is_inside(crv, pt) for crv in boundary) 
-end
-
-
-function is_inside(billiard::Bi, pts::AbstractArray; fundamental_domain = true) where Bi<:AbsBilliard
-    let 
-        if fundamental_domain 
-            curves = billiard.fundamental_boundary  
-        else
-            curves = billiard.full_boundary
-        end
-    
-        inside = is_inside(curves[1], pts)
-        for i in 2:length(curves)
-            inside = inside .& is_inside(curves[i], pts)
-        end
-        return inside
-    end 
-end
-
-
-function boundary_limits(curves; grd=1000) 
-    x_bnd = Vector{Any}()
-    y_bnd = Vector{Any}()
-    for crv in curves #names of variables not very nice
-        L = crv.length
-        N_bnd = max(512,round(Int, grd/L))
-        t = range(0.0,1.0, N_bnd)[1:end-1]
-        pts = curve(crv,t)
-        append!(x_bnd, getindex.(pts,1))
-        append!(y_bnd, getindex.(pts,2))
-    end
-    x_bnd[end] = x_bnd[1]
-    y_bnd[end] = y_bnd[1]
-    xlim = extrema(x_bnd)
-    #dx =  xlim[2] - xlim[1]
-    ylim = extrema(y_bnd)
-    #dy =  ylim[2] - ylim[1]
-    return xlim, ylim #,dx,dy
-end
-

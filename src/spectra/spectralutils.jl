@@ -1,14 +1,15 @@
-#include("../abstracttypes.jl")
+######################################
+#Needs total rework
+######################################
 
-using IntervalArithmetic
-#using IntervalArithmetic.Symbols
-function is_equal(x,dx,y,dy)
-    #check if numbers are equal within tolerances
-    X = x ± dx
-    Y = y ± dy 
-    Z = IntervalArithmetic.intersect_interval(X, Y)
-    #return  ~(Z == ∅)
-    return  ~IntervalArithmetic.isempty_interval(Z)
+function is_equal(x::T, dx::T, y::T, dy::T) :: Bool where {T<:Real}
+    # Define the intervals
+    x_lower=x-dx
+    x_upper=x+dx
+    y_lower=y-dy
+    y_upper=y+dy
+    # Check if the intervals overlap
+    return max(x_lower,y_lower) <= min(x_upper,y_upper)
 end
 
 
@@ -90,7 +91,7 @@ function overlap_and_merge!(k_left, ten_left, k_right, ten_right, control_left, 
     append!(control_left, [false for i in idx_last:length(k_right)])
 end
 
-function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4, parallel_matrix = true)
+function compute_spectrum(solver::AbsSolver, basis::AbsBasis, billiard::AbsBilliard,k1,k2,dk; tol=1e-4, multithreaded = true)
     k0 = k1
     #initial computation
     k_res, ten_res = solve_spectrum(solver, basis, billiard, k0, dk+tol)
@@ -145,7 +146,7 @@ function merge_spectra(s1, s2; tol=1e-4)
     return SpectralData(ks[p], ts[p], control[p])
 end
 
-function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliard,N1::Int,N2::Int,dN::Int; N_expect = 2.0, tol=1e-4, parallel_matrix = false)
+function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliard,N1::Int,N2::Int,dN::Int; N_expect = 2.0, tol=1e-4, multithreaded = false)
     let solver=solver, basis=basis, billiard=billiard
         N_intervals = range(N1-dN/2,N2+dN/2,step=dN)
         #println(N_intervals)
@@ -163,7 +164,7 @@ function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliar
             #println(k1)
             #println(k2)
             #println(dk)
-            k_res, ten_res, control = compute_spectrum(solver,basis,billiard,k1,k2,dk; parallel_matrix, tol)
+            k_res, ten_res, control = compute_spectrum(solver,basis,billiard,k1,k2,dk; multithreaded, tol)
             #println(k_res)
             results[i] = SpectralData(k_res, ten_res, control)
         end
@@ -171,40 +172,3 @@ function compute_spectrum(solver::AbsSolver,basis::AbsBasis,billiard::AbsBilliar
         return reduce(merge_spectra, results)
     end
 end
-
-#=
-using Makie
-function compute_spectrum_test(solver::AbsSolver, basis::AbsBasis, pts::AbsPoints,k1,k2,dk;tol=1e-4, plot_info=false)
-    k0 = k1
-    #initial computation
-    k_res, ten_res = solve(solver, basis, pts, k0, dk+tol)
-    control = [false for i in 1:length(k_res)]
-    cycle = Makie.wong_colors()[1:6]
-    f = Figure(resolution = (1000,1000));
-    ax = Axis(f[1,1])
-    scatter!(ax, k_res, log10.(ten_res),color=(cycle[1], 0.5))
-    scatter!(ax, k_res, zeros(length(k_res)),color=(cycle[1], 0.5))
-    #println("iteration 0")
-    #println("merged: $k_res")
-    
-    #println("overlaping: $ks")
-    i=1
-    while k0 < k2
-        #println("iteration $i")
-        k0 += dk
-        k_new, ten_new = solve(solver, basis, pts, k0, dk+tol)
-        scatter!(ax, k_new, log10.(ten_new),color=(cycle[mod1(i+1,6)], 0.5))
-        scatter!(ax, k_new, zeros(length(k_new)),color=(cycle[mod1(i+1,6)], 0.5))
-        i+=1
-        #println("new: $k_new")
-        #println("overlap: $(k0-dk), $k0")
-        overlap_and_merge!(k_res, ten_res, k_new, ten_new, control, k0-dk, k0; tol=tol)
-        #println("merged: $k_res")
-        #println("control: $control")
-    end
-    scatter!(ax, k_res, log10.(ten_res), color=(:black, 1.0), marker=:x,  ms = 100)
-    scatter!(ax, k_res, zeros(length(k_res)), color=(:black, 1.0), marker=:x, ms = 100)
-    display(f)
-    return k_res, ten_res, control
-end
-=#
