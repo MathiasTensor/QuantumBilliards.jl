@@ -1471,7 +1471,7 @@ function run_magnetic_green_taylor_test(;ν=ComplexF64(2003.37,0.5),zmin=1e-3,zs
     @btime _eval_Blog!($out,$tab,$zvec)
 
     t=@belapsed _eval_F!($out,$tab,$zvec)
-    println("\nThroughput _eval_F!: ",length(zvec)/t/N," million evals/s")
+    println("\nThroughput _eval_F!: ",length(zvec)/t/1e6," million evals/s")
     println("ns/eval: ",1e9*t/length(zvec))
     println("max relative error = ",maxrel)
 
