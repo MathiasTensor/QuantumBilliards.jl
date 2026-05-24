@@ -1359,8 +1359,6 @@ end
 # run only if file ran as a script
 if abspath(PROGRAM_FILE)==@__FILE__
 
-__init_magnetic_u_mpmath__()
-
 @inline function magnetic_test_zmax(b::T;D::T=T(10.0),safety::T=T(1.2)) where {T<:Real}
     return safety*(D/b)^2
 end

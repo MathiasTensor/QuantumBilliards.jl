@@ -1127,8 +1127,6 @@ end
 
 if abspath(PROGRAM_FILE)==@__FILE__
 
-__init_legendre_q_mpmath__()
-
 function Q_ref_mpmath(nu::ComplexF64,d::Float64;dps::Int=80,leg_type::Int=3)
     _mpctx[].dps=dps
     nup=_mpc[](real(nu),imag(nu))
