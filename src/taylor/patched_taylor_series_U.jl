@@ -242,6 +242,43 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
 end
 
 # =============================================================================
+# seed_A_Ap_mpmath
+#
+# Purpose
+# Compute one high-precision seed for
+#
+#     H(s;ν)=Aν(s²),
+#
+# where
+#
+#     Aν(z)=cos(πν)/(4π)*exp(-z/2)*1F1(1/2-ν;1;z).
+#
+# This is the full z-dependent logarithmic coefficient in
+#
+#     F(z;ν)=Aν(z)log(z)+Bν(z).
+#
+# Output
+#   (A0,Ap0), where Ap0=dH/ds(s0).
+# =============================================================================
+function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
+    _mpctx[].dps=dps
+    s_py=_mpf[](s0)
+    z=s_py*s_py
+    ν_py=_mpc[](real(ν),imag(ν))
+    a_py=_mpf[](0.5)-ν_py
+    c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
+    M0=_mp_hyp1f1[](a_py,1,z)
+    M1=_mp_hyp1f1[](a_py+1,2,z)
+    ez=_mp_exp[](-z/2)
+    A=c*ez*M0
+    Az=c*ez*(a_py*M1-_mpf[](0.5)*M0)
+    Ap=2*s_py*Az
+    Are=pycall(_pyfloat[],Float64,A.real);Aim=pycall(_pyfloat[],Float64,A.imag)
+    Apre=pycall(_pyfloat[],Float64,Ap.real);Apim=pycall(_pyfloat[],Float64,Ap.imag)
+    return ComplexF64(Are,Aim),ComplexF64(Apre,Apim)
+end
+
+# =============================================================================
 # horner_eval_col
 #
 # Purpose
@@ -578,6 +615,7 @@ mutable struct MagneticGreenSTaylorTable
     P::Int
     centers::Vector{Float64}
     gcoeffs::Matrix{ComplexF64}
+    acoeffs::Matrix{ComplexF64}
     a_log::ComplexF64
     R0::ComplexF64
     smallA::Vector{ComplexF64}
@@ -729,9 +767,10 @@ end
 # =============================================================================
 @inline function alloc_MagneticGreenSTaylorTable(pre::MagneticGreenSPrecomp;ν::ComplexF64=0.0+0.0im)
     gcoeffs=Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch)
+    acoeffs=Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch)
     R0=magnetic_R0(ν)
     A,B=build_small_z_coeffs(ν,R0;M=pre.Msmall)
-    return MagneticGreenSTaylorTable(ν,pre.zmin,pre.zmax,pre.zsmall,pre.smin,pre.smax,pre.h,pre.P,pre.centers,gcoeffs,magnetic_log_coeff(ν),R0,A,B)
+    return MagneticGreenSTaylorTable(ν,pre.zmin,pre.zmax,pre.zsmall,pre.smin,pre.smax,pre.h,pre.P,pre.centers,gcoeffs,acoeffs,magnetic_log_coeff(ν),R0,A,B)
 end
 
 # =============================================================================
@@ -826,6 +865,65 @@ function _update_small_z!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrec
 end
 
 # =============================================================================
+# build_A_coeff_table!
+#
+# Purpose
+# Build Taylor patches for
+#
+#     H(s;ν)=Aν(s²),
+#
+# where Aν is the full z-dependent logarithmic coefficient in
+#
+#     F(z;ν)=Aν(z)log(z)+Bν(z).
+#
+# The function H(s;ν) satisfies the same s-ODE as G(s;ν)=F(s²;ν),
+#
+#     H''(s)=-H'(s)/s+(s²-4ν)H(s),
+#
+# because Aν(z) is the second local solution coefficient of the same
+# confluent-hypergeometric equation.
+#
+# Inputs
+#   tab::MagneticGreenSTaylorTable Table whose acoeffs field is filled.
+#   pre::MagneticGreenSPrecomp Shared s-grid layout.
+#   ws::MagneticGreenSWorkspace Scratch buffers.
+#   ν::ComplexF64 Spectral parameter.
+#
+# Keyword arguments
+#   mp_dps::Int=80 mpmath precision for the seed.
+#   anchor_s::Union{Nothing,Float64}=nothing Optional seed location.
+# =============================================================================
+function build_A_coeff_table!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    j0=_magnetic_anchor_index(pre,ν,anchor_s)
+    A0,Ap0=seed_A_Ap_mpmath(pre.centers[j0],ν;dps=mp_dps)
+    gcoef=ws.gcoef
+    invs=ws.invs
+    build_magnetic_patch_coeffs!(gcoef,invs,ν,A0,Ap0,pre.centers[j0])
+    @inbounds for n in 1:(pre.P+1)
+        tab.acoeffs[n,j0]=gcoef[n]
+    end
+    @inbounds for j in (j0+1):pre.Npatch
+        h=pre.centers[j]-pre.centers[j-1]
+        A=horner_eval_col(tab.acoeffs,j-1,h)
+        Ap=horner_deriv_col(tab.acoeffs,j-1,h)
+        build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
+        for n in 1:(pre.P+1)
+            tab.acoeffs[n,j]=gcoef[n]
+        end
+    end
+    @inbounds for j in (j0-1):-1:1
+        h=pre.centers[j]-pre.centers[j+1]
+        A=horner_eval_col(tab.acoeffs,j+1,h)
+        Ap=horner_deriv_col(tab.acoeffs,j+1,h)
+        build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
+        for n in 1:(pre.P+1)
+            tab.acoeffs[n,j]=gcoef[n]
+        end
+    end
+    return nothing
+end
+
+# =============================================================================
 # build_MagneticGreenSTaylorTable!
 #
 # Purpose
@@ -854,8 +952,8 @@ end
 #   anchor_s::Union{Nothing,Float64}=nothing Optional user-specified seed location in s.
 # =============================================================================
 function build_MagneticGreenSTaylorTable!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
-    @assert pre.P==tab.P && pre.Npatch==size(tab.gcoeffs,2)
     @assert pre.centers===tab.centers
+    @assert pre.P==tab.P && pre.Npatch==size(tab.gcoeffs,2) && pre.Npatch==size(tab.acoeffs,2)
     _update_small_z!(tab,pre,ν;mp_dps=mp_dps)
     j0=_magnetic_anchor_index(pre,ν,anchor_s)
     G0,Gp0=seed_G_Gp_mpmath(pre.centers[j0],ν;dps=mp_dps)
@@ -883,6 +981,7 @@ function build_MagneticGreenSTaylorTable!(tab::MagneticGreenSTaylorTable,pre::Ma
             tab.gcoeffs[n,j]=gcoef[n]
         end
     end
+    build_A_coeff_table!(tab,pre,ws,ν;mp_dps=mp_dps,anchor_s=anchor_s)
     return nothing
 end
 
@@ -1081,23 +1180,88 @@ end
 end
 
 # =============================================================================
+# _eval_Alog
+#
+# Purpose
+# Evaluate the full logarithmic coefficient
+#
+#     Aν(z)=cos(πν)/(4π)*exp(-z/2)*1F1(1/2-ν;1;z),
+#
+# appearing in the exact local split
+#
+#     F(z;ν)=Aν(z)log(z)+Bν(z).
+#
+# This is the coefficient that should multiply the Kress logarithm
+#
+#     log(4sin²((t-τ)/2)).
+#
+# Notes
+#   At z=0, Aν(0)=aν=cos(πν)/(4π).
+# =============================================================================
+@inline function _eval_Alog(tab::MagneticGreenSTaylorTable,z::Float64)
+    z==0.0 && return tab.a_log
+    z<tab.zsmall && return horner_eval_vec(tab.smallA,z)
+    s=sqrt(z)
+    idx=_mag_patch_index(tab,s)
+    return horner_eval_col(tab.acoeffs,idx,s-tab.centers[idx])
+end
+
+# =============================================================================
+# _eval_Blog
+#
+# Purpose
+# Evaluate the Kress-smooth finite part
+#
+#     Bν(z)=F(z;ν)-Aν(z)log(z).
+#
+# This differs from _eval_R, which subtracts only the constant coefficient
+# aν log(z). For high-order Kress assembly, use _eval_Alog and _eval_Blog,
+# not _eval_R.
+#
+# Notes
+#   At z=0, Bν(0)=Rν(0).
+# =============================================================================
+@inline function _eval_Blog(tab::MagneticGreenSTaylorTable,z::Float64)
+    z==0.0 && return tab.R0
+    z<tab.zsmall && return horner_eval_vec(tab.smallB,z)
+    return _eval_F(tab,z)-_eval_Alog(tab,z)*log(z)
+end
+
+# =============================================================================
+# _eval_Alog_z
+#
+# Purpose
+# Evaluate dAν/dz.
+#
+# This is useful for differentiated Kress splits or for constructing DLP
+# kernels in a form where the derivative of the logarithmic coefficient is
+# separated explicitly.
+#
+# Notes
+#   The derivative is finite at z=0, but this routine intentionally errors at
+#   z=0 because the finite value should be taken from the small-z coefficient
+#   A₁ if needed.
+# =============================================================================
+@inline function _eval_Alog_z(tab::MagneticGreenSTaylorTable,z::Float64)
+    z==0.0 && error("Alog_z is finite at z=0; use tab.smallA[2] explicitly if needed.")
+    z<tab.zsmall && return horner_deriv_vec(tab.smallA,z)
+    s=sqrt(z)
+    idx=_mag_patch_index(tab,s)
+    return horner_deriv_col(tab.acoeffs,idx,s-tab.centers[idx])/(2s)
+end
+
+# =============================================================================
 # _eval_R
 #
 # Purpose
-# Evaluate the regular remainder
+# Evaluate the constant-log remainder
 #
-# Rν(z)=F(z;ν)-aν log(z).
+#     Rν(z)=F(z;ν)-aν log(z).
 #
-# Inputs
-#   tab::MagneticGreenSTaylorTable Runtime table.
+#   This is algebraically useful and finite at z=0, but it is not the
+#   Kress-smooth finite part. For Kress assembly use
 #
-#   z::Float64 Dimensionless squared distance z=r²/b².
-#
-# Output
-#   ComplexF64 Rν(z), finite at z=0.
-#
-# Usage
-#   This is the main radial quantity needed in the SLP Kress smooth part.
+#     _eval_Alog(tab,z), _eval_Blog(tab,z).
 # =============================================================================
 @inline function _eval_R(tab::MagneticGreenSTaylorTable,z::Float64)
     z==0.0 && return tab.R0
@@ -1166,6 +1330,18 @@ function _eval_Fz!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTabl
     end
     return nothing
 end
+function _eval_Alog!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTable,zvec::AbstractVector{Float64})
+    @inbounds for i in eachindex(zvec)
+        out[i]=_eval_Alog(tab,zvec[i])
+    end
+    return nothing
+end
+function _eval_Blog!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTable,zvec::AbstractVector{Float64})
+    @inbounds for i in eachindex(zvec)
+        out[i]=_eval_Blog(tab,zvec[i])
+    end
+    return nothing
+end
 
 
 
@@ -1198,6 +1374,22 @@ function F_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
     re=pycall(_pyfloat[],Float64,F.real)
     im=pycall(_pyfloat[],Float64,F.imag)
     return ComplexF64(re,im)
+end
+
+function Alog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    _mpctx[].dps=dps
+    z_py=_mpf[](z)
+    ν_py=_mpc[](real(ν),imag(ν))
+    a_py=_mpf[](0.5)-ν_py
+    c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
+    A=c*_mp_exp[](-z_py/2)*_mp_hyp1f1[](a_py,1,z_py)
+    re=pycall(_pyfloat[],Float64,A.real)
+    im=pycall(_pyfloat[],Float64,A.imag)
+    return ComplexF64(re,im)
+end
+
+function Blog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    return F_ref_mpmath(z,ν;dps=dps)-Alog_ref_mpmath(z,ν;dps=dps)*log(z)
 end
 
 function magnetic_ztests(zmax::Float64;zsmall::Float64=1e-3)
@@ -1235,6 +1427,26 @@ function run_magnetic_green_taylor_test(;ν=ComplexF64(2003.37,0.5),zmin=1e-3,zs
         @test abs(val-ref)/max(abs(ref),eps(Float64))<5e-10
     end
 
+    for z in ztests
+        z==0.0 && continue
+        Aref=Alog_ref_mpmath(z,ν;dps=mp_dps)
+        Aval=_eval_Alog(tab,z)
+        Bref=Blog_ref_mpmath(z,ν;dps=mp_dps)
+        Bval=_eval_Blog(tab,z)
+        relA=abs(Aval-Aref)/max(abs(Aref),eps(Float64))
+        relB=abs(Bval-Bref)/max(abs(Bref),eps(Float64))
+        println("A/B z = ",z,"  relA = ",relA,"  relB = ",relB)
+        @test relA < 5e-11 || abs(Aval-Aref)<5e-13
+        @test relB < 5e-10 || abs(Bval-Bref)<5e-12
+    end
+
+    for z in ztests
+        z==0.0 && continue
+        F1=_eval_F(tab,z)
+        F2=_eval_Alog(tab,z)*log(z)+_eval_Blog(tab,z)
+        @test abs(F1-F2)/max(abs(F1),eps(Float64))<5e-13
+    end
+
     @test isfinite(real(tab.R0))
     @test isfinite(imag(tab.R0))
 
@@ -1253,6 +1465,12 @@ function run_magnetic_green_taylor_test(;ν=ComplexF64(2003.37,0.5),zmin=1e-3,zs
 
     println("\nBenchmark vector _eval_Fz! : $(N) evals:")
     @btime _eval_Fz!($out,$tab,$zvec)
+
+    println("\nBenchmark vector _eval_Alog! : $(N) evals:")
+    @btime _eval_Alog!($out,$tab,$zvec)
+
+    println("\nBenchmark vector _eval_Blog! : $(N) evals:")
+    @btime _eval_Blog!($out,$tab,$zvec)
 
     t=@belapsed _eval_F!($out,$tab,$zvec)
     println("\nThroughput _eval_F!: ",length(zvec)/t/N," million evals/s")
