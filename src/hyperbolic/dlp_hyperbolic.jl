@@ -225,13 +225,13 @@ end
 #   σmin::Real (Float64 in krylov branch, otherwise eltype of svdvals)
 #     Smallest singular value of K(k).
 #------------------------------------------------------------------------------
-function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,h=1e-4,P::Int=30,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
+function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
-    tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m,h=h,P=P)
+    tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m)
     K=Matrix{ComplexF64}(undef,N,N)
     compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded)
     assemble_DLP_hyperbolic!(K,pts)
@@ -294,13 +294,13 @@ end
 #     quadrature weights:
 #       ∑_j |u_j|^2 dsH[j] = 1
 #------------------------------------------------------------------------------
-function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,h=1e-4,P::Int=30,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
+function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
-    tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m,h=h,P=P)
+    tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m)
     K=Matrix{ComplexF64}(undef,N,N)
     compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded)
     assemble_DLP_hyperbolic!(K,pts)
@@ -368,7 +368,7 @@ end
 #   σmins::Vector{T}
 #     σmins[i] = σmin(ks[i]) 
 #------------------------------------------------------------------------------
-function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::AbstractVector{T};multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000,h=1e-4,P::Int=30,M_cdf_base::Int=4000,safety::Real=1e-14) where {T<:Real,Ba<:AbstractHankelBasis}
+function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::AbstractVector{T};multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000,M_cdf_base::Int=4000,safety::Real=1e-14) where {T<:Real,Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
     kmax=maximum(ks)
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=M_cdf_base,safety=safety)
@@ -377,7 +377,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     N=length(pts.xy)
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
-    preQ=build_QTaylorPrecomp(dmin=dmin_m,dmax=dmax_m,h=h,P=P)
+    preQ=build_QTaylorPrecomp(dmin=dmin_m,dmax=dmax_m)
     ws=QTaylorWorkspace(preQ.P;threaded=false)
     tab=alloc_QTaylorTable(preQ)
     K=Matrix{ComplexF64}(undef,N,N)
@@ -386,7 +386,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     p=Progress(num_intervals,1)
     @inbounds for i in eachindex(ks)
         k=ks[i]
-        build_QTaylorTable!(tab,preQ,ws,complex(k);mp_dps=60,leg_type=3)
+        build_QTaylorTable!(tab,preQ,ws,complex(k))
         compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded_matrices)
         assemble_DLP_hyperbolic!(K,pts)
         if use_krylov

@@ -221,7 +221,7 @@ end
 #   4) SVD(A0) => rank rk by svd_tol.
 #   5) Build reduced B via Uk,Wk,Σk and A1.
 # ===============================================================================
-function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,h=1e-4,P=30,mp_dps::Int=60,leg_type::Int=3)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
+function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
     @info "Constructing B matrix (hyp) with N=$N, k0=$k0, R=$R, nq=$nq, r=$r"
     θ=(TWO_PI/nq).*(collect(0:nq-1).+0.5)
     ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
@@ -236,7 +236,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     #build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
     tabs=Vector{QTaylorTable}(undef,nq)
     for j in 1:nq
-        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
+        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax)
     end
     compute_kernel_matrices_DLP_hyperbolic!(Tbufs,pts_eucl,solver.symmetry,tabs;multithreaded=multithreaded)
     assemble_DLP_hyperbolic!(Tbufs,pts_eucl)
@@ -323,9 +323,9 @@ end
 # NOTES
 #   - If rk==0 (empty B), returns empty λ and empty matrices.
 # ===============================================================================
-function solve_vect_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_vect_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
-    B,Uk=construct_B_matrix_hyp(solver,pts,N,k0,R;nq=nq,r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+    B,Uk=construct_B_matrix_hyp(solver,pts,N,k0,R;nq=nq,r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded)
     if isempty(B)
         return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k0,R,pts
     end
@@ -345,8 +345,8 @@ end
 # OUTPUTS
 #   λ :: Vector{Complex{T}}
 # ===============================================================================
-@inline function solve_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3) where {Ba<:AbstractHankelBasis,T<:Real}
-    λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,k0,R;nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=rng,multithreaded=multithreaded,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+@inline function solve_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true) where {Ba<:AbstractHankelBasis,T<:Real}
+    λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,k0,R;nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=rng,multithreaded=multithreaded)
     return λ
 end
 
@@ -425,7 +425,7 @@ end
 #   - This is expensive because it builds a FULL N×N matrix T(λ_j) for each λ_j.
 #     That is often the dominant cost after Beyn if many candidates exist.
 # ===============================================================================
-function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::BoundaryPointsHypBIM{T};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3) where {T<:Real}
+function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::BoundaryPointsHypBIM{T};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true) where {T<:Real}
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
     y=Vector{Complex{T}}(undef,N)
@@ -446,7 +446,7 @@ function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{
         abs(λj-k0)>R && (tens[j]=T(NaN);tensN[j]=T(NaN);continue)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
         #build_QTaylorTable!(tab,pre,ws,ComplexF64(λj);mp_dps=mp_dps,leg_type=leg_type)
-        tab=build_QTaylorTable(ComplexF64(λj),dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
+        tab=build_QTaylorTable(ComplexF64(λj),dmin=dmin,dmax=dmax)
         compute_kernel_matrices_DLP_hyperbolic!(A_buf,pts_eucl,solver.symmetry,tab;multithreaded=multithreaded)
         assemble_DLP_hyperbolic!(A_buf,pts_eucl)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))
@@ -499,7 +499,7 @@ end
 #   4) Compute eigen(B) => λ candidates.
 #   5) Optionally rebuild T(λ_j) and compute residual ||T(λ_j) Φ_j||.
 # ===============================================================================
-function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypBIM{T},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
     N=length(pts.xy)
     θ=(TWO_PI/nq).*(collect(0:nq-1).+0.5)
     ej=cis.(θ);zj=k0.+R.*ej;wj=(R/nq).*ej
@@ -516,7 +516,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     dmin=max(dmin,1e-3)
     tabs=Vector{QTaylorTable}(undef,nq)
     for j in 1:nq
-        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
+        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax)
     end
     @time "DLP(hyp):kernel+assemble" begin
         compute_kernel_matrices_DLP_hyperbolic!(Tbufs,pts_eucl,solver.symmetry,tabs;multithreaded=multithreaded)
@@ -573,7 +573,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     @inbounds for j in eachindex(λ)
         d=abs(λ[j]-k0)
         if d>R;keep[j]=false;dropped_out+=1;continue end
-        tab=build_QTaylorTable(ComplexF64(λ[j]);dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
+        tab=build_QTaylorTable(ComplexF64(λ[j]);dmin=dmin,dmax=dmax)
         fill!(A_buf,zero(eltype(A_buf)))
         compute_kernel_matrices_DLP_hyperbolic!(A_buf,pts_eucl,solver.symmetry,tab;multithreaded=multithreaded)
         assemble_DLP_hyperbolic!(A_buf,pts_eucl)
@@ -655,7 +655,7 @@ end
 #   tensN_all :: Vector{T}
 #       Normalized residuals (if computed in residual stage).
 # ===============================================================================
-function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,h::T=T(1e-4),P::Int=30,mp_dps::Int=60,leg_type::Int=3,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6)) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6)) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=m,Rmax=Rmax,Rfloor=Rfloor,kref=kref)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
@@ -672,13 +672,13 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
     if do_INFO
         iinfo=cld(nw,2)
         @time "solve_INFO last disk (hyp)" begin
-            _=solve_INFO_hyp(solver,basis,all_pts[iinfo],complex(k0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+            _=solve_INFO_hyp(solver,basis,all_pts[iinfo],complex(k0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false)
         end
     end
     λs=Vector{Vector{Complex{T}}}(undef,nw);Uks=Vector{Matrix{Complex{T}}}(undef,nw);Ys=Vector{Matrix{Complex{T}}}(undef,nw)
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (hyp)" @inbounds for i in 1:nw
-        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix)
         λs[i]=λ;Uks[i]=Uk;Ys[i]=Y
         next!(p)
     end
@@ -687,7 +687,7 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
         if isempty(λs[i])
             ks_list[i]=T[];tens_list[i]=T[];tensN_list[i]=T[];phi_list[i]=Matrix{Complex{T}}(undef,length(all_pts[i].xy),0);continue
         end
-        idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix)
         ks_list[i]=real.(λs[i][idx2]);tens_list[i]=traw;tensN_list[i]=tnorm;phi_list[i]=Matrix(Φ_kept)
     end
     n_by_win=Vector{Int}(undef,nw);@inbounds for i in 1:nw;n_by_win[i]=size(phi_list[i],2);end
