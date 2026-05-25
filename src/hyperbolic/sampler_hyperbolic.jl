@@ -337,7 +337,7 @@ function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::V
         pre=precomps[r]
         Lh=pre.Lh
         Lh_curves[r]=T(Lh)
-        Ni[r]=max(solver.min_pts,round(Int,(real(k)*Lh*bs[i])/(2π)))
+        Ni[r]=max(solver.min_pts,round(Int,(real(k)*Lh*bs[r])/(2π)))
     end
     offs=Vector{Int}(undef,nreal+1)
     offs[1]=1
