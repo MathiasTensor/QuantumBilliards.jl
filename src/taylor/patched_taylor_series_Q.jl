@@ -44,7 +44,7 @@ const inv4π=1.0/FOUR_PI
 const Z_threshold=1.0+1e-14 # threshold for |z-1| smallness for the Legendre Q required for the SLP kernel
 const d_threshold=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
 const h_patch::Float64=1e-5 # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
-const P_patch::Int=6 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
+const P_patch::Int=8 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
 
 # =============================================
 # _small_z_Q

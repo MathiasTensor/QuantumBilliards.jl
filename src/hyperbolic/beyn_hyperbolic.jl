@@ -236,7 +236,7 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     #build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
     tabs=Vector{QTaylorTable}(undef,nq)
     for j in 1:nq
-        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
     end
     compute_kernel_matrices_DLP_hyperbolic!(Tbufs,pts_eucl,solver.symmetry,tabs;multithreaded=multithreaded)
     assemble_DLP_hyperbolic!(Tbufs,pts_eucl)
@@ -446,7 +446,7 @@ function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{
         abs(λj-k0)>R && (tens[j]=T(NaN);tensN[j]=T(NaN);continue)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
         #build_QTaylorTable!(tab,pre,ws,ComplexF64(λj);mp_dps=mp_dps,leg_type=leg_type)
-        tab=build_QTaylorTable(ComplexF64(λj),dmin=dmin,dmax=dmax,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        tab=build_QTaylorTable(ComplexF64(λj),dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
         compute_kernel_matrices_DLP_hyperbolic!(A_buf,pts_eucl,solver.symmetry,tab;multithreaded=multithreaded)
         assemble_DLP_hyperbolic!(A_buf,pts_eucl)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))
@@ -516,7 +516,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     dmin=max(dmin,1e-3)
     tabs=Vector{QTaylorTable}(undef,nq)
     for j in 1:nq
-        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
     end
     @time "DLP(hyp):kernel+assemble" begin
         compute_kernel_matrices_DLP_hyperbolic!(Tbufs,pts_eucl,solver.symmetry,tabs;multithreaded=multithreaded)
@@ -573,7 +573,7 @@ function solve_INFO_hyp(solver::BIM_hyperbolic,basis::Ba,pts::BoundaryPointsHypB
     @inbounds for j in eachindex(λ)
         d=abs(λ[j]-k0)
         if d>R;keep[j]=false;dropped_out+=1;continue end
-        tab=build_QTaylorTable(ComplexF64(λ[j]);dmin=dmin,dmax=dmax,h=h,P=P,mp_dps=mp_dps,leg_type=leg_type)
+        tab=build_QTaylorTable(ComplexF64(λ[j]);dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
         fill!(A_buf,zero(eltype(A_buf)))
         compute_kernel_matrices_DLP_hyperbolic!(A_buf,pts_eucl,solver.symmetry,tab;multithreaded=multithreaded)
         assemble_DLP_hyperbolic!(A_buf,pts_eucl)
