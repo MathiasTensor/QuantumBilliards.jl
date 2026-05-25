@@ -97,16 +97,6 @@
 # MO 25/5/26
 # ==============================================================================
 
-struct BIM_hyperbolic{T<:Real,Sym}<:SweepSolver 
-    dim_scaling_factor::T
-    pts_scaling_factor::Vector{T}
-    sampler::Vector
-    eps::T
-    min_dim::Int64 
-    min_pts::Int64
-    symmetry::Sym
-end
-
 #------------------------------------------------------------------------------
 # BIM_hyperbolic(pts_scaling_factor;min_pts=20,symmetry=nothing)->solver
 #
