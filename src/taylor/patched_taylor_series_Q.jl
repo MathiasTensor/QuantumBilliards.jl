@@ -43,8 +43,34 @@ const inv2π=1.0/TWO_PI
 const inv4π=1.0/FOUR_PI
 const Z_threshold=1.0+1e-14 # threshold for |z-1| smallness for the Legendre Q required for the SLP kernel
 const d_threshold=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
-const h_patch::Float64=1e-5 # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
-const P_patch::Int=8 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
+
+Base.@kwdef mutable struct LegendreTaylorConfig
+    h_patch::Float64=1e-5  # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
+    P_patch::Int=8 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
+end
+const LEGENDRE_TAYLOR_CONFIG=LegendreTaylorConfig()
+
+@inline legendre_Q_h_patch()=LEGENDRE_TAYLOR_CONFIG.h_patch
+@inline legendre_Q_P_patch()=LEGENDRE_TAYLOR_CONFIG.P_patch
+@inline function legendre_Q_params();cfg=LEGENDRE_TAYLOR_CONFIG;return cfg.h_patch,cfg.P_patch;end
+
+function legendre_Q_set_h!(h::Real)
+    h>0 || error("h_patch must be positive.")
+    LEGENDRE_TAYLOR_CONFIG.h_patch=Float64(h)
+    return LEGENDRE_TAYLOR_CONFIG
+end
+
+function legendre_Q_set_P!(P::Integer)
+    P≥1 || error("P_patch must be at least 1.")
+    LEGENDRE_TAYLOR_CONFIG.P_patch=Int(P)
+    return LEGENDRE_TAYLOR_CONFIG
+end
+
+function legendre_Q_set_taylor_params!(; h_patch=nothing, P_patch=nothing)
+    !isnothing(h_patch) && legendre_Q_set_h!(h_patch)
+    !isnothing(P_patch) && legendre_Q_set_P!(P_patch)
+    return LEGENDRE_TAYLOR_CONFIG
+end
 
 # =============================================
 # _small_z_Q
@@ -566,6 +592,7 @@ end
 #   QTaylorTable
 # =============================================================================
 function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-3,dmax::Float64=5.0,mp_dps::Int=60,leg_type::Int=3)
+    h_patch,P_patch=legendre_Q_params()
     @assert dmax>dmin
     @assert h_patch>0
     @assert P_patch≥1
@@ -655,6 +682,7 @@ end
 #   Vector{QTaylorTable} length Nk, one table per ks[i]
 # =============================================================================
 function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-3,dmax::Float64=5.0,mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
+    h_patch,P_patch=legendre_Q_params()
     @assert dmax>dmin && h_patch>0 && P_patch≥1
     Nk=length(ks)
     Npatch=Int(ceil((dmax-dmin)/h_patch))
@@ -734,6 +762,7 @@ end
 # =============================================================================
 @inline function QTaylorWorkspace(;threaded::Bool=true)
     NT=threaded ? Threads.nthreads() : 1
+    h_patch,P_patch=legendre_Q_params()
     u=Vector{ComplexF64}(undef,P_patch+1)
     y=Vector{ComplexF64}(undef,P_patch+1)
     u_tls=[Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT]
@@ -760,6 +789,7 @@ end
 #   QTaylorPrecomp(dmin,dmax,h_patch,P_patch,Npatch,centers,coth_coeffs)
 # =============================================================================
 @inline function build_QTaylorPrecomp(;dmin::Float64=1e-3,dmax::Float64=5.0)
+    h_patch,P_patch=legendre_Q_params()
     Npatch=Int(ceil((dmax-dmin)/h_patch))
     centers=Vector{Float64}(undef,Npatch)
     @inbounds for p in 1:Npatch
@@ -1234,7 +1264,7 @@ end
 #   ComplexF64
 # =============================================================================
 @inline function _eval_Pleg(tab::PTaylorTable,d::Float64)
-    dd=clamp(Float64(d))
+    dd=Float64(d)
     @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
     return horner_eval(@view(tab.pcoeffs[:,idx]),dd-tab.centers[idx])
@@ -1257,7 +1287,7 @@ end
 #   ComplexF64
 # =============================================================================
 @inline function _eval_dPlegdd(tab::PTaylorTable,d::Float64)
-    dd=clamp(Float64(d))
+    dd=Float64(d)
     @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
     return horner_eval(@view(tab.dpcoeffs[:,idx]),dd-tab.centers[idx])
