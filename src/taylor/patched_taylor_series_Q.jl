@@ -35,10 +35,12 @@
 # also import the mpmath objects (since QuantumBilliards.jl has these in pycall_init.jl)
 
 const TWO_PI=2*pi
+const FOUR_PI=4*pi
 
 # Import mpmath functions via PyCall for high-precision seeding (at d_min calls 2 calls to legenq are needed)
 
 const inv2π=1.0/TWO_PI
+const inv4π=1.0/FOUR_PI
 const Z_threshold=1.0+1e-14 # threshold for |z-1| smallness for the Legendre Q required for the SLP kernel
 const d_threshold=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
 
@@ -883,6 +885,19 @@ function build_QTaylorTable!(tab::QTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWo
     return nothing
 end
 
+@inline function _patch_index_Q(tab,d::Float64)
+    if d<=tab.dmin
+        return 1
+    elseif d>=tab.dmax
+        return length(tab.centers)
+    else
+        t=(d-tab.dmin)/tab.h
+        idx=Int(floor(t))+1
+        abs(t-round(t))<64*eps(t) && (idx=Int(round(t))+1)
+        return clamp(idx,1,length(tab.centers))
+    end
+end
+
 # =============================================================================
 # build_QTaylorTable!(tabs,pre,ws,ks;mp_dps,leg_type,threaded)
 #
@@ -956,6 +971,338 @@ function build_QTaylorTable!(tabs::Vector{QTaylorTable},pre::QTaylorPrecomp,ws::
     end
     return nothing
 end
+
+# =============================================================================
+# PTaylorTable
+#
+# Purpose
+#   Store fast, uniform-step Taylor-patch tables for the Legendre function
+#       p(d)=P_ν(cosh(d))
+#   and its radial derivative
+#       yp(d)=d/dd P_ν(cosh(d))=p'(d),
+#   where
+#       ν=-1/2+i k.
+#
+# Motivation (hyperbolic Kress DLP split)
+#   In the hyperbolic logarithmic Kress decomposition of the DLP kernel,
+#   the singular logarithmic coefficient is proportional to
+#
+#       A(d)=-(1/(4π)) P_ν(cosh(d)).
+#
+#   Therefore, besides Q_ν(cosh(d)) (already handled by QTaylorTable),
+#   we also require extremely fast evaluations of P_ν(cosh(d)) and
+#   its radial derivative.
+#
+# Mathematical model
+#   The Legendre function P_ν(z) satisfies the same differential equation
+#   as Q_ν(z). After the substitution
+#
+#       z=cosh(d),
+#
+#   the radial system becomes
+#
+#       p'(d)=yp(d),
+#       yp'(d)=ν(ν+1)p(d)-coth(d) yp(d).
+#
+# Since this is identical to the Q-system, we reuse the same Taylor-patch
+# propagation machinery and only change the initial high-precision seed.
+#
+# Discretization strategy (Taylor patches)
+#   Choose centers
+#
+#       d_i=dmin+(i-1)h
+#
+#   and represent locally
+#
+#       p(d_i+δ)=Σ_{n=0}^P p_n δ^n,
+#       yp(d_i+δ)=Σ_{n=0}^P yp_n δ^n.
+#
+# Coefficients are generated recursively from the ODE using precomputed
+# Taylor expansions of coth(d_i+δ).
+#
+# Fields
+#   nu       ::ComplexF64          ν=-1/2+i k
+#   dmin     ::Float64             lower d bound (>0)
+#   dmax     ::Float64             upper d bound
+#   h        ::Float64             uniform patch spacing
+#   P        ::Int                 Taylor degree
+#   centers  ::Vector{Float64}     patch centers
+#   pcoeffs  ::Matrix{ComplexF64}  Taylor coeffs for P_ν(cosh(d))
+#   dpcoeffs ::Matrix{ComplexF64}  Taylor coeffs for d/dd P_ν(cosh(d))
+#
+# Notes
+#   - Only ONE high-precision seed at dmin is required.
+#   - The same coth precomputation as QTaylorTable is reused.
+# =============================================================================
+mutable struct PTaylorTable
+    nu::ComplexF64
+    dmin::Float64
+    dmax::Float64
+    h::Float64
+    P::Int
+    centers::Vector{Float64}
+    pcoeffs::Matrix{ComplexF64}
+    dpcoeffs::Matrix{ComplexF64}
+end
+
+# =============================================================================
+# seed_p_dp_mpmath
+#
+# Compute the high-precision seed values
+#
+#   p(d0)=P_ν(cosh(d0)),
+#   yp(d0)=d/dd P_ν(cosh(d0)),
+#
+# using mpmath.legenp through PyCall.
+#
+# Derivative evaluation
+#   Using the stable Legendre recurrence identity and the chain rule:
+#
+#       d/dd P_ν(cosh(d))
+#       =
+#       (ν+1)(P_{ν+1}(z)-z P_ν(z))/sinh(d),
+#
+#   where
+#
+#       z=cosh(d).
+#
+# Inputs
+#   nu::ComplexF64
+#       Legendre index (typically ν=-1/2+i k)
+#
+#   d0::Float64
+#       Seed distance (must satisfy d0>0)
+#
+# Keywords
+#   dps::Int=60
+#       Decimal precision used by mpmath
+#
+# Outputs
+#   (p0,yp0)::Tuple{ComplexF64,ComplexF64}
+#
+# Notes
+#   Only a single seed point is required; all other values are propagated
+#   internally via Taylor recurrence.
+# =============================================================================
+function seed_p_dp_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60)
+    _mpctx[].dps=dps
+    nup=_mpc[](real(nu),imag(nu))
+    dp=_mpf[](d0)
+    z=_mp_cosh[](dp)
+    sh=_mp_sinh[](dp)
+    P0=_mp_legenp[](nup,0,z)
+    P1=_mp_legenp[](nup+1,0,z)
+    yp=(nup+1)*(P1-z*P0)/sh
+    p_re=pycall(_pyfloat[],Float64,P0.real)
+    p_im=pycall(_pyfloat[],Float64,P0.imag)
+    y_re=pycall(_pyfloat[],Float64,yp.real)
+    y_im=pycall(_pyfloat[],Float64,yp.imag)
+    return ComplexF64(p_re,p_im),ComplexF64(y_re,y_im)
+end
+
+# =============================================================================
+# alloc_PTaylorTable
+#
+# Allocate coefficient storage for a PTaylorTable compatible with a given
+# QTaylorPrecomp.
+#
+# Purpose
+#   This mirrors alloc_QTaylorTable, but stores Legendre P-series instead
+#   of Legendre Q-series.
+#
+# Inputs
+#   pre::QTaylorPrecomp
+#       Shared geometry-independent precomputation:
+#         - patch centers
+#         - coth Taylor expansions
+#
+# Keyword
+#   k::ComplexF64=0+0im
+#       Dummy initialization value used only to define ν=-1/2+i k.
+#
+# Output
+#   PTaylorTable
+#
+# Notes
+#   The returned table contains allocated coefficient matrices but no
+#   populated data until build_PTaylorTable! is called.
+# =============================================================================
+@inline function alloc_PTaylorTable(pre::QTaylorPrecomp;k::ComplexF64=0.0+0.0im)
+    pcoeffs=Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch)
+    dpcoeffs=Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch)
+    return PTaylorTable(ν(k),pre.dmin,pre.dmax,pre.h,pre.P,pre.centers,pcoeffs,dpcoeffs)
+end
+
+# =============================================================================
+# PTaylorTable
+#
+# Purpose
+#   Store fast Taylor-patch tables for
+#
+#       p(d)  = P_ν(cosh d),
+#       dp(d) = d/dd P_ν(cosh d),
+#
+#   with ν = -1/2 + i k.
+#
+# Motivation
+#   The hyperbolic Kress DLP split needs the logarithmic coefficient
+#
+#       A(d) = -P_ν(cosh d)/(4π),
+#
+#   and its radial derivative A'(d). These are supplied by PTaylorTable.
+#
+# Difference from QTaylorTable
+#   Q_ν is singular at d=0, so QTaylorTable uses small-d asymptotics below
+#   d_threshold. P_ν is regular at d=0, but to avoid relying on threshold
+#   heuristics we seed P at an interior anchor distance and propagate the Taylor
+#   patches both forward and backward.
+#
+# Mathematical model
+#   P_ν(cosh d) satisfies the same radial ODE as Q_ν(cosh d):
+#
+#       p'  = dp,
+#       dp' = ν(ν+1)p - coth(d)dp.
+#
+# Fields
+#   nu       :: ComplexF64
+#   dmin     :: Float64
+#   dmax     :: Float64
+#   h        :: Float64
+#   P        :: Int
+#   centers  :: Vector{Float64}
+#   pcoeffs  :: Matrix{ComplexF64}
+#   dpcoeffs :: Matrix{ComplexF64}
+# =============================================================================
+function build_PTaylorTable!(tab::PTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWorkspace,k::ComplexF64;mp_dps::Int=80,anchor_d::Float64=max(pre.dmin,0.05))
+    nu=ν(k)
+    P=pre.P
+    Npatch=pre.Npatch
+    h=pre.h
+    j0=clamp(Int(round((anchor_d-pre.dmin)/h))+1,1,Npatch)
+    d0=pre.centers[j0]
+    p0,dp0=seed_p_dp_mpmath(nu,d0;dps=mp_dps)
+    pcoef=ws.ucoef
+    dpcoef=ws.ycoef
+    build_patch_coeffs!(pcoef,dpcoef,nu,p0,dp0,@view(pre.coth_coeffs[:,j0]))
+    @inbounds for n in 1:(P+1)
+        tab.pcoeffs[n,j0]=pcoef[n]
+        tab.dpcoeffs[n,j0]=dpcoef[n]
+    end
+    pL=p0
+    dpL=dp0
+    @inbounds for q in (j0-1):-1:1
+        pL=horner_eval(@view(tab.pcoeffs[:,q+1]),-h)
+        dpL=horner_eval(@view(tab.dpcoeffs[:,q+1]),-h)
+        build_patch_coeffs!(pcoef,dpcoef,nu,pL,dpL,@view(pre.coth_coeffs[:,q]))
+        for n in 1:(P+1)
+            tab.pcoeffs[n,q]=pcoef[n]
+            tab.dpcoeffs[n,q]=dpcoef[n]
+        end
+    end
+    pR=p0
+    dpR=dp0
+    @inbounds for q in (j0+1):Npatch
+        pR=horner_eval(@view(tab.pcoeffs[:,q-1]),h)
+        dpR=horner_eval(@view(tab.dpcoeffs[:,q-1]),h)
+        build_patch_coeffs!(pcoef,dpcoef,nu,pR,dpR,@view(pre.coth_coeffs[:,q]))
+        for n in 1:(P+1)
+            tab.pcoeffs[n,q]=pcoef[n]
+            tab.dpcoeffs[n,q]=dpcoef[n]
+        end
+    end
+    tab.nu=nu
+    return nothing
+end
+
+# =============================================================================
+# _eval_Pleg
+#
+# Evaluate
+#
+#   P_ν(cosh(d))
+#
+# from the Taylor-patch table.
+#
+# Algorithm
+#   - locate nearest Taylor patch
+#   - form local coordinate
+#
+#       δ=d-d_i
+#
+#   - evaluate stored Taylor polynomial by Horner accumulation
+#
+# Inputs
+#   tab::PTaylorTable
+#   d::Float64
+#
+# Output
+#   ComplexF64
+# =============================================================================
+@inline function _eval_Pleg(tab::PTaylorTable,d::Float64)
+    dd=clamp(Float64(d),tab.dmin,tab.dmax)
+    idx=_patch_index_Q(tab,dd)
+    return horner_eval(@view(tab.pcoeffs[:,idx]),dd-tab.centers[idx])
+end
+
+# =============================================================================
+# _eval_dPlegdd
+#
+# Evaluate
+#
+#   d/dd P_ν(cosh(d))
+#
+# from the Taylor-patch table.
+#
+# Inputs
+#   tab::PTaylorTable
+#   d::Float64
+#
+# Output
+#   ComplexF64
+# =============================================================================
+@inline function _eval_dPlegdd(tab::PTaylorTable,d::Float64)
+    dd=clamp(Float64(d),tab.dmin,tab.dmax)
+    idx=_patch_index_Q(tab,dd)
+    return horner_eval(@view(tab.dpcoeffs[:,idx]),dd-tab.centers[idx])
+end
+
+# =============================================================================
+# hyperbolic_Alog
+#
+# Logarithmic coefficient for the hyperbolic Kress DLP split.
+#
+# Mathematical definition
+#
+#   A(d)=-(1/(4π)) P_ν(cosh(d)).
+#
+# This is the coefficient multiplying the explicit logarithmic singularity
+# in the hyperbolic double-layer decomposition.
+#
+# Inputs
+#   ptab::PTaylorTable
+#   d::Float64
+#
+# Output
+#   ComplexF64
+# =============================================================================
+@inline hyperbolic_Alog(ptab::PTaylorTable,d::Float64)=-_eval_Pleg(ptab,d)*inv4π
+# =============================================================================
+# hyperbolic_Alog_d
+#
+# Radial derivative of the logarithmic coefficient
+#
+#   A'(d)=-(1/(4π)) d/dd P_ν(cosh(d)).
+#
+# Needed in the Kress split regular remainder construction.
+#
+# Inputs
+#   ptab::PTaylorTable
+#   d::Float64
+#
+# Output
+#   ComplexF64
+# =============================================================================
+@inline hyperbolic_Alog_d(ptab::PTaylorTable,d::Float64)=-_eval_dPlegdd(ptab,d)*inv4π
 
 # =============================================================================
 # Construction of hyperbolic distances 

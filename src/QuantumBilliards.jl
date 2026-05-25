@@ -230,8 +230,15 @@ export FiniteElementMethod,compute_interior_index,FEM_Hamiltonian,compute_fem_ei
 include("solvers/gridmethods/phi_fdm.jl")
 export compute_extended_index,phiFD_Hamiltonian,compute_ϕ_fem_eigenmodes
 
-# magnetic helmholtz and hyperbolic metric helmholtz
+# for magnetic and hyperbolic billiards
 include("taylor/patched_taylor_series_Q.jl")
 include("taylor/patched_taylor_series_U.jl")
+
+# hyperbolic
+include("hyperbolic/dlp_hyperbolic.jl")
+include("hyperbolic/dlp_hyperbolic_matrix_construction_naive.jl")
+include("hyperbolic/wavefunctions_hyperbolic.jl")
+include("hyperbolic/unfolding_hyperbolic.jl")
+include("hyperbolic/beyn_hyperbolic.jl")
 
 end
