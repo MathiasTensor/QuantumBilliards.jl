@@ -43,6 +43,8 @@ const inv2π=1.0/TWO_PI
 const inv4π=1.0/FOUR_PI
 const Z_threshold=1.0+1e-14 # threshold for |z-1| smallness for the Legendre Q required for the SLP kernel
 const d_threshold=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
+const h_patch::Float64=1e-5 # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
+const P_patch::Int=6 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
 
 # =============================================
 # _small_z_Q
@@ -544,69 +546,67 @@ end
 #   1) Seed at dmin using mpmath (2 calls to legenq):
 #        u(dmin)=Q_ν(cosh(dmin)),
 #        y(dmin)=d/dd Q_ν(cosh(dmin)).
-#   2) For each patch center d_i=dmin+(i-1)h:
-#        - Expand coth(d_i+δ) in δ to order P (Float64 coeffs).
+#   2) For each patch center d_i=dmin+(i-1)h_patch:
+#        - Expand coth(d_i+δ) in δ to order P_patch (Float64 coeffs).
 #        - Generate Taylor coefficients (u_n,y_n) using ODE recurrences.
 #        - Store coefficients as columns of ucoeffs,ycoeffs.
-#        - Advance the state (u0,y0) to the next center via Horner eval at δ=h.
+#        - Advance the state (u0,y0) to the next center via Horner eval at δ=h_patch.
 #
 # Complexity (per k)
 #   - Python: O(1) calls (seed only).
-#   - Julia: O(Npatch*P^2) arithmetic, no allocations in the inner loop.
+#   - Julia: O(Npatch*P_patch^2) arithmetic, no allocations in the inner loop.
 #
 # Inputs (keywords)
 #   k::ComplexF64   - wavenumber (can have small Im part)
 #   dmin,dmax::Float64 - domain in d, dmin>0
-#   h::Float64      - patch spacing
-#   P::Int          - Taylor degree
 #   mp_dps::Int     - mpmath precision for seeding
 #   leg_type::Int=3   - mpmath LegendreQ definition selector
 #
 # Output
 #   QTaylorTable
 # =============================================================================
-function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-3,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3)
+function build_QTaylorTable(k::ComplexF64;dmin::Float64=1e-3,dmax::Float64=5.0,mp_dps::Int=60,leg_type::Int=3)
     @assert dmax>dmin
-    @assert h>0
-    @assert P≥1
+    @assert h_patch>0
+    @assert P_patch≥1
     nu=ν(k)
-    sδ=Vector{Float64}(undef,P+1) # sinh coeffs for each patch replaced in loop
-    cδ=Vector{Float64}(undef,P+1) # cosh coeffs for each patch replaced in loop
+    sδ=Vector{Float64}(undef,P_patch+1) # sinh coeffs for each patch replaced in loop
+    cδ=Vector{Float64}(undef,P_patch+1) # cosh coeffs for each patch replaced in loop
     series_sinh_cosh!(sδ,cδ) # base series for sinh(δ),cosh(δ), same order as P
     u0,y0=seed_u_y_mpmath(nu,dmin;dps=mp_dps,leg_type=leg_type) # seed at dmin (high-precision needs d>1e-3)
-    Npatch=Int(ceil((dmax-dmin)/h))  # number of patches linearly spaced
+    Npatch=Int(ceil((dmax-dmin)/h_patch))  # number of patches linearly spaced
     centers=Vector{Float64}(undef,Npatch) # patch centers
     @inbounds for i in 1:Npatch
-        centers[i]=dmin+(i-1)*h # each patch center sits at dmin+(i-1)h
+        centers[i]=dmin+(i-1)*h_patch # each patch center sits at dmin+(i-1)h_patch
     end
-    ucoeffs=Matrix{ComplexF64}(undef,P+1,Npatch) # for each patch in Npatch store P+1 coeffs for u
-    ycoeffs=Matrix{ComplexF64}(undef,P+1,Npatch) # for each patch in Npatch store P+1 coeffs for y
-    coth=Vector{Float64}(undef,P+1) # coth series per patch, replaced in loop
-    sinh_series=Vector{Float64}(undef,P+1) # scratch buffer for series division
-    cosh_series=Vector{Float64}(undef,P+1) # scratch buffer for series division
-    ucoef=Vector{ComplexF64}(undef,P+1) # scratch buffer for patch coeffs
-    ycoef=Vector{ComplexF64}(undef,P+1) # scratch buffer for patch coeffs
+    ucoeffs=Matrix{ComplexF64}(undef,P_patch+1,Npatch) # for each patch in Npatch store P_patch+1 coeffs for u
+    ycoeffs=Matrix{ComplexF64}(undef,P_patch+1,Npatch) # for each patch in Npatch store P_patch+1 coeffs for y
+    coth=Vector{Float64}(undef,P_patch+1) # coth series per patch, replaced in loop
+    sinh_series=Vector{Float64}(undef,P_patch+1) # scratch buffer for series division
+    cosh_series=Vector{Float64}(undef,P_patch+1) # scratch buffer for series division
+    ucoef=Vector{ComplexF64}(undef,P_patch+1) # scratch buffer for patch coeffs
+    ycoef=Vector{ComplexF64}(undef,P_patch+1) # scratch buffer for patch coeffs
     sh0=sinh(dmin) # initial sinh/cosh at dmin
     ch0=cosh(dmin) 
-    shh=sinh(h) # sinh/cosh at patch step h (reused for every patch since step is uniform)
-    chh=cosh(h) # sinh/cosh at patch step h (reused for every patch since step is uniform)
+    shh=sinh(h_patch) # sinh/cosh at patch step h (reused for every patch since step is uniform)
+    chh=cosh(h_patch) # sinh/cosh at patch step h (reused for every patch since step is uniform)
     @inbounds for i in 1:Npatch
         coth_series_from_sinhcosh!(coth,sh0,ch0,sδ,cδ,sinh_series,cosh_series) # build coth series at patch center 
         build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,coth) # build patch coeffs for u,y at this center
-        @inbounds for n in 1:(P+1) # store coeffs in the big matrices for each patch
+        @inbounds for n in 1:(P_patch+1) # store coeffs in the big matrices for each patch
             ucoeffs[n,i]=ucoef[n]
             ycoeffs[n,i]=ycoef[n]
         end
         if i<Npatch # advance u0,y0 to next patch center via Horner eval at δ=h 
-            u0=horner_eval(ucoef,h) # the new u0 which is at d_i+h
-            y0=horner_eval(ycoef,h) # the new y0 which is at d_i+h
+            u0=horner_eval(ucoef,h_patch) # the new u0 which is at d_i+h
+            y0=horner_eval(ycoef,h_patch) # the new y0 which is at d_i+h
             # also advance sinh/cosh to next patch center
             sh1=sh0*chh+ch0*shh
             ch1=ch0*chh+sh0*shh
             sh0,ch0=sh1,ch1 # update for next iteration
         end
     end
-    return QTaylorTable(nu,dmin,dmax,h,P,centers,ucoeffs,ycoeffs)
+    return QTaylorTable(nu,dmin,dmax,h_patch,P_patch,centers,ucoeffs,ycoeffs)
 end
 
 # =============================================================================
@@ -647,8 +647,6 @@ end
 # Inputs (keywords)
 #   ks::AbstractVector{ComplexF64}   - wavenumbers (may have small Im parts)
 #   dmin,dmax::Float64              - domain in d, dmin>0
-#   h::Float64                      - patch spacing
-#   P::Int                          - Taylor degree
 #   mp_dps::Int                     - mpmath precision for seeding
 #   leg_type::Int=3                 - mpmath LegendreQ definition selector
 #   threaded::Bool=true             - build tables in parallel (Julia only)
@@ -656,21 +654,21 @@ end
 # Output
 #   Vector{QTaylorTable} length Nk, one table per ks[i]
 # =============================================================================
-function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-3,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30,mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
-    @assert dmax>dmin && h>0 && P≥1
+function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-3,dmax::Float64=5.0,mp_dps::Int=60,leg_type::Int=3,threaded::Bool=true)
+    @assert dmax>dmin && h_patch>0 && P_patch≥1
     Nk=length(ks)
-    Npatch=Int(ceil((dmax-dmin)/h))
+    Npatch=Int(ceil((dmax-dmin)/h_patch))
     centers=Vector{Float64}(undef,Npatch)
     @inbounds for i in 1:Npatch
-        centers[i]=dmin+(i-1)*h
+        centers[i]=dmin+(i-1)*h_patch
     end
-    sδ=Vector{Float64}(undef,P+1);cδ=Vector{Float64}(undef,P+1)
+    sδ=Vector{Float64}(undef,P_patch+1);cδ=Vector{Float64}(undef,P_patch+1)
     series_sinh_cosh!(sδ,cδ)
-    coth_coeffs=Matrix{Float64}(undef,P+1,Npatch)
-    sinh_series=Vector{Float64}(undef,P+1);cosh_series=Vector{Float64}(undef,P+1)
-    coth=Vector{Float64}(undef,P+1)
+    coth_coeffs=Matrix{Float64}(undef,P_patch+1,Npatch)
+    sinh_series=Vector{Float64}(undef,P_patch+1);cosh_series=Vector{Float64}(undef,P_patch+1)
+    coth=Vector{Float64}(undef,P_patch+1)
     sh0=sinh(dmin);ch0=cosh(dmin)
-    shh=sinh(h);chh=cosh(h)
+    shh=sinh(h_patch);chh=cosh(h_patch)
     @inbounds for p in 1:Npatch
         coth_series_from_sinhcosh!(coth,sh0,ch0,sδ,cδ,sinh_series,cosh_series)
         @views copyto!(coth_coeffs[:,p],coth)
@@ -690,23 +688,23 @@ function build_QTaylorTable(ks::AbstractVector{ComplexF64};dmin::Float64=1e-3,dm
     end
     tabs=Vector{QTaylorTable}(undef,Nk)
     NT=threaded ? Threads.nthreads() : 1
-    ucoef_tls=[Vector{ComplexF64}(undef,P+1) for _ in 1:NT]
-    ycoef_tls=[Vector{ComplexF64}(undef,P+1) for _ in 1:NT]
+    ucoef_tls=[Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT]
+    ycoef_tls=[Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT]
     function build_one!(i,tid)
         nu=nus[i];u0=u0s[i];y0=y0s[i]
-        ucoeffs=Matrix{ComplexF64}(undef,P+1,Npatch)
-        ycoeffs=Matrix{ComplexF64}(undef,P+1,Npatch)
+        ucoeffs=Matrix{ComplexF64}(undef,P_patch+1,Npatch)
+        ycoeffs=Matrix{ComplexF64}(undef,P_patch+1,Npatch)
         ucoef=ucoef_tls[tid];ycoef=ycoef_tls[tid]
         @inbounds for p in 1:Npatch
             build_patch_coeffs!(ucoef,ycoef,nu,u0,y0,@view(coth_coeffs[:,p]))
             @views copyto!(ucoeffs[:,p],ucoef)
             @views copyto!(ycoeffs[:,p],ycoef)
             if p<Npatch
-                u0=horner_eval(ucoef,h)
-                y0=horner_eval(ycoef,h)
+                u0=horner_eval(ucoef,h_patch)
+                y0=horner_eval(ycoef,h_patch)
             end
         end
-        tabs[i]=QTaylorTable(nu,dmin,dmax,h,P,centers,ucoeffs,ycoeffs)
+        tabs[i]=QTaylorTable(nu,dmin,dmax,h_patch,P_patch,centers,ucoeffs,ycoeffs)
         return nothing
     end
     if threaded && Threads.nthreads()>1
@@ -729,28 +727,27 @@ end
 #   build_QTaylorTable! performs no per-call allocations in the hot loop.
 #
 # Input
-#   P::Int          Taylor degree (allocates length P+1 buffers)
 #   threaded::Bool  if true, allocate per-thread buffers for Threads.nthreads()
 #
 # Output
 #   QTaylorWorkspace
 # =============================================================================
-@inline function QTaylorWorkspace(P::Int;threaded::Bool=true)
+@inline function QTaylorWorkspace(;threaded::Bool=true)
     NT=threaded ? Threads.nthreads() : 1
-    u=Vector{ComplexF64}(undef,P+1)
-    y=Vector{ComplexF64}(undef,P+1)
-    u_tls=[Vector{ComplexF64}(undef,P+1) for _ in 1:NT]
-    y_tls=[Vector{ComplexF64}(undef,P+1) for _ in 1:NT]
+    u=Vector{ComplexF64}(undef,P_patch+1)
+    y=Vector{ComplexF64}(undef,P_patch+1)
+    u_tls=[Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT]
+    y_tls=[Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT]
     return QTaylorWorkspace(u,y,u_tls,y_tls)
 end
 
 # =============================================================================
-# build_QTaylorPrecomp(;dmin,dmax,h,P)
+# build_QTaylorPrecomp(;dmin,dmax)
 #
 # Purpose
 #   Precompute the geometry-independent data (without Legendre Q data) for Taylor-patch propagation:
-#     - patch centers d_p=dmin+(p-1)h
-#     - Taylor coefficients of coth(d_p+δ) for every patch p up to order P
+#     - patch centers d_p=dmin+(p-1)h_patch
+#     - Taylor coefficients of coth(d_p+δ) for every patch p up to order P_patch
 #
 # Math
 #   coth(d_p+δ)=cosh(d_p+δ)/sinh(d_p+δ), expanded in δ about 0.
@@ -758,25 +755,23 @@ end
 #
 # Input (keywords)
 #   dmin,dmax::Float64  d-domain, with dmin>0
-#   h::Float64          uniform patch spacing
-#   P::Int              Taylor degree
 #
 # Output
-#   QTaylorPrecomp(dmin,dmax,h,P,Npatch,centers,coth_coeffs)
+#   QTaylorPrecomp(dmin,dmax,h_patch,P_patch,Npatch,centers,coth_coeffs)
 # =============================================================================
-@inline function build_QTaylorPrecomp(;dmin::Float64=1e-3,dmax::Float64=5.0,h::Float64=1e-4,P::Int=30)
-    Npatch=Int(ceil((dmax-dmin)/h))
+@inline function build_QTaylorPrecomp(;dmin::Float64=1e-3,dmax::Float64=5.0)
+    Npatch=Int(ceil((dmax-dmin)/h_patch))
     centers=Vector{Float64}(undef,Npatch)
     @inbounds for p in 1:Npatch
-        centers[p]=dmin+(p-1)*h
+        centers[p]=dmin+(p-1)*h_patch
     end
-    sδ=Vector{Float64}(undef,P+1);cδ=Vector{Float64}(undef,P+1)
+    sδ=Vector{Float64}(undef,P_patch+1);cδ=Vector{Float64}(undef,P_patch+1)
     series_sinh_cosh!(sδ,cδ) 
-    coth_coeffs=Matrix{Float64}(undef,P+1,Npatch)
-    sinh_series=Vector{Float64}(undef,P+1);cosh_series=Vector{Float64}(undef,P+1)
-    coth=Vector{Float64}(undef,P+1)
+    coth_coeffs=Matrix{Float64}(undef,P_patch+1,Npatch)
+    sinh_series=Vector{Float64}(undef,P_patch+1);cosh_series=Vector{Float64}(undef,P_patch+1)
+    coth=Vector{Float64}(undef,P_patch+1)
     sh0=sinh(dmin);ch0=cosh(dmin)
-    shh=sinh(h);chh=cosh(h)
+    shh=sinh(h_patch);chh=cosh(h_patch)
     @inbounds for p in 1:Npatch
         coth_series_from_sinhcosh!(coth,sh0,ch0,sδ,cδ,sinh_series,cosh_series)
         @views copyto!(coth_coeffs[:,p],coth)
@@ -786,7 +781,7 @@ end
             sh0,ch0=sh1,ch1
         end
     end
-    return QTaylorPrecomp(dmin,dmax,h,P,Npatch,centers,coth_coeffs)
+    return QTaylorPrecomp(dmin,dmax,h_patch,P_patch,Npatch,centers,coth_coeffs)
 end
 
 # =============================================================================
@@ -1167,13 +1162,13 @@ end
 #   nu       :: ComplexF64
 #   dmin     :: Float64
 #   dmax     :: Float64
-#   h        :: Float64
-#   P        :: Int
+#   h_patch  :: Float64
+#   P_patch  :: Int
 #   centers  :: Vector{Float64}
 #   pcoeffs  :: Matrix{ComplexF64}
 #   dpcoeffs :: Matrix{ComplexF64}
 # =============================================================================
-function build_PTaylorTable!(tab::PTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWorkspace,k::ComplexF64;mp_dps::Int=80,anchor_d::Float64=max(pre.dmin,0.05))
+function build_PTaylorTable!(tab::PTaylorTable,pre::QTaylorPrecomp,ws::QTaylorWorkspace,k::ComplexF64;mp_dps::Int=80,anchor_d::Float64=clamp(0.05,pre.dmin,pre.dmax))
     nu=ν(k)
     P=pre.P
     Npatch=pre.Npatch
@@ -1239,7 +1234,8 @@ end
 #   ComplexF64
 # =============================================================================
 @inline function _eval_Pleg(tab::PTaylorTable,d::Float64)
-    dd=clamp(Float64(d),tab.dmin,tab.dmax)
+    dd=clamp(Float64(d))
+    @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
     return horner_eval(@view(tab.pcoeffs[:,idx]),dd-tab.centers[idx])
 end
@@ -1261,7 +1257,8 @@ end
 #   ComplexF64
 # =============================================================================
 @inline function _eval_dPlegdd(tab::PTaylorTable,d::Float64)
-    dd=clamp(Float64(d),tab.dmin,tab.dmax)
+    dd=clamp(Float64(d))
+    @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
     return horner_eval(@view(tab.dpcoeffs[:,idx]),dd-tab.centers[idx])
 end
@@ -1495,9 +1492,9 @@ function dQdd_ref_mpmath(nu::ComplexF64,d::Float64;dps::Int=80,leg_type::Int=3)
     return ComplexF64(pycall(_pyfloat[],Float64,y.real),pycall(_pyfloat[],Float64,y.imag))
 end
 
-function run_QTaylorTable_test(;k=ComplexF64(120.0,0.2),dmin=1e-3,dmax=8.0,h=1e-5,P=6,mp_dps=90,leg_type=3,Nbench=1_000_000_00)
-    pre=build_QTaylorPrecomp(;dmin=dmin,dmax=dmax,h=h,P=P)
-    ws=QTaylorWorkspace(P;threaded=false)
+function run_QTaylorTable_test(;k=ComplexF64(120.0,0.2),dmin=1e-3,dmax=8.0,mp_dps=90,leg_type=3,Nbench=1_000_000_00)
+    pre=build_QTaylorPrecomp(;dmin=dmin,dmax=dmax)
+    ws=QTaylorWorkspace(;threaded=false)
     tab=alloc_QTaylorTable(pre;k=k)
     println("\nBuild:")
     @time build_QTaylorTable!(tab,pre,ws,k;mp_dps=mp_dps,leg_type=leg_type)
