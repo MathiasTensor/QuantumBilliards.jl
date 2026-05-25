@@ -347,6 +347,42 @@ end
     return ρ
 end
 
+function d_bounds_hyp_grid(bd::BoundaryPointsHypBIM{T},xgrid,ygrid,idxs,symmetry;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8)) where {T<:Real}
+    qx,qy=prepare_hyp_bd_xy(bd)
+    dmin=typemax(T);dmax=zero(T)
+    @inline function upd(x,y,xq,yq)
+        d=hyperbolic_distance_poincare(x,y,xq,yq)
+        d>zero(T)&&(dmin=min(dmin,d);dmax=max(dmax,d))
+    end
+    @inline function updq(x,y,xq,yq)
+        upd(x,y,xq,yq)
+        if symmetry isa Reflection
+            if symmetry.axis==:origin
+                upd(x,y,-xq,yq);upd(x,y,xq,-yq);upd(x,y,-xq,-yq)
+            elseif symmetry.axis==:y_axis
+                upd(x,y,-xq,yq)
+            elseif symmetry.axis==:x_axis
+                upd(x,y,xq,-yq)
+            end
+        elseif symmetry isa Rotation
+            n=symmetry.n
+            for ℓ in 2:n
+                θ=T(TWO_PI)*T(ℓ-1)/T(n);c=cos(θ);s=sin(θ)
+                upd(x,y,c*xq-s*yq,s*xq+c*yq)
+            end
+        end
+    end
+    nx=length(xgrid)
+    @inbounds for idx in idxs
+        ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
+        x=xgrid[ix];y=ygrid[jy]
+        for j in eachindex(qx)
+            updq(x,y,qx[j],qy[j])
+        end
+    end
+    return max(dmin_floor,pad_min*dmin),pad_max*dmax
+end
+
 #------------------------------------------------------------------------------
 # wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;...)->(Psi2ds,xgrid,ygrid)
 #
@@ -409,7 +445,7 @@ function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},ve
     @inbounds for i in eachindex(ks)
         fill!(Psi_flat,zero(Complex{T}))
         bd=vec_bd[i];u=vec_u[i]
-        dmin,dmax=d_bounds_hyp(bd,symmetry;ρ_extra=ρgrid)
+        dmin,dmax=d_bounds_hyp_grid(bd,xgrid,ygrid,idxs,symmetry;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8))
         dmin=max(dmin,T(1e-3))
         tab=build_QTaylorTable(ComplexF64(ks[i]);dmin=dmin,dmax=dmax)
         qx,qy=prepare_hyp_bd_xy(bd)
