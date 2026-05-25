@@ -338,6 +338,15 @@ function _make_grid_and_idxs_for_billiard(ks::Vector{T},billiard::Bi;b::Float64=
     return xgrid,ygrid,idxs,nx,ny
 end
 
+@inline function _grid_rho_bound(xgrid::AbstractVector{T},ygrid::AbstractVector{T},idxs::Vector{Int},nx::Int) where{T<:Real}
+    ρ=zero(T)
+    @inbounds for idx in idxs
+        ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
+        ρ=max(ρ,hypot(xgrid[ix],ygrid[jy]))
+    end
+    return ρ
+end
+
 #------------------------------------------------------------------------------
 # wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;...)->(Psi2ds,xgrid,ygrid)
 #
@@ -392,23 +401,24 @@ end
 function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHypBIM},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
     _psi(x,y,tab,bd,qx,qy,u,symmetry)=symmetry===nothing ? ψ_hyp_slp(x,y,tab,bd,qx,qy,u) : ψ_hyp_slp_sym(x,y,tab,bd,qx,qy,u,symmetry)
     xgrid,ygrid,idxs,nx,ny=_make_grid_and_idxs_for_billiard(ks,billiard;b=b,fundamental=fundamental,inside_only=inside_only,δdisk=δdisk)
+    ρgrid=_grid_rho_bound(xgrid,ygrid,idxs,nx)
     nmask=length(idxs);NT=Threads.nthreads();NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)));q,r=divrem(nmask,NT_eff)
     Psi_flat=zeros(Complex{T},nx*ny)
     Psi2ds=Vector{Matrix{Complex{T}}}(undef,length(ks))
     prog=Progress(length(ks),desc="Constructing hyperbolic SLP wavefunctions...")
     @inbounds for i in eachindex(ks)
         fill!(Psi_flat,zero(Complex{T}))
-        tab=tabs[i];bd=vec_bd[i];u=vec_u[i]
+        bd=vec_bd[i];u=vec_u[i]
+        dmin,dmax=d_bounds_hyp(bd,symmetry;ρ_extra=ρgrid)
+        dmin=max(dmin,T(1e-3))
+        tab=build_QTaylorTable(ComplexF64(ks[i]);dmin=dmin,dmax=dmax)
         qx,qy=prepare_hyp_bd_xy(bd)
         Threads.@threads :static for t in 1:NT_eff
             lo=(t-1)*q+min(t-1,r)+1
             hi=lo+q-1+(t<=r ? 1 : 0)
             for jj in lo:hi
-                idx=idxs[jj]
-                ix=(idx-1)%nx+1
-                jy=(idx-1)÷nx+1
-                x=xgrid[ix];y=ygrid[jy]
-                Psi_flat[idx]=_psi(x,y,tab,bd,qx,qy,u,symmetry)
+                idx=idxs[jj];ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
+                Psi_flat[idx]=_psi(xgrid[ix],ygrid[jy],tab,bd,qx,qy,u,symmetry)
             end
         end
         Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
