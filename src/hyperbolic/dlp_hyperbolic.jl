@@ -432,7 +432,7 @@ end
 #     Clamp ρ below 1 to avoid atanh(1) and overflow near the boundary.
 #
 #
-# d_bounds_hyp(bp::BoundaryPointsHypBIM{T}, symmetry; K=3, dmin_floor=1e-6, pad=1.1)
+# d_bounds_hyp(bp::BoundaryPointsHypBIM{T}, symmetry; K=3, dmin_floor=1e-6, pad_max=1.1)
 #     where {T<:Real} -> (dmin::T, dmax::T)
 #
 #   Purpose
@@ -454,7 +454,7 @@ end
 #         compares each node i with i±1,...,i±K (and their symmetry images).
 #     dmin_floor::T
 #       Hard lower floor returned for dmin to avoid d≈0 issues in kernels/tables.
-#     pad::T
+#     pad_max::T
 #       Multiplicative safety padding applied to dmax.
 #
 #   Outputs
@@ -463,7 +463,7 @@ end
 #       including symmetry images; lower-bounded by dmin_floor.
 #     dmax::T
 #       Safe upper bound on hyperbolic distances needed by the kernel, computed from
-#       a maximal radius bound ρ and padded by pad.
+#       a maximal radius bound ρ and padded by pad_max.
 # ==============================================================================
 
 @inline _wrap(i::Int,N::Int)=i<1 ? i+N : (i>N ? i-N : i)
@@ -473,7 +473,7 @@ end
     return T(4)*atanh(ρc)  # = acosh(1+8ρ^2/(1-ρ^2)^2) 
 end
 
-function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad::T=T(1.1)) where {T<:Real}
+function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad_min=0.9,pad_max=1.1) where {T<:Real}
     xy=bp.xy
     N=length(xy)
     tol2=(T(64)*eps(one(T)))^2
@@ -496,7 +496,7 @@ function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::
             end
         end
     end
-    dmax=pad*_dmax_from_rho(ρ)
+    dmax=pad_max*_dmax_from_rho(ρ)
     dmin=typemax(T)
     @inline function upd!(xi,yi,xj,yj)
         dx=xi-xj;dy=yi-yj
@@ -551,5 +551,5 @@ function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::
     else
         error("Unsupported symmetry type $(typeof(s))")
     end
-    return max(dmin_floor,dmin),dmax
+    return max(dmin_floor,pad_min*dmin),dmax
 end
