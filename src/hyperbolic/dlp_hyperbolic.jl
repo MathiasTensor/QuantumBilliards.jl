@@ -196,7 +196,7 @@ end
 #     Currently unused (kept for SweepSolver API compatibility). Can be used later
 #     if you want basis-dependent assembly; safe to ignore for now.
 #
-#   pts_hyp::BoundaryPointsHypBIM{T}
+#   pts_hyp::BoundaryPointsHyp{T}
 #     Hyperbolic boundary container for THIS k (typically constructed once at kmax
 #     and reused across k-sweep). Fields used here:
 #       pts_hyp.xy,normal,curvature,ds  (via conversion to BoundaryPoints)
@@ -225,7 +225,7 @@ end
 #   σmin::Real (Float64 in krylov branch, otherwise eltype of svdvals)
 #     Smallest singular value of K(k).
 #------------------------------------------------------------------------------
-function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
+function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
@@ -261,7 +261,7 @@ end
 #   basis::Ba
 #     Currently unused (API compatibility).
 #
-#   pts_hyp::BoundaryPointsHypBIM{T}
+#   pts_hyp::BoundaryPointsHyp{T}
 #     Boundary discretization container. Used as:
 #       - Euclidean geometry (xy,normal,κ,ds) for DLP assembly
 #       - Hyperbolic weights (dsH) ONLY for u normalization after SVD
@@ -294,7 +294,7 @@ end
 #     quadrature weights:
 #       ∑_j |u_j|^2 dsH[j] = 1
 #------------------------------------------------------------------------------
-function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
+function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
     symmetry=solver.symmetry
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
@@ -432,7 +432,7 @@ end
 #     Clamp ρ below 1 to avoid atanh(1) and overflow near the boundary.
 #
 #
-# d_bounds_hyp(bp::BoundaryPointsHypBIM{T}, symmetry; K=3, dmin_floor=1e-6, pad_max=1.1)
+# d_bounds_hyp(bp::BoundaryPointsHyp{T}, symmetry; K=3, dmin_floor=1e-6, pad_max=1.1)
 #     where {T<:Real} -> (dmin::T, dmax::T)
 #
 #   Purpose
@@ -440,7 +440,7 @@ end
 #     of Q_ν(cosh d) and y(d)=d/dd Q_ν(cosh d) in hyperbolic BIM on the Poincaré disk.
 #
 #   Inputs
-#     bp::BoundaryPointsHypBIM{T}
+#     bp::BoundaryPointsHyp{T}
 #       Uses:
 #         bp.xy::Vector{SVector{2,T}}  boundary nodes in Euclidean disk coords.
 #     symmetry
@@ -473,7 +473,7 @@ end
     return T(4)*atanh(ρc)  # = acosh(1+8ρ^2/(1-ρ^2)^2) 
 end
 
-function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad_min=T(0.9),pad_max=T(1.1),ρ_extra::T=zero(T)) where{T<:Real}
+function d_bounds_hyp(bp::BoundaryPointsHyp{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad_min=T(0.9),pad_max=T(1.1),ρ_extra::T=zero(T)) where{T<:Real}
     xy=bp.xy;N=length(xy);tol2=(T(64)*eps(one(T)))^2;ρ=ρ_extra
     @inbounds for i in 1:N
         x=xy[i][1];y=xy[i][2];ρ=max(ρ,hypot(x,y))

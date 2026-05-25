@@ -11,7 +11,7 @@ struct BIM_hyperbolic{T<:Real,Sym}<:SweepSolver
 end
 
 # ==============================================================================
-# BoundaryPointsHypBIM
+# BoundaryPointsHyp
 # ==============================================================================
 #
 #   • xy[j]        : Euclidean coordinates in unit disk.
@@ -28,7 +28,7 @@ end
 #                     Typically ξ[1]=0 and ξ[end]≈LH.
 #   • LH           : Total hyperbolic boundary length (≈sum(dsH)).
 # ==============================================================================
-struct BoundaryPointsHypBIM{T}<:AbsPoints where{T<:Real}
+struct BoundaryPointsHyp{T}<:AbsPoints where{T<:Real}
     xy::Vector{SVector{2,T}}
     normal::Vector{SVector{2,T}}
     curvature::Vector{T}
@@ -52,7 +52,7 @@ end
 # _BoundaryPointsHypBIM_to_BoundaryPoints(bph)->bp
 #
 # PURPOSE
-#   Convert a hyperbolic boundary-point container (BoundaryPointsHypBIM) into the
+#   Convert a hyperbolic boundary-point container (BoundaryPointsHyp) into the
 #   standard Euclidean points (BoundaryPoints) expected by low-level
 #   Fredholm / layer-kernel matrix constructors.
 #
@@ -66,7 +66,7 @@ end
 #     • λ, dsH, ξ, LH (hyperbolic extras)
 #
 # INPUTS
-#   bph::BoundaryPointsHypBIM{T}
+#   bph::BoundaryPointsHyp{T}
 #     Fields used:
 #       bph.xy, bph.normal, bph.curvature, bph.ds
 #
@@ -75,7 +75,7 @@ end
 #     Uses the same vector objects for xy/normal/curvature/ds (zero-copy).
 #     shift_x and shift_y are set to 0 (no shifts in Poincaré disk workflow).
 #------------------------------------------------------------------------------
-@inline function _BoundaryPointsHypBIM_to_BoundaryPoints(bph::BoundaryPointsHypBIM{T}) where {T<:Real}
+@inline function _BoundaryPointsHypBIM_to_BoundaryPoints(bph::BoundaryPointsHyp{T}) where {T<:Real}
     return BoundaryPoints{T}(bph.xy,bph.normal,Vector{T}(),bph.ds,Vector{T}(),Vector{T}(),bph.curvature,Vector{SVector{2,T}}(),zero(T),zero(T))
 end
 
@@ -282,7 +282,7 @@ function precompute_hyperbolic_boundary_cdfs(solver::BIM_hyperbolic,billiard::Bi
 end
 
 #------------------------------------------------------------------------------
-# evaluate_points(solver,billiard,k,precomps;...)->BoundaryPointsHypBIM
+# evaluate_points(solver,billiard,k,precomps;...)->BoundaryPointsHyp
 #
 # PURPOSE
 #   Construct boundary quadrature nodes distributed UNIFORMLY in HYPERBOLIC
@@ -309,7 +309,7 @@ end
 #   safety::Real  : reserved
 #   threaded::Bool: if true, parallelize across curves
 #
-# OUTPUTS  (BoundaryPointsHypBIM{T})
+# OUTPUTS  (BoundaryPointsHyp{T})
 #   xy[j]        : Euclidean boundary nodes (SVector{2,T})
 #   normal[j]    : Euclidean unit normals (SVector{2,T})
 #   curvature[j] : Euclidean curvature κ_E (T)
@@ -407,5 +407,5 @@ function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::V
         s+=dsH_all[j]
     end
     LH=s
-    return BoundaryPointsHypBIM{T}(xy_all,normal_all,kappa_all,ds_all,λ_all,dsH_all,ξ_all,LH)
+    return BoundaryPointsHyp{T}(xy_all,normal_all,kappa_all,ds_all,λ_all,dsH_all,ξ_all,LH)
 end

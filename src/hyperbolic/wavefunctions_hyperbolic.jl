@@ -109,7 +109,7 @@ end
 #   Extract boundary node coordinates into two dense vectors to reduce overhead.
 #
 # INPUTS
-#   bd::BoundaryPointsHypBIM{T}
+#   bd::BoundaryPointsHyp{T}
 #     Required fields:
 #       bd.xy :: Vector{SVector{2,T}} (or similar)
 #       bd.ds :: Vector{T}            (Euclidean ds weights)
@@ -122,7 +122,7 @@ end
 #   • Does NOT compute λ or ds_H.
 #   • Hyperbolic ds is always inserted later as ds[j]*λ_poincare(qxj,qyj).
 #------------------------------------------------------------------------------
-function prepare_hyp_bd_xy(bd::BoundaryPointsHypBIM{T})where{T<:Real}
+function prepare_hyp_bd_xy(bd::BoundaryPointsHyp{T})where{T<:Real}
     N=length(bd.xy)
     qx=Vector{T}(undef,N);qy=Vector{T}(undef,N)
     @inbounds for j in 1:N
@@ -163,7 +163,7 @@ end
 # INPUTS
 #   x,y : target point
 #   tab : QTaylorTable for the eigen-wavenumber
-#   bd  : BoundaryPointsHypBIM{T} providing bd.ds (Euclidean quadrature weights)
+#   bd  : BoundaryPointsHyp{T} providing bd.ds (Euclidean quadrature weights)
 #   qx,qy : boundary node coordinate arrays from prepare_hyp_bd_xy
 #   σ  : boundary density samples
 #        For your Dirichlet eigenproblem: σ(s)=u(s)=∂_nψ(s).
@@ -171,7 +171,7 @@ end
 # OUTPUTS
 #   ψ(x,y) as Complex{T}
 #------------------------------------------------------------------------------
-@inline function ψ_hyp_slp(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHypBIM{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{Complex{T}})where{T<:Real}
+@inline function ψ_hyp_slp(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHyp{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{Complex{T}})where{T<:Real}
     ds=bd.ds;sr=zero(T);si=zero(T)
     @inbounds for j in eachindex(σ)
         qxj=qx[j];qyj=qy[j]
@@ -188,7 +188,7 @@ end
 #
 # Same as above but σ is real-valued; output still Complex{T} because kernel is complex.
 #------------------------------------------------------------------------------
-@inline function ψ_hyp_slp(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHypBIM{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{T})where{T<:Real}
+@inline function ψ_hyp_slp(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHyp{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{T})where{T<:Real}
     ds=bd.ds;acc=zero(Complex{T})
     @inbounds for j in eachindex(σ)
         qxj=qx[j];qyj=qy[j]
@@ -214,7 +214,7 @@ end
 # OUTPUTS
 #   ψ(x,y) in the full (symmetrized) domain satisfying required symmetry sector.
 #------------------------------------------------------------------------------
-function ψ_hyp_slp_sym(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHypBIM{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{Num},sym)where{T<:Real,Num<:Number}
+function ψ_hyp_slp_sym(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHyp{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{Num},sym)where{T<:Real,Num<:Number}
     ds=bd.ds;acc=zero(Complex{T})
     if sym isa QuantumBilliards.Rotation
         n=sym.n;m=mod(sym.m,n)
@@ -347,7 +347,7 @@ end
     return ρ
 end
 
-function d_bounds_hyp_grid(bd::BoundaryPointsHypBIM{T},xgrid,ygrid,idxs,symmetry;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8)) where {T<:Real}
+function d_bounds_hyp_grid(bd::BoundaryPointsHyp{T},xgrid,ygrid,idxs,symmetry;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8)) where {T<:Real}
     qx,qy=prepare_hyp_bd_xy(bd)
     dmin=typemax(T);dmax=zero(T)
     @inline function upd(x,y,xq,yq)
@@ -399,7 +399,7 @@ end
 #     Length of vec_u[i] must match number of boundary nodes in vec_bd[i].
 #
 #   vec_bd
-#     Vector of BoundaryPointsHypBIM objects, one per eigenvalue.
+#     Vector of BoundaryPointsHyp objects, one per eigenvalue.
 #     Must provide fields:
 #       bd.xy :: boundary nodes (Euclidean coordinates)
 #       bd.ds :: Euclidean quadrature weights ds_E at nodes
@@ -434,7 +434,7 @@ end
 #   xgrid::Vector{T},ygrid::Vector{T}
 #     The coordinate vectors defining the Cartesian grid.
 #------------------------------------------------------------------------------
-function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHypBIM},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
+function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
     _psi(x,y,tab,bd,qx,qy,u,symmetry)=symmetry===nothing ? ψ_hyp_slp(x,y,tab,bd,qx,qy,u) : ψ_hyp_slp_sym(x,y,tab,bd,qx,qy,u,symmetry)
     xgrid,ygrid,idxs,nx,ny=_make_grid_and_idxs_for_billiard(ks,billiard;b=b,fundamental=fundamental,inside_only=inside_only,δdisk=δdisk)
     ρgrid=_grid_rho_bound(xgrid,ygrid,idxs,nx)
@@ -478,7 +478,7 @@ end
 #     Boundary densities u_i on ∂Ω (Dirichlet case: u_i=∂nψ_i at boundary nodes).
 #     Length(vec_u[i]) must match the boundary node count of vec_bd[i].
 #
-#   vec_bd::Vector{BoundaryPointsHypBIM}
+#   vec_bd::Vector{BoundaryPointsHyp}
 #     Boundary containers (one per state). Required fields:
 #       bd.xy  : Euclidean boundary nodes (for ψ reconstruction)
 #       bd.ds  : Euclidean ds weights (for ψ reconstruction, combined with λ)
@@ -529,7 +529,7 @@ end
 #   ps_out::Vector{<:AbstractVector{T}}
 #     The p grids actually used (ps or the reflected p_out), aligned with Hs.
 # ------------------------------------------------------------------------------
-function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHypBIM},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true,Nq::Int=1000,Np::Int=1000,pmax::T=one(T)) where {T<:Real,Bi<:AbsBilliard}
+function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true,Nq::Int=1000,Np::Int=1000,pmax::T=one(T)) where {T<:Real,Bi<:AbsBilliard}
     Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;b=b,inside_only=inside_only,fundamental=fundamental,symmetry=symmetry,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk)
     n=length(ks)
     Hs=Vector{Matrix{T}}(undef,n)
