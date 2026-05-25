@@ -230,10 +230,6 @@ function construct_B_matrix_hyp(solver::BIM_hyperbolic,pts::BoundaryPointsHypBIM
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
     dmin=max(dmin,1e-3)
-    #pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=h,P=P)
-    #tabs=alloc_QTaylorTables(pre,nq;k=ks[1])
-    #ws=QTaylorWorkspace(P;threaded=multithreaded)
-    #build_QTaylorTable!(tabs,pre,ws,ks;mp_dps=mp_dps,leg_type=leg_type,threaded=multithreaded)
     tabs=Vector{QTaylorTable}(undef,nq)
     for j in 1:nq
         tabs[j]=build_QTaylorTable(ks[j],dmin=dmin,dmax=dmax)
@@ -437,9 +433,6 @@ function residual_and_norm_select_hyp(solver::BIM_hyperbolic,λ::AbstractVector{
     pts_eucl=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
     dmin=max(dmin,1e-3)
-    #pre=build_QTaylorPrecomp(dmin=dmin,dmax=dmax,h=T(h),P=P)
-    #tab=alloc_QTaylorTable(pre;k=ComplexF64(k0))
-    #ws=QTaylorWorkspace(P;threaded=false)
     vecnorm = matnorm===:one ? (v->norm(v,1)) : matnorm===:two ? (v->norm(v)) : (v->norm(v,Inf))
     @inbounds for j in 1:rk
         λj=λ[j]

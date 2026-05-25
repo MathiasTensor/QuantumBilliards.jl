@@ -379,11 +379,12 @@ function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::V
             x=T(p[1]);y=T(p[2])
             den=one(T)-muladd(x,x,y*y);den=max(den,T(1e-15))
             lam=T(2)/den
-            dsE=T(sp[n]*dt[n])
+            dsH=T(pre.Lh)/T(Ni_r)
+            dsE=dsH/lam
             idx=j0+n-1
             ds_all[idx]=dsE
             λ_all[idx]=lam
-            dsH_all[idx]=lam*dsE
+            dsH_all[idx]=dsH
         end
         return nothing
     end
