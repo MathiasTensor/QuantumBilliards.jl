@@ -553,7 +553,7 @@ function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:Abstra
         #end
         #if show_progress_husimi
             next!(pbar)
-        end
+        #end
     end
     return Psi2ds,xgrid,ygrid,Hs[ok],qs_all[ok],ps_all[ok]
 end
