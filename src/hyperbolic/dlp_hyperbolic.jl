@@ -473,83 +473,59 @@ end
     return T(4)*atanh(ρc)  # = acosh(1+8ρ^2/(1-ρ^2)^2) 
 end
 
-function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad_min=0.9,pad_max=1.1) where {T<:Real}
-    xy=bp.xy
-    N=length(xy)
-    tol2=(T(64)*eps(one(T)))^2
-    ρ=zero(T)
-    @inbounds for i in 1:N
-        x=xy[i][1];y=xy[i][2]
-        ρ=max(ρ,hypot(x,y))
-    end
-    if !isnothing(symmetry)
-        s=symmetry
-        if s isa Rotation
-            cx=s.center[1];cy=s.center[2];n=s.n
-            ctab,stab,_=_rotation_tables(T,n,mod(s.m,n))
-            @inbounds for i in 1:N
-                x0=xy[i][1]-cx
-                y0=xy[i][2]-cy
-                @inbounds for l in 2:n
-                    ρ=max(ρ,hypot(ctab[l]*x0-stab[l]*y0+cx,stab[l]*x0+ctab[l]*y0+cy))
-                end
-            end
-        end
-    end
-    dmax=pad_max*_dmax_from_rho(ρ)
-    dmin=typemax(T)
+function d_bounds_hyp(bp::BoundaryPointsHypBIM{T},symmetry;K::Int=3,dmin_floor::T=T(1e-6),pad_min=T(0.9),pad_max=T(1.1)) where {T<:Real}
+    xy=bp.xy;N=length(xy);tol2=(T(64)*eps(one(T)))^2
+    dmin=typemax(T);dmax=zero(T)
     @inline function upd!(xi,yi,xj,yj)
         dx=xi-xj;dy=yi-yj
         muladd(dx,dx,dy*dy)<=tol2 && return nothing
         d=hyperbolic_distance_poincare(xi,yi,xj,yj)
-        (d>zero(T) && d<dmin) && (dmin=d)
+        d>zero(T) && (dmin=min(dmin,d);dmax=max(dmax,d))
         return nothing
     end
-    if isnothing(symmetry)
-        @inbounds for i in 1:N
-            xi=xy[i][1];yi=xy[i][2]
-            @inbounds for t in 1:K
-                j=_wrap(i+t,N);upd!(xi,yi,xy[j][1],xy[j][2])
-                j=_wrap(i-t,N);upd!(xi,yi,xy[j][1],xy[j][2])
-            end
+    @inline function upd_near_plain!(i)
+        xi=xy[i][1];yi=xy[i][2]
+        @inbounds for t in 1:K
+            j=_wrap(i+t,N);upd!(xi,yi,xy[j][1],xy[j][2])
+            j=_wrap(i-t,N);upd!(xi,yi,xy[j][1],xy[j][2])
         end
-        return max(dmin_floor,dmin),dmax
+    end
+    if isnothing(symmetry)
+        @inbounds for i in 1:N,j in 1:N
+            i!=j && upd!(xy[i][1],xy[i][2],xy[j][1],xy[j][2])
+        end
+        return max(dmin_floor,pad_min*dmin),pad_max*dmax
     end
     s=symmetry
     if s isa Reflection
         ops=_reflect_ops_and_scales(T,s)
         @inbounds for i in 1:N
             xi=xy[i][1];yi=xy[i][2]
-            @inbounds for t in 1:K
-                @inbounds for j in (_wrap(i+t,N),_wrap(i-t,N))
-                    x0=xy[j][1];y0=xy[j][2]
-                    upd!(xi,yi,x0,y0)
-                    @inbounds for (op,_) in ops
-                        x=(op==1||op==3) ? -x0 : x0
-                        y=(op==2||op==3) ? -y0 : y0
-                        upd!(xi,yi,x,y)
-                    end
+            for j in 1:N
+                x0=xy[j][1];y0=xy[j][2]
+                i!=j && upd!(xi,yi,x0,y0)
+                for (op,_) in ops
+                    x=(op==1||op==3) ? -x0 : x0
+                    y=(op==2||op==3) ? -y0 : y0
+                    upd!(xi,yi,x,y)
                 end
             end
         end
     elseif s isa Rotation
-        cx=s.center[1];cy=s.center[2];n=s.n
-        ctab,stab,_=_rotation_tables(T,n,mod(s.m,n))
+        cx=s.center[1];cy=s.center[2];ctab,stab,_=_rotation_tables(T,s.n,mod(s.m,s.n))
         @inbounds for i in 1:N
             xi=xy[i][1];yi=xy[i][2]
-            @inbounds for t in 1:K
-                @inbounds for j in (_wrap(i+t,N),_wrap(i-t,N))
-                    x0=xy[j][1];y0=xy[j][2]
-                    upd!(xi,yi,x0,y0)
-                    x=x0-cx;y=y0-cy
-                    @inbounds for l in 2:n
-                        upd!(xi,yi,ctab[l]*x-stab[l]*y+cx,stab[l]*x+ctab[l]*y+cy)
-                    end
+            for j in 1:N
+                x0=xy[j][1];y0=xy[j][2]
+                i!=j && upd!(xi,yi,x0,y0)
+                x=x0-cx;y=y0-cy
+                for l in 2:s.n
+                    upd!(xi,yi,ctab[l]*x-stab[l]*y+cx,stab[l]*x+ctab[l]*y+cy)
                 end
             end
         end
     else
         error("Unsupported symmetry type $(typeof(s))")
     end
-    return max(dmin_floor,pad_min*dmin),dmax
+    return max(dmin_floor,pad_min*dmin),pad_max*dmax
 end
