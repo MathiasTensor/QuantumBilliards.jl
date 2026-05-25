@@ -66,7 +66,7 @@ function legendre_Q_set_P!(P::Integer)
     return LEGENDRE_TAYLOR_CONFIG
 end
 
-function legendre_Q_set_taylor_params!(; h_patch=nothing, P_patch=nothing)
+function legendre_Q_set_taylor_params!(;h_patch=nothing,P_patch=nothing)
     !isnothing(h_patch) && legendre_Q_set_h!(h_patch)
     !isnothing(P_patch) && legendre_Q_set_P!(P_patch)
     return LEGENDRE_TAYLOR_CONFIG

@@ -66,6 +66,34 @@
 
 const inv4π=1/(4*pi)
 
+Base.@kwdef mutable struct UConfluentTaylorConfig
+    h_patch::Float64=1e-5  # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
+    P_patch::Int=8 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
+end
+const U_CONFLUENT_TAYLOR_CONFIG=UConfluentTaylorConfig()
+
+@inline u_confluent_h_patch()=U_CONFLUENT_TAYLOR_CONFIG.h_patch
+@inline u_confluent_P_patch()=U_CONFLUENT_TAYLOR_CONFIG.P_patch
+@inline function confluent_U_params();cfg=U_CONFLUENT_TAYLOR_CONFIG;return cfg.h_patch,cfg.P_patch;end
+
+function confluent_U_set_h!(h::Real)
+    h>0 || error("h_patch must be positive.")
+    U_CONFLUENT_TAYLOR_CONFIG.h_patch=Float64(h)
+    return U_CONFLUENT_TAYLOR_CONFIG
+end
+
+function confluent_U_set_P!(P::Integer)
+    P≥1 || error("P_patch must be at least 1.")
+    U_CONFLUENT_TAYLOR_CONFIG.P_patch=Int(P)
+    return U_CONFLUENT_TAYLOR_CONFIG
+end
+
+function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing)
+    !isnothing(h_patch) && confluent_U_set_h!(h_patch)
+    !isnothing(P_patch) && confluent_U_set_P!(P_patch)
+    return U_CONFLUENT_TAYLOR_CONFIG
+end
+
 # =============================================================================
 # magnetic_log_coeff
 #
@@ -532,12 +560,12 @@ end
 #   a_ν and R_ν(0). This prevents the small-z branch from inheriting a Float64
 #   error floor.
 # =============================================================================
-function build_small_z_coeffs(ν::ComplexF64,R0::ComplexF64;M::Int=24,prec::Int=256)
+function build_small_z_coeffs(ν::ComplexF64,R0::ComplexF64;a0::ComplexF64=magnetic_log_coeff(ν),M::Int=24,prec::Int=256)
     setprecision(BigFloat,prec) do
         νb=Complex{BigFloat}(BigFloat(real(ν)),BigFloat(imag(ν)))
         A=Vector{Complex{BigFloat}}(undef,M+1)
         B=Vector{Complex{BigFloat}}(undef,M+1)
-        A[1]=Complex{BigFloat}(BigFloat(real(magnetic_log_coeff(ν))),BigFloat(imag(magnetic_log_coeff(ν))))
+        A[1]=Complex{BigFloat}(BigFloat(real(a0)),BigFloat(imag(a0)))
         B[1]=Complex{BigFloat}(BigFloat(real(R0)),BigFloat(imag(R0)))
         am1=zero(Complex{BigFloat})
         bm1=zero(Complex{BigFloat})
@@ -547,10 +575,10 @@ function build_small_z_coeffs(ν::ComplexF64,R0::ComplexF64;M::Int=24,prec::Int=
             bp1=(-BigFloat(2*(m+1))*ap1-νb*B[m+1]+BigFloat("0.25")*bm1)/den
             am1=A[m+1]
             bm1=B[m+1]
-            A[m+2]=ap1
-            B[m+2]=bp1
+            A[m+2] = ap1
+            B[m+2] = bp1
         end
-        return ComplexF64.(A),ComplexF64.(B)
+        return ComplexF64.(A), ComplexF64.(B)
     end
 end
 
@@ -703,13 +731,14 @@ end
 # Output
 #   MagneticGreenSWorkspace Workspace object used by `build_MagneticGreenSTaylorTable!`.
 # =============================================================================
-@inline function MagneticGreenSWorkspace(P::Int;threaded::Bool=true)
+@inline function MagneticGreenSWorkspace(;threaded::Bool=true)
+    h_patch,P_patch=confluent_U_params()
     NT=threaded ? Threads.nthreads() : 1
     return MagneticGreenSWorkspace(
-        Vector{ComplexF64}(undef,P+1),
-        Vector{ComplexF64}(undef,P+1),
-        [Vector{ComplexF64}(undef,P+1) for _ in 1:NT],
-        [Vector{ComplexF64}(undef,P+1) for _ in 1:NT],
+        Vector{ComplexF64}(undef,P_patch+1),
+        Vector{ComplexF64}(undef,P_patch+1),
+        [Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT],
+        [Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT],
     )
 end
 
@@ -735,17 +764,18 @@ end
 # Output
 #   MagneticGreenSPrecomp Precomputed table layout.
 # =============================================================================
-function build_MagneticGreenSPrecomp(;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,h::Float64=0.00001,P::Int=6,Msmall::Int=16)
-    @assert zmin>0 && zmax>zmin && h>0 && P>=2
+function build_MagneticGreenSPrecomp(;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,Msmall::Int=16)
+    h_patch,P_patch=confluent_U_params()
+    @assert zmin>0 && zmax>zmin && h_patch>0 && P_patch>=2
     @assert 0<zsmall<=zmin
     smin=sqrt(zmin);smax=sqrt(zmax)
-    Npatch=Int(ceil((smax-smin)/h))+1
+    Npatch=Int(ceil((smax-smin)/h_patch))+1
     centers=Vector{Float64}(undef,Npatch)
     @inbounds for i in 1:Npatch
-        centers[i]=smin+(i-1)*h
+        centers[i]=smin+(i-1)*h_patch
     end
     centers[end]=smax
-    return MagneticGreenSPrecomp(zmin,zmax,zsmall,smin,smax,h,P,Msmall,Npatch,centers)
+    return MagneticGreenSPrecomp(zmin,zmax,zsmall,smin,smax,h_patch,P_patch,Msmall,Npatch,centers)
 end
 
 # =============================================================================
@@ -854,7 +884,7 @@ function _update_small_z!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrec
     tab.ν=ν
     tab.a_log=magnetic_log_coeff_mpmath(ν;dps=mp_dps)
     tab.R0=magnetic_R0_mpmath(ν;dps=mp_dps)
-    A,B=build_small_z_coeffs(ν,tab.R0;M=pre.Msmall)
+    A,B=build_small_z_coeffs(ν,tab.R0;a0=tab.a_log,M=pre.Msmall)
     A[1]=tab.a_log
     B[1]=tab.R0
     resize!(tab.smallA,length(A))
@@ -1004,9 +1034,10 @@ end
 # For production Beyn loops, prefer the in-place version to avoid repeated
 # allocations.
 # =============================================================================
-function build_MagneticGreenSTaylorTable(ν::ComplexF64;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,h::Float64=0.00001,P::Int=6,Msmall::Int=16,mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
-    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,h=h,P=P,Msmall=Msmall)
-    ws=MagneticGreenSWorkspace(P;threaded=false)
+function build_MagneticGreenSTaylorTable(ν::ComplexF64;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,Msmall::Int=16,mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    h_patch,P_patch=confluent_U_params()
+    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,Msmall=Msmall)
+    ws=MagneticGreenSWorkspace(;threaded=false)
     tab=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
     build_MagneticGreenSTaylorTable!(tab,pre,ws,ν;mp_dps=mp_dps,anchor_s=anchor_s)
     return tab
@@ -1395,10 +1426,10 @@ function magnetic_ztests(zmax::Float64;zsmall::Float64=1e-3)
     return candidates[candidates.<=zmax]
 end
 
-function run_magnetic_green_taylor_test(;ν=ComplexF64(2003.37,0.5),zmin=1e-3,zsmall=1e-3,h=0.00001,P=6,Msmall=20,mp_dps=100,b=2.0)
-    ws=MagneticGreenSWorkspace(P;threaded=false)
+function run_magnetic_green_taylor_test(;ν=ComplexF64(2003.37,0.5),zmin=1e-3,zsmall=1e-3,Msmall=20,mp_dps=100,b=2.0)
+    ws=MagneticGreenSWorkspace(;threaded=false)
     zmax=magnetic_test_zmax(b;D=10.0,safety=1.2)
-    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,h=h,P=P,Msmall=Msmall)
+    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,Msmall=Msmall)
     tab=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
 
     println("\nBuild:")
