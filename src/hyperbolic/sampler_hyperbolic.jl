@@ -320,8 +320,18 @@ end
 #   LH           : total hyperbolic boundary length, LH≈sum(dsH)
 #------------------------------------------------------------------------------
 function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:AbsBilliard}
-    bs,_=QuantumBilliards.adjust_scaling_and_samplers(solver,billiard)
-    curves=QuantumBilliards._boundary_curves_for_solver(billiard,solver)
+    bs=solver.pts_scaling_factor
+    samplers=solver.sampler
+    default=samplers[1]
+    n_curves=isnothing(solver.symmetry) ? length(billiard.full_boundary) : length(billiard.desymmetrized_full_boundary)
+    b_min=minimum(bs)
+    while length(bs)<n_curves
+        push!(bs,b_min)
+    end
+    while length(samplers)<n_curves
+        push!(samplers,default)
+    end
+    curves=_boundary_curves_for_solver(billiard,solver)
     T=eltype(solver.pts_scaling_factor)
     real_idxs=Int[]
     for i in eachindex(curves)
