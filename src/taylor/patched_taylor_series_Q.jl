@@ -452,6 +452,7 @@ end
 # Output
 #   i::Int in 1:length(tab.centers)
 # =============================================================================
+#=
 @inline function _patch_index(tab::QTaylorTable,d::Float64)
     if d<=tab.dmin
         return 1
@@ -465,6 +466,16 @@ end
         end
         return clamp(idx,1,length(tab.centers))
     end
+end
+=#
+@inline function _patch_index(tab::QTaylorTable,d::Float64)
+    @boundscheck tab.dmin <= d <= tab.dmax || error(
+        "QTaylorTable distance d=$d outside [$(tab.dmin), $(tab.dmax)]"
+    )
+    t = (d - tab.dmin)/tab.h
+    idx = Int(floor(t)) + 1
+    abs(t-round(t)) < 64eps(t) && (idx = Int(round(t)) + 1)
+    return clamp(idx,1,length(tab.centers))
 end
 
 # =============================================================================
