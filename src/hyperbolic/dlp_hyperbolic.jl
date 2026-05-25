@@ -229,7 +229,7 @@ function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypBIM,k;
     symmetry=solver.symmetry
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
-    dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
+    dmin_m,dmax_m=d_bounds_hyp(pts_hyp,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
     tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m)
     K=Matrix{ComplexF64}(undef,N,N)
@@ -298,7 +298,7 @@ function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHypB
     symmetry=solver.symmetry
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
-    dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
+    dmin_m,dmax_m=d_bounds_hyp(pts_hyp,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
     tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m)
     K=Matrix{ComplexF64}(undef,N,N)
@@ -375,7 +375,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     pts_hyp=evaluate_points(solver,billiard,real(kmax),pre;safety=safety,threaded=multithreaded_matrices)
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
-    dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
+    dmin_m,dmax_m=d_bounds_hyp(pts_hyp,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
     preQ=build_QTaylorPrecomp(dmin=dmin_m,dmax=dmax_m)
     ws=QTaylorWorkspace(;threaded=false)
