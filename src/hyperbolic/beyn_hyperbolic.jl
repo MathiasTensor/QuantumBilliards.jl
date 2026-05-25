@@ -682,18 +682,18 @@ function compute_spectrum_hyp(solver::BIM_hyperbolic,basis::Ba,billiard::Bi,k1::
         λs[i]=λ;Uks[i]=Uk;Ys[i]=Y
         next!(p)
     end
-    ks_list=Vector{Vector{T}}(undef,nw);tens_list=Vector{Vector{T}}(undef,nw);tensN_list=Vector{Vector{T}}(undef,nw);phi_list=Vector{Matrix{Complex{T}}}(undef,nw)
+    ks_list=Vector{Vector{Complex{T}}}(undef,nw);tens_list=Vector{Vector{T}}(undef,nw);tensN_list=Vector{Vector{T}}(undef,nw);phi_list=Vector{Matrix{Complex{T}}}(undef,nw)
     @time "Residuals/tensions pass (hyp)" @inbounds @showprogress desc="Residuals/tensions (hyp)" for i in 1:nw
         if isempty(λs[i])
-            ks_list[i]=T[];tens_list[i]=T[];tensN_list[i]=T[];phi_list[i]=Matrix{Complex{T}}(undef,length(all_pts[i].xy),0);continue
+            ks_list[i]=Complex{T}[];tens_list[i]=T[];tensN_list[i]=T[];phi_list[i]=Matrix{Complex{T}}(undef,length(all_pts[i].xy),0);continue
         end
         idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix)
-        ks_list[i]=real.(λs[i][idx2]);tens_list[i]=traw;tensN_list[i]=tnorm;phi_list[i]=Matrix(Φ_kept)
+        ks_list[i]=(λs[i][idx2]);tens_list[i]=traw;tensN_list[i]=tnorm;phi_list[i]=Matrix(Φ_kept)
     end
     n_by_win=Vector{Int}(undef,nw);@inbounds for i in 1:nw;n_by_win[i]=size(phi_list[i],2);end
     offs=zeros(Int,nw);@inbounds for i in 2:nw;offs[i]=offs[i-1]+n_by_win[i-1];end
     ntot=offs[end]+n_by_win[end]
-    ks_all=Vector{T}(undef,ntot);tens_all=Vector{T}(undef,ntot);tensN_all=Vector{T}(undef,ntot)
+    ks_all=Vector{Complex{T}}(undef,ntot);tens_all=Vector{T}(undef,ntot);tensN_all=Vector{T}(undef,ntot)
     us_all=Vector{Vector{Complex{T}}}(undef,ntot);pts_all=Vector{BoundaryPointsHypBIM{T}}(undef,ntot)
     Threads.@threads for i in 1:nw
         n=n_by_win[i];n==0 && continue
