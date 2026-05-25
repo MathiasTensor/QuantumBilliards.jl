@@ -28,15 +28,21 @@ end
 #                     Typically ξ[1]=0 and ξ[end]≈LH.
 #   • LH           : Total hyperbolic boundary length (≈sum(dsH)).
 # ==============================================================================
-struct BoundaryPointsHyp{T}<:AbsPoints where{T<:Real}
+struct BoundaryPointsHyp{T<:Real}
     xy::Vector{SVector{2,T}}
     normal::Vector{SVector{2,T}}
-    curvature::Vector{T}
+    kappa::Vector{T}
     ds::Vector{T}
     λ::Vector{T}
     dsH::Vector{T}
     ξ::Vector{T}
     LH::T
+    tangent::Vector{SVector{2,T}}
+    tangent_2::Vector{SVector{2,T}}
+    ts::Vector{T}
+    original_ts::Vector{T}
+    ws::Vector{T}
+    ws_der::Vector{T}
 end
 
 function _boundary_curves_for_solver(billiard::Bi,solver::BIM_hyperbolic) where {Bi<:AbsBilliard}
@@ -76,7 +82,7 @@ end
 #     shift_x and shift_y are set to 0 (no shifts in Poincaré disk workflow).
 #------------------------------------------------------------------------------
 @inline function _BoundaryPointsHypBIM_to_BoundaryPoints(bph::BoundaryPointsHyp{T}) where {T<:Real}
-    return BoundaryPoints{T}(bph.xy,bph.normal,Vector{T}(),bph.ds,Vector{T}(),Vector{T}(),bph.curvature,Vector{SVector{2,T}}(),zero(T),zero(T))
+    return BoundaryPoints{T}(bph.xy,bph.normal,Vector{T}(),bph.ds,Vector{T}(),Vector{T}(),bph.kappa,Vector{SVector{2,T}}(),zero(T),zero(T))
 end
 
 #------------------------------------------------------------------------------
@@ -319,29 +325,23 @@ end
 #   ξ[j]         : cumulative hyperbolic coordinate (T), ξ[1]=0
 #   LH           : total hyperbolic boundary length, LH≈sum(dsH)
 #------------------------------------------------------------------------------
-function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where{Bi<:AbsBilliard}
+function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
     curves=_boundary_curves_for_solver(billiard,solver)
-    real_idxs=findall(crv->typeof(crv)<:AbsRealCurve,curves)
-    nreal=length(real_idxs)
-    @assert nreal==length(precomps)
-    bs0=solver.pts_scaling_factor
-    bs=length(bs0)==1 ? fill(bs0[1],nreal) : length(bs0)==nreal ? copy(bs0) : error("Expected scalar b or one b per real curve; got $(length(bs0)), expected 1 or $nreal.")
-    T=eltype(solver.pts_scaling_factor)
     real_idxs=Int[]
     for i in eachindex(curves)
-        crv=curves[i]
-        (typeof(crv)<:AbsRealCurve) && push!(real_idxs,i)
+        typeof(curves[i])<:AbsRealCurve && push!(real_idxs,i)
     end
     nreal=length(real_idxs)
     @assert nreal==length(precomps)
+    T=eltype(solver.pts_scaling_factor)
+    bs0=solver.pts_scaling_factor
+    bs=length(bs0)==1 ? fill(bs0[1],nreal) :
+       length(bs0)==nreal ? copy(bs0) :
+       error("Expected scalar b or one b per real curve; got $(length(bs0)), expected 1 or $nreal.")
     Ni=Vector{Int}(undef,nreal)
-    Lh_curves=Vector{T}(undef,nreal)
     for r in 1:nreal
-        i=real_idxs[r]
-        pre=precomps[r]
-        Lh=pre.Lh
-        Lh_curves[r]=T(Lh)
-        Ni[r]=max(solver.min_pts,round(Int,(real(k)*Lh*bs[r])/(2π)))
+        Lh=precomps[r].Lh
+        Ni[r]=max(solver.min_pts,round(Int,real(k)*Lh*bs[r]/(2π)))
     end
     offs=Vector{Int}(undef,nreal+1)
     offs[1]=1
@@ -356,39 +356,48 @@ function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::V
     λ_all=Vector{T}(undef,Ntot)
     dsH_all=Vector{T}(undef,Ntot)
     ξ_all=Vector{T}(undef,Ntot)
-    ranges=Vector{UnitRange{Int}}(undef,nreal)
-    @inbounds for r in 1:nreal
-        ranges[r]=offs[r]:(offs[r+1]-1)
-    end
+    tangent_all=Vector{SVector{2,T}}(undef,Ntot)
+    tangent2_all=Vector{SVector{2,T}}(undef,Ntot)
+    ts_all=Vector{T}(undef,Ntot)
+    original_ts_all=Vector{T}(undef,Ntot)
+    ws_all=Vector{T}(undef,Ntot)
+    ws_der_all=Vector{T}(undef,Ntot)
+    ranges=[offs[r]:(offs[r+1]-1) for r in 1:nreal]
     fill_one!(r)=begin
-        i=real_idxs[r]
-        crv=curves[i]
+        crv=curves[real_idxs[r]]
         pre=precomps[r]
-        Ni_r=Ni[r]
+        Nloc=Ni[r]
         rng=ranges[r]
-        t,dt=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,Ni_r)
+        t,dt=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,Nloc)
         pts=curve(crv,t)
         ta=tangent(crv,t)
+        t2=tangent_2(crv,t)
         tu,sp=_unit_tangents_and_speeds(ta)
         nrm=_normals_from_unit_tangents(tu)
         κE=curvature(crv,t)
-        @inbounds begin
-            copyto!(view(xy_all,rng),pts)
-            copyto!(view(normal_all,rng),nrm)
-            copyto!(view(kappa_all,rng),κE)
-        end
+        h=T(2π)/T(Nloc)
         j0=first(rng)
-        @inbounds for n in 1:Ni_r
-            p=pts[n]
-            x=T(p[1]);y=T(p[2])
-            den=one(T)-muladd(x,x,y*y);den=max(den,T(1e-15))
-            lam=T(2)/den
-            dsH=T(pre.Lh)/T(Ni_r)
-            dsE=dsH/lam
+        @inbounds for n in 1:Nloc
             idx=j0+n-1
+            p=pts[n]
+            x=T(p[1])
+            y=T(p[2])
+            den=max(one(T)-muladd(x,x,y*y),T(1e-15))
+            lam=T(2)/den
+            dsH=T(pre.Lh)/T(Nloc)
+            dsE=dsH/lam
+            xy_all[idx]=SVector{2,T}(p)
+            normal_all[idx]=SVector{2,T}(nrm[n])
+            kappa_all[idx]=T(κE[n])
             ds_all[idx]=dsE
             λ_all[idx]=lam
             dsH_all[idx]=dsH
+            tangent_all[idx]=SVector{2,T}(ta[n])
+            tangent2_all[idx]=SVector{2,T}(t2[n])
+            ts_all[idx]=T(2π)*T(t[n])
+            original_ts_all[idx]=ts_all[idx]
+            ws_all[idx]=h
+            ws_der_all[idx]=dsE/(sp[n]*h)
         end
         return nothing
     end
@@ -406,6 +415,5 @@ function evaluate_points(solver::BIM_hyperbolic,billiard::Bi,k::Real,precomps::V
         ξ_all[j]=s
         s+=dsH_all[j]
     end
-    LH=s
-    return BoundaryPointsHyp{T}(xy_all,normal_all,kappa_all,ds_all,λ_all,dsH_all,ξ_all,LH)
+    return BoundaryPointsHyp{T}(xy_all,normal_all,kappa_all,ds_all,λ_all,dsH_all,ξ_all,s,tangent_all,tangent2_all,ts_all,original_ts_all,ws_all,ws_der_all)
 end
