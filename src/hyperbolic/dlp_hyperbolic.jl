@@ -125,35 +125,6 @@ function BIM_hyperbolic(pts_scaling_factor::Union{T,Vector{T}};min_pts=20,symmet
     return BIM_hyperbolic{T,Sym}(1.0,bs,sampler,eps(T),min_pts,min_pts,symmetry)
 end
 
-# ==============================================================================
-# BoundaryPointsHypBIM
-# ==============================================================================
-#
-#   • xy[j]        : Euclidean coordinates in unit disk.
-#   • normal[j]    : Euclidean outward unit normal (what BIM needs everywhere).
-#   • curvature[j] : Euclidean curvature κ_E(s) of the boundary curve.
-#   • ds[j]        : Euclidean quadrature weight (ds_E) at node j.
-#
-#   • λ[j]         : Poincaré conformal factor at node j:
-#                     λ(x,y)=2/(1-(x^2+y^2)).
-#   • dsH[j]       : Hyperbolic quadrature weight at node j:
-#                     dsH[j]=λ[j]*ds[j]  (i.e. ds_H = λ ds_E).
-#   • ξ[j]         : Cumulative hyperbolic arclength coordinate along the
-#                     concatenated boundary nodes (same ordering as xy).
-#                     Typically ξ[1]=0 and ξ[end]≈LH.
-#   • LH           : Total hyperbolic boundary length (≈sum(dsH)).
-# ==============================================================================
-struct BoundaryPointsHypBIM{T} <: AbsPoints where{T<:Real}
-    xy::Vector{SVector{2,T}}
-    normal::Vector{SVector{2,T}}
-    curvature::Vector{T}
-    ds::Vector{T}
-    λ::Vector{T}
-    dsH::Vector{T}
-    ξ::Vector{T}
-    LH::T
-end
-
 #------------------------------------------------------------------------------
 # smallest_svd_triplet(K;tol=1e-12,maxiter=2000)->(σmin,u,v,info)
 #
