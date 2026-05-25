@@ -378,7 +378,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     dmin_m,dmax_m=estimate_rmin_rmax(pts,symmetry)
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
     preQ=build_QTaylorPrecomp(dmin=dmin_m,dmax=dmax_m)
-    ws=QTaylorWorkspace(preQ.P;threaded=false)
+    ws=QTaylorWorkspace(;threaded=false)
     tab=alloc_QTaylorTable(preQ)
     K=Matrix{ComplexF64}(undef,N,N)
     σmins=Vector{T}(undef,length(ks))
