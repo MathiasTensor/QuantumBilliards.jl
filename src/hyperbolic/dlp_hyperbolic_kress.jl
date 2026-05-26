@@ -761,7 +761,7 @@ end
 # These tables depend on k but not on matrix indices.
 function build_dlp_hyperbolic_kress_taylor_workspace(pts::BoundaryPointsHyp{T},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},k;mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
-    pre=build_QTaylorPrecomp(;dmin=max(Float64(dmin),1e-15),dmax=Float64(dmax))
+    pre=build_QTaylorPrecomp(;dmin=max(Float64(dmin)*0.25,1e-15),dmax=Float64(dmax)*1.05)
     qws=QTaylorWorkspace(;threaded=false)
     qtab=alloc_QTaylorTable(pre;k=ComplexF64(k))
     ptab=alloc_PTaylorTable(pre;k=ComplexF64(k))
