@@ -724,7 +724,7 @@ function build_dlp_hyperbolic_kress_geom_cache(pts::BoundaryPointsHyp{T}) where 
     @inbounds for j in 1:N
         xj,yj=pts.xy[j]
         nxj,nyj=pts.normal[j]
-        tj=pts.ts[j]
+        tj=pts.original_ts[j]
         for i in 1:N
             xi,yi=pts.xy[i]
             if i==j
@@ -732,7 +732,7 @@ function build_dlp_hyperbolic_kress_geom_cache(pts::BoundaryPointsHyp{T}) where 
                 dnd[i,j]=zero(T)
                 logterm[i,j]=zero(T)
             else
-                ti=pts.ts[i]
+                ti=pts.original_ts[i]
                 d[i,j]=hyperbolic_distance_poincare(xi,yi,xj,yj)
                 dnd[i,j]=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
                 logterm[i,j]=hyp_logterm_periodic(ti,tj)
