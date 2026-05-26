@@ -430,7 +430,7 @@ end
 #   xgrid::Vector{T},ygrid::Vector{T}
 #     The coordinate vectors defining the Cartesian grid.
 #------------------------------------------------------------------------------
-function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
+function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{BoundaryPointsHyp},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
     _psi(x,y,tab,bd,qx,qy,u,symmetry)=symmetry===nothing ? ψ_hyp_slp(x,y,tab,bd,qx,qy,u) : ψ_hyp_slp_sym(x,y,tab,bd,qx,qy,u,symmetry)
     xgrid,ygrid,idxs,nx,ny=_make_grid_and_idxs_for_billiard(ks,billiard;b=b,fundamental=fundamental,inside_only=inside_only,δdisk=δdisk)
     ρgrid=_grid_rho_bound(xgrid,ygrid,idxs,nx)
