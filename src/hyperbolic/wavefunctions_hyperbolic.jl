@@ -404,10 +404,6 @@ end
 #       bd.xy :: boundary nodes (Euclidean coordinates)
 #       bd.ds :: Euclidean quadrature weights ds_E at nodes
 #
-#   tabs
-#     Vector of QTaylorTable, one per eigenvalue, tabulating Q_ν(cosh d)
-#     (and consistent with that k).
-#
 #   billiard
 #     Billiard definition, used only to construct grid + inside mask.
 #
@@ -434,7 +430,7 @@ end
 #   xgrid::Vector{T},ygrid::Vector{T}
 #     The coordinate vectors defining the Cartesian grid.
 #------------------------------------------------------------------------------
-function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
+function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
     _psi(x,y,tab,bd,qx,qy,u,symmetry)=symmetry===nothing ? ψ_hyp_slp(x,y,tab,bd,qx,qy,u) : ψ_hyp_slp_sym(x,y,tab,bd,qx,qy,u,symmetry)
     xgrid,ygrid,idxs,nx,ny=_make_grid_and_idxs_for_billiard(ks,billiard;b=b,fundamental=fundamental,inside_only=inside_only,δdisk=δdisk)
     ρgrid=_grid_rho_bound(xgrid,ygrid,idxs,nx)
@@ -486,9 +482,6 @@ end
 #       bd.LH  : total hyperbolic boundary length
 #       bd.dsH : hyperbolic quadrature weights for Husimi (ds_H)
 #
-#   tabs::Vector{QTaylorTable}
-#     One QTaylorTable per state (must correspond to ks[i]).
-#
 #   billiard
 #     Used for grid construction / inside mask in wavefunction_multi_hyp.
 #
@@ -529,8 +522,8 @@ end
 #   ps_out::Vector{<:AbstractVector{T}}
 #     The p grids actually used (ps or the reflected p_out), aligned with Hs.
 # ------------------------------------------------------------------------------
-function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},tabs::Vector{QTaylorTable},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true,Nq::Int=1000,Np::Int=1000,pmax::T=one(T)) where {T<:Real,Bi<:AbsBilliard}
-    Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;b=b,inside_only=inside_only,fundamental=fundamental,symmetry=symmetry,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk)
+function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::Vector{BoundaryPointsHyp},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true,Nq::Int=1000,Np::Int=1000,pmax::T=one(T)) where {T<:Real,Bi<:AbsBilliard}
+    Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,billiard;b=b,inside_only=inside_only,fundamental=fundamental,symmetry=symmetry,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk)
     n=length(ks)
     Hs=Vector{Matrix{T}}(undef,n)
     ok=trues(n)
