@@ -510,7 +510,7 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
     end
     remN=mod(N,needed)
     remN!=0 && (N+=needed-remN)
-    σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq,minsep_tol=solver.min_t_spacing)
+    σ,τ,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq,minsep_tol=solver.min_t_spacing)
     xy=Vector{SVector{2,T}}(undef,N)
     normal=Vector{SVector{2,T}}(undef,N)
     κE=Vector{T}(undef,N)
@@ -520,16 +520,51 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
     ξ=Vector{T}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    original_ts=Vector{T}(undef,N)
     h=T(TWO_PI)/T(N)
     @inbounds for i in 1:N
-        q,γt,γtt=_eval_composite_geom_global_t(T,comp,tmap[i])
-        x=q[1];y=q[2]
+        u=τ[i]/TWO_PI
+        acc=zero(T)
+        crv_idx=0
+        local_u=zero(T)
+        for j in 1:length(comp)
+            frac=T(pres[j].Lh)/Lh
+            if u<=acc+frac || j==length(comp)
+                crv_idx=j
+                local_u=(u-acc)/frac
+                break
+            end
+            acc+=frac
+        end
+        pre=pres[crv_idx]
+        t,_=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,1;targets=[local_u])
+        tt=T(t[1])
+        q=curve(comp[crv_idx],tt)
+        γt_raw=tangent(comp[crv_idx],tt)
+        γtt_raw=tangent_2(comp[crv_idx],tt)
+        x=T(q[1]);y=T(q[2])
+        λ=λ_poincare(x,y)
+        sp_raw=hypot(γt_raw[1],γt_raw[2])
+        Fp=λ*sp_raw/Lh
+        sp_raw=hypot(γt_raw[1],γt_raw[2])
+        λ=λ_poincare(x,y)
+        Fp=λ*sp_raw/Lh
         den=max(one(T)-muladd(x,x,y*y),T(1e-15))
-        λ=T(2)/den
-        γσ=γt*jac[i]
-        γσσ=γtt*(jac[i]^2)+γt*jac2[i]
+        dλdt=T(4)*dot(SVector(x,y),γt_raw)/(den^2)
+        cross=γt_raw[1]*γtt_raw[2]-γt_raw[2]*γtt_raw[1]
+        dottt=dot(γt_raw,γtt_raw)
+        dspdt=dottt/sp_raw
+        Fpp=(dλdt*sp_raw+λ*dspdt)/Lh
+        dt_dτ=inv(TWO_PI*Fp)
+        d2t_dτ2=-Fpp/(TWO_PI^2*Fp^3)
+        dt_dσ=dt_dτ*jac[i]
+        d2t_dσ2=d2t_dτ2*(jac[i]^2)+dt_dτ*jac2[i]
+        γt=SVector(T(γt_raw[1]),T(γt_raw[2]))
+        γtt=SVector(T(γtt_raw[1]),T(γtt_raw[2]))
+        γσ=γt*dt_dσ
+        γσσ=γtt*(dt_dσ^2)+γt*d2t_dσ2
         sp=hypot(γσ[1],γσ[2])
-        xy[i]=q
+        xy[i]=SVector(x,y)
         tangent_1st[i]=γσ
         tangent_2nd[i]=γσσ
         normal[i]=SVector(γσ[2]/sp,-γσ[1]/sp)
@@ -537,6 +572,7 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         ds[i]=sp*h
         λs[i]=λ
         dsH[i]=λ*ds[i]
+        original_ts[i]=tt
     end
     s=zero(T)
     @inbounds for i in 1:N
@@ -545,7 +581,7 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
     end
     ws=fill(h,N)
     ws_der=jac
-    return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,tmap,ws,ws_der)
+    return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,original_ts,ws,ws_der)
 end
 
 """
