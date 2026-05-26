@@ -258,6 +258,25 @@ function invert_cdf_midpoints(ts::Vector{T},F::Vector{T},N::Int) where{T<:Real}
     return tnodes,dtnodes
 end
 
+# for the kress corner grading
+function _invert_cdf_targets(ts::Vector{T},F::Vector{T},u::Vector{T}) where {T<:Real}
+    M=length(ts)
+    N=length(u)
+    tnodes=Vector{T}(undef,N)
+    j=2
+    @inbounds for i in 1:N
+        ui=clamp(u[i],zero(T),one(T))
+        while j<M && F[j]<ui
+            j+=1
+        end
+        f1=F[j-1];f2=F[j]
+        t1=ts[j-1];t2=ts[j]
+        α=(f2==f1) ? zero(T) : (ui-f1)/(f2-f1)
+        tnodes[i]=muladd(α,t2-t1,t1)
+    end
+    return tnodes
+end
+
 #------------------------------------------------------------------------------
 # precompute_hyperbolic_boundary_cdfs(solver,billiard;...)->precomps
 #

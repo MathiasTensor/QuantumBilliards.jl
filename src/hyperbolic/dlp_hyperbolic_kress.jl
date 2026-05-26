@@ -537,7 +537,8 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
             acc+=frac
         end
         pre=pres[crv_idx]
-        t,_=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,1;targets=[local_u])
+        targets=T.(tmap ./ TWO_PI)
+        t=_invert_cdf_targets(pre.ts_dense,pre.F_dense,targets)
         tt=T(t[1])
         q=curve(comp[crv_idx],tt)
         γt_raw=tangent(comp[crv_idx],tt)
