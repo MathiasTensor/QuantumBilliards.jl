@@ -455,6 +455,10 @@ function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::B
     return _evaluate_points_hyp_global_corners(solver,boundary,k,1;threaded=threaded)
 end
 
+function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
+    return evaluate_points(solver,billiard,k;M_cdf_base=4000,safety=safety,threaded=threaded)
+end
+
 """
     _evaluate_points_hyp_global_corners(solver,comp,k,idx;threaded=true)
 
@@ -498,7 +502,7 @@ nontrivial grading and use `kress_R_corner!`.
 """
 function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global_corners{T},comp::Vector{C},k::Real,idx::Int;threaded::Bool=true) where {T<:Real,C<:AbsCurve}
     corners=_component_corner_locations(T,comp)
-    isempty(corners) && error("No corners detected. Use DLP_hyperbolic_kress for smooth boundaries.")
+    isempty(corners) && return _evaluate_points_hyp_smooth_composite(solver,comp,k,idx;threaded=threaded)
     _,_,Lh=hyperbolic_component_lengths(comp)
     N=max(solver.min_pts,round(Int,real(k)*Lh*solver.pts_scaling_factor[1]/TWO_PI))
     needed=1
@@ -545,6 +549,95 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
     ws=fill(h,N)
     ws_der=jac
     return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,tmap,ws,ws_der)
+end
+
+"""
+    _evaluate_points_hyp_smooth_composite(solver,comp,k,idx;threaded=true)
+
+Construct an ungraded hyperbolic Kress discretization for a smooth composite
+boundary.
+
+This is the fallback path for `DLP_hyperbolic_kress_global_corners` when the
+boundary is represented by several curve pieces, but `_component_corner_locations`
+detects no genuine corners.
+
+The boundary is treated as one smooth periodic composite curve with global
+parameter `t ∈ [0,2π)`. Since no grading is needed, the computational Kress
+parameter equals the geometric parameter:
+
+    σ = t.
+
+The routine evaluates
+
+    γ(t), γ_t(t), γ_tt(t),
+
+computes the Euclidean quadrature weight
+
+    ds = |γ_t| dt,
+
+and then converts it to the hyperbolic weight
+
+    dsH = λ ds.
+
+The returned `BoundaryPointsHyp` has `ws_der = 1`, so the standard smooth Kress
+matrix `kress_R!` is used instead of the corner-graded matrix.
+"""
+function _evaluate_points_hyp_smooth_composite(solver::DLP_hyperbolic_kress_global_corners{T},comp::Vector{C},k::Real,idx::Int;threaded::Bool=true) where {T<:Real,C<:AbsCurve}
+    _,_,Lh=hyperbolic_component_lengths(comp)
+    N=max(solver.min_pts,round(Int,real(k)*Lh*solver.pts_scaling_factor[1]/TWO_PI))
+    needed=2
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        sym isa Rotation && (needed=lcm(needed,sym.n))
+        sym isa Reflection && (needed=lcm(needed,4))
+    end
+    remN=mod(N,needed)
+    remN!=0 && (N+=needed-remN)
+    ts=[TWO_PI*(T(j)-T(0.5))/T(N) for j in 1:N]
+    xy=Vector{SVector{2,T}}(undef,N)
+    normal=Vector{SVector{2,T}}(undef,N)
+    κE=Vector{T}(undef,N)
+    ds=Vector{T}(undef,N)
+    λs=Vector{T}(undef,N)
+    dsH=Vector{T}(undef,N)
+    ξ=Vector{T}(undef,N)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    h=T(TWO_PI)/T(N)
+    @inbounds for i in 1:N
+        q,γt,γtt=_eval_composite_geom_global_t(T,comp,ts[i])
+        x=q[1];y=q[2]
+        den=max(one(T)-muladd(x,x,y*y),T(1e-15))
+        λ=T(2)/den
+        sp=hypot(γt[1],γt[2])
+        xy[i]=q
+        tangent_1st[i]=γt
+        tangent_2nd[i]=γtt
+        normal[i]=SVector(γt[2]/sp,-γt[1]/sp)
+        κE[i]=-(γt[1]*γtt[2]-γt[2]*γtt[1])/(sp^3)
+        ds[i]=sp*h
+        λs[i]=λ
+        dsH[i]=λ*ds[i]
+    end
+    s=zero(T)
+    @inbounds for i in 1:N
+        ξ[i]=s
+        s+=dsH[i]
+    end
+    ws=fill(h,N)
+    ws_der=ones(T,N)
+    return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der)
+end
+
+function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
+    boundary=billiard.full_boundary
+    isempty(boundary) && error("Boundary cannot be empty.")
+    if length(boundary)==1 && !(boundary[1] isa AbstractVector)
+        base=DLP_hyperbolic_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
+        return evaluate_points(base,billiard,k,precomps;safety=safety,threaded=threaded)
+    end
+    _is_single_composite_boundary(boundary) || error("DLP_hyperbolic_kress_global_corners supports exactly one composite outer boundary.")
+    return _evaluate_points_hyp_global_corners(solver,boundary,k,1;threaded=threaded)
 end
 
 function build_Rmat_dlp_hyperbolic_kress(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T}) where {T<:Real}
