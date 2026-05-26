@@ -499,7 +499,8 @@ nontrivial grading and use `kress_R_corner!`.
 function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global_corners{T},comp::Vector{C},k::Real,idx::Int;threaded::Bool=true) where {T<:Real,C<:AbsCurve}
     corners=_component_corner_locations(T,comp)
     isempty(corners) && return _evaluate_points_hyp_smooth_composite(solver,comp,k,idx;threaded=threaded)
-    _,_,Lh=hyperbolic_component_lengths(comp)
+    pres=[precompute_hyper_cdf(crv;M=4000,safety=1e-14) for crv in comp]
+    Lh=sum(T(pre.Lh) for pre in pres)
     N=max(solver.min_pts,round(Int,real(k)*Lh*solver.pts_scaling_factor[1]/TWO_PI))
     needed=1
     if !isnothing(solver.symmetry)
@@ -579,7 +580,8 @@ The returned `BoundaryPointsHyp` has `ws_der = 1`, so the standard smooth Kress
 matrix `kress_R!` is used instead of the corner-graded matrix.
 """
 function _evaluate_points_hyp_smooth_composite(solver::DLP_hyperbolic_kress_global_corners{T},comp::Vector{C},k::Real,idx::Int;threaded::Bool=true) where {T<:Real,C<:AbsCurve}
-    _,_,Lh=hyperbolic_component_lengths(comp)
+    pres=[precompute_hyper_cdf(crv;M=4000,safety=1e-14) for crv in comp]
+    Lh=sum(T(pre.Lh) for pre in pres)
     N=max(solver.min_pts,round(Int,real(k)*Lh*solver.pts_scaling_factor[1]/TWO_PI))
     needed=2
     if !isnothing(solver.symmetry)
