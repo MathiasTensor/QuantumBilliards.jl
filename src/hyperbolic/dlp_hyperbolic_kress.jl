@@ -281,16 +281,6 @@ end
 @inline function _is_nontrivial_hyp_grading(pts::BoundaryPointsHyp{T}) where {T<:Real};return maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T));end
 @inline _dlp_hyp_kress_use_reduced(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners})=!isnothing(solver.symmetry)
 
-@inline function _hyp_curves_for_solver(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi) where {Bi<:AbsBilliard}
-    if isnothing(solver.symmetry)
-        hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
-    end
-    hasproperty(billiard,:desymmetrized_full_boundary) && return getfield(billiard,:desymmetrized_full_boundary)
-    hasproperty(billiard,:full_boundary) && return getfield(billiard,:full_boundary)
-    error("No usable boundary field found in $(typeof(billiard))")
-end
-
-
 """
     evaluate_points(solver,billiard,k,precomps;threaded=true)
     evaluate_points(solver,billiard,k;M_cdf_base=4000,threaded=true)
@@ -318,7 +308,7 @@ Kress logarithmic correction use a clean periodic parameter while still giving
 approximately uniform hyperbolic resolution.
 """
 function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
-    curves=_hyp_curves_for_solver(solver,billiard)
+    curves=billiard.full_boundary
     real_idxs=findall(crv->typeof(crv)<:AbsRealCurve,curves)
     nreal=length(real_idxs)
     @assert nreal==length(precomps)
@@ -427,7 +417,7 @@ The resulting precomputation is geometry-only and should be reused across
 multiple calls to `evaluate_points`, k-sweeps, or refinement passes.
 """
 function precompute_hyperbolic_boundary_cdfs(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;M_cdf_base::Int=4000,safety::Real=1e-14) where {Bi<:AbsBilliard}
-    curves=_hyp_curves_for_solver(solver,billiard)
+    curves=billiard.full_boundary
     pre=HyperArcCDFPrecomp{Float64}[]
     for crv in curves
         typeof(crv)<:AbsRealCurve && push!(pre,precompute_hyper_cdf(crv;M=M_cdf_base,safety=safety))
@@ -456,7 +446,7 @@ periodic boundary parameter used by the logarithmic quadrature, while the metric
 conversion to hyperbolic arclength is applied afterwards through `λ`.
 """
 function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::Bi,k::Real;M_cdf_base::Int=4000,safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
-    boundary=_hyp_curves_for_solver(solver,billiard)
+    boundary=billiard.full_boundary
     if length(boundary)==1 && !(boundary[1] isa AbstractVector)
         base=DLP_hyperbolic_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
         return evaluate_points(base,billiard,k;M_cdf_base=M_cdf_base,safety=safety,threaded=threaded)
