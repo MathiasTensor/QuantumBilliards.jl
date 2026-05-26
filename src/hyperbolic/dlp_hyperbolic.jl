@@ -158,6 +158,8 @@ end
     return S[1],U[1],V[1],info
 end
 
+@inline _hyp_beyn_dim(solver::BIM_hyperbolic,pts::BoundaryPointsHyp,k)=length(pts.xy)
+
 #------------------------------------------------------------------------------
 # normalize_boundary_left!(u,dsH)->u
 #

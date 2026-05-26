@@ -314,7 +314,7 @@ end
 #   - If rk==0 (empty B), returns empty λ and empty matrices.
 # ===============================================================================
 function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::BoundaryPointsHyp{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=length(pts.xy)
+    N=_hyp_beyn_dim(solver,pts,k0)
     B,Uk=construct_B_matrix_hyp(solver,pts,N,k0,R;nq=nq,r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
     isempty(B)&&return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k0,R,pts
     @blas_multi_then_1 MAX_BLAS_THREADS λ,Y=eigen!(B)
@@ -479,7 +479,7 @@ end
 #   5) Optionally rebuild T(λ_j) and compute residual ||T(λ_j) Φ_j||.
 # ===============================================================================
 function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::BoundaryPointsHyp{T},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=length(pts.xy)
+    N=_hyp_beyn_dim(solver,pts,k0)
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
     zj=ComplexF64.(k0.+R.*ej)

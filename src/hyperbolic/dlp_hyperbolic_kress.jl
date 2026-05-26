@@ -280,6 +280,11 @@ end
 @inline _is_dlp_hyp_kress_graded(::DLP_hyperbolic_kress_global_corners,pts::BoundaryPointsHyp)=_is_nontrivial_hyp_grading(pts)
 @inline function _is_nontrivial_hyp_grading(pts::BoundaryPointsHyp{T}) where {T<:Real};return maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T));end
 @inline _dlp_hyp_kress_use_reduced(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners})=!isnothing(solver.symmetry)
+# name compatibility with BIM_hyperbolic
+function _hyp_beyn_dim(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp,k)
+    ws=build_dlp_hyperbolic_kress_workspace(solver,pts,k)
+    return _workspace_dim(ws)
+end
 
 """
     evaluate_points(solver,billiard,k,precomps;threaded=true)
