@@ -237,7 +237,7 @@ include("taylor/patched_taylor_series_U.jl")
 # hyperbolic
 include("hyperbolic/sampler_hyperbolic.jl")
 include("hyperbolic/dlp_hyperbolic.jl")
-include("hyperbolic/dlp_hyperbolic_matrix_construction_naive.jl")
+include("hyperbolic/dlp_hyperbolic_matrix_construction.jl")
 include("hyperbolic/dlp_hyperbolic_kress.jl")
 include("hyperbolic/wavefunctions_hyperbolic.jl")
 include("hyperbolic/unfolding_hyperbolic.jl")

@@ -667,63 +667,6 @@ function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::Bound
 end
 
 ################################################################################
-# compute_kernel_matrices_DLP_hyperbolic!  (dispatch wrapper)
-#
-# PURPOSE
-#   User-facing convenience wrapper that dispatches to the appropriate DLP
-#   hyperbolic assembly routine depending on the symmetry specification.
-#
-# INPUTS (MULTI-k)
-#   Ks::Vector{Matrix{Complex{T}}}
-#   bp::BoundaryPoints{T}
-#   symmetry::Union{AbsSymmetry,Nothing} nothing or a symmetry element (Reflection or Rotation)
-#   tabs::Vector{QTaylorTable}
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#
-# OUTPUTS
-#   nothing (fills Ks)
-################################################################################
-function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},symmetry,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
-    if symmetry===nothing
-        return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
-    else
-        try
-            s=symmetry
-            if s isa Reflection
-                return _all_k_reflection_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
-            elseif s isa Rotation
-                return _all_k_rotation_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
-            else
-                error("Unsupported symmetry type: $(typeof(s))")
-            end
-        catch _
-            error("Error computing hyperbolic kernel matrices with symmetry $(symmetry): ")
-        end
-    end
-end
-
-function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},symmetry,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
-    if symmetry===nothing
-        return _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
-    else
-        try
-            s=symmetry
-            if s isa Reflection
-                return _one_k_reflection_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
-            elseif s isa Rotation
-                return _one_k_rotation_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
-            else
-                error("Unsupported symmetry type: $(typeof(s))")
-            end
-        catch _
-            error("Error computing hyperbolic kernel matrices with symmetry $(symmetry): ")
-        end
-    end
-end
-
-################################################################################
 # assemble_DLP_hyperbolic!
 #
 #   Discretizes the hyperbolic double–layer boundary integral operator
@@ -792,5 +735,75 @@ function assemble_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoi
         end
         filter_matrix!(K)
     end
+    return nothing
+end
+
+################################################################################
+# compute_kernel_matrices_DLP_hyperbolic!  (dispatch wrapper)
+#
+# PURPOSE
+#   User-facing convenience wrapper that dispatches to the appropriate DLP
+#   hyperbolic assembly routine depending on the symmetry specification.
+#
+# INPUTS (MULTI-k)
+#   Ks::Vector{Matrix{Complex{T}}}
+#   bp::BoundaryPoints{T}
+#   symmetry::Union{AbsSymmetry,Nothing} nothing or a symmetry element (Reflection or Rotation)
+#   tabs::Vector{QTaylorTable}
+#
+# KEYWORD INPUTS
+#   multithreaded::Bool
+#
+# OUTPUTS
+#   nothing (fills Ks)
+################################################################################
+function compute_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+    if isnothing(solver.symmetry)
+        _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
+    else
+        s=solver.symmetry
+        if s isa Reflection
+            _all_k_reflection_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
+        elseif s isa Rotation
+            _all_k_rotation_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
+        else
+            error("Unsupported symmetry type: $(typeof(s))")
+        end
+    end
+    assemble_DLP_hyperbolic!(Ks,bp)
+    return nothing
+end
+
+function compute_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,K::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    if isnothing(solver.symmetry)
+        _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
+    else
+        s=solver.symmetry
+        if s isa Reflection
+            _one_k_reflection_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
+        elseif s isa Rotation
+            _one_k_rotation_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
+        else
+            error("Unsupported symmetry type: $(typeof(s))")
+        end
+    end
+    assemble_DLP_hyperbolic!(K,bp)
+    return nothing
+end
+
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+    bp=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
+    N=length(bp.xy)
+    @inbounds for q in eachindex(Tbufs)
+        @assert size(Tbufs[q])==(N,N) "Tbufs[$q] has size $(size(Tbufs[q])), but BIM_hyperbolic requires ($N,$N)."
+        fill!(Tbufs[q],0.0+0.0im)
+    end
+    dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
+    dmin=max(dmin,1e-3)
+    tabs=Vector{QTaylorTable}(undef,length(zj))
+    @inbounds for q in eachindex(zj)
+        tabs[q]=build_QTaylorTable(zj[q];dmin=dmin,dmax=dmax)
+    end
+    compute_kernel_matrices_DLP_hyperbolic!(solver,Tbufs,bp,tabs;multithreaded=multithreaded)
     return nothing
 end

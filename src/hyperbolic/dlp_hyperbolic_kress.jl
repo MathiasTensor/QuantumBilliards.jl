@@ -1040,6 +1040,19 @@ function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_k
     construct_fredholm_hyperbolic_kress_matrix!(A,solver,pts,ws;multithreaded=multithreaded)
 end
 
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+    @blas_1 begin
+        @inbounds for q in eachindex(zj)
+            @benchit timeit=timeit "DLP_hyperbolic_kress Workspace" ws=build_dlp_hyperbolic_kress_workspace(solver,pts,zj[q];mp_dps=mp_dps,leg_type=leg_type)
+            n=_workspace_dim(ws)
+            @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-hyperbolic-Kress requires ($n,$n)."
+            fill!(Tbufs[q],0.0+0.0im)
+            @benchit timeit=timeit "DLP_hyperbolic_kress Assembly" construct_matrices!(solver,Tbufs[q],pts,ws,zj[q];multithreaded=multithreaded)
+        end
+    end
+    return nothing
+end
+
 """
     solve(solver,basis,pts,k; kwargs...)
     solve(solver,basis,pts,ws,k; kwargs...)
