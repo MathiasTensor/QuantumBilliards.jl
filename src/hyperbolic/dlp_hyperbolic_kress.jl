@@ -528,6 +528,7 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         acc=zero(T)
         crv_idx=length(comp)
         local_u=one(T)
+        frac=one(T)
         for j in eachindex(comp)
             frac=T(pres[j].Lh)/Lh
             if u<=acc+frac || j==lastindex(comp)
@@ -558,8 +559,9 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         den=max(one(T)-muladd(x,x,y*y),T(1e-15))
         dλdt=T(4)*dot(SVector(x,y),γt)/(den^2)
         dspdt=dot(γt,γtt)/sp_raw
-        Fp=λ*sp_raw/Lh
-        Fpp=(dλdt*sp_raw+λ*dspdt)/Lh
+        Lhj=T(pre.Lh)
+        Fp=λ*sp_raw/Lhj
+        Fpp=(dλdt*sp_raw+λ*dspdt)/Lhj
         dt_dτ=inv(TWO_PI*Fp)
         d2t_dτ2=-Fpp/(TWO_PI^2*Fp^3)
         dt_dσ=dt_dτ*jac[i]
@@ -584,7 +586,6 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         s+=dsH[i]
     end
     ws=fill(h,N)
-    ws_der=jac
     return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,original_ts,ws,ws_der)
 end
 
