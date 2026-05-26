@@ -570,9 +570,9 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         tangent_2nd[i]=γσσ
         normal[i]=SVector(γσ[2]/sp,-γσ[1]/sp)
         κE[i]=-(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/(sp^3)
-        ds[i]=sp*h
+        dsH[i]=T(Lh)*jac[i]*h/TWO_PI
+        ds[i]=dsH[i]/λ
         λs[i]=λ
-        dsH[i]=λ*ds[i]
     end
     s=zero(T)
     @inbounds for i in 1:N
