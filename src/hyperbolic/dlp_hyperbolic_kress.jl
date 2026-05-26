@@ -455,10 +455,6 @@ function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::B
     return _evaluate_points_hyp_global_corners(solver,boundary,k,1;threaded=threaded)
 end
 
-function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
-    return evaluate_points(solver,billiard,k;M_cdf_base=4000,safety=safety,threaded=threaded)
-end
-
 """
     _evaluate_points_hyp_global_corners(solver,comp,k,idx;threaded=true)
 
