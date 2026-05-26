@@ -159,7 +159,7 @@ end
 #     Hyperbolic area of the fundamental domain implied by `solver.symmetry`.
 #
 #------------------------------------------------------------------------------
-function hyperbolic_area_fundamental(solver::BIM_hyperbolic,billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function hyperbolic_area_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
     !ok && return error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     symmetry=solver.symmetry
@@ -286,7 +286,7 @@ end
 # Returns:
 # - LH       : hyperbolic boundary length of the physical boundary
 # ------------------------------------------------------------------------------
-function _physical_LH_fundamental(solver::BIM_hyperbolic,billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function _physical_LH_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
     bd=evaluate_points(solver,billiard,kref,pre;safety=1e-14,threaded=true)
     return T(bd.LH)
@@ -322,7 +322,7 @@ end
 # Returns:
 # - Leff     : effective hyperbolic perimeter length
 # ------------------------------------------------------------------------------
-function symmetry_adapted_hyperbolic_arclength(solver::BIM_hyperbolic,billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function symmetry_adapted_hyperbolic_arclength(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     Lphys=_physical_LH_fundamental(solver,billiard;kref=kref)
     symm=solver.symmetry
     isnothing(symm) && return Lphys
@@ -389,7 +389,7 @@ end
 # OUTPUTS:
 #   Nweyl::T                      Weyl count estimate (NaN if failure)
 #------------------------------------------------------------------------------
-function weyl_law_hyp(solver::BIM_hyperbolic,billiard::Bi,k::T;kref::T=T(1000.0),C::T=zero(T))::T where {Bi<:AbsBilliard,T<:Real}
+function weyl_law_hyp(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi,k::T;kref::T=T(1000.0),C::T=zero(T))::T where {Bi<:AbsBilliard,T<:Real}
     A=hyperbolic_area_fundamental(solver,billiard;kref=kref)
     L=hyperbolic_arclength(billiard;kref=kref)
     return weyl_law_hyp(k,A,L;C=C)
