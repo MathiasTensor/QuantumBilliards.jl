@@ -520,7 +520,8 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
     ξ=Vector{T}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
-    original_ts=copy(τ)
+    original_ts=Vector{T}(undef,N)
+    ws_der=Vector{T}(undef,N)
     h=T(TWO_PI)/T(N)
     @inbounds for i in 1:N
         u=τ[i]/TWO_PI
@@ -574,6 +575,8 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         ds[i]=sp*h
         λs[i]=λ
         dsH[i]=λ*ds[i]
+        ws_der[i]=frac*dt_dτ*jac[i]
+        original_ts[i]=TWO_PI*(acc+frac*tt)
     end
     s=zero(T)
     @inbounds for i in 1:N
