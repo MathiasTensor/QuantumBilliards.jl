@@ -520,15 +520,12 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
     ξ=Vector{T}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
-    original_ts=Vector{T}(undef,N)
-    ws_der=Vector{T}(undef,N)
     h=T(TWO_PI)/T(N)
     @inbounds for i in 1:N
         u=τ[i]/TWO_PI
         acc=zero(T)
         crv_idx=length(comp)
         local_u=one(T)
-        frac=one(T)
         for j in eachindex(comp)
             frac=T(pres[j].Lh)/Lh
             if u<=acc+frac || j==lastindex(comp)
@@ -544,14 +541,14 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         while jj<M && pre.F_dense[jj]<local_u
             jj+=1
         end
-        f1=T(pre.F_dense[jj-1]);f2=T(pre.F_dense[jj])
-        t1=T(pre.ts_dense[jj-1]);t2=T(pre.ts_dense[jj])
+        f1=T(pre.F_dense[jj-1]); f2=T(pre.F_dense[jj])
+        t1=T(pre.ts_dense[jj-1]); t2=T(pre.ts_dense[jj])
         α=(f2==f1) ? zero(T) : (local_u-f1)/(f2-f1)
         tt=muladd(α,t2-t1,t1)
         q=curve(comp[crv_idx],tt)
         γt_raw=tangent(comp[crv_idx],tt)
         γtt_raw=tangent_2(comp[crv_idx],tt)
-        x=T(q[1]);y=T(q[2])
+        x=T(q[1]); y=T(q[2])
         γt=SVector(T(γt_raw[1]),T(γt_raw[2]))
         γtt=SVector(T(γtt_raw[1]),T(γtt_raw[2]))
         λ=λ_poincare(x,y)
@@ -559,9 +556,8 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         den=max(one(T)-muladd(x,x,y*y),T(1e-15))
         dλdt=T(4)*dot(SVector(x,y),γt)/(den^2)
         dspdt=dot(γt,γtt)/sp_raw
-        Lhj=T(pre.Lh)
-        Fp=λ*sp_raw/Lhj
-        Fpp=(dλdt*sp_raw+λ*dspdt)/Lhj
+        Fp=λ*sp_raw/Lh
+        Fpp=(dλdt*sp_raw+λ*dspdt)/Lh
         dt_dτ=inv(TWO_PI*Fp)
         d2t_dτ2=-Fpp/(TWO_PI^2*Fp^3)
         dt_dσ=dt_dτ*jac[i]
@@ -577,8 +573,6 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         ds[i]=sp*h
         λs[i]=λ
         dsH[i]=λ*ds[i]
-        ws_der[i]=frac*dt_dτ*jac[i]
-        original_ts[i]=TWO_PI*(acc+frac*tt)
     end
     s=zero(T)
     @inbounds for i in 1:N
@@ -586,7 +580,8 @@ function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global
         s+=dsH[i]
     end
     ws=fill(h,N)
-    return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,original_ts,ws,ws_der)
+    ws_der=jac
+    return BoundaryPointsHyp{T}(xy,normal,κE,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,τ,ws,ws_der)
 end
 
 """
