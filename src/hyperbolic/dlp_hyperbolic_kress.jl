@@ -918,3 +918,190 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
     end
     return A
 end
+
+function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Union{DLPHyperbolicKressWorkspace{T},DLPHyperbolicKressReducedWorkspace{T}},k;multithreaded::Bool=true) where {T<:Real}
+    construct_fredholm_hyperbolic_kress_matrix!(A,solver,pts,ws;multithreaded=multithreaded)
+end
+
+"""
+    solve(solver,basis,pts,k; kwargs...)
+    solve(solver,basis,pts,ws,k; kwargs...)
+    solve(solver,basis,A,pts,ws,k; kwargs...)
+
+Compute a scalar spectral diagnostic for a boundary integral eigenvalue problem.
+
+This is the standard high-level entry point for detecting eigenvalues of the
+Fredholm operator associated with `solver`. Depending on the chosen `which`
+option, the returned scalar is typically:
+
+- the smallest singular value (`which = :svd`),
+- a determinant-based diagnostic (`which = :det`),
+
+Method variants
+---------------
+The different method signatures allow progressive reuse of precomputed data:
+
+    solve(solver,basis,pts,k)
+
+Builds the solver workspace internally and constructs the Fredholm matrix.
+
+    solve(solver,basis,pts,ws,k)
+
+Reuses a previously constructed workspace `ws`, avoiding repeated geometry and
+kernel precomputation.
+
+    solve(solver,basis,A,pts,ws,k)
+
+Fully allocation-minimizing variant. Reuses both the matrix storage `A` and the
+workspace `ws`.
+
+Arguments
+---------
+- `solver`:
+    Boundary integral solver (e.g. DLP, CFIE, hyperbolic DLP-Kress).
+- `basis`:
+    Basis object controlling the spectral reduction strategy.
+- `pts`:
+    Boundary discretization points.
+- `ws`:
+    Optional reusable solver workspace.
+- `A`:
+    Optional preallocated Fredholm matrix storage.
+- `k`:
+    Spectral parameter / wavenumber.
+
+Keyword arguments
+-----------------
+- `multithreaded=true`:
+    Enable threaded matrix assembly when supported.
+- `use_krylov=true`:
+    Use Krylov iterative solver for the SVD-based diagnostic. This is typically faster for large matrices.
+- `which=:svd`:
+    Spectral diagnostic to compute.
+
+Returns
+-------
+A scalar diagnostic whose minima indicate eigenvalues.
+For boundary-function recovery (e.g. Husimi or wavefunction reconstruction),
+use [`solve_vect`] instead.
+"""
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Union{DLPHyperbolicKressWorkspace{T},DLPHyperbolicKressReducedWorkspace{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
+    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
+end
+
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},ws::Union{DLPHyperbolicKressWorkspace{T},DLPHyperbolicKressReducedWorkspace{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
+    n=_workspace_dim(ws)
+    A=Matrix{Complex{T}}(undef,n,n)
+    return solve(solver,basis,A,pts,ws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+end
+
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},k;multithreaded::Bool=true,use_krylov::Bool=true, which::Symbol=:svd,mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Ba<:AbsBasis}
+    ws=build_dlp_hyperbolic_kress_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
+    return solve(solver,basis,pts,ws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+end
+
+"""
+    solve_vect(solver,basis,pts,k; kwargs...)
+    solve_vect(solver,basis,pts,ws,k; kwargs...)
+    solve_vect(solver,basis,A,pts,ws,k; kwargs...)
+
+Compute the smallest null singular value together with the corresponding
+boundary vector.
+
+This function is used when the boundary representation of an eigenstate is
+required, rather than only a scalar spectral diagnostic.
+
+Unlike [`solve`], which returns only a scalar indicator, `solve_vect`
+constructs and solves the adjoint Fredholm problem so that the returned vector
+corresponds to the physically meaningful boundary function.
+
+For source-normal DLP formulations this means solving
+
+    A' = I - D'
+
+rather than the primal operator
+
+    A = I - D,
+
+where
+
+    D'ᵢⱼ = Dⱼᵢ wⱼ / wᵢ
+
+with the appropriate quadrature weights for the formulation.
+
+Method variants
+---------------
+The signatures differ only in how much reusable data is supplied:
+
+    solve_vect(solver,basis,pts,k)
+
+Build workspace and matrix storage internally.
+
+    solve_vect(solver,basis,pts,ws,k)
+
+Reuse a previously constructed workspace.
+
+    solve_vect(solver,basis,A,pts,ws,k)
+
+Fully allocation-minimizing variant with preallocated matrix storage.
+
+Arguments
+---------
+- `solver`:
+    Boundary integral solver.
+- `basis`:
+    Basis object controlling null-vector extraction.
+- `pts`:
+    Boundary discretization points.
+- `ws`:
+    Optional reusable solver workspace.
+- `A`:
+    Optional preallocated matrix storage.
+- `k`:
+    Spectral parameter / wavenumber.
+
+Keyword arguments
+-----------------
+- `multithreaded=true`:
+    Enable threaded matrix assembly where supported.
+- `tol=1e-12`:
+    Null-vector convergence tolerance.
+- `maxiter=2000`:
+    Maximum Krylov iterations.
+- `krylovdim=40`:
+    Krylov subspace dimension.
+
+Returns
+-------
+`(σ,u)`, where:
+
+- `σ` is the smallest null singular value,
+- `u` is the associated boundary vector.
+
+This is the correct function for:
+
+- boundary Husimi construction,
+- wavefunction reconstruction,
+- boundary current analysis,
+- localization diagnostics based on boundary data.
+
+If only eigenvalue detection is needed, [`solve`] is cheaper.
+"""
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Union{DLPHyperbolicKressWorkspace{T},DLPHyperbolicKressReducedWorkspace{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+    D=similar(A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws;multithreaded=multithreaded)
+    σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return σ,u
+end
+
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},ws::Union{DLPHyperbolicKressWorkspace{T},DLPHyperbolicKressReducedWorkspace{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+    n=_workspace_dim(ws)
+    A=Matrix{Complex{T}}(undef,n,n)
+    return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+end
+
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Ba<:AbsBasis}
+    ws=build_dlp_hyperbolic_kress_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
+    return solve_vect(solver,basis,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+end
