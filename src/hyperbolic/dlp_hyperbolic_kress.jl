@@ -128,7 +128,7 @@
 #       Husimi / boundary-function construction.
 #
 # Low-level routines
-# Functions such as `hyp_L1`, `hyp_L2`, `hyp_raw_dlp`,
+# Functions such as `hyp_L1_kress`, `hyp_L2_kress`, `hyp_raw_dlp`,
 # `construct_dlp_hyperbolic_kress_matrix!`, and
 # `_regular_hyp_dlp_image_D` are internal assembly kernels. They are intentionally
 # kept simple and close to the formulas so that the singular split can be checked
@@ -504,7 +504,7 @@ nontrivial grading and use `kress_R_corner!`.
 function _evaluate_points_hyp_global_corners(solver::DLP_hyperbolic_kress_global_corners{T},comp::Vector{C},k::Real,idx::Int;threaded::Bool=true) where {T<:Real,C<:AbsCurve}
     corners=_component_corner_locations(T,comp)
     isempty(corners) && return _evaluate_points_hyp_smooth_composite(solver,comp,k,idx;threaded=threaded)
-    pres=[precompute_hyper_cdf(crv;M=4000,safety=1e-14) for crv in comp]
+    pres=[precompute_hyper_cdf(crv;M=20_000,safety=1e-14) for crv in comp]
     Lh=sum(T(pre.Lh) for pre in pres)
     N=max(solver.min_pts,round(Int,real(k)*Lh*solver.pts_scaling_factor[1]/TWO_PI))
     needed=1
@@ -621,7 +621,7 @@ The returned `BoundaryPointsHyp` has `ws_der = 1`, so the standard smooth Kress
 matrix `kress_R!` is used instead of the corner-graded matrix.
 """
 function _evaluate_points_hyp_smooth_composite(solver::DLP_hyperbolic_kress_global_corners{T},comp::Vector{C},k::Real,idx::Int;threaded::Bool=true) where {T<:Real,C<:AbsCurve}
-    pres=[precompute_hyper_cdf(crv;M=4000,safety=1e-14) for crv in comp]
+    pres=[precompute_hyper_cdf(crv;M=20_000,safety=1e-14) for crv in comp]
     Lh=sum(T(pre.Lh) for pre in pres)
     N=max(solver.min_pts,round(Int,real(k)*Lh*solver.pts_scaling_factor[1]/TWO_PI))
     needed=2
@@ -849,8 +849,15 @@ end
 # Therefore this function returns the coefficient for a single logarithm
 # log|ξ_i-ξ_j|. If one instead writes a Kress split with
 # log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
-@inline function hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}
+@inline function hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}
     return 2*hyperbolic_Alog_d(ptab,d)*dn
+end
+@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=hyp_L1(ptab,d,dn)/2
+
+@inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=hyp_L1_kress(ptab,d,dn)
+    raw=hyp_raw_dlp(qtab,d,dn)
+    return raw-l1*logterm
 end
 # Full off-diagonal source-normal hyperbolic DLP kernel:
 #
@@ -873,11 +880,11 @@ end
 # By construction, L2 remains finite and smooth as the target approaches the
 # source along the same smooth boundary.
 # This part is integrated with ordinary periodic quadrature weights.
-@inline function hyp_L2(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
-    l1=hyp_L1(ptab,d,dn)
-    raw=hyp_raw_dlp(qtab,d,dn)
-    return raw-l1*logterm
-end
+#@inline function hyp_L2(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
+#    l1=hyp_L1(ptab,d,dn)
+#    raw=hyp_raw_dlp(qtab,d,dn)
+#    return raw-l1*logterm
+#end
 
 # Assemble the full source-normal hyperbolic DLP matrix.
 # The continuous operator is
@@ -905,14 +912,14 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
     @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
         @inbounds for i in 1:j-1
             dij=Float64(G.d[i,j])
-            l1ij=hyp_L1(ptab,dij,G.dnd[i,j])
-            l2ij=hyp_L2(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
+            l1ij=hyp_L1_kress(ptab,dij,G.dnd[i,j])
+            l2ij=hyp_L2_kress(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
             hj=pts.ws[j]
             JEj=pts.ds[j]/hj
             D[i,j]=R[i,j]*(l1ij*JEj)+hj*(l2ij*JEj)
             dji=Float64(G.d[j,i])
-            l1ji=hyp_L1(ptab,dji,G.dnd[j,i])
-            l2ji=hyp_L2(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
+            l1ji=hyp_L1_kress(ptab,dji,G.dnd[j,i])
+            l2ji=hyp_L2_kress(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
             hi=pts.ws[i]
             JEi=pts.ds[i]/hi
             D[j,i]=R[j,i]*(l1ji*JEi)+hi*(l2ji*JEi)
@@ -966,8 +973,8 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
                 D[a,b]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
             else
                 d=Float64(G.d[i,j])
-                l1=hyp_L1(ptab,d,G.dnd[i,j])
-                l2=hyp_L2(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
+                l1=hyp_L1_kress(ptab,d,G.dnd[i,j])
+                l2=hyp_L2_kress(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
                 hj=pts.ws[j]
                 JEj=pts.ds[j]/hj
                 D[a,b]=R[i,j]*(l1*JEj)+hj*(l2*JEj)
@@ -990,6 +997,7 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
     end
     return D
 end
+
 function construct_fredholm_hyperbolic_kress_matrix!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},rws::DLPHyperbolicKressReducedWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     construct_dlp_hyperbolic_kress_matrix!(A,solver,pts,rws;multithreaded=multithreaded)
     @inbounds for j in axes(A,2), i in axes(A,1)
