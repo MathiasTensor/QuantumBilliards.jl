@@ -858,8 +858,10 @@ end
 #
 # This still contains the logarithmic singular structure before Kress splitting.
 # The Green kernel comes from the Legendre-Q representation.
+# Jump-scaled DLP kernel used in A = I - D.
+# This is 2*∂_{n_y}G, not ∂_{n_y}G.
 @inline function hyp_raw_dlp(qtab::QTaylorTable,d::Float64,dn::T) where {T<:Real}
-    return _eval_dQdd(qtab,d)*dn*(INV_TWO_PI)
+    return _eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
 end
 # Smooth Kress remainder.
 # After removing the singular logarithmic part,
