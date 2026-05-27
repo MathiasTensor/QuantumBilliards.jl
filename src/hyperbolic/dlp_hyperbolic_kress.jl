@@ -312,6 +312,7 @@ obtained by inverting the precomputed hyperbolic arclength CDF. This lets the
 Kress logarithmic correction use a clean periodic parameter while still giving
 approximately uniform hyperbolic resolution.
 """
+#=
 function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true) where {Bi<:AbsBilliard}
     curves=billiard.full_boundary
     real_idxs=findall(crv->typeof(crv)<:AbsRealCurve,curves)
@@ -391,6 +392,140 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
             ws_der_all[idx]=one(T)
         end
         return nothing
+    end
+    if threaded && Threads.nthreads()>1
+        Threads.@threads for r in 1:nreal
+            fill_one!(r)
+        end
+    else
+        for r in 1:nreal
+            fill_one!(r)
+        end
+    end
+    s=zero(T)
+    @inbounds for j in 1:Ntot
+        ξ_all[j]=s
+        s+=dsH_all[j]
+    end
+    return BoundaryPointsHyp{T}(xy_all,normal_all,kappa_all,ds_all,λ_all,dsH_all,ξ_all,s,tangent_all,tangent2_all,ts_all,original_ts_all,ws_all,ws_der_all)
+end
+=#
+function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,precomps::Vector{HyperArcCDFPrecomp{Float64}};safety::Real=1e-14,threaded::Bool=true,curv_alpha::Real=0.0,curv_kappa0::Real=1e-12,Mmap::Int=20000) where {Bi<:AbsBilliard}
+    curves=billiard.full_boundary
+    real_idxs=findall(crv->typeof(crv)<:AbsRealCurve,curves)
+    nreal=length(real_idxs)
+    @assert nreal==length(precomps)
+    T=eltype(solver.pts_scaling_factor)
+    bs0=solver.pts_scaling_factor
+    bs=length(bs0)==1 ? fill(bs0[1],nreal) : length(bs0)==nreal ? copy(bs0) : error("Expected scalar b or one b per real curve.")
+    Lρ=Vector{T}(undef,nreal)
+    maps=Vector{Any}(undef,nreal)
+    for r in 1:nreal
+        crv=curves[real_idxs[r]]
+        M=max(Mmap,4solver.min_pts)
+        td=collect(range(0.0,2pi,length=M+1))[1:M]
+        q=curve(crv,td); γt=tangent(crv,td); γtt=tangent_2(crv,td)
+        ρ=Vector{Float64}(undef,M)
+        @inbounds for i in 1:M
+            x=Float64(q[i][1]);y=Float64(q[i][2])
+            tx=Float64(γt[i][1]);ty=Float64(γt[i][2])
+            txx=Float64(γtt[i][1]);tyy=Float64(γtt[i][2])
+            sp=hypot(tx,ty)
+            nx=ty/sp;ny=-tx/sp
+            den=max(1.0-x*x-y*y,1e-15)
+            λ=2.0/den
+            κE=-(tx*tyy-ty*txx)/(sp^3)
+            dnlogλ=2.0*(x*nx+y*ny)/den
+            κH=(κE+dnlogλ)/λ
+            ρ[i]=λ*sp*(1.0+Float64(curv_alpha)*sqrt(κH^2+Float64(curv_kappa0)^2)/Float64(k))
+        end
+        F=zeros(Float64,M+1)
+        h=2pi/M
+        @inbounds for i in 1:M
+            ip=i==M ? 1 : i+1
+            F[i+1]=F[i]+0.5h*(ρ[i]+ρ[ip])
+        end
+        maps[r]=(td=td,ρ=ρ,F=F,L=F[end],h=h)
+        Lρ[r]=T(F[end])
+    end
+    Ni=Vector{Int}(undef,nreal)
+    for r in 1:nreal
+        Ni[r]=max(solver.min_pts,round(Int,real(k)*Lρ[r]*bs[r]/TWO_PI))
+    end
+    needed=2
+    if !isnothing(solver.symmetry)
+        sym=solver.symmetry
+        sym isa Rotation && (needed=lcm(needed,sym.n))
+        sym isa Reflection && (needed=lcm(needed,4))
+    end
+    @inbounds for r in 1:nreal
+        remN=mod(Ni[r],needed)
+        remN!=0 && (Ni[r]+=needed-remN)
+    end
+    offs=Vector{Int}(undef,nreal+1);offs[1]=1
+    @inbounds for r in 1:nreal
+        offs[r+1]=offs[r]+Ni[r]
+    end
+    Ntot=offs[end]-1
+    xy_all=Vector{SVector{2,T}}(undef,Ntot)
+    normal_all=Vector{SVector{2,T}}(undef,Ntot)
+    kappa_all=Vector{T}(undef,Ntot)
+    ds_all=Vector{T}(undef,Ntot)
+    λ_all=Vector{T}(undef,Ntot)
+    dsH_all=Vector{T}(undef,Ntot)
+    ξ_all=Vector{T}(undef,Ntot)
+    tangent_all=Vector{SVector{2,T}}(undef,Ntot)
+    tangent2_all=Vector{SVector{2,T}}(undef,Ntot)
+    ts_all=Vector{T}(undef,Ntot)
+    original_ts_all=Vector{T}(undef,Ntot)
+    ws_all=Vector{T}(undef,Ntot)
+    ws_der_all=Vector{T}(undef,Ntot)
+    fill_one!(r)=begin
+        crv=curves[real_idxs[r]]
+        Nr=Ni[r];j0=offs[r]
+        td,ρ,F,L,h=maps[r]
+        hσ=TWO_PI/T(Nr)
+        @inbounds for n in 1:Nr
+            σ=hσ*(T(n)-T(0.5))
+            target=Float64(σ)/TWO_PI*L
+            m=searchsortedlast(F,target)
+            m=clamp(m,1,length(ρ))
+            mp=m==length(ρ) ? 1 : m+1
+            a=F[m];b=F[m+1]
+            θ=(target-a)/(b-a)
+            t=td[m]+θ*h
+            t>=TWO_PI && (t-=TWO_PI)
+            ρt=(ρ[mp]-ρ[m])/h
+            ρloc=(1-θ)*ρ[m]+θ*ρ[mp]
+            R=L
+            tσ=R/(TWO_PI*ρloc)
+            tσσ=-(R^2)*ρt/(TWO_PI^2*ρloc^3)
+            q=curve(crv,t)
+            γt_raw=tangent(crv,t)
+            γtt_raw=tangent_2(crv,t)
+            x=T(q[1]);y=T(q[2])
+            γt=SVector(T(γt_raw[1]),T(γt_raw[2]))
+            γtt=SVector(T(γtt_raw[1]),T(γtt_raw[2]))
+            γσ=γt*T(tσ)
+            γσσ=γtt*T(tσ^2)+γt*T(tσσ)
+            sp=hypot(γσ[1],γσ[2])
+            den=max(one(T)-muladd(x,x,y*y),T(1e-15))
+            λ=T(2)/den
+            idx=j0+n-1
+            xy_all[idx]=SVector(x,y)
+            tangent_all[idx]=γσ
+            tangent2_all[idx]=γσσ
+            normal_all[idx]=SVector(γσ[2]/sp,-γσ[1]/sp)
+            kappa_all[idx]=-(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/(sp^3)
+            ds_all[idx]=sp*hσ
+            λ_all[idx]=λ
+            dsH_all[idx]=λ*ds_all[idx]
+            ts_all[idx]=σ
+            original_ts_all[idx]=T(t)
+            ws_all[idx]=hσ
+            ws_der_all[idx]=T(tσ)
+        end
+        nothing
     end
     if threaded && Threads.nthreads()>1
         Threads.@threads for r in 1:nreal
