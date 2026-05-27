@@ -355,49 +355,37 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     ws_der_all=Vector{T}(undef,Ntot)
     ranges=[offs[r]:(offs[r+1]-1) for r in 1:nreal]
     fill_one!(r)=begin
-        crv=curves[real_idxs[r]]
-        pre=precomps[r]
-        Nr=Ni[r]
-        rng=ranges[r]
-        t,_=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,Nr)
+        pts=curve(crv,t)
+        ta=tangent(crv,t)
+        t2=tangent_2(crv,t)
+        tu,_=_unit_tangents_and_speeds(ta)
+        nrm=_normals_from_unit_tangents(tu)
+        κE=curvature(crv,t)
+        hH=T(pre.Lh)/T(Nr)
         hσ=TWO_PI/T(Nr)
-        Lh=T(pre.Lh)
         j0=first(rng)
         @inbounds for n in 1:Nr
             idx=j0+n-1
-            q=curve(crv,t[n])
-            γt_raw=tangent(crv,t[n])
-            γtt_raw=tangent_2(crv,t[n])
-            x=T(q[1]); y=T(q[2])
-            γt=SVector(T(γt_raw[1]),T(γt_raw[2]))
-            γtt=SVector(T(γtt_raw[1]),T(γtt_raw[2]))
+            p=pts[n]
+            x=T(p[1])
+            y=T(p[2])
             den=max(one(T)-muladd(x,x,y*y),T(1e-15))
             λ=T(2)/den
-            sp_t=hypot(γt[1],γt[2])
-            dλdt=T(4)*dot(SVector(x,y),γt)/(den^2)
-            dspdt=dot(γt,γtt)/sp_t
-            ρ=λ*sp_t
-            ρt=dλdt*sp_t+λ*dspdt
-            tσ=Lh/(TWO_PI*ρ)
-            tσσ=-(Lh^2)*ρt/(TWO_PI^2*ρ^3)
-            γσ=γt*tσ
-            γσσ=γtt*(tσ^2)+γt*tσσ
-            spσ=hypot(γσ[1],γσ[2])
             σ=hσ*(T(n)-T(0.5))
             xy_all[idx]=SVector(x,y)
-            tangent_all[idx]=γσ
-            tangent2_all[idx]=γσσ
-            normal_all[idx]=SVector(γσ[2]/spσ,-γσ[1]/spσ)
-            kappa_all[idx]=(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/(spσ^3)
+            normal_all[idx]=SVector(T(nrm[n][1]),T(nrm[n][2]))
+            kappa_all[idx]=T(κE[n])
+            dsH_all[idx]=hH
             λ_all[idx]=λ
-            dsH_all[idx]=Lh/T(Nr)
-            ds_all[idx]=dsH_all[idx]/λ
+            ds_all[idx]=hH/λ
+            tangent_all[idx]=SVector(T(ta[n][1]),T(ta[n][2]))
+            tangent2_all[idx]=SVector(T(t2[n][1]),T(t2[n][2]))
             ts_all[idx]=σ
             original_ts_all[idx]=T(t[n])
             ws_all[idx]=hσ
-            ws_der_all[idx]=tσ
+            ws_der_all[idx]=one(T)
         end
-        nothing
+        return nothing
     end
     if threaded && Threads.nthreads()>1
         Threads.@threads for r in 1:nreal
