@@ -285,6 +285,24 @@ struct DLPHypLogTaylorWorkspace
     k::ComplexF64
 end
 
+struct DLPHypLogGeomCache{T<:Real}
+    d::Matrix{T}
+    dn::Matrix{T}
+    dnlogλ::Vector{T}
+    speed_half::Vector{T}
+    dimg::Vector{Matrix{T}}
+    dnimg::Vector{Matrix{T}}
+    imgscale::Vector{Complex{T}}
+end
+
+struct DLPHypLogDiscretization{T<:Real}<:AbsPoints
+    bp::BoundaryPointsHyp{T}
+    pdata::DLPHypLogPanelData{T}
+    Λ::Matrix{T}
+    ξ::Vector{T}
+    ω::Vector{T}
+end
+
 """
     DLPHypLogWorkspace{T}
 
@@ -292,16 +310,13 @@ Reusable assembly workspace for `DLP_hyperbolic_log_product`.
 
 Fields:
 - `taylor`: k-dependent Legendre-Q/P Taylor tables.
-- `Λ`: logarithmic product-integration weights on one reference panel.
-- `ξ`: Gauss-Legendre nodes on `[-1,1]`.
-- `ω`: Gauss-Legendre weights on `[-1,1]`.
+- `G`: geometry cache for the current discretization, storing inter-node distances,
+  source-normal derivatives, and image contributions.
 - `N`: matrix dimension.
 """
 struct DLPHypLogWorkspace{T<:Real}
     taylor::DLPHypLogTaylorWorkspace
-    Λ::Matrix{T}
-    ξ::Vector{T}
-    ω::Vector{T}
+    G::DLPHypLogGeomCache{T}
     N::Int
 end
 
@@ -410,6 +425,112 @@ where:
     return q,n,γu,γuu,sp,κ,λ
 end
 
+function build_dlp_hyp_log_geom_cache(solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T}) where {T<:Real}
+    pts=disc.bp
+    pdata=disc.pdata
+    N=length(pts.xy)
+    d=Matrix{T}(undef,N,N)
+    dn=Matrix{T}(undef,N,N)
+    dnlogλ=Vector{T}(undef,N)
+    speed_half=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        xi,yi=pts.xy[i]
+        nxi,nyi=pts.normal[i]
+        dnlogλ[i]=hyp_dnlogλ(xi,yi,nxi,nyi)
+        speed_half[i]=pts.ds[i]/disc.ω[pdata.local_id[i]]
+    end
+    @inbounds for j in 1:N
+        xj,yj=pts.xy[j]
+        nxj,nyj=pts.normal[j]
+        for i in 1:N
+            if i==j
+                d[i,j]=zero(T)
+                dn[i,j]=zero(T)
+            else
+                xi,yi=pts.xy[i]
+                d[i,j]=hyperbolic_distance_poincare(xi,yi,xj,yj)
+                dn[i,j]=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+            end
+        end
+    end
+    ximgs=Vector{Vector{T}}()
+    yimgs=Vector{Vector{T}}()
+    nximgs=Vector{Vector{T}}()
+    nyimgs=Vector{Vector{T}}()
+    scales=Complex{T}[]
+    sym=solver.symmetry
+    shift_x=hasproperty(solver.billiard,:x_axis) ? T(solver.billiard.x_axis) : zero(T)
+    shift_y=hasproperty(solver.billiard,:y_axis) ? T(solver.billiard.y_axis) : zero(T)
+    function push_image!(kind,scale)
+        xi=Vector{T}(undef,N); yi=Vector{T}(undef,N)
+        nxi=Vector{T}(undef,N); nyi=Vector{T}(undef,N)
+        @inbounds for j in 1:N
+            xj,yj=pts.xy[j]
+            nxj,nyj=pts.normal[j]
+            if kind===:x
+                xi[j]=_x_reflect(xj,shift_x); yi[j]=yj
+                nxi[j],nyi[j]=_x_reflect_normal(nxj,nyj)
+            elseif kind===:y
+                xi[j]=xj; yi[j]=_y_reflect(yj,shift_y)
+                nxi[j],nyi[j]=_y_reflect_normal(nxj,nyj)
+            elseif kind===:xy
+                xi[j]=_x_reflect(xj,shift_x); yi[j]=_y_reflect(yj,shift_y)
+                nxi[j],nyi[j]=_xy_reflect_normal(nxj,nyj)
+            end
+        end
+        push!(ximgs,xi);push!(yimgs,yi);push!(nximgs,nxi);push!(nyimgs,nyi)
+        push!(scales,scale)
+    end
+    if !isnothing(sym)
+        if hasproperty(sym,:axis)
+            if sym.axis==:y_axis
+                push_image!(:x,Complex{T}(sym.parity==-1 ? -one(T) : one(T),zero(T)))
+            elseif sym.axis==:x_axis
+                push_image!(:y,Complex{T}(sym.parity==-1 ? -one(T) : one(T),zero(T)))
+            elseif sym.axis==:origin
+                px=sym.parity[1]==-1 ? -one(T) : one(T)
+                py=sym.parity[2]==-1 ? -one(T) : one(T)
+                push_image!(:x,Complex{T}(px,zero(T)))
+                push_image!(:y,Complex{T}(py,zero(T)))
+                push_image!(:xy,Complex{T}(px*py,zero(T)))
+            end
+        elseif sym isa Rotation
+            ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+            cx=T(sym.center[1]); cy=T(sym.center[2])
+            for l in 1:sym.n-1
+                xi=Vector{T}(undef,N); yi=Vector{T}(undef,N)
+                nxi=Vector{T}(undef,N); nyi=Vector{T}(undef,N)
+                @inbounds for j in 1:N
+                    xj,yj=pts.xy[j]
+                    nxj,nyj=pts.normal[j]
+                    xi[j],yi[j]=_rot_point(xj,yj,cx,cy,ctab[l+1],stab[l+1])
+                    nxi[j],nyi[j]=_rot_vec(nxj,nyj,ctab[l+1],stab[l+1])
+                end
+                push!(ximgs,xi); push!(yimgs,yi); push!(nximgs,nxi); push!(nyimgs,nyi)
+                push!(scales,Complex{T}(χ[l+1]))
+            end
+        end
+    end
+    dimg=Matrix{T}[]
+    dnimg=Matrix{T}[]
+    for r in eachindex(scales)
+        Dr=Matrix{T}(undef,N,N)
+        Dnr=Matrix{T}(undef,N,N)
+        @inbounds for j in 1:N
+            xj=ximgs[r][j]; yj=yimgs[r][j]
+            nxj=nximgs[r][j]; nyj=nyimgs[r][j]
+            for i in 1:N
+                xi,yi=pts.xy[i]
+                dij=hyperbolic_distance_poincare(xi,yi,xj,yj)
+                Dr[i,j]=dij
+                Dnr[i,j]=dij<=eps(T) ? zero(T) : hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+            end
+        end
+        push!(dimg,Dr);push!(dnimg,Dnr)
+    end
+    return DLPHypLogGeomCache(d,dn,dnlogλ,speed_half,dimg,dnimg,scales)
+end
+
 """
     evaluate_points(solver::DLP_hyperbolic_log_product,billiard,k)
 
@@ -479,7 +600,8 @@ function evaluate_points(solver::DLP_hyperbolic_log_product{T},billiard::Bi,k::R
     end
     bp=BoundaryPointsHyp{T}(xy,normal,kappa,ds,λs,dsH,ξH,sH,tangent_1,tangent_2,ts,original_ts,ws,ws_der)
     pdata=DLPHypLogPanelData{T}(panels,panel_id,local_id,solver.ngl)
-    return DLPHypLogDiscretization{T}(bp,pdata)
+    Λ=log_weights_matrix(T,ξ;prec=solver.logquad_prec)
+    return DLPHypLogDiscretization{T}(bp,pdata,Λ,ξ,ω)
 end
 
 """
@@ -519,11 +641,13 @@ For repeated matrix assembly at the same `k` and same discretization, reuse this
 workspace to avoid rebuilding log weights and special-function tables.
 """
 function build_dlp_hyp_log_workspace(solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},k) where {T<:Real}
-    ξ0,ω0=gausslegendre(solver.ngl)
-    ξ=T.(ξ0);ω=T.(ω0)
-    Λ=log_weights_matrix(T,ξ;prec=solver.logquad_prec)
     taylor=build_dlp_hyp_log_taylor_workspace(disc.bp,solver,k)
-    return DLPHypLogWorkspace{T}(taylor,Λ,ξ,ω,length(disc.bp.xy))
+    G=build_dlp_hyp_log_geom_cache(solver,disc)
+    return DLPHypLogWorkspace{T}(taylor,G,length(disc.bp.xy))
+end
+function build_dlp_hyp_log_workspace(solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},G::DLPHypLogGeomCache{T},k) where {T<:Real}
+    taylor=build_dlp_hyp_log_taylor_workspace(disc.bp,solver,k)
+    return DLPHypLogWorkspace{T}(taylor,G,length(disc.bp.xy))
 end
 
 """
@@ -578,9 +702,10 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
     pdata=disc.pdata
     qtab=ws.taylor.qtab
     ptab=ws.taylor.ptab
-    Λ=ws.Λ
-    ξ=ws.ξ
-    ω=ws.ω
+    Λ=disc.Λ
+    ξ=disc.ξ
+    ω=disc.ω
+    G=ws.G
     N=length(pts.xy)
     fill!(D,zero(Complex{T}))
     sym=solver.symmetry
@@ -620,15 +745,14 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
         nxj,nyj=pts.normal[j]
         pj=pdata.panel_id[j]
         jl=pdata.local_id[j]
-        speed_half_j=pts.ds[j]/ω[jl]
+        speed_half_j=G.speed_half[j]
         for i in 1:N
             xi,yi=pts.xy[i]
             if i==j
-                dnλ=hyp_dnlogλ(xi,yi,pts.normal[i][1],pts.normal[i][2])
-                D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],dnλ)
+                D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
             else
-                d=hyperbolic_distance_poincare(xi,yi,xj,yj)
-                dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+                d=G.d[i,j]
+                dn=G.dn[i,j]
                 if pdata.panel_id[i]==pj
                     il=pdata.local_id[i]
                     l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_j
@@ -639,27 +763,11 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
                     D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
                 end
             end
-            if add_x
-                xr=_x_reflect(xj,shift_x);yr=yj
-                nxr,nyr=_x_reflect_normal(nxj,nyj)
-                D[i,j]+=_regular_hyp_log_image_D(qtab,xi,yi,xr,yr,nxr,nyr,pts.ds[j],sxgn)
-            end
-            if add_y
-                xr=xj;yr=_y_reflect(yj,shift_y)
-                nxr,nyr=_y_reflect_normal(nxj,nyj)
-                D[i,j]+=_regular_hyp_log_image_D(qtab,xi,yi,xr,yr,nxr,nyr,pts.ds[j],sygn)
-            end
-            if add_xy
-                xr=_x_reflect(xj,shift_x);yr=_y_reflect(yj,shift_y)
-                nxr,nyr=_xy_reflect_normal(nxj,nyj)
-                D[i,j]+=_regular_hyp_log_image_D(qtab,xi,yi,xr,yr,nxr,nyr,pts.ds[j],sxy)
-            end
-            if have_rot
-                for l in 1:nrot-1
-                    xr,yr=_rot_point(xj,yj,cx,cy,ctab[l+1],stab[l+1])
-                    nxr,nyr=_rot_vec(nxj,nyj,ctab[l+1],stab[l+1])
-                    D[i,j]+=_regular_hyp_log_image_D(qtab,xi,yi,xr,yr,nxr,nyr,pts.ds[j],Complex{T}(χ[l+1]))
-                end
+            @inbounds for r in eachindex(G.imgscale)
+                dI=G.dimg[r][i,j]
+                dI<=eps(T) && continue
+                dnI=G.dnimg[r][i,j]
+                D[i,j]+=G.imgscale[r]*hyp_raw_dlp(qtab,Float64(dI),dnI)*pts.ds[j]
             end
         end
     end
