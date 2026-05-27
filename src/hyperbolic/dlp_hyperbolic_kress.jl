@@ -355,6 +355,11 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     ws_der_all=Vector{T}(undef,Ntot)
     ranges=[offs[r]:(offs[r+1]-1) for r in 1:nreal]
     fill_one!(r)=begin
+        crv=curves[real_idxs[r]]
+        pre=precomps[r]
+        Nr=Ni[r]
+        rng=ranges[r]
+        t,_=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,Nr)
         pts=curve(crv,t)
         ta=tangent(crv,t)
         t2=tangent_2(crv,t)
