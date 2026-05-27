@@ -316,98 +316,63 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     curves=billiard.full_boundary
     real_idxs=findall(crv->typeof(crv)<:AbsRealCurve,curves)
     nreal=length(real_idxs)
+    nreal==1 || error("DLP_hyperbolic_kress expects one smooth periodic real boundary.")
     T=eltype(solver.pts_scaling_factor)
     bs0=solver.pts_scaling_factor
-    bs=length(bs0)==1 ? fill(bs0[1],nreal) :
-       length(bs0)==nreal ? copy(bs0) :
-       error("Expected scalar b or one b per real curve.")
-    Ni=Vector{Int}(undef,nreal)
-    for r in 1:nreal
-        crv=curves[real_idxs[r]]
-        pre=precompute_hyper_cdf(crv;M=5_000,safety=1e-14)
-        Lh=T(pre.Lh)
-        Ni[r]=max(solver.min_pts,round(Int,real(k)*Lh*bs[r]/TWO_PI))
-    end
+    bs=length(bs0)==1 ? bs0[1] :
+       error("DLP_hyperbolic_kress expects scalar pts_scaling_factor.")
+    Lh=T(precomps[1].Lh)
+    N=max(solver.min_pts,round(Int,real(k)*Lh*bs/TWO_PI))
     needed=2
     if !isnothing(solver.symmetry)
         sym=solver.symmetry
         sym isa Rotation && (needed=lcm(needed,sym.n))
         sym isa Reflection && (needed=lcm(needed,4))
     end
-    @inbounds for r in 1:nreal
-        remN=mod(Ni[r],needed)
-        remN!=0 && (Ni[r]+=needed-remN)
-    end
-    offs=Vector{Int}(undef,nreal+1)
-    offs[1]=1
-    @inbounds for r in 1:nreal
-        offs[r+1]=offs[r]+Ni[r]
-    end
-    Ntot=offs[end]-1
-    xy_all=Vector{SVector{2,T}}(undef,Ntot)
-    normal_all=Vector{SVector{2,T}}(undef,Ntot)
-    kappa_all=Vector{T}(undef,Ntot)
-    ds_all=Vector{T}(undef,Ntot)
-    λ_all=Vector{T}(undef,Ntot)
-    dsH_all=Vector{T}(undef,Ntot)
-    ξ_all=Vector{T}(undef,Ntot)
-    tangent_all=Vector{SVector{2,T}}(undef,Ntot)
-    tangent2_all=Vector{SVector{2,T}}(undef,Ntot)
-    ts_all=Vector{T}(undef,Ntot)
-    original_ts_all=Vector{T}(undef,Ntot)
-    ws_all=Vector{T}(undef,Ntot)
-    ws_der_all=Vector{T}(undef,Ntot)
-    fill_one!(r)=begin
-        crv=curves[real_idxs[r]]
-        Nr=Ni[r]
-        h=T(TWO_PI)/T(Nr)
-        j0=offs[r]
-        ts=[TWO_PI*(T(j)-T(0.5))/T(Nr) for j in 1:Nr]
-        pts=curve(crv,ts)
-        ta=tangent(crv,ts)
-        t2=tangent_2(crv,ts)
-        tu,speeds=_unit_tangents_and_speeds(ta)
-        nrm=_normals_from_unit_tangents(tu)
-        κE=curvature(crv,ts)
-        @inbounds for n in 1:Nr
-            idx=j0+n-1
-            p=pts[n]
-            x=T(p[1])
-            y=T(p[2])
-            den=max(one(T)-muladd(x,x,y*y),T(1e-15))
-            λ=T(2)/den
-            sp=T(speeds[n])
-            ds=sp*h
-            xy_all[idx]=SVector(x,y)
-            normal_all[idx]=SVector(T(nrm[n][1]),T(nrm[n][2]))
-            kappa_all[idx]=T(κE[n])
-            ds_all[idx]=ds
-            λ_all[idx]=λ
-            dsH_all[idx]=λ*ds
-            tangent_all[idx]=SVector(T(ta[n][1]),T(ta[n][2]))
-            tangent2_all[idx]=SVector(T(t2[n][1]),T(t2[n][2]))
-            ts_all[idx]=T(ts[n])
-            original_ts_all[idx]=T(ts[n])
-            ws_all[idx]=h
-            ws_der_all[idx]=one(T)
-        end
-        return nothing
-    end
-    if threaded && Threads.nthreads()>1
-        Threads.@threads for r in 1:nreal
-            fill_one!(r)
-        end
-    else
-        for r in 1:nreal
-            fill_one!(r)
-        end
+    remN=mod(N,needed)
+    remN!=0 && (N+=needed-remN)
+    crv=curves[real_idxs[1]]
+    h=T(TWO_PI)/T(N)
+    ts=[TWO_PI*(T(j)-T(0.5))/T(N) for j in 1:N]
+    pts=curve(crv,ts)
+    ta=tangent(crv,ts)
+    t2=tangent_2(crv,ts)
+    tu,speeds=_unit_tangents_and_speeds(ta)
+    nrm=_normals_from_unit_tangents(tu)
+    κE=curvature(crv,ts)
+    xy=Vector{SVector{2,T}}(undef,N)
+    normal=Vector{SVector{2,T}}(undef,N)
+    kappa=Vector{T}(undef,N)
+    ds=Vector{T}(undef,N)
+    λs=Vector{T}(undef,N)
+    dsH=Vector{T}(undef,N)
+    ξ=Vector{T}(undef,N)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    ws=fill(h,N)
+    ws_der=ones(T,N)
+    @inbounds for i in 1:N
+        p=pts[i]
+        x=T(p[1]);y=T(p[2])
+        den=max(one(T)-muladd(x,x,y*y),T(1e-15))
+        λ=T(2)/den
+        sp=T(speeds[i])
+        dse=sp*h
+        xy[i]=SVector(x,y)
+        normal[i]=SVector(T(nrm[i][1]),T(nrm[i][2]))
+        kappa[i]=T(κE[i])
+        ds[i]=dse
+        λs[i]=λ
+        dsH[i]=λ*dse
+        tangent_1st[i]=SVector(T(ta[i][1]),T(ta[i][2]))
+        tangent_2nd[i]=SVector(T(t2[i][1]),T(t2[i][2]))
     end
     s=zero(T)
-    @inbounds for j in 1:Ntot
-        ξ_all[j]=s
-        s+=dsH_all[j]
+    @inbounds for i in 1:N
+        ξ[i]=s
+        s+=dsH[i]
     end
-    return BoundaryPointsHyp{T}(xy_all,normal_all,kappa_all,ds_all,λ_all,dsH_all,ξ_all,s,tangent_all,tangent2_all,ts_all,original_ts_all,ws_all,ws_der_all)
+    return BoundaryPointsHyp{T}(xy,normal,kappa,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der)
 end
 
 """
