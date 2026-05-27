@@ -849,16 +849,8 @@ end
 # Therefore this function returns the coefficient for a single logarithm
 # log|ξ_i-ξ_j|. If one instead writes a Kress split with
 # log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
-@inline function hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}
-    return 2*hyperbolic_Alog_d(ptab,d)*dn
-end
-@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=hyp_L1(ptab,d,dn)/2
+@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
 
-@inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
-    l1=hyp_L1_kress(ptab,d,dn)
-    raw=hyp_raw_dlp(qtab,d,dn)
-    return raw-l1*logterm
-end
 # Full off-diagonal source-normal hyperbolic DLP kernel:
 #
 # K(x,y) = ∂_{n_y} G_H(d_H(x,y)).
@@ -880,11 +872,11 @@ end
 # By construction, L2 remains finite and smooth as the target approaches the
 # source along the same smooth boundary.
 # This part is integrated with ordinary periodic quadrature weights.
-#@inline function hyp_L2(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
-#    l1=hyp_L1(ptab,d,dn)
-#    raw=hyp_raw_dlp(qtab,d,dn)
-#    return raw-l1*logterm
-#end
+@inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=hyp_L1_kress(ptab,d,dn)
+    raw=hyp_raw_dlp(qtab,d,dn)
+    return raw-l1*logterm
+end
 
 # Assemble the full source-normal hyperbolic DLP matrix.
 # The continuous operator is
