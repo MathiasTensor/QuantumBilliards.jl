@@ -753,7 +753,7 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
                 dn=G.dn[i,j]
                 if pdata.panel_id[i]==pj
                     il=pdata.local_id[i]
-                    l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                    l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
                     full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
                     l2=full-l1*log(abs(ξ[il]-ξ[jl]))
                     D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
