@@ -836,22 +836,19 @@ end
 @inline function hyp_L2_diag(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
     return Complex{T}((-G.kappaE[i]-G.dnlogλ[i])*(2*INV_FOUR_PI),zero(T))
 end
-
-# Logarithmic coefficient in the Kress decomposition.
+# Logarithmic coefficient for product quadrature with log|ξ_i-ξ_j|.
 #
-# The hyperbolic source-normal DLP kernel has the structure
+# Since
 #
-#     K(t,s) = L1(t,s) log(4 sin²((t-s)/2)) + L2(t,s),
+#     log(sinh²(d/2)) = 2log|ξ_i-ξ_j| + smooth,
 #
-# where only the logarithmic factor is singular as t → s.
-# L1 contains the exact coefficient multiplying this singularity.
-# Mathematically:
+# the coefficient multiplying log|ξ_i-ξ_j| is
 #
-#     L1 ~ 2 A_log(d_H) ∂_{n_y} d_H,
+#     L1 = 2 A′(d_H) ∂_{n_y}d_H.
 #
-# where A_log is the coefficient extracted from the Green-function logarithmic
-# expansion.
-# This term is integrated with the Kress matrix R.
+# Therefore this function returns the coefficient for a single logarithm
+# log|ξ_i-ξ_j|. If one instead writes a Kress split with
+# log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
 @inline function hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}
     return 2*hyperbolic_Alog_d(ptab,d)*dn
 end
@@ -862,7 +859,7 @@ end
 # This still contains the logarithmic singular structure before Kress splitting.
 # The Green kernel comes from the Legendre-Q representation.
 @inline function hyp_raw_dlp(qtab::QTaylorTable,d::Float64,dn::T) where {T<:Real}
-    return _eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
+    return _eval_dQdd(qtab,d)*dn*INV_TWO_PI
 end
 # Smooth Kress remainder.
 # After removing the singular logarithmic part,
