@@ -109,3 +109,39 @@ function log_weights_matrix(::Type{T},ξ::Vector{T};prec::Int=256) where {T<:Rea
         return T.(Λb)
     end
 end
+
+function log_weights_row(::Type{T},ξ::Vector{T},x0::T;prec::Int=256) where {T<:Real}
+    setprecision(BigFloat,prec) do
+        n=length(ξ)
+        xb=BigFloat.(ξ)
+        V=Matrix{BigFloat}(undef,n,n)
+        @inbounds for i in 1:n
+            V[i,1]=big(1)
+            for j in 2:n
+                V[i,j]=V[i,j-1]*xb[i]
+            end
+        end
+        m=log_moments_big(BigFloat(x0),n)
+        λb=transpose(V)\m
+        return T.(λb)
+    end
+end
+
+function build_near_log_weights(::Type{T},ξ::Vector{T},near_panels::Int;prec::Int=256) where {T<:Real}
+    nearΛ=Dict{Int,Matrix{T}}()
+    near_panels==0 && return nearΛ
+    n=length(ξ)
+    for r in -near_panels:near_panels
+        r==0 && continue
+        W=Matrix{T}(undef,n,n)
+        @inbounds for il in 1:n
+            x0=ξ[il]+T(2r)
+            row=log_weights_row(T,ξ,x0;prec=prec)
+            for jl in 1:n
+                W[il,jl]=row[jl]
+            end
+        end
+        nearΛ[r]=W
+    end
+    return nearΛ
+end

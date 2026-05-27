@@ -156,6 +156,7 @@ Fields:
 - `billiard`: billiard geometry.
 - `symmetry`: optional reflection or rotation symmetry.
 - `ngl`: Gauss-Legendre nodes per panel.
+- `near_panels`: number of near panels for special quadrature treatment.
 - `logquad_prec`: BigFloat precision for logarithmic product weights.
 - `mp_dps`: multiprecision digits for Legendre-Q/P Taylor table generation.
 """
@@ -168,6 +169,7 @@ struct DLP_hyperbolic_log_product{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     billiard::Bi
     symmetry::Sym
     ngl::Int
+    near_panels::Int
     logquad_prec::Int
     mp_dps::Int
 end
@@ -192,13 +194,33 @@ Keyword arguments:
 - `eps=1e-15`: numerical tolerance.
 - `symmetry=nothing`: optional symmetry image projection.
 - `ngl=16`: Gauss-Legendre order per panel.
+- `near_panels=0`: number of near panels for special quadrature treatment.
 - `logquad_prec=256`: BigFloat precision for log weights.
 - `mp_dps=80`: precision used for Legendre-Q/P Taylor tables.
 """
-function DLP_hyperbolic_log_product(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=32,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,ngl::Int=16,logquad_prec::Int=256,mp_dps::Int=80) where {T<:Real,Bi<:AbsBilliard}
+function DLP_hyperbolic_log_product(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=32,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,ngl::Int=16,near_panels::Int=0,logquad_prec::Int=256,mp_dps::Int=80) where {T<:Real,Bi<:AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : T.(pts_scaling_factor)
     Sym=typeof(symmetry)
-    return DLP_hyperbolic_log_product{T,Bi,Sym}(bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,ngl,logquad_prec,mp_dps)
+    near_panels<0 && error("near_panels must be nonnegative.")
+    return DLP_hyperbolic_log_product{T,Bi,Sym}(bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,ngl,near_panels,logquad_prec,mp_dps)
+end
+
+# helpers that help determine adjacent panels and when to apply the logarithmic product correction
+@inline function cyclic_panel_distance(p::Int,q::Int,npan::Int)
+    d=abs(p-q)
+    return min(d,npan-d)
+end
+@inline function is_near_panel(p::Int,q::Int,npan::Int,near_panels::Int)
+    return cyclic_panel_distance(p,q,npan)<=near_panels
+end
+@inline function cyclic_panel_offset(p_i::Int,p_j::Int,npan::Int)
+    r=p_i-p_j
+    if r>npan÷2
+        r-=npan
+    elseif r<-npan÷2
+        r+=npan
+    end
+    return r
 end
 
 """
@@ -256,6 +278,7 @@ Contains:
   hyperbolic weights, and hyperbolic arclength coordinates.
 - `pdata`: panel metadata needed for same-panel log-product quadrature.
 - `Λ`: precomputed logarithmic product weight matrix.
+- `nearΛ`: dictionary of near-panel logarithmic product weight matrices.
 - `ξ`: local Gauss-Legendre nodes in [-1,1].
 - `ω`: local Gauss-Legendre weights.
 """
@@ -263,6 +286,7 @@ struct DLPHypLogDiscretization{T<:Real}<:AbsPoints
     bp::BoundaryPointsHyp{T}
     pdata::DLPHypLogPanelData{T}
     Λ::Matrix{T}
+    nearΛ::Dict{Int,Matrix{T}}
     ξ::Vector{T}
     ω::Vector{T}
 end
@@ -553,7 +577,8 @@ function evaluate_points(solver::DLP_hyperbolic_log_product{T},billiard::Bi,k::R
     length(comps)==1 || error("DLP_hyperbolic_log_product currently expects one connected boundary component.")
     panels=_hyp_log_panelize_component(comps[1],1,T(k),solver.pts_scaling_factor[1],max(1,solver.min_pts÷solver.ngl),solver.ngl)
     ξ0,ω0=gausslegendre(solver.ngl)
-    ξ=T.(ξ0);ω=T.(ω0)
+    ξ=T.(ξ0)
+    ω=T.(ω0)
     N=length(panels)*solver.ngl
     xy=Vector{SVector{2,T}}(undef,N)
     normal=Vector{SVector{2,T}}(undef,N)
@@ -599,7 +624,8 @@ function evaluate_points(solver::DLP_hyperbolic_log_product{T},billiard::Bi,k::R
     bp=BoundaryPointsHyp{T}(xy,normal,kappa,ds,λs,dsH,ξH,sH,tangent_1,tangent_2,ts,original_ts,ws,ws_der)
     pdata=DLPHypLogPanelData{T}(panels,panel_id,local_id,solver.ngl)
     Λ=log_weights_matrix(T,ξ;prec=solver.logquad_prec)
-    return DLPHypLogDiscretization{T}(bp,pdata,Λ,ξ,ω)
+    nearΛ=build_near_log_weights(T,ξ,solver.near_panels;prec=solver.logquad_prec)
+    return DLPHypLogDiscretization{T}(bp,pdata,Λ,nearΛ,ξ,ω)
 end
 
 """
@@ -698,67 +724,46 @@ are added as regular off-diagonal hyperbolic DLP terms.
 function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     pts=disc.bp
     pdata=disc.pdata
+    npan=length(pdata.panels)
+    near_panels=solver.near_panels
     qtab=ws.taylor.qtab
     ptab=ws.taylor.ptab
     Λ=disc.Λ
+    nearΛ=disc.nearΛ
     ξ=disc.ξ
     ω=disc.ω
     G=ws.G
     N=length(pts.xy)
     fill!(D,zero(Complex{T}))
-    sym=solver.symmetry
-    add_x=false;add_y=false;add_xy=false
-    sxgn=one(Complex{T});sygn=one(Complex{T});sxy=one(Complex{T})
-    have_rot=false;nrot=1;mrot=0
-    cx=zero(T);cy=zero(T)
-    if !isnothing(sym)
-        if hasproperty(sym,:axis)
-            if sym.axis==:y_axis
-                add_x=true
-                sxgn=Complex{T}(sym.parity==-1 ? -one(T) : one(T),zero(T))
-            elseif sym.axis==:x_axis
-                add_y=true
-                sygn=Complex{T}(sym.parity==-1 ? -one(T) : one(T),zero(T))
-            elseif sym.axis==:origin
-                add_x=true;add_y=true;add_xy=true
-                px=sym.parity[1]==-1 ? -one(T) : one(T)
-                py=sym.parity[2]==-1 ? -one(T) : one(T)
-                sxgn=Complex{T}(px,zero(T))
-                sygn=Complex{T}(py,zero(T))
-                sxy=Complex{T}(px*py,zero(T))
-            end
-        elseif sym isa Rotation
-            have_rot=true
-            nrot=sym.n
-            mrot=mod(sym.m,nrot)
-            cx=T(sym.center[1]);cy=T(sym.center[2])
-        end
-    end
-    ctab=T[];stab=T[];χ=ComplexF64[]
-    have_rot && ((ctab,stab,χ)=_rotation_tables(T,nrot,mrot))
-    shift_x=hasproperty(solver.billiard,:x_axis) ? T(solver.billiard.x_axis) : zero(T)
-    shift_y=hasproperty(solver.billiard,:y_axis) ? T(solver.billiard.y_axis) : zero(T)
     @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
-        xj,yj=pts.xy[j]
-        nxj,nyj=pts.normal[j]
-        pj=pdata.panel_id[j]
+        p_j=pdata.panel_id[j]
         jl=pdata.local_id[j]
         speed_half_j=G.speed_half[j]
         for i in 1:N
-            xi,yi=pts.xy[i]
             if i==j
                 D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
             else
                 d=G.d[i,j]
                 dn=G.dn[i,j]
-                if pdata.panel_id[i]==pj
+                p_i=pdata.panel_id[i]
+                if p_i==p_j
                     il=pdata.local_id[i]
                     l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
                     full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
                     l2=full-l1*log(abs(ξ[il]-ξ[jl]))
                     D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
                 else
-                    D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
+                    r=cyclic_panel_offset(p_i,p_j,npan)
+                    if abs(r)<=near_panels && haskey(nearΛ,r)
+                        il=pdata.local_id[i]
+                        x0=ξ[il]+T(2r)
+                        l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                        full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                        l2=full-l1*log(abs(ξ[jl]-x0))
+                        D[i,j]+=nearΛ[r][il,jl]*l1+ω[jl]*l2
+                    else
+                        D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
+                    end
                 end
             end
             @inbounds for r in eachindex(G.imgscale)
