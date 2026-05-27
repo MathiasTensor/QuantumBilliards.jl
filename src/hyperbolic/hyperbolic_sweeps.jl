@@ -24,7 +24,7 @@ function k_sweep(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_
         n=_workspace_dim(ws)
         size(A)!=(n,n) && (A=Matrix{Complex{T}}(undef,n,n))
         construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded_matrices)
-        σmins[i]=T(real(@svd_or_det_solve A use_krylov which MAX_BLAS_THREADS))
+        @blas_multi_then_1 MAX_BLAS_THREADS σmins[i]=svdvals(A)[end]
         next!(p)
     end
     return σmins
