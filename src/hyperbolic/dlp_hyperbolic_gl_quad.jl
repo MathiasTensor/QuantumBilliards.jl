@@ -441,7 +441,7 @@ where:
     γuu=SVector{2,T}(tangent_2(p.curve,u))*(du^2)
     sp=hypot(γu[1],γu[2])
     n=SVector{2,T}(γu[2]/sp,-γu[1]/sp)
-    κ=-(γu[1]*γuu[2]-γu[2]*γuu[1])/(sp^3)
+    κ=(γu[1]*γuu[2]-γu[2]*γuu[1])/(sp^3)
     x=q[1];y=q[2]
     λ=λ_poincare(x,y)
     return q,n,γu,γuu,sp,κ,λ
