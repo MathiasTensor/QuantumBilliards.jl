@@ -744,7 +744,7 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
                 #D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
                 #D[i,j]+=-pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
                 #D[i,j]+=pts.ds[j]*Complex{T}(pts.kappa[i]*INV_TWO_PI,zero(T))
-                D[i,j]+=pts.ds[j]*Complex{T}((pts.kappa[i]+G.dnlogλ[i])*INV_TWO_PI,zero(T))
+                D[i,j]+=pts.ds[j]*Complex{T}((pts.kappa[i]-G.dnlogλ[i])*INV_TWO_PI,zero(T))
             else
                 d=G.d[i,j]
                 dn=G.dn[i,j]
