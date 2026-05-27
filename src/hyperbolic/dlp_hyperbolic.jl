@@ -389,7 +389,7 @@ function k_sweep(solver::BIM_hyperbolic,basis::Ba,billiard::AbsBilliard,ks::Abst
     @inbounds for i in eachindex(ks)
         k=ks[i]
         build_QTaylorTable!(tab,preQ,ws,complex(k))
-        compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded_matrices)
+        isnothing(symmetry) ? compute_kernel_matrices_DLP_hyperbolic!(K,pts,tab;multithreaded=multithreaded_matrices) : compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded_matrices)
         assemble_DLP_hyperbolic!(K,pts)
         if use_krylov
             σ,_,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
