@@ -775,62 +775,77 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
             end
         end
         =#
-        for i in 1:N
-            if i==j
-                D[i,j]+=pts.ds[j]*hyp_L2_diag_GL(pts.kappa[i],G.dnlogλ[i])
+        @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
+    p_j=pdata.panel_id[j]
+    jl=pdata.local_id[j]
+
+    # OLD:
+    # speed_half_j=G.speed_half[j]
+
+    # Euclidean Jacobian ds_E / dξ
+    JEj=G.speed_half[j]
+
+    # Hyperbolic Jacobian ds_H / dξ
+    JHj=pts.dsH[j]/ω[jl]
+
+    for i in 1:N
+        if i==j
+            # OLD:
+            # D[i,j]+=pts.ds[j]*hyp_L2_diag_GL(pts.kappa[i],G.dnlogλ[i])
+
+            # keep old diagonal for now (test only offdiag change first)
+            D[i,j]+=pts.ds[j]*hyp_L2_diag_GL(pts.kappa[i],G.dnlogλ[i])
+
+        else
+            d=G.d[i,j]
+            dn=G.dn[i,j]
+            p_i=pdata.panel_id[i]
+
+            if p_i==p_j
+                il=pdata.local_id[i]
+
+                # OLD:
+                # l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                # full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                # l2=full-l1*log(abs(ξ[il]-ξ[jl]))
+
+                l1=hyp_L1(ptab,Float64(d),dn)*JEj
+                full=hyp_raw_dlp(qtab,Float64(d),dn)*JEj
+                l2=full-l1*(log(abs(ξ[il]-ξ[jl]))+log(JHj))
+
+                D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
+
             else
-                d=G.d[i,j]
-                dn=G.dn[i,j]
-                p_i=pdata.panel_id[i]
+                r=cyclic_panel_offset(p_i,p_j,npan)
 
-                # Euclidean Jacobian for the actual integral measure ds_E = J_E dξ.
-                JEj=pts.ds[j]/ω[j]
-
-                # Hyperbolic Jacobian for the logarithmic distance scale.
-                JHj=pts.dsH[j]/ω[j]
-
-                if p_i==p_j
+                if abs(r)<=near_panels && haskey(nearΛ,r)
                     il=pdata.local_id[i]
+                    x0=ξ[il]+T(2*r)
+
+                    # OLD:
+                    # l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                    # full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                    # l2=full-l1*log(abs(ξ[jl]-x0))
 
                     l1=hyp_L1(ptab,Float64(d),dn)*JEj
                     full=hyp_raw_dlp(qtab,Float64(d),dn)*JEj
+                    l2=full-l1*(log(abs(ξ[jl]-x0))+log(JHj))
 
-                    # OLD:
-                    # l2=full-l1*log(abs(ξ[il]-ξ[jl]))
-
-                    # TEST: include local hyperbolic arclength scale in the smooth remainder.
-                    l2=full-l1*(log(abs(ξ[il]-ξ[jl]))+log(JHj))
-
-                    D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
+                    D[i,j]+=nearΛ[r][il,jl]*l1+ω[jl]*l2
                 else
-                    r=cyclic_panel_offset(p_i,p_j,npan)
-                    if abs(r)<=near_panels && haskey(nearΛ,r)
-                        il=pdata.local_id[i]
-                        x0=ξ[il]+T(2*r)
-
-                        l1=hyp_L1(ptab,Float64(d),dn)*JEj
-                        full=hyp_raw_dlp(qtab,Float64(d),dn)*JEj
-
-                        # OLD:
-                        # l2=full-l1*log(abs(ξ[jl]-x0))
-
-                        # TEST: same hyperbolic arclength scale correction.
-                        l2=full-l1*(log(abs(ξ[jl]-x0))+log(JHj))
-
-                        D[i,j]+=nearΛ[r][il,jl]*l1+ω[jl]*l2
-                    else
-                        D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
-                    end
+                    D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
                 end
             end
-
-            @inbounds for r in eachindex(G.imgscale)
-                dI=G.dimg[r][i,j]
-                dI<=eps(T) && continue
-                dnI=G.dnimg[r][i,j]
-                D[i,j]+=G.imgscale[r]*hyp_raw_dlp(qtab,Float64(dI),dnI)*pts.ds[j]
-            end
         end
+
+        @inbounds for r in eachindex(G.imgscale)
+            dI=G.dimg[r][i,j]
+            dI<=eps(T) && continue
+            dnI=G.dnimg[r][i,j]
+            D[i,j]+=G.imgscale[r]*hyp_raw_dlp(qtab,Float64(dI),dnI)*pts.ds[j]
+        end
+    end
+end
     end
     return D
 end
