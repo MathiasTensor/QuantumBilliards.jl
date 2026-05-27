@@ -695,7 +695,7 @@ end
 
 # the diagonal limit of the L2 coefficient, used for the removable singularity at same-panel nodes
 @inline function hyp_L2_diag(kappaE::T,dnlogλ::T) where {T<:Real}
-    return Complex{T}((-kappaE-dnlogλ)*INV_TWO_PI,zero(T))
+    return Complex{T}((kappaE-dnlogλ)*INV_TWO_PI,zero(T))
 end
 
 """
@@ -741,42 +741,31 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
         speed_half_j=G.speed_half[j]
         for i in 1:N
             if i==j
-                #D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
-                #D[i,j]+=-pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
-                #D[i,j]+=pts.ds[j]*Complex{T}(pts.kappa[i]*INV_TWO_PI,zero(T))
-                D[i,j]+=pts.ds[j]*Complex{T}((pts.kappa[i]-G.dnlogλ[i])*INV_TWO_PI,zero(T))
+                D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
             else
                 d=G.d[i,j]
                 dn=G.dn[i,j]
-
-                # TEMP DEBUG: disable all product quadrature
-                #D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
-
-                # original split:
-                
-                 p_i=pdata.panel_id[i]
-                 if p_i==p_j
-                     il=pdata.local_id[i]
-                     l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
-                     full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
-                     l2=full-l1*log(abs(ξ[il]-ξ[jl]))
-                     D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
-                 else
-                     r=cyclic_panel_offset(p_i,p_j,npan)
-                     if abs(r)<=near_panels && haskey(nearΛ,r)
-                         il=pdata.local_id[i]
-                         x0=ξ[il]+T(2r)
-                         l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
-                         full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
-                         l2=full-l1*log(abs(ξ[jl]-x0))
-                         D[i,j]+=nearΛ[r][il,jl]*l1+ω[jl]*l2
-                     else
-                         D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
-                     end
-                 end
-                
+                p_i=pdata.panel_id[i]
+                if p_i==p_j
+                    il=pdata.local_id[i]
+                    l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                    full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                    l2=full-l1*log(abs(ξ[il]-ξ[jl]))
+                    D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
+                else
+                    r=cyclic_panel_offset(p_i,p_j,npan)
+                    if abs(r)<=near_panels && haskey(nearΛ,r)
+                        il=pdata.local_id[i]
+                        x0=ξ[il]+T(2*r)
+                        l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                        full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                        l2=full-l1*log(abs(ξ[jl]-x0))
+                        D[i,j]+=nearΛ[r][il,jl]*l1+ω[jl]*l2
+                    else
+                        D[i,j]+=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
+                    end
+                end
             end
-
             @inbounds for r in eachindex(G.imgscale)
                 dI=G.dimg[r][i,j]
                 dI<=eps(T) && continue
