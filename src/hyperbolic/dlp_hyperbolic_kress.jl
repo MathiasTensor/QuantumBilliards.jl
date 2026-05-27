@@ -849,7 +849,7 @@ end
 # Therefore this function returns the coefficient for a single logarithm
 # log|ξ_i-ξ_j|. If one instead writes a Kress split with
 # log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
-@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
+@inline hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
 
 # Full off-diagonal source-normal hyperbolic DLP kernel:
 #
@@ -872,8 +872,8 @@ end
 # By construction, L2 remains finite and smooth as the target approaches the
 # source along the same smooth boundary.
 # This part is integrated with ordinary periodic quadrature weights.
-@inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
-    l1=hyp_L1_kress(ptab,d,dn)
+@inline function hyp_L2(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=hyp_L1(ptab,d,dn)
     raw=hyp_raw_dlp(qtab,d,dn)
     return raw-l1*logterm
 end
@@ -904,14 +904,14 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
     @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
         @inbounds for i in 1:j-1
             dij=Float64(G.d[i,j])
-            l1ij=hyp_L1_kress(ptab,dij,G.dnd[i,j])
-            l2ij=hyp_L2_kress(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
+            l1ij=hyp_L1(ptab,dij,G.dnd[i,j])
+            l2ij=hyp_L2(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
             hj=pts.ws[j]
             JEj=pts.ds[j]/hj
             D[i,j]=R[i,j]*(l1ij*JEj)+hj*(l2ij*JEj)
             dji=Float64(G.d[j,i])
-            l1ji=hyp_L1_kress(ptab,dji,G.dnd[j,i])
-            l2ji=hyp_L2_kress(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
+            l1ji=hyp_L1(ptab,dji,G.dnd[j,i])
+            l2ji=hyp_L2(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
             hi=pts.ws[i]
             JEi=pts.ds[i]/hi
             D[j,i]=R[j,i]*(l1ji*JEi)+hi*(l2ji*JEi)
@@ -965,8 +965,8 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
                 D[a,b]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
             else
                 d=Float64(G.d[i,j])
-                l1=hyp_L1_kress(ptab,d,G.dnd[i,j])
-                l2=hyp_L2_kress(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
+                l1=hyp_L1(ptab,d,G.dnd[i,j])
+                l2=hyp_L2(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
                 hj=pts.ws[j]
                 JEj=pts.ds[j]/hj
                 D[a,b]=R[i,j]*(l1*JEj)+hj*(l2*JEj)
