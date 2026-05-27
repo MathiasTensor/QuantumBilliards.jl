@@ -834,7 +834,7 @@ end
 #   κ_E : Euclidean signed curvature contribution.
 #   ∂ₙ log λ : conformal correction from the Poincare metric.
 @inline function hyp_L2_diag(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
-    return Complex{T}((-G.kappaE[i]-G.dnlogλ[i])*(INV_FOUR_PI),zero(T))
+    return Complex{T}((-G.kappaE[i]-G.dnlogλ[i])*(INV_TWO_PI),zero(T))
 end
 # Logarithmic coefficient for product quadrature with log|ξ_i-ξ_j|.
 #
@@ -859,7 +859,7 @@ end
 # This still contains the logarithmic singular structure before Kress splitting.
 # The Green kernel comes from the Legendre-Q representation.
 @inline function hyp_raw_dlp(qtab::QTaylorTable,d::Float64,dn::T) where {T<:Real}
-    return _eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
+    return _eval_dQdd(qtab,d)*dn*(INV_TWO_PI)
 end
 # Smooth Kress remainder.
 # After removing the singular logarithmic part,
@@ -935,7 +935,7 @@ end
     d=hyperbolic_distance_poincare(xi,yi,xj,yj)
     d<=eps(T) && return zero(Complex{T})
     dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
-    return scale*(_eval_dQdd(qtab,Float64(d))*dn*(2*INV_TWO_PI))*wj
+    return scale*(_eval_dQdd(qtab,Float64(d))*dn*(INV_TWO_PI))*wj
 end
 
 # Assemble the symmetry-reduced DLP operator.
