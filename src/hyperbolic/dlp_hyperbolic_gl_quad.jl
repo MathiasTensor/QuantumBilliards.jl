@@ -255,10 +255,16 @@ Contains:
 - `bp`: `BoundaryPointsHyp`, storing geometry, normals, Euclidean weights,
   hyperbolic weights, and hyperbolic arclength coordinates.
 - `pdata`: panel metadata needed for same-panel log-product quadrature.
+- `Λ`: precomputed logarithmic product weight matrix.
+- `ξ`: local Gauss-Legendre nodes in [-1,1].
+- `ω`: local Gauss-Legendre weights.
 """
 struct DLPHypLogDiscretization{T<:Real}<:AbsPoints
     bp::BoundaryPointsHyp{T}
     pdata::DLPHypLogPanelData{T}
+    Λ::Matrix{T}
+    ξ::Vector{T}
+    ω::Vector{T}
 end
 
 """
@@ -293,14 +299,6 @@ struct DLPHypLogGeomCache{T<:Real}
     dimg::Vector{Matrix{T}}
     dnimg::Vector{Matrix{T}}
     imgscale::Vector{Complex{T}}
-end
-
-struct DLPHypLogDiscretization{T<:Real}<:AbsPoints
-    bp::BoundaryPointsHyp{T}
-    pdata::DLPHypLogPanelData{T}
-    Λ::Matrix{T}
-    ξ::Vector{T}
-    ω::Vector{T}
 end
 
 """
