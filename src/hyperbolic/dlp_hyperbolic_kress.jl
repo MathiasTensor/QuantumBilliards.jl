@@ -339,7 +339,7 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     t2=tangent_2(crv,ts)
     tu,speeds=_unit_tangents_and_speeds(ta)
     nrm=_normals_from_unit_tangents(tu)
-    κE=curvature(crv,ts)
+    κE=-curvature(crv,ts)
     xy=Vector{SVector{2,T}}(undef,N)
     normal=Vector{SVector{2,T}}(undef,N)
     kappa=Vector{T}(undef,N)
