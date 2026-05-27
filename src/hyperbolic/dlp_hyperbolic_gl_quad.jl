@@ -693,6 +693,37 @@ Returns
     return scale*hyp_raw_dlp(qtab,Float64(d),dn)*wj
 end
 
+# Logarithmic coefficient for product quadrature with log|ξ_i-ξ_j|.
+#
+# Since
+#
+#     log(sinh²(d/2)) = 2log|ξ_i-ξ_j| + smooth,
+#
+# the coefficient multiplying log|ξ_i-ξ_j| is
+#
+#     L1 = 2 A′(d_H) ∂_{n_y}d_H.
+#
+# Therefore this function returns the coefficient for a single logarithm
+# log|ξ_i-ξ_j|. If one instead writes a Kress split with
+# log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
+@inline hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
+
+# Smooth Kress remainder.
+# After removing the singular logarithmic part,
+#
+#     K = L1 logterm + L2,
+# so
+#     L2 = raw kernel - L1 * logterm.
+#
+# By construction, L2 remains finite and smooth as the target approaches the
+# source along the same smooth boundary.
+# This part is integrated with ordinary periodic quadrature weights.
+@inline function hyp_L2(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=hyp_L1(ptab,d,dn)
+    raw=hyp_raw_dlp(qtab,d,dn)
+    return raw-l1*logterm
+end
+
 # the diagonal limit of the L2 coefficient, used for the removable singularity at same-panel nodes
 @inline function hyp_L2_diag_GL(kappaE::T,dnlogλ::T) where {T<:Real}
     return Complex{T}((-kappaE-dnlogλ)*INV_TWO_PI,zero(T))

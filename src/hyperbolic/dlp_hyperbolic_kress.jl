@@ -319,7 +319,7 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     @assert nreal==length(precomps)
     T=eltype(solver.pts_scaling_factor)
     bs0=solver.pts_scaling_factor
-    bs=length(bs0)==1 ? fill(bs0[1],nreal) : length(bs0)==nreal ? copy(bs0) : error("Expected scalar b or one b per real curve; got $(length(bs0)), expected 1 or $nreal.")
+    bs=length(bs0)==1 ? fill(bs0[1],nreal) : length(bs0)==nreal ? copy(bs0) : error("Expected scalar b or one b per real curve.")
     Ni=Vector{Int}(undef,nreal)
     for r in 1:nreal
         Ni[r]=max(solver.min_pts,round(Int,real(k)*precomps[r].Lh*bs[r]/TWO_PI))
@@ -360,35 +360,42 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
         Nr=Ni[r]
         rng=ranges[r]
         t,_=invert_cdf_midpoints(pre.ts_dense,pre.F_dense,Nr)
-        pts=curve(crv,t)
-        ta=tangent(crv,t)
-        t2=tangent_2(crv,t)
-        tu,_=_unit_tangents_and_speeds(ta)
-        nrm=_normals_from_unit_tangents(tu)
-        κE=curvature(crv,t)
-        hH=T(pre.Lh)/T(Nr)
         hσ=TWO_PI/T(Nr)
+        Lh=T(pre.Lh)
         j0=first(rng)
         @inbounds for n in 1:Nr
             idx=j0+n-1
-            p=pts[n]
-            x=T(p[1])
-            y=T(p[2])
+            q=curve(crv,t[n])
+            γt_raw=tangent(crv,t[n])
+            γtt_raw=tangent_2(crv,t[n])
+            x=T(q[1]); y=T(q[2])
+            γt=SVector(T(γt_raw[1]),T(γt_raw[2]))
+            γtt=SVector(T(γtt_raw[1]),T(γtt_raw[2]))
             den=max(one(T)-muladd(x,x,y*y),T(1e-15))
             λ=T(2)/den
+            sp_t=hypot(γt[1],γt[2])
+            dλdt=T(4)*dot(SVector(x,y),γt)/(den^2)
+            dspdt=dot(γt,γtt)/sp_t
+            ρ=λ*sp_t
+            ρt=dλdt*sp_t+λ*dspdt
+            tσ=Lh/(TWO_PI*ρ)
+            tσσ=-(Lh^2)*ρt/(TWO_PI^2*ρ^3)
+            γσ=γt*tσ
+            γσσ=γtt*(tσ^2)+γt*tσσ
+            spσ=hypot(γσ[1],γσ[2])
             σ=hσ*(T(n)-T(0.5))
             xy_all[idx]=SVector(x,y)
-            normal_all[idx]=SVector(T(nrm[n][1]),T(nrm[n][2]))
-            kappa_all[idx]=T(κE[n])
-            dsH_all[idx]=hH
+            tangent_all[idx]=γσ
+            tangent2_all[idx]=γσσ
+            normal_all[idx]=SVector(γσ[2]/spσ,-γσ[1]/spσ)
+            kappa_all[idx]=(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/(spσ^3)
             λ_all[idx]=λ
-            ds_all[idx]=hH/λ
-            tangent_all[idx]=SVector(T(ta[n][1]),T(ta[n][2]))
-            tangent2_all[idx]=SVector(T(t2[n][1]),T(t2[n][2]))
+            dsH_all[idx]=Lh/T(Nr)
+            ds_all[idx]=dsH_all[idx]/λ
             ts_all[idx]=σ
-            original_ts_all[idx]=σ
+            original_ts_all[idx]=T(t[n])
             ws_all[idx]=hσ
-            ws_der_all[idx]=one(T)
+            ws_der_all[idx]=tσ
         end
         nothing
     end
@@ -679,7 +686,13 @@ function evaluate_points(solver::DLP_hyperbolic_kress_global_corners,billiard::B
     return _evaluate_points_hyp_global_corners(solver,boundary,k,1;threaded=threaded)
 end
 
-function build_Rmat_dlp_hyperbolic_kress(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T}) where {T<:Real}
+function build_Rmat_dlp_hyperbolic_kress(solver::DLP_hyperbolic_kress,pts::BoundaryPointsHyp{T}) where {T<:Real}
+    R=zeros(T,length(pts.xy),length(pts.xy))
+    kress_R!(R)
+    return R
+end
+
+function build_Rmat_dlp_hyperbolic_kress(solver::DLP_hyperbolic_kress_global_corners,pts::BoundaryPointsHyp{T}) where {T<:Real}
     R=zeros(T,length(pts.xy),length(pts.xy))
     _is_nontrivial_hyp_grading(pts) ? kress_R_corner!(R) : kress_R!(R)
     return R
@@ -836,20 +849,6 @@ end
 @inline function hyp_L2_diag_Kress(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
     return Complex{T}((-G.kappaE[i]-G.dnlogλ[i])*INV_TWO_PI,zero(T))
 end
-# Logarithmic coefficient for product quadrature with log|ξ_i-ξ_j|.
-#
-# Since
-#
-#     log(sinh²(d/2)) = 2log|ξ_i-ξ_j| + smooth,
-#
-# the coefficient multiplying log|ξ_i-ξ_j| is
-#
-#     L1 = 2 A′(d_H) ∂_{n_y}d_H.
-#
-# Therefore this function returns the coefficient for a single logarithm
-# log|ξ_i-ξ_j|. If one instead writes a Kress split with
-# log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
-@inline hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
 
 # Full off-diagonal source-normal hyperbolic DLP kernel:
 #
@@ -862,20 +861,12 @@ end
 @inline function hyp_raw_dlp(qtab::QTaylorTable,d::Float64,dn::T) where {T<:Real}
     return _eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
 end
-# Smooth Kress remainder.
-# After removing the singular logarithmic part,
-#
-#     K = L1 logterm + L2,
-# so
-#     L2 = raw kernel - L1 * logterm.
-#
-# By construction, L2 remains finite and smooth as the target approaches the
-# source along the same smooth boundary.
-# This part is integrated with ordinary periodic quadrature weights.
-@inline function hyp_L2(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
-    l1=hyp_L1(ptab,d,dn)
-    raw=hyp_raw_dlp(qtab,d,dn)
-    return raw-l1*logterm
+
+@inline hyp_L1_singlelog(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
+@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=hyperbolic_Alog_d(ptab,d)*dn
+@inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=hyp_L1_kress(ptab,d,dn)
+    return hyp_raw_dlp(qtab,d,dn)-l1*logterm
 end
 
 # Assemble the full source-normal hyperbolic DLP matrix.
@@ -904,14 +895,14 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
     @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
         @inbounds for i in 1:j-1
             dij=Float64(G.d[i,j])
-            l1ij=hyp_L1(ptab,dij,G.dnd[i,j])
-            l2ij=hyp_L2(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
+            l1ij=hyp_L1_kress(ptab,dij,G.dnd[i,j])
+            l2ij=hyp_L2_kress(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
             hj=pts.ws[j]
             JEj=pts.ds[j]/hj
             D[i,j]=R[i,j]*(l1ij*JEj)+hj*(l2ij*JEj)
             dji=Float64(G.d[j,i])
-            l1ji=hyp_L1(ptab,dji,G.dnd[j,i])
-            l2ji=hyp_L2(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
+            l1ji=hyp_L1_kress(ptab,dji,G.dnd[j,i])
+            l2ji=hyp_L2_kress(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
             hi=pts.ws[i]
             JEi=pts.ds[i]/hi
             D[j,i]=R[j,i]*(l1ji*JEi)+hi*(l2ji*JEi)
@@ -965,8 +956,8 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
                 D[a,b]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
             else
                 d=Float64(G.d[i,j])
-                l1=hyp_L1(ptab,d,G.dnd[i,j])
-                l2=hyp_L2(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
+                l1=hyp_L1_kress(ptab,d,G.dnd[i,j])
+                l2=hyp_L2_kress(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
                 hj=pts.ws[j]
                 JEj=pts.ds[j]/hj
                 D[a,b]=R[i,j]*(l1*JEj)+hj*(l2*JEj)
