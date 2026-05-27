@@ -13,7 +13,7 @@ function _hyp_points(solver::DLP_hyperbolic_log_product,billiard,kmax;kwargs...)
     return evaluate_points(solver,billiard,real(kmax))
 end
 
-function k_sweep(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},basis::Ba,billiard::AbsBilliard,ks::AbstractVector{T};multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,M_cdf_base::Int=4000,safety::Real=1e-14,mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Ba<:AbstractHankelBasis}
+function k_sweep(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},basis::Ba,billiard::AbsBilliard,ks::AbstractVector{T};multithreaded_matrices::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,M_cdf_base::Int=4000,safety::Real=1e-14,mp_dps::Int=80,leg_type::Int=3,which::Symbol=:svd) where {T<:Real,Ba<:AbstractHankelBasis}
     pts=_hyp_points(solver,billiard,maximum(ks);multithreaded_matrices=multithreaded_matrices,M_cdf_base=M_cdf_base,safety=safety)
     σmins=Vector{T}(undef,length(ks))
     A=Matrix{Complex{T}}(undef,0,0)
