@@ -358,10 +358,10 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
         sp=T(speeds[i])
         dse=sp*h
         xy[i]=SVector(x,y)
-        normal[i]=SVector(T(nrm[i][1]),T(nrm[i][2]))
         γu=SVector{2,T}(ta[i])
         γuu=SVector{2,T}(t2[i])
-        kappa[i]=(γu[1]*γuu[2]-γu[2]*γuu[1])/hypot(γu[1],γu[2])^3
+        normal[i]=SVector(γu[2]/sp,-γu[1]/sp)
+        kappa[i]=(γu[1]*γuu[2]-γu[2]*γuu[1])/sp^3
         ds[i]=dse
         λs[i]=λ
         dsH[i]=λ*dse
@@ -738,7 +738,7 @@ end
 # These tables depend on k but not on matrix indices.
 function build_dlp_hyperbolic_kress_taylor_workspace(pts::BoundaryPointsHyp{T},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},k;mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
-    pre=build_QTaylorPrecomp(;dmin=max(Float64(dmin)*0.25,1e-15),dmax=Float64(dmax)*1.05)
+    pre=build_QTaylorPrecomp(;dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     qws=QTaylorWorkspace(;threaded=false)
     qtab=alloc_QTaylorTable(pre;k=ComplexF64(k))
     ptab=alloc_PTaylorTable(pre;k=ComplexF64(k))

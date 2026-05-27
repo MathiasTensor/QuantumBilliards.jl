@@ -42,17 +42,25 @@ const FOUR_PI=4*pi
 const inv2π=1.0/TWO_PI
 const inv4π=1.0/FOUR_PI
 const Z_threshold=1.0+1e-14 # threshold for |z-1| smallness for the Legendre Q required for the SLP kernel
-const d_threshold=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
+const d_threshold=1e-3
 
 Base.@kwdef mutable struct LegendreTaylorConfig
-    h_patch::Float64=1e-5  # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
-    P_patch::Int=8 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
+    h_patch::Float64=1e-5 # patch half-width. This is the main parameter controlling the table size and accuracy. Smaller h means more patches and more accuracy, but also more memory and longer precomputation time. 1e-5 is a good default for double precision and k up to a few thousands, giving rel accuracy of 1e-13 at d=1e-3.
+    P_patch::Int=8 # patch order. This is the order of the Taylor expansion in each patch. Higher order means more accuracy but also more memory and longer precomputation time. 8 is a good default for double precision and k up to a few thousands, giving rel accuracy of 1e-13 at d=1e-3.
+    d_threshold::Float64=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
+    P_small_terms::Int=48 # usually this is enough for P even up to d=1e-2 for k in the thousands in double precision.
 end
+
 const LEGENDRE_TAYLOR_CONFIG=LegendreTaylorConfig()
 
 @inline legendre_Q_h_patch()=LEGENDRE_TAYLOR_CONFIG.h_patch
 @inline legendre_Q_P_patch()=LEGENDRE_TAYLOR_CONFIG.P_patch
-@inline function legendre_Q_params();cfg=LEGENDRE_TAYLOR_CONFIG;return cfg.h_patch,cfg.P_patch;end
+@inline legendre_d_threshold()=LEGENDRE_TAYLOR_CONFIG.d_threshold
+@inline legendre_P_small_terms()=LEGENDRE_TAYLOR_CONFIG.P_small_terms
+@inline function legendre_Q_params()
+    cfg=LEGENDRE_TAYLOR_CONFIG
+    return cfg.h_patch,cfg.P_patch
+end
 
 function legendre_Q_set_h!(h::Real)
     h>0 || error("h_patch must be positive.")
@@ -61,14 +69,28 @@ function legendre_Q_set_h!(h::Real)
 end
 
 function legendre_Q_set_P!(P::Integer)
-    P≥1 || error("P_patch must be at least 1.")
+    P>=1 || error("P_patch must be at least 1.")
     LEGENDRE_TAYLOR_CONFIG.P_patch=Int(P)
     return LEGENDRE_TAYLOR_CONFIG
 end
 
-function legendre_Q_set_taylor_params!(;h_patch=nothing,P_patch=nothing)
+function legendre_Q_set_d_threshold!(d::Real)
+    d>0 || error("d_threshold must be positive.")
+    LEGENDRE_TAYLOR_CONFIG.d_threshold=Float64(d)
+    return LEGENDRE_TAYLOR_CONFIG
+end
+
+function legendre_Q_set_P_small_terms!(n::Integer)
+    n>=2 || error("P_small_terms must be at least 2.")
+    LEGENDRE_TAYLOR_CONFIG.P_small_terms=Int(n)
+    return LEGENDRE_TAYLOR_CONFIG
+end
+
+function legendre_Q_set_taylor_params!(;h_patch=nothing,P_patch=nothing,d_threshold=nothing,P_small_terms=nothing)
     !isnothing(h_patch) && legendre_Q_set_h!(h_patch)
     !isnothing(P_patch) && legendre_Q_set_P!(P_patch)
+    !isnothing(d_threshold) && legendre_Q_set_d_threshold!(d_threshold)
+    !isnothing(P_small_terms) && legendre_Q_set_P_small_terms!(P_small_terms)
     return LEGENDRE_TAYLOR_CONFIG
 end
 
@@ -124,6 +146,112 @@ end
 @inline function _small_z_dQ(k::T,d::T) where{T<:Real}
     return _small_z_dQ(ComplexF64(k,0.0),d)
 end
+
+# Coefficients in the even-power expansion
+#
+#     coth(d) - 1/d = Σ c_n d^(2n+1),
+#
+# used in the Taylor recurrence for P_ν(cosh d)
+const _COTH_SERIES_COEFFS=Float64[
+    1/3,
+    -1/45,
+    2/945,
+    -1/4725,
+    2/93555,
+    -1382/638512875,
+    4/18243225,
+    -3617/325641566250,
+    43867/38979295480125,
+    -174611/1531329465290625,
+    155366/13447856940643125,
+    -236364091/201919571963756521875,
+    1315862/11094481976030578125,
+    -6785560294/564653660170076273671875,
+    6892673020804/5660878804669082674070015625,
+    -9459803781912212/76410959832894957292156621875000
+]
+
+# Small-distance Taylor expansion for
+#
+#     P_ν(cosh d)
+#
+# obtained from the Frobenius expansion of the radial Legendre equation
+#
+#     P'' + coth(d) P' - ν(ν+1) P = 0
+#
+# around d=0.
+#
+# The solution is expanded as
+#
+#     P_ν(cosh d) = Σ a_n d^(2n),
+#
+# and the coefficients a_n are generated recursively using the
+# series expansion of coth(d)-1/d.
+#
+# This branch is used only for very small d, where direct special-function
+# evaluation loses relative accuracy due to cancellation.
+@inline function _small_z_P(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms()) where {T<:Real}
+    nu=ν(k)
+    lam=nu*(nu+1)
+    x=ComplexF64(d*d,0.0)
+    a=Vector{ComplexF64}(undef,terms+1)
+    a[1]=1.0+0.0im
+    @inbounds for m in 0:terms-1
+        s=0.0+0.0im
+        rmax=min(m,length(_COTH_SERIES_COEFFS))
+        for r in 1:rmax
+            n=m-r+1
+            s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*a[n+1]
+        end
+        a[m+2]=(lam*a[m+1]-s)/ComplexF64(4*(m+1)^2,0.0)
+    end
+    acc=0.0+0.0im
+    @inbounds for n in terms:-1:0
+        acc=muladd(acc,x,a[n+1])
+    end
+    return acc
+end
+
+# Small-distance derivative expansion
+#
+#     d/dd P_ν(cosh d).
+#
+# Differentiating
+#
+#     P_ν(cosh d) = Σ a_n d^(2n)
+#
+# gives
+#
+#     P'(d) = Σ 2n a_n d^(2n-1).
+#
+# The same recursively generated Taylor coefficients are reused.
+#
+# This is primarily needed for stable evaluation of logarithmic
+# kernel coefficients in the hyperbolic Kress splitting near d=0.
+@inline function _small_z_dP(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms()) where {T<:Real}
+    nu=ν(k)
+    lam=nu*(nu+1)
+    x=ComplexF64(d*d,0.0)
+    a=Vector{ComplexF64}(undef,terms+1)
+    a[1]=1.0+0.0im
+    @inbounds for m in 0:terms-1
+        s=0.0+0.0im
+        rmax=min(m,length(_COTH_SERIES_COEFFS))
+        for r in 1:rmax
+            n=m-r+1
+            s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*a[n+1]
+        end
+        a[m+2]=(lam*a[m+1]-s)/ComplexF64(4*(m+1)^2,0.0)
+    end
+    acc=0.0+0.0im
+    @inbounds for n in terms:-1:1
+        acc=muladd(acc,x,ComplexF64(2n,0.0)*a[n+1])
+    end
+    return ComplexF64(d,0.0)*acc
+end
+
+@inline _small_z_P(k::T,d::T;terms::Int=legendre_P_small_terms()) where {T<:Real}=_small_z_P(ComplexF64(k,0.0),d;terms=terms)
+@inline _small_z_dP(k::T,d::T;terms::Int=legendre_P_small_terms()) where {T<:Real}=_small_z_dP(ComplexF64(k,0.0),d;terms=terms)
 
 # ---------------------------------
 # Python / mpmath seeding (PyCall)
@@ -497,13 +625,11 @@ end
 # =============================================================================
 @inline function _eval_Q(tab::QTaylorTable,d::Float64)
     dd=Float64(d)
-    if dd<d_threshold
-        k=k_from_ν(tab.nu)
-        return _small_z_Q(k,dd)
+    if dd<legendre_d_threshold()
+        return _small_z_Q(k_from_ν(tab.nu),dd)
     end
     idx=_patch_index(tab,dd)
-    x=dd-tab.centers[idx]
-    return horner_eval(view(tab.ucoeffs,:,idx),x)
+    return horner_eval(view(tab.ucoeffs,:,idx),dd-tab.centers[idx])
 end
 
 # =============================================================================
@@ -522,13 +648,11 @@ end
 # =============================================================================
 @inline function _eval_dQdd(tab::QTaylorTable,d::Float64)
     dd=Float64(d)
-    if dd<d_threshold
-        k=k_from_ν(tab.nu)
-        return _small_z_dQ(k,dd)
+    if dd<legendre_d_threshold()
+        return _small_z_dQ(k_from_ν(tab.nu),dd)
     end
     idx=_patch_index(tab,dd)
-    x=dd-tab.centers[idx]
-    return horner_eval(view(tab.ycoeffs,:,idx),x)
+    return horner_eval(view(tab.ycoeffs,:,idx),dd-tab.centers[idx])
 end
 
 # =============================================================================
@@ -1276,6 +1400,9 @@ end
 # =============================================================================
 @inline function _eval_Pleg(tab::PTaylorTable,d::Float64)
     dd=Float64(d)
+    if dd<legendre_d_threshold()
+        return _small_z_P(k_from_ν(tab.nu),dd)
+    end
     @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
     return horner_eval(@view(tab.pcoeffs[:,idx]),dd-tab.centers[idx])
@@ -1299,6 +1426,9 @@ end
 # =============================================================================
 @inline function _eval_dPlegdd(tab::PTaylorTable,d::Float64)
     dd=Float64(d)
+    if dd<legendre_d_threshold()
+        return _small_z_dP(k_from_ν(tab.nu),dd)
+    end
     @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
     return horner_eval(@view(tab.dpcoeffs[:,idx]),dd-tab.centers[idx])

@@ -642,7 +642,7 @@ These tables are reused for all source-target pairs during matrix assembly.
 """
 function build_dlp_hyp_log_taylor_workspace(pts::BoundaryPointsHyp{T},solver::DLP_hyperbolic_log_product,k) where {T<:Real}
     dmin,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
-    pre=build_QTaylorPrecomp(;dmin=max(Float64(dmin)*0.25,1e-15),dmax=Float64(dmax)*1.05)
+    pre=build_QTaylorPrecomp(;dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     qws=QTaylorWorkspace(;threaded=false)
     qtab=alloc_QTaylorTable(pre;k=ComplexF64(k))
     ptab=alloc_PTaylorTable(pre;k=ComplexF64(k))
