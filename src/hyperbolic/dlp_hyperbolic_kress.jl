@@ -849,7 +849,7 @@ end
 # Therefore this function returns the coefficient for a single logarithm
 # log|ξ_i-ξ_j|. If one instead writes a Kress split with
 # log(4sin²((t-s)/2)), the corresponding coefficient is half of this.
-@inline function hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}
+@inline function hyp_L1(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}
     return 2*hyperbolic_Alog_d(ptab,d)*dn
 end
 @inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=hyp_L1(ptab,d,dn)/2
