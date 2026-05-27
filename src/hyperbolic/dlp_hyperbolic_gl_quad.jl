@@ -748,7 +748,7 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
                 p_i=pdata.panel_id[i]
                 if p_i==p_j
                     il=pdata.local_id[i]
-                    l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                    l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_j
                     full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
                     l2=full-l1*log(abs(ξ[il]-ξ[jl]))
                     D[i,j]+=Λ[il,jl]*l1+ω[jl]*l2
@@ -757,7 +757,7 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
                     if abs(r)<=near_panels && haskey(nearΛ,r)
                         il=pdata.local_id[i]
                         x0=ξ[il]+T(2*r)
-                        l1=hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                        l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_j
                         full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
                         l2=full-l1*log(abs(ξ[jl]-x0))
                         D[i,j]+=nearΛ[r][il,jl]*l1+ω[jl]*l2
