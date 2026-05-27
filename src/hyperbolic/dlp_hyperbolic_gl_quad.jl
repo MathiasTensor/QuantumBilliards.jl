@@ -741,7 +741,8 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
         speed_half_j=G.speed_half[j]
         for i in 1:N
             if i==j
-                D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
+                #D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
+                D[i,j]+=-pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
             else
                 d=G.d[i,j]
                 dn=G.dn[i,j]
