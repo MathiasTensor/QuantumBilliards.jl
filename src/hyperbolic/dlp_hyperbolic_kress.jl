@@ -324,8 +324,9 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     Ni=Vector{Int}(undef,nreal)
     for r in 1:nreal
         crv=curves[real_idxs[r]]
-        L=arclength(crv)
-        Ni[r]=max(solver.min_pts,round(Int,real(k)*L*bs[r]/TWO_PI))
+        pres=[precompute_hyper_cdf(crv;M=5_000,safety=1e-14) for crv in comp]
+        Lh=sum(T(pre.Lh) for pre in pres)
+        Ni[r]=max(solver.min_pts,round(Int,real(k)*Lh*bs[r]/TWO_PI))
     end
     needed=2
     if !isnothing(solver.symmetry)
