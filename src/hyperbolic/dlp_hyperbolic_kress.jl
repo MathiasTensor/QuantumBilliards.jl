@@ -388,7 +388,7 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
             tangent_all[idx]=γσ
             tangent2_all[idx]=γσσ
             normal_all[idx]=SVector(γσ[2]/spσ,-γσ[1]/spσ)
-            kappa_all[idx]=-(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/(spσ^3)
+            kappa_all[idx]=(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/(spσ^3)
             λ_all[idx]=λ
             dsH_all[idx]=Lh/T(Nr)
             ds_all[idx]=dsH_all[idx]/λ
