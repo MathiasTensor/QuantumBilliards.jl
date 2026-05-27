@@ -694,7 +694,7 @@ Returns
 end
 
 # the diagonal limit of the L2 coefficient, used for the removable singularity at same-panel nodes
-@inline function hyp_L2_diag(kappaE::T,dnlogλ::T) where {T<:Real}
+@inline function hyp_L2_diag_GL(kappaE::T,dnlogλ::T) where {T<:Real}
     return Complex{T}((kappaE-dnlogλ)*INV_TWO_PI,zero(T))
 end
 
@@ -741,7 +741,7 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
         speed_half_j=G.speed_half[j]
         for i in 1:N
             if i==j
-                D[i,j]+=pts.ds[j]*hyp_L2_diag(pts.kappa[i],G.dnlogλ[i])
+                D[i,j]+=pts.ds[j]*hyp_L2_diag_GL(pts.kappa[i],G.dnlogλ[i])
             else
                 d=G.d[i,j]
                 dn=G.dn[i,j]

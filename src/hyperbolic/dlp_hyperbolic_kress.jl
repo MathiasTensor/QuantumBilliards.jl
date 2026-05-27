@@ -833,8 +833,8 @@ end
 # Terms:
 #   κ_E : Euclidean signed curvature contribution.
 #   ∂ₙ log λ : conformal correction from the Poincare metric.
-@inline function hyp_L2_diag(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
-    return Complex{T}((-G.kappaE[i]-G.dnlogλ[i])*(INV_TWO_PI),zero(T))
+@inline function hyp_L2_diag_Kress_Kress(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
+    return Complex{T}((G.kappaE[i]-G.dnlogλ[i])*INV_TWO_PI,zero(T))
 end
 # Logarithmic coefficient for product quadrature with log|ξ_i-ξ_j|.
 #
@@ -900,7 +900,7 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
     ptab=ws.taylor.ptab
     fill!(D,zero(Complex{T}))
     @inbounds for i in 1:N
-        D[i,i]=pts.ds[i]*hyp_L2_diag(G,i)
+        D[i,i]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
     end
     @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
         @inbounds for i in 1:j-1
@@ -963,7 +963,7 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
         @inbounds for a in 1:m
             i=Ifund[a]
             if i==j
-                D[a,b]=pts.ds[i]*hyp_L2_diag(G,i)
+                D[a,b]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
             else
                 d=Float64(G.d[i,j])
                 l1=hyp_L1(ptab,d,G.dnd[i,j])
