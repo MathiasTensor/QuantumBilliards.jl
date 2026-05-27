@@ -360,7 +360,7 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
         dse=sp*h
         xy[i]=SVector(x,y)
         normal[i]=SVector(T(nrm[i][1]),T(nrm[i][2]))
-        kappa[i]=T(κE[i])
+        kappa[i]=-T(κE[i])
         ds[i]=dse
         λs[i]=λ
         dsH[i]=λ*dse
