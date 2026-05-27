@@ -545,6 +545,11 @@ Returns
     return scale*hyp_raw_dlp(qtab,Float64(d),dn)*wj
 end
 
+# the diagonal limit of the L2 coefficient, used for the removable singularity at same-panel nodes
+@inline function hyp_L2_diag(kappaE::T,dnlogλ::T) where {T<:Real}
+    return Complex{T}((-kappaE-dnlogλ)*INV_TWO_PI,zero(T))
+end
+
 """
     construct_dlp_hyp_log_product_matrix!(D,solver,disc,ws;multithreaded=true)
 
