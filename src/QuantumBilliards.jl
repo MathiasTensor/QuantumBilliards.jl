@@ -60,6 +60,7 @@ include("billiards/geometry/alpert_endpoint_grading.jl") # dont export anything 
 include("billiards/geometry/boundarypoints.jl")
 export BoundaryPoints,boundary_matrix_size,boundary_coords,kress_R!,kress_R_corner!
 export BoundaryPointsCFIE,CFIEPanelArrays,_panel_arrays_cache,component_offsets,component_lengths,CFIEGeomCache,cfie_geom_cache
+include("billiards/geometry/log_product_quadrature.jl")
 include("utils/symmetry.jl")
 export Reflection,XReflection,YReflection,XYReflection,Rotation,apply_symmetries_to_boundary_points,apply_symmetries_to_boundary_function
 export flatten_points,apply_projection!

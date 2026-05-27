@@ -883,3 +883,93 @@ function cfie_geom_cache(pts::BoundaryPointsCFIE{T},corner_kress::Bool=false) wh
     return CFIEGeomCache(R,invR,inner,logterm,speed,kappa,original_ts)
 end
 
+"""
+    invert_cdf_midpoints(ts,F,N) -> (t,dt_dη)
+
+Invert a monotone cumulative distribution function sampled on a dense grid and
+return midpoint-inverse nodes together with the derivative of the inverse map.
+
+This function is intended for fast production inversion of smooth monotone CDFs,
+such as hyperbolic arclength cumulative distributions used to generate boundary
+nodes with approximately uniform hyperbolic spacing.
+
+Given:
+- `ts`: dense parameter grid (typically the physical curve parameter),
+- `F`: normalized monotone cumulative values on `ts`, with `F[1]≈0`,
+  `F[end]≈1`,
+- `N`: number of midpoint target nodes,
+
+the function constructs the midpoint targets
+
+    η_j = (j - 1/2)/N,    j = 1,...,N,
+
+and computes the inverse map
+
+    t_j = F^{-1}(η_j),
+
+using monotone cubic Hermite interpolation on the precomputed CDF samples.
+
+Returns:
+- `t`: inverse-mapped nodes satisfying approximately `F(t_j)=η_j`,
+- `dt_dη`: derivative of the inverse map `dt/dη` at the same targets.
+
+Notes:
+- This is substantially more accurate and smoother than piecewise-linear inverse
+  interpolation, while remaining much cheaper than per-node Newton refinement
+  with quadrature.
+- For smooth analytic geometries this preserves the smoothness needed by
+  Kress-type periodic Nyström quadratures much better than linear inversion.
+- `dt_dη` can be used when the Jacobian of the inverse map is needed.
+
+Assumptions:
+- `F` must be monotone nondecreasing.
+- `ts` and `F` must have equal length.
+- The CDF should already be sufficiently densely precomputed.
+"""
+function invert_cdf_midpoints(ts::AbstractVector{T},F::AbstractVector{T},N::Int) where {T<:Real}
+    M=length(ts)
+    @assert M==length(F)
+    @assert N>0
+    d=Vector{T}(undef,M-1)
+    m=Vector{T}(undef,M)
+    @inbounds for i in 1:M-1
+        dF=F[i+1]-F[i]
+        d[i]=dF==0 ? zero(T) : (ts[i+1]-ts[i])/dF
+    end
+    m[1]=d[1];m[M]=d[M-1]
+    @inbounds for i in 2:M-1
+        if d[i-1]*d[i]<=0
+            m[i]=zero(T)
+        else
+            m[i]=2*d[i-1]*d[i]/(d[i-1]+d[i])
+        end
+    end
+    out=Vector{T}(undef,N)
+    dout=Vector{T}(undef,N)
+    i=1
+    @inbounds for j in 1:N
+        η=(T(j)-T(0.5))/T(N)
+        while i<M-1 && F[i+1]<η
+            i+=1
+        end
+        h=F[i+1]-F[i]
+        if h<=0
+            out[j]=ts[i]
+            dout[j]=zero(T)
+            continue
+        end
+        x=(η-F[i])/h
+        x2=x*x;x3=x2*x
+        h00=2*x3-3*x2+1
+        h10=x3-2*x2+x
+        h01=-2*x3+3*x2
+        h11=x3-x2
+        out[j]=h00*ts[i]+h10*h*m[i]+h01*ts[i+1]+h11*h*m[i+1]
+        dh00=6*x2-6*x
+        dh10=3*x2-4*x+1
+        dh01=-6*x2+6*x
+        dh11=3*x2-2*x
+        dout[j]=(dh00*ts[i]+dh10*h*m[i]+dh01*ts[i+1]+dh11*h*m[i+1])/(h*T(N))
+    end
+    return out,dout
+end
