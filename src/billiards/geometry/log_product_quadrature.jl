@@ -42,6 +42,7 @@ function log_moments_big(x::BigFloat,n::Int)
     for p in 1:n-1
         s=big(0)
         for q in 0:p
+            p=big(p);q=big(q)
             coeff=BigFloat(binomial(p,q))*x^(p-q)
             qq=BigFloat(q+1)
             F(u)=abs(u)<eps(BigFloat) ? big(0) : u^(q+1)*(log(abs(u))/qq-inv(qq^2))
