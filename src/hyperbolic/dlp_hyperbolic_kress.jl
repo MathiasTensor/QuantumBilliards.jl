@@ -339,7 +339,6 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     t2=tangent_2(crv,ts)
     tu,speeds=_unit_tangents_and_speeds(ta)
     nrm=_normals_from_unit_tangents(tu)
-    κE=curvature(crv,ts)
     xy=Vector{SVector{2,T}}(undef,N)
     normal=Vector{SVector{2,T}}(undef,N)
     kappa=Vector{T}(undef,N)
@@ -360,7 +359,9 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
         dse=sp*h
         xy[i]=SVector(x,y)
         normal[i]=SVector(T(nrm[i][1]),T(nrm[i][2]))
-        kappa[i]=T(κE[i])
+        γu=SVector{2,T}(ta[i])
+        γuu=SVector{2,T}(t2[i])
+        kappa[i]=(γu[1]*γuu[2]-γu[2]*γuu[1])/hypot(γu[1],γu[2])^3
         ds[i]=dse
         λs[i]=λ
         dsH[i]=λ*dse
@@ -806,7 +807,7 @@ end
 #   κ_E : Euclidean signed curvature contribution.
 #   ∂ₙ log λ : conformal correction from the Poincare metric.
 @inline function hyp_L2_diag_Kress(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
-    return Complex{T}((G.kappaE[i]+G.dnlogλ[i])*INV_TWO_PI,zero(T))
+    return Complex{T}((-G.kappaE[i]-G.dnlogλ[i])*INV_TWO_PI,zero(T))
 end
 
 # Full off-diagonal source-normal hyperbolic DLP kernel:
