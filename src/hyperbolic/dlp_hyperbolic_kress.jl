@@ -833,7 +833,7 @@ end
 # Terms:
 #   κ_E : Euclidean signed curvature contribution.
 #   ∂ₙ log λ : conformal correction from the Poincare metric.
-@inline function hyp_L2_diag_Kress_Kress(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
+@inline function hyp_L2_diag_Kress(G::DLPHyperbolicKressGeomCache{T},i::Int) where {T<:Real}
     return Complex{T}((G.kappaE[i]-G.dnlogλ[i])*INV_TWO_PI,zero(T))
 end
 # Logarithmic coefficient for product quadrature with log|ξ_i-ξ_j|.
