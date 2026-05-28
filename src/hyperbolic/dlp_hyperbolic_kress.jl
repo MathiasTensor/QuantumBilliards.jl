@@ -821,6 +821,9 @@ end
 @inline function hyp_raw_dlp(qtab::QTaylorTable,d::Float64,dn::T) where {T<:Real}
     return _eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
 end
+@inline function hyp_raw_dlp_kress(qtab::QTaylorTable,d::Float64,dn::T) where {T<:Real}
+    return _eval_dQdd(qtab,d)*dn*(INV_TWO_PI)
+end
 
 #=
 @inline hyp_L1_singlelog(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
@@ -834,7 +837,7 @@ end
 @inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=4*hyperbolic_Alog_d(ptab,d)*dn
 @inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
     l1=hyp_L1_kress(ptab,d,dn)
-    return hyp_raw_dlp(qtab,d,dn)-l1*logterm
+    return hyp_raw_dlp_kress(qtab,d,dn)-l1*logterm
 end
 
 # Assemble the full source-normal hyperbolic DLP matrix.
@@ -897,7 +900,7 @@ end
     d=hyperbolic_distance_poincare(xi,yi,xj,yj)
     d<=eps(T) && return zero(Complex{T})
     dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
-    return scale*hyp_raw_dlp(qtab,Float64(d),dn)*wj
+    return scale*hyp_raw_dlp_kress(qtab,Float64(d),dn)*wj
 end
 
 # Assemble the symmetry-reduced DLP operator.
