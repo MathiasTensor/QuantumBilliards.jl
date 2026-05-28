@@ -831,7 +831,7 @@ end
 end
 =#
 
-@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=2*hyperbolic_Alog_d(ptab,d)*dn
+@inline hyp_L1_kress(ptab::PTaylorTable,d::Float64,dn::T) where {T<:Real}=hyperbolic_Alog_d(ptab,d)*dn
 @inline function hyp_L2_kress(qtab::QTaylorTable,ptab::PTaylorTable,d::Float64,dn::T,logterm::T) where {T<:Real}
     l1=hyp_L1_kress(ptab,d,dn)
     return hyp_raw_dlp(qtab,d,dn)-l1*logterm
