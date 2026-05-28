@@ -717,7 +717,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     pcs=Vector{PCT}(undef,nw)
     pcs[1]=pc1
     @time "Contour workspace precompute" begin
-        @showprogress desc="contour precompute" Threads.@threads for i in 2:nw
+        @showprogress desc="contour precompute" #=Threads.@threads=# for i in 2:nw
             pcs[i]=precompute_hyp_contour(solver,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq)
         end
     end
