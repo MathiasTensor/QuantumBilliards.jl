@@ -333,10 +333,11 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
     remN!=0 && (N+=needed-remN)
     crv=curves[real_idxs[1]]
     h=T(TWO_PI)/T(N)
-    ts=[TWO_PI*(T(j)-T(0.5))/T(N) for j in 1:N]
-    pts=curve(crv,ts)
-    ta=tangent(crv,ts)
-    t2=tangent_2(crv,ts)
+    σ=[TWO_PI*(T(j)-T(0.5))/T(N) for j in 1:N]
+    us=σ./TWO_PI
+    pts=curve(crv,us)
+    ta=tangent(crv,us)
+    t2=tangent_2(crv,us)
     tu,speeds=_unit_tangents_and_speeds(ta)
     nrm=_normals_from_unit_tangents(tu)
     xy=Vector{SVector{2,T}}(undef,N)
@@ -360,20 +361,21 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
         xy[i]=SVector(x,y)
         γu=SVector{2,T}(ta[i])
         γuu=SVector{2,T}(t2[i])
-        normal[i]=SVector(γu[2]/sp,-γu[1]/sp)
-        kappa[i]=(γu[1]*γuu[2]-γu[2]*γuu[1])/sp^3
-        ds[i]=dse
-        λs[i]=λ
-        dsH[i]=λ*dse
-        tangent_1st[i]=SVector(T(ta[i][1]),T(ta[i][2]))
-        tangent_2nd[i]=SVector(T(t2[i][1]),T(t2[i][2]))
+        γσ=γu/T(TWO_PI)
+        γσσ=γuu/T(TWO_PI)^2
+        sp=hypot(γσ[1],γσ[2])
+        normal[i]=SVector(γσ[2]/sp,-γσ[1]/sp)
+        kappa[i]=(γσ[1]*γσσ[2]-γσ[2]*γσσ[1])/sp^3
+        ds[i]=sp*h
+        tangent_1st[i]=γσ
+        tangent_2nd[i]=γσσ
     end
     s=zero(T)
     @inbounds for i in 1:N
         ξ[i]=s
         s+=dsH[i]
     end
-    return BoundaryPointsHyp{T}(xy,normal,kappa,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der)
+    return BoundaryPointsHyp{T}(xy,normal,kappa,ds,λs,dsH,ξ,s,tangent_1st,tangent_2nd,σ,copy(us),ws,ws_der)
 end
 
 """
