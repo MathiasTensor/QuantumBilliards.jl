@@ -275,7 +275,7 @@ Supported symmetry logic:
                      reflection sectors;
   * `Rotation(n,...)`: divide by `n`.
 """
-function hyperbolic_area_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function hyperbolic_area_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
     ok || error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     sym=solver.symmetry
@@ -360,7 +360,7 @@ discretized by the symmetry-adapted solver. This excludes virtual symmetry
 cut edges, which are added or subtracted separately in
 `symmetry_adapted_hyperbolic_arclength`.
 """
-function _physical_LH_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function _physical_LH_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
     bd=evaluate_points(solver,billiard,kref,pre;safety=1e-14,threaded=true)
     return T(bd.LH)
@@ -381,7 +381,7 @@ condition sign:
 For pure rotations the discretized physical wedge boundary is already the
 correct perimeter contribution.
 """
-function symmetry_adapted_hyperbolic_arclength(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
+function symmetry_adapted_hyperbolic_arclength(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi;kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
     Lphys=_physical_LH_fundamental(solver,billiard;kref=kref)
     sym=solver.symmetry
     isnothing(sym) && return Lphys
@@ -446,7 +446,7 @@ Compute the symmetry-adapted two-term Weyl count using
 This is the correct wrapper for desymmetrized reflection sectors because the
 virtual symmetry edges have Dirichlet/Neumann signs in the perimeter term.
 """
-function weyl_law_hyp(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard::Bi,k::T;kref::T=T(1000.0),C::T=zero(T))::T where {Bi<:AbsBilliard,T<:Real}
+function weyl_law_hyp(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi,k::T;kref::T=T(1000.0),C::T=zero(T))::T where {Bi<:AbsBilliard,T<:Real}
     A=hyperbolic_area_fundamental(solver,billiard;kref=kref)
     L=symmetry_adapted_hyperbolic_arclength(solver,billiard;kref=kref)
     return weyl_law_hyp(k,A,L;C=C)
