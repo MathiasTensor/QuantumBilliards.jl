@@ -361,7 +361,7 @@ function evaluate_points(solver::DLP_hyperbolic_kress,billiard::Bi,k::Real,preco
         γu=SVector{2,T}(ta[i])
         γuu=SVector{2,T}(t2[i])
         normal[i]=SVector(γu[2]/sp,-γu[1]/sp)
-        kappa[i]=(γu[1]*γuu[2]-γu[2]*γuu[1])/sp^3
+        kappa[i]=-(γu[1]*γuu[2]-γu[2]*γuu[1])/sp^3
         ds[i]=dse
         λs[i]=λ
         dsH[i]=λ*dse
