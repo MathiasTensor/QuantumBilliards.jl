@@ -62,13 +62,17 @@ end
 
 _hyp_contour_cache(solver,pts)=nothing
 _hyp_contour_cache(solver::DLP_hyperbolic_log_product,pts::DLPHypLogDiscretization)=build_dlp_hyp_log_geom_cache(solver,pts)
-
-function _hyp_contour_workspace(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts,k,cache;mp_dps::Int=80,leg_type::Int=3)
-    return build_dlp_hyperbolic_kress_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
+function _hyp_contour_cache(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts)
+    return build_dlp_hyperbolic_kress_geom_workspace(solver,pts)
 end
 
 function _hyp_contour_workspace(solver::DLP_hyperbolic_log_product,pts::DLPHypLogDiscretization,k,cache;mp_dps::Int=80,leg_type::Int=3)
     return build_dlp_hyp_log_workspace(solver,pts,cache,k)
+end
+
+function _hyp_contour_workspace(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts,k,gws;mp_dps::Int=80,leg_type::Int=3)
+    kws=build_dlp_hyperbolic_kress_k_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
+    return gws,kws
 end
 
 function precompute_hyp_contour(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
@@ -470,6 +474,7 @@ end
 #     That is often the dominant cost after Beyn if many candidates exist.
 # ===============================================================================
 function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::HyperbolicBeynPoints;res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+    cache=_hyp_contour_cache(solver,pts)
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
     y=Vector{Complex{T}}(undef,N)
@@ -483,8 +488,8 @@ function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::Abstr
         λj=λ[j]
         abs(λj-k0)>R&&(tens[j]=T(NaN);tensN[j]=T(NaN);continue)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
-        pc=precompute_hyp_contour(solver,pts,Complex{T}(λj),T(0);nq=1)
-        construct_boundary_matrices_precomputed!([A_buf],solver,pts,pc;multithreaded=multithreaded,timeit=timeit)
+        wsj=_hyp_contour_workspace(solver,pts,ComplexF64(λj),cache)
+        construct_matrices!(solver,A_buf,pts,wsj,λj;multithreaded=multithreaded)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))
         rj=norm(y)
         tens[j]=rj

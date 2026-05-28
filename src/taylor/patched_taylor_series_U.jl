@@ -307,45 +307,6 @@ function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
 end
 
 # =============================================================================
-# horner_eval_col
-#
-# Purpose
-# Evaluate a Taylor polynomial stored as one column of a coefficient matrix.
-#
-# Coefficient convention
-#   If A[:,j] stores one Taylor patch, then
-#
-#   A[n+1,j] = coefficient of x^n.
-#
-#   This routine evaluates
-#
-#   p(x) = Σ_{n=0}^P A[n+1,j] x^n
-#
-#   by Horner multiplication.
-#
-# Inputs
-#   A::Matrix{ComplexF64} Matrix of Taylor coefficients. Each column is one patch.
-#
-#   j::Int Patch index / matrix column.
-#
-#   x::Float64 Local coordinate x=s-centers[j].
-#
-# Output
-#   ComplexF64 Polynomial value p(x).
-#
-# Performance note
-#   This avoids `@view(A[:,j])`, so scalar evaluation allocates zero bytes.
-# =============================================================================
-@inline function horner_eval_col(A::Matrix{ComplexF64},j::Int,x::Float64)
-    xx=ComplexF64(x,0.0)
-    acc=ComplexF64(0.0,0.0)
-    @inbounds for n in size(A,1):-1:1
-        acc=muladd(acc,xx,A[n,j])
-    end
-    return acc
-end
-
-# =============================================================================
 # horner_deriv_col
 #
 # Purpose
