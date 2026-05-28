@@ -191,10 +191,11 @@ success flag `ok=false` indicates that the geometry was not compatible with this
 star-shaped radial representation or that the sampled boundary left the unit
 disk.
 """
-function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000))::Tuple{T,T,Int,Bool} where {Bi<:AbsBilliard,T<:Real}
+function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::Real=1000.0,origin_vertex_tol::Real=1e-5) where {Bi<:AbsBilliard}
+    T=typeof(float(kref))
     solver=BIM_hyperbolic(T(10),symmetry=nothing)
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard)
-    bd=evaluate_points(solver,billiard,kref,pre)
+    bd=evaluate_points(solver,billiard,T(kref),pre)
     xy=bd.xy
     N=length(xy)
     xs=Vector{T}(undef,N+1)
@@ -205,42 +206,34 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
     end
     xs[N+1]=xs[1]
     ys[N+1]=ys[1]
-
     epsgeom=T(1e-12)
     inside=point_in_poly(xs,ys)
     onorigin=origin_on_poly(xs,ys;eps=epsgeom)
-    check_inside && !(inside||onorigin) && return (T(NaN),T(Inf),0,false)
-
+    rmin2=minimum(muladd(xs[i],xs[i],ys[i]*ys[i]) for i in 1:N)
+    near_origin_vertex=rmin2<T(origin_vertex_tol)^2
+    if check_inside && !(inside||onorigin||near_origin_vertex)
+        return (T(NaN),T(Inf),0,false)
+    end
     @inbounds for i in 1:N
         r2=muladd(xs[i],xs[i],ys[i]*ys[i])
         (!isfinite(r2)||r2>=one(T)-T(100)*eps(T)) && return (T(NaN),T(Inf),0,false)
     end
-
-    twoπ=T(2)*T(pi)
-    θ0,Δθ=inside ? (zero(T),twoπ) : angular_support_from_origin(xs,ys;eps=epsgeom)
-    (!isfinite(θ0)||!isfinite(Δθ)||Δθ<=zero(T)||Δθ>twoπ+T(1e-10)) && return (T(NaN),T(Inf),0,false)
-
+    θ0,Δθ=(inside && !near_origin_vertex) ? (zero(T),2*pi) : angular_support_from_origin(xs,ys;eps=max(epsgeom,T(origin_vertex_tol)))
+    (!isfinite(θ0)||!isfinite(Δθ)||Δθ<=zero(T)||Δθ>2*pi+1e-10) && return (T(NaN),T(Inf),0,false)
     function area_rule(Nθ::Int;only_check::Bool=false)::T
         h=Δθ/T(Nθ)
         s=zero(T)
         @inbounds for j in 0:Nθ-1
             θ=θ0+h*(T(j)+T(0.5))
-            ux=cos(θ)
-            uy=sin(θ)
-            tmin,nh=ray_hits_min_t(ux,uy,xs,ys)
-            (nh!=1||!isfinite(tmin)||tmin<=zero(T)||tmin>=one(T)) && return T(NaN)
+            tmin,nh=ray_hits_min_t(cos(θ),sin(θ),xs,ys)
+            (nh<1||!isfinite(tmin)||tmin<=zero(T)||tmin>=one(T)) && return T(NaN)
             only_check && continue
             r2=tmin*tmin
-            (!isfinite(r2)||r2>=one(T)) && return T(NaN)
             s+=T(2)/(one(T)-r2)-T(2)
         end
         return only_check ? zero(T) : s*h
     end
-
-    if check_star
-        isfinite(area_rule(max(2048,Nθ0);only_check=true)) || return (T(NaN),T(Inf),0,false)
-    end
-
+    check_star && !isfinite(area_rule(max(2048,Nθ0);only_check=true)) && return (T(NaN),T(Inf),0,false)
     Aprev=area_rule(Nθ0)
     isfinite(Aprev) || return (T(NaN),T(Inf),0,false)
     tolt=T(tol)
@@ -254,7 +247,6 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
         err<=tolt && return (Aext,err,Nθ,true)
         Aprev=A
     end
-
     Nθ=Nθ0<<maxit
     A=area_rule(Nθ)
     isfinite(A) || return (T(NaN),T(Inf),0,false)
