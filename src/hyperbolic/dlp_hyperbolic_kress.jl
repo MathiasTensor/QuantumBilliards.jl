@@ -867,13 +867,15 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
             l2ij=hyp_L2_kress(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
             hj=pts.ws[j]
             JEj=pts.ds[j]/hj
-            D[i,j]=R[i,j]*(l1ij*JEj)+hj*(l2ij*JEj)
+            #D[i,j]=R[i,j]*(l1ij*JEj)+hj*(l2ij*JEj)
+            D[i,j]=R[i,j]*(l1ij*JEj)+pts.ds[j]*l2ij
             dji=Float64(G.d[j,i])
             l1ji=hyp_L1_kress(ptab,dji,G.dnd[j,i])
             l2ji=hyp_L2_kress(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
             hi=pts.ws[i]
             JEi=pts.ds[i]/hi
-            D[j,i]=R[j,i]*(l1ji*JEi)+hi*(l2ji*JEi)
+            #D[j,i]=R[j,i]*(l1ji*JEi)+hi*(l2ji*JEi)
+            D[j,i]=R[j,i]*(l1ji*JEi)+pts.ds[i]*l2ji
         end
     end
     return D
