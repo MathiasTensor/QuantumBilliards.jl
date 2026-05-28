@@ -235,7 +235,7 @@ function solve(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,k;mul
     dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
     tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m)
     K=Matrix{ComplexF64}(undef,N,N)
-    compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded)
+    isnothing(symmetry) ? compute_kernel_matrices_DLP_hyperbolic!(K,pts,tab;multithreaded=multithreaded_matrices) : compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded_matrices)
     assemble_DLP_hyperbolic!(K,pts)
     if use_krylov
         σ,_,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
