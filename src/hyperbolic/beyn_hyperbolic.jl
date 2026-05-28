@@ -117,13 +117,14 @@ const HyperbolicBeynPoints=Union{BoundaryPointsHyp,DLPHypLogDiscretization}
 #   Rs  :: Vector{T}
 #       Disk radii corresponding to k0s.
 # ===============================================================================
-function plan_k_windows_hyp(solver::HyperbolicBoundarySolver,billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8) where {Bi<:AbsBilliard,T<:Real}
+function plan_k_windows_hyp(solver::HyperbolicBoundarySolver,billiard::Bi,k1::T,k2::T;M::Int=50,Rmax::T=T(0.8),Rfloor::T=T(1e-6),kref::T=T(1000),tolA::Real=1e-8,iters::Int=8,origin_shift::Real=0.0) where {Bi<:AbsBilliard,T<:Real}
     L=k2-k1
     (L<=zero(T)||Rmax<=zero(T))&&return T[],T[]
-    A=hyperbolic_area_fundamental(solver,billiard;tol=tolA,kref=kref)
+    A=hyperbolic_area_fundamental(solver,billiard;tol=tolA,kref=kref,origin_shift=origin_shift)
     ρA(k)=max((A/TWO_PI)*k,T(1e-12))
     Rof(k)=clamp(M/(2*ρA(k)),Rfloor,Rmax)
-    k0s=T[];Rs=T[]
+    k0s=T[]
+    Rs=T[]
     left=k1
     while left<k2-T(10)*eps(k2)
         rem=k2-left
@@ -134,7 +135,8 @@ function plan_k_windows_hyp(solver::HyperbolicBoundarySolver,billiard::Bi,k1::T,
             R=min(Rof(k0),rem/2)
             R=clamp(R,Rfloor,Rmax)
         end
-        push!(k0s,left+R);push!(Rs,R)
+        push!(k0s,left+R)
+        push!(Rs,R)
         left+=2R
     end
     return k0s,Rs
@@ -644,8 +646,8 @@ end
 #   tensN_all :: Vector{T}
 #       Normalized residuals (if computed in residual stage).
 # ===============================================================================
-function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
-    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=m,Rmax=Rmax,Rfloor=Rfloor,kref=kref)
+function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true,origin_shift::Real=0.0) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+    @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=m,Rmax=Rmax,Rfloor=Rfloor,kref=kref,origin_shift=origin_shift)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
     Rs=isempty(idx) ? T[] : Rs[idx]

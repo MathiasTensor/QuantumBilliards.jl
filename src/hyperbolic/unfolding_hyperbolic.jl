@@ -191,7 +191,10 @@ success flag `ok=false` indicates that the geometry was not compatible with this
 star-shaped radial representation or that the sampled boundary left the unit
 disk.
 """
-function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::Real=1000.0,origin_vertex_tol::Real=1e-5) where {Bi<:AbsBilliard}
+function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,
+    check_star::Bool=true,check_inside::Bool=true,kref::Real=1000.0,
+    origin_shift::Real=0.0) where {Bi<:AbsBilliard}
+
     T=typeof(float(kref))
     solver=BIM_hyperbolic(T(10),symmetry=nothing)
     pre=precompute_hyperbolic_boundary_cdfs(solver,billiard)
@@ -200,40 +203,67 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
     N=length(xy)
     xs=Vector{T}(undef,N+1)
     ys=Vector{T}(undef,N+1)
+
     @inbounds for i in 1:N
         xs[i]=T(xy[i][1])
         ys[i]=T(xy[i][2])
     end
     xs[N+1]=xs[1]
     ys[N+1]=ys[1]
+
     epsgeom=T(1e-12)
+    if origin_shift>0 && origin_on_poly(xs,ys;eps=epsgeom)
+        cx=zero(T)
+        cy=zero(T)
+        @inbounds for i in 1:N
+            cx+=xs[i]
+            cy+=ys[i]
+        end
+        cx/=T(N)
+        cy/=T(N)
+        cn=hypot(cx,cy)
+        if cn>eps(T)
+            ox=T(origin_shift)*cx/cn
+            oy=T(origin_shift)*cy/cn
+            @inbounds for i in eachindex(xs)
+                xs[i]-=ox
+                ys[i]-=oy
+            end
+        end
+    end
+
     inside=point_in_poly(xs,ys)
     onorigin=origin_on_poly(xs,ys;eps=epsgeom)
-    rmin2=minimum(muladd(xs[i],xs[i],ys[i]*ys[i]) for i in 1:N)
-    near_origin_vertex=rmin2<T(origin_vertex_tol)^2
-    if check_inside && !(inside||onorigin||near_origin_vertex)
-        return (T(NaN),T(Inf),0,false)
-    end
+    check_inside && !(inside||onorigin) && return (T(NaN),T(Inf),0,false)
+
     @inbounds for i in 1:N
         r2=muladd(xs[i],xs[i],ys[i]*ys[i])
         (!isfinite(r2)||r2>=one(T)-T(100)*eps(T)) && return (T(NaN),T(Inf),0,false)
     end
-    θ0,Δθ=(inside && !near_origin_vertex) ? (zero(T),2*pi) : angular_support_from_origin(xs,ys;eps=max(epsgeom,T(origin_vertex_tol)))
-    (!isfinite(θ0)||!isfinite(Δθ)||Δθ<=zero(T)||Δθ>2*pi+1e-10) && return (T(NaN),T(Inf),0,false)
+
+    twoπ=T(2)*T(pi)
+    θ0,Δθ=inside ? (zero(T),twoπ) : angular_support_from_origin(xs,ys;eps=epsgeom)
+    (!isfinite(θ0)||!isfinite(Δθ)||Δθ<=zero(T)||Δθ>twoπ+T(1e-10)) &&
+        return (T(NaN),T(Inf),0,false)
+
     function area_rule(Nθ::Int;only_check::Bool=false)::T
         h=Δθ/T(Nθ)
         s=zero(T)
         @inbounds for j in 0:Nθ-1
             θ=θ0+h*(T(j)+T(0.5))
             tmin,nh=ray_hits_min_t(cos(θ),sin(θ),xs,ys)
-            (nh<1||!isfinite(tmin)||tmin<=zero(T)||tmin>=one(T)) && return T(NaN)
+            (nh!=1||!isfinite(tmin)||tmin<=zero(T)||tmin>=one(T)) && return T(NaN)
             only_check && continue
             r2=tmin*tmin
+            (!isfinite(r2)||r2>=one(T)) && return T(NaN)
             s+=T(2)/(one(T)-r2)-T(2)
         end
         return only_check ? zero(T) : s*h
     end
-    check_star && !isfinite(area_rule(max(2048,Nθ0);only_check=true)) && return (T(NaN),T(Inf),0,false)
+
+    check_star && !isfinite(area_rule(max(2048,Nθ0);only_check=true)) &&
+        return (T(NaN),T(Inf),0,false)
+
     Aprev=area_rule(Nθ0)
     isfinite(Aprev) || return (T(NaN),T(Inf),0,false)
     tolt=T(tol)
@@ -267,19 +297,14 @@ Supported symmetry logic:
                      reflection sectors;
   * `Rotation(n,...)`: divide by `n`.
 """
-function hyperbolic_area_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0)) where {Bi<:AbsBilliard,T<:Real}
-    A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref)
+function hyperbolic_area_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0),origin_shift::Real=0.0) where {Bi<:AbsBilliard,T<:Real}
+    A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref,origin_shift=origin_shift)
     ok || error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     sym=solver.symmetry
     isnothing(sym) && return A
-    if sym isa Reflection
-        l=sym.parity isa Integer ? 1 : length(sym.parity)
-        return A/(2*l)
-    elseif sym isa Rotation
-        return A/sym.n
-    else
-        error("Unknown symmetry type for symmetry-adapted hyperbolic area.")
-    end
+    sym isa Reflection && return A/(2*(sym.parity isa Integer ? 1 : length(sym.parity)))
+    sym isa Rotation && return A/sym.n
+    error("Unknown symmetry type for symmetry-adapted hyperbolic area.")
 end
 
 """
