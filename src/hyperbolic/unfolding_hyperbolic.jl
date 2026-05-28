@@ -138,22 +138,13 @@ rays can hit polygon vertices; these are later de-duplicated.
     return (t>epst && s>=-epss && s<=one(T)+epss) ? t : T(Inf)
 end
 
-"""
-    ray_hits_min_t(ux,uy,xs,ys;epshit=1e-10) -> tmin, nh
-
-Intersect the ray from the origin in direction `(ux,uy)` with the closed
-polyline. Returns the smallest positive hit and the number of distinct hit
-radii.
-
-Adjacent segments meeting at a vertex can produce the same hit twice; such
-duplicate hits are merged. For a valid star-shaped radial direction, `nh==1`.
-"""
-@inline function ray_hits_min_t(ux::T,uy::T,xs::AbstractVector{T},ys::AbstractVector{T};epshit::T=T(1e-10))::Tuple{T,Int} where {T<:Real}
+@inline function ray_hits_min_t(ux::T,uy::T,xs::AbstractVector{T},ys::AbstractVector{T};
+    epshit::T=T(1e-10),tmin_ignore::T=zero(T))::Tuple{T,Int} where {T<:Real}
     tmin=T(Inf)
     nh=0
     @inbounds for i in 1:length(xs)-1
         t=ray_seg_intersect_t(ux,uy,xs[i],ys[i],xs[i+1],ys[i+1])
-        isfinite(t) || continue
+        (isfinite(t)&&t>tmin_ignore) || continue
         if nh==0
             tmin=t
             nh=1
@@ -166,34 +157,9 @@ duplicate hits are merged. For a valid star-shaped radial direction, `nh==1`.
     return tmin,nh
 end
 
-"""
-    hyperbolic_area(billiard;tol=1e-6,Nθ0=2048,maxit=12,check_star=true,
-                    check_inside=true,kref=1000) -> A, err, Nθ, ok
-
-Compute the hyperbolic area of a star-shaped billiard in the Poincaré disk by
-radial integration.
-
-The routine supports two geometries:
-
-  * origin strictly inside the billiard:
-      integrate over the full angular range `[0,2π)`;
-
-  * origin on the boundary, e.g. Schmit triangle with one vertex at `(0,0)`:
-      determine the visible angular wedge and integrate only over that wedge.
-
-The radial integrand is
-
-    2/(1-r(θ)^2)-2,
-
-where `r(θ)` is the first positive boundary hit along the ray. Angular midpoint
-quadrature is used to avoid rays exactly coinciding with boundary edges. The
-success flag `ok=false` indicates that the geometry was not compatible with this
-star-shaped radial representation or that the sampled boundary left the unit
-disk.
-"""
 function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,
     check_star::Bool=true,check_inside::Bool=true,kref::Real=1000.0,
-    origin_shift::Real=0.0) where {Bi<:AbsBilliard}
+    origin_vertex_tol::Real=1e-5) where {Bi<:AbsBilliard}
 
     T=typeof(float(kref))
     solver=BIM_hyperbolic(T(10),symmetry=nothing)
@@ -212,29 +178,11 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
     ys[N+1]=ys[1]
 
     epsgeom=T(1e-12)
-    if origin_shift>0 && origin_on_poly(xs,ys;eps=epsgeom)
-        cx=zero(T)
-        cy=zero(T)
-        @inbounds for i in 1:N
-            cx+=xs[i]
-            cy+=ys[i]
-        end
-        cx/=T(N)
-        cy/=T(N)
-        cn=hypot(cx,cy)
-        if cn>eps(T)
-            ox=T(origin_shift)*cx/cn
-            oy=T(origin_shift)*cy/cn
-            @inbounds for i in eachindex(xs)
-                xs[i]-=ox
-                ys[i]-=oy
-            end
-        end
-    end
-
     inside=point_in_poly(xs,ys)
     onorigin=origin_on_poly(xs,ys;eps=epsgeom)
-    check_inside && !(inside||onorigin) && return (T(NaN),T(Inf),0,false)
+    rmin2=minimum(muladd(xs[i],xs[i],ys[i]*ys[i]) for i in 1:N)
+    near_origin_vertex=rmin2<T(origin_vertex_tol)^2
+    check_inside && !(inside||onorigin||near_origin_vertex) && return (T(NaN),T(Inf),0,false)
 
     @inbounds for i in 1:N
         r2=muladd(xs[i],xs[i],ys[i]*ys[i])
@@ -242,7 +190,9 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
     end
 
     twoπ=T(2)*T(pi)
-    θ0,Δθ=inside ? (zero(T),twoπ) : angular_support_from_origin(xs,ys;eps=epsgeom)
+    θ0,Δθ=(inside&&!near_origin_vertex) ? (zero(T),twoπ) :
+        angular_support_from_origin(xs,ys;eps=max(epsgeom,T(origin_vertex_tol)))
+
     (!isfinite(θ0)||!isfinite(Δθ)||Δθ<=zero(T)||Δθ>twoπ+T(1e-10)) &&
         return (T(NaN),T(Inf),0,false)
 
@@ -251,7 +201,7 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
         s=zero(T)
         @inbounds for j in 0:Nθ-1
             θ=θ0+h*(T(j)+T(0.5))
-            tmin,nh=ray_hits_min_t(cos(θ),sin(θ),xs,ys)
+            tmin,nh=ray_hits_min_t(cos(θ),sin(θ),xs,ys;tmin_ignore=T(origin_vertex_tol))
             (nh!=1||!isfinite(tmin)||tmin<=zero(T)||tmin>=one(T)) && return T(NaN)
             only_check && continue
             r2=tmin*tmin
@@ -277,6 +227,7 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
         err<=tolt && return (Aext,err,Nθ,true)
         Aprev=A
     end
+
     Nθ=Nθ0<<maxit
     A=area_rule(Nθ)
     isfinite(A) || return (T(NaN),T(Inf),0,false)
@@ -284,21 +235,14 @@ function hyperbolic_area(billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=1
     return (Aext,abs(Aext-A),Nθ,true)
 end
 
-"""
-    hyperbolic_area_fundamental(solver,billiard;...) -> A_fd
-
-Return the hyperbolic area of the symmetry-reduced fundamental domain implied
-by `solver.symmetry`.
-
-Supported symmetry logic:
-
-  * `nothing`      : return full area;
-  * `Reflection`   : divide by `2`, or by `2*length(parity)` for combined
-                     reflection sectors;
-  * `Rotation(n,...)`: divide by `n`.
-"""
-function hyperbolic_area_fundamental(solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,check_inside::Bool=true,kref::T=T(1000.0),origin_shift::Real=0.0) where {Bi<:AbsBilliard,T<:Real}
-    A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,check_star=check_star,check_inside=check_inside,kref=kref,origin_shift=origin_shift)
+function hyperbolic_area_fundamental(
+    solver::Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},
+    billiard::Bi;tol::Real=1e-6,Nθ0::Int=2048,maxit::Int=12,check_star::Bool=true,
+    check_inside::Bool=true,kref::T=T(1000.0),origin_vertex_tol::Real=1e-5
+) where {Bi<:AbsBilliard,T<:Real}
+    A,_,_,ok=hyperbolic_area(billiard;tol=tol,Nθ0=Nθ0,maxit=maxit,
+        check_star=check_star,check_inside=check_inside,kref=kref,
+        origin_vertex_tol=origin_vertex_tol)
     ok || error("Failed to compute hyperbolic area for symmetry-adapted Weyl estimate.")
     sym=solver.symmetry
     isnothing(sym) && return A
