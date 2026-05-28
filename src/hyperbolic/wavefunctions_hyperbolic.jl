@@ -1,456 +1,462 @@
-# ===============================================================================
-# HYPERBOLIC WAVEFUNCTION RECONSTRUCTION (POINCARÉ DISK, SLP FORM)
-# ===============================================================================
-#
-# PURPOSE
-#   Reconstruct interior eigenfunctions ψ(x,y) of the hyperbolic Laplacian
-#   (Helmholtz/Laplace–Beltrami) on a billiard embedded in the Poincaré disk,
-#   using a single-layer potential (SLP) integral representation.
-#
-# GEOMETRY + METRIC CONVENTIONS
-#   • Coordinates: Euclidean coordinates (x,y) in unit disk: x^2+y^2<1.
-#   • Poincaré metric: ds_H = λ(x,y) ds_E with λ(x,y)=2/(1-(x^2+y^2)).
-#   • Boundary discretization uses Euclidean arclength weights bd.ds ≈ ds_E.
-#   • Hyperbolic boundary element is inserted explicitly: ds_H=λ(q)*bd.ds.
-#
-# KERNEL CONVENTION
-#   • Hyperbolic Green kernel (fundamental solution):
-#       G(x,q)=(1/2π)Q_ν(cosh d(x,q)),
-#     with ν=-1/2+ik 
-#   • We evaluate Q via QuantumBilliards._eval_Q(tab,d) with d=hyperbolic distance.
-#
-# DENSITY CONVENTION (DIRICHLET EIGENPROBLEM)
-#   • For Dirichlet ψ|∂Ω=0, the standard Green identity gives representation
-#       ψ(x)=∮_∂Ω G(x,q) u(q) ds_H(q),
-#     where u(q)=∂_n ψ(q) (normal derivative on boundary).
-#   • Here vec_u[i] holds u(s) samples at boundary quadrature nodes.
-#
-# SYMMETRY CONVENTION
-#   • Only origin-based discrete symmetries are used (safe in Poincaré disk):
-#       - Rotations about origin
-#       - Reflections across x-axis, y-axis, or through origin
-#
-# OUTPUT CONVENTION
-#   • Returns ψ(x,y) on a Cartesian grid (xgrid,ygrid) inside the disk (and optionally inside Ω).
-#   • The returned matrices are Complex{T} (wavefunction values), not |ψ|^2.
-#
-# NUMERICAL SAFETY
-#   • δdisk excludes points too close to unit circle to avoid λ blowup and d issues.
-#   • λ denominator is clamped at 1e-15.
-# ===============================================================================
+"""
+    HypSLPData{T<:Real}
 
+Cache container for hyperbolic single-layer-potential reconstruction.
 
-#--------------------------------------------------------------------------
-# Origin-based symmetry helpers (valid in Poincaré disk)
-#--------------------------------------------------------------------------
-# rot_point : rotate a point around the origin
-# rot_vec   : rotate a vector around the origin
-# refl_*    : reflections through coordinate axes / origin
-#--------------------------------------------------------------------------
-@inline rot_point(x::T,y::T,cθ::T,sθ::T)where{T<:Real}=(cθ*x-sθ*y,sθ*x+cθ*y)
-@inline rot_vec(nx::T,ny::T,cθ::T,sθ::T)where{T<:Real}=(cθ*nx-sθ*ny,sθ*nx+cθ*ny)
-@inline refl_x_point(x::T,y::T)where{T<:Real}=(-x,y)
-@inline refl_y_point(x::T,y::T)where{T<:Real}=(x,-y)
-@inline refl_xy_point(x::T,y::T)where{T<:Real}=(-x,-y)
-@inline refl_x_vec(nx::T,ny::T)where{T<:Real}=(-nx,ny)
-@inline refl_y_vec(nx::T,ny::T)where{T<:Real}=(nx,-ny)
-@inline refl_xy_vec(nx::T,ny::T)where{T<:Real}=(-nx,-ny)
+Fields
 
-#------------------------------------------------------------------------------
-# λ_poincare(x,y)->λ
-#
-# PURPOSE
-#   Conformal factor of Poincaré disk metric:
-#     ds_H = λ(x,y) ds_E
-#
-# INPUTS
-#   x,y : coordinates in unit disk (Real)
-#
-# OUTPUTS
-#   λ   : Real scalar >=2, grows as r->1.
-#
-# SAFETY
-#   Denominator clamped to >=1e-14 to avoid Inf/NaN at r≈1.
-#
-# USED FOR
-#   Hyperbolic boundary measure:
-#     ds_H(q)=λ(q)*bd.ds(q).
-#------------------------------------------------------------------------------
+`qx::Vector{T}`
+    x-coordinates of boundary quadrature nodes.
+
+`qy::Vector{T}`
+    y-coordinates of boundary quadrature nodes.
+
+`wH::Vector{T}`
+    Hyperbolic quadrature weights
+
+        wH[j] = λ(q_j) ds_E[j].
+
+Purpose
+
+Avoid repeated coordinate extraction, conformal-factor evaluation, and
+hyperbolic boundary-weight construction inside the wavefunction loop.
+"""
+struct HypSLPData{T<:Real}
+    qx::Vector{T}
+    qy::Vector{T}
+    wH::Vector{T}
+end
+
+"""
+    λ_poincare(x::T,y::T) where {T<:Real}
+
+Evaluate the Poincaré conformal factor
+
+    λ(x,y)=2/(1-x²-y²).
+
+Inputs
+
+`x::T`, `y::T`
+    Euclidean coordinates inside the unit disk.
+
+Output
+
+`λ::T`
+    Metric conformal factor satisfying `ds_H = λ ds_E`.
+
+Numerical safety
+
+The denominator is clamped to avoid overflow near the unit circle.
+"""
 @inline function λ_poincare(x::T,y::T) where {T<:Real}
-    den=one(T)-muladd(x,x,y*y)
-    den=max(den,T(1e-14))
+    den=max(one(T)-muladd(x,x,y*y),T(1e-14))
     return T(2)/den
 end
 
-#------------------------------------------------------------------------------
-# λ2_poincare(x,y)->λ²
-#
-# PURPOSE
-#   Square of the Poincaré conformal factor appearing in the hyperbolic metric.
-#
-# INPUTS
-#   x,y : Euclidean coordinates in the unit disk (Real)
-#         Must satisfy x²+y²<1 for physical points.
-#
-# OUTPUTS
-#   λ²  : Real scalar >=4, diverging as r→1⁻.
-#------------------------------------------------------------------------------
-@inline function λ2_poincare(x::T,y::T)where{T<:Real}
-    den=one(T)-muladd(x,x,y*y)
-    den=max(den,T(1e-14))
-    lam=T(2)/den
-    lam*lam
+"""
+    λ2_poincare(x::T,y::T) where {T<:Real}
+
+Evaluate the square of the Poincaré conformal factor.
+
+Inputs
+
+`x::T`, `y::T`
+    Euclidean coordinates inside the unit disk.
+
+Output
+
+`λ²::T`
+    Hyperbolic area density factor satisfying `dA_H = λ² dxdy`.
+"""
+@inline function λ2_poincare(x::T,y::T) where {T<:Real}
+    λ=λ_poincare(x,y)
+    return λ*λ
 end
 
-#------------------------------------------------------------------------------
-# prepare_hyp_bd_xy(bd)->(qx,qy)
-#
-# PURPOSE
-#   Extract boundary node coordinates into two dense vectors to reduce overhead.
-#
-# INPUTS
-#   bd::BoundaryPointsHyp{T}
-#     Required fields:
-#       bd.xy :: Vector{SVector{2,T}} (or similar)
-#       bd.ds :: Vector{T}            (Euclidean ds weights)
-#
-# OUTPUTS
-#   qx::Vector{T} : x-coordinates of boundary nodes
-#   qy::Vector{T} : y-coordinates of boundary nodes
-#
-# NOTES
-#   • Does NOT compute λ or ds_H.
-#   • Hyperbolic ds is always inserted later as ds[j]*λ_poincare(qxj,qyj).
-#------------------------------------------------------------------------------
-function prepare_hyp_bd_xy(bd::BoundaryPointsHyp{T})where{T<:Real}
+"""
+    prepare_hyp_slp_data(bd::BoundaryPointsHyp{T}) where {T<:Real}
+
+Precompute boundary data for hyperbolic SLP reconstruction.
+
+Inputs
+
+`bd::HyperbolicBeynPoints`
+    Boundary discretization with fields:
+    `xy::Vector`, `ds::Vector{T}`.
+
+Output
+
+`HypSLPData{T}`
+    Cached boundary coordinates and hyperbolic weights.
+
+Details
+
+The stored weights are
+
+    wH[j] = λ(q_j) bd.ds[j],
+
+so runtime reconstruction evaluates
+
+    ψ(x) = Σ_j G_k(x,q_j) u_j wH[j].
+"""
+function prepare_hyp_slp_data(obj::HyperbolicBeynPoints)
+    bd=hyp_bp(obj)
+    T=eltype(bd.ds)
     N=length(bd.xy)
-    qx=Vector{T}(undef,N);qy=Vector{T}(undef,N)
+    qx=Vector{T}(undef,N)
+    qy=Vector{T}(undef,N)
+    wH=Vector{T}(undef,N)
     @inbounds for j in 1:N
-        qx[j]=bd.xy[j][1];qy[j]=bd.xy[j][2]
+        x=bd.xy[j][1]
+        y=bd.xy[j][2]
+        qx[j]=x
+        qy[j]=y
+        wH[j]=bd.ds[j]*λ_poincare(x,y)
     end
-    return qx,qy
+    return HypSLPData(qx,qy,wH)
 end
 
-#------------------------------------------------------------------------------
-# slp_kernel_hyp(tab,x,y,xp,yp)->G
-#
-# PURPOSE
-#   Evaluate hyperbolic Green function kernel G(x,q) for SLP.
-#
-# INPUTS
-#   tab::QTaylorTable
-#     Precomputed table encoding Q_ν(cosh d) evaluation at this k (ν depends on k).
-#   x,y   : target point in domain (Real)
-#   xp,yp : source boundary point q (Real)
-#
-# OUTPUTS
-#   G::Complex{T} or Complex{Float64} (depends on _eval_Q)
-#     Value of G(x,q)=(1/2π)Q_ν(cosh d(x,q)).
-#------------------------------------------------------------------------------
-@inline function slp_kernel_hyp(tab::QTaylorTable,x::T,y::T,xp::T,yp::T)where{T<:Real}
-    d=Float64(hyperbolic_distance_poincare(x,y,xp,yp))
-    return QuantumBilliards._eval_Q(tab,d)/TWO_PI
+"""
+    slp_kernel_hyp(tab::QTaylorTable,x::T,y::T,xp::T,yp::T) where {T<:Real}
+
+Evaluate the hyperbolic Green kernel
+
+    G_k(x,q)=Q_ν(cosh d_H(x,q))/(2π),
+
+where `ν=-1/2+ik`.
+
+Inputs
+
+`tab::QTaylorTable`
+    Patched Taylor table for Legendre-Q evaluation.
+
+`x::T`, `y::T`
+    Target point.
+
+`xp::T`, `yp::T`
+    Source boundary point.
+
+Output
+
+`G::Complex`
+    Complex Green kernel value.
+
+Numerical safety
+
+Returns zero if the hyperbolic distance is non-finite or non-positive.
+"""
+@inline function slp_kernel_hyp(tab::QTaylorTable,x::T,y::T,xp::T,yp::T) where {T<:Real}
+    d=hyperbolic_distance_poincare(x,y,xp,yp)
+    (!isfinite(d)||d<=zero(T))&&return zero(Complex{T})
+    return _eval_Q(tab,Float64(d))/TWO_PI
 end
 
-#------------------------------------------------------------------------------
-# ψ_hyp_slp(x,y,tab,bd,qx,qy,σ)->ψ
-#
-# PURPOSE
-#   Evaluate interior wavefunction ψ(x) by SLP integral:
-#     ψ(x)=∮_∂Ω G(x,q) σ(q) ds_H(q),
-#   where ds_H(q)=λ(q)ds_E(q) and bd.ds stores ds_E weights.
-#
-# INPUTS
-#   x,y : target point
-#   tab : QTaylorTable for the eigen-wavenumber
-#   bd  : BoundaryPointsHyp{T} providing bd.ds (Euclidean quadrature weights)
-#   qx,qy : boundary node coordinate arrays from prepare_hyp_bd_xy
-#   σ  : boundary density samples
-#        For your Dirichlet eigenproblem: σ(s)=u(s)=∂_nψ(s).
-#
-# OUTPUTS
-#   ψ(x,y) as Complex{T}
-#------------------------------------------------------------------------------
-@inline function ψ_hyp_slp(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHyp{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{Complex{T}})where{T<:Real}
-    ds=bd.ds;sr=zero(T);si=zero(T)
-    @inbounds for j in eachindex(σ)
-        qxj=qx[j];qyj=qy[j]
-        w=slp_kernel_hyp(tab,x,y,qxj,qyj)*(ds[j]*λ_poincare(qxj,qyj))
-        σj=σ[j];wr,wi=real(w),imag(w);σr,σi=real(σj),imag(σj)
-        sr=muladd(wr,σr,sr)-wi*σi
-        si=muladd(wr,σi,si)+wi*σr
+"""
+    ψ_hyp_slp_fast(x::T,y::T,tab::QTaylorTable,data::HypSLPData{T},u::AbstractVector{Complex{T}}) where {T<:Real}
+
+Evaluate the hyperbolic SLP reconstruction at one point.
+
+Inputs
+
+`x::T`, `y::T`
+    Interior target point.
+
+`tab::QTaylorTable`
+    Patched Legendre-Q table for the current eigenvalue.
+
+`data::HypSLPData{T}`
+    Cached boundary coordinates and hyperbolic quadrature weights.
+
+`u::AbstractVector{Complex{T}}`
+    Boundary density samples, usually `u≈∂ₙψ`.
+
+Output
+
+`ψ::Complex{T}`
+    Reconstructed wavefunction value.
+
+Performance
+
+The loop is allocation-free and uses fused real/imaginary accumulation.
+"""
+@inline function ψ_hyp_slp_fast(x::T,y::T,tab::QTaylorTable,data::HypSLPData{T},u::AbstractVector{Complex{T}}) where {T<:Real}
+    sr=zero(T)
+    si=zero(T)
+    qx=data.qx
+    qy=data.qy
+    wH=data.wH
+    @inbounds @simd for j in eachindex(u)
+        G=slp_kernel_hyp(tab,x,y,qx[j],qy[j])*wH[j]
+        Gr=real(G);Gi=imag(G)
+        ur=real(u[j]);ui=imag(u[j])
+        sr=muladd(Gr,ur,sr)-Gi*ui
+        si=muladd(Gr,ui,si)+Gi*ur
     end
     return Complex(sr,si)
 end
 
-#------------------------------------------------------------------------------
-# ψ_hyp_slp (real density overload)
-#
-# Same as above but σ is real-valued; output still Complex{T} because kernel is complex.
-#------------------------------------------------------------------------------
-@inline function ψ_hyp_slp(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHyp{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{T})where{T<:Real}
-    ds=bd.ds;acc=zero(Complex{T})
-    @inbounds for j in eachindex(σ)
-        qxj=qx[j];qyj=qy[j]
-        w=slp_kernel_hyp(tab,x,y,qxj,qyj)*(ds[j]*λ_poincare(qxj,qyj))
-        acc+=w*σ[j]
+"""
+    ψ_hyp_slp_fast(x::T,y::T,tab::QTaylorTable,data::HypSLPData{T},u::AbstractVector{T}) where {T<:Real}
+
+Real-density overload of `ψ_hyp_slp_fast`.
+
+Inputs
+
+`x::T`, `y::T`
+    Interior target point.
+
+`tab::QTaylorTable`
+    Patched Legendre-Q table.
+
+`data::HypSLPData{T}`
+    Cached boundary data.
+
+`u::AbstractVector{T}`
+    Real-valued boundary density.
+
+Output
+
+`ψ::Complex{T}`
+    Complex reconstructed wavefunction value.
+"""
+@inline function ψ_hyp_slp_fast(x::T,y::T,tab::QTaylorTable,data::HypSLPData{T},u::AbstractVector{T}) where {T<:Real}
+    acc=zero(Complex{T})
+    qx=data.qx
+    qy=data.qy
+    wH=data.wH
+    @inbounds @simd for j in eachindex(u)
+        acc+=slp_kernel_hyp(tab,x,y,qx[j],qy[j])*(wH[j]*u[j])
     end
     return acc
 end
 
-#------------------------------------------------------------------------------
-# ψ_hyp_slp_sym(x,y,tab,bd,qx,qy,σ,sym)->ψ
-#
-# PURPOSE
-#   Same as ψ_hyp_slp, but includes symmetry images of the boundary.
-#
-# INPUTS
-#   sym : one of:
-#     • QuantumBilliards.Rotation(n,m)   (about origin)
-#     • Reflection with axis in {:origin,:x_axis,:y_axis}
-#   σ   : boundary density in the fundamental domain
-#   bd.ds: Euclidean ds weights associated with those fundamental boundary nodes
-#
-# OUTPUTS
-#   ψ(x,y) in the full (symmetrized) domain satisfying required symmetry sector.
-#------------------------------------------------------------------------------
-function ψ_hyp_slp_sym(x::T,y::T,tab::QTaylorTable,bd::BoundaryPointsHyp{T},qx::AbstractVector{T},qy::AbstractVector{T},σ::AbstractVector{Num},sym)where{T<:Real,Num<:Number}
-    ds=bd.ds;acc=zero(Complex{T})
-    if sym isa QuantumBilliards.Rotation
-        n=sym.n;m=mod(sym.m,n)
-        @inbounds for j in eachindex(σ)
-            qxj=qx[j];qyj=qy[j];σj=σ[j];dsj=ds[j]
-            for ℓ in 1:n
-                θ=T(TWO_PI)*T(ℓ-1)/T(n);cθ=cos(θ);sθ=sin(θ)
-                qxr,qyr=rot_point(qxj,qyj,cθ,sθ)
-                phase=Complex{T}(cis(T(TWO_PI)*T(m)*T(ℓ-1)/T(n)))
-                w=slp_kernel_hyp(tab,x,y,qxr,qyr)*(dsj*λ_poincare(qxr,qyr))
-                acc+=phase*w*σj
-            end
-        end
-        return acc
-    end
-    if sym isa Reflection
-        if sym.axis==:origin
-            px,py=sym.parity;sx=(px<0 ? -one(T) : one(T));sy=(py<0 ? -one(T) : one(T))
-            @inbounds for j in eachindex(σ)
-                qxj=qx[j];qyj=qy[j];σj=σ[j];dsj=ds[j]
-                w=slp_kernel_hyp(tab,x,y,qxj,qyj)*(dsj*λ_poincare(qxj,qyj));acc+=w*σj
-                qx1,qy1=refl_x_point(qxj,qyj);w=slp_kernel_hyp(tab,x,y,qx1,qy1)*(dsj*λ_poincare(qx1,qy1));acc+=sx*w*σj
-                qx2,qy2=refl_y_point(qxj,qyj);w=slp_kernel_hyp(tab,x,y,qx2,qy2)*(dsj*λ_poincare(qx2,qy2));acc+=sy*w*σj
-                qx3,qy3=refl_xy_point(qxj,qyj);w=slp_kernel_hyp(tab,x,y,qx3,qy3)*(dsj*λ_poincare(qx3,qy3));acc+=(sx*sy)*w*σj
-            end
-            return acc
-        elseif sym.axis==:y_axis
-            sgn=(sym.parity==-1 ? -one(T) : one(T))
-            @inbounds for j in eachindex(σ)
-                qxj=qx[j];qyj=qy[j];σj=σ[j];dsj=ds[j]
-                w=slp_kernel_hyp(tab,x,y,qxj,qyj)*(dsj*λ_poincare(qxj,qyj));acc+=w*σj
-                qx1,qy1=refl_x_point(qxj,qyj);w=slp_kernel_hyp(tab,x,y,qx1,qy1)*(dsj*λ_poincare(qx1,qy1));acc+=sgn*w*σj
-            end
-            return acc
-        elseif sym.axis==:x_axis
-            sgn=(sym.parity==-1 ? -one(T) : one(T))
-            @inbounds for j in eachindex(σ)
-                qxj=qx[j];qyj=qy[j];σj=σ[j];dsj=ds[j]
-                w=slp_kernel_hyp(tab,x,y,qxj,qyj)*(dsj*λ_poincare(qxj,qyj));acc+=w*σj
-                qx2,qy2=refl_y_point(qxj,qyj);w=slp_kernel_hyp(tab,x,y,qx2,qy2)*(dsj*λ_poincare(qx2,qy2));acc+=sgn*w*σj
-            end
-            return acc
-        end
-    end
-    error("Unsupported symmetry type:$(typeof(sym))")
-end
+"""
+    _make_grid_and_idxs_for_billiard(ks::Vector{T},billiard::Bi; b=5.0,fundamental=true,inside_only=true,δdisk=T(1e-10)) where {T<:Real,Bi<:AbsBilliard}
 
-#------------------------------------------------------------------------------
-# _make_grid_and_idxs_for_billiard(ks,billiard;...)->(xgrid,ygrid,idxs,nx,ny)
-#
-# PURPOSE
-#   Build a Cartesian evaluation grid and return the linear indices of points
-#   where ψ should be evaluated.
-#
-# INPUTS
-#   ks::Vector{T}
-#     Eigen-wavenumbers; only max(ks) is used to set grid resolution.
-#
-#   billiard
-#     Must provide:
-#       billiard.length
-#       billiard.fundamental_boundary
-#       billiard.full_boundary
-#
-# KEYWORD INPUTS
-#   b::Float64
-#     Resolution parameter similar to your BIM rule-of-thumb.
-#   fundamental::Bool
-#     If true: bounding box computed from billiard.fundamental_boundary.
-#     Else:    from billiard.full_boundary.
-#   inside_only::Bool
-#     If true: idxs only include points inside billiard polygon (within chosen domain).
-#     If false: idxs include all points inside Poincaré disk (within bounding box).
-#   δdisk::T
-#     Exclude points with r^2 >= 1-δdisk.
-#
-# OUTPUTS
-#   xgrid::Vector{T},ygrid::Vector{T}
-#     Coordinate grids; lengths nx and ny.
-#   idxs::Vector{Int}
-#     Linear indices into an nx*ny flattened array (column-major with ix+(jy-1)*nx).
-#   nx::Int,ny::Int
-#     Grid sizes.
-#------------------------------------------------------------------------------
-function _make_grid_and_idxs_for_billiard(ks::Vector{T},billiard::Bi;b::Float64=5.0,fundamental::Bool=true,inside_only::Bool=true,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
-    kmax=maximum(ks);L=billiard.length
-    if fundamental
-        xlim,ylim=boundary_limits(billiard.fundamental_boundary;grd=max(1000,round(Int,kmax*L*b/(TWO_PI))))
-    else
-        xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(TWO_PI))))
-    end
-    dx=xlim[2]-xlim[1];dy=ylim[2]-ylim[1]
-    nx=max(round(Int,kmax*dx*b/(TWO_PI)),512)
-    ny=max(round(Int,kmax*dy*b/(TWO_PI)),512)
+Construct the Cartesian wavefunction grid and active evaluation indices.
+
+Inputs
+
+`ks::Vector{T}`
+    Eigen-wavenumbers. The maximum value controls the grid resolution.
+
+`billiard::Bi`
+    Billiard geometry.
+
+Keyword arguments
+
+`b::Float64`
+    Grid resolution parameter.
+
+`fundamental::Bool`
+    Use the fundamental boundary if true, otherwise the full boundary.
+
+`inside_only::Bool`
+    Keep only points inside the billiard if true.
+
+`δdisk::T`
+    Exclude points with `x²+y² ≥ 1-δdisk`.
+
+Outputs
+
+`xgrid::Vector{T}`, `ygrid::Vector{T}`
+    Cartesian grid vectors.
+
+`idxs::Vector{Int}`
+    Linear indices of active evaluation points.
+
+`nx::Int`, `ny::Int`
+    Grid dimensions.
+"""
+function _make_grid_and_idxs_for_billiard(ks::Vector{T},billiard::Bi;b::Float64=5.0,fundamental::Bool=true,inside_only::Bool=true,δdisk::T=T(1e-10)) where {T<:Real,Bi<:AbsBilliard}
+    kmax=maximum(ks)
+    L=billiard.length
+    bdry=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
+    xlim,ylim=boundary_limits(bdry;grd=max(1000,round(Int,kmax*L*b/TWO_PI)))
+    dx=xlim[2]-xlim[1]
+    dy=ylim[2]-ylim[1]
+    nx=max(round(Int,kmax*dx*b/TWO_PI),512)
+    ny=max(round(Int,kmax*dy*b/TWO_PI),512)
     xgrid=collect(T,range(xlim...,nx))
     ygrid=collect(T,range(ylim...,ny))
     r2max=one(T)-δdisk
-    disk_idxs=Int[];sizehint!(disk_idxs,nx*ny)
-    @inbounds for jy in 1:ny
+    disk_idxs=Int[]
+    sizehint!(disk_idxs,nx*ny)
+    @inbounds for jy in 1:ny,ix in 1:nx
+        x=xgrid[ix]
         y=ygrid[jy]
-        for ix in 1:nx
-            x=xgrid[ix]
-            r2=muladd(x,x,y*y)
-            r2<r2max && push!(disk_idxs,ix+(jy-1)*nx)
-        end
+        muladd(x,x,y*y)<r2max&&push!(disk_idxs,ix+(jy-1)*nx)
     end
-    if !inside_only
-        return xgrid,ygrid,disk_idxs,nx,ny
-    end
+    !inside_only&&return xgrid,ygrid,disk_idxs,nx,ny
     Nd=length(disk_idxs)
     pts_disk=Vector{SVector{2,T}}(undef,Nd)
     @inbounds for t in 1:Nd
-        idx=disk_idxs[t];ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
+        idx=disk_idxs[t]
+        ix=(idx-1)%nx+1
+        jy=(idx-1)÷nx+1
         pts_disk[t]=SVector(xgrid[ix],ygrid[jy])
     end
     mask_in=points_in_billiard_polygon(pts_disk,billiard,round(Int,sqrt(Nd));fundamental_domain=fundamental)
-    idxs=Int[];sizehint!(idxs,Nd)
+    idxs=Int[]
+    sizehint!(idxs,Nd)
     @inbounds for t in 1:Nd
-        mask_in[t] && push!(idxs,disk_idxs[t])
+        mask_in[t]&&push!(idxs,disk_idxs[t])
     end
     return xgrid,ygrid,idxs,nx,ny
 end
 
-@inline function _grid_rho_bound(xgrid::AbstractVector{T},ygrid::AbstractVector{T},idxs::Vector{Int},nx::Int) where{T<:Real}
-    ρ=zero(T)
-    @inbounds for idx in idxs
-        ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
-        ρ=max(ρ,hypot(xgrid[ix],ygrid[jy]))
-    end
-    return ρ
-end
+"""
+    d_bounds_hyp_grid(data::HypSLPData{T},xgrid,ygrid,idxs; pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8)) where {T<:Real}
 
-function d_bounds_hyp_grid(bd::BoundaryPointsHyp{T},xgrid,ygrid,idxs,symmetry;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8)) where {T<:Real}
-    qx,qy=prepare_hyp_bd_xy(bd)
-    dmin=typemax(T);dmax=zero(T)
-    @inline function upd(x,y,xq,yq)
-        d=hyperbolic_distance_poincare(x,y,xq,yq)
-        d>zero(T)&&(dmin=min(dmin,d);dmax=max(dmax,d))
-    end
-    @inline function updq(x,y,xq,yq)
-        upd(x,y,xq,yq)
-        if symmetry isa Reflection
-            if symmetry.axis==:origin
-                upd(x,y,-xq,yq);upd(x,y,xq,-yq);upd(x,y,-xq,-yq)
-            elseif symmetry.axis==:y_axis
-                upd(x,y,-xq,yq)
-            elseif symmetry.axis==:x_axis
-                upd(x,y,xq,-yq)
-            end
-        elseif symmetry isa Rotation
-            n=symmetry.n
-            for ℓ in 2:n
-                θ=T(TWO_PI)*T(ℓ-1)/T(n);c=cos(θ);s=sin(θ)
-                upd(x,y,c*xq-s*yq,s*xq+c*yq)
-            end
-        end
-    end
+Compute distance bounds for Legendre-Q Taylor-table construction.
+
+Inputs
+
+`data::HypSLPData{T}`
+    Cached boundary coordinates.
+
+`xgrid`, `ygrid`
+    Cartesian grid vectors.
+
+`idxs`
+    Active evaluation indices.
+
+Keyword arguments
+
+`pad_min::T`
+    Multiplicative padding for the minimum distance.
+
+`pad_max::T`
+    Multiplicative padding for the maximum distance.
+
+`dmin_floor::T`
+    Lower bound for the returned minimum distance.
+
+Outputs
+
+`(dmin,dmax)::Tuple{T,T}`
+    Safe hyperbolic-distance range over all active grid/boundary pairs.
+
+Numerical safety
+
+Non-finite and zero distances are ignored.
+"""
+function d_bounds_hyp_grid(data::HypSLPData{T},xgrid,ygrid,idxs;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8)) where {T<:Real}
+    dmin=typemax(T)
+    dmax=zero(T)
     nx=length(xgrid)
+    qx=data.qx
+    qy=data.qy
     @inbounds for idx in idxs
-        ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
-        x=xgrid[ix];y=ygrid[jy]
+        ix=(idx-1)%nx+1
+        jy=(idx-1)÷nx+1
+        x=xgrid[ix]
+        y=ygrid[jy]
         for j in eachindex(qx)
-            updq(x,y,qx[j],qy[j])
+            d=hyperbolic_distance_poincare(x,y,qx[j],qy[j])
+            if isfinite(d)&&d>zero(T)
+                dmin=min(dmin,d)
+                dmax=max(dmax,d)
+            end
         end
     end
+    dmin==typemax(T)&&error("Could not determine finite hyperbolic distance bounds.")
     return max(dmin_floor,pad_min*dmin),pad_max*dmax
 end
 
-#------------------------------------------------------------------------------
-# wavefunction_multi_hyp(ks,vec_u,vec_bd,tabs,billiard;...)->(Psi2ds,xgrid,ygrid)
-#
-# PURPOSE
-#   Compute wavefunctions ψ_i(x,y) on a grid for each eigen-wavenumber k_i.
-#
-# INPUTS
-#   ks::Vector{T}
-#     List of eigen-wavenumbers (typically real Float64) used for grid sizing and loop.
-#
-#   vec_u::Vector{<:AbstractVector}
-#     Boundary density for each eigenvalue:
-#       vec_u[i][j] ≈ u(s_j)=∂_n ψ_i(s_j).
-#     Length of vec_u[i] must match number of boundary nodes in vec_bd[i].
-#
-#   vec_bd
-#     Vector of BoundaryPointsHyp objects, one per eigenvalue.
-#     Must provide fields:
-#       bd.xy :: boundary nodes (Euclidean coordinates)
-#       bd.ds :: Euclidean quadrature weights ds_E at nodes
-#
-#   billiard
-#     Billiard definition, used only to construct grid + inside mask.
-#
-# KEYWORD INPUTS
-#   b::Float64
-#     Controls grid resolution; larger -> finer grid.
-#   inside_only::Bool
-#     If true: evaluate only for points inside billiard polygon.
-#   fundamental::Bool
-#     If true: grid bounding box determined from fundamental boundary.
-#   symmetry
-#     If nothing: evaluate without images.
-#     Else: pass a symmetry object handled by ψ_hyp_slp_sym.
-#   MIN_CHUNK::Int
-#     Controls number of grid points per thread (static schedule).
-#   δdisk::T
-#     Safety exclusion near r=1.
-#
-# OUTPUTS
-#   Psi2ds::Vector{Matrix{Complex{T}}}
-#     Psi2ds[i] is an nx×ny array holding ψ_i evaluated on the grid.
-#     Values at grid points not in idxs remain 0+0im (since Psi_flat initialized to zero).
-#
-#   xgrid::Vector{T},ygrid::Vector{T}
-#     The coordinate vectors defining the Cartesian grid.
-#------------------------------------------------------------------------------
-function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:BoundaryPointsHyp},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10))where{T<:Real,Bi<:AbsBilliard}
-    _psi(x,y,tab,bd,qx,qy,u,symmetry)=symmetry===nothing ? ψ_hyp_slp(x,y,tab,bd,qx,qy,u) : ψ_hyp_slp_sym(x,y,tab,bd,qx,qy,u,symmetry)
+"""
+    wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:HyperbolicBeynPoints},billiard::Bi; kwargs...) where {T<:Real,Bi<:AbsBilliard}
+
+Reconstruct several hyperbolic billiard eigenfunctions on one Cartesian grid.
+
+Inputs
+
+`ks::Vector{T}`
+    Eigen-wavenumbers.
+
+`vec_u::Vector{<:AbstractVector}`
+    Boundary density vectors. Each entry must match the corresponding boundary
+    discretization in `vec_bd`.
+
+`vec_bd::AbstractVector{<:HyperbolicBeynPoints}`
+    Boundary discretizations for the eigenstates.
+
+`billiard::Bi`
+    Billiard geometry used for grid construction and inside-domain masking.
+
+Keyword arguments
+
+`b::Float64=5.0`
+    Grid resolution parameter.
+
+`inside_only::Bool=true`
+    Evaluate only inside the billiard if true.
+
+`fundamental::Bool=true`
+    Build the plotting grid from the fundamental boundary if true.
+
+`MIN_CHUNK::Int=4096`
+    Minimum thread chunk size.
+
+`δdisk::T=T(1e-10)`
+    Unit-disk safety margin.
+
+`mp_dps::Int=80`
+    Multiprecision digits used by the Legendre-Q Taylor builder.
+
+`leg_type::Int=3`
+    Legendre-Q convention selector.
+
+Outputs
+
+`Psi2ds::Vector{Matrix{Complex{T}}}`
+    Reconstructed wavefunction matrices.
+
+`xgrid::Vector{T}`
+    Cartesian x-grid.
+
+`ygrid::Vector{T}`
+    Cartesian y-grid.
+
+Algorithm
+
+For each eigenstate:
+    1. cache boundary coordinates and hyperbolic weights,
+    2. compute grid-to-boundary hyperbolic distance bounds,
+    3. build a `QTaylorTable`,
+    4. evaluate the SLP on active grid points.
+
+Notes
+
+No symmetry images are generated here. If the eigenproblem was solved in a
+symmetry-reduced basis, expand the boundary vector to the full physical boundary
+before calling this routine.
+"""
+function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:HyperbolicBeynPoints},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Bi<:AbsBilliard}
     xgrid,ygrid,idxs,nx,ny=_make_grid_and_idxs_for_billiard(ks,billiard;b=b,fundamental=fundamental,inside_only=inside_only,δdisk=δdisk)
-    ρgrid=_grid_rho_bound(xgrid,ygrid,idxs,nx)
-    nmask=length(idxs);NT=Threads.nthreads();NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)));q,r=divrem(nmask,NT_eff)
+    nmask=length(idxs)
+    NT=Threads.nthreads()
+    NT_eff=max(1,min(NT,cld(nmask,MIN_CHUNK)))
+    q,r=divrem(nmask,NT_eff)
     Psi_flat=zeros(Complex{T},nx*ny)
     Psi2ds=Vector{Matrix{Complex{T}}}(undef,length(ks))
     prog=Progress(length(ks),desc="Constructing hyperbolic SLP wavefunctions...")
     @inbounds for i in eachindex(ks)
         fill!(Psi_flat,zero(Complex{T}))
-        bd=vec_bd[i];u=vec_u[i]
-        dmin,dmax=d_bounds_hyp_grid(bd,xgrid,ygrid,idxs,symmetry;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8))
-        dmin=max(dmin,T(1e-3))
-        tab=build_QTaylorTable(ComplexF64(ks[i]);dmin=dmin,dmax=dmax)
-        qx,qy=prepare_hyp_bd_xy(bd)
+        bd=vec_bd[i]
+        u=Complex{T}.(vec_u[i])
+        data=prepare_hyp_slp_data(bd)
+        dmin,dmax=d_bounds_hyp_grid(data,xgrid,ygrid,idxs;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8))
+        dmin=max(dmin,T(1e-4))
+        tab=build_QTaylorTable(ComplexF64(ks[i]);dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
         Threads.@threads :static for t in 1:NT_eff
             lo=(t-1)*q+min(t-1,r)+1
             hi=lo+q-1+(t<=r ? 1 : 0)
-            for jj in lo:hi
-                idx=idxs[jj];ix=(idx-1)%nx+1;jy=(idx-1)÷nx+1
-                Psi_flat[idx]=_psi(xgrid[ix],ygrid[jy],tab,bd,qx,qy,u,symmetry)
+            @inbounds for jj in lo:hi
+                idx=idxs[jj]
+                ix=(idx-1)%nx+1
+                jy=(idx-1)÷nx+1
+                Psi_flat[idx]=ψ_hyp_slp_fast(xgrid[ix],ygrid[jy],tab,data,u)
             end
         end
         Psi2ds[i]=copy(reshape(Psi_flat,nx,ny))
@@ -459,141 +465,50 @@ function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},ve
     return Psi2ds,xgrid,ygrid
 end
 
-# ------------------------------------------------------------------------------
-# wavefunction_multi_with_husimi_hyp(ks,vec_u,vec_bd,tabs,billiard,qs,ps;...)
-#
-# PURPOSE
-#   Compute (i) hyperbolic SLP wavefunctions ψ_i(x,y) on a Cartesian grid and
-#   (ii) boundary Poincaré–Husimi densities H_i(q,p) for the same eigenstates.
-#
-# INPUTS
-#   ks::Vector{T}
-#     Eigen-wavenumbers (one per state).
-#
-#   vec_u::Vector{<:AbstractVector}
-#     Boundary densities u_i on ∂Ω (Dirichlet case: u_i=∂nψ_i at boundary nodes).
-#     Length(vec_u[i]) must match the boundary node count of vec_bd[i].
-#
-#   vec_bd::Vector{BoundaryPointsHyp}
-#     Boundary containers (one per state). Required fields:
-#       bd.xy  : Euclidean boundary nodes (for ψ reconstruction)
-#       bd.ds  : Euclidean ds weights (for ψ reconstruction, combined with λ)
-#       bd.ξ   : hyperbolic arclength coordinate (monotone) for Husimi
-#       bd.LH  : total hyperbolic boundary length
-#       bd.dsH : hyperbolic quadrature weights for Husimi (ds_H)
-#
-#   billiard
-#     Used for grid construction / inside mask in wavefunction_multi_hyp.
-#
-# KEYWORDS
-#   b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,
-#   MIN_CHUNK::Int=4096,δdisk::T=T(1e-10)
-#     Passed to wavefunction_multi_hyp.
-#
-#   full_p::Bool=false
-#     Husimi construction based on time-reversal symmetry:
-#       full_p=true  -> H is (q×p) with pgrid=ps[i]
-#       full_p=false -> H is (q×p_out) with p_out=[-reverse(ps[i])[1:end-1]; ps[i]]
-#
-#   show_progress_husimi::Bool=true
-#     If true, show progress bar for Husimi computation (thread-safe).
-#   Nq::Int=1000 
-#     Number of q grid points for Husimi.
-#   Np::Int=1000
-#     Number of p grid points for Husimi (per half if full_p=false).
-#   pmax::T=one(T)
-#     Maximum p value for Husimi grid (p in [0,pmax] or [-
-#     pmax,pmax]).
-#   δdisk::T=T(1e-10)
-#     Passed to wavefunction_multi_hyp to prevent issues near r=1.
-#
-# OUTPUTS
-#   Psi2ds::Vector{Matrix{Complex{T}}}
-#     Wavefunctions ψ_i on the (xgrid,ygrid) grid (nx×ny).
-#
-#   xgrid::Vector{T},ygrid::Vector{T}
-#
-#   Hs::Vector{Matrix{T}}
-#     Husimi matrices for successful states (failed states dropped).
-#
-#   qs_out::Vector{<:AbstractVector{T}}
-#     The q grids used (returned as-is, aligned with Hs).
-#
-#   ps_out::Vector{<:AbstractVector{T}}
-#     The p grids actually used (ps or the reflected p_out), aligned with Hs.
-# ------------------------------------------------------------------------------
-function wavefunction_multi_with_husimi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:BoundaryPointsHyp},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,symmetry=nothing,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),full_p::Bool=false,show_progress_husimi::Bool=true,Nq::Int=1000,Np::Int=1000,pmax::T=one(T)) where {T<:Real,Bi<:AbsBilliard}
-    Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,billiard;b=b,inside_only=inside_only,fundamental=fundamental,symmetry=symmetry,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk)
-    n=length(ks)
-    Hs=Vector{Matrix{T}}(undef,n)
-    ok=trues(n)
-    imax=argmax(ks)
-    LH0=vec_bd[imax].LH
-    qgrid=collect(range(zero(T),LH0;length=Nq+1))[1:end-1]
-    pgrid=full_p ? collect(range(-pmax,pmax;length=Np)) : collect(range(zero(T),pmax;length=Np))
-    ps_out=full_p ? pgrid : vcat(-reverse(pgrid)[1:end-1],pgrid)
-    qs_all=fill(qgrid,n) 
-    ps_all=fill(ps_out,n)
-    pbar=show_progress_husimi ? Progress(n;desc="Husimi N=$n") : nothing
-    Threads.@threads for i in 1:n
-        #try
-            bd=vec_bd[i]
-            H=full_p ? Matrix{T}(undef,Nq,Np) : Matrix{T}(undef,Nq,2*Np-1)
-            _husimi_on_grid_hyp!(H,ks[i],bd.ξ,vec_u[i],bd.LH,bd.dsH,qgrid,pgrid;full_p=full_p)
-            Hs[i]=H
-        #catch
-        #    ok[i]=false
-        #end
-        #if show_progress_husimi
-            next!(pbar)
-        #end
-    end
-    return Psi2ds,xgrid,ygrid,Hs[ok],qs_all[ok],ps_all[ok]
-end
+"""
+    normalize_psi_hyperbolic!(ψ::AbstractMatrix{Num},xgrid::AbstractVector{T},ygrid::AbstractVector{T}) where {Num<:Number,T<:Real}
 
-#------------------------------------------------------------------------------
-# normalize_psi_hyperbolic!(ψ,xgrid,ygrid)->ψ
-#
-# PURPOSE
-#   In-place L² normalization of a wavefunction on a Cartesian grid using the
-#   HYPERBOLIC area element of the Poincaré disk.
-#
-#   Hyperbolic area element:
-#     dA_H = λ(x,y)² dx dy,
-#     λ(x,y)=2/(1-(x²+y²)).
-#
-#   This rescales ψ so that:
-#     ∫_Ω |ψ|² dA_H ≈ 1
-#   where the integral is approximated by a Riemann sum on the provided grid:
-#     Σ_{i,j} |ψ[j,i]|² λ(x_i,y_j)² dx dy.
-#
-# INPUTS
-#   ψ::AbstractMatrix{Num}
-#     Wavefunction values on the grid, size (ny×nx).
-#
-#   xgrid::AbstractVector{T}
-#     Grid x-coordinates (length nx), assumed uniformly spaced.
-#
-#   ygrid::AbstractVector{T}
-#     Grid y-coordinates (length ny), assumed uniformly spaced.
-#
-# OUTPUTS
-#     The same array object, modified in-place:
-#       ψ .= ψ / sqrt(normH),
-#     where normH is the hyperbolic L² norm computed from the grid.
-#------------------------------------------------------------------------------
-function normalize_psi_hyperbolic!(ψ::AbstractMatrix{Num},xgrid::AbstractVector{T},ygrid::AbstractVector{T}) where{Num<:Number,T<:Real}
+Normalize a wavefunction in the hyperbolic area measure.
+
+Inputs
+
+`ψ::AbstractMatrix{Num}`
+    Wavefunction values on the Cartesian grid.
+
+`xgrid::AbstractVector{T}`
+    x-grid.
+
+`ygrid::AbstractVector{T}`
+    y-grid.
+
+Output
+
+The same matrix `ψ`, normalized in place.
+
+Normalization
+
+The routine rescales `ψ` so that
+
+    ∫ |ψ|² dA_H ≈ 1,
+
+using
+
+    dA_H = λ² dxdy.
+
+Numerical safety
+
+Non-finite wavefunction values are ignored in the norm accumulation.
+"""
+function normalize_psi_hyperbolic!(ψ::AbstractMatrix{Num},xgrid::AbstractVector{T},ygrid::AbstractVector{T}) where {Num<:Number,T<:Real}
     dx=xgrid[2]-xgrid[1]
     dy=ygrid[2]-ygrid[1]
-    s=0.0
-    @inbounds for j in eachindex(ygrid), i in eachindex(xgrid)
-        x=xgrid[i];y=ygrid[j]
+    s=zero(T)
+    @inbounds for j in eachindex(ygrid),i in eachindex(xgrid)
         val=ψ[i,j]
-        if !isnan(real(val)) && !isnan(imag(val))
-            s+=abs2(val)*λ2_poincare(x,y)
+        if isfinite(real(val))&&isfinite(imag(val))
+            s+=abs2(val)*λ2_poincare(xgrid[i],ygrid[j])
         end
     end
-    s*=dx*dy
-    ψ./=sqrt(s+eps()) # s should in principle not be this small
+    ψ./=sqrt(s*dx*dy+eps(T))
     return ψ
 end

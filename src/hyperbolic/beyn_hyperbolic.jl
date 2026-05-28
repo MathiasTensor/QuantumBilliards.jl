@@ -659,11 +659,10 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     all_pts=Vector{PtsT}(undef,nw)
     all_pts[1]=first_pts
     @time "Point evaluation" begin
-        @inbounds for i in 1:nw
+        @showprogress desc="pts construction" Threads.@threads for i in 1:nw
             i>1&&(all_pts[i]=_hyp_evaluate_points(solver,billiard,k0s[i],pre;threaded=multithreaded_matrix))
             bp=hyp_bp(all_pts[i])
             dmin,dmax=d_bounds_hyp(bp,solver.symmetry)
-            @show i k0s[i] Rs[i] length(bp.xy) dmin dmax
         end
     end
     if do_INFO

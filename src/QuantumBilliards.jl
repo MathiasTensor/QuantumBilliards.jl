@@ -242,8 +242,8 @@ include("hyperbolic/dlp_hyperbolic_matrix_construction.jl")
 include("hyperbolic/dlp_hyperbolic_kress.jl")
 include("hyperbolic/dlp_hyperbolic_gl_quad.jl")
 include("hyperbolic/hyperbolic_sweeps.jl")
-include("hyperbolic/wavefunctions_hyperbolic.jl")
 include("hyperbolic/unfolding_hyperbolic.jl")
 include("hyperbolic/beyn_hyperbolic.jl")
+include("hyperbolic/wavefunctions_hyperbolic.jl")
 
 end
