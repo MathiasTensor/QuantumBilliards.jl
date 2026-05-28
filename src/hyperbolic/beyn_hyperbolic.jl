@@ -54,6 +54,62 @@ const HyperbolicBeynPoints=Union{BoundaryPointsHyp,DLPHypLogDiscretization}
 @inline _hyp_evaluate_points(solver::DLP_hyperbolic_log_product,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k)
 @inline _hyp_evaluate_points(solver::BIM_hyperbolic,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k;threaded=threaded)
 
+struct HypContourPrecomp{T,W}
+    zj::Vector{ComplexF64}
+    wj::Vector{Complex{T}}
+    ws::Vector{W}
+end
+
+_hyp_contour_cache(solver,pts)=nothing
+_hyp_contour_cache(solver::DLP_hyperbolic_log_product,pts::DLPHypLogDiscretization)=build_dlp_hyp_log_geom_cache(solver,pts)
+
+function _hyp_contour_workspace(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts,k,cache;mp_dps::Int=80,leg_type::Int=3)
+    return build_dlp_hyperbolic_kress_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
+end
+
+function _hyp_contour_workspace(solver::DLP_hyperbolic_log_product,pts::DLPHypLogDiscretization,k,cache;mp_dps::Int=80,leg_type::Int=3)
+    return build_dlp_hyp_log_workspace(solver,pts,cache,k)
+end
+
+function precompute_hyp_contour(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
+    θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
+    ej=cis.(θ)
+    zj=ComplexF64.(k0.+R.*ej)
+    wj=Complex{T}.((R/nq).*ej)
+    cache=_hyp_contour_cache(solver,pts)
+    ws1=_hyp_contour_workspace(solver,pts,zj[1],cache;mp_dps=mp_dps,leg_type=leg_type)
+    ws=Vector{typeof(ws1)}(undef,nq)
+    ws[1]=ws1
+    @inbounds for q in 2:nq
+        ws[q]=_hyp_contour_workspace(solver,pts,zj[q],cache;mp_dps=mp_dps,leg_type=leg_type)
+    end
+    return HypContourPrecomp{T,typeof(ws1)}(zj,wj,ws)
+end
+
+function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},pts::HyperbolicBeynPoints,pc::HypContourPrecomp;multithreaded::Bool=true,timeit::Bool=false)
+    @blas_1 begin
+        @inbounds for q in eachindex(pc.zj)
+            n=_workspace_dim(pc.ws[q])
+            @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but solver requires ($n,$n)."
+            fill!(Tbufs[q],0.0+0.0im)
+            @benchit timeit=timeit "hyp precomputed assembly" construct_matrices!(solver,Tbufs[q],pts,pc.ws[q],pc.zj[q];multithreaded=multithreaded)
+        end
+    end
+    return nothing
+end
+
+function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::HyperbolicBeynPoints,pc;multithreaded::Bool=true,timeit::Bool=false)
+    construct_boundary_matrices!(Tbufs,solver,pts,pc.zj;multithreaded=multithreaded,timeit=timeit)
+end
+
+function precompute_hyp_contour(solver::BIM_hyperbolic,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
+    θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
+    ej=cis.(θ)
+    zj=ComplexF64.(k0.+R.*ej)
+    wj=Complex{T}.((R/nq).*ej)
+    return HypContourPrecomp{T,Nothing}(zj,wj,Nothing[])
+end
+
 # ===============================================================================
 # plan_k_windows_hyp
 #
@@ -234,46 +290,33 @@ end
 #   4) SVD(A0) => rank rk by svd_tol.
 #   5) Build reduced B via Uk,Wk,Σk and A1.
 # ===============================================================================
-function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::HyperbolicBeynPoints,N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
-    @info "Constructing B matrix (hyp)" N=N k0=k0 R=R nq=nq r=r
-    θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
-    ej=cis.(θ)
-    zj=ComplexF64.(k0.+R.*ej)
-    wj=Complex{T}.((R/nq).*ej)
+function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::HyperbolicBeynPoints,N::Int,pc::HypContourPrecomp;r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false)
+    nq=length(pc.zj)
+    zj=pc.zj
+    wj=pc.wj
     Tbufs=[zeros(ComplexF64,N,N) for _ in 1:nq]
-    construct_boundary_matrices!(Tbufs,solver,pts,zj;multithreaded=multithreaded,timeit=timeit)
+    construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;multithreaded=multithreaded,timeit=timeit)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
-    Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
+    Fs=Vector{typeof(F1)}(undef,nq); Fs[1]=F1
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
         Fs[j]=lu!(Tbufs[j];check=false)
     end
-    function accum_moments!(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}},X::Matrix{Complex{T}},V::Matrix{Complex{T}})
-        xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
+    function accum_moments!(A0,A1,X,V)
+        xv=reshape(X,:); a0v=reshape(A0,:); a1v=reshape(A1,:)
         @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 1:nq
             ldiv!(X,Fs[j],V)
             BLAS.axpy!(wj[j],xv,a0v)
-            BLAS.axpy!(wj[j]*Complex{T}(zj[j]),xv,a1v)
+            BLAS.axpy!(wj[j]*zj[j],xv,a1v)
         end
         return nothing
     end
+    T=real(eltype(wj))
+    N=size(Tbufs[1],1)
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     accum_moments!(A0,A1,X,V)
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
-    rk==0&&return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
-    if rk==r
-        r_tmp=r+r
-        while r_tmp<N
-            V,X,A0,A1=beyn_buffer_matrices(T,N,r_tmp,rng)
-            accum_moments!(A0,A1,X,V)
-            @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
-            rk=count(>=(svd_tol),Σ)
-            rk<r_tmp&&break
-            r_tmp+=r
-            r_tmp>N&&throw(ArgumentError("r > N is impossible: requested r=$(r_tmp), N=$(N)"))
-        end
-        rk==r_tmp&&@warn "All singular values ≥ svd_tol=$(svd_tol); consider increasing r or decreasing R"
-    end
+    rk==0 && return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
     Uk=@view U[:,1:rk]
     Wk=@view W[:,1:rk]
     Σk=@view Σ[1:rk]
@@ -325,12 +368,12 @@ end
 # NOTES
 #   - If rk==0 (empty B), returns empty λ and empty matrices.
 # ===============================================================================
-function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
-    N=_hyp_beyn_dim(solver,pts,k0)
-    B,Uk=construct_B_matrix_hyp(solver,pts,N,k0,R;nq=nq,r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
-    isempty(B)&&return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k0,R,pts
+function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,pc::HypContourPrecomp;r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis}
+    N=_hyp_beyn_dim(solver,pts,pc.zj[1])
+    B,Uk=construct_B_matrix_hyp(solver,pts,N,pc;r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
+    isempty(B) && return ComplexF64[],Uk,Matrix{ComplexF64}(undef,0,0),pc.zj[1],zero(real(eltype(pc.wj))),pts
     @blas_multi_then_1 MAX_BLAS_THREADS λ,Y=eigen!(B)
-    return λ,Uk,Y,k0,R,pts
+    return λ,Uk,Y,pc.zj[1],zero(real(eltype(pc.wj))),pts
 end
 
 # ===============================================================================
@@ -345,8 +388,9 @@ end
 # OUTPUTS
 #   λ :: Vector{Complex{T}}
 # ===============================================================================
-@inline function solve_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
-    λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,k0,R;nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
+@inline function solve_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,pc::HypContourPrecomp;
+    r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis}
+    λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,pc;r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
     return λ
 end
 
@@ -439,7 +483,8 @@ function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::Abstr
         λj=λ[j]
         abs(λj-k0)>R&&(tens[j]=T(NaN);tensN[j]=T(NaN);continue)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
-        construct_boundary_matrices!([A_buf],solver,pts,ComplexF64[ComplexF64(λj)];multithreaded=multithreaded,timeit=timeit)
+        pc=precompute_hyp_contour(solver,pts,Complex{T}(λj),T(0);nq=1)
+        construct_boundary_matrices_precomputed!([A_buf],solver,pts,pc;multithreaded=multithreaded,timeit=timeit)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))
         rj=norm(y)
         tens[j]=rj
@@ -667,6 +712,15 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
             dmin,dmax=d_bounds_hyp(bp,solver.symmetry)
         end
     end
+    pc1=precompute_hyp_contour(solver,all_pts[1],complex(k0s[1],zero(T)),Rs[1];nq=nq)
+    PCT=typeof(pc1)
+    pcs=Vector{PCT}(undef,nw)
+    pcs[1]=pc1
+    @time "Contour workspace precompute" begin
+        @showprogress desc="contour precompute" Threads.@threads for i in 2:nw
+            pcs[i]=precompute_hyp_contour(solver,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq)
+        end
+    end
     if do_INFO
         iinfo=cld(nw,2)
         @time "solve_INFO middle disk (hyp)" begin
@@ -678,7 +732,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     Ys=Vector{Matrix{Complex{T}}}(undef,nw)
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (hyp)" @inbounds for i in 1:nw
-        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,timeit=timeit)
+        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],pcs[i],complex(k0s[i],zero(T)),Rs[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,timeit=timeit)
         λs[i]=λ
         Uks[i]=Uk
         Ys[i]=Y
