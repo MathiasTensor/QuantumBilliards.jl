@@ -712,15 +712,6 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
             dmin,dmax=d_bounds_hyp(bp,solver.symmetry)
         end
     end
-    pc1=precompute_hyp_contour(solver,all_pts[1],complex(k0s[1],zero(T)),Rs[1];nq=nq)
-    PCT=typeof(pc1)
-    pcs=Vector{PCT}(undef,nw)
-    pcs[1]=pc1
-    @time "Contour workspace precompute" begin
-        @showprogress desc="contour precompute" #=Threads.@threads=# for i in 2:nw
-            pcs[i]=precompute_hyp_contour(solver,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq)
-        end
-    end
     if do_INFO
         iinfo=cld(nw,2)
         @time "solve_INFO middle disk (hyp)" begin
@@ -732,10 +723,13 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     Ys=Vector{Matrix{Complex{T}}}(undef,nw)
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (hyp)" @inbounds for i in 1:nw
-        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],pcs[i],complex(k0s[i],zero(T)),Rs[i];nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,timeit=timeit)
+        pc=precompute_hyp_contour(solver,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq)
+        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,timeit=timeit)
         λs[i]=λ
         Uks[i]=Uk
         Ys[i]=Y
+        pc=nothing
+        GC.gc()
         next!(p)
     end
     ks_list=Vector{Vector{Complex{T}}}(undef,nw)
