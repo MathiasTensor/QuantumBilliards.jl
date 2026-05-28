@@ -729,7 +729,6 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
         Uks[i]=Uk
         Ys[i]=Y
         pc=nothing
-        GC.gc()
         next!(p)
     end
     ks_list=Vector{Vector{Complex{T}}}(undef,nw)
