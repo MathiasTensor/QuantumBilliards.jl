@@ -42,7 +42,18 @@
 #   MO / 22-12-2025
 # ===============================================================================
 
-const HyperbolicBoundarySolver=Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners}
+const HyperbolicBoundarySolver=Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product}
+const HyperbolicBeynPoints=Union{BoundaryPointsHyp,DLPHypLogDiscretization}
+
+@inline hyp_bp(pts::BoundaryPointsHyp)=pts
+@inline hyp_bp(disc::DLPHypLogDiscretization)=disc.bp
+@inline _hyp_beyn_dim(solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization,k)=length(disc.bp.xy)
+@inline _hyp_precompute_points(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard)=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
+@inline _hyp_precompute_points(solver::DLP_hyperbolic_log_product,billiard)=nothing
+@inline _hyp_precompute_points(solver::BIM_hyperbolic,billiard)=nothing
+@inline _hyp_evaluate_points(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k,pre;safety=1e-14,threaded=threaded)
+@inline _hyp_evaluate_points(solver::DLP_hyperbolic_log_product,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k)
+@inline _hyp_evaluate_points(solver::BIM_hyperbolic,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k;threaded=threaded)
 
 # ===============================================================================
 # plan_k_windows_hyp
@@ -157,7 +168,7 @@ end
 #   solver :: BIM_hyperbolic
 #       Hyperbolic BIM solver (symmetry rules, boundary sampling policy, etc.).
 #
-#   pts :: BoundaryPointsHyp{T}
+#   pts :: HyperbolicBeynPoints
 #       Boundary discretization in the hyperbolic setting.
 #       NOTE: you convert to Euclidean BoundaryPoints for kernel assembly.
 #
@@ -222,7 +233,7 @@ end
 #   4) SVD(A0) => rank rk by svd_tol.
 #   5) Build reduced B via Uk,Wk,Σk and A1.
 # ===============================================================================
-function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::BoundaryPointsHyp{T},N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
+function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::HyperbolicBeynPoints,N::Int,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false)::Tuple{Matrix{Complex{T}},Matrix{Complex{T}}} where {T<:Real}
     @info "Constructing B matrix (hyp)" N=N k0=k0 R=R nq=nq r=r
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
@@ -290,7 +301,7 @@ end
 #   basis  :: Ba   where Ba <: AbstractHankelBasis
 #       Currently unused in this function body (kept for uniform API).
 #
-#   pts    :: BoundaryPointsHyp{T}
+#   pts    :: HyperbolicBeynPoints
 #   k0     :: Complex{T}
 #   R      :: T
 #
@@ -313,7 +324,7 @@ end
 # NOTES
 #   - If rk==0 (empty B), returns empty λ and empty matrices.
 # ===============================================================================
-function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::BoundaryPointsHyp{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
     N=_hyp_beyn_dim(solver,pts,k0)
     B,Uk=construct_B_matrix_hyp(solver,pts,N,k0,R;nq=nq,r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
     isempty(B)&&return Complex{T}[],Uk,Matrix{Complex{T}}(undef,0,0),k0,R,pts
@@ -333,7 +344,7 @@ end
 # OUTPUTS
 #   λ :: Vector{Complex{T}}
 # ===============================================================================
-@inline function solve_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::BoundaryPointsHyp{T},k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
+@inline function solve_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,r::Int=48,svd_tol::Real=1e-14,res_tol::Real=1e-8,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
     λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,k0,R;nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
     return λ
 end
@@ -368,7 +379,7 @@ end
 #   k0 :: Complex{T},  R :: T
 #       Disk definition used for "inside disk" check |λ-k0| <= R.
 #
-#   pts :: BoundaryPointsHyp{T}
+#   pts :: HyperbolicBeynPoints
 #       Boundary discretization for residual evaluation at each λ_j.
 #
 # KEYWORD INPUTS
@@ -413,7 +424,7 @@ end
 #   - This is expensive because it builds a FULL N×N matrix T(λ_j) for each λ_j.
 #     That is often the dominant cost after Beyn if many candidates exist.
 # ===============================================================================
-function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::BoundaryPointsHyp{T};res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::HyperbolicBeynPoints;res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
     y=Vector{Complex{T}}(undef,N)
@@ -478,7 +489,7 @@ end
 #   4) Compute eigen(B) => λ candidates.
 #   5) Optionally rebuild T(λ_j) and compute residual ||T(λ_j) Φ_j||.
 # ===============================================================================
-function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::BoundaryPointsHyp{T},k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
     N=_hyp_beyn_dim(solver,pts,k0)
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
@@ -634,21 +645,27 @@ end
 #   tensN_all :: Vector{T}
 #       Normalized residuals (if computed in residual stage).
 # ===============================================================================
-function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=m,Rmax=Rmax,Rfloor=Rfloor,kref=kref)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
     Rs=isempty(idx) ? T[] : Rs[idx]
     nw=length(k0s)
-    nw==0&&return Complex{T}[],T[],Vector{Vector{Complex{T}}}(),Vector{BoundaryPointsHyp{T}}(),T[]
+    nw==0&&return (return_imag_part ? Complex{T}[] : T[]),T[],Vector{Vector{Complex{T}}}(),Vector{HyperbolicBeynPoints}(),T[]
     println("Number of windows: ",nw)
     println("Average R: ",sum(Rs)/T(nw))
-    all_pts=Vector{BoundaryPointsHyp{T}}(undef,nw)
-    pre=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
-    @time "Point evaluation" @inbounds for i in 1:nw
-        all_pts[i]=evaluate_points(solver,billiard,k0s[i],pre;safety=1e-14,threaded=multithreaded_matrix)
-        dmin,dmax=d_bounds_hyp(all_pts[i],solver.symmetry)
-        @show i k0s[i] Rs[i] length(all_pts[i].xy) dmin dmax
+    pre=_hyp_precompute_points(solver,billiard)
+    first_pts=_hyp_evaluate_points(solver,billiard,k0s[1],pre;threaded=multithreaded_matrix)
+    PtsT=typeof(first_pts)
+    all_pts=Vector{PtsT}(undef,nw)
+    all_pts[1]=first_pts
+    @time "Point evaluation" begin
+        @inbounds for i in 1:nw
+            i>1&&(all_pts[i]=_hyp_evaluate_points(solver,billiard,k0s[i],pre;threaded=multithreaded_matrix))
+            bp=hyp_bp(all_pts[i])
+            dmin,dmax=d_bounds_hyp(bp,solver.symmetry)
+            @show i k0s[i] Rs[i] length(bp.xy) dmin dmax
+        end
     end
     if do_INFO
         iinfo=cld(nw,2)
@@ -676,7 +693,8 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
             ks_list[i]=Complex{T}[]
             tens_list[i]=T[]
             tensN_list[i]=T[]
-            phi_list[i]=Matrix{Complex{T}}(undef,length(all_pts[i].xy),0)
+            bp=hyp_bp(all_pts[i])
+            phi_list[i]=Matrix{Complex{T}}(undef,length(bp.xy),0)
             continue
         end
         idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,timeit=timeit)
@@ -698,7 +716,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     tens_all=Vector{T}(undef,ntot)
     tensN_all=Vector{T}(undef,ntot)
     us_all=Vector{Vector{Complex{T}}}(undef,ntot)
-    pts_all=Vector{BoundaryPointsHyp{T}}(undef,ntot)
+    pts_all=Vector{PtsT}(undef,ntot)
     Threads.@threads for i in 1:nw
         n=n_by_win[i]
         n==0&&continue
@@ -716,5 +734,6 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
             pts_all[off+j]=pts
         end
     end
-    return ks_all,tens_all,us_all,pts_all,tensN_all
+    ks_out=return_imag_part ? ks_all : real.(ks_all)
+    return ks_out,tens_all,us_all,pts_all,tensN_all
 end
