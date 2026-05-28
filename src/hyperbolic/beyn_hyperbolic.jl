@@ -47,7 +47,6 @@ const HyperbolicBeynPoints=Union{BoundaryPointsHyp,DLPHypLogDiscretization}
 
 @inline hyp_bp(pts::BoundaryPointsHyp)=pts
 @inline hyp_bp(disc::DLPHypLogDiscretization)=disc.bp
-@inline _hyp_beyn_dim(solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization,k)=length(disc.bp.xy)
 @inline _hyp_precompute_points(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard)=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
 @inline _hyp_precompute_points(solver::DLP_hyperbolic_log_product,billiard)=nothing
 @inline _hyp_precompute_points(solver::BIM_hyperbolic,billiard)=nothing
