@@ -94,6 +94,27 @@ function legendre_Q_set_taylor_params!(;h_patch=nothing,P_patch=nothing,d_thresh
     return LEGENDRE_TAYLOR_CONFIG
 end
 
+# Thread-local storage for the small-z Taylor expansion buffers, to avoid allocations in the small-d regime where we use a Taylor expansion instead of the patch table. The size is determined by legendre_P_small_terms() since we need that many terms in the expansion.
+const SMALL_P_TLS=Ref{Vector{Vector{ComplexF64}}}()
+
+function init_small_p_tls!()
+    n=legendre_P_small_terms()+1
+    SMALL_P_TLS[]=[Vector{ComplexF64}(undef,n) for _ in 1:Threads.nthreads()]
+    return nothing
+end
+
+@inline function small_p_buffer(terms::Int)
+    if !isassigned(SMALL_P_TLS)
+        init_small_p_tls!()
+    end
+    tls=SMALL_P_TLS[]
+    if Threads.threadid()>length(tls) || terms+1>length(tls[Threads.threadid()])
+        init_small_p_tls!()
+        tls=SMALL_P_TLS[]
+    end
+    return tls[Threads.threadid()]
+end
+
 # =============================================
 # _small_z_Q
 # Series expansions for Q_ν(cosh d) at small d.
@@ -191,10 +212,10 @@ const _COTH_SERIES_COEFFS=Float64[
 # This branch is used only for very small d, where direct special-function
 # evaluation loses relative accuracy due to cancellation.
 @inline function _small_z_P(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms()) where {T<:Real}
+    a=small_p_buffer(terms)
     nu=ν(k)
     lam=nu*(nu+1)
     x=ComplexF64(d*d,0.0)
-    a=Vector{ComplexF64}(undef,terms+1)
     a[1]=1.0+0.0im
     @inbounds for m in 0:terms-1
         s=0.0+0.0im
@@ -229,10 +250,10 @@ end
 # This is primarily needed for stable evaluation of logarithmic
 # kernel coefficients in the hyperbolic Kress splitting near d=0.
 @inline function _small_z_dP(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms()) where {T<:Real}
+    a=small_p_buffer(terms)
     nu=ν(k)
     lam=nu*(nu+1)
     x=ComplexF64(d*d,0.0)
-    a=Vector{ComplexF64}(undef,terms+1)
     a[1]=1.0+0.0im
     @inbounds for m in 0:terms-1
         s=0.0+0.0im
@@ -428,6 +449,54 @@ end
     acc=ComplexF64(0.0,0.0)
     @inbounds for i in length(coeffs):-1:1
         acc=muladd(acc,xx,coeffs[i])
+    end
+    return acc
+end
+
+# =============================================================================
+# horner_eval_col
+#
+# Evaluate a Taylor polynomial stored as a column of a coefficient matrix.
+#
+# Mathematical definition
+#   If column j of A stores
+#
+#       a₀,a₁,...,a_P,
+#
+#   then this function evaluates
+#
+#       p(x)=Σ_{n=0}^P a_n x^n
+#
+#   using Horner accumulation:
+#
+#       p(x)=(((a_P x+a_{P-1})x+a_{P-2})x+⋯)x+a₀.
+#
+#   It avoids creating SubArray views
+#   such as
+#
+#       @view A[:,j]
+#
+#   in hot evaluation paths.
+#
+# Inputs
+#   A::Matrix{ComplexF64}
+#       Coefficient matrix whose columns store Taylor coefficients.
+#
+#   j::Int
+#       Column index.
+#
+#   x::Float64
+#       Evaluation point.
+#
+# Output
+#   ComplexF64
+#       Polynomial value p(x).
+# =============================================================================
+@inline function horner_eval_col(A::Matrix{ComplexF64},j::Int,x::Float64)
+    xx=ComplexF64(x,0.0)
+    acc=0.0+0.0im
+    @inbounds for i in size(A,1):-1:1
+        acc=muladd(acc,xx,A[i,j])
     end
     return acc
 end
@@ -629,7 +698,7 @@ end
         return _small_z_Q(k_from_ν(tab.nu),dd)
     end
     idx=_patch_index(tab,dd)
-    return horner_eval(view(tab.ucoeffs,:,idx),dd-tab.centers[idx])
+    return horner_eval_col(tab.ucoeffs,idx,dd-tab.centers[idx])
 end
 
 # =============================================================================
@@ -652,7 +721,7 @@ end
         return _small_z_dQ(k_from_ν(tab.nu),dd)
     end
     idx=_patch_index(tab,dd)
-    return horner_eval(view(tab.ycoeffs,:,idx),dd-tab.centers[idx])
+    return horner_eval_col(tab.ycoeffs,idx,dd-tab.centers[idx])
 end
 
 # =============================================================================
@@ -1405,7 +1474,7 @@ end
     end
     @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
-    return horner_eval(@view(tab.pcoeffs[:,idx]),dd-tab.centers[idx])
+    return horner_eval_col(tab.pcoeffs,idx,dd-tab.centers[idx])
 end
 
 # =============================================================================
@@ -1431,7 +1500,7 @@ end
     end
     @boundscheck tab.dmin<=dd<=tab.dmax || error("P table d=$dd outside [$(tab.dmin), $(tab.dmax)]")
     idx=_patch_index_Q(tab,dd)
-    return horner_eval(@view(tab.dpcoeffs[:,idx]),dd-tab.centers[idx])
+    return horner_eval_col(tab.dpcoeffs,idx,dd-tab.centers[idx])
 end
 
 # =============================================================================
@@ -1484,7 +1553,7 @@ end
 #   satisfies
 #       cosh(d)=1+2|x'-x|^2/((1-|x|^2)(1-|x'|^2)).
 #
-# This routine returns ∂_{n'_E}d, the derivative of d w.r.t. the *Euclidean*
+# This function returns ∂_{n'_E}d, the derivative of d w.r.t. the *Euclidean*
 # outward unit normal at the source point x' (no hyperbolic normal factors).
 #
 # Inputs

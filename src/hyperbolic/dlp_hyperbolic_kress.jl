@@ -278,7 +278,13 @@ end
 @inline _workspace_dim(ws::DLPHyperbolicKressReducedWorkspace)=ws.m
 @inline _is_dlp_hyp_kress_graded(::DLP_hyperbolic_kress,pts::BoundaryPointsHyp)=false
 @inline _is_dlp_hyp_kress_graded(::DLP_hyperbolic_kress_global_corners,pts::BoundaryPointsHyp)=_is_nontrivial_hyp_grading(pts)
-@inline function _is_nontrivial_hyp_grading(pts::BoundaryPointsHyp{T}) where {T<:Real};return maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T));end
+@inline function _is_nontrivial_hyp_grading(pts::BoundaryPointsHyp{T}) where {T<:Real}
+    tol=sqrt(eps(T))
+    @inbounds for x in pts.ws_der
+        abs(x-one(T))>tol && return true
+    end
+    return false
+end
 @inline _dlp_hyp_kress_use_reduced(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners})=!isnothing(solver.symmetry)
 # name compatibility with BIM_hyperbolic
 function _hyp_beyn_dim(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp,k)
@@ -684,11 +690,19 @@ end
 function build_dlp_hyperbolic_kress_reduced_workspace(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},k;mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
     full=build_dlp_hyperbolic_kress_workspace_full(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
     Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
-    xs=getindex.(pts.xy,1)
-    ys=getindex.(pts.xy,2)
-    nx=getindex.(pts.normal,1)
-    ny=getindex.(pts.normal,2)
-    wE=copy(pts.ds)
+    N=length(pts.xy)
+    xs=Vector{T}(undef,N)
+    ys=Vector{T}(undef,N)
+    nx=Vector{T}(undef,N)
+    ny=Vector{T}(undef,N)
+    wE=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        xs[i]=pts.xy[i][1]
+        ys[i]=pts.xy[i][2]
+        nx[i]=pts.normal[i][1]
+        ny[i]=pts.normal[i][2]
+        wE[i]=pts.ds[i]
+    end
     return DLPHyperbolicKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,wE,length(Ifund))
 end
 
@@ -764,6 +778,13 @@ end
     return hyp_raw_dlp(qtab,d,dn)-l1*logterm
 end
 
+@inline function hyp_kress_entry(qtab::QTaylorTable,ptab::PTaylorTable,Rij::T,dsj::T,wsj::T,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=2*hyperbolic_Alog_d(ptab,d)*dn
+    raw=_eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
+    l2=raw-l1*logterm
+    return Rij*(l1*(dsj/wsj))+dsj*l2
+end
+
 # Assemble the full source-normal hyperbolic DLP matrix.
 # The continuous operator is
 #
@@ -788,25 +809,16 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
         D[i,i]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
     end
     @use_threads multithreading=(multithreaded && N>=32) for j in 2:N
+        dsj=pts.ds[j]
+        wsj=pts.ws[j]
         @inbounds for i in 1:j-1
-            dij=Float64(G.d[i,j])
-            l1ij=hyp_L1_kress(ptab,dij,G.dnd[i,j])
-            l2ij=hyp_L2_kress(qtab,ptab,dij,G.dnd[i,j],G.logterm[i,j])
-            hj=pts.ws[j]
-            JEj=pts.ds[j]/hj
-            #D[i,j]=R[i,j]*(l1ij*JEj)+hj*(l2ij*JEj)
-            D[i,j]=R[i,j]*(l1ij*JEj)+pts.ds[j]*l2ij
-            dji=Float64(G.d[j,i])
-            l1ji=hyp_L1_kress(ptab,dji,G.dnd[j,i])
-            l2ji=hyp_L2_kress(qtab,ptab,dji,G.dnd[j,i],G.logterm[j,i])
-            hi=pts.ws[i]
-            JEi=pts.ds[i]/hi
-            #D[j,i]=R[j,i]*(l1ji*JEi)+hi*(l2ji*JEi)
-            D[j,i]=R[j,i]*(l1ji*JEi)+pts.ds[i]*l2ji
+            D[i,j]=hyp_kress_entry(qtab,ptab,R[i,j],dsj,wsj,Float64(G.d[i,j]),G.dnd[i,j],G.logterm[i,j])
+            D[j,i]=hyp_kress_entry(qtab,ptab,R[j,i],pts.ds[i],pts.ws[i],Float64(G.d[j,i]),G.dnd[j,i],G.logterm[j,i])
         end
     end
     return D
 end
+
 # Convert the DLP operator into the Fredholm matrix : A = I - D. Eigenvalues are detected from singularity / near-singularity of A(k).
 function construct_fredholm_hyperbolic_kress_matrix!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},ws::DLPHyperbolicKressWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     construct_dlp_hyperbolic_kress_matrix!(A,solver,pts,ws;multithreaded=multithreaded)
@@ -847,32 +859,32 @@ function construct_dlp_hyperbolic_kress_matrix!(D::AbstractMatrix{Complex{T}},so
     fill!(D,zero(Complex{T}))
     @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
         j=Ifund[b]
+        dsj=pts.ds[j]
+        wsj=pts.ws[j]
         @inbounds for a in 1:m
             i=Ifund[a]
             if i==j
-                D[a,b]=pts.ds[i]*hyp_L2_diag_Kress(G,i)
+                D[a,b]=dsj*hyp_L2_diag_Kress(G,i)
             else
-                d=Float64(G.d[i,j])
-                l1=hyp_L1_kress(ptab,d,G.dnd[i,j])
-                l2=hyp_L2_kress(qtab,ptab,d,G.dnd[i,j],G.logterm[i,j])
-                hj=pts.ws[j]
-                JEj=pts.ds[j]/hj
-                D[a,b]=R[i,j]*(l1*JEj)+pts.ds[j]*l2
+                D[a,b]=hyp_kress_entry(qtab,ptab,R[i,j],dsj,wsj,Float64(G.d[i,j]),G.dnd[i,j],G.logterm[i,j])
             end
         end
     end
-    for b in 1:m
+    @inbounds for b in 1:m
         j=Ifund[b]
-        @inbounds for a in 1:m
+        imgs=rws.fund_to_full[b]
+        scales=rws.fund_to_scale[b]
+        for a in 1:m
             i=Ifund[a]
             xi=rws.xs[i]
             yi=rws.ys[i]
-            for l in eachindex(rws.fund_to_full[b])
-                q=rws.fund_to_full[b][l]
+            s=zero(Complex{T})
+            for l in eachindex(imgs)
+                q=imgs[l]
                 q==j && continue
-                scale=rws.fund_to_scale[b][l]
-                D[a,b]+=_regular_hyp_dlp_image_D(qtab,xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],rws.wE[q],scale)
+                s+=_regular_hyp_dlp_image_D(qtab,xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],rws.wE[q],scales[l])
             end
+            D[a,b]+=s
         end
     end
     return D
