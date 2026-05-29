@@ -48,7 +48,7 @@ Base.@kwdef mutable struct LegendreTaylorConfig
     h_patch::Float64=1e-5 # patch half-width. This is the main parameter controlling the table size and accuracy. Smaller h means more patches and more accuracy, but also more memory and longer precomputation time. 1e-5 is a good default for double precision and k up to a few thousands, giving rel accuracy of 1e-13 at d=1e-3.
     P_patch::Int=8 # patch order. This is the order of the Taylor expansion in each patch. Higher order means more accuracy but also more memory and longer precomputation time. 8 is a good default for double precision and k up to a few thousands, giving rel accuracy of 1e-13 at d=1e-3.
     d_threshold::Float64=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
-    P_small_terms::Int=48 # usually this is enough for P even up to d=1e-2 for k in the thousands in double precision.
+    P_small_terms::Int=24 # usually this is enough for P even up to d=1e-3 for k in the thousands in double precision.
     dQ_small_terms::Int=24 # this is good enought fo the default d_threshold of 1e-3.
 end
 
