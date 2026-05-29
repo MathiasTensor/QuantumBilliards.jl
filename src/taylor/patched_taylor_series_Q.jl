@@ -49,6 +49,7 @@ Base.@kwdef mutable struct LegendreTaylorConfig
     P_patch::Int=8 # patch order. This is the order of the Taylor expansion in each patch. Higher order means more accuracy but also more memory and longer precomputation time. 8 is a good default for double precision and k up to a few thousands, giving rel accuracy of 1e-13 at d=1e-3.
     d_threshold::Float64=1e-3 # corresponding d threshold for cosh(d)=z close to 1 (if smaller than 1e-3 invalidates tables)
     P_small_terms::Int=48 # usually this is enough for P even up to d=1e-2 for k in the thousands in double precision.
+    dQ_small_terms::Int=24 # this is good enought fo the default d_threshold of 1e-3.
 end
 
 const LEGENDRE_TAYLOR_CONFIG=LegendreTaylorConfig()
@@ -57,6 +58,7 @@ const LEGENDRE_TAYLOR_CONFIG=LegendreTaylorConfig()
 @inline legendre_Q_P_patch()=LEGENDRE_TAYLOR_CONFIG.P_patch
 @inline legendre_d_threshold()=LEGENDRE_TAYLOR_CONFIG.d_threshold
 @inline legendre_P_small_terms()=LEGENDRE_TAYLOR_CONFIG.P_small_terms
+@inline legendre_dQ_small_terms()=LEGENDRE_TAYLOR_CONFIG.dQ_small_terms
 @inline function legendre_Q_params()
     cfg=LEGENDRE_TAYLOR_CONFIG
     return cfg.h_patch,cfg.P_patch
@@ -86,11 +88,18 @@ function legendre_Q_set_P_small_terms!(n::Integer)
     return LEGENDRE_TAYLOR_CONFIG
 end
 
-function legendre_Q_set_taylor_params!(;h_patch=nothing,P_patch=nothing,d_threshold=nothing,P_small_terms=nothing)
+function legendre_Q_set_dQ_small_terms!(n::Integer)
+    n>=2 || error("dQ_small_terms must be at least 2.")
+    LEGENDRE_TAYLOR_CONFIG.dQ_small_terms=Int(n)
+    return LEGENDRE_TAYLOR_CONFIG
+end
+
+function legendre_Q_set_taylor_params!(;h_patch=nothing,P_patch=nothing,d_threshold=nothing,P_small_terms=nothing,dQ_small_terms=nothing)
     !isnothing(h_patch) && legendre_Q_set_h!(h_patch)
     !isnothing(P_patch) && legendre_Q_set_P!(P_patch)
     !isnothing(d_threshold) && legendre_Q_set_d_threshold!(d_threshold)
     !isnothing(P_small_terms) && legendre_Q_set_P_small_terms!(P_small_terms)
+    !isnothing(dQ_small_terms) && legendre_Q_set_dQ_small_terms!(dQ_small_terms)
     return LEGENDRE_TAYLOR_CONFIG
 end
 
@@ -105,7 +114,7 @@ function init_small_p_tls!()
 end
 
 function init_small_qd_tls!()
-    n=min(legendre_P_small_terms(),length(_COTH_SERIES_COEFFS))+1
+    n=legendre_dQ_small_terms()+1
     SMALL_QD_TLS[]=[(Vector{ComplexF64}(undef,n),Vector{ComplexF64}(undef,n)) for _ in 1:Threads.nthreads()]
     return nothing
 end
@@ -270,52 +279,49 @@ end
 # Output
 #   ComplexF64 : Approximation of d/dd Q_ν(cosh d).
 # =============================================================================
-@inline function _small_z_dQ(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms())::ComplexF64 where {T<:Real}
-    M=min(terms,length(_COTH_SERIES_COEFFS))
-    a,b=small_qd_buffers(M)
+@inline function _small_z_dQ(k::ComplexF64,d::T;terms::Int=legendre_dQ_small_terms())::ComplexF64 where {T<:Real}
+    a,b=small_qd_buffers(terms)
     nu=ν(k)
     lam=nu*(nu+1)
     Hnu=Base.MathConstants.eulergamma+SpecialFunctions.digamma(nu+one(nu))
     a[1]=1.0+0.0im
-    @inbounds for m in 0:M-1
+    @inbounds for m in 0:terms-1
         s=0.0+0.0im
-        rmax=min(m,length(_COTH_SERIES_COEFFS))
-        for r in 1:rmax
+        for r in 1:min(m,length(_COTH_SERIES_COEFFS))
             n=m-r+1
             s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*a[n+1]
         end
         a[m+2]=(lam*a[m+1]-s)/ComplexF64(4*(m+1)^2,0.0)
     end
     b[1]=-Hnu
-    @inbounds for m in 0:M-1
+    @inbounds for m in 0:terms-1
         sb=0.0+0.0im
-        rmaxb=min(m,length(_COTH_SERIES_COEFFS))
-        for r in 1:rmaxb
+        for r in 1:min(m,length(_COTH_SERIES_COEFFS))
             n=m-r+1
             sb+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*b[n+1]
         end
         rhs=ComplexF64(4*(m+1),0.0)*a[m+2]
-        rmaxrhs=min(m+1,length(_COTH_SERIES_COEFFS))
-        for r in 1:rmaxrhs
+        for r in 1:min(m+1,length(_COTH_SERIES_COEFFS))
             n=m-r+1
             rhs+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*a[n+1]
         end
         b[m+2]=(lam*b[m+1]+rhs-sb)/ComplexF64(4*(m+1)^2,0.0)
     end
     x=ComplexF64(d*d,0.0)
-    L=log(Float64(d)/2)
+    L=ComplexF64(log(Float64(d)/2),0.0)
     p=0.0+0.0im
     dp=0.0+0.0im
     db=0.0+0.0im
-    @inbounds for n in M:-1:0
+    @inbounds for n in terms:-1:0
         p=muladd(p,x,a[n+1])
     end
-    @inbounds for n in M:-1:1
-        dp=muladd(dp,x,ComplexF64(2n,0.0)*a[n+1])
-        db=muladd(db,x,ComplexF64(2n,0.0)*b[n+1])
+    @inbounds for n in terms:-1:1
+        c=ComplexF64(2n,0.0)
+        dp=muladd(dp,x,c*a[n+1])
+        db=muladd(db,x,c*b[n+1])
     end
     dd=ComplexF64(d,0.0)
-    return -p/dd-ComplexF64(L,0.0)*(dd*dp)+dd*db
+    return -p/dd-L*(dd*dp)+dd*db
 end
 
 # Real k wrapper for _small_z_dQ
