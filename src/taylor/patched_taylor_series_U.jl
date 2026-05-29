@@ -270,7 +270,6 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         Gpre=pycall(_pyfloat[],Float64,Gp.real);Gpim=pycall(_pyfloat[],Float64,Gp.imag)
         return ComplexF64(Gre,Gim),ComplexF64(Gpre,Gpim)
     finally
-        pycall_finalizer_barrier!()
         unlock(PYCALL_MPMATH_LOCK)
     end
 end
@@ -313,7 +312,6 @@ function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         Apre=pycall(_pyfloat[],Float64,Ap.real);Apim=pycall(_pyfloat[],Float64,Ap.imag)
         return ComplexF64(Are,Aim),ComplexF64(Apre,Apim)
     finally
-        pycall_finalizer_barrier!()
         unlock(PYCALL_MPMATH_LOCK)
     end
 end

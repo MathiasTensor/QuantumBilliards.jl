@@ -5,13 +5,6 @@
 # reentrant lock for the mpamth seeding, does not like to play with Julia's GC someties.
 const PYCALL_MPMATH_LOCK=ReentrantLock()
 
-# annoying hack to make Julia's GC run with mpmath on PyCall objects, since it likes to crash otherwise
-function pycall_finalizer_barrier!()
-    GC.gc()
-    ccall(:jl_gc_run_all_finalizers, Cvoid, ())
-    return nothing
-end
-
 const _mp=Ref{PyObject}()
 const _mpctx=Ref{PyObject}()
 const _mpf=Ref{PyObject}()

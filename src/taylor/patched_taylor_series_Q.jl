@@ -331,7 +331,6 @@ function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
         y_im=pycall(_pyfloat[],Float64,y0.imag)
         ComplexF64(u_re,u_im),ComplexF64(y_re,y_im)
     finally
-        pycall_finalizer_barrier!()
         unlock(PYCALL_MPMATH_LOCK)
     end
 end
@@ -1336,7 +1335,6 @@ function seed_p_dp_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60)
         y_im=pycall(_pyfloat[],Float64,yp.imag)
         return ComplexF64(p_re,p_im),ComplexF64(y_re,y_im)
     finally
-        pycall_finalizer_barrier!()
         unlock(PYCALL_MPMATH_LOCK)
     end
 end
