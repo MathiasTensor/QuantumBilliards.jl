@@ -96,10 +96,17 @@ end
 
 # Thread-local storage for the small-z Taylor expansion buffers, to avoid allocations in the small-d regime where we use a Taylor expansion instead of the patch table. The size is determined by legendre_P_small_terms() since we need that many terms in the expansion.
 const SMALL_P_TLS=Ref{Vector{Vector{ComplexF64}}}()
+const SMALL_QD_TLS=Ref{Vector{Tuple{Vector{ComplexF64},Vector{ComplexF64}}}}()
 
 function init_small_p_tls!()
     n=legendre_P_small_terms()+1
     SMALL_P_TLS[]=[Vector{ComplexF64}(undef,n) for _ in 1:Threads.nthreads()]
+    return nothing
+end
+
+function init_small_qd_tls!()
+    n=min(legendre_P_small_terms(),length(_COTH_SERIES_COEFFS))+1
+    SMALL_QD_TLS[]=[(Vector{ComplexF64}(undef,n),Vector{ComplexF64}(undef,n)) for _ in 1:Threads.nthreads()]
     return nothing
 end
 
@@ -114,6 +121,44 @@ end
     end
     return tls[Threads.threadid()]
 end
+
+@inline function small_qd_buffers(terms::Int)
+    if !isassigned(SMALL_QD_TLS)
+        init_small_qd_tls!()
+    end
+    tls=SMALL_QD_TLS[]
+    tid=Threads.threadid()
+    if tid>length(tls) || terms+1>length(tls[tid][1])
+        init_small_qd_tls!()
+        tls=SMALL_QD_TLS[]
+    end
+    return tls[tid]
+end
+
+# Coefficients in the even-power expansion
+#
+#     coth(d) - 1/d = Σ c_n d^(2n+1),
+#
+# used in the Taylor recurrence for P_ν(cosh d)
+# and also the Taylor recurrence for d/dd P_ν(cosh d).
+const _COTH_SERIES_COEFFS=Float64[
+    1/3,
+    -1/45,
+    2/945,
+    -1/4725,
+    2/93555,
+    -1382/638512875,
+    4/18243225,
+    -3617/325641566250,
+    43867/38979295480125,
+    -174611/1531329465290625,
+    155366/13447856940643125,
+    -236364091/201919571963756521875,
+    1315862/11094481976030578125,
+    -6785560294/564653660170076273671875,
+    6892673020804/5660878804669082674070015625,
+    -9459803781912212/76410959832894957292156621875000
+]
 
 # =============================================
 # _small_z_Q
@@ -147,7 +192,7 @@ end
 end
 
 # =============================================
-# _small_z_dQ
+# _small_z_dQ_LEGACY
 # Series expansions for d/dd Q_ν(cosh d) at small d.
 # The order is chosen to give good accuracy (rel accuracy 12-13 digits) at d~1e-3 (order O(d^27) since it is highly oscillatory).
 #
@@ -157,40 +202,126 @@ end
 #
 # Output
 #   d/dd Q_ν(cosh d)
-@inline function _small_z_dQ(k::ComplexF64,d::T)::ComplexF64 where{T<:Real}
+@inline function _small_z_dQ_LEGACY(k::ComplexF64,d::T)::ComplexF64 where{T<:Real}
     nu=ν(k)
     Hnu=Base.MathConstants.eulergamma+SpecialFunctions.digamma(nu+one(nu))
     return ComplexF64(-(one(T)/d)+(d*(2+3*nu*(1+nu)))/12+(d^3*(-56+15*nu*(1+nu)*(-2+15*nu*(1+nu))))/2880+(d^5*(248+21*nu*(1+nu)*(8+5*nu*(1+nu)*(-7+5*nu*(1+nu)))))/120960+(d^7*(-48768+5*nu*(1+nu)*(-7568+21*nu*(1+nu)*(1268+5*nu*(1+nu)*(-156+47*nu*(1+nu))))))/2.322432e8+(d^9*(1308160+11*nu*(1+nu)*(98432+3*nu*(1+nu)*(-104864+7*nu*(1+nu)*(8284+nu*(1+nu)*(-2320+393*nu*(1+nu)))))))/6.13122048e10+(d^11*(-724212224+273*nu*(1+nu)*(-2267520+11*nu*(1+nu)*(628720+nu*(1+nu)*(-327944+21*nu*(1+nu)*(3968+nu*(1+nu)*(-650+71*nu*(1+nu))))))))/3.34764638208e14+(d^13*(3522785280+nu*(1+nu)*(3064070144+429*nu*(1+nu)*(-21245568+nu*(1+nu)*(10734208+nu*(1+nu)*(-2570552+3*nu*(1+nu)*(127876+nu*(1+nu)*(-13846+1059*nu*(1+nu)))))))))/1.6068702633984e16+(d^15*(-81555718766592+17*nu*(1+nu)*(-4215787018240+3*nu*(1+nu)*(4119262721280+143*nu*(1+nu)*(-14288101248+nu*(1+nu)*(3308766736+3*nu*(1+nu)*(-154931200+nu*(1+nu)*(15324344+45*nu*(1+nu)*(-26264+1487*nu*(1+nu))))))))))/3.6713771778126643e21+(d^17*(7536235717591040+57*nu*(1+nu)*(116947251986432+17*nu*(1+nu)*(-19979202338816+nu*(1+nu)*(9796767888640+13*nu*(1+nu)*(-171086931456+11*nu*(1+nu)*(2109795216+nu*(1+nu)*(-196236224+nu*(1+nu)*(13852776+5*nu*(1+nu)*(-160176+6989*nu*(1+nu)))))))))))/3.34829598616515e24+(d^19*(-3023786723765649408+55*nu*(1+nu)*(-48844705828831232+57*nu*(1+nu)*(2473269691121664+17*nu*(1+nu)*(-70796702697984+nu*(1+nu)*(15871802558208+13*nu*(1+nu)*(-162189398880+11*nu*(1+nu)*(1322981232+5*nu*(1+nu)*(-17552464+nu*(1+nu)*(930264+nu*(1+nu)*(-41850+1451*nu*(1+nu))))))))))))/1.3259252105213994e28+(d^21*(5919143148921500467200+23*nu*(1+nu)*(229361823479855316992+15*nu*(1+nu)*(-43938582105369018368+19*nu*(1+nu)*(1119337009242789888+17*nu*(1+nu)*(-14636176930816512+nu*(1+nu)*(1918454135937408+13*nu*(1+nu)*(-12957794542560+nu*(1+nu)*(828616686128+nu*(1+nu)*(-41247566448+7*nu*(1+nu)*(243316128+nu*(1+nu)*(-8764690+247353*nu*(1+nu)))))))))))))/2.5616875067273434e32+(d^23*(-686096493620974804008960+13*nu*(1+nu)*(-47144867132796858793984+23*nu*(1+nu)*(5871102997047666982912+5*nu*(1+nu)*(-566138921659181092864+57*nu*(1+nu)*(2194468161804355584+17*nu*(1+nu)*(-16765943320964352+nu*(1+nu)*(1451742074957120+13*nu*(1+nu)*(-6984481999040+nu*(1+nu)*(334973138896+nu*(1+nu)*(-12986455152+7*nu*(1+nu)*(61403188+nu*(1+nu)*(-1811612+42433*nu*(1+nu))))))))))))))/2.930570507696081e35+(d^25*(33367733728285762089123840+nu*(1+nu)*(29859320862789776542007296+5*nu*(1+nu)*(-17063269414016842458202112+23*nu*(1+nu)*(356639815691069055434752+nu*(1+nu)*(-78443654495831951527936+57*nu*(1+nu)*(177569554987496819712+17*nu*(1+nu)*(-895795952130801408+nu*(1+nu)*(55227923257381696+nu*(1+nu)*(-2589559892863424+nu*(1+nu)*(96684098805008+nu*(1+nu)*(-3003546729040+7*nu*(1+nu)*(11641920004+5*nu*(1+nu)*(-57309356+1132133*nu*(1+nu)))))))))))))))/1.4066738436941188e38+(d^27*(-91770018091370053888741736448+29*nu*(1+nu)*(-2835615745800674524836921344+3*nu*(1+nu)*(2695606115502739701208973312+5*nu*(1+nu)*(-258579031590302542450655232+23*nu*(1+nu)*(2464338533704759823015936+nu*(1+nu)*(-316405030616016052463616+19*nu*(1+nu)*(1418259159879823898112+17*nu*(1+nu)*(-5092635130610819200+nu*(1+nu)*(235309612303988928+nu*(1+nu)*(-8586706803750816+nu*(1+nu)*(256808887011248+3*nu*(1+nu)*(-2179494838664+nu*(1+nu)*(49370502636+5*nu*(1+nu)*(-205868026+3476589*nu*(1+nu))))))))))))))))/3.818275481323316e42-(d*nu*(1+nu)*(182684914765469984565271461888000000+7611871448561249356886310912000000*d^2*(-2+3*nu*(1+nu))+190296786214031233922157772800000*d^4*(8+5*(-1+nu)*nu*(1+nu)*(2+nu))+566359482779854862863564800000*d^6*(-272+7*nu*(1+nu)*(44+5*nu*(1+nu)*(-4+nu+nu^2)))+3933051963748992103219200000*d^8*(3968+3*nu*(1+nu)*(-1424+7*nu*(1+nu)*(84+nu*(1+nu)*(-20+3*nu*(1+nu)))))+8938754463065891143680000*d^10*(-176896+11*nu*(1+nu)*(16864+nu*(1+nu)*(-6584+21*nu*(1+nu)*(68+nu*(1+nu)*(-10+nu+nu^2)))))+28649854048288112640000*d^12*(5592064+13*nu*(1+nu)*(-444544+11*nu*(1+nu)*(15296+nu*(1+nu)*(-3128+3*nu*(1+nu)*(140+nu*(1+nu)*(-14+nu+nu^2))))))+8526742276276224000*d^14*(-1903757312+3*nu*(1+nu)*(650078976+13*nu*(1+nu)*(-18589056+11*nu*(1+nu)*(334192+nu*(1+nu)*(-42240+nu*(1+nu)*(3864+5*nu*(1+nu)*(-56+3*nu*(1+nu))))))))+15674158596096000*d^16*(104932671488+17*nu*(1+nu)*(-6287587328+nu*(1+nu)*(2311237888+13*nu*(1+nu)*(-34468224+11*nu*(1+nu)*(382416+nu*(1+nu)*(-32896+nu*(1+nu)*(2184+5*nu*(1+nu)*(-24+nu+nu^2))))))))+11457718272000*d^18*(-14544442556416+19*nu*(1+nu)*(776768475136+17*nu*(1+nu)*(-16670893568+nu*(1+nu)*(3191642624+13*nu*(1+nu)*(-29341344+11*nu*(1+nu)*(221328+nu*(1+nu)*(-13808+nu*(1+nu)*(696+(-5+nu)*nu*(1+nu)*(6+nu)))))))))+13640140800*d^20*(1237874513281024+nu*(1+nu)*(-1252648497168384+19*nu*(1+nu)*(23928414824448+17*nu*(1+nu)*(-267191996928+nu*(1+nu)*(31506758784+13*nu*(1+nu)*(-196781088+nu*(1+nu)*(11833360+nu*(1+nu)*(-560208+7*nu*(1+nu)*(3168+nu*(1+nu)*(-110+3*nu*(1+nu)))))))))))+3369600*d^22*(-507711943253426176+23*nu*(1+nu)*(22292423254048768+nu*(1+nu)*(-8059883338280960+19*nu*(1+nu)*(80038242321408+17*nu*(1+nu)*(-550103120640+nu*(1+nu)*(44044491328+13*nu*(1+nu)*(-199258304+nu*(1+nu)*(9087760+nu*(1+nu)*(-337744+7*nu*(1+nu)*(1540+nu*(1+nu)*(-44+nu+nu^2)))))))))))+2808*d^24*(61730370047551995904+5*nu*(1+nu)*(-12448661250518024192+23*nu*(1+nu)*(195122177890779136+nu*(1+nu)*(-36649899662381056+19*nu*(1+nu)*(223895553555456+17*nu*(1+nu)*(-1044390696192+nu*(1+nu)*(60545295936+nu*(1+nu)*(-2699564608+nu*(1+nu)*(96615376+nu*(1+nu)*(-2894320+7*nu*(1+nu)*(10868+5*nu*(1+nu)*(-52+nu+nu^2))))))))))))+d^26*(-17562900400985989971968+3*nu*(1+nu)*(5895807142545951555584+5*nu*(1+nu)*(-424139144014000029696+23*nu*(1+nu)*(3451830441237979136+nu*(1+nu)*(-398682053674530816+19*nu*(1+nu)*(1652375735883264+17*nu*(1+nu)*(-5578990587776+nu*(1+nu)*(245125459008+nu*(1+nu)*(-8573995872+nu*(1+nu)*(247266448+3*nu*(1+nu)*(-2032888+nu*(1+nu)*(44772+5*nu*(1+nu)*(-182+3*nu*(1+nu)))))))))))))))*(Hnu+log(d/2)))/3.6536982953093996e35)
+end
+
+# =============================================================================
+# _small_z_dQ
+#
+# Small-distance expansion for
+#
+#     d/dd Q_ν(cosh d).
+#
+# Mathematical background
+#   Near d=0 the Legendre Q solution admits the Frobenius form
+#
+#       Q_ν(cosh d) = -P_ν(cosh d) log(d/2) + B_ν(d),
+#
+#   where both
+#
+#       P_ν(cosh d)
+#
+#   and the analytic remainder
+#
+#       B_ν(d)
+#
+#   satisfy the radial Legendre equation
+#
+#       u'' + coth(d)u' - ν(ν+1)u = 0.
+#
+#   Writing
+#
+#       P_ν(cosh d)
+#       = Σ a_n d^(2n),
+#
+#       B_ν(d)
+#       = Σ b_n d^(2n),
+#
+#   and substituting into the ODE yields coupled recurrences for the
+#   coefficients a_n and b_n. The coefficients are generated on-the-fly
+#   using the Taylor series of
+#
+#       coth(d)-1/d.
+#
+# Derivative formula
+#   Differentiating
+#
+#       Q_ν(cosh d) = -P_ν(cosh d) log(d/2) + B_ν(d)
+#
+#   gives
+#
+#       dQ/dd = -P_ν(d)/d - P_ν'(d) log(d/2) + B_ν'(d).
+#
+#   The three terms are evaluated from Horner sums in d².
+#
+# Inputs
+#   k::ComplexF64
+#       Wavenumber parameter with : ν = -1/2 + i k.
+#
+#   d::Real : Hyperbolic distance, assumed small.
+#
+# Keywords
+#   terms::Int=legendre_P_small_terms()
+#   Number of even-power coefficients retained in the Frobenius expansion.
+#
+# Output
+#   ComplexF64 : Approximation of d/dd Q_ν(cosh d).
+# =============================================================================
+@inline function _small_z_dQ(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms())::ComplexF64 where {T<:Real}
+    M=min(terms,length(_COTH_SERIES_COEFFS))
+    a,b=small_qd_buffers(M)
+    nu=ν(k)
+    lam=nu*(nu+1)
+    Hnu=Base.MathConstants.eulergamma+SpecialFunctions.digamma(nu+one(nu))
+    a[1]=1.0+0.0im
+    @inbounds for m in 0:M-1
+        s=0.0+0.0im
+        rmax=min(m,length(_COTH_SERIES_COEFFS))
+        for r in 1:rmax
+            n=m-r+1
+            s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*a[n+1]
+        end
+        a[m+2]=(lam*a[m+1]-s)/ComplexF64(4*(m+1)^2,0.0)
+    end
+    b[1]=-Hnu
+    @inbounds for m in 0:M-1
+        sb=0.0+0.0im
+        rmaxb=min(m,length(_COTH_SERIES_COEFFS))
+        for r in 1:rmaxb
+            n=m-r+1
+            sb+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*b[n+1]
+        end
+        rhs=ComplexF64(4*(m+1),0.0)*a[m+2]
+        rmaxrhs=min(m+1,length(_COTH_SERIES_COEFFS))
+        for r in 1:rmaxrhs
+            n=m-r+1
+            rhs+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*a[n+1]
+        end
+        b[m+2]=(lam*b[m+1]+rhs-sb)/ComplexF64(4*(m+1)^2,0.0)
+    end
+    x=ComplexF64(d*d,0.0)
+    L=log(Float64(d)/2)
+    p=0.0+0.0im
+    dp=0.0+0.0im
+    db=0.0+0.0im
+    @inbounds for n in M:-1:0
+        p=muladd(p,x,a[n+1])
+    end
+    @inbounds for n in M:-1:1
+        dp=muladd(dp,x,ComplexF64(2n,0.0)*a[n+1])
+        db=muladd(db,x,ComplexF64(2n,0.0)*b[n+1])
+    end
+    dd=ComplexF64(d,0.0)
+    return -p/dd-ComplexF64(L,0.0)*(dd*dp)+dd*db
 end
 
 # Real k wrapper for _small_z_dQ
 @inline function _small_z_dQ(k::T,d::T) where{T<:Real}
     return _small_z_dQ(ComplexF64(k,0.0),d)
 end
-
-# Coefficients in the even-power expansion
-#
-#     coth(d) - 1/d = Σ c_n d^(2n+1),
-#
-# used in the Taylor recurrence for P_ν(cosh d)
-const _COTH_SERIES_COEFFS=Float64[
-    1/3,
-    -1/45,
-    2/945,
-    -1/4725,
-    2/93555,
-    -1382/638512875,
-    4/18243225,
-    -3617/325641566250,
-    43867/38979295480125,
-    -174611/1531329465290625,
-    155366/13447856940643125,
-    -236364091/201919571963756521875,
-    1315862/11094481976030578125,
-    -6785560294/564653660170076273671875,
-    6892673020804/5660878804669082674070015625,
-    -9459803781912212/76410959832894957292156621875000
-]
 
 # Small-distance Taylor expansion for
 #
