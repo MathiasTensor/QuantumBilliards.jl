@@ -639,6 +639,128 @@ function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::Hyperbol
     return λ[keep],Phi[:,keep],tens
 end
 
+# Experimental imag-tail residual filter for hyperbolic Beyn solves.
+#
+# Motivation:
+#   Genuine eigenvalues typically have very small |Im λ|, while spurious Beyn
+#   roots tend to populate the large-|Im λ| tail. Instead of residual-checking
+#   every candidate, we sort all contour-inside roots by decreasing |Im λ|,
+#   residual-check only this suspicious tail, and stop once `pad`
+#   consecutive candidates pass the residual test.
+#
+# Inputs:
+#   - solver::HyperbolicBoundarySolver
+#   - λs,Uks,Ys : Beyn outputs for all windows
+#   - k0s,Rs    : contour centers/radii
+#   - all_pts   : discretizations used in each window
+#   - res_tol   : residual threshold ||A(λ)φ||
+#
+# Keywords:
+#   - pad::Int=20         : stop after this many consecutive good candidates
+#   - group_size::Int=64  : batch size in global |Im λ| ordering
+#   - multithreaded=true  : threaded matrix assembly
+#   - verbose=true        : print diagnostics
+#   - mp_dps,leg_type     : forwarded to hyperbolic workspaces
+#
+# Returns:
+#   idx_keep  :: Vector{Vector{Int}}
+#       Indices of accepted eigenvalues in each window.
+#
+#   residuals :: Vector{Vector{T}}
+#       Residuals aligned with idx_keep. Unchecked roots remain NaN.
+#
+# Notes:
+#   - Reuses one geometry cache per window.
+#   - Works for all hyperbolic solvers implementing:
+#         _hyp_contour_cache
+#         _hyp_contour_workspace
+#         construct_matrices!
+#   - Experimental heuristic: validate against full residual checks when
+#     changing geometry, discretization, or quadrature parameters.
+function imag_k_check_hyp_EXPERIMENTAL(solver::HyperbolicBoundarySolver,λs::Vector{Vector{Complex{T}}},Uks::Vector{Matrix{Complex{T}}},Ys::Vector{Matrix{Complex{T}}},k0s::Vector{Complex{T}},Rs::Vector{T},all_pts;res_tol::T,pad::Int=20,group_size::Int=64,multithreaded::Bool=true,verbose::Bool=true,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
+    nw=length(λs)
+    idx_inside=Vector{Vector{Int}}(undef,nw)
+    idx_keep=Vector{Vector{Int}}(undef,nw)
+    residuals=Vector{Vector{T}}(undef,nw)
+    local_pos=Dict{Tuple{Int,Int},Int}()
+    candidates=Tuple{Int,Int,T,T}[]
+    @inbounds for i in 1:nw
+        λi=λs[i]
+        idx_inside[i]=findall(j->abs(λi[j]-k0s[i])<=Rs[i],eachindex(λi))
+        idx_keep[i]=copy(idx_inside[i])
+        residuals[i]=fill(T(NaN),length(idx_inside[i]))
+        for (lp,j) in pairs(idx_inside[i])
+            local_pos[(i,j)]=lp
+            push!(candidates,(i,j,abs(imag(λi[j])),real(λi[j])))
+        end
+    end
+    sort!(candidates;by=c->c[3],rev=true)
+    verbose&&!isempty(candidates)&&@info "top hyp imag candidates" first_candidates=candidates[1:min(10,length(candidates))]
+    caches=Vector{Any}(fill(nothing,nw))
+    drop=Dict{Tuple{Int,Int},Bool}()
+    checked=0
+    dropped=0
+    good_streak=0
+    pos=1
+    A=Matrix{Complex{T}}(undef,0,0)
+    y=Vector{Complex{T}}(undef,0)
+    φ=Vector{Complex{T}}(undef,0)
+    while pos<=length(candidates)
+        stop=min(pos+group_size-1,length(candidates))
+        group=@view candidates[pos:stop]
+        rdict=Dict{Tuple{Int,Int},T}()
+        for iwin in unique(c[1] for c in group)
+            sub=[c for c in group if c[1]==iwin]
+            isempty(sub)&&continue
+            pts=all_pts[iwin]
+            caches[iwin]===nothing&&(caches[iwin]=_hyp_contour_cache(solver,pts))
+            cache=caches[iwin]
+            N=_hyp_beyn_dim(solver,pts,k0s[iwin])
+            size(A)!=(N,N)&&(A=Matrix{Complex{T}}(undef,N,N))
+            length(y)!=N&&(y=Vector{Complex{T}}(undef,N))
+            length(φ)!=N&&(φ=Vector{Complex{T}}(undef,N))
+            @inbounds for c in sub
+                i,j,_,_=c
+                λj=λs[i][j]
+                wsj=_hyp_contour_workspace(solver,pts,ComplexF64(λj),cache;mp_dps=mp_dps,leg_type=leg_type)
+                fill!(A,zero(Complex{T}))
+                construct_matrices!(solver,A,pts,wsj,λj;multithreaded=multithreaded)
+                mul!(φ,Uks[i],@view Ys[i][:,j])
+                mul!(y,A,φ)
+                rdict[(i,j)]=norm(y)
+            end
+        end
+        @inbounds for c in group
+            i,j,imj,_=c
+            rj=rdict[(i,j)]
+            checked+=1
+            residuals[i][local_pos[(i,j)]]=rj
+            if rj>=res_tol
+                drop[(i,j)]=true
+                dropped+=1
+                good_streak=0
+                verbose&&@info "DROP hyp candidate" i=i j=j k=λs[i][j] abs_imag=imj residual=rj
+            else
+                good_streak+=1
+                if good_streak>=pad
+                    verbose&&@info "hyp imag-tail check stopped" checked=checked dropped=dropped good_streak=good_streak last_imag=imj last_residual=rj
+                    break
+                end
+            end
+        end
+        good_streak>=pad&&break
+        pos=stop+1
+    end
+    @inbounds for i in 1:nw
+        old=idx_inside[i]
+        mask=[!get(drop,(i,j),false) for j in old]
+        idx_keep[i]=old[mask]
+        residuals[i]=residuals[i][mask]
+    end
+    verbose&&@info "hyp imag-tail summary" checked=checked dropped=dropped total_candidates=length(candidates)
+    return idx_keep,residuals
+end
+
 # ===============================================================================
 # compute_spectrum_hyp
 #
@@ -696,7 +818,7 @@ end
 #   tensN_all :: Vector{T}
 #       Normalized residuals (if computed in residual stage).
 # ===============================================================================
-function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true,origin_vertex_tol::Real=0.0) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true,origin_vertex_tol::Real=0.0,use_imag_residual_check::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=m,Rmax=Rmax,Rfloor=Rfloor,kref=kref,origin_vertex_tol=origin_vertex_tol)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
@@ -740,20 +862,44 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     tens_list=Vector{Vector{T}}(undef,nw)
     tensN_list=Vector{Vector{T}}(undef,nw)
     phi_list=Vector{Matrix{Complex{T}}}(undef,nw)
-    @time "Residuals/tensions pass (hyp)" @inbounds @showprogress desc="Residuals/tensions (hyp)" for i in 1:nw
-        if isempty(λs[i])
-            ks_list[i]=Complex{T}[]
-            tens_list[i]=T[]
-            tensN_list[i]=T[]
-            bp=hyp_bp(all_pts[i])
-            phi_list[i]=Matrix{Complex{T}}(undef,length(bp.xy),0)
-            continue
+    if use_imag_residual_check
+        idx_keep,residuals=imag_k_check_hyp_EXPERIMENTAL(solver,λs,Uks,Ys,complex.(k0s,zero(T)),Rs,all_pts;res_tol=T(res_tol),pad=20,group_size=64,multithreaded=multithreaded_matrix,verbose=timeit)
+        @time "Imag-check selection pass (hyp)" @inbounds @showprogress desc="Imag-check selection (hyp)" for i in 1:nw
+            idx=idx_keep[i]
+            if isempty(idx)
+                ks_list[i]=Complex{T}[]
+                tens_list[i]=T[]
+                tensN_list[i]=T[]
+                bp=hyp_bp(all_pts[i])
+                phi_list[i]=Matrix{Complex{T}}(undef,length(bp.xy),0)
+                continue
+            end
+            N=size(Uks[i],1)
+            Φ_kept=Matrix{Complex{T}}(undef,N,length(idx))
+            @inbounds for (jj,j) in pairs(idx)
+                mul!(@view(Φ_kept[:,jj]),Uks[i],@view(Ys[i][:,j]))
+            end
+            ks_list[i]=λs[i][idx]
+            tens_list[i]=abs.(imag.(λs[i][idx]))
+            tensN_list[i]=residuals[i]
+            phi_list[i]=Φ_kept
         end
-        idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,timeit=timeit)
-        ks_list[i]=λs[i][idx2]
-        tens_list[i]=traw
-        tensN_list[i]=tnorm
-        phi_list[i]=Matrix(Φ_kept)
+    else
+        @time "Residuals/tensions pass (hyp)" @inbounds @showprogress desc="Residuals/tensions (hyp)" for i in 1:nw
+            if isempty(λs[i])
+                ks_list[i]=Complex{T}[]
+                tens_list[i]=T[]
+                tensN_list[i]=T[]
+                bp=hyp_bp(all_pts[i])
+                phi_list[i]=Matrix{Complex{T}}(undef,length(bp.xy),0)
+                continue
+            end
+            idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,timeit=timeit)
+            ks_list[i]=λs[i][idx2]
+            tens_list[i]=traw
+            tensN_list[i]=tnorm
+            phi_list[i]=Matrix(Φ_kept)
+        end
     end
     n_by_win=Vector{Int}(undef,nw)
     @inbounds for i in 1:nw
