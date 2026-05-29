@@ -315,19 +315,25 @@ end
 #   (u0,y0)::Tuple{ComplexF64,ComplexF64}
 # =============================================================================
 function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
-    _mpctx[].dps=dps
-    nu_py=_mpc[](real(nu),imag(nu))
-    d_py=_mpf[](d0)
-    z=_mp_cosh[](d_py)
-    sh=_mp_sinh[](d_py)
-    Qnu=_mp_legenq[](nu_py,0,z;type=leg_type)
-    Qnu1=_mp_legenq[](nu_py+1,0,z;type=leg_type)
-    y0=(nu_py+1)*(Qnu1-z*Qnu)/sh
-    u_re=pycall(_pyfloat[],Float64,Qnu.real)
-    u_im=pycall(_pyfloat[],Float64,Qnu.imag)
-    y_re=pycall(_pyfloat[],Float64,y0.real)
-    y_im=pycall(_pyfloat[],Float64,y0.imag)
-    ComplexF64(u_re,u_im),ComplexF64(y_re,y_im)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        nu_py=_mpc[](real(nu),imag(nu))
+        d_py=_mpf[](d0)
+        z=_mp_cosh[](d_py)
+        sh=_mp_sinh[](d_py)
+        Qnu=_mp_legenq[](nu_py,0,z;type=leg_type)
+        Qnu1=_mp_legenq[](nu_py+1,0,z;type=leg_type)
+        y0=(nu_py+1)*(Qnu1-z*Qnu)/sh
+        u_re=pycall(_pyfloat[],Float64,Qnu.real)
+        u_im=pycall(_pyfloat[],Float64,Qnu.imag)
+        y_re=pycall(_pyfloat[],Float64,y0.real)
+        y_im=pycall(_pyfloat[],Float64,y0.imag)
+        ComplexF64(u_re,u_im),ComplexF64(y_re,y_im)
+    finally
+        pycall_finalizer_barrier!()
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 # =============================================================================
@@ -1314,19 +1320,25 @@ end
 #   internally via Taylor recurrence.
 # =============================================================================
 function seed_p_dp_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60)
-    _mpctx[].dps=dps
-    nup=_mpc[](real(nu),imag(nu))
-    dp=_mpf[](d0)
-    z=_mp_cosh[](dp)
-    sh=_mp_sinh[](dp)
-    P0=_mp_legenp[](nup,0,z)
-    P1=_mp_legenp[](nup+1,0,z)
-    yp=(nup+1)*(P1-z*P0)/sh
-    p_re=pycall(_pyfloat[],Float64,P0.real)
-    p_im=pycall(_pyfloat[],Float64,P0.imag)
-    y_re=pycall(_pyfloat[],Float64,yp.real)
-    y_im=pycall(_pyfloat[],Float64,yp.imag)
-    return ComplexF64(p_re,p_im),ComplexF64(y_re,y_im)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        nup=_mpc[](real(nu),imag(nu))
+        dp=_mpf[](d0)
+        z=_mp_cosh[](dp)
+        sh=_mp_sinh[](dp)
+        P0=_mp_legenp[](nup,0,z)
+        P1=_mp_legenp[](nup+1,0,z)
+        yp=(nup+1)*(P1-z*P0)/sh
+        p_re=pycall(_pyfloat[],Float64,P0.real)
+        p_im=pycall(_pyfloat[],Float64,P0.imag)
+        y_re=pycall(_pyfloat[],Float64,yp.real)
+        y_im=pycall(_pyfloat[],Float64,yp.imag)
+        return ComplexF64(p_re,p_im),ComplexF64(y_re,y_im)
+    finally
+        pycall_finalizer_barrier!()
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 # =============================================================================

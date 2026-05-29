@@ -251,22 +251,28 @@ end
 #    Gp0 = dG/ds(s0;ν)
 # =============================================================================
 function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
-    _mpctx[].dps=dps
-    s_py=_mpf[](s0)
-    z=s_py*s_py
-    ν_py=_mpc[](real(ν),imag(ν))
-    a_py=_mpf[](0.5)-ν_py
-    C=-1/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
-    U0=_mp_hyperu[](a_py,1,z)
-    U1=_mp_hyperu[](a_py+1,2,z)
-    ez=_mp_exp[](-z/2)
-    F=C*ez*U0
-    Fz=C*ez*(-_mpf[](0.5)*U0-a_py*U1)
-    G=F
-    Gp=2*s_py*Fz
-    Gre=pycall(_pyfloat[],Float64,G.real);Gim=pycall(_pyfloat[],Float64,G.imag)
-    Gpre=pycall(_pyfloat[],Float64,Gp.real);Gpim=pycall(_pyfloat[],Float64,Gp.imag)
-    return ComplexF64(Gre,Gim),ComplexF64(Gpre,Gpim)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        s_py=_mpf[](s0)
+        z=s_py*s_py
+        ν_py=_mpc[](real(ν),imag(ν))
+        a_py=_mpf[](0.5)-ν_py
+        C=-1/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
+        U0=_mp_hyperu[](a_py,1,z)
+        U1=_mp_hyperu[](a_py+1,2,z)
+        ez=_mp_exp[](-z/2)
+        F=C*ez*U0
+        Fz=C*ez*(-_mpf[](0.5)*U0-a_py*U1)
+        G=F
+        Gp=2*s_py*Fz
+        Gre=pycall(_pyfloat[],Float64,G.real);Gim=pycall(_pyfloat[],Float64,G.imag)
+        Gpre=pycall(_pyfloat[],Float64,Gp.real);Gpim=pycall(_pyfloat[],Float64,Gp.imag)
+        return ComplexF64(Gre,Gim),ComplexF64(Gpre,Gpim)
+    finally
+        pycall_finalizer_barrier!()
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 # =============================================================================
@@ -289,21 +295,27 @@ end
 #   (A0,Ap0), where Ap0=dH/ds(s0).
 # =============================================================================
 function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
-    _mpctx[].dps=dps
-    s_py=_mpf[](s0)
-    z=s_py*s_py
-    ν_py=_mpc[](real(ν),imag(ν))
-    a_py=_mpf[](0.5)-ν_py
-    c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
-    M0=_mp_hyp1f1[](a_py,1,z)
-    M1=_mp_hyp1f1[](a_py+1,2,z)
-    ez=_mp_exp[](-z/2)
-    A=c*ez*M0
-    Az=c*ez*(a_py*M1-_mpf[](0.5)*M0)
-    Ap=2*s_py*Az
-    Are=pycall(_pyfloat[],Float64,A.real);Aim=pycall(_pyfloat[],Float64,A.imag)
-    Apre=pycall(_pyfloat[],Float64,Ap.real);Apim=pycall(_pyfloat[],Float64,Ap.imag)
-    return ComplexF64(Are,Aim),ComplexF64(Apre,Apim)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        s_py=_mpf[](s0)
+        z=s_py*s_py
+        ν_py=_mpc[](real(ν),imag(ν))
+        a_py=_mpf[](0.5)-ν_py
+        c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
+        M0=_mp_hyp1f1[](a_py,1,z)
+        M1=_mp_hyp1f1[](a_py+1,2,z)
+        ez=_mp_exp[](-z/2)
+        A=c*ez*M0
+        Az=c*ez*(a_py*M1-_mpf[](0.5)*M0)
+        Ap=2*s_py*Az
+        Are=pycall(_pyfloat[],Float64,A.real);Aim=pycall(_pyfloat[],Float64,A.imag)
+        Apre=pycall(_pyfloat[],Float64,Ap.real);Apim=pycall(_pyfloat[],Float64,Ap.imag)
+        return ComplexF64(Are,Aim),ComplexF64(Apre,Apim)
+    finally
+        pycall_finalizer_barrier!()
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 # =============================================================================
