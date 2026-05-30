@@ -73,52 +73,6 @@
 end
 
 ################################################################################
-# hyperbolic_cosh_d_poincare
-#
-# PURPOSE
-#   Compute cosh(d_H(x_i,x_j)) in the Poincaré disk model using the closed form:
-#
-#     cosh d = 1 + 2 |x_i - x_j|^2 / ((1 - |x_i|^2)(1 - |x_j|^2))
-#
-# INPUTS
-#   xi::T, yi::T      (T<:Real) target point in Euclidean coordinates
-#   xj::T, yj::T      (T<:Real) source point in Euclidean coordinates
-#
-# OUTPUTS
-#   χ::T              (T<:Real) χ = cosh(d_H)
-################################################################################
-@inline function hyperbolic_cosh_d_poincare(xi::T,yi::T,xj::T,yj::T) where {T<:Real}
-    dx=xi-xj
-    dy=yi-yj
-    Δ2=muladd(dx,dx,dy*dy)
-    r2=muladd(xi,xi,yi*yi)
-    r02=muladd(xj,xj,yj*yj)
-    denom=(one(T)-r2)*(one(T)-r02)
-    χ=one(T)+2*Δ2/denom
-    return max(χ,one(T))
-end
-
-################################################################################
-# hyperbolic_distance_poincare
-#
-# PURPOSE
-#   Compute hyperbolic distance d_H(x_i,x_j) in the Poincaré disk model:
-#       d = acosh(cosh d)
-#
-# INPUTS
-#   xi::T, yi::T      (T<:Real) target point
-#   xj::T, yj::T      (T<:Real) source point
-#
-# OUTPUTS
-#   d::T              (T<:Real) hyperbolic distance d >= 0
-################################################################################
-
-@inline function hyperbolic_distance_poincare(xi::T,yi::T,xj::T,yj::T) where {T<:Real}
-    χ=hyperbolic_cosh_d_poincare(xi,yi,xj,yj)
-    return acosh(χ)
-end
-
-################################################################################
 # hyperbolic_dn_d_target
 #
 # PURPOSE
