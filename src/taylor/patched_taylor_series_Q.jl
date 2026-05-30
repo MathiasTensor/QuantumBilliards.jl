@@ -169,6 +169,20 @@ const _COTH_SERIES_COEFFS=Float64[
     -9459803781912212/76410959832894957292156621875000
 ]
 
+# digamma can have issues for really small z, so this needs to be handled carefully. The following is a safe wrapper that tries several approaches to get a finite value, falling back to an asymptotic expansion if needed.
+@inline _finite(z::ComplexF64)=isfinite(real(z))&&isfinite(imag(z))
+@inline function _digamma_safe(z::ComplexF64)::ComplexF64
+    w=SpecialFunctions.digamma(z)
+    _finite(w) && return w
+    zp=z+one(z)
+    w=SpecialFunctions.digamma(zp)-inv(z)
+    _finite(w) && return w
+    return log(z)-inv(2*z)-inv(12*z*z)
+end
+@inline function _Hnu(nu::ComplexF64)::ComplexF64
+    return ComplexF64(Base.MathConstants.eulergamma,0.0)+_digamma_safe(nu+one(nu))
+end
+
 # =============================================
 # _small_z_Q
 # Series expansions for Q_ν(cosh d) at small d.
@@ -181,7 +195,7 @@ const _COTH_SERIES_COEFFS=Float64[
 # Output
 #   Q_ν(cosh d)
 # =============================================
-@inline function _small_z_Q(k::ComplexF64,d::T)::ComplexF64 where{T<:Real}
+@inline function _small_z_Q_LEGACY(k::ComplexF64,d::T)::ComplexF64 where{T<:Real}
     H=MathConstants.eulergamma+SpecialFunctions.digamma(ComplexF64(0.5,0.0)+1im*k)
     Ld=log(d)
     L2=log(2.0)
@@ -193,6 +207,109 @@ const _COTH_SERIES_COEFFS=Float64[
     term2=(1-12*k2+3*H+12*k2*H-3*L2-4*k2*L8+3*Ld+12*k2*Ld)*d^2/(96*pi)
     term4=(-193+1560*k2+2160*k4-330*H-1680*k2*H-1440*k4*H+165*L4+840*k2*L4+720*k4*L4-330*Ld-1680*k2*Ld-1440*k4*Ld)*d^4/(184320*pi)
     return 2*pi*(term0+term2+term4)
+end
+
+# =============================================================================
+# _small_z_Q
+#
+# Small-distance Frobenius expansion for Q_ν(cosh d).
+#
+#   Near d=0 the Legendre Q solution has the singular structure
+#
+#       Q_ν(cosh d) = -P_ν(cosh d) log(d/2) + B_ν(d),
+#
+#   where both
+#
+#       P_ν(cosh d)
+#
+#   and the analytic remainder
+#
+#       B_ν(d)
+#
+#   satisfy the radial Legendre equation
+#
+#       u'' + coth(d)u' - ν(ν+1)u = 0.
+#
+#   Writing
+#
+#       P_ν(cosh d) = Σ a_n d^(2n),
+#
+#       B_ν(d) = Σ b_n d^(2n),
+#
+#   and substituting into the ODE yields coupled recurrences for
+#   the coefficients a_n and b_n. The recurrences use the Taylor
+#   expansion of
+#
+#       coth(d)-1/d.
+#
+# Representation
+#   After computing the coefficient sets {a_n} and {b_n},
+#
+#       P_ν(cosh d) = Σ a_n d^(2n),
+#
+#       B_ν(d) = Σ b_n d^(2n),
+#
+#   the Legendre Q function is reconstructed as
+#
+#       Q_ν(cosh d) = -P_ν(cosh d) log(d/2) + B_ν(d).
+#
+# Motivation
+#   Direct evaluation of Q_ν(cosh d) becomes numerically unstable
+#   for very small d because of catastrophic cancellation between
+#   the logarithmic singularity and the regular part. This Frobenius
+#   representation remains stable and accurate arbitrarily close to
+#   d=0 and is therefore used whenever
+#
+#       d < legendre_d_threshold().
+#
+# Inputs
+#   k::ComplexF64
+#       Wavenumber parameter with ν = -1/2 + i k.
+#
+#   d::Real Small hyperbolic distance.
+#
+# Keywords
+#   terms::Int=legendre_P_small_terms() Number of even-power coefficients retained in the expansion.
+#
+# Output
+#   ComplexF64 Approximation of Q_ν(cosh d).
+# =============================================================================
+@inline function _small_z_Q(k::ComplexF64,d::T;terms::Int=legendre_dQ_small_terms())::ComplexF64 where {T<:Real}
+    a,b=small_qd_buffers(terms)
+    nu=ν(k)
+    lam=nu*(nu+1)
+    Hnu=_Hnu(nu)
+    a[1]=1.0+0.0im
+    @inbounds for m in 0:terms-1
+        s=0.0+0.0im
+        for r in 1:min(m,length(_COTH_SERIES_COEFFS))
+            n=m-r+1
+            s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2*n,0.0)*a[n+1]
+        end
+        a[m+2]=(lam*a[m+1]-s)/ComplexF64(4*(m+1)^2,0.0)
+    end
+    b[1]=-Hnu
+    @inbounds for m in 0:terms-1
+        sb=0.0+0.0im
+        for r in 1:min(m,length(_COTH_SERIES_COEFFS))
+            n=m-r+1
+            sb+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2*n,0.0)*b[n+1]
+        end
+        rhs=ComplexF64(4*(m+1),0.0)*a[m+2]
+        for r in 1:min(m+1,length(_COTH_SERIES_COEFFS))
+            n=m-r+1
+            rhs+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*a[n+1]
+        end
+        b[m+2]=(lam*b[m+1]+rhs-sb)/ComplexF64(4*(m+1)^2,0.0)
+    end
+    x=ComplexF64(d*d,0.0)
+    p=0.0+0.0im
+    br=0.0+0.0im
+    @inbounds for n in terms:-1:0
+        p=muladd(p,x,a[n+1])
+        br=muladd(br,x,b[n+1])
+    end
+    return -p*ComplexF64(log(Float64(d)/2),0.0)+br
 end
 
 # Real k wrapper for _small_z_Q
@@ -224,7 +341,6 @@ end
 #
 #     d/dd Q_ν(cosh d).
 #
-# Mathematical background
 #   Near d=0 the Legendre Q solution admits the Frobenius form
 #
 #       Q_ν(cosh d) = -P_ν(cosh d) log(d/2) + B_ν(d),
@@ -283,13 +399,13 @@ end
     a,b=small_qd_buffers(terms)
     nu=ν(k)
     lam=nu*(nu+1)
-    Hnu=Base.MathConstants.eulergamma+SpecialFunctions.digamma(nu+one(nu))
+    Hnu=_Hnu(nu)
     a[1]=1.0+0.0im
     @inbounds for m in 0:terms-1
         s=0.0+0.0im
         for r in 1:min(m,length(_COTH_SERIES_COEFFS))
             n=m-r+1
-            s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*a[n+1]
+            s+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2*n,0.0)*a[n+1]
         end
         a[m+2]=(lam*a[m+1]-s)/ComplexF64(4*(m+1)^2,0.0)
     end
@@ -298,7 +414,7 @@ end
         sb=0.0+0.0im
         for r in 1:min(m,length(_COTH_SERIES_COEFFS))
             n=m-r+1
-            sb+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2n,0.0)*b[n+1]
+            sb+=ComplexF64(_COTH_SERIES_COEFFS[r],0.0)*ComplexF64(2*n,0.0)*b[n+1]
         end
         rhs=ComplexF64(4*(m+1),0.0)*a[m+2]
         for r in 1:min(m+1,length(_COTH_SERIES_COEFFS))
