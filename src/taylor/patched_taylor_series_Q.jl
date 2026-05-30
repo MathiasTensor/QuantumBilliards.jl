@@ -1700,7 +1700,7 @@ end
 #   satisfies
 #       cosh(d)=1+2|x'-x|^2/((1-|x|^2)(1-|x'|^2)).
 #
-# This function returns ∂_{n'_E}d, the derivative of d w.r.t. the *Euclidean*
+# This function returns ∂_{n'_E}d, the derivative of d w.r.t. the Euclidean
 # outward unit normal at the source point x' (no hyperbolic normal factors).
 #
 # Inputs
@@ -1714,13 +1714,29 @@ end
 @inline function _∂n_d(x::T,y::T,xp::T,yp::T,nx::T,ny::T) where {T<:Real}
     ax=one(T)-muladd(x,x,y*y)
     bx=one(T)-muladd(xp,xp,yp*yp)
-    dx=xp-x;dy = yp-y
+    dx=xp-x
+    dy=yp-y
     r2=muladd(dx,dx,dy*dy)
-    c=one(T)+2*r2/(ax*bx)               # = cosh(d)
-    sh=sqrt(max(c*c-one(T),zero(T)))       # = sinh(d)
-    dotdxn=muladd(dx,nx,dy*ny)             # (x' - x)·n'
-    dotxpn=muladd(xp,nx,yp*ny)             # x'·n'
-    return (4/(ax*bx))*dotdxn/sh+(4*r2/(ax*bx*bx))*dotxpn/sh
+    r=sqrt(r2)
+    r==zero(T) && return zero(T)
+    dotdxn=muladd(dx,nx,dy*ny)
+    dotxpn=muladd(xp,nx,yp*ny)
+    # Stable near-coincident formula.
+    # Since sinh(d) ~ 2r/sqrt(ax*bx), this avoids c-1 cancellation.
+    if r2<sqrt(eps(T))
+        invr=one(T)/r
+        sqab=sqrt(ax*bx)
+        return T(2)*dotdxn/(sqab*r)+T(2)*r*dotxpn/(bx*sqab)
+    end
+    invab=one(T)/(ax*bx)
+    c=one(T)+T(2)*r2*invab
+    if c<=one(T)
+        sqab=sqrt(ax*bx)
+        return T(2)*dotdxn/(sqab*r)+T(2)*r*dotxpn/(bx*sqab)
+    end
+    sh=sqrt(muladd(c,c,-one(T)))
+    invsh=one(T)/sh
+    return T(4)*invab*dotdxn*invsh+T(4)*r2/(ax*bx*bx)*dotxpn*invsh
 end
 
 # =============================================================================
