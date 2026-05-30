@@ -471,7 +471,7 @@ function build_dlp_hyp_log_geom_cache(solver::DLP_hyperbolic_log_product,disc::D
             else
                 xi,yi=pts.xy[i]
                 d[i,j]=hyperbolic_distance_poincare(xi,yi,xj,yj)
-                dn[i,j]=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+                dn[i,j]=_∂n_d(xi,yi,xj,yj,nxj,nyj)
             end
         end
     end
@@ -545,7 +545,7 @@ function build_dlp_hyp_log_geom_cache(solver::DLP_hyperbolic_log_product,disc::D
                 xi,yi=pts.xy[i]
                 dij=hyperbolic_distance_poincare(xi,yi,xj,yj)
                 Dr[i,j]=dij
-                Dnr[i,j]=dij<=eps(T) ? zero(T) : hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+                Dnr[i,j]=dij<=eps(T) ? zero(T) : _∂n_d(xi,yi,xj,yj,nxj,nyj)
             end
         end
         push!(dimg,Dr);push!(dnimg,Dnr)
@@ -689,7 +689,7 @@ Returns
 @inline function _regular_hyp_log_image_D(qtab::QTaylorTable,xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,scale::Complex{T}) where {T<:Real}
     d=hyperbolic_distance_poincare(xi,yi,xj,yj)
     d<=eps(T) && return zero(Complex{T})
-    dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+    dn=_∂n_d(xi,yi,xj,yj,nxj,nyj)
     return scale*hyp_raw_dlp(qtab,Float64(d),dn)*wj
 end
 

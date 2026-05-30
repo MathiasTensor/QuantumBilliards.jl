@@ -64,7 +64,7 @@
 # Poincare conformal factor.
 #
 # This sign is important. It corresponds to the source-normal convention used by
-# `hyperbolic_dn_d_source`. A wrong sign in the curvature term produces a visible
+# `_∂n_d`. A wrong sign in the curvature term produces a visible
 # failure of the L2 diagonal convergence test.
 #
 # Symmetry handling
@@ -654,7 +654,7 @@ function build_dlp_hyperbolic_kress_geom_cache(pts::BoundaryPointsHyp{T}) where 
             else
                 ti=pts.ts[i]
                 d[i,j]=hyperbolic_distance_poincare(xi,yi,xj,yj)
-                dnd[i,j]=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+                dnd[i,j]=_∂n_d(xi,yi,xj,yj,nxj,nyj)
                 logterm[i,j]=hyp_logterm_periodic(ti,tj)
             end
         end
@@ -838,7 +838,7 @@ end
 @inline function _regular_hyp_dlp_image_D(qtab::QTaylorTable,xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,scale::Complex{T}) where {T<:Real}
     d=hyperbolic_distance_poincare(xi,yi,xj,yj)
     d<=eps(T) && return zero(Complex{T})
-    dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+    dn=_∂n_d(xi,yi,xj,yj,nxj,nyj)
     return scale*hyp_raw_dlp(qtab,Float64(d),dn)*wj
 end
 

@@ -1808,6 +1808,16 @@ end
 # Construction of hyperbolic distances 
 # =============================================================================
 
+@inline function hyperbolic_distance_poincare(x::T,y::T,xp::T,yp::T) where {T<:Real}
+    ax=one(T)-muladd(x,x,y*y)
+    bx=one(T)-muladd(xp,xp,yp*yp)
+    dx=xp-x
+    dy=yp-y
+    r=sqrt(muladd(dx,dx,dy*dy))
+    r==zero(T) && return zero(T)
+    return T(2)*asinh(r/sqrt(ax*bx))
+end
+
 # =============================================================================
 # Euclidean normal-derivative of the hyperbolic distance d in the Poincaré disk.
 #
@@ -1837,52 +1847,11 @@ end
     r==zero(T) && return zero(T)
     dotdxn=muladd(dx,nx,dy*ny)
     dotxpn=muladd(xp,nx,yp*ny)
-    # Stable near-coincident formula.
-    # Since sinh(d) ~ 2r/sqrt(ax*bx), this avoids c-1 cancellation.
-    if r2<sqrt(eps(T))
-        invr=one(T)/r
-        sqab=sqrt(ax*bx)
-        return T(2)*dotdxn/(sqab*r)+T(2)*r*dotxpn/(bx*sqab)
-    end
     invab=one(T)/(ax*bx)
-    c=one(T)+T(2)*r2*invab
-    if c<=one(T)
-        sqab=sqrt(ax*bx)
-        return T(2)*dotdxn/(sqab*r)+T(2)*r*dotxpn/(bx*sqab)
-    end
-    sh=sqrt(muladd(c,c,-one(T)))
+    q=T(2)*r/sqrt(ax*bx)
+    sh=q*sqrt(one(T)+q*q/T(4))
     invsh=one(T)/sh
     return T(4)*invab*dotdxn*invsh+T(4)*r2/(ax*bx*bx)*dotxpn*invsh
-end
-
-# =============================================================================
-# build_dvec_disk!
-#
-# Construct hyperbolic distances d(x_i,xp_i) for many pairs in the Poincaré disk.
-#
-# Math
-#   cosh(d)=1+2|xp-x|^2/((1-|x|^2)(1-|xp|^2)),  d=acosh(cosh(d)).
-#
-# Inputs
-#   dvec::Vector{Float64}          preallocated length N
-#   x1,x2::Vector{Float64}         target coords length N
-#   xp1,xp2::Vector{Float64}       source coords length N
-#
-# Output
-#   nothing (fills dvec)
-# =============================================================================
-@inline function build_dvec_disk!(dvec::Vector{Float64},x1::Vector{Float64},x2::Vector{Float64},xp1::Vector{Float64},xp2::Vector{Float64})
-    @inbounds Threads.@threads for i in eachindex(dvec)
-        x1i=x1[i];x2i=x2[i];xp1i=xp1[i];xp2i=xp2[i]
-        ax=1.0-(x1i*x1i+x2i*x2i)
-        bx=1.0-(xp1i*xp1i+xp2i*xp2i)
-        dx1=xp1i-x1i;dx2=xp2i-x2i
-        r2=dx1*dx1+dx2*dx2
-        c=1.0+2.0*r2/(ax*bx)
-        c=max(c,1.0)
-        dvec[i]=acosh(c)
-    end
-    return nothing
 end
 
 # =============================================================================
@@ -1899,16 +1868,18 @@ end
 # Output
 #   nothing (fills dnvec)
 # =============================================================================
-@inline function build_dn_vec_disk!(dnvec::Vector{Float64},x1::Vector{Float64},x2::Vector{Float64},xp1::Vector{Float64},xp2::Vector{Float64},n1::Vector{Float64},n2::Vector{Float64})
-    @inbounds Threads.@threads for i in eachindex(dnvec)
-        dnvec[i]=_∂n_d(x1[i],x2[i],xp1[i],xp2[i],n1[i],n2[i])
+@inline function build_dvec_disk!(dvec::Vector{Float64},x1::Vector{Float64},x2::Vector{Float64},xp1::Vector{Float64},xp2::Vector{Float64})
+    @inbounds Threads.@threads for i in eachindex(dvec)
+        dvec[i]=hyperbolic_distance_poincare(x1[i],x2[i],xp1[i],xp2[i])
     end
     return nothing
 end
 
 @inline function slp_hyperbolic_kernel(tab::QTaylorTable,x1::Float64,x2::Float64,xp1::Float64,xp2::Float64)
-    return inv2π*_eval_Q(tab,acosh(1.0+2.0*((xp1-x1)^2+(xp2-x2)^2)/((1.0-(x1^2+x2^2))*(1.0-(xp1^2+xp2^2)))))
+    return inv2π*_eval_Q(tab,hyperbolic_distance_poincare(x1,x2,xp1,xp2))
 end
+
+
 
 # =============================================================================
 # dlp_kernel_disk
@@ -1919,7 +1890,7 @@ end
 # Kernel factorization
 #   For the Green's function G_k(d)=(1/(2π))Q_ν(cosh(d)), the DLP kernel involves
 #       ∂_{n'}G_k(d)=(1/(2π))y(d)*∂_{n'_E}d,
-# where ∂_{n'_E}d is the Euclidean-normal derivative returned by dnd_euclid_disk.
+# where ∂_{n'_E}d is the Euclidean-normal derivative returned by _∂n_d.
 #
 # Inputs
 #   tab::QTaylorTable   - precomputed tables for Q and dQ/dd at fixed ν
@@ -1931,16 +1902,9 @@ end
 #   ComplexF64          - (1/(2π))y(d)*∂_{n'_E}d
 # =============================================================================
 @inline function dlp_hyperbolic_kernel(tab::QTaylorTable,x1::Float64,x2::Float64,xp1::Float64,xp2::Float64,n1::Float64,n2::Float64)
-    ax=1.0-(x1*x1+x2*x2)
-    bx=1.0-(xp1*xp1+xp2*xp2)
-    dx1=xp1-x1;dx2=xp2-x2
-    r2=dx1*dx1+dx2*dx2
-    c=1.0+2.0*r2/(ax*bx)
-    c=max(c,1.0)
-    d=acosh(c)
-    y=_eval_dQdd(tab,d)
+    d=hyperbolic_distance_poincare(x1,x2,xp1,xp2)
     dn=_∂n_d(x1,x2,xp1,xp2,n1,n2)
-    return (y*dn)*inv2π
+    return _eval_dQdd(tab,d)*dn*inv2π
 end
 
 # =============================================================================

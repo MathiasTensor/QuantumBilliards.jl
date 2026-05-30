@@ -155,38 +155,6 @@ end
     return (4*invab)*dotdxn/sh+(4*r2/(bx*ax*ax))*dotxn/sh
 end
 
-
-################################################################################
-# hyperbolic_dn_d_source
-#
-# PURPOSE
-#   Compute ∂d/∂n_y at the SOURCE point y=(xj,yj) for the hyperbolic distance
-#   d(x,y) in the Poincaré disk model (curvature -1).
-#
-#   Here n_y = (nxj,nyj) is the outward Euclidean unit normal at the source.
-#
-# INPUTS
-#   xi::T, yi::T      (T<:Real) target point x
-#   xj::T, yj::T      (T<:Real) source point y
-#   nxj::T, nyj::T    (T<:Real) Euclidean unit normal at source
-#
-# OUTPUTS
-#   ddn::T            (T<:Real) ddn = ∂d(x,y)/∂n_y
-################################################################################
-@inline function hyperbolic_dn_d_source(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T) where{T<:Real}
-    ai=one(T)-muladd(xi,xi,yi*yi)
-    aj=one(T)-muladd(xj,xj,yj*yj)
-    dx=xj-xi;dy=yj-yi
-    r2=muladd(dx,dx,dy*dy)
-    invij=inv(ai*aj)
-    t=2*r2*invij
-    sh=sqrt(max(t*(t+2),zero(T)))
-    sh<eps(T) && return zero(T)
-    dotdxn=muladd(dx,nxj,dy*nyj)
-    dotxjn=muladd(xj,nxj,yj*nyj)
-    return (4*invij)*dotdxn/sh+(4*r2/(ai*aj*aj))*dotxjn/sh
-end
-
 ################################################################################
 # hyperbolic_dlp_kernel_scalar_target
 #
@@ -234,7 +202,7 @@ end
 @inline function hyperbolic_dlp_kernel_scalar_source(tab::QTaylorTable,xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T) where {T<:Real}
     d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
     y=_eval_dQdd(tab,d)                    # d/dd Qν(cosh d)
-    dn=hyperbolic_dn_d_source(xi,yi,xj,yj,nxj,nyj)
+    dn=_∂n_d(xi,yi,xj,yj,nxj,nyj)
     return (y*dn)*inv2π
 end
 
