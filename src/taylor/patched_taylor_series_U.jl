@@ -55,9 +55,10 @@
 #
 # For tables whose z-interval approaches or crosses z_t, one-sided Taylor
 # propagation from a single seed can lose accuracy across the Airy transition
-# region. The builder therefore automatically switches to a two-seed strategy:
-# one seed near s_t and one seed at smax. This affects only table construction;
-# runtime evaluation remains unchanged.
+# region and over long post-turning intervals. The builder therefore
+# automatically switches to a dynamic multi-seed strategy. It seeds near s_t and
+# inserts additional seeds up to smax, so no propagated segment becomes too
+# long. This affects only table construction; runtime evaluation is unchanged.
 # MO 31/5/26
 # =============================================================================
 
@@ -72,17 +73,16 @@
 # also import the mpmath objects (since QuantumBilliards.jl has these in pycall_init.jl)
 const inv4π=1/(4*pi)
 
-# Threshold for activating the turning-point-aware two-seed Taylor propagation.
-#
-# The ODE turning point is z_t = 4|ν|. We monitor
-#
-#     η = zmax / (4|ν|).
-#
-# If η > MAGNETIC_TURNING_ETA_CRIT, the table reaches close to or beyond the
-# Airy transition region, so the Taylor table is built with two mpmath seeds:
-# one near the turning point and one near smax. This is an internal numerical
-# stability constant, not a user-facing physical parameter.
+# η = zmax/(4|ν|) measures how far the table extends relative to the formal
+# turning point z_t=4|ν| of the s-ODE. If η is larger than this threshold and no
+# manual anchor_s is supplied, the builder uses dynamic multi-seeding.
 const MAGNETIC_TURNING_ETA_CRIT=0.8
+
+# Bounds for the maximum s-distance between neighboring mpmath seeds on the
+# post-turning side. Smaller spans reduce accumulated Taylor propagation error
+# but increase table build time. Runtime evaluation cost is unchanged.
+const MAGNETIC_MAX_SEED_SPAN=2.0
+const MAGNETIC_MIN_SEED_SPAN=0.5
 
 Base.@kwdef mutable struct UConfluentTaylorConfig
     h_patch::Float64=1e-5  # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
@@ -715,31 +715,147 @@ end
 # the ODE coefficient changes sign at s^2 = 4ν.
 # =============================================================================
 @inline function _magnetic_anchor_index(pre::MagneticGreenSPrecomp,ν::ComplexF64,anchor_s::Union{Nothing,Float64})
-    s0=anchor_s===nothing ? _magnetic_turning_s(pre,ν) : anchor_s
+    s0=isnothing(anchor_s) ? _magnetic_turning_s(pre,ν) : anchor_s
     s0=clamp(s0,pre.smin,pre.smax)
     return clamp(Int(round((s0-pre.smin)/pre.h))+1,1,pre.Npatch)
 end
 
 # =============================================================================
-# _magnetic_use_two_seed
+# _magnetic_eta
 #
-# Decide whether the table crosses too close to or beyond the turning point.
-#
-# The dimensionless diagnostic is
+# Purpose
+# Return the dimensionless turning-point coverage ratio
 #
 #     η = zmax/(4|ν|).
 #
-# If η is large, propagation from a single seed can cross the Airy transition
-# region and lose accuracy. In that case we use two seeds:
-#
-#   1. one seed at the turning point,
-#   2. one seed at smax.
-#
-# The threshold is internal because it is part of the ODE stabilization strategy,
-# not a user-facing physical parameter.
+# Since the transformed ODE has formal turning point z_t=4|ν|, η<1 means the
+# table ends before the turning region, while η>1 means the table extends beyond
+# it. This is used only to choose the numerical seeding strategy.
 # =============================================================================
-@inline function _magnetic_use_two_seed(pre::MagneticGreenSPrecomp,ν::ComplexF64)
-    return pre.zmax/(4max(abs(ν),eps(Float64)))>MAGNETIC_TURNING_ETA_CRIT
+@inline function _magnetic_eta(pre::MagneticGreenSPrecomp,ν::ComplexF64)
+    return pre.zmax/(4max(abs(ν),eps(Float64)))
+end
+
+# =============================================================================
+# _magnetic_use_multi_seed
+#
+# Purpose
+# Decide whether automatic multi-seed construction should be used.
+#
+# Multi-seeding is enabled when the table reaches sufficiently close to or past
+# the turning point z_t=4|ν|. It is disabled when anchor_s is supplied, because
+# a manual anchor means the caller explicitly requested single-seed propagation.
+# =============================================================================
+@inline function _magnetic_use_multi_seed(pre::MagneticGreenSPrecomp,ν::ComplexF64)
+    return _magnetic_eta(pre,ν)>MAGNETIC_TURNING_ETA_CRIT
+end
+
+# =============================================================================
+# _magnetic_seed_span
+#
+# Purpose
+# Choose the approximate spacing in s between successive mpmath seeds.
+#
+# The span is based on the remaining interval [s_t,smax] and the coverage ratio
+# η=zmax/(4|ν|). Small ν or large zmax gives large η and therefore more seeds.
+# The result is clamped between MAGNETIC_MIN_SEED_SPAN and
+# MAGNETIC_MAX_SEED_SPAN to avoid both excessive seed density and overly long
+# unstable propagation segments.
+# =============================================================================
+@inline function _magnetic_seed_span(pre::MagneticGreenSPrecomp,ν::ComplexF64,jt::Int)
+    span=pre.smax-pre.centers[jt]
+    span<=0 && return Inf
+    nη=max(1,ceil(Int,_magnetic_eta(pre,ν)))
+    return clamp(span/nη,MAGNETIC_MIN_SEED_SPAN,MAGNETIC_MAX_SEED_SPAN)
+end
+
+# =============================================================================
+# _magnetic_seed_indices
+#
+# Purpose
+# Construct the list of Taylor-patch indices where mpmath seeds are inserted.
+#
+# If no multi-seeding is needed, this returns only the primary anchor index. If
+# multi-seeding is active, the first seed is placed near the turning point
+# s_t=2sqrt(|ν|), additional seeds are spaced toward smax, and the final seed is
+# forced to be the last patch. Neighboring seeded intervals are later filled
+# from both sides and joined at midpoint indices.
+# =============================================================================
+function _magnetic_seed_indices(pre::MagneticGreenSPrecomp,ν::ComplexF64,anchor_s::Union{Nothing,Float64})
+    jt=_magnetic_anchor_index(pre,ν,anchor_s)
+    if anchor_s!==nothing || !_magnetic_use_multi_seed(pre,ν) || jt>=pre.Npatch-1
+        return [jt]
+    end
+    Δs=_magnetic_seed_span(pre,ν,jt)
+    inds=Int[jt]
+    while true
+        snext=pre.centers[inds[end]]+Δs
+        snext>=pre.smax-pre.h && break
+        j=clamp(Int(round((snext-pre.smin)/pre.h))+1,inds[end]+1,pre.Npatch)
+        j>=pre.Npatch && break
+        push!(inds,j)
+    end
+    inds[end]!=pre.Npatch && push!(inds,pre.Npatch)
+    return inds
+end
+
+# =============================================================================
+# _store_seed_patch!
+#
+# Purpose
+# Evaluate one high-precision mpmath seed and store the corresponding local
+# Taylor patch in column j of coefficient matrix C.
+#
+# The seedfun argument is either seed_G_Gp_mpmath for G(s)=F(s²), or
+# seed_A_Ap_mpmath for H(s)=Aν(s²). This makes the propagation code shared by
+# both tables.
+# =============================================================================
+@inline function _store_seed_patch!(C::Matrix{ComplexF64},pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64,seedfun,j::Int,mp_dps::Int)
+    V,Vp=seedfun(pre.centers[j],ν;dps=mp_dps)
+    build_magnetic_patch_coeffs!(ws.gcoef,ws.invs,ν,V,Vp,pre.centers[j])
+    @inbounds for n in 1:(pre.P+1)
+        C[n,j]=ws.gcoef[n]
+    end
+    return nothing
+end
+
+# =============================================================================
+# _propagate_right! / _propagate_left!
+#
+# Purpose
+# Fill Taylor patches by local analytic continuation from an already known
+# neighboring patch.
+#
+# Right propagation evaluates the previous patch at the next center; left
+# propagation evaluates the next patch at the previous center. In both cases the
+# value and derivative are used as Cauchy data for the same second-order ODE,
+# and build_magnetic_patch_coeffs! generates the new local Taylor coefficients.
+# =============================================================================
+function _propagate_right!(C::Matrix{ComplexF64},pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64,j0::Int,j1::Int)
+    j1<=j0 && return nothing
+    @inbounds for j in (j0+1):j1
+        h=pre.centers[j]-pre.centers[j-1]
+        V=horner_eval_col(C,j-1,h)
+        Vp=horner_deriv_col(C,j-1,h)
+        build_magnetic_patch_coeffs!(ws.gcoef,ws.invs,ν,V,Vp,pre.centers[j])
+        for n in 1:(pre.P+1)
+            C[n,j]=ws.gcoef[n]
+        end
+    end
+    return nothing
+end
+function _propagate_left!(C::Matrix{ComplexF64},pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64,j0::Int,j1::Int)
+    j1>=j0 && return nothing
+    @inbounds for j in (j0-1):-1:j1
+        h=pre.centers[j]-pre.centers[j+1]
+        V=horner_eval_col(C,j+1,h)
+        Vp=horner_deriv_col(C,j+1,h)
+        build_magnetic_patch_coeffs!(ws.gcoef,ws.invs,ν,V,Vp,pre.centers[j])
+        for n in 1:(pre.P+1)
+            C[n,j]=ws.gcoef[n]
+        end
+    end
+    return nothing
 end
 
 # =============================================================================
@@ -918,6 +1034,47 @@ function _update_small_z!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrec
 end
 
 # =============================================================================
+# _build_coeff_table!
+#
+# Purpose
+# Build one complete Taylor coefficient table using either single-seed or
+# dynamic multi-seed propagation.
+#
+# For one seed, the table is propagated left and right from the anchor. For
+# multiple seeds, every seed patch is first computed directly with mpmath. Each
+# interval between neighboring seeds is then filled from both sides and joined
+# at the midpoint. This limits accumulated propagation error over long
+# post-turning intervals while preserving allocation-free runtime evaluation.
+#
+# The same routine is used for:
+#
+#     G(s;ν)=F(s²;ν),
+#     H(s;ν)=Aν(s²).
+# =============================================================================
+function _build_coeff_table!(C::Matrix{ComplexF64},pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64,seedfun;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    seeds=_magnetic_seed_indices(pre,ν,anchor_s)
+    if length(seeds)==1
+        j0=seeds[1]
+        _store_seed_patch!(C,pre,ws,ν,seedfun,j0,mp_dps)
+        _propagate_right!(C,pre,ws,ν,j0,pre.Npatch)
+        _propagate_left!(C,pre,ws,ν,j0,1)
+        return nothing
+    end
+    @inbounds for j in seeds
+        _store_seed_patch!(C,pre,ws,ν,seedfun,j,mp_dps)
+    end
+    _propagate_left!(C,pre,ws,ν,seeds[1],1)
+    @inbounds for k in 1:(length(seeds)-1)
+        jl=seeds[k]
+        jr=seeds[k+1]
+        jc=(jl+jr)>>>1
+        _propagate_right!(C,pre,ws,ν,jl,jc)
+        _propagate_left!(C,pre,ws,ν,jr,jc+1)
+    end
+    return nothing
+end
+
+# =============================================================================
 # build_A_coeff_table!
 #
 # Purpose
@@ -934,85 +1091,13 @@ end
 #     H''(s) = -H'(s)/s + (s^2 - 4ν)H(s).
 #
 # Propagation strategy
-#   - If anchor_s is supplied, use a single seed there.
-#   - Otherwise seed at the turning point s_t=2sqrt(|ν|).
-#   - If zmax/(4|ν|) exceeds the internal threshold, use two seeds: one at
-#     the turning point and one at smax, meeting at an intermediate cut index.
-#
-# This stabilizes the logarithmic-coefficient table in regimes where the
-# z-domain approaches or crosses the ODE turning point.
+#   - If anchor_s is supplied, use single-seed propagation from that anchor.
+#   - Otherwise anchor first near the turning point s_t=2sqrt(|ν|).
+#   - If zmax/(4|ν|) is large, insert additional mpmath seeds between s_t and
+#     smax. The intervals between neighboring seeds are filled from both sides.
 # =============================================================================
 function build_A_coeff_table!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
-    C=tab.acoeffs
-    gcoef=ws.gcoef
-    invs=ws.invs
-    jt=_magnetic_anchor_index(pre,ν,anchor_s)
-    two_seed=isnothing(anchor_s) && _magnetic_use_two_seed(pre,ν) && jt<pre.Npatch-1
-    if !two_seed
-        A0,Ap0=seed_A_Ap_mpmath(pre.centers[jt],ν;dps=mp_dps)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,A0,Ap0,pre.centers[jt])
-        @inbounds for n in 1:(pre.P+1)
-            C[n,jt]=gcoef[n]
-        end
-        @inbounds for j in (jt+1):pre.Npatch
-            h=pre.centers[j]-pre.centers[j-1]
-            A=horner_eval_col(C,j-1,h)
-            Ap=horner_deriv_col(C,j-1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-        @inbounds for j in (jt-1):-1:1
-            h=pre.centers[j]-pre.centers[j+1]
-            A=horner_eval_col(C,j+1,h)
-            Ap=horner_deriv_col(C,j+1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-        return nothing
-    end
-    jr=pre.Npatch
-    jcut=(jt+jr)>>>1
-    A0,Ap0=seed_A_Ap_mpmath(pre.centers[jt],ν;dps=mp_dps)
-    build_magnetic_patch_coeffs!(gcoef,invs,ν,A0,Ap0,pre.centers[jt])
-    @inbounds for n in 1:(pre.P+1)
-        C[n,jt]=gcoef[n]
-    end
-    @inbounds for j in (jt+1):jcut
-        h=pre.centers[j]-pre.centers[j-1]
-        A=horner_eval_col(C,j-1,h)
-        Ap=horner_deriv_col(C,j-1,h)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
-        for n in 1:(pre.P+1)
-            C[n,j]=gcoef[n]
-        end
-    end
-    @inbounds for j in (jt-1):-1:1
-        h=pre.centers[j]-pre.centers[j+1]
-        A=horner_eval_col(C,j+1,h)
-        Ap=horner_deriv_col(C,j+1,h)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
-        for n in 1:(pre.P+1)
-            C[n,j]=gcoef[n]
-        end
-    end
-    A0,Ap0=seed_A_Ap_mpmath(pre.centers[jr],ν;dps=mp_dps)
-    build_magnetic_patch_coeffs!(gcoef,invs,ν,A0,Ap0,pre.centers[jr])
-    @inbounds for n in 1:(pre.P+1)
-        C[n,jr]=gcoef[n]
-    end
-    @inbounds for j in (jr-1):-1:(jcut+1)
-        h=pre.centers[j]-pre.centers[j+1]
-        A=horner_eval_col(C,j+1,h)
-        Ap=horner_deriv_col(C,j+1,h)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,A,Ap,pre.centers[j])
-        for n in 1:(pre.P+1)
-            C[n,j]=gcoef[n]
-        end
-    end
+    _build_coeff_table!(tab.acoeffs,pre,ws,ν,seed_A_Ap_mpmath;mp_dps=mp_dps,anchor_s=anchor_s)
     return nothing
 end
 
@@ -1032,90 +1117,19 @@ end
 #
 #     G''(s) = -G'(s)/s + (s^2 - 4ν)G(s)
 #
-# has turning point s_t=2sqrt(|ν|). The builder automatically anchors at this
-# point. If the table extends close to or beyond z_t=4|ν|, it switches to a
-# two-seed construction: one seed near s_t and one seed at smax. This improves
-# accuracy near the Airy transition without changing the runtime evaluators.
+# has formal turning point s_t=2sqrt(|ν|). The builder anchors there by default.
+# If the table extends far beyond z_t=4|ν|, it uses dynamic multi-seeding: one
+# seed near s_t plus additional seeds toward smax. This is important for small ν
+# and large zmax, where a two-seed construction is still too long.
 #
-# If anchor_s is provided, automatic two-seed logic is disabled and the supplied
-# anchor is used as a manual single-seed location.
+# If anchor_s is provided, automatic multi-seeding is disabled.
 # =============================================================================
 function build_MagneticGreenSTaylorTable!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ws::MagneticGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
     @assert pre.centers===tab.centers
     @assert pre.P==tab.P && pre.Npatch==size(tab.gcoeffs,2) && pre.Npatch==size(tab.acoeffs,2)
     _update_small_z!(tab,pre,ν;mp_dps=mp_dps)
-    C=tab.gcoeffs
-    gcoef=ws.gcoef
-    invs=ws.invs
-    jt=_magnetic_anchor_index(pre,ν,anchor_s)
-    two_seed=isnothing(anchor_s) && _magnetic_use_two_seed(pre,ν) && jt<pre.Npatch-1
-    if !two_seed
-        G0,Gp0=seed_G_Gp_mpmath(pre.centers[jt],ν;dps=mp_dps)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,G0,Gp0,pre.centers[jt])
-        @inbounds for n in 1:(pre.P+1)
-            C[n,jt]=gcoef[n]
-        end
-        @inbounds for j in (jt+1):pre.Npatch
-            h=pre.centers[j]-pre.centers[j-1]
-            G=horner_eval_col(C,j-1,h)
-            Gp=horner_deriv_col(C,j-1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-        @inbounds for j in (jt-1):-1:1
-            h=pre.centers[j]-pre.centers[j+1]
-            G=horner_eval_col(C,j+1,h)
-            Gp=horner_deriv_col(C,j+1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-    else
-        jr=pre.Npatch
-        jcut=(jt+jr)>>>1
-
-        G0,Gp0=seed_G_Gp_mpmath(pre.centers[jt],ν;dps=mp_dps)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,G0,Gp0,pre.centers[jt])
-        @inbounds for n in 1:(pre.P+1)
-            C[n,jt]=gcoef[n]
-        end
-        @inbounds for j in (jt+1):jcut
-            h=pre.centers[j]-pre.centers[j-1]
-            G=horner_eval_col(C,j-1,h)
-            Gp=horner_deriv_col(C,j-1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-        @inbounds for j in (jt-1):-1:1
-            h=pre.centers[j]-pre.centers[j+1]
-            G=horner_eval_col(C,j+1,h)
-            Gp=horner_deriv_col(C,j+1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-        G0,Gp0=seed_G_Gp_mpmath(pre.centers[jr],ν;dps=mp_dps)
-        build_magnetic_patch_coeffs!(gcoef,invs,ν,G0,Gp0,pre.centers[jr])
-        @inbounds for n in 1:(pre.P+1)
-            C[n,jr]=gcoef[n]
-        end
-        @inbounds for j in (jr-1):-1:(jcut+1)
-            h=pre.centers[j]-pre.centers[j+1]
-            G=horner_eval_col(C,j+1,h)
-            Gp=horner_deriv_col(C,j+1,h)
-            build_magnetic_patch_coeffs!(gcoef,invs,ν,G,Gp,pre.centers[j])
-            for n in 1:(pre.P+1)
-                C[n,j]=gcoef[n]
-            end
-        end
-    end
-    build_A_coeff_table!(tab,pre,ws,ν;mp_dps=mp_dps,anchor_s=anchor_s)
+    _build_coeff_table!(tab.gcoeffs,pre,ws,ν,seed_G_Gp_mpmath;mp_dps=mp_dps,anchor_s=anchor_s)
+    _build_coeff_table!(tab.acoeffs,pre,ws,ν,seed_A_Ap_mpmath;mp_dps=mp_dps,anchor_s=anchor_s)
     return nothing
 end
 
