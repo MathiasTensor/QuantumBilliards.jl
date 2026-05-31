@@ -73,26 +73,59 @@
 # also import the mpmath objects (since QuantumBilliards.jl has these in pycall_init.jl)
 const inv4π=1/(4*pi)
 
-# η = zmax/(4|ν|) measures how far the table extends relative to the formal
-# turning point z_t=4|ν| of the s-ODE. If η is larger than this threshold and no
-# manual anchor_s is supplied, the builder uses dynamic multi-seeding.
-const MAGNETIC_TURNING_ETA_CRIT=0.8
-
-# Bounds for the maximum s-distance between neighboring mpmath seeds on the
-# post-turning side. Smaller spans reduce accumulated Taylor propagation error
-# but increase table build time. Runtime evaluation cost is unchanged.
-const MAGNETIC_MAX_SEED_SPAN=0.2
-const MAGNETIC_MIN_SEED_SPAN=0.1
-
+#------------------------------------------------------------------------------
+# UConfluentTaylorConfig
+#
+# Global numerical configuration for the Taylor-patch evaluator of
+#
+#     F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/(4Γ(ν+1/2)).
+#
+# The runtime table is built in s=sqrt(z), where G(s)=F(s²) satisfies
+#
+#     G''(s) = -G'(s)/s + (s²-4ν)G(s).
+#
+# The formal turning point is
+#
+#     s_t = 2sqrt(|ν|),        z_t = 4|ν|.
+#
+# If the table extends close to or beyond z_t, long one-sided propagation can
+# accumulate error. The multi-seed parameters below limit that propagation
+# length by inserting additional high-precision mpmath seeds.
+#
+# Fields
+#   h_patch          spacing of Taylor centers in s
+#   P_patch          Taylor degree per local patch
+#   turning_eta_crit activate multi-seeding when η=zmax/(4|ν|) exceeds this
+#   min_seed_span    lower bound for seed spacing in s
+#   max_seed_span    upper bound for seed spacing in s
+#   target_accuracy  intended validation target; does not alter evaluation
+#------------------------------------------------------------------------------
 Base.@kwdef mutable struct UConfluentTaylorConfig
-    h_patch::Float64=1e-5  # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
-    P_patch::Int=8 # Taylor expansion order for each patch - determines accuracy (smaller h allows smaller P)
+    h_patch::Float64=1e-5
+    P_patch::Int=8
+    turning_eta_crit::Float64=0.8
+    min_seed_span::Float64=0.1
+    max_seed_span::Float64=0.2
+    target_accuracy::Float64=1e-13
 end
 const U_CONFLUENT_TAYLOR_CONFIG=UConfluentTaylorConfig()
 
 @inline u_confluent_h_patch()=U_CONFLUENT_TAYLOR_CONFIG.h_patch
 @inline u_confluent_P_patch()=U_CONFLUENT_TAYLOR_CONFIG.P_patch
-@inline function confluent_U_params();cfg=U_CONFLUENT_TAYLOR_CONFIG;return cfg.h_patch,cfg.P_patch;end
+@inline magnetic_turning_eta_crit()=U_CONFLUENT_TAYLOR_CONFIG.turning_eta_crit
+@inline magnetic_min_seed_span()=U_CONFLUENT_TAYLOR_CONFIG.min_seed_span
+@inline magnetic_max_seed_span()=U_CONFLUENT_TAYLOR_CONFIG.max_seed_span
+@inline magnetic_target_accuracy()=U_CONFLUENT_TAYLOR_CONFIG.target_accuracy
+
+@inline function confluent_U_params()
+    cfg=U_CONFLUENT_TAYLOR_CONFIG
+    return cfg.h_patch,cfg.P_patch
+end
+
+@inline function magnetic_seed_params()
+    cfg=U_CONFLUENT_TAYLOR_CONFIG
+    return cfg.turning_eta_crit,cfg.min_seed_span,cfg.max_seed_span,cfg.target_accuracy
+end
 
 function confluent_U_set_h!(h::Real)
     h>0 || error("h_patch must be positive.")
@@ -106,9 +139,83 @@ function confluent_U_set_P!(P::Integer)
     return U_CONFLUENT_TAYLOR_CONFIG
 end
 
-function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing)
+function magnetic_set_turning_eta_crit!(η::Real)
+    η>0 || error("turning_eta_crit must be positive.")
+    U_CONFLUENT_TAYLOR_CONFIG.turning_eta_crit=Float64(η)
+    return U_CONFLUENT_TAYLOR_CONFIG
+end
+
+#------------------------------------------------------------------------------
+# magnetic_set_seed_span!
+#
+# Modify the admissible spacing between neighboring high-precision seeds.
+#
+# Smaller seed spacings reduce accumulated analytic-continuation error when
+# Taylor patches are propagated over long intervals, particularly when the
+# evaluation range extends significantly beyond the turning point
+#
+#     z_t = 4|ν|.
+#
+# Decreasing the seed spacing generally improves robustness at the expense of
+# increased table-construction time.
+#
+# Runtime evaluation cost is unchanged.
+#
+# Returns
+# -------
+# Updated UConfluentTaylorConfig object.
+#------------------------------------------------------------------------------
+function magnetic_set_seed_span!(;min_seed_span=nothing,max_seed_span=nothing)
+    cfg=U_CONFLUENT_TAYLOR_CONFIG
+    smin=isnothing(min_seed_span) ? cfg.min_seed_span : Float64(min_seed_span)
+    smax=isnothing(max_seed_span) ? cfg.max_seed_span : Float64(max_seed_span)
+    smin>0 || error("min_seed_span must be positive.")
+    smax>0 || error("max_seed_span must be positive.")
+    smin<=smax || error("min_seed_span must be <= max_seed_span.")
+    cfg.min_seed_span=smin
+    cfg.max_seed_span=smax
+    return cfg
+end
+
+#------------------------------------------------------------------------------
+# magnetic_set_target_accuracy!
+#
+# Set the target relative accuracy associated with the magnetic Taylor-table
+# machinery.
+#
+# This parameter is intended for validation, regression testing, and future
+# automatic parameter-selection routines. It does not currently alter the
+# discretization parameters automatically.
+#
+# Typical values
+# --------------
+# 1e-10 : exploratory calculations
+# 1e-12 : production-quality calculations
+# 1e-13 : recommended default
+# 1e-14 : near machine precision
+#
+# Returns
+# -------
+# Updated UConfluentTaylorConfig object.
+#------------------------------------------------------------------------------
+function magnetic_set_target_accuracy!(tol::Real)
+    0<tol<1 || error("target_accuracy must satisfy 0 < target_accuracy < 1.")
+    U_CONFLUENT_TAYLOR_CONFIG.target_accuracy=Float64(tol)
+    return U_CONFLUENT_TAYLOR_CONFIG
+end
+
+#------------------------------------------------------------------------------
+# confluent_U_set_taylor_params!
+#
+# Convenience routine for simultaneously updating one or more Taylor-table
+# configuration parameters.
+#------------------------------------------------------------------------------
+function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing,turning_eta_crit=nothing,min_seed_span=nothing,max_seed_span=nothing,target_accuracy=nothing)
     !isnothing(h_patch) && confluent_U_set_h!(h_patch)
     !isnothing(P_patch) && confluent_U_set_P!(P_patch)
+    !isnothing(turning_eta_crit) && magnetic_set_turning_eta_crit!(turning_eta_crit)
+    (!isnothing(min_seed_span) || !isnothing(max_seed_span)) && magnetic_set_seed_span!(;min_seed_span=min_seed_span,max_seed_span=max_seed_span)
+    !isnothing(target_accuracy) && magnetic_set_target_accuracy!(target_accuracy)
     return U_CONFLUENT_TAYLOR_CONFIG
 end
 
@@ -799,7 +906,7 @@ end
 # a manual anchor means the caller explicitly requested single-seed propagation.
 # =============================================================================
 @inline function _magnetic_use_multi_seed(pre::MagneticGreenSPrecomp,ν::ComplexF64)
-    return _magnetic_eta(pre,ν)>MAGNETIC_TURNING_ETA_CRIT
+    return _magnetic_eta(pre,ν)>magnetic_turning_eta_crit()
 end
 
 # =============================================================================
@@ -818,7 +925,7 @@ end
     span=pre.smax-pre.centers[jt]
     span<=0 && return Inf
     nη=max(1,ceil(Int,_magnetic_eta(pre,ν)))
-    return clamp(span/nη,MAGNETIC_MIN_SEED_SPAN,MAGNETIC_MAX_SEED_SPAN)
+    return clamp(span/nη,magnetic_min_seed_span(),magnetic_max_seed_span())
 end
 
 # =============================================================================
