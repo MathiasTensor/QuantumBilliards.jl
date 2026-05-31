@@ -207,16 +207,160 @@ end
 #------------------------------------------------------------------------------
 # confluent_U_set_taylor_params!
 #
-# Convenience routine for simultaneously updating one or more Taylor-table
-# configuration parameters.
+# Purpose
+# Update the global configuration used by the Landau-regularized magnetic Green
+# Taylor-table machinery.
+#
+# The evaluated radial factor is
+#
+#     F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/(4Γ(ν+1/2)),
+#
+# with
+#
+#     z = |x-y|²/b²,        s = sqrt(z),        G(s;ν)=F(s²;ν).
+#
+# The table stores local Taylor expansions in s. The coefficients are generated
+# from the transformed ODE
+#
+#     G''(s) = -G'(s)/s + (s²-4ν)G(s).
+#
+# The formal turning point is
+#
+#     s_t = 2sqrt(|ν|),        z_t = 4|ν|.
+#
+# Therefore the ratio
+#
+#     η = zmax/(4|ν|)
+#
+# measures whether the table reaches the turning region. When η is large,
+# propagation from one seed may accumulate error. The multi-seed parameters below
+# control how often high-precision mpmath seeds are inserted.
+#
+# Keyword arguments
+# -----------------
+# h_patch
+#     Uniform Taylor-center spacing in s=sqrt(z). Smaller h_patch improves local
+#     Taylor accuracy, but increases Npatch and memory.
+#
+# P_patch
+#     Taylor degree on each patch. Larger P_patch improves local accuracy, but
+#     increases coefficient storage and patch-construction work.
+#
+# turning_eta_crit
+#     Activates dynamic multi-seeding when
+#
+#         zmax/(4|ν|) > turning_eta_crit.
+#
+# min_seed_span, max_seed_span
+#     Lower and upper bounds for the s-distance between neighboring mpmath
+#     seeds. Smaller max_seed_span improves robustness over long post-turning
+#     intervals, but increases table build time. Runtime evaluation is unchanged.
+#
+# target_accuracy
+#     Intended relative accuracy for validation and regression tests. This does
+#     not automatically change h_patch, P_patch, or seed spacing.
+#
+# validate
+#     If true, run magnetic_validate_taylor_config! after applying the new
+#     parameters. If validation fails, the old configuration is restored and the
+#     validation error is rethrown.
+#
+# validation_kwargs...
+#     Keyword arguments forwarded to `magnetic_validate_taylor_config!`.
+#
+#     These are used only when
+#
+#         validate = true.
+#
+#     They define the independent numerical check that is run after changing the
+#     global Taylor-table parameters. A typical validator should build one or
+#     more tables with the updated configuration, compare `_eval_F`, `_eval_Fz`,
+#     `_eval_Alog`, `_eval_Alog_z`, and `_eval_Blog` against mpmath references,
+#     and require errors below `magnetic_target_accuracy()`.
+#
+#     Accepted validation keywords:
+#
+#     nus
+#         Vector of ComplexF64 test values of ν. Should include small ν near the
+#         turning-sensitive regime, large ν, half-integers, integers, and one
+#         complex Beyn-like value.
+#
+#     zmax
+#         Maximum z value used in the validation table. Should be at least as
+#         large as the largest production value expected from
+#         `magnetic_zmax(pts,bmag;safety=...)`.
+#
+#     zmin
+#         Lower endpoint of the Taylor table. Usually 1e-3.
+#
+#     zsmall
+#         Threshold below which the Frobenius/log small-z branch is used.
+#         Usually equal to zmin.
+#
+#     Msmall
+#         Order of the small-z logarithmic expansion.
+#
+#     mp_dps
+#         mpmath precision used for reference values and table seeds.
+#
+#     ztests
+#         Optional explicit vector of z values. If omitted, the validator should
+#         test logarithmically small z, zsmall, moderate z, the turning region,
+#         and fractions of zmax.
+#
+#     rtol
+#         Relative tolerance. Default should be `magnetic_target_accuracy()`.
+#
+#     atol
+#         Absolute tolerance, useful near zeros of F, A, or derivatives.
+#
+#     verbose
+#         Print per-ν and per-z diagnostic errors.
+#
+#     test_derivatives
+#         Whether to test `_eval_Fz` and `_eval_Alog_z`. Derivative tests are
+#         stricter and can reveal propagation errors not visible in F alone.
+#
+#     test_split
+#         Whether to test the exact split
+#
+#             F(z) = Aν(z)log(z) + Bν(z).
+#
+# Example:
+#
+#     confluent_U_set_taylor_params!(
+#         min_seed_span=0.1,
+#         max_seed_span=0.2,
+#         target_accuracy=1e-13,
+#         validate=true,
+#         nus=ComplexF64[20+0im,40+0im,80+0im,600+0im,2003.37+0.5im],
+#         zmax=500.0,
+#         zmin=1e-3,
+#         zsmall=1e-3,
+#         Msmall=40,
+#         mp_dps=160,
+#         verbose=true,
+#     )
 #------------------------------------------------------------------------------
-function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing,turning_eta_crit=nothing,min_seed_span=nothing,max_seed_span=nothing,target_accuracy=nothing)
-    !isnothing(h_patch) && confluent_U_set_h!(h_patch)
-    !isnothing(P_patch) && confluent_U_set_P!(P_patch)
-    !isnothing(turning_eta_crit) && magnetic_set_turning_eta_crit!(turning_eta_crit)
-    (!isnothing(min_seed_span) || !isnothing(max_seed_span)) && magnetic_set_seed_span!(;min_seed_span=min_seed_span,max_seed_span=max_seed_span)
-    !isnothing(target_accuracy) && magnetic_set_target_accuracy!(target_accuracy)
-    return U_CONFLUENT_TAYLOR_CONFIG
+function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing,turning_eta_crit=nothing,min_seed_span=nothing,max_seed_span=nothing,target_accuracy=nothing,validate::Bool=false,validation_kwargs...)
+    old=deepcopy(U_CONFLUENT_TAYLOR_CONFIG)
+    try
+        !isnothing(h_patch) && confluent_U_set_h!(h_patch)
+        !isnothing(P_patch) && confluent_U_set_P!(P_patch)
+        !isnothing(turning_eta_crit) && magnetic_set_turning_eta_crit!(turning_eta_crit)
+        (!isnothing(min_seed_span) || !isnothing(max_seed_span)) && magnetic_set_seed_span!(;min_seed_span=min_seed_span,max_seed_span=max_seed_span)
+        !isnothing(target_accuracy) && magnetic_set_target_accuracy!(target_accuracy)
+        validate && magnetic_validate_taylor_config!(;validation_kwargs...)
+        return U_CONFLUENT_TAYLOR_CONFIG
+    catch err
+        U_CONFLUENT_TAYLOR_CONFIG.h_patch=old.h_patch
+        U_CONFLUENT_TAYLOR_CONFIG.P_patch=old.P_patch
+        U_CONFLUENT_TAYLOR_CONFIG.turning_eta_crit=old.turning_eta_crit
+        U_CONFLUENT_TAYLOR_CONFIG.min_seed_span=old.min_seed_span
+        U_CONFLUENT_TAYLOR_CONFIG.max_seed_span=old.max_seed_span
+        U_CONFLUENT_TAYLOR_CONFIG.target_accuracy=old.target_accuracy
+        rethrow(err)
+    end
 end
 
 # =============================================================================
@@ -1599,6 +1743,78 @@ function _eval_Blog!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTa
     return nothing
 end
 
+############################################################
+##### FOR TESTING: REFERENCE EVALUATION WITH MP MPMATH #####
+############################################################
+
+function Fz_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    _mpctx[].dps=dps
+    z_py=_mpf[](z);ν_py=_mpc[](real(ν),imag(ν));a_py=_mpf[](0.5)-ν_py
+    C=-1/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
+    U0=_mp_hyperu[](a_py,1,z_py)
+    U1=_mp_hyperu[](a_py+1,2,z_py)
+    Fz=C*_mp_exp[](-z_py/2)*(-_mpf[](0.5)*U0-a_py*U1)
+    return ComplexF64(pycall(_pyfloat[],Float64,Fz.real),pycall(_pyfloat[],Float64,Fz.imag))
+end
+
+function Alog_z_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    _mpctx[].dps=dps
+    z_py=_mpf[](z);ν_py=_mpc[](real(ν),imag(ν));a_py=_mpf[](0.5)-ν_py
+    c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
+    M0=_mp_hyp1f1[](a_py,1,z_py)
+    M1=_mp_hyp1f1[](a_py+1,2,z_py)
+    Az=c*_mp_exp[](-z_py/2)*(a_py*M1-_mpf[](0.5)*M0)
+    return ComplexF64(pycall(_pyfloat[],Float64,Az.real),pycall(_pyfloat[],Float64,Az.imag))
+end
+
+function Blog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    return F_ref_mpmath(z,ν;dps=dps)-Alog_ref_mpmath(z,ν;dps=dps)*log(z)
+end
+
+function magnetic_validate_taylor_config!(;nus=ComplexF64[20+0im,40+0im,80+0im,600+0im,2000+0im,2003.37+0.5im],zmax::Float64=500.0,zmin::Float64=1e-3,zsmall::Float64=1e-3,Msmall::Int=30,mp_dps::Int=160,ztests=nothing,rtol::Float64=magnetic_target_accuracy(),atol::Float64=1e-14,verbose::Bool=false,test_derivatives::Bool=true,test_split::Bool=true)
+    zs=isnothing(ztests) ? Float64[
+        1e-15,1e-12,1e-9,1e-6,1e-4,zsmall,1.5zsmall,
+        1e-2,3e-2,0.12,0.35,0.75,1.0,
+        0.25zmax,0.5zmax,0.75zmax,zmax,
+    ] : Float64.(ztests)
+    ws=MagneticGreenSWorkspace(;threaded=false)
+    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,Msmall=Msmall)
+    for ν in nus
+        tab=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
+        build_MagneticGreenSTaylorTable!(tab,pre,ws,ν;mp_dps=mp_dps)
+        for z in zs
+            0<z<=zmax || continue
+            Fref=F_ref_mpmath(z,ν;dps=mp_dps)
+            Fval=_eval_F(tab,z)
+            Aval=_eval_Alog(tab,z)
+            Aref=Alog_ref_mpmath(z,ν;dps=mp_dps)
+            errF=abs(Fval-Fref); relF=errF/max(abs(Fref),eps(Float64))
+            errA=abs(Aval-Aref); relA=errA/max(abs(Aref),eps(Float64))
+            verbose && println("ν=",ν," z=",z," relF=",relF," relA=",relA)
+            (relF<=rtol || errF<=atol) || error("F validation failed: ν=$ν z=$z rel=$relF abs=$errF")
+            (relA<=rtol || errA<=atol) || error("Alog validation failed: ν=$ν z=$z rel=$relA abs=$errA")
+            if test_derivatives
+                Fzref=Fz_ref_mpmath(z,ν;dps=mp_dps)
+                Fzval=_eval_Fz(tab,z)
+                Azref=Alog_z_ref_mpmath(z,ν;dps=mp_dps)
+                Azval=_eval_Alog_z(tab,z)
+                errFz=abs(Fzval-Fzref); relFz=errFz/max(abs(Fzref),eps(Float64))
+                errAz=abs(Azval-Azref); relAz=errAz/max(abs(Azref),eps(Float64))
+                verbose && println("ν=",ν," z=",z," relFz=",relFz," relAz=",relAz)
+                (relFz<=max(10rtol,1e-12) || errFz<=10atol) || error("Fz validation failed: ν=$ν z=$z rel=$relFz abs=$errFz")
+                (relAz<=max(10rtol,1e-12) || errAz<=10atol) || error("Alog_z validation failed: ν=$ν z=$z rel=$relAz abs=$errAz")
+            end
+            if test_split
+                Bval=_eval_Blog(tab,z)
+                scale=max(abs(Fval),abs(Aval*log(z)),abs(Bval),1.0)
+                err=abs(Fval-(Aval*log(z)+Bval))/scale
+                err<=max(10rtol,100eps(Float64)) || error("Split validation failed: ν=$ν z=$z err=$err")
+            end
+        end
+    end
+    return true
+end
+
 
 
 
@@ -1617,33 +1833,6 @@ if abspath(PROGRAM_FILE)==@__FILE__
 
 @inline function magnetic_test_zmax(b::T;D::T=T(10.0),safety::T=T(1.2)) where {T<:Real}
     return safety*(D/b)^2
-end
-
-function F_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
-    _mpctx[].dps=dps
-    z_py=_mpf[](z)
-    ν_py=_mpc[](real(ν),imag(ν))
-    a_py=_mpf[](0.5)-ν_py
-    F=-_mp_exp[](-z_py/2)*_mp_hyperu[](a_py,1,z_py)/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
-    re=pycall(_pyfloat[],Float64,F.real)
-    im=pycall(_pyfloat[],Float64,F.imag)
-    return ComplexF64(re,im)
-end
-
-function Alog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
-    _mpctx[].dps=dps
-    z_py=_mpf[](z)
-    ν_py=_mpc[](real(ν),imag(ν))
-    a_py=_mpf[](0.5)-ν_py
-    c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
-    A=c*_mp_exp[](-z_py/2)*_mp_hyp1f1[](a_py,1,z_py)
-    re=pycall(_pyfloat[],Float64,A.real)
-    im=pycall(_pyfloat[],Float64,A.imag)
-    return ComplexF64(re,im)
-end
-
-function Blog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
-    return F_ref_mpmath(z,ν;dps=dps)-Alog_ref_mpmath(z,ν;dps=dps)*log(z)
 end
 
 function magnetic_ztests(zmax::Float64;zsmall::Float64=1e-3)
