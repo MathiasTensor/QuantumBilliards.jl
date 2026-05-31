@@ -81,8 +81,8 @@ const MAGNETIC_TURNING_ETA_CRIT=0.8
 # Bounds for the maximum s-distance between neighboring mpmath seeds on the
 # post-turning side. Smaller spans reduce accumulated Taylor propagation error
 # but increase table build time. Runtime evaluation cost is unchanged.
-const MAGNETIC_MAX_SEED_SPAN=2.0
-const MAGNETIC_MIN_SEED_SPAN=0.5
+const MAGNETIC_MAX_SEED_SPAN=0.5
+const MAGNETIC_MIN_SEED_SPAN=0.25
 
 Base.@kwdef mutable struct UConfluentTaylorConfig
     h_patch::Float64=1e-5  # step size for Taylor patches - detemrines accuracy and P choice (smaller h allows smaller P, but increases Npatch and thus memory and precomputation time)
