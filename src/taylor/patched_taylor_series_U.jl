@@ -680,6 +680,58 @@ struct MagneticGreenSPrecomp
 end
 
 # =============================================================================
+# MagneticGreenSWorkspace
+#
+# Purpose
+# Scratch storage for Taylor-table construction.
+#
+# Fields
+#   gcoef::Vector{ComplexF64} Single-thread scratch buffer for one patch coefficient vector.
+#
+#   invs::Vector{ComplexF64} Single-thread scratch buffer for the expansion of 1/(s0+h).
+#
+#   gcoef_tls::Vector{Vector{ComplexF64}} Thread-local coefficient buffers for batched construction.
+#
+#   invs_tls::Vector{Vector{ComplexF64}} Thread-local inverse-series buffers for batched construction.
+#
+# Why it matters
+# Without these buffers, every patch construction would allocate temporary
+# vectors. In Beyn runs this would be catastrophic.
+# =============================================================================
+struct MagneticGreenSWorkspace
+    gcoef::Vector{ComplexF64}
+    invs::Vector{ComplexF64}
+    gcoef_tls::Vector{Vector{ComplexF64}}
+    invs_tls::Vector{Vector{ComplexF64}}
+end
+
+# =============================================================================
+# MagneticGreenSWorkspace(P; threaded=true)
+#
+# Purpose
+# Allocate scratch buffers for table construction.
+#
+# Inputs
+#   P::Int Taylor degree. Buffers of length P+1 are allocated.
+#
+# Keyword arguments
+#   threaded::Bool=true If true, allocate one pair of scratch buffers per Julia thread.
+#
+# Output
+#   MagneticGreenSWorkspace Workspace object used by `build_MagneticGreenSTaylorTable!`.
+# =============================================================================
+@inline function MagneticGreenSWorkspace(;threaded::Bool=true)
+    h_patch,P_patch=confluent_U_params()
+    NT=threaded ? Threads.nthreads() : 1
+    return MagneticGreenSWorkspace(
+        Vector{ComplexF64}(undef,P_patch+1),
+        Vector{ComplexF64}(undef,P_patch+1),
+        [Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT],
+        [Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT],
+    )
+end
+
+# =============================================================================
 # _magnetic_turning_s
 #
 # Purpose
@@ -856,58 +908,6 @@ function _propagate_left!(C::Matrix{ComplexF64},pre::MagneticGreenSPrecomp,ws::M
         end
     end
     return nothing
-end
-
-# =============================================================================
-# MagneticGreenSWorkspace
-#
-# Purpose
-# Scratch storage for Taylor-table construction.
-#
-# Fields
-#   gcoef::Vector{ComplexF64} Single-thread scratch buffer for one patch coefficient vector.
-#
-#   invs::Vector{ComplexF64} Single-thread scratch buffer for the expansion of 1/(s0+h).
-#
-#   gcoef_tls::Vector{Vector{ComplexF64}} Thread-local coefficient buffers for batched construction.
-#
-#   invs_tls::Vector{Vector{ComplexF64}} Thread-local inverse-series buffers for batched construction.
-#
-# Why it matters
-# Without these buffers, every patch construction would allocate temporary
-# vectors. In Beyn runs this would be catastrophic.
-# =============================================================================
-struct MagneticGreenSWorkspace
-    gcoef::Vector{ComplexF64}
-    invs::Vector{ComplexF64}
-    gcoef_tls::Vector{Vector{ComplexF64}}
-    invs_tls::Vector{Vector{ComplexF64}}
-end
-
-# =============================================================================
-# MagneticGreenSWorkspace(P; threaded=true)
-#
-# Purpose
-# Allocate scratch buffers for table construction.
-#
-# Inputs
-#   P::Int Taylor degree. Buffers of length P+1 are allocated.
-#
-# Keyword arguments
-#   threaded::Bool=true If true, allocate one pair of scratch buffers per Julia thread.
-#
-# Output
-#   MagneticGreenSWorkspace Workspace object used by `build_MagneticGreenSTaylorTable!`.
-# =============================================================================
-@inline function MagneticGreenSWorkspace(;threaded::Bool=true)
-    h_patch,P_patch=confluent_U_params()
-    NT=threaded ? Threads.nthreads() : 1
-    return MagneticGreenSWorkspace(
-        Vector{ComplexF64}(undef,P_patch+1),
-        Vector{ComplexF64}(undef,P_patch+1),
-        [Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT],
-        [Vector{ComplexF64}(undef,P_patch+1) for _ in 1:NT],
-    )
 end
 
 # =============================================================================
