@@ -246,4 +246,8 @@ include("hyperbolic/unfolding_hyperbolic.jl")
 include("hyperbolic/beyn_hyperbolic.jl")
 include("hyperbolic/wavefunctions_hyperbolic.jl")
 
+# magnetic
+include("magnetic/cfie_magnetic_kress.jl")
+include("magnetic/beyn_magnetic.jl")
+
 end
