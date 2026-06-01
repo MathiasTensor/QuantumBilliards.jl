@@ -99,12 +99,6 @@ Return `cos(x)+i sin(x)` with complex element type compatible with real type `T`
 @inline cisT(x::T) where {T<:Real}=Complex{T}(cos(x),sin(x))
 
 """
-    MagneticKressSolver
-Union alias for the smooth and global-corner magnetic Kress solvers.
-"""
-const MagneticKressSolver=Union{MagneticCFIE_kress,MagneticCFIE_kress_global_corners}
-
-"""
     MagneticCFIE_kress(ppw,billiard; bmag, min_pts=80, eps=1e-15, symmetry=nothing)
 
 Construct the smooth-boundary magnetic Kress solver.
@@ -150,6 +144,10 @@ struct MagneticCFIE_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolv
     min_t_spacing::T
 end
 
+"""
+    MagneticKressSolver
+Union alias for the smooth and global-corner magnetic Kress solvers.
+"""
 const MagneticKressSolver=Union{MagneticCFIE_kress,MagneticCFIE_kress_global_corners}
 
 function MagneticCFIE_kress(ppw::Union{T,Vector{T}},billiard::Bi;bmag::T,min_pts=80,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:AbsBilliard}
