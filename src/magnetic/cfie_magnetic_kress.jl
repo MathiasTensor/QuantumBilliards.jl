@@ -264,7 +264,7 @@ end
 Stores the precomputation object, temporary workspace, Taylor table, and current
 spectral parameter `ν`.
 """
-struct MagneticKressTaylorWorkspace
+mutable struct MagneticKressTaylorWorkspace
     pre
     tws
     tab
