@@ -207,7 +207,6 @@ derivatives, Kress weights, Euclidean source weights, normals, curvature data,
 boundary coordinates, and the maximum table argument `zmax`.
 """
 struct MagneticKressGeomCache{T<:Real}
-struct MagneticKressGeomCache{T<:Real}
     r2::Matrix{T}
     phase::Matrix{Complex{T}}
     logratio::Matrix{T}
