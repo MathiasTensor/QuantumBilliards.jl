@@ -694,12 +694,19 @@ end
 function magnetic_fourier_indices(A::AbstractMatrix{Complex{T}};tol::Real=magnetic_fourier_active_tol(),pad::Int=magnetic_fourier_active_pad()) where {T<:Real}
     AF=fftshift(ifft(fft(A,2),1),(1,2))
     score=vec(norm.(eachrow(AF))).+vec(norm.(eachcol(AF)))
-    τ=T(tol)*maximum(score)
+    smax=maximum(score)
+    τ=T(tol)*smax
     I0=findall(>(τ),score)
     isempty(I0) && return collect(1:size(A,1))
-    a=max(1,minimum(I0)-pad)
-    b=min(size(A,1),maximum(I0)+pad)
-    return collect(a:b)
+    mask=falses(size(A,1))
+    @inbounds for i in I0
+        a=max(1,i-pad)
+        b=min(size(A,1),i+pad)
+        mask[a:b].=true
+    end
+    I=findall(mask)
+    @info "magnetic Fourier reduction" N=size(A,1) M=length(I) tol=tol pad=pad threshold=τ scoremax=smax first=first(I) last=last(I)
+    return I
 end
 
 function magnetic_fourier_reduce!(Ared::AbstractMatrix{Complex{T}},A::AbstractMatrix{Complex{T}},I::Vector{Int}) where {T<:Real}
