@@ -1743,6 +1743,66 @@ function _eval_Blog!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTa
     return nothing
 end
 
+#################################
+#### LANDAU POLE SUBTRACTION ####
+#################################
+
+@inline landau_pole(n::Int)=n+0.5
+
+@inline function laguerreL0(n::Int,z::Float64)
+    n==0 && return 1.0
+    Lm2=1.0
+    Lm1=1.0-z
+    n==1 && return Lm1
+    @inbounds for k in 2:n
+        L=((2*k-1-z)*Lm1-(k-1)*Lm2)/k
+        Lm2,Lm1=Lm1,L
+    end
+    return Lm1
+end
+
+@inline function laguerreLα1(n::Int,z::Float64)
+    n==0 && return 1.0
+    Lm2=1.0
+    Lm1=2.0-z
+    n==1 && return Lm1
+    @inbounds for k in 2:n
+        L=((2*k-z)*Lm1-k*Lm2)/k
+        Lm2,Lm1=Lm1,L
+    end
+    return Lm1
+end
+
+@inline function landau_residue(n::Int,z::Float64)
+    return -exp(-0.5z)*laguerreL0(n,z)*inv4π
+end
+
+@inline function landau_residue_z(n::Int,z::Float64)
+    L=laguerreL0(n,z)
+    Lz=n==0 ? 0.0 : -laguerreLα1(n-1,z)
+    return -exp(-0.5z)*(Lz-0.5L)*inv4π
+end
+
+@inline function _pole_correction(tab::MagneticGreenSTaylorTable,z::Float64)
+    isempty(tab.pole_ns) && return 0.0+0.0im
+    ν=tab.ν
+    s=0.0+0.0im
+    @inbounds for n in tab.pole_ns
+        s+=landau_residue(n,z)/(ν-landau_pole(n))
+    end
+    return s
+end
+
+@inline function _pole_correction_z(tab::MagneticGreenSTaylorTable,z::Float64)
+    isempty(tab.pole_ns) && return 0.0+0.0im
+    ν=tab.ν
+    s=0.0+0.0im
+    @inbounds for n in tab.pole_ns
+        s+=landau_residue_z(n,z)/(ν-landau_pole(n))
+    end
+    return s
+end
+
 ############################################################
 ##### FOR TESTING: REFERENCE EVALUATION WITH MP MPMATH #####
 ############################################################

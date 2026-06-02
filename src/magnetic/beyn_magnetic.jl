@@ -6,10 +6,11 @@ const MagneticBeynPoints=BoundaryPointsCFIE
 
 @inline magnetic_bp(pts::BoundaryPointsCFIE)=pts
 
-struct MagneticContourPrecomp{T,W}
+struct MagneticContourPrecomp{T,W,PW}
     νj::Vector{ComplexF64}
     wj::Vector{Complex{T}}
     ws::Vector{W}
+    pole_ws::PW
 end
 
 @inline _mag_beyn_dim(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,ν)=
@@ -25,6 +26,16 @@ function _mag_contour_workspace(solver::MagneticKressSolver,pts,ν,cache;h=1e-5,
     return cache,kws
 end
 
+function landau_poles_in_disk(ν0::Real,R::Real)
+    nmin=max(0,floor(Int,ν0-R-0.5))
+    nmax=ceil(Int,ν0+R-0.5)
+    ns=Int[]
+    for n in nmin:nmax
+        abs((n+0.5)-ν0)<=R && push!(ns,n)
+    end
+    return ns
+end
+
 function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;nq::Int=64,h=1e-5,P=6,Msmall=30,mp_dps::Int=30) where {T<:Real}
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
@@ -37,7 +48,9 @@ function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPo
     @inbounds for q in 2:nq
         ws[q]=_mag_contour_workspace(solver,pts,νj[q],cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
     end
-    return MagneticContourPrecomp{T,typeof(ws1)}(νj,wj,ws)
+    ns=landau_poles_in_disk(real(ν0),R)
+    pole_ws=isempty(ns) ? nothing : MagneticPoleSubtractionWorkspace(ns)
+    return MagneticContourPrecomp{T,typeof(ws1),typeof(pole_ws)}(νj,wj,ws,pole_ws)
 end
 
 function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,use_unregularized=false,multithreaded::Bool=true,timeit::Bool=false)
