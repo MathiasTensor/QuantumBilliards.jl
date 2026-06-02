@@ -672,7 +672,7 @@ z=|x-y|²/B², and the periodic Kress logarithm log(4sin²((σᵢ-σⱼ)/2)).
 After assembly, the magnetic double-layer jump is added: in the regularized
 form this is 0.5cos(πν)I.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,normalize_landau::Bool=false) where {T<:Real}
     G=gws.G;N=gws.N;tab=kws.tab;ν=kws.ν
     fill!(A,zero(Complex{T}))
     @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
@@ -681,6 +681,11 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
         end
     end
     _magnetic_add_jump!(A,tab,matrix_kind)
+    if normalize_landau && matrix_kind!==:slp
+        c=cos(pi*ν)
+        abs(c)<100eps(real(T)) && @warn "Very close to Landau level during normalized assembly" ν=ν cosπν=c
+        rmul!(A,inv(c))
+    end
     return A
 end
 
@@ -701,7 +706,7 @@ copy uses Kress splitting, while all symmetry copies are geometrically separated
 and are therefore evaluated by `_magnetic_regular_image_entry`. The final jump
 term is added in the same convention as the full matrix.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,normalize_landau::Bool=false) where {T<:Real}
     full=rgws.full
     G=full.G
     tab=kws.tab
@@ -732,6 +737,11 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
         end
     end
     _magnetic_add_jump!(A,tab,matrix_kind)
+    if normalize_landau && matrix_kind!==:slp
+        c=cos(pi*ν)
+        abs(c)<100eps(real(T)) && @warn "Very close to Landau level during normalized assembly" ν=ν cosπν=c
+        rmul!(A,inv(c))
+    end
     return A
 end
 

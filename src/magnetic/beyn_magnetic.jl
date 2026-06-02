@@ -47,7 +47,7 @@ function construct_boundary_matrices_precomputed!(solver::MagneticKressSolver,pt
     Tbufs=[Matrix{ComplexF64}(undef, N, N) for _ in 1:nq]
     @blas_1 begin
         @inbounds for q in 1:nq
-            @benchit timeit=timeit "magnetic boundary assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,multithreaded=multithreaded)
+            @benchit timeit=timeit "magnetic boundary assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,multithreaded=multithreaded,normalize_landau=true)
         end
     end
     return Tbufs
