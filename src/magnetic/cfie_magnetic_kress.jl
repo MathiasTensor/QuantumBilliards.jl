@@ -610,7 +610,7 @@ Dᵢⱼ+i k(ν,B)Sᵢⱼ with k(ν,B)=2√ν/B.
     elseif matrix_kind===:dlp_src
         return _mag_kress_dlp_src(tab,G,bmag,i,j)
     elseif matrix_kind===:cfie_src
-        α=k_from_ν_magnetic(real(tab.ν),bmag)
+        α=k_from_ν_magnetic(tab.ν,bmag)
         return _mag_kress_dlp_src(tab,G,bmag,i,j)+im*T(α)*_mag_kress_slp(tab,G,bmag,i,j)
     else
         error("Unknown matrix_kind=$matrix_kind. Use :slp, :dlp_src, or :cfie_src.")
@@ -631,7 +631,7 @@ singular copy.
     elseif matrix_kind===:dlp_src
         return _mag_raw_regular_dlp_src(tab,G,bmag,i,j)
     elseif matrix_kind===:cfie_src
-        α=k_from_ν_magnetic(real(tab.ν),bmag)
+        α=k_from_ν_magnetic(tab.ν,bmag)
         return _mag_raw_regular_dlp_src(tab,G,bmag,i,j)+im*T(α)*_mag_raw_regular_slp(tab,G,bmag,i,j)
     else
         error("Unknown matrix_kind=$matrix_kind. Use :slp, :dlp_src, or :cfie_src.")
