@@ -570,7 +570,9 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
 end
 
 function _mp_rgamma_val(z)
-    if _mp_im[](z)==0 && _mp_re[](z)<=0 && _mp_floor[](_mp_re[](z))==_mp_re[](z)
+    zr=pycall(_pyfloat[],Float64,z.real)
+    zi=pycall(_pyfloat[],Float64,z.imag)
+    if zi==0.0 && zr<=0.0 && zr==floor(zr)
         return _mpf[](0)
     end
     return 1/_mp_gamma[](z)
