@@ -22,6 +22,7 @@ const _mp_digamma=Ref{PyObject}()
 const _mp_pi=Ref{PyObject}()
 const _mp_hyp1f1=Ref{PyObject}()
 const _mp_legenp=Ref{PyObject}()
+const _mp_im=Ref{PyObject}()
 
 function __init_mpmath_specials__()
     m=pyimport("mpmath")
@@ -42,6 +43,7 @@ function __init_mpmath_specials__()
     _mp_pi[]=m.pi
     _mp_hyp1f1[]=m.hyp1f1
     _mp_legenp[]=m.legenp
+    _mp_im[]=m.j
     return nothing
 end
 
