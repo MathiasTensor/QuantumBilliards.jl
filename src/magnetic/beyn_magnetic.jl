@@ -254,22 +254,17 @@ function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::Abstr
             tensN[j]=T(NaN)
             continue
         end
-        @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
+        mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
         wsj=_mag_contour_workspace(solver,pts,ComplexF64(λj),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
         construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded)
-        @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A,@view(Φtmp[:,j]))
+        mul!(y,A,@view(Φtmp[:,j]))
         rj=norm(y)
         tens[j]=rj
         nA=matnorm===:one ? opnorm(A,1) : matnorm===:two ? opnorm(A,2) : opnorm(A,Inf)
         φn=vecnorm(@view(Φtmp[:,j]))
         yn=vecnorm(y)
         tensN[j]=yn/(nA*(φn+epss)+epss)
-        if auto_discard_spurious && rj>=res_tol
-            collect_logs && push!(logs,"ν=$(λj) ||Aφ||=$(rj) > $res_tol → DROP")
-        else
-            keep[j]=true
-            collect_logs && push!(logs,"ν=$(λj) ||Aφ||=$(rj) < $res_tol ← KEEP")
-        end
+        keep[j]=!(auto_discard_spurious && rj>=res_tol)
     end
     idx=findall(keep)
     Φ_kept=isempty(idx) ? Matrix{Complex{T}}(undef,N,0) : Φtmp[:,idx]
