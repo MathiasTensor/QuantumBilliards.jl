@@ -84,7 +84,29 @@
 # MO 1/6/2026
 # ==============================================================================
 
-const TWO_PI=2*π
+const TWO_PI=2*pi
+
+Base.@kwdef mutable struct MagneticFourierReductionConfig
+    active_tol::Float64=1e-14
+    active_pad::Int=20
+end
+const MAGNETIC_FOURIER_REDUCTION_CONFIG=MagneticFourierReductionConfig()
+
+@inline magnetic_fourier_active_tol()=MAGNETIC_FOURIER_REDUCTION_CONFIG.active_tol
+@inline magnetic_fourier_active_pad()=MAGNETIC_FOURIER_REDUCTION_CONFIG.active_pad
+
+function magnetic_set_fourier_reduction!(;active_tol=nothing,active_pad=nothing)
+    cfg=MAGNETIC_FOURIER_REDUCTION_CONFIG
+    if !isnothing(active_tol)
+        active_tol>0 || error("active_tol must be positive.")
+        cfg.active_tol=Float64(active_tol)
+    end
+    if !isnothing(active_pad)
+        active_pad>=0 || error("active_pad must be nonnegative.")
+        cfg.active_pad=Int(active_pad)
+    end
+    return cfg
+end
 
 """
     k_from_ν_magnetic(ν,b)
@@ -664,6 +686,30 @@ function _magnetic_add_jump!(A,ν,matrix_kind::Symbol,use_unregularized::Bool)
     return A
 end
 
+struct MagneticFourierReduction
+    I::Vector{Int}
+    N::Int
+end
+
+function magnetic_fourier_indices(A::AbstractMatrix{Complex{T}};tol::Real=magnetic_fourier_active_tol(),pad::Int=magnetic_fourier_active_pad()) where {T<:Real}
+    AF=fftshift(ifft(fft(A,2),1),(1,2))
+    score=vec(norm.(eachrow(AF))).+vec(norm.(eachcol(AF)))
+    τ=T(tol)*maximum(score)
+    I0=findall(>(τ),score)
+    isempty(I0) && return collect(1:size(A,1))
+    a=max(1,minimum(I0)-pad)
+    b=min(size(A,1),maximum(I0)+pad)
+    return collect(a:b)
+end
+
+function magnetic_fourier_reduce!(Ared::AbstractMatrix{Complex{T}},A::AbstractMatrix{Complex{T}},I::Vector{Int}) where {T<:Real}
+    AF=fftshift(ifft(fft(A,2),1),(1,2))
+    @inbounds for j in eachindex(I), i in eachindex(I)
+        Ared[i,j]=AF[I[i],I[j]]
+    end
+    return Ared
+end
+
 """
     construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=:cfie_src,use_unregularized=false,multithreaded=true)
 
@@ -920,18 +966,29 @@ contour integration and multi-point spectral sweeps.
 Each buffer must have size `_workspace_dim(gws) × _workspace_dim(gws)`, where
 the dimension is either the full boundary size or the reduced symmetry-sector
 size.
+
+Returns the Fourier reduction indices I used to fill the Tbufs, which can be reused for all subsequent sweeps and contour solves in the same geometry and symmetry sector.
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};matrix_kind::Symbol=:cfie_src,use_unregularized=false,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};matrix_kind::Symbol=:cfie_src,use_unregularized=false,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,multithreaded::Bool=true,timeit::Bool=false,fourier_tol::Real=magnetic_fourier_active_tol(),fourier_pad::Int=magnetic_fourier_active_pad()) where {T<:Real}
     @blas_1 begin
         @benchit timeit=timeit "Magnetic Kress geometry workspace" gws=build_magnetic_kress_geom_workspace(solver,pts)
-        n=_workspace_dim(gws)
-        zmax=gws isa MagneticKressGeomWorkspace ? gws.G.zmax : gws.full.G.zmax
+        gws isa MagneticKressGeomWorkspace || error("Magnetic Fourier reduction requires full periodic workspace, i.e. symmetry=nothing.")
+        N=_workspace_dim(gws)
+        zmax=gws.G.zmax
         kws=build_magnetic_kress_taylor_workspace(zj[1],zmax;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-        @inbounds for q in eachindex(zj)
-            @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but MagneticCFIE_kress requires ($n,$n)."
-            @benchit timeit=timeit "Magnetic Kress Taylor update" update_magnetic_kress_taylor_workspace!(kws,zj[q];mp_dps=mp_dps)
-            @benchit timeit=timeit "Magnetic Kress matrix assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
+        Afull=Matrix{ComplexF64}(undef,N,N)
+        update_magnetic_kress_taylor_workspace!(kws,zj[1];mp_dps=mp_dps)
+        construct_magnetic_operator_matrix!(Afull,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
+        I=magnetic_fourier_indices(Afull;tol=fourier_tol,pad=fourier_pad)
+        M=length(I)
+        @assert size(Tbufs[1])==(M,M) "Tbufs[1] has size $(size(Tbufs[1])), but Fourier reduction gives ($M,$M)."
+        magnetic_fourier_reduce!(Tbufs[1],Afull,I)
+        @inbounds for q in 2:length(zj)
+            @assert size(Tbufs[q])==(M,M) "Tbufs[$q] has size $(size(Tbufs[q])), but Fourier reduction gives ($M,$M)."
+            update_magnetic_kress_taylor_workspace!(kws,zj[q];mp_dps=mp_dps)
+            construct_magnetic_operator_matrix!(Afull,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
+            magnetic_fourier_reduce!(Tbufs[q],Afull,I)
         end
     end
-    return nothing
+    return I
 end
