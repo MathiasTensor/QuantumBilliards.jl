@@ -25,13 +25,13 @@ function _mag_contour_workspace(solver::MagneticKressSolver,pts,ν,cache;h=1e-5,
     return cache,kws
 end
 
-@inline _landau_ν(n::Integer)=2*n+1
+@inline _landau_ν(n::Integer)=n+0.5
 
 function _landau_poles_in_window(solver::MagneticKressSolver,ν0::Complex{T},R::T;pad::Int=1) where {T<:Real}
     a=real(ν0)-R
     b=real(ν0)+R
-    n1=max(0,floor(Int,(a-1)/2)-pad)
-    n2=max(0,ceil(Int,(b-1)/2)+pad)
+    n1=max(0,floor(Int,a-0.5)-pad)
+    n2=max(0,ceil(Int,b-0.5)+pad)
     n2<n1 && return Complex{T}[]
     return Complex{T}.(_landau_ν.(n1:n2))
 end
