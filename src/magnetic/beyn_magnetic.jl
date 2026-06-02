@@ -46,12 +46,7 @@ function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF6
             n=_workspace_dim(pc.ws[q][1])
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but MagneticCFIE requires ($n,$n)."
             fill!(Tbufs[q],0.0+0.0im)
-            @benchit timeit=timeit "magnetic precomputed assembly" construct_magnetic_operator_matrix!(
-                Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];
-                matrix_kind=matrix_kind,
-                use_unregularized=use_unregularized,
-                multithreaded=multithreaded,
-            )
+            @benchit timeit=timeit "magnetic precomputed assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
         end
     end
     return nothing

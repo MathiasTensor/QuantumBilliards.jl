@@ -504,6 +504,7 @@ unchanged.
 function update_magnetic_kress_taylor_workspace!(kws::MagneticKressTaylorWorkspace,ν::ComplexF64;mp_dps::Int=30)
     build_MagneticGreenSTaylorTable!(kws.tab,kws.pre,kws.tws,ν;mp_dps=mp_dps)
     kws.ν=ν
+    hasproperty(kws.tab,:ν) && setproperty!(kws.tab,:ν,ν)
     return kws
 end
 
@@ -604,13 +605,13 @@ Return one Kress-corrected entry of the requested operator.
 Supported kinds are `:slp`, `:dlp_src`, and `:cfie_src`. The CFIE entry is
 Dᵢⱼ+i k(ν,B)Sᵢⱼ with k(ν,B)=2√ν/B.
 """
-@inline function _magnetic_entry(tab,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol) where {T<:Real}
+@inline function _magnetic_entry(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol) where {T<:Real}
     if matrix_kind===:slp
         return _mag_kress_slp(tab,G,bmag,i,j)
     elseif matrix_kind===:dlp_src
         return _mag_kress_dlp_src(tab,G,bmag,i,j)
     elseif matrix_kind===:cfie_src
-        α=k_from_ν_magnetic(tab.ν,bmag)
+        α=k_from_ν_magnetic(ν,bmag)
         return _mag_kress_dlp_src(tab,G,bmag,i,j)+im*α*_mag_kress_slp(tab,G,bmag,i,j)
     else
         error("Unknown matrix_kind=$matrix_kind. Use :slp, :dlp_src, or :cfie_src.")
@@ -625,13 +626,13 @@ The same operator choices as `_magnetic_entry` are supported, but no Kress
 logarithmic correction is applied because image sources are away from the
 singular copy.
 """
-@inline function _magnetic_regular_image_entry(tab,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol) where {T<:Real}
+@inline function _magnetic_regular_image_entry(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol) where {T<:Real}
     if matrix_kind===:slp
         return _mag_raw_regular_slp(tab,G,bmag,i,j)
     elseif matrix_kind===:dlp_src
         return _mag_raw_regular_dlp_src(tab,G,bmag,i,j)
     elseif matrix_kind===:cfie_src
-        α=k_from_ν_magnetic(tab.ν,bmag)
+        α=k_from_ν_magnetic(ν,bmag)
         return _mag_raw_regular_dlp_src(tab,G,bmag,i,j)+im*α*_mag_raw_regular_slp(tab,G,bmag,i,j)
     else
         error("Unknown matrix_kind=$matrix_kind. Use :slp, :dlp_src, or :cfie_src.")
@@ -683,13 +684,14 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
     G=gws.G
     N=gws.N
     tab=kws.tab
+    ν=kws.ν
     fill!(A,zero(Complex{T}))
     @use_threads multithreading=(multithreaded && N>=32) for j in 1:N
         @inbounds for i in 1:N
-            A[i,j]=_magnetic_entry(tab,G,gws.bmag,i,j,matrix_kind)
+            A[i,j]=_magnetic_entry(tab,ν,G,gws.bmag,i,j,matrix_kind)
         end
     end
-    _magnetic_add_jump!(A,kws.tab.ν,matrix_kind,use_unregularized)
+    _magnetic_add_jump!(A,ν,matrix_kind,use_unregularized)
     return A
 end
 
@@ -716,12 +718,13 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
     tab=kws.tab
     m=rgws.m
     Ifund=rgws.Ifund
+    ν=kws.ν
     fill!(A,zero(Complex{T}))
     @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
         j=Ifund[b]
         @inbounds for a in 1:m
             i=Ifund[a]
-            A[a,b]=_magnetic_entry(tab,G,full.bmag,i,j,matrix_kind)
+            A[a,b]=_magnetic_entry(tab,ν,G,full.bmag,i,j,matrix_kind)
         end
     end
     @inbounds for b in 1:m
@@ -734,12 +737,12 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
             for l in eachindex(imgs)
                 q=imgs[l]
                 q==j && continue
-                s+=scales[l]*_magnetic_regular_image_entry(tab,G,full.bmag,i,q,matrix_kind)
+                s+=scales[l]*_magnetic_regular_image_entry(tab,ν,G,full.bmag,i,q,matrix_kind)
             end
             A[a,b]+=s
         end
     end
-    _magnetic_add_jump!(A,kws.tab.ν,matrix_kind,use_unregularized)
+    _magnetic_add_jump!(A,ν,matrix_kind,use_unregularized)
     return A
 end
 
