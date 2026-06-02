@@ -86,28 +86,6 @@
 
 const TWO_PI=2*pi
 
-Base.@kwdef mutable struct MagneticFourierReductionConfig
-    active_tol::Float64=1e-14
-    active_pad::Int=20
-end
-const MAGNETIC_FOURIER_REDUCTION_CONFIG=MagneticFourierReductionConfig()
-
-@inline magnetic_fourier_active_tol()=MAGNETIC_FOURIER_REDUCTION_CONFIG.active_tol
-@inline magnetic_fourier_active_pad()=MAGNETIC_FOURIER_REDUCTION_CONFIG.active_pad
-
-function magnetic_set_fourier_reduction!(;active_tol=nothing,active_pad=nothing)
-    cfg=MAGNETIC_FOURIER_REDUCTION_CONFIG
-    if !isnothing(active_tol)
-        active_tol>0 || error("active_tol must be positive.")
-        cfg.active_tol=Float64(active_tol)
-    end
-    if !isnothing(active_pad)
-        active_pad>=0 || error("active_pad must be nonnegative.")
-        cfg.active_pad=Int(active_pad)
-    end
-    return cfg
-end
-
 """
     k_from_ν_magnetic(ν,b)
 Convert the magnetic spectral parameter `ν` to the associated scale `k=2√ν/b`.
@@ -663,62 +641,23 @@ singular copy.
 end
 
 """
-    _magnetic_add_jump!(A,ν,matrix_kind,use_unregularized)
+    _magnetic_add_jump!(A,ν,matrix_kind::Symbol)
 
 Add the magnetic double-layer jump term.
 For `:slp` nothing is added. In the regularized convention the diagonal addition
-is 0.5cos(πν)I. In the unregularized convention the whole matrix is divided by
-cos(πν) and the diagonal addition is 0.5I.
+is 2π aν I, where aν=Aν(0)=1/(4 Γ(1/2-ν) Γ(1/2+ν)).
 """
-function _magnetic_add_jump!(A,ν,matrix_kind::Symbol,use_unregularized::Bool)
+function _magnetic_add_jump!(A,tab,matrix_kind::Symbol)
     matrix_kind===:slp && return A
-    c=cospi(ν)
-    if use_unregularized
-        A ./= c
-        @inbounds for i in axes(A,1)
-            A[i,i]+=0.5
-        end
-    else
-        @inbounds for i in axes(A,1)
-            A[i,i]+=0.5*c
-        end
+    c=eltype(A)(TWO_PI*tab.a_log)
+    @inbounds for i in axes(A,1)
+        A[i,i]+=c
     end
     return A
 end
 
-struct MagneticFourierReduction
-    I::Vector{Int}
-    N::Int
-end
-
-function magnetic_fourier_indices(A::AbstractMatrix{Complex{T}};tol::Real=magnetic_fourier_active_tol(),pad::Int=magnetic_fourier_active_pad()) where {T<:Real}
-    AF=fftshift(ifft(fft(A,2),1),(1,2))
-    score=vec(norm.(eachrow(AF))).+vec(norm.(eachcol(AF)))
-    smax=maximum(score)
-    τ=T(tol)*smax
-    I0=findall(>(τ),score)
-    isempty(I0) && return collect(1:size(A,1))
-    mask=falses(size(A,1))
-    @inbounds for i in I0
-        a=max(1,i-pad)
-        b=min(size(A,1),i+pad)
-        mask[a:b].=true
-    end
-    I=findall(mask)
-    @info "magnetic Fourier reduction" N=size(A,1) M=length(I) tol=tol pad=pad threshold=τ scoremax=smax first=first(I) last=last(I)
-    return I
-end
-
-function magnetic_fourier_reduce!(Ared::AbstractMatrix{Complex{T}},A::AbstractMatrix{Complex{T}},I::Vector{Int}) where {T<:Real}
-    AF=fftshift(ifft(fft(A,2),1),(1,2))
-    @inbounds for j in eachindex(I), i in eachindex(I)
-        Ared[i,j]=AF[I[i],I[j]]
-    end
-    return Ared
-end
-
 """
-    construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=:cfie_src,use_unregularized=false,multithreaded=true)
+    construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=:cfie_src,multithreaded=true)
 
 Assemble the full magnetic boundary operator on the complete periodic boundary.
 
@@ -731,10 +670,9 @@ The singular same-boundary logarithmic part is handled entrywise by
 `_magnetic_entry`, using the split F(z)=Alog(z)log(z)+Blog(z),
 z=|x-y|²/B², and the periodic Kress logarithm log(4sin²((σᵢ-σⱼ)/2)).
 After assembly, the magnetic double-layer jump is added: in the regularized
-form this is 0.5cos(πν)I, while in the unregularized form the matrix is divided
-by cos(πν) and 0.5I is added.
+form this is 0.5cos(πν)I.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true) where {T<:Real}
     G=gws.G;N=gws.N;tab=kws.tab;ν=kws.ν
     fill!(A,zero(Complex{T}))
     @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
@@ -742,12 +680,12 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
             A[i,j]=_magnetic_entry(tab,ν,G,gws.bmag,i,j,matrix_kind)
         end
     end
-    _magnetic_add_jump!(A,ν,matrix_kind,use_unregularized)
+    _magnetic_add_jump!(A,tab,matrix_kind)
     return A
 end
 
 """
-    construct_magnetic_operator_matrix!(A,pts,rgws,kws;matrix_kind=:cfie_src,use_unregularized=false,multithreaded=true)
+    construct_magnetic_operator_matrix!(A,pts,rgws,kws;matrix_kind=:cfie_src,multithreaded=true)
 
 Assemble the symmetry-reduced magnetic boundary operator.
 
@@ -763,7 +701,7 @@ copy uses Kress splitting, while all symmetry copies are geometrically separated
 and are therefore evaluated by `_magnetic_regular_image_entry`. The final jump
 term is added in the same convention as the full matrix.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true) where {T<:Real}
     full=rgws.full
     G=full.G
     tab=kws.tab
@@ -793,12 +731,12 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
             A[a,b]+=s
         end
     end
-    _magnetic_add_jump!(A,ν,matrix_kind,use_unregularized)
+    _magnetic_add_jump!(A,tab,matrix_kind)
     return A
 end
 
 """
-    adjoint_magnetic_operator_matrix!(A,D,pts,gws,kws;matrix_kind=:cfie_src,use_unregularized=false,multithreaded=true)
+    adjoint_magnetic_operator_matrix!(A,D,pts,gws,kws;matrix_kind=:cfie_src,multithreaded=true)
 
 Assemble the weighted adjoint of the full magnetic boundary operator.
 
@@ -806,18 +744,17 @@ The source source-normal operator is first assembled into `D`. The adjoint
 matrix is then formed by the quadrature-weight similarity transpose
 Aᵢⱼ = Dⱼᵢ wⱼ/wᵢ, where wⱼ=|γσ(σⱼ)|dσ is stored as `gws.G.wsrc[j]`.
 """
-function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true) where {T<:Real}
-    construct_magnetic_operator_matrix!(D,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
-    w=gws.G.wsrc
-    N=gws.N
-    @inbounds for i in 1:N, j in 1:N
+function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true) where {T<:Real}
+    construct_magnetic_operator_matrix!(D,pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded)
+    w=gws.G.wsrc;N=gws.N
+    @inbounds for i in 1:N,j in 1:N
         A[i,j]=D[j,i]*w[j]/w[i]
     end
     return A
 end
 
 """
-    adjoint_magnetic_operator_matrix!(A,D,pts,rgws,kws; matrix_kind=:cfie_src,use_unregularized=false,multithreaded=true)
+    adjoint_magnetic_operator_matrix!(A,D,pts,rgws,kws; matrix_kind=:cfie_src,multithreaded=true)
 
 Assemble the weighted adjoint of the reduced magnetic boundary operator.
 
@@ -831,21 +768,18 @@ Use this matrix when `solve_vect` is requested in a symmetry sector, so that the
 returned null vector corresponds to the adjoint boundary data in the reduced
 basis.
 """
-function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true) where {T<:Real}
-    construct_magnetic_operator_matrix!(D,pts,rgws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
-    w=rgws.full.G.wsrc
-    Ifund=rgws.Ifund
-    m=rgws.m
-    @inbounds for a in 1:m, b in 1:m
-        i=Ifund[a]
-        j=Ifund[b]
+function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true) where {T<:Real}
+    construct_magnetic_operator_matrix!(D,pts,rgws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded)
+    w=rgws.full.G.wsrc;Ifund=rgws.Ifund;m=rgws.m
+    @inbounds for a in 1:m,b in 1:m
+        i=Ifund[a];j=Ifund[b]
         A[a,b]=D[b,a]*w[j]/w[i]
     end
     return A
 end
 
 """
-    construct_matrices!(solver,A,pts,gws,kws,ν; matrix_kind=:cfie_src,use_unregularized=false,mp_dps=30,multithreaded=true)
+    construct_matrices!(solver,A,pts,gws,kws,ν; matrix_kind=:cfie_src,mp_dps=30,multithreaded=true)
 
 Update the ν-dependent magnetic Taylor table and assemble the requested matrix.
 
@@ -854,13 +788,13 @@ The geometry workspace `gws` is ν-independent and is reused. The Taylor workspa
 `construct_magnetic_operator_matrix!` fills `A`. This is the standard reusable
 assembly path for sweeps and contour methods.
 """
-function construct_matrices!(solver::MagneticKressSolver,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::MagneticKressSolver,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true) where {T<:Real}
     update_magnetic_kress_taylor_workspace!(kws,ComplexF64(ν);mp_dps=mp_dps)
-    return construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
+    return construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded)
 end
 
 """
-    solve(solver,basis,A,pts,gws,kws,ν; matrix_kind=:cfie_src,use_unregularized=false,mp_dps=30,multithreaded=true,use_krylov=true,which=:svd)
+    solve(solver,basis,A,pts,gws,kws,ν; matrix_kind=:cfie_src,mp_dps=30,multithreaded=true,use_krylov=true,which=:svd)
 
 Assemble the magnetic operator at ν and return a scalar spectral diagnostic.
 
@@ -870,8 +804,8 @@ For determinant-based diagnostics, `which=:det` follows the same dispatch as the
 other boundary-integral solvers. The supplied matrix `A` and workspaces are
 reused to avoid allocation in sweeps.
 """
-function solve(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 construct_matrices!(solver,A,pts,gws,kws,ν;matrix_kind=matrix_kind,use_unregularized=use_unregularized,mp_dps=mp_dps,multithreaded=multithreaded)
+function solve(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_matrices!(solver,A,pts,gws,kws,ν;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
@@ -908,7 +842,7 @@ function solve(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE{T},
 end
 
 """
-    solve_vect(solver,basis,A,pts,gws,kws,ν; matrix_kind=:cfie_src,use_unregularized=false,mp_dps=30,multithreaded=true,tol=1e-12,maxiter=2000,krylovdim=40)
+    solve_vect(solver,basis,A,pts,gws,kws,ν; matrix_kind=:cfie_src,mp_dps=30,multithreaded=true,tol=1e-12,maxiter=2000,krylovdim=40)
 
 Assemble the weighted adjoint magnetic operator and compute its null vector.
 
@@ -921,10 +855,10 @@ This should be used for boundary-function postprocessing, Husimi transforms and
 wavefunction reconstruction, whereas `solve` is sufficient for scalar
 eigenvalue detection.
 """
-function solve_vect(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     update_magnetic_kress_taylor_workspace!(kws,ComplexF64(ν);mp_dps=mp_dps)
     D=similar(A)
-    @blas_1 adjoint_magnetic_operator_matrix!(A,D,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
+    @blas_1 adjoint_magnetic_operator_matrix!(A,D,pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
@@ -938,9 +872,7 @@ end
 Convenience wrappers for magnetic null-vector extraction.
 
 These variants allocate missing matrix storage or build missing workspaces, then
-delegate to the main adjoint `solve_vect` method. All keyword arguments are
-forwarded, including `matrix_kind`, `use_unregularized`, `mp_dps`, and Krylov
-parameters.
+delegate to the main adjoint `solve_vect` method.
 """
 function solve_vect(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;kwargs...) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,_workspace_dim(gws),_workspace_dim(gws))
@@ -961,7 +893,7 @@ function solve_vect(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFI
 end
 
 """
-    construct_boundary_matrices!(Tbufs,solver,pts,zj; matrix_kind=:cfie_src,use_unregularized=false,h=1e-5,P=6,Msmall=30,mp_dps=30,multithreaded=true, timeit=false)
+    construct_boundary_matrices!(Tbufs,solver,pts,zj; matrix_kind=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps=30,multithreaded=true, timeit=false)
 
 Assemble magnetic boundary matrices for several spectral parameters.
 
@@ -973,29 +905,18 @@ contour integration and multi-point spectral sweeps.
 Each buffer must have size `_workspace_dim(gws) × _workspace_dim(gws)`, where
 the dimension is either the full boundary size or the reduced symmetry-sector
 size.
-
-Returns the Fourier reduction indices I used to fill the Tbufs, which can be reused for all subsequent sweeps and contour solves in the same geometry and symmetry sector.
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};matrix_kind::Symbol=:cfie_src,use_unregularized=false,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,multithreaded::Bool=true,timeit::Bool=false,fourier_tol::Real=magnetic_fourier_active_tol(),fourier_pad::Int=magnetic_fourier_active_pad()) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
     @blas_1 begin
         @benchit timeit=timeit "Magnetic Kress geometry workspace" gws=build_magnetic_kress_geom_workspace(solver,pts)
-        gws isa MagneticKressGeomWorkspace || error("Magnetic Fourier reduction requires full periodic workspace, i.e. symmetry=nothing.")
         N=_workspace_dim(gws)
-        zmax=gws.G.zmax
+        zmax=gws isa MagneticKressGeomWorkspace ? gws.G.zmax : gws.full.G.zmax
         kws=build_magnetic_kress_taylor_workspace(zj[1],zmax;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-        Afull=Matrix{ComplexF64}(undef,N,N)
-        update_magnetic_kress_taylor_workspace!(kws,zj[1];mp_dps=mp_dps)
-        construct_magnetic_operator_matrix!(Afull,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
-        I=magnetic_fourier_indices(Afull;tol=fourier_tol,pad=fourier_pad)
-        M=length(I)
-        @assert size(Tbufs[1])==(M,M) "Tbufs[1] has size $(size(Tbufs[1])), but Fourier reduction gives ($M,$M)."
-        magnetic_fourier_reduce!(Tbufs[1],Afull,I)
-        @inbounds for q in 2:length(zj)
-            @assert size(Tbufs[q])==(M,M) "Tbufs[$q] has size $(size(Tbufs[q])), but Fourier reduction gives ($M,$M)."
+        @inbounds for q in eachindex(zj)
+            @assert size(Tbufs[q])==(N,N) "Tbufs[$q] has size $(size(Tbufs[q])), expected ($N,$N)."
             update_magnetic_kress_taylor_workspace!(kws,zj[q];mp_dps=mp_dps)
-            construct_magnetic_operator_matrix!(Afull,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
-            magnetic_fourier_reduce!(Tbufs[q],Afull,I)
+            construct_magnetic_operator_matrix!(Tbufs[q],pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded)
         end
     end
-    return I
+    return nothing
 end

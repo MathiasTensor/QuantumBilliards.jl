@@ -363,6 +363,14 @@ function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing,turning
     end
 end
 
+@inline function _rgamma(z::ComplexF64)
+    x=real(z);y=imag(z)
+    if y==0.0 && x<=0.0 && x==round(x)
+        return 0.0+0.0im
+    end
+    return inv(gamma(z))
+end
+
 # =============================================================================
 # magnetic_log_coeff
 #
@@ -387,7 +395,10 @@ end
 #   This is the radial coefficient only. The magnetic phase exp(iΦ) is applied
 #   separately during boundary-kernel assembly.
 # =============================================================================
-@inline magnetic_log_coeff(ν::ComplexF64)=cospi(ν)*inv4π
+@inline function magnetic_log_coeff(ν::ComplexF64)
+    a=0.5-ν
+    return 0.25*_rgamma(a)*_rgamma(1-a)
+end
 
 # =============================================================================
 # magnetic_R0
@@ -414,8 +425,10 @@ end
 #   `magnetic_R0_mpmath`.
 # =============================================================================
 @inline function magnetic_R0(ν::ComplexF64)
-    a=magnetic_log_coeff(ν)
-    return a*(digamma(ν+0.5)-2*digamma(1.0+0.0im))-sin(pi*ν)/4
+    a=0.5-ν
+    A0=magnetic_log_coeff(ν)
+    S0=pi*_rgamma(ν)*_rgamma(1-ν)
+    return A0*(SpecialFunctions.digamma(1-a)-2*SpecialFunctions.digamma(1.0+0.0im))-S0/4
 end
 
 # =============================================================================
@@ -439,10 +452,16 @@ end
 #   ComplexF64 High-precision-computed a_ν, rounded back to ComplexF64.
 # =============================================================================
 function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=100)
-    _mpctx[].dps=dps
-    νp=_mpc[](real(ν),imag(ν))
-    a=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
-    return ComplexF64(pycall(_pyfloat[],Float64,a.real),pycall(_pyfloat[],Float64,a.imag))
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        A0=_mpf[](0.25)/(_mp_gamma[](a)*_mp_gamma[](1-a))
+        return ComplexF64(pycall(_pyfloat[],Float64,A0.real),pycall(_pyfloat[],Float64,A0.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 # =============================================================================
@@ -469,11 +488,18 @@ end
 #   ComplexF64 High-precision-computed R_ν(0), rounded back to ComplexF64.
 # =============================================================================
 function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=100)
-    _mpctx[].dps=dps
-    νp=_mpc[](real(ν),imag(ν))
-    a=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
-    R0=a*(_mp_digamma[](νp+_mpf[](0.5))-2*_mp_digamma[](_mpf[](1)))-_mp_sin[](_mp_pi[]*νp)/4
-    return ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag))
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        A0=_mpf[](0.25)/(_mp_gamma[](a)*_mp_gamma[](1-a))
+        S0=_mp_pi[]/(_mp_gamma[](νp)*_mp_gamma[](1-νp))
+        R0=A0*(_mp_digamma[](1-a)-2*_mp_digamma[](_mpf[](1)))-S0/4
+        return ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 # =============================================================================
@@ -527,7 +553,7 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         z=s_py*s_py
         ν_py=_mpc[](real(ν),imag(ν))
         a_py=_mpf[](0.5)-ν_py
-        C=-1/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
+        C=-_mpf[](0.25)/_mp_gamma[](1-a_py)
         U0=_mp_hyperu[](a_py,1,z)
         U1=_mp_hyperu[](a_py+1,2,z)
         ez=_mp_exp[](-z/2)
@@ -541,6 +567,13 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
+end
+
+function _mp_rgamma_val(z)
+    if _mp_im[](z)==0 && _mp_re[](z)<=0 && _mp_floor[](_mp_re[](z))==_mp_re[](z)
+        return _mpf[](0)
+    end
+    return 1/_mp_gamma[](z)
 end
 
 # =============================================================================
@@ -566,20 +599,19 @@ function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
     lock(PYCALL_MPMATH_LOCK)
     try
         _mpctx[].dps=dps
-        s_py=_mpf[](s0)
-        z=s_py*s_py
-        ν_py=_mpc[](real(ν),imag(ν))
-        a_py=_mpf[](0.5)-ν_py
-        c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
-        M0=_mp_hyp1f1[](a_py,1,z)
-        M1=_mp_hyp1f1[](a_py+1,2,z)
+        s=_mpf[](s0)
+        z=s*s
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        c=_mpf[](0.25)*_mp_rgamma_val(a)*_mp_rgamma_val(1-a)
+        M0=_mp_hyp1f1[](a,1,z)
+        M1=_mp_hyp1f1[](a+1,2,z)
         ez=_mp_exp[](-z/2)
         A=c*ez*M0
-        Az=c*ez*(a_py*M1-_mpf[](0.5)*M0)
-        Ap=2*s_py*Az
-        Are=pycall(_pyfloat[],Float64,A.real);Aim=pycall(_pyfloat[],Float64,A.imag)
-        Apre=pycall(_pyfloat[],Float64,Ap.real);Apim=pycall(_pyfloat[],Float64,Ap.imag)
-        return ComplexF64(Are,Aim),ComplexF64(Apre,Apim)
+        Az=c*ez*(a*M1-_mpf[](0.5)*M0)
+        Ap=2*s*Az
+        return ComplexF64(pycall(_pyfloat[],Float64,A.real),pycall(_pyfloat[],Float64,A.imag)),
+               ComplexF64(pycall(_pyfloat[],Float64,Ap.real),pycall(_pyfloat[],Float64,Ap.imag))
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
@@ -1743,88 +1775,40 @@ function _eval_Blog!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTa
     return nothing
 end
 
-#################################
-#### LANDAU POLE SUBTRACTION ####
-#################################
-
-@inline landau_pole(n::Int)=n+0.5
-
-@inline function laguerreL0(n::Int,z::Float64)
-    n==0 && return 1.0
-    Lm2=1.0
-    Lm1=1.0-z
-    n==1 && return Lm1
-    @inbounds for k in 2:n
-        L=((2*k-1-z)*Lm1-(k-1)*Lm2)/k
-        Lm2,Lm1=Lm1,L
-    end
-    return Lm1
-end
-
-@inline function laguerreLα1(n::Int,z::Float64)
-    n==0 && return 1.0
-    Lm2=1.0
-    Lm1=2.0-z
-    n==1 && return Lm1
-    @inbounds for k in 2:n
-        L=((2*k-z)*Lm1-k*Lm2)/k
-        Lm2,Lm1=Lm1,L
-    end
-    return Lm1
-end
-
-@inline function landau_residue(n::Int,z::Float64)
-    return -exp(-0.5z)*laguerreL0(n,z)*inv4π
-end
-
-@inline function landau_residue_z(n::Int,z::Float64)
-    L=laguerreL0(n,z)
-    Lz=n==0 ? 0.0 : -laguerreLα1(n-1,z)
-    return -exp(-0.5z)*(Lz-0.5L)*inv4π
-end
-
-@inline function _pole_correction(tab::MagneticGreenSTaylorTable,z::Float64)
-    isempty(tab.pole_ns) && return 0.0+0.0im
-    ν=tab.ν
-    s=0.0+0.0im
-    @inbounds for n in tab.pole_ns
-        s+=landau_residue(n,z)/(ν-landau_pole(n))
-    end
-    return s
-end
-
-@inline function _pole_correction_z(tab::MagneticGreenSTaylorTable,z::Float64)
-    isempty(tab.pole_ns) && return 0.0+0.0im
-    ν=tab.ν
-    s=0.0+0.0im
-    @inbounds for n in tab.pole_ns
-        s+=landau_residue_z(n,z)/(ν-landau_pole(n))
-    end
-    return s
-end
-
 ############################################################
 ##### FOR TESTING: REFERENCE EVALUATION WITH MP MPMATH #####
 ############################################################
 
-function Fz_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
-    _mpctx[].dps=dps
-    z_py=_mpf[](z);ν_py=_mpc[](real(ν),imag(ν));a_py=_mpf[](0.5)-ν_py
-    C=-1/(4*_mp_gamma[](ν_py+_mpf[](0.5)))
-    U0=_mp_hyperu[](a_py,1,z_py)
-    U1=_mp_hyperu[](a_py+1,2,z_py)
-    Fz=C*_mp_exp[](-z_py/2)*(-_mpf[](0.5)*U0-a_py*U1)
-    return ComplexF64(pycall(_pyfloat[],Float64,Fz.real),pycall(_pyfloat[],Float64,Fz.imag))
+function Alog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        zp=_mpf[](z)
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        c=_mpf[](0.25)*_mp_rgamma_val(a)*_mp_rgamma_val(1-a)
+        A=c*_mp_exp[](-zp/2)*_mp_hyp1f1[](a,1,zp)
+        return ComplexF64(pycall(_pyfloat[],Float64,A.real),pycall(_pyfloat[],Float64,A.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 function Alog_z_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
-    _mpctx[].dps=dps
-    z_py=_mpf[](z);ν_py=_mpc[](real(ν),imag(ν));a_py=_mpf[](0.5)-ν_py
-    c=_mp_cos[](_mp_pi[]*ν_py)/(4*_mp_pi[])
-    M0=_mp_hyp1f1[](a_py,1,z_py)
-    M1=_mp_hyp1f1[](a_py+1,2,z_py)
-    Az=c*_mp_exp[](-z_py/2)*(a_py*M1-_mpf[](0.5)*M0)
-    return ComplexF64(pycall(_pyfloat[],Float64,Az.real),pycall(_pyfloat[],Float64,Az.imag))
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        zp=_mpf[](z)
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        c=_mpf[](0.25)*_mp_rgamma_val(a)*_mp_rgamma_val(1-a)
+        M0=_mp_hyp1f1[](a,1,zp)
+        M1=_mp_hyp1f1[](a+1,2,zp)
+        Az=c*_mp_exp[](-zp/2)*(a*M1-_mpf[](0.5)*M0)
+        return ComplexF64(pycall(_pyfloat[],Float64,Az.real),pycall(_pyfloat[],Float64,Az.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
 end
 
 function Blog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
