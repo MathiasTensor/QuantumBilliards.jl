@@ -552,7 +552,7 @@ Evaluate the regular off-diagonal magnetic single-layer entry.
 This is the nonsingular image/source contribution Sᵢⱼ=phaseᵢⱼ F(zᵢⱼ) wⱼ with
 zᵢⱼ=r²ᵢⱼ/B².
 """
-@inline function _mag_raw_regular_slp(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::MagneticPoleSubtractionWorkspace) where {T<:Real}
+@inline function _mag_raw_regular_slp(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}) where {T<:Real}
     z=Float64(G.r2[i,j]/(bmag*bmag))
     F=_eval_F(tab,z)-_pole_sum(pole_ws,ν,z)
     return G.phase[i,j]*F*G.wsrc[j]
@@ -565,7 +565,7 @@ Evaluate the regular covariant source-normal magnetic double-layer entry.
 Uses Dᵢⱼ=phaseᵢⱼ[Fz(zᵢⱼ)∂ₙz+i(∂ₙχ)F(zᵢⱼ)]wⱼ, with derivatives taken in the
 source normal.
 """
-@inline function _mag_raw_regular_dlp_src(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::MagneticPoleSubtractionWorkspace) where {T<:Real}
+@inline function _mag_raw_regular_dlp_src(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}) where {T<:Real}
     z=Float64(G.r2[i,j]/(bmag*bmag))
     F=_eval_F(tab,z)-_pole_sum(pole_ws,ν,z)
     Fz=_eval_Fz(tab,z)-_pole_z_sum(pole_ws,ν,z)
@@ -579,7 +579,7 @@ Evaluate the Kress-corrected magnetic single-layer matrix entry.
 Uses F(z)=A(z)log(z)+B(z) and log(z)=Lper+logratio, so the singular part is
 integrated by Rsrc·A and the smooth remainder by wsrc·(B+A·logratio).
 """
-@inline function _mag_kress_slp(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::MagneticPoleSubtractionWorkspace) where {T<:Real}
+@inline function _mag_kress_slp(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}) where {T<:Real}
     if i==j
         A=Complex{T}(tab.a_log)
         B=Complex{T}(tab.R0)-_pole_sum(pole_ws,ν,0.0)
@@ -601,7 +601,7 @@ Differentiates F(z)=A(z)log(z)+B(z), splitting the logarithmic part against
 Lper=log(4sin²((σᵢ-σⱼ)/2)). The diagonal uses the finite source-normal limit
 -Alog·curvnum/|γσ|².
 """
-@inline function _mag_kress_dlp_src(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::MagneticPoleSubtractionWorkspace) where {T<:Real}
+@inline function _mag_kress_dlp_src(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}) where {T<:Real}
     if i==j
         A=Complex{T}(tab.a_log)
         return G.wsrc[j]*(-A*G.curvnum[i]/G.speed[i]^2)
@@ -629,7 +629,7 @@ Return one Kress-corrected entry of the requested operator.
 Supported kinds are `:slp`, `:dlp_src`, and `:cfie_src`. The CFIE entry is
 Dᵢⱼ+i k(ν,B)Sᵢⱼ with k(ν,B)=2√ν/B.
 """
-@inline function _magnetic_entry(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol,pole_ws::MagneticPoleSubtractionWorkspace) where {T<:Real}
+@inline function _magnetic_entry(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol,pole_ws::Union{Nothing, MagneticPoleSubtractionWorkspace}) where {T<:Real}
     if matrix_kind===:slp
         return _mag_kress_slp(tab,ν,G,bmag,i,j,pole_ws)
     elseif matrix_kind===:dlp_src
@@ -650,7 +650,7 @@ The same operator choices as `_magnetic_entry` are supported, but no Kress
 logarithmic correction is applied because image sources are away from the
 singular copy.
 """
-@inline function _magnetic_regular_image_entry(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol,pole_ws::MagneticPoleSubtractionWorkspace) where {T<:Real}
+@inline function _magnetic_regular_image_entry(tab,ν,G::MagneticKressGeomCache{T},bmag::T,i::Int,j::Int,matrix_kind::Symbol,pole_ws::Union{Nothing, MagneticPoleSubtractionWorkspace}) where {T<:Real}
     if matrix_kind===:slp
         return _mag_raw_regular_slp(tab,ν,G,bmag,i,j,pole_ws)
     elseif matrix_kind===:dlp_src
@@ -704,7 +704,7 @@ After assembly, the magnetic double-layer jump is added: in the regularized
 form this is 0.5cos(πν)I, while in the unregularized form the matrix is divided
 by cos(πν) and 0.5I is added.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws=nothing) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws::Union{Nothing, MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real}
     G=gws.G;N=gws.N;tab=kws.tab;ν=kws.ν
     fill!(A,zero(Complex{T}))
     @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
@@ -733,7 +733,7 @@ copy uses Kress splitting, while all symmetry copies are geometrically separated
 and are therefore evaluated by `_magnetic_regular_image_entry`. The final jump
 term is added in the same convention as the full matrix.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws=nothing) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws::Union{Nothing, MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real}
     full=rgws.full
     G=full.G
     tab=kws.tab
@@ -776,7 +776,7 @@ The source source-normal operator is first assembled into `D`. The adjoint
 matrix is then formed by the quadrature-weight similarity transpose
 Aᵢⱼ = Dⱼᵢ wⱼ/wᵢ, where wⱼ=|γσ(σⱼ)|dσ is stored as `gws.G.wsrc[j]`.
 """
-function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws=nothing) where {T<:Real}
+function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws::Union{Nothing, MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real}
     construct_magnetic_operator_matrix!(D,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,pole_ws=pole_ws)
     w=gws.G.wsrc
     N=gws.N
@@ -801,7 +801,7 @@ Use this matrix when `solve_vect` is requested in a symmetry sector, so that the
 returned null vector corresponds to the adjoint boundary data in the reduced
 basis.
 """
-function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws=nothing) where {T<:Real}
+function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,use_unregularized::Bool=false,multithreaded::Bool=true,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real}
     construct_magnetic_operator_matrix!(D,pts,rgws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,pole_ws=pole_ws)
     w=rgws.full.G.wsrc
     Ifund=rgws.Ifund
@@ -824,7 +824,7 @@ The geometry workspace `gws` is ν-independent and is reused. The Taylor workspa
 `construct_magnetic_operator_matrix!` fills `A`. This is the standard reusable
 assembly path for sweeps and contour methods.
 """
-function construct_matrices!(solver::MagneticKressSolver,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,pole_ws=nothing) where {T<:Real}
+function construct_matrices!(solver::MagneticKressSolver,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real}
     update_magnetic_kress_taylor_workspace!(kws,ComplexF64(ν);mp_dps=mp_dps)
     return construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,pole_ws=pole_ws)
 end
@@ -840,7 +840,7 @@ For determinant-based diagnostics, `which=:det` follows the same dispatch as the
 other boundary-integral solvers. The supplied matrix `A` and workspaces are
 reused to avoid allocation in sweeps.
 """
-function solve(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,pole_ws=nothing) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,gws,kws,ν;matrix_kind=matrix_kind,use_unregularized=use_unregularized,mp_dps=mp_dps,multithreaded=multithreaded,pole_ws=pole_ws)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
@@ -891,7 +891,7 @@ This should be used for boundary-function postprocessing, Husimi transforms and
 wavefunction reconstruction, whereas `solve` is sufficient for scalar
 eigenvalue detection.
 """
-function solve_vect(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,pole_ws=nothing) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,use_unregularized=false,mp_dps::Int=30,multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}=nothing) where {T<:Real,Ba<:AbsBasis}
     update_magnetic_kress_taylor_workspace!(kws,ComplexF64(ν);mp_dps=mp_dps)
     D=similar(A)
     @blas_1 adjoint_magnetic_operator_matrix!(A,D,pts,gws,kws;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,pole_ws=pole_ws)
