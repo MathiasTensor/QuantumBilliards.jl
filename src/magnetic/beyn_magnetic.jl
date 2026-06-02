@@ -53,13 +53,13 @@ function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPo
     return MagneticContourPrecomp{T,typeof(ws1),typeof(pole_ws)}(νj,wj,ws,pole_ws)
 end
 
-function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,use_unregularized=false,multithreaded::Bool=true,timeit::Bool=false)
+function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,use_unregularized=false,multithreaded::Bool=true,timeit::Bool=false,pole_ws::Union{Nothing,MagneticPoleSubtractionWorkspace}=nothing)
     @blas_1 begin
         @inbounds for q in eachindex(pc.νj)
             n=_workspace_dim(pc.ws[q][1])
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but MagneticCFIE requires ($n,$n)."
             fill!(Tbufs[q],0.0+0.0im)
-            @benchit timeit=timeit "magnetic precomputed assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded)
+            @benchit timeit=timeit "magnetic precomputed assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,pole_ws=pc.pole_ws)
         end
     end
     return nothing
@@ -116,7 +116,7 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
     νj=pc.νj
     wj=pc.wj
     Tbufs=[zeros(ComplexF64,N,N) for _ in 1:nq]
-    construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,timeit=timeit)
+    construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,timeit=timeit,pole_ws=pc.pole_ws)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
@@ -168,7 +168,7 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
     wj=pc.wj
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     Tbufs=[zeros(ComplexF64,N,N) for _ in 1:nq]
-    @time "Boundary matrices (magnetic)" construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,timeit=timeit)
+    @time "Boundary matrices (magnetic)" construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded,timeit=timeit,pole_ws=pc.pole_ws)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
@@ -255,6 +255,8 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
 end
 
 function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},ν0::Complex{T},R::T,pts::BoundaryPointsCFIE;res_tol::T,matrix_kind::Symbol=:cfie_src,use_unregularized=false,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30) where {T<:Real}
+    ns=landau_poles_in_disk(real(ν0),R)
+    pole_ws=isempty(ns) ? nothing : MagneticPoleSubtractionWorkspace(ns)
     cache=_mag_contour_cache(solver,pts)
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
@@ -270,7 +272,7 @@ function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::Abstr
         abs(λj-ν0)>R && (tens[j]=T(NaN);tensN[j]=T(NaN);continue)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
         wsj=_mag_contour_workspace(solver,pts,ComplexF64(λj),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-        construct_matrices!(solver,A_buf,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,use_unregularized=use_unregularized,mp_dps=mp_dps,multithreaded=multithreaded)
+        construct_matrices!(solver,A_buf,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,use_unregularized=use_unregularized,mp_dps=mp_dps,multithreaded=multithreaded,pole_ws=pole_ws)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))
         rj=norm(y)
         tens[j]=rj
@@ -331,12 +333,14 @@ function imag_ν_check_magnetic_EXPERIMENTAL(solver::MagneticKressSolver,λs::Ve
             size(A)!=(N,N) && (A=Matrix{Complex{T}}(undef,N,N))
             length(y)!=N && (y=Vector{Complex{T}}(undef,N))
             length(φ)!=N && (φ=Vector{Complex{T}}(undef,N))
+            ns=landau_poles_in_disk(real(ν0s[iwin]),Rs[iwin])
+            pole_ws=isempty(ns) ? nothing : MagneticPoleSubtractionWorkspace(ns)
             @inbounds for c in sub
                 i,j,_,_=c
                 λj=λs[i][j]
                 wsj=_mag_contour_workspace(solver,pts,ComplexF64(λj),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
                 fill!(A,zero(Complex{T}))
-                construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,use_unregularized=use_unregularized,mp_dps=mp_dps,multithreaded=multithreaded)
+                construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,use_unregularized=use_unregularized,mp_dps=mp_dps,multithreaded=multithreaded,pole_ws=pole_ws)
                 mul!(φ,Uks[i],@view Ys[i][:,j])
                 mul!(y,A,φ)
                 rdict[(i,j)]=norm(y)
