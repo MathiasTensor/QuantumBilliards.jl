@@ -25,11 +25,42 @@ function _mag_contour_workspace(solver::MagneticKressSolver,pts,ν,cache;h=1e-5,
     return cache,kws
 end
 
-function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;nq::Int=64,h=1e-5,P=6,Msmall=30,mp_dps::Int=30) where {T<:Real}
+@inline _landau_ν(n::Integer)=2*n+1
+
+function _landau_poles_in_window(solver::MagneticKressSolver,ν0::Complex{T},R::T;pad::Int=1) where {T<:Real}
+    a=real(ν0)-R
+    b=real(ν0)+R
+    n1=max(0,floor(Int,(a-1)/2)-pad)
+    n2=max(0,ceil(Int,(b-1)/2)+pad)
+    n2<n1 && return Complex{T}[]
+    return Complex{T}.(_landau_ν.(n1:n2))
+end
+
+@inline function _landau_weight(z::Complex{T},poles,η::T,z0::Complex{T}) where {T<:Real}
+    η<=zero(T) && return one(Complex{T})
+    w=one(Complex{T})
+    w0=one(Complex{T})
+    s=complex(zero(T),η)
+    @inbounds for E in poles
+        Ec=Complex{T}(E)
+        w*=(z-Ec)/(z-Ec-s)
+        w0*=(z0-Ec)/(z0-Ec-s)
+    end
+    return w/w0
+end
+
+function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;nq::Int=64,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,use_landau_weight::Bool=false,landau_eta=nothing,landau_pad::Int=1) where {T<:Real}
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
     νj=ComplexF64.(ν0.+R.*ej)
     wj=Complex{T}.((R/nq).*ej)
+    if use_landau_weight
+        poles=_landau_poles_in_window(solver,ν0,R;pad=landau_pad)
+        η=T(isnothing(landau_eta) ? R : landau_eta)
+        @inbounds for j in eachindex(wj)
+            wj[j]*=_landau_weight(Complex{T}(νj[j]),poles,η,ν0)
+        end
+    end
     cache=_mag_contour_cache(solver,pts)
     ws1=_mag_contour_workspace(solver,pts,νj[1],cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
     ws=Vector{typeof(ws1)}(undef,nq)
@@ -147,10 +178,10 @@ end
     return λ
 end
 
-function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,matrix_kind::Symbol=:cfie_src,use_unregularized=false,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,matrix_kind::Symbol=:cfie_src,use_unregularized=false,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,timeit::Bool=false,use_landau_weight::Bool=false,landau_eta=nothing,landau_pad::Int=1) where {Ba<:AbstractHankelBasis,T<:Real}
     N=_mag_beyn_dim(solver,pts,ν0)
     @info "beyn:start(magnetic)" ν0=ν0 R=R nq=nq N=N r=r matrix_kind=matrix_kind
-    pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+    pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps,use_landau_weight=use_landau_weight,landau_eta=landau_eta,landau_pad=landau_pad)
     νj=pc.νj
     wj=pc.wj
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
@@ -357,7 +388,7 @@ function imag_ν_check_magnetic_EXPERIMENTAL(solver::MagneticKressSolver,λs::Ve
     return idx_keep,residuals
 end
 
-function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiard::Bi,ν1::T,ν2::T;A=nothing,L=nothing,use_perimeter::Bool=false,m::Int=10,Rmax::T=T(0.8),Rfloor::T=T(1e-6),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,matrix_kind::Symbol=:cfie_src,use_unregularized=false,multithreaded_matrix::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,return_imag_part::Bool=true,use_imag_residual_check::Bool=true,timeit::Bool=false,do_INFO::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiard::Bi,ν1::T,ν2::T;A=nothing,L=nothing,use_perimeter::Bool=false,m::Int=10,Rmax::T=T(0.8),Rfloor::T=T(1e-6),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,matrix_kind::Symbol=:cfie_src,use_unregularized=false,multithreaded_matrix::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,return_imag_part::Bool=true,use_imag_residual_check::Bool=true,timeit::Bool=false,do_INFO::Bool=true,use_landau_weight::Bool=false,landau_eta=nothing,landau_pad::Int=1) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "ν-windows (magnetic)" ν0s,Rs=plan_ν_windows_magnetic(solver,billiard,ν1,ν2;A=A,L=L,use_perimeter=use_perimeter,M=m,Rmax=Rmax,Rfloor=Rfloor)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     ν0s=isempty(idx) ? T[] : ν0s[idx]
@@ -378,7 +409,7 @@ function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiar
     if do_INFO
         iinfo=cld(nw,2)
         @time "solve_INFO middle disk (magnetic)" begin
-            _=solve_INFO_magnetic(solver,basis,all_pts[iinfo],complex(ν0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,matrix_kind=matrix_kind,use_unregularized=use_unregularized,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps,timeit=timeit)
+            _=solve_INFO_magnetic(solver,basis,all_pts[iinfo],complex(ν0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,matrix_kind=matrix_kind,use_unregularized=use_unregularized,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps,timeit=timeit,use_landau_weight=use_landau_weight,landau_eta=landau_eta,landau_pad=landau_pad)
         end
     end
     λs=Vector{Vector{Complex{T}}}(undef,nw)
@@ -386,7 +417,7 @@ function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiar
     Ys=Vector{Matrix{Complex{T}}}(undef,nw)
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (magnetic)" @inbounds for i in 1:nw
-        pc=precompute_magnetic_contour(solver,all_pts[i],complex(ν0s[i],zero(T)),Rs[i];nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+        pc=precompute_magnetic_contour(solver,all_pts[i],complex(ν0s[i],zero(T)),Rs[i];nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps,use_landau_weight=use_landau_weight,landau_eta=landau_eta,landau_pad=landau_pad)
         λ,Uk,Y,_,_,_=solve_vect_magnetic(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),matrix_kind=matrix_kind,use_unregularized=use_unregularized,multithreaded=multithreaded_matrix,timeit=timeit)
         λs[i]=λ
         Uks[i]=Uk
