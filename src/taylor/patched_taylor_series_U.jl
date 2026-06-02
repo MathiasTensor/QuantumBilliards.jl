@@ -363,14 +363,6 @@ function confluent_U_set_taylor_params!(;h_patch=nothing,P_patch=nothing,turning
     end
 end
 
-@inline function _rgamma(z::ComplexF64)
-    x=real(z);y=imag(z)
-    if y==0.0 && x<=0.0 && x==round(x)
-        return 0.0+0.0im
-    end
-    return inv(gamma(z))
-end
-
 # =============================================================================
 # magnetic_log_coeff
 #
@@ -396,8 +388,7 @@ end
 #   separately during boundary-kernel assembly.
 # =============================================================================
 @inline function magnetic_log_coeff(ν::ComplexF64)
-    a=0.5-ν
-    return 0.25*_rgamma(a)*_rgamma(1-a)
+    return cospi(ν)*inv4π
 end
 
 # =============================================================================
@@ -425,10 +416,8 @@ end
 #   `magnetic_R0_mpmath`.
 # =============================================================================
 @inline function magnetic_R0(ν::ComplexF64)
-    a=0.5-ν
     A0=magnetic_log_coeff(ν)
-    S0=pi*_rgamma(ν)*_rgamma(1-ν)
-    return A0*(SpecialFunctions.digamma(1-a)-2*SpecialFunctions.digamma(1.0+0.0im))-S0/4
+    return A0*(SpecialFunctions.digamma(ν+0.5)-2*SpecialFunctions.digamma(1.0+0.0im))-sin(pi*ν)/4
 end
 
 # =============================================================================
@@ -446,18 +435,17 @@ end
 #   ν::ComplexF64 Complex spectral parameter.
 #
 # Keyword arguments
-#   dps::Int=100 Decimal precision used by mpmath.
+#   dps::Int=30 Decimal precision used by mpmath.
 #
 # Output
 #   ComplexF64 High-precision-computed a_ν, rounded back to ComplexF64.
 # =============================================================================
-function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=100)
+function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=30)
     lock(PYCALL_MPMATH_LOCK)
     try
         _mpctx[].dps=dps
         νp=_mpc[](real(ν),imag(ν))
-        a=_mpf[](0.5)-νp
-        A0=_mpf[](0.25)/(_mp_gamma[](a)*_mp_gamma[](1-a))
+        A0=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
         return ComplexF64(pycall(_pyfloat[],Float64,A0.real),pycall(_pyfloat[],Float64,A0.imag))
     finally
         unlock(PYCALL_MPMATH_LOCK)
@@ -482,20 +470,18 @@ end
 #   ν::ComplexF64 Complex spectral parameter.
 #
 # Keyword arguments
-#   dps::Int=100 Decimal precision used by mpmath.
+#   dps::Int=30 Decimal precision used by mpmath.
 #
 # Output
 #   ComplexF64 High-precision-computed R_ν(0), rounded back to ComplexF64.
 # =============================================================================
-function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=100)
+function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=30)
     lock(PYCALL_MPMATH_LOCK)
     try
         _mpctx[].dps=dps
         νp=_mpc[](real(ν),imag(ν))
-        a=_mpf[](0.5)-νp
-        A0=_mpf[](0.25)/(_mp_gamma[](a)*_mp_gamma[](1-a))
-        S0=_mp_pi[]/(_mp_gamma[](νp)*_mp_gamma[](1-νp))
-        R0=A0*(_mp_digamma[](1-a)-2*_mp_digamma[](_mpf[](1)))-S0/4
+        A0=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
+        R0=A0*(_mp_digamma[](νp+_mpf[](0.5))-2*_mp_digamma[](_mpf[](1)))-_mp_sin[](_mp_pi[]*νp)/4
         return ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag))
     finally
         unlock(PYCALL_MPMATH_LOCK)
@@ -605,7 +591,7 @@ function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         z=s*s
         νp=_mpc[](real(ν),imag(ν))
         a=_mpf[](0.5)-νp
-        c=_mpf[](0.25)*_mp_rgamma_val(a)*_mp_rgamma_val(1-a)
+        c=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
         M0=_mp_hyp1f1[](a,1,z)
         M1=_mp_hyp1f1[](a+1,2,z)
         ez=_mp_exp[](-z/2)

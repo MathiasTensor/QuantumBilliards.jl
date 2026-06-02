@@ -681,11 +681,6 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
         end
     end
     _magnetic_add_jump!(A,tab,matrix_kind)
-    if normalize_landau && matrix_kind!==:slp
-        c=cos(pi*ν)
-        abs(c)<100eps(real(T)) && @warn "Very close to Landau level during normalized assembly" ν=ν cosπν=c
-        rmul!(A,inv(c))
-    end
     return A
 end
 
@@ -737,11 +732,6 @@ function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::
         end
     end
     _magnetic_add_jump!(A,tab,matrix_kind)
-    if normalize_landau && matrix_kind!==:slp
-        c=cos(pi*ν)
-        abs(c)<100eps(real(T)) && @warn "Very close to Landau level during normalized assembly" ν=ν cosπν=c
-        rmul!(A,inv(c))
-    end
     return A
 end
 
