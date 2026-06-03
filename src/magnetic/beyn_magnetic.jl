@@ -102,7 +102,7 @@ function precompute_magnetic_contour_notched(
         if notch_side===:lower
             @assert left+notch_R<p<right-notch_R "Landau pole too close to edge; shift or split the window."
             _push_line!(νj,wj,complex(x,-η),complex(p-notch_R,-η),max(4,nq_line))
-            _push_arc!(νj,wj,complex(p,-η),notch_R,π,zero(T),nq_notch)
+            _push_arc!(νj,wj,complex(p,-η),notch_R,T(π),zero(T),nq_notch)
             x=p+notch_R
         end
     end
@@ -117,7 +117,7 @@ function precompute_magnetic_contour_notched(
         if notch_side===:upper
             @assert left+notch_R<p<right-notch_R "Landau pole too close to edge; shift or split the window."
             _push_line!(νj,wj,complex(x,η),complex(p+notch_R,η),max(4,nq_line))
-            _push_arc!(νj,wj,complex(p,η),notch_R,2π,π,nq_notch)
+            _push_arc!(νj,wj,complex(p,η),notch_R,T(2π),T(π),nq_notch)
             x=p-notch_R
         end
     end
