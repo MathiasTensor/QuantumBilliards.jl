@@ -40,6 +40,112 @@ function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPo
     return MagneticContourPrecomp{T,typeof(ws1)}(νj,wj,ws)
 end
 
+
+
+
+
+
+
+
+@inline _landau_poles_between(a::T,b::T) where {T<:Real}=[
+    T(n)+T(0.5) for n in ceil(Int,a-T(0.5)):floor(Int,b-T(0.5))
+]
+
+function _push_line!(νj,wj,z1::Complex{T},z2::Complex{T},n::Int) where {T<:Real}
+    dz=(z2-z1)/T(n)
+    @inbounds for q in 1:n
+        z=z1+(T(q)-T(0.5))*dz
+        push!(νj,ComplexF64(z))
+        push!(wj,Complex{T}(dz/(2π*im)))
+    end
+    return nothing
+end
+
+function _push_arc!(νj,wj,c::Complex{T},r::T,θ1::T,θ2::T,n::Int) where {T<:Real}
+    dθ=(θ2-θ1)/T(n)
+    @inbounds for q in 1:n
+        θ=θ1+(T(q)-T(0.5))*dθ
+        e=cis(θ)
+        push!(νj,ComplexF64(c+r*e))
+        push!(wj,Complex{T}(r*e*dθ/(2π)))
+    end
+    return nothing
+end
+
+function precompute_magnetic_contour_notched(
+    solver::MagneticKressSolver,
+    pts::BoundaryPointsCFIE,
+    ν0::Complex{T},
+    R::T;
+    nq_line::Int=40,
+    nq_notch::Int=24,
+    η::T=T(0.04),
+    notch_R::T=T(0.07),
+    notch_side::Symbol=:upper,
+    h=1e-5,
+    P=6,
+    Msmall=30,
+    mp_dps::Int=30,
+) where {T<:Real}
+    left=real(ν0)-R
+    right=real(ν0)+R
+    poles=_landau_poles_between(left,right)
+    @assert notch_R>η "Need notch_R > η so the notch passes beyond the Landau pole."
+    @assert notch_R<2η "Use notch_R < 2η to avoid crossing the opposite side."
+
+    νj=ComplexF64[]
+    wj=Complex{T}[]
+
+    # bottom: left -> right, CCW
+    x=left
+    for p in poles
+        if notch_side===:lower
+            @assert left+notch_R<p<right-notch_R "Landau pole too close to edge; shift or split the window."
+            _push_line!(νj,wj,complex(x,-η),complex(p-notch_R,-η),max(4,nq_line))
+            _push_arc!(νj,wj,complex(p,-η),notch_R,π,zero(T),nq_notch)
+            x=p+notch_R
+        end
+    end
+    _push_line!(νj,wj,complex(x,-η),complex(right,-η),max(4,nq_line))
+
+    # right side: bottom -> top
+    _push_line!(νj,wj,complex(right,-η),complex(right,η),max(4,nq_line÷4))
+
+    # top: right -> left, CCW
+    x=right
+    for p in reverse(poles)
+        if notch_side===:upper
+            @assert left+notch_R<p<right-notch_R "Landau pole too close to edge; shift or split the window."
+            _push_line!(νj,wj,complex(x,η),complex(p+notch_R,η),max(4,nq_line))
+            _push_arc!(νj,wj,complex(p,η),notch_R,2π,π,nq_notch)
+            x=p-notch_R
+        end
+    end
+    _push_line!(νj,wj,complex(x,η),complex(left,η),max(4,nq_line))
+
+    # left side: top -> bottom
+    _push_line!(νj,wj,complex(left,η),complex(left,-η),max(4,nq_line÷4))
+
+    cache=_mag_contour_cache(solver,pts)
+    ws1=_mag_contour_workspace(solver,pts,νj[1],cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+    ws=Vector{typeof(ws1)}(undef,length(νj))
+    ws[1]=ws1
+    @inbounds for q in 2:length(νj)
+        ws[q]=_mag_contour_workspace(solver,pts,νj[q],cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+    end
+    return MagneticContourPrecomp{T,typeof(ws1)}(νj,wj,ws)
+end
+
+
+
+
+
+
+
+
+
+
+
 function construct_boundary_matrices_precomputed!(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false,operator_convention::Symbol=:unregularized)
     gws=pc.ws[1][1]
     N=_workspace_dim(gws)
@@ -148,7 +254,19 @@ end
 end
 
 function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
-    pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+    #pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+    pc=precompute_magnetic_contour_notched(
+    solver,pts,complex(ν0s,zero(T)),R;
+    nq_line=24,
+    nq_notch=20,
+    η=0.04,
+    notch_R=0.07,
+    notch_side=:upper,
+    h=h,
+    P=P,
+    Msmall=Msmall,
+    mp_dps=mp_dps,
+)
     νj=pc.νj
     wj=pc.wj
     @time "Boundary matrices (magnetic)" Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit)
@@ -379,7 +497,19 @@ function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiar
     Ys=Vector{Matrix{Complex{T}}}(undef,nw)
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (magnetic)" @inbounds for i in 1:nw
-        pc=precompute_magnetic_contour(solver,all_pts[i],complex(ν0s[i],zero(T)),Rs[i];nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+        #pc=precompute_magnetic_contour(solver,all_pts[i],complex(ν0s[i],zero(T)),Rs[i];nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+        pc=precompute_magnetic_contour_notched(
+    solver,pts,complex(ν0s[i],zero(T)),Rs[i];
+    nq_line=24,
+    nq_notch=20,
+    η=0.04,
+    notch_R=0.07,
+    notch_side=:upper,
+    h=h,
+    P=P,
+    Msmall=Msmall,
+    mp_dps=mp_dps,
+)
         λ,Uk,Y,_,_,_=solve_vect_magnetic(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),matrix_kind=matrix_kind,multithreaded=multithreaded_matrix,timeit=timeit)
         λs[i]=λ
         Uks[i]=Uk
