@@ -256,7 +256,7 @@ end
 function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
     #pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
     pc=precompute_magnetic_contour_notched(
-    solver,pts,complex(ν0,zero(T)),R;
+    solver,pts,ν0,R;
     nq_line=24,
     nq_notch=20,
     η=0.04,
