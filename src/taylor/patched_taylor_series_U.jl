@@ -555,6 +555,17 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
     end
 end
 
+# =============================================================================
+# _mp_rgamma_val
+#
+# Purpose
+# Return the reciprocal gamma function 1/Γ(z) in mpmath arithmetic, with exact
+# handling of non-positive integer poles.
+#
+# Notes
+#   If z is a real non-positive integer, Γ(z) has a pole and 1/Γ(z)=0. This
+#   avoids evaluating mpmath gamma at a pole.
+# =============================================================================
 function _mp_rgamma_val(z)
     zr=pycall(_pyfloat[],Float64,z.real)
     zi=pycall(_pyfloat[],Float64,z.imag)
@@ -1761,6 +1772,580 @@ function _eval_Blog!(out::AbstractVector{ComplexF64},tab::MagneticGreenSTaylorTa
         out[i]=_eval_Blog(tab,zvec[i])
     end
     return nothing
+end
+
+##############################
+##### DERIVATIVE PATHWAY #####
+##############################
+
+# =============================================================================
+# MagneticDerivativesGreenSTaylorTable
+#
+# Runtime table extending MagneticGreenSTaylorTable with parameter derivatives
+# with respect to ν.
+#
+# Stored quantities
+#   base      Table for F(z;ν), Aν(z), and the small-z split.
+#   gν,gνν   Taylor coefficients in s=sqrt(z) for ∂νF and ∂ννF.
+#   aν,aνν   Taylor coefficients in s=sqrt(z) for ∂νAν and ∂ννAν.
+#   smallAν,smallAνν
+#             Small-z coefficients for ∂νA(z), ∂ννA(z).
+#   smallBν,smallBνν
+#             Small-z coefficients for ∂νB(z), ∂ννB(z).
+#
+# Purpose
+#   Used to assemble A'(k) and A''(k) for EBIM in the magnetic problem.
+# =============================================================================
+mutable struct MagneticDerivativesGreenSTaylorTable
+    base::MagneticGreenSTaylorTable
+    gν::Matrix{ComplexF64}
+    gνν::Matrix{ComplexF64}
+    aν::Matrix{ComplexF64}
+    aνν::Matrix{ComplexF64}
+    smallAν::Vector{ComplexF64}
+    smallAνν::Vector{ComplexF64}
+    smallBν::Vector{ComplexF64}
+    smallBνν::Vector{ComplexF64}
+end
+
+# =============================================================================
+# MagneticDerivativesGreenSWorkspace
+#
+# Scratch workspace for constructing ν-derivative Taylor tables.
+#
+# Fields
+#   νcoef    Local Taylor coefficients for first ν-derivative.
+#   ννcoef   Local Taylor coefficients for second ν-derivative.
+#   invs     Coefficients of 1/(s0+h), reused by the patch recurrence.
+#
+# Notes
+#   This is intentionally separate from MagneticGreenSWorkspace so derivative
+#   propagation does not steal temporary buffers from the base-table builder.
+# =============================================================================
+struct MagneticDerivativesGreenSWorkspace
+    νcoef::Vector{ComplexF64}
+    ννcoef::Vector{ComplexF64}
+    invs::Vector{ComplexF64}
+end
+
+# =============================================================================
+# MagneticDerivativesGreenSWorkspace(pre)
+#
+# Purpose
+# Allocate scratch buffers for ν-derivative Taylor-table construction.
+#
+# Inputs
+#   pre::MagneticGreenSPrecomp
+#       Shared s-grid/table layout. The Taylor degree pre.P determines the
+#       buffer lengths.
+#
+# Output
+#   MagneticDerivativesGreenSWorkspace with buffers of length pre.P+1.
+# =============================================================================
+@inline function MagneticDerivativesGreenSWorkspace(pre::MagneticGreenSPrecomp)
+    return MagneticDerivativesGreenSWorkspace(Vector{ComplexF64}(undef,pre.P+1),Vector{ComplexF64}(undef,pre.P+1),Vector{ComplexF64}(undef,pre.P+1))
+end
+
+# =============================================================================
+# alloc_MagneticDerivativesGreenSTaylorTable
+#
+# Purpose
+# Allocate a derivative table compatible with a precomputed s-grid.
+#
+# Inputs
+#   pre::MagneticGreenSPrecomp
+#       Shared table layout.
+#
+# Keyword arguments
+#   ν::ComplexF64=0+0im
+#       Initial dummy spectral parameter used to initialize the embedded base
+#       table. The table should be filled later with
+#       build_MagneticDerivativesGreenSTaylorTable!.
+#
+# Output
+#   MagneticDerivativesGreenSTaylorTable with allocated coefficient arrays.
+# =============================================================================
+@inline function alloc_MagneticDerivativesGreenSTaylorTable(pre::MagneticGreenSPrecomp;ν::ComplexF64=0.0+0.0im)
+    base=alloc_MagneticGreenSTaylorTable(pre;ν=ν)
+    return MagneticDerivativesGreenSTaylorTable(base,Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Vector{ComplexF64}(undef,pre.Msmall+1),Vector{ComplexF64}(undef,pre.Msmall+1),Vector{ComplexF64}(undef,pre.Msmall+1),Vector{ComplexF64}(undef,pre.Msmall+1))
+end
+
+# =============================================================================
+# magnetic_log_coeff_ν, magnetic_log_coeff_νν
+#
+# Purpose
+# Return the first and second ν-derivatives of
+#
+#   aν = cos(πν)/(4π).
+#
+# Formulas
+#   ∂ν aν  = -sin(πν)/4,
+#   ∂νν aν = -π cos(πν)/4.
+# =============================================================================
+@inline magnetic_log_coeff_ν(ν::ComplexF64)=-sinpi(ν)/4
+@inline magnetic_log_coeff_νν(ν::ComplexF64)=-(π/4)*cospi(ν)
+
+# =============================================================================
+# magnetic_R0_derivs_mpmath
+#
+# Compute high-precision first and second ν-derivatives of the finite diagonal
+# part
+#
+#   R0(ν)=aν[ψ(ν+1/2)-2ψ(1)]-sin(πν)/4.
+#
+# Returns
+#   (R0ν,R0νν)
+#
+# Notes
+#   This is called only during table construction. Runtime evaluation uses the
+#   propagated Taylor coefficients and does not call mpmath.
+# =============================================================================
+function magnetic_R0_derivs_mpmath(ν::ComplexF64;dps::Int=80)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        νp=_mpc[](real(ν),imag(ν))
+        h=_mpf[](0.5)
+        A0=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
+        A1=-_mp_sin[](_mp_pi[]*νp)/4
+        A2=-_mp_pi[]*_mp_cos[](_mp_pi[]*νp)/4
+        D=_mp_digamma[](νp+h)-2*_mp_digamma[](_mpf[](1))
+        P1=_mp_polygamma[](1,νp+h)
+        P2=_mp_polygamma[](2,νp+h)
+        R1=A1*D+A0*P1-_mp_pi[]*_mp_cos[](_mp_pi[]*νp)/4
+        R2=A2*D+2*A1*P1+A0*P2+(_mp_pi[]^2)*_mp_sin[](_mp_pi[]*νp)/4
+        return ComplexF64(pycall(_pyfloat[],Float64,R1.real),pycall(_pyfloat[],Float64,R1.imag)),ComplexF64(pycall(_pyfloat[],Float64,R2.real),pycall(_pyfloat[],Float64,R2.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
+end
+
+# =============================================================================
+# build_small_z_deriv_coeffs
+#
+# Build small-z coefficients for the ν-derivatives of the logarithmic split
+#
+#   F(z;ν)=A(z;ν)log(z)+B(z;ν).
+#
+# Returns
+#   (Aν,Aνν,Bν,Bνν)
+#
+# Recurrences
+#   The differentiated coefficient recurrences follow by differentiating the
+#   original small-z Frobenius/log recurrence with respect to ν once and twice.
+#
+# Purpose
+#   Provides accurate Cauchy data at z=zmin for the ν-derivative ODEs.
+# =============================================================================
+function build_small_z_deriv_coeffs(ν::ComplexF64,R0::ComplexF64,R0ν::ComplexF64,R0νν::ComplexF64;
+    a0::ComplexF64=magnetic_log_coeff(ν),
+    a0ν::ComplexF64=magnetic_log_coeff_ν(ν),
+    a0νν::ComplexF64=magnetic_log_coeff_νν(ν),
+    M::Int=24,prec::Int=256)
+    setprecision(BigFloat,prec) do
+        νb=Complex{BigFloat}(BigFloat(real(ν)),BigFloat(imag(ν)))
+        A=Vector{Complex{BigFloat}}(undef,M+1)
+        Aν=similar(A);Aνν=similar(A)
+        B=similar(A);Bν=similar(A);Bνν=similar(A)
+        A[1]=Complex{BigFloat}(BigFloat(real(a0)),BigFloat(imag(a0)))
+        Aν[1]=Complex{BigFloat}(BigFloat(real(a0ν)),BigFloat(imag(a0ν)))
+        Aνν[1]=Complex{BigFloat}(BigFloat(real(a0νν)),BigFloat(imag(a0νν)))
+        B[1]=Complex{BigFloat}(BigFloat(real(R0)),BigFloat(imag(R0)))
+        Bν[1]=Complex{BigFloat}(BigFloat(real(R0ν)),BigFloat(imag(R0ν)))
+        Bνν[1]=Complex{BigFloat}(BigFloat(real(R0νν)),BigFloat(imag(R0νν)))
+        Am1=zero(Complex{BigFloat});Aνm1=zero(Complex{BigFloat});Aννm1=zero(Complex{BigFloat})
+        Bm1=zero(Complex{BigFloat});Bνm1=zero(Complex{BigFloat});Bννm1=zero(Complex{BigFloat})
+        for m in 0:M-1
+            den=Complex{BigFloat}(BigFloat((m+1)^2),zero(BigFloat))
+            A[m+2]=(BigFloat("0.25")*Am1-νb*A[m+1])/den
+            Aν[m+2]=(BigFloat("0.25")*Aνm1-A[m+1]-νb*Aν[m+1])/den
+            Aνν[m+2]=(BigFloat("0.25")*Aννm1-2Aν[m+1]-νb*Aνν[m+1])/den
+            B[m+2]=(-BigFloat(2*(m+1))*A[m+2]-νb*B[m+1]+BigFloat("0.25")*Bm1)/den
+            Bν[m+2]=(-BigFloat(2*(m+1))*Aν[m+2]-B[m+1]-νb*Bν[m+1]+BigFloat("0.25")*Bνm1)/den
+            Bνν[m+2]=(-BigFloat(2*(m+1))*Aνν[m+2]-2Bν[m+1]-νb*Bνν[m+1]+BigFloat("0.25")*Bννm1)/den
+            Am1=A[m+1];Aνm1=Aν[m+1];Aννm1=Aνν[m+1]
+            Bm1=B[m+1];Bνm1=Bν[m+1];Bννm1=Bνν[m+1]
+        end
+        return ComplexF64.(Aν),ComplexF64.(Aνν),ComplexF64.(Bν),ComplexF64.(Bνν)
+    end
+end
+
+# =============================================================================
+# _small_param_val
+#
+# Purpose
+# Evaluate a differentiated small-z logarithmic expansion
+#
+#   D(z)=Aν(z)log(z)+Bν(z)
+#
+# or
+#
+#   D2(z)=Aνν(z)log(z)+Bνν(z).
+#
+# Inputs
+#   Aν,Bν  Coefficient vectors for the differentiated split.
+#   z      Positive small-z evaluation point.
+# =============================================================================
+@inline function _small_param_val(Aν,Bν,z::Float64)
+    return horner_eval_vec(Aν,z)*log(z)+horner_eval_vec(Bν,z)
+end
+
+# =============================================================================
+# _small_param_z
+#
+# Purpose
+# Evaluate the z-derivative of a differentiated small-z logarithmic expansion.
+#
+# Formula
+#   D_z(z)=Aν'(z)log(z)+Aν(z)/z+Bν'(z).
+#
+# Usage
+#   Provides s-derivative data via dD/ds = 2s D_z.
+# =============================================================================
+@inline function _small_param_z(Aν,Bν,z::Float64)
+    L=log(z)
+    A=horner_eval_vec(Aν,z)
+    Ap=horner_deriv_vec(Aν,z)
+    Bp=horner_deriv_vec(Bν,z)
+    return Ap*L+A/z+Bp
+end
+
+# =============================================================================
+# build_magnetic_param_deriv_patch!
+#
+# Construct one local Taylor patch for D=∂νG or ∂νA and D2=∂ννG or ∂ννA.
+#
+# If the base function Y satisfies
+#
+#   Y'' = -Y'/s + (s²-4ν)Y,
+#
+# then the parameter derivatives satisfy the equations
+#
+#   D''  = -D'/s  + (s²-4ν)D  - 4Y,
+#   D2'' = -D2'/s + (s²-4ν)D2 - 8D.
+#
+# Inputs
+#   d,d2      Output coefficient buffers for D and D2.
+#   basecol   Taylor coefficients of the already-built base function Y.
+#   D0,Dp0    Cauchy data for D and D'.
+#   D20,D2p0  Cauchy data for D2 and D2'.
+#
+# Notes
+#   This is the core analytic recurrence. No numerical ν-differentiation is used.
+# =============================================================================
+@inline function build_magnetic_param_deriv_patch!(d,d2,invs,baseC,j,ν,D0,Dp0,D20,D2p0,s0)
+    P=length(d)-1
+    d[1]=D0; d[2]=Dp0
+    d2[1]=D20; d2[2]=D2p0
+    cc=ComplexF64(s0,0.0)
+    invcc=inv(cc)
+    invs[1]=invcc
+    @inbounds for m in 1:P
+        invs[m+1]=-invs[m]*invcc
+    end
+    c2=cc*cc
+    fourν=4ν
+    @inbounds for n in 0:P-2
+        r=zero(ComplexF64)
+        r2=zero(ComplexF64)
+        for m in 0:n
+            c=invs[m+1]*ComplexF64(n-m+1,0.0)
+            r-=c*d[n-m+2]
+            r2-=c*d2[n-m+2]
+        end
+        r+=(c2-fourν)*d[n+1]-4baseC[n+1,j]
+        r2+=(c2-fourν)*d2[n+1]-8d[n+1]
+        n>=1 && (r+=2cc*d[n]; r2+=2cc*d2[n])
+        n>=2 && (r+=d[n-1]; r2+=d2[n-1])
+        den=ComplexF64((n+2)*(n+1),0.0)
+        d[n+3]=r/den
+        d2[n+3]=r2/den
+    end
+    return nothing
+end
+
+# =============================================================================
+# _store_param_seed_patch!
+#
+# Purpose
+# Store one seeded Taylor patch for the ν-derivative tables.
+#
+# Inputs
+#   D,D2       Output coefficient matrices for first and second ν-derivatives.
+#   baseC      Base Taylor coefficient matrix for Y.
+#   j          Patch index where the Cauchy data are imposed.
+#   D0,Dp0     Cauchy data for D and dD/ds.
+#   D20,D2p0   Cauchy data for D2 and dD2/ds.
+#
+# Notes
+#   The actual coefficients are generated by build_magnetic_param_deriv_patch!.
+# =============================================================================
+@inline function _store_param_seed_patch!(D,D2,baseC,pre,ws::MagneticDerivativesGreenSWorkspace,ν,j,D0,Dp0,D20,D2p0)
+    build_magnetic_param_deriv_patch!(ws.νcoef,ws.ννcoef,ws.invs,baseC,j,ν,D0,Dp0,D20,D2p0,pre.centers[j])
+    @inbounds for n in 1:pre.P+1
+        D[n,j]=ws.νcoef[n]
+        D2[n,j]=ws.ννcoef[n]
+    end
+    return nothing
+end
+
+# =============================================================================
+# _propagate_param_right!
+#
+# Purpose
+# Propagate ν-derivative Taylor patches to the right.
+#
+# For each new center, the previous derivative patch is evaluated to obtain
+# Cauchy data, and the forced ν-derivative recurrence is rebuilt using the
+# corresponding base-function patch.
+# =============================================================================
+function _propagate_param_right!(D,D2,baseC,pre,ws::MagneticDerivativesGreenSWorkspace,ν,j0,j1)
+    j1<=j0 && return nothing
+    @inbounds for j in j0+1:j1
+        h=pre.centers[j]-pre.centers[j-1]
+        V=horner_eval_col(D,j-1,h)
+        Vp=horner_deriv_col(D,j-1,h)
+        V2=horner_eval_col(D2,j-1,h)
+        V2p=horner_deriv_col(D2,j-1,h)
+        build_magnetic_param_deriv_patch!(ws.νcoef,ws.ννcoef,ws.invs,baseC,j,ν,V,Vp,V2,V2p,pre.centers[j])
+        for n in 1:pre.P+1
+            D[n,j]=ws.νcoef[n]
+            D2[n,j]=ws.ννcoef[n]
+        end
+    end
+    return nothing
+end
+
+# =============================================================================
+# _propagate_param_left!
+#
+# Purpose
+# Propagate ν-derivative Taylor patches to the left.
+#
+# This is the left-going analogue of _propagate_param_right!. It is mainly kept
+# for completeness; in the current derivative build we seed at the first patch,
+# so only right propagation is used.
+# =============================================================================
+function _propagate_param_left!(D,D2,baseC,pre,ws::MagneticDerivativesGreenSWorkspace,ν,j0,j1)
+    j1>=j0 && return nothing
+    @inbounds for j in j0-1:-1:j1
+        h=pre.centers[j]-pre.centers[j+1]
+        V=horner_eval_col(D,j+1,h)
+        Vp=horner_deriv_col(D,j+1,h)
+        V2=horner_eval_col(D2,j+1,h)
+        V2p=horner_deriv_col(D2,j+1,h)
+        build_magnetic_param_deriv_patch!(ws.νcoef,ws.ννcoef,ws.invs,baseC,j,ν,V,Vp,V2,V2p,pre.centers[j])
+        for n in 1:pre.P+1
+            D[n,j]=ws.νcoef[n]
+            D2[n,j]=ws.ννcoef[n]
+        end
+    end
+    return nothing
+end
+
+# =============================================================================
+# _build_param_deriv_table!
+#
+# Build a complete ν-derivative Taylor table by seeding one or more patches and
+# propagating the forced recurrence left/right.
+#
+# In the current EBIM-safe usage, the derivative table is seeded only at the
+# first patch, j=1, using the small-z derivative expansion. The whole table is
+# then propagated to the right by the analytic forced recurrence.
+# =============================================================================
+function _build_param_deriv_table!(D,D2,baseC,pre,ws::MagneticDerivativesGreenSWorkspace,ν,seeds,seedvals)
+    if length(seeds)==1
+        j0=seeds[1]
+        D0,Dp0,D20,D2p0=seedvals[1]
+        _store_param_seed_patch!(D,D2,baseC,pre,ws,ν,j0,D0,Dp0,D20,D2p0)
+        _propagate_param_right!(D,D2,baseC,pre,ws,ν,j0,pre.Npatch)
+        _propagate_param_left!(D,D2,baseC,pre,ws,ν,j0,1)
+        return nothing
+    end
+    @inbounds for q in eachindex(seeds)
+        j=seeds[q]
+        D0,Dp0,D20,D2p0=seedvals[q]
+        _store_param_seed_patch!(D,D2,baseC,pre,ws,ν,j,D0,Dp0,D20,D2p0)
+    end
+    _propagate_param_left!(D,D2,baseC,pre,ws,ν,seeds[1],1)
+    @inbounds for q in 1:length(seeds)-1
+        jl=seeds[q]
+        jr=seeds[q+1]
+        jc=(jl+jr)>>>1
+        _propagate_param_right!(D,D2,baseC,pre,ws,ν,jl,jc)
+        _propagate_param_left!(D,D2,baseC,pre,ws,ν,jr,jc+1)
+    end
+    return nothing
+end
+
+# =============================================================================
+# _param_seedvals_left_F
+#
+# Purpose
+# Compute left-end Cauchy data for ∂νF and ∂ννF at z=zmin.
+#
+# Output
+#   One-element vector containing
+#
+#       (Fν, dFν/ds, Fνν, dFνν/ds)
+#
+# evaluated from the differentiated small-z logarithmic expansion.
+# =============================================================================
+function _param_seedvals_left_F(pre,dtab::MagneticDerivativesGreenSTaylorTable)
+    z=pre.zmin
+    s=pre.smin
+    Fν=_small_param_val(dtab.smallAν,dtab.smallBν,z)
+    Fνp=2s*_small_param_z(dtab.smallAν,dtab.smallBν,z)
+    Fνν=_small_param_val(dtab.smallAνν,dtab.smallBνν,z)
+    Fννp=2s*_small_param_z(dtab.smallAνν,dtab.smallBνν,z)
+    return [(Fν,Fνp,Fνν,Fννp)]
+end
+
+# =============================================================================
+# _param_seedvals_left_A
+#
+# Purpose
+# Compute left-end Cauchy data for ∂νA and ∂ννA at z=zmin.
+#
+# Output
+#   One-element vector containing
+#
+#       (Aν, dAν/ds, Aνν, dAνν/ds)
+#
+# evaluated from the differentiated small-z power series for A.
+# =============================================================================
+function _param_seedvals_left_A(pre,dtab::MagneticDerivativesGreenSTaylorTable)
+    z=pre.zmin
+    s=pre.smin
+    Aν=horner_eval_vec(dtab.smallAν,z)
+    Aνp=2s*horner_deriv_vec(dtab.smallAν,z)
+    Aνν=horner_eval_vec(dtab.smallAνν,z)
+    Aννp=2s*horner_deriv_vec(dtab.smallAνν,z)
+    return [(Aν,Aνp,Aνν,Aννp)]
+end
+
+# =============================================================================
+# build_MagneticDerivativesGreenSTaylorTable!
+#
+# Build the full derivative table in preallocated storage.
+#
+# Workflow
+#   1. Build the base MagneticGreenSTaylorTable.
+#   2. Build small-z coefficients for ∂νF, ∂ννF, ∂νA, ∂ννA.
+#   3. Seed the derivative tables at z=zmin.
+#   4. Propagate ∂νF, ∂ννF and ∂νA, ∂ννA using the analytic forced recurrence.
+#
+# Important
+#   The derivative pathway deliberately does not use the multi-seed indices of
+#   the base table. Derivative seeds from the small-z expansion are valid only
+#   near z=zmin, so seeding at turning/post-turning patches would be wrong.
+# =============================================================================
+function build_MagneticDerivativesGreenSTaylorTable!(dtab::MagneticDerivativesGreenSTaylorTable,pre::MagneticGreenSPrecomp,basews::MagneticGreenSWorkspace,derws::MagneticDerivativesGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    base=dtab.base
+    build_MagneticGreenSTaylorTable!(base,pre,basews,ν;mp_dps=mp_dps,anchor_s=anchor_s)
+    R0ν,R0νν=magnetic_R0_derivs_mpmath(ν;dps=mp_dps)
+    Aν,Aνν,Bν,Bνν=build_small_z_deriv_coeffs(ν,base.R0,R0ν,R0νν;a0=base.a_log,M=pre.Msmall)
+    resize!(dtab.smallAν,length(Aν));resize!(dtab.smallAνν,length(Aνν))
+    resize!(dtab.smallBν,length(Bν));resize!(dtab.smallBνν,length(Bνν))
+    copyto!(dtab.smallAν,Aν);copyto!(dtab.smallAνν,Aνν)
+    copyto!(dtab.smallBν,Bν);copyto!(dtab.smallBνν,Bνν)
+    seeds=Int[1]
+    Fseed=_param_seedvals_left_F(pre,dtab)
+    Aseed=_param_seedvals_left_A(pre,dtab)
+    _build_param_deriv_table!(dtab.gν,dtab.gνν,base.gcoeffs,pre,derws,ν,seeds,Fseed)
+    _build_param_deriv_table!(dtab.aν,dtab.aνν,base.acoeffs,pre,derws,ν,seeds,Aseed)
+    return dtab
+end
+
+# =============================================================================
+# build_MagneticDerivativesGreenSTaylorTable
+#
+# Purpose
+# Convenience allocation-and-build wrapper for the full ν-derivative table.
+#
+# Output
+#   Fully built MagneticDerivativesGreenSTaylorTable.
+#
+# Notes
+#   For production EBIM loops, prefer the in-place version
+#   build_MagneticDerivativesGreenSTaylorTable! to avoid repeated allocations.
+# =============================================================================
+function build_MagneticDerivativesGreenSTaylorTable(ν::ComplexF64;zmin::Float64=1e-3,zmax::Float64=900.0,zsmall::Float64=zmin,Msmall::Int=30,mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
+    pre=build_MagneticGreenSPrecomp(;zmin=zmin,zmax=zmax,zsmall=zsmall,Msmall=Msmall)
+    basews=MagneticGreenSWorkspace(;threaded=false)
+    derws=MagneticDerivativesGreenSWorkspace(pre)
+    dtab=alloc_MagneticDerivativesGreenSTaylorTable(pre;ν=ν)
+    build_MagneticDerivativesGreenSTaylorTable!(dtab,pre,basews,derws,ν;mp_dps=mp_dps,anchor_s=anchor_s)
+    return dtab
+end
+
+# =============================================================================
+# _eval_Fν, _eval_Fνν
+#
+# Evaluate ∂νF(z;ν) and ∂ννF(z;ν).
+#
+# Strategy
+#   - For z<zsmall, use the differentiated small-z logarithmic expansion.
+#   - Otherwise, evaluate the propagated s=sqrt(z) Taylor table.
+# =============================================================================
+@inline function _eval_Fν(dtab::MagneticDerivativesGreenSTaylorTable,z::Float64)
+    z==0.0 && return ComplexF64(Inf,0.0)
+    z<dtab.base.zsmall && return _small_param_val(dtab.smallAν,dtab.smallBν,z)
+    s=sqrt(z)
+    idx=_mag_patch_index(dtab.base,s)
+    return horner_eval_col(dtab.gν,idx,s-dtab.base.centers[idx])
+end
+@inline function _eval_Fνν(dtab::MagneticDerivativesGreenSTaylorTable,z::Float64)
+    z==0.0 && return ComplexF64(Inf,0.0)
+    z<dtab.base.zsmall && return _small_param_val(dtab.smallAνν,dtab.smallBνν,z)
+    s=sqrt(z)
+    idx=_mag_patch_index(dtab.base,s)
+    return horner_eval_col(dtab.gνν,idx,s-dtab.base.centers[idx])
+end
+
+# =============================================================================
+# _eval_Alog_ν, _eval_Alog_νν
+#
+# Evaluate the first and second ν-derivatives of the Kress logarithmic
+# coefficient Aν(z).
+#
+# These are needed when differentiating the Kress split itself with respect to
+# the spectral parameter.
+# =============================================================================
+@inline function _eval_Alog_ν(dtab::MagneticDerivativesGreenSTaylorTable,z::Float64)
+    z==0.0 && return dtab.smallAν[1]
+    z<dtab.base.zsmall && return horner_eval_vec(dtab.smallAν,z)
+    s=sqrt(z)
+    idx=_mag_patch_index(dtab.base,s)
+    return horner_eval_col(dtab.aν,idx,s-dtab.base.centers[idx])
+end
+@inline function _eval_Alog_νν(dtab::MagneticDerivativesGreenSTaylorTable,z::Float64)
+    z==0.0 && return dtab.smallAνν[1]
+    z<dtab.base.zsmall && return horner_eval_vec(dtab.smallAνν,z)
+    s=sqrt(z)
+    idx=_mag_patch_index(dtab.base,s)
+    return horner_eval_col(dtab.aνν,idx,s-dtab.base.centers[idx])
+end
+
+# =============================================================================
+# _eval_Blog_ν, _eval_Blog_νν
+#
+# Evaluate the first and second ν-derivatives of the Kress-smooth finite part
+#
+#   Bν(z)=F(z;ν)-Aν(z)log(z).
+#
+# For z<zsmall, the small-z B-coefficients are used directly. Otherwise the
+# value is reconstructed from F- and A-derivative tables.
+# =============================================================================
+@inline function _eval_Blog_ν(dtab::MagneticDerivativesGreenSTaylorTable,z::Float64)
+    z==0.0 && return dtab.smallBν[1]
+    z<dtab.base.zsmall && return horner_eval_vec(dtab.smallBν,z)
+    return _eval_Fν(dtab,z)-_eval_Alog_ν(dtab,z)*log(z)
+end
+@inline function _eval_Blog_νν(dtab::MagneticDerivativesGreenSTaylorTable,z::Float64)
+    z==0.0 && return dtab.smallBνν[1]
+    z<dtab.base.zsmall && return horner_eval_vec(dtab.smallBνν,z)
+    return _eval_Fνν(dtab,z)-_eval_Alog_νν(dtab,z)*log(z)
 end
 
 ############################################################

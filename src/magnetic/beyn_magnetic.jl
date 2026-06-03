@@ -40,14 +40,14 @@ function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPo
     return MagneticContourPrecomp{T,typeof(ws1)}(νj,wj,ws)
 end
 
-function construct_boundary_matrices_precomputed!(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false)
+function construct_boundary_matrices_precomputed!(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false,operator_convention::Symbol=:unregularized)
     gws=pc.ws[1][1]
     N=_workspace_dim(gws)
     nq=length(pc.νj)
-    Tbufs=[Matrix{ComplexF64}(undef, N, N) for _ in 1:nq]
+    Tbufs=[Matrix{ComplexF64}(undef,N,N) for _ in 1:nq]
     @blas_1 begin
         @inbounds for q in 1:nq
-            @benchit timeit=timeit "magnetic boundary assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,multithreaded=multithreaded,normalize_landau=true)
+            @benchit timeit=timeit "magnetic boundary assembly" construct_magnetic_operator_matrix!(Tbufs[q],pts,pc.ws[q][1],pc.ws[q][2];matrix_kind=matrix_kind,multithreaded=multithreaded,operator_convention=operator_convention)
         end
     end
     return Tbufs
@@ -295,8 +295,7 @@ function imag_ν_check_magnetic_EXPERIMENTAL(solver::MagneticKressSolver,λs::Ve
     dropped=0
     good_streak=0
     pos=1
-    Afull=Matrix{Complex{T}}(undef,0,0)
-    Ared=Matrix{Complex{T}}(undef,0,0)
+    A=Matrix{Complex{T}}(undef,0,0)
     y=Vector{Complex{T}}(undef,0)
     φ=Vector{Complex{T}}(undef,0)
     while pos<=length(candidates)
@@ -307,22 +306,19 @@ function imag_ν_check_magnetic_EXPERIMENTAL(solver::MagneticKressSolver,λs::Ve
             sub=[c for c in group if c[1]==iwin]
             isempty(sub) && continue
             pts=all_pts[iwin]
-            I=Is[iwin]
             caches[iwin]===nothing && (caches[iwin]=_mag_contour_cache(solver,pts))
             cache=caches[iwin]
-            Nfull=length(pts.xy)
-            Nred=length(I)
-            size(Afull)!=(Nfull,Nfull) && (Afull=Matrix{Complex{T}}(undef,Nfull,Nfull))
-            size(Ared)!=(Nred,Nred) && (Ared=Matrix{Complex{T}}(undef,Nred,Nred))
-            length(y)!=Nred && (y=Vector{Complex{T}}(undef,Nred))
-            length(φ)!=Nred && (φ=Vector{Complex{T}}(undef,Nred))
+            N=_workspace_dim(cache)
+            size(A)!=(N,N) && (A=Matrix{Complex{T}}(undef,N,N))
+            length(y)!=N && (y=Vector{Complex{T}}(undef,N))
+            length(φ)!=N && (φ=Vector{Complex{T}}(undef,N))
             @inbounds for c in sub
                 i,j,_,_=c
                 λj=λs[i][j]
                 wsj=_mag_contour_workspace(solver,pts,ComplexF64(λj),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-                construct_matrices!(solver,Afull,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded)
+                construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded,operator_convention=:unregularized)
                 mul!(φ,Uks[i],@view Ys[i][:,j])
-                mul!(y,Ared,φ)
+                mul!(y,A,φ)
                 rdict[(i,j)]=norm(y)
             end
         end
