@@ -219,7 +219,7 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
             continue
         end
         wsj=_mag_contour_workspace(solver,pts,ComplexF64(λ[j]),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-        construct_matrices!(solver,A,pts,wsj[1],wsj[2],λ[j];matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded)
+        construct_matrices!(solver,A,pts,wsj[1],wsj[2],λ[j];matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded,operator_convention=:unregularized)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,A,@view(Φ[:,j]))
         rj=norm(ybuf)
         @info "ν=$(λ[j]) ||A(ν)v|| = $(rj) vs. res_tol $res_tol"
@@ -256,7 +256,7 @@ function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::Abstr
         end
         mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
         wsj=_mag_contour_workspace(solver,pts,ComplexF64(λj),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-        construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded)
+        construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded,operator_convention=:unregularized)
         mul!(y,A,@view(Φtmp[:,j]))
         rj=norm(y)
         tens[j]=rj
