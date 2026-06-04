@@ -39,7 +39,7 @@
 Construct per-state Poincare-Husimi grids.
 Inputs:
 - `ks::AbstractVector{T}`: Wavenumbers.
-- `bps::AbstractVector{BoundaryPointsHypBIM{T}}`: Boundary containers with `LH`.
+- `bps::AbstractVector{BoundaryPointsHyp{T}}`: Boundary containers with `LH`.
 Keywords:
 - `q_oversample::Float64`: Oversampling relative to `k*LH/(2π)`.
 - `nq_min::Int`: Minimum number of q-points.
@@ -53,7 +53,7 @@ Mathematical convention:
 - `q` is hyperbolic arclength.
 - `p=sin(χ)` is the dimensionless tangential momentum.
 """
-function make_qp_grids_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPointsHypBIM{T}};q_oversample::Float64=2.0,nq_min::Int=1000,np::Int=1000,pmax::T=one(T),full_p::Bool=false) where {T<:Real}
+function make_qp_grids_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPointsHyp{T}};q_oversample::Float64=2.0,nq_min::Int=1000,np::Int=1000,pmax::T=one(T),full_p::Bool=false) where {T<:Real}
     n=length(ks)
     qs=Vector{Vector{T}}(undef,n)
     ps=Vector{Vector{T}}(undef,n)
@@ -182,7 +182,7 @@ Convenience wrapper for one hyperbolic boundary state.
 
 Inputs:
 - `k::T`: Wavenumber.
-- `bp::BoundaryPointsHypBIM{T}`: Boundary data with `ξ`, `LH`, and `ds`.
+- `bp::BoundaryPointsHyp{T}`: Boundary data with `ξ`, `LH`, and `ds`.
 - `u::AbstractVector{Num}`: Boundary function from the adjoint kernel, `u=∂ₙᴱψ`.
 - `qs::AbstractVector{T}`: q-grid.
 - `ps::AbstractVector{T}`: p-grid.
@@ -192,7 +192,7 @@ Important:
 - Uses `bp.ds`, not `bp.dsH`.
 - This is correct because the adjoint-kernel boundary function is Euclidean-normal.
 """
-function husimi_on_grid_hyp(k::T,bp::BoundaryPointsHypBIM{T},u::AbstractVector{Num},qs::AbstractVector{T},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
+function husimi_on_grid_hyp(k::T,bp::BoundaryPointsHyp{T},u::AbstractVector{Num},qs::AbstractVector{T},ps::AbstractVector{T};full_p::Bool=false) where {T<:Real,Num<:Number}
     # Important:
     # The adjoint hyperbolic DLP kernel returns u_E=∂_{n_E}ψ.
     # Therefore the coherent-state integral uses u_E ds_E.
@@ -411,7 +411,7 @@ end
 Compute boundary Poincare-Husimi matrices for many states.
 Inputs:
 - `ks::AbstractVector{T}`: Wavenumbers.
-- `bps::AbstractVector{BoundaryPointsHypBIM{T}}`: Boundary containers.
+- `bps::AbstractVector{BoundaryPointsHyp{T}}`: Boundary containers.
 - `us::AbstractVector{<:AbstractVector{Num}}`: Adjoint-kernel boundary functions `u=∂ₙᴱψ`.
 - `qs::AbstractVector{<:AbstractVector{T}}`: q-grids.
 - `ps::AbstractVector{<:AbstractVector{T}}`: p-grids.
@@ -425,7 +425,7 @@ Important:
 - This is the correct choice for boundary functions constructed from the adjoint
   hyperbolic DLP kernel.
 """
-function husimi_on_grid_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPointsHypBIM{T}},us::AbstractVector{<:AbstractVector{Num}},qs::AbstractVector{<:AbstractVector{T}},ps::AbstractVector{<:AbstractVector{T}};full_p::Bool=false,show_progress::Bool=true) where {T<:Real,Num<:Number}
+function husimi_on_grid_hyp(ks::AbstractVector{T},bps::AbstractVector{BoundaryPointsHyp{T}},us::AbstractVector{<:AbstractVector{Num}},qs::AbstractVector{<:AbstractVector{T}},ps::AbstractVector{<:AbstractVector{T}};full_p::Bool=false,show_progress::Bool=true) where {T<:Real,Num<:Number}
     n=length(ks)
     @assert length(bps)==n
     @assert length(us)==n
