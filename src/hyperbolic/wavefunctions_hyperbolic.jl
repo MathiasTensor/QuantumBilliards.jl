@@ -1,30 +1,24 @@
 """
+
     HypSLPData{T<:Real}
 
-Cache container for hyperbolic single-layer-potential reconstruction.
-
-Fields
-
-`qx::Vector{T}`
-    x-coordinates of boundary quadrature nodes.
-
-`qy::Vector{T}`
-    y-coordinates of boundary quadrature nodes.
-
-`wH::Vector{T}`
-    Hyperbolic quadrature weights
-
-        wH[j] = λ(q_j) ds_E[j].
-
-Purpose
-
-Avoid repeated coordinate extraction, conformal-factor evaluation, and
-hyperbolic boundary-weight construction inside the wavefunction loop.
+Cache for hyperbolic single-layer-potential reconstruction.
+Fields:
+- `qx::Vector{T}`: Boundary x-coordinates.
+- `qy::Vector{T}`: Boundary y-coordinates.
+- `w::Vector{T}`: Quadrature weights paired with the supplied boundary vector.
+Weight convention:
+- `u_constructed_from=:source_normal`: use `w=dsH`. This is for the 
+  Beyn/source-density reconstruction route.
+- `u_constructed_from=:target_normal`: use `w=ds`. This is for adjoint
+  boundary functions `u=∂ₙᴱψ`.
+Runtime formula:
+    ψ(x) = Σ_j G_k(x,q_j) u_j w_j
 """
 struct HypSLPData{T<:Real}
     qx::Vector{T}
     qy::Vector{T}
-    wH::Vector{T}
+    w::Vector{T}
 end
 
 """
@@ -73,47 +67,45 @@ Output
     return λ*λ
 end
 
+@inline function _hyp_slp_weight(bd::HyperbolicBeynPoints,j::Int,u_constructed_from::Symbol)
+    if u_constructed_from===:target_normal
+        return bd.ds[j]
+    elseif u_constructed_from===:source_normal
+        return bd.dsH[j]
+    else
+        error("Unknown u_constructed_from=$u_constructed_from. Use :target_normal or :source_normal.")
+    end
+end
+
 """
-    prepare_hyp_slp_data(bd::BoundaryPointsHyp{T}) where {T<:Real}
 
-Precompute boundary data for hyperbolic SLP reconstruction.
+    prepare_hyp_slp_data(obj::HyperbolicBeynPoints; u_constructed_from=:source_normal) -> HypSLPData{T}
 
-Inputs
-
-`bd::HyperbolicBeynPoints`
-    Boundary discretization with fields:
-    `xy::Vector`, `ds::Vector{T}`.
-
-Output
-
-`HypSLPData{T}`
-    Cached boundary coordinates and hyperbolic weights.
-
-Details
-
-The stored weights are
-
-    wH[j] = λ(q_j) bd.ds[j],
-
-so runtime reconstruction evaluates
-
-    ψ(x) = Σ_j G_k(x,q_j) u_j wH[j].
+Precompute boundary coordinates and reconstruction weights for hyperbolic SLP
+wavefunction evaluation.
+Inputs:
+- `obj::HyperbolicBeynPoints`: Boundary discretization or wrapper.
+- `u_constructed_from::Symbol`: Convention of the supplied boundary vector.
+Conventions:
+- `:source_normal`: `u` is the direct Beyn/source-normal density from the primal
+  matrix. Uses `w=dsH`.
+- `:target_normal`: `u` is the adjoint boundary function `∂ₙᴱψ`. Uses `w=ds`.
+Output:
+- `HypSLPData{T}` with cached `qx`, `qy`, and selected weights `w`.
 """
-function prepare_hyp_slp_data(obj::HyperbolicBeynPoints)
+function prepare_hyp_slp_data(obj::HyperbolicBeynPoints;u_constructed_from::Symbol=:source_normal)
     bd=hyp_bp(obj)
     T=eltype(bd.ds)
     N=length(bd.xy)
     qx=Vector{T}(undef,N)
     qy=Vector{T}(undef,N)
-    wH=Vector{T}(undef,N)
+    w=Vector{T}(undef,N)
     @inbounds for j in 1:N
-        x=bd.xy[j][1]
-        y=bd.xy[j][2]
-        qx[j]=x
-        qy[j]=y
-        wH[j]=bd.ds[j]*λ_poincare(x,y)
+        qx[j]=bd.xy[j][1]
+        qy[j]=bd.xy[j][2]
+        w[j]=_hyp_slp_weight(bd,j,u_constructed_from)
     end
-    return HypSLPData(qx,qy,wH)
+    return HypSLPData(qx,qy,w)
 end
 
 """
@@ -184,9 +176,9 @@ The loop is allocation-free and uses fused real/imaginary accumulation.
     si=zero(T)
     qx=data.qx
     qy=data.qy
-    wH=data.wH
+    w=data.w
     @inbounds @simd for j in eachindex(u)
-        G=slp_kernel_hyp(tab,x,y,qx[j],qy[j])*wH[j]
+        G=slp_kernel_hyp(tab,x,y,qx[j],qy[j])*w[j]
         Gr=real(G);Gi=imag(G)
         ur=real(u[j]);ui=imag(u[j])
         sr=muladd(Gr,ur,sr)-Gi*ui
@@ -223,9 +215,9 @@ Output
     acc=zero(Complex{T})
     qx=data.qx
     qy=data.qy
-    wH=data.wH
+    w=data.w
     @inbounds @simd for j in eachindex(u)
-        acc+=slp_kernel_hyp(tab,x,y,qx[j],qy[j])*(wH[j]*u[j])
+        acc+=slp_kernel_hyp(tab,x,y,qx[j],qy[j])*(w[j]*u[j])
     end
     return acc
 end
@@ -365,74 +357,22 @@ function d_bounds_hyp_grid(data::HypSLPData{T},xgrid,ygrid,idxs;pad_min=T(0.8),p
 end
 
 """
-    wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:HyperbolicBeynPoints},billiard::Bi; kwargs...) where {T<:Real,Bi<:AbsBilliard}
 
-Reconstruct several hyperbolic billiard eigenfunctions on one Cartesian grid.
+    wavefunction_multi_hyp(ks,vec_u,vec_bd,billiard; kwargs...) -> Psi2ds,xgrid,ygrid
 
-Inputs
-
-`ks::Vector{T}`
-    Eigen-wavenumbers.
-
-`vec_u::Vector{<:AbstractVector}`
-    Boundary density vectors. Each entry must match the corresponding boundary
-    discretization in `vec_bd`.
-
-`vec_bd::AbstractVector{<:HyperbolicBeynPoints}`
-    Boundary discretizations for the eigenstates.
-
-`billiard::Bi`
-    Billiard geometry used for grid construction and inside-domain masking.
-
-Keyword arguments
-
-`b::Float64=5.0`
-    Grid resolution parameter.
-
-`inside_only::Bool=true`
-    Evaluate only inside the billiard if true.
-
-`fundamental::Bool=true`
-    Build the plotting grid from the fundamental boundary if true.
-
-`MIN_CHUNK::Int=4096`
-    Minimum thread chunk size.
-
-`δdisk::T=T(1e-10)`
-    Unit-disk safety margin.
-
-`mp_dps::Int=80`
-    Multiprecision digits used by the Legendre-Q Taylor builder.
-
-`leg_type::Int=3`
-    Legendre-Q convention selector.
-
-Outputs
-
-`Psi2ds::Vector{Matrix{Complex{T}}}`
-    Reconstructed wavefunction matrices.
-
-`xgrid::Vector{T}`
-    Cartesian x-grid.
-
-`ygrid::Vector{T}`
-    Cartesian y-grid.
-
-Algorithm
-
-For each eigenstate:
-    1. cache boundary coordinates and hyperbolic weights,
-    2. compute grid-to-boundary hyperbolic distance bounds,
-    3. build a `QTaylorTable`,
-    4. evaluate the SLP on active grid points.
-
-Notes
-
-No symmetry images are generated here. If the eigenproblem was solved in a
-symmetry-reduced basis, expand the boundary vector to the full physical boundary
-before calling this routine.
+Reconstruct hyperbolic billiard wavefunctions on one Cartesian grid.
+Important convention:
+- `u_constructed_from=:source_normal` is the default and is intended for
+  `us_all` returned directly by `compute_spectrum_hyp`.
+- `u_constructed_from=:target_normal` should be used when `vec_u` comes from the
+  adjoint `solve_vect` boundary-function path.
+Keyword convention effect:
+- `:source_normal` uses reconstruction weights `dsH`.
+- `:target_normal` uses reconstruction weights `ds`.
+Other keywords control grid resolution, masking, threading, and Legendre-Q table
+construction.
 """
-function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:HyperbolicBeynPoints},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Bi<:AbsBilliard}
+function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:HyperbolicBeynPoints},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),mp_dps::Int=80,leg_type::Int=3,u_constructed_from::Symbol=:source_normal) where {T<:Real,Bi<:AbsBilliard}
     xgrid,ygrid,idxs,nx,ny=_make_grid_and_idxs_for_billiard(ks,billiard;b=b,fundamental=fundamental,inside_only=inside_only,δdisk=δdisk)
     nmask=length(idxs)
     NT=Threads.nthreads()
@@ -445,7 +385,7 @@ function wavefunction_multi_hyp(ks::Vector{T},vec_u::Vector{<:AbstractVector},ve
         fill!(Psi_flat,zero(Complex{T}))
         bd=vec_bd[i]
         u=Complex{T}.(vec_u[i])
-        data=prepare_hyp_slp_data(bd)
+        data=prepare_hyp_slp_data(bd;u_constructed_from=u_constructed_from)
         dmin,dmax=d_bounds_hyp_grid(data,xgrid,ygrid,idxs;pad_min=T(0.8),pad_max=T(1.1),dmin_floor=T(1e-8))
         dmin=max(dmin,T(1e-4))
         tab=build_QTaylorTable(ComplexF64(ks[i]);dmin=dmin,dmax=dmax,mp_dps=mp_dps,leg_type=leg_type)
@@ -511,4 +451,170 @@ function normalize_psi_hyperbolic!(ψ::AbstractMatrix{Num},xgrid::AbstractVector
     end
     ψ./=sqrt(s*dx*dy+eps(T))
     return ψ
+end
+
+@inline _hyp_bp(obj::HyperbolicBeynPoints)=hyp_bp(obj)
+@inline _hyp_bp(obj)=obj
+
+@inline function _hyp_boundary_ξ(obj)
+    bp=_hyp_bp(obj)
+    return bp.ξ
+end
+
+"""
+    wavefunction_multi_hyp_with_husimi(ks,vec_u,vec_bd,billiard; kwargs...)
+
+Construct hyperbolic wavefunctions and boundary Husimi functions.
+
+Assumes `vec_u` contains adjoint-kernel boundary functions
+
+    u = ∂ₙᴱψ,
+
+so wavefunctions use your existing `wavefunction_multi_hyp`, and Husimis use
+`ξ=s_H` with Euclidean weights internally through `husimi_on_grid_hyp`.
+"""
+function wavefunction_multi_hyp_with_husimi(ks::Vector{T},vec_u::Vector{<:AbstractVector},vec_bd::AbstractVector{<:HyperbolicBeynPoints},billiard::Bi;b::Float64=5.0,inside_only::Bool=true,fundamental::Bool=true,MIN_CHUNK::Int=4096,δdisk::T=T(1e-10),mp_dps::Int=80,leg_type::Int=3,q_oversample::Float64=2.0,nq_min::Int=1000,np::Int=1000,pmax::T=one(T),full_p::Bool=false,show_progress::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    Psi2ds,xgrid,ygrid=wavefunction_multi_hyp(ks,vec_u,vec_bd,billiard;b=b,inside_only=inside_only,fundamental=fundamental,MIN_CHUNK=MIN_CHUNK,δdisk=δdisk,mp_dps=mp_dps,leg_type=leg_type)
+    bps=[_hyp_bp(bd) for bd in vec_bd]
+    qs,ps=make_qp_grids_hyp(ks,bps;q_oversample=q_oversample,nq_min=nq_min,np=np,pmax=pmax,full_p=full_p)
+    Hs=husimi_on_grid_hyp(ks,bps,vec_u,qs,ps;full_p=full_p,show_progress=show_progress)
+    ps_out=Vector{Vector{T}}(undef,length(ks))
+    @inbounds for i in eachindex(ks)
+        ps_out[i]=full_p ? ps[i] : vcat(-reverse(ps[i])[1:end-1],ps[i])
+    end
+    return Psi2ds,xgrid,ygrid,Hs,ps_out,qs
+end
+
+"""
+    plot_wavefunctions_hyp_BATCH(ks,Psi2ds,xgrid,ygrid,billiard; kwargs...)
+
+Plot a batch of hyperbolic wavefunctions.
+"""
+function plot_wavefunctions_hyp_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},xgrid::AbstractVector{T},ygrid::AbstractVector{T},billiard::Bi;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=6,fundamental::Bool=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto,plt_boundary::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    L=billiard.length
+    bdry=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
+    xlim,ylim=boundary_limits(bdry;grd=max(1000,round(Int,maximum(ks)*L*b/TWO_PI)))
+    nrows=ceil(Int,length(ks)/max_cols)
+    f=Figure(resolution=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*nrows)),size=(round(Int,1.5*width_ax*max_cols),round(Int,2*height_ax*nrows)))
+    row=1
+    col=1
+    @showprogress desc="Plotting hyperbolic wavefunctions..." for j in eachindex(ks)
+        title=isempty(custom_label) ? "k=$(round(ks[j],digits=8))" : custom_label[j]
+        ax=Axis(f[row,col],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
+        wm=wave_mode===:auto ? (eltype(Psi2ds[j])<:Real ? :real : :abs) : wave_mode
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wm)
+        cmap=wm in (:real,:imag) ? :balance : Reverse(:gist_heat)
+        crange=wm in (:real,:imag) ? (-1,1) : (0,1)
+        heatmap!(ax,xgrid,ygrid,ψplot;colormap=cmap,colorrange=crange)
+        plt_boundary && plot_boundary!(ax,billiard;fundamental_domain=fundamental,plot_normal=false)
+        xlims!(ax,xlim)
+        ylims!(ax,ylim)
+        col+=1
+        if col>max_cols
+            row+=1
+            col=1
+        end
+    end
+    return f
+end
+
+"""
+    plot_wavefunctions_hyp(ks,Psi2ds,xgrid,ygrid,billiard; N=100, kwargs...)
+
+Plot hyperbolic wavefunctions, split into batches of size `N`.
+"""
+function plot_wavefunctions_hyp(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},xgrid::AbstractVector{T},ygrid::AbstractVector{T},billiard::Bi;N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
+    return batch_wrapper(plot_wavefunctions_hyp_BATCH,ks,Psi2ds,xgrid,ygrid,billiard;N=N,kwargs...)
+end
+
+"""
+    plot_wavefunctions_with_husimi_hyp_BATCH(ks,Psi2ds,xgrid,ygrid,Hs,ps,qs,billiard; kwargs...)
+
+Plot hyperbolic wavefunctions with their boundary Husimi densities.
+"""
+function plot_wavefunctions_with_husimi_hyp_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},xgrid::AbstractVector{T},ygrid::AbstractVector{T},Hs::Vector{<:AbstractMatrix{T}},ps::Vector{<:AbstractVector{T}},qs::Vector{<:AbstractVector{T}},billiard::Bi;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=4,fundamental::Bool=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto,plt_boundary::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    L=billiard.length
+    bdry=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
+    xlim,ylim=boundary_limits(bdry;grd=max(1000,round(Int,maximum(ks)*L*b/TWO_PI)))
+    nrows=ceil(Int,length(ks)/max_cols)
+    f=Figure(resolution=(round(Int,3*width_ax*max_cols),round(Int,1.6*height_ax*nrows)),size=(round(Int,3*width_ax*max_cols),round(Int,1.6*height_ax*nrows)))
+    row=1
+    col=1
+    @showprogress desc="Plotting hyperbolic wavefunctions and Husimis..." for j in eachindex(ks)
+        title=isempty(custom_label) ? "k=$(round(ks[j],digits=8))" : custom_label[j]
+        ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
+        axh=Axis(f[row,col][1,2],xlabel="ξ",ylabel="p",width=width_ax,height=height_ax)
+        wm=wave_mode===:auto ? (eltype(Psi2ds[j])<:Real ? :real : :abs) : wave_mode
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wm)
+        cmap=wm in (:real,:imag) ? :balance : Reverse(:gist_heat)
+        crange=wm in (:real,:imag) ? (-1,1) : (0,1)
+        heatmap!(ax,xgrid,ygrid,ψplot;colormap=cmap,colorrange=crange)
+        plt_boundary && plot_boundary!(ax,billiard;fundamental_domain=fundamental,plot_normal=false)
+        heatmap!(axh,qs[j],ps[j],Hs[j];colormap=Reverse(:gist_heat))
+        xlims!(ax,xlim)
+        ylims!(ax,ylim)
+        col+=1
+        if col>max_cols
+            row+=1
+            col=1
+        end
+    end
+    return f
+end
+
+"""
+    plot_wavefunctions_with_husimi_hyp(ks,Psi2ds,xgrid,ygrid,Hs,ps,qs,billiard; N=100, kwargs...)
+
+Plot hyperbolic wavefunctions and Husimi functions, split into batches.
+"""
+function plot_wavefunctions_with_husimi_hyp(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},xgrid::AbstractVector{T},ygrid::AbstractVector{T},Hs::Vector{<:AbstractMatrix{T}},ps::Vector{<:AbstractVector{T}},qs::Vector{<:AbstractVector{T}},billiard::Bi;N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
+    return batch_wrapper(plot_wavefunctions_with_husimi_hyp_BATCH,ks,Psi2ds,xgrid,ygrid,Hs,ps,qs,billiard;N=N,kwargs...)
+end
+
+"""
+    plot_wavefunctions_with_husimi_and_boundary_hyp_BATCH(ks,Psi2ds,xgrid,ygrid,Hs,ps,qs,billiard,us,bps; kwargs...)
+
+Plot hyperbolic wavefunctions, Husimis, and boundary functions `u_E(ξ)`.
+"""
+function plot_wavefunctions_with_husimi_and_boundary_hyp_BATCH(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},xgrid::AbstractVector{T},ygrid::AbstractVector{T},Hs::Vector{<:AbstractMatrix{T}},ps::Vector{<:AbstractVector{T}},qs::Vector{<:AbstractVector{T}},billiard::Bi,us::Vector{<:AbstractVector{<:Number}},bps::AbstractVector;b::Float64=5.0,width_ax::Integer=300,height_ax::Integer=300,max_cols::Integer=3,fundamental::Bool=true,custom_label::Vector{String}=String[],wave_mode::Symbol=:auto,plt_boundary::Bool=true) where {T<:Real,Bi<:AbsBilliard}
+    L=billiard.length
+    bdry=fundamental ? billiard.fundamental_boundary : billiard.full_boundary
+    xlim,ylim=boundary_limits(bdry;grd=max(1000,round(Int,maximum(ks)*L*b/TWO_PI)))
+    nrows=ceil(Int,length(ks)/max_cols)
+    f=Figure(resolution=(round(Int,3*width_ax*max_cols),round(Int,2.2*height_ax*nrows)),size=(round(Int,3*width_ax*max_cols),round(Int,2.2*height_ax*nrows)))
+    row=1
+    col=1
+    @showprogress desc="Plotting hyperbolic wavefunctions, Husimis and boundary data..." for j in eachindex(ks)
+        title=isempty(custom_label) ? "k=$(round(ks[j],digits=8))" : custom_label[j]
+        ax=Axis(f[row,col][1,1],title=title,aspect=DataAspect(),width=width_ax,height=height_ax)
+        axh=Axis(f[row,col][1,2],xlabel="ξ",ylabel="p",width=width_ax,height=height_ax)
+        axu=Axis(f[row,col][2,1:2],xlabel="ξ",ylabel="u_E(ξ)",width=2*width_ax,height=height_ax/2)
+        wm=wave_mode===:auto ? (eltype(Psi2ds[j])<:Real ? :real : :abs) : wave_mode
+        ψplot=wavefunction_plot_data(Psi2ds[j];mode=wm)
+        cmap=wm in (:real,:imag) ? :balance : Reverse(:gist_heat)
+        crange=wm in (:real,:imag) ? (-1,1) : (0,1)
+        heatmap!(ax,xgrid,ygrid,ψplot;colormap=cmap,colorrange=crange)
+        plt_boundary && plot_boundary!(ax,billiard;fundamental_domain=fundamental,plot_normal=false)
+        heatmap!(axh,qs[j],ps[j],Hs[j];colormap=Reverse(:gist_heat))
+        ξ=_hyp_boundary_ξ(bps[j])
+        lines!(axu,ξ,real.(us[j]);linewidth=2,label="Re u_E")
+        maximum(abs.(imag.(us[j])))>sqrt(eps(T)) && lines!(axu,ξ,imag.(us[j]);linewidth=2,linestyle=:dash,label="Im u_E")
+        xlims!(ax,xlim)
+        ylims!(ax,ylim)
+        col+=1
+        if col>max_cols
+            row+=1
+            col=1
+        end
+    end
+    return f
+end
+
+"""
+    plot_wavefunctions_with_husimi_and_boundary_hyp(ks,Psi2ds,xgrid,ygrid,Hs,ps,qs,billiard,us,bps; N=100, kwargs...)
+
+Plot hyperbolic wavefunctions, Husimis, and boundary functions, split into batches.
+"""
+function plot_wavefunctions_with_husimi_and_boundary_hyp(ks::Vector{T},Psi2ds::Vector{<:AbstractMatrix},xgrid::AbstractVector{T},ygrid::AbstractVector{T},Hs::Vector{<:AbstractMatrix{T}},ps::Vector{<:AbstractVector{T}},qs::Vector{<:AbstractVector{T}},billiard::Bi,us::Vector{<:AbstractVector{<:Number}},bps::AbstractVector;N::Integer=100,kwargs...) where {T<:Real,Bi<:AbsBilliard}
+    return batch_wrapper(plot_wavefunctions_with_husimi_and_boundary_hyp_BATCH,ks,Psi2ds,xgrid,ygrid,Hs,ps,qs,billiard,us,bps;N=N,kwargs...)
 end
