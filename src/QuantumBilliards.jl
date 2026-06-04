@@ -244,6 +244,7 @@ include("hyperbolic/dlp_hyperbolic_gl_quad.jl")
 include("hyperbolic/hyperbolic_sweeps.jl")
 include("hyperbolic/unfolding_hyperbolic.jl")
 include("hyperbolic/beyn_hyperbolic.jl")
+include("hyperbolic/husimi_hyperbolic.jl")
 include("hyperbolic/wavefunctions_hyperbolic.jl")
 
 # magnetic
