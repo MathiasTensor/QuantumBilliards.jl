@@ -103,7 +103,8 @@ function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF6
 end
 
 function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::HyperbolicBeynPoints,pc;multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct)
-    construct_boundary_matrices!(Tbufs,solver,pts,pc.zj;multithreaded=multithreaded,timeit=timeit)
+    construct_boundary_matrices!(Tbufs,solver,pts,pc.zj;multithreaded=multithreaded,timeit=timeit,adjoint_mode=adjoint_mode)
+    return nothing
 end
 
 function precompute_hyp_contour(solver::BIM_hyperbolic,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
