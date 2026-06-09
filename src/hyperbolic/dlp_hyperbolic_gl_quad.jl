@@ -840,51 +840,56 @@ function construct_adjoint_dlp_hyp_log_product_matrix!(Ddag::AbstractMatrix{Comp
     ξ=disc.ξ
     ω=disc.ω
     G=ws.G
-    ds=pts.ds
     N=length(pts.xy)
     fill!(Ddag,zero(Complex{T}))
+
     @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
-        dsj=ds[j]
+        p_j=pdata.panel_id[j]
+        jl=pdata.local_id[j]
+        speed_half_j=G.speed_half[j]
+
         @inbounds for i in 1:N
-            dsi=ds[i]
-            # Reconstruct exact source entry D[j,i], then weight-adjoint it.
             if i==j
-                Dji=pts.ds[i]*hyp_L2_diag_GL(pts.kappa[j],G.dnlogλ[j])
+                Ddag[i,j]=pts.ds[j]*hyp_L2_diag_GL(pts.kappa[i],G.dnlogλ[i])
             else
-                p_row=pdata.panel_id[j]
-                p_col=pdata.panel_id[i]
-                row_local=pdata.local_id[j]
-                col_local=pdata.local_id[i]
-                speed_half_col=G.speed_half[i]
+                p_i=pdata.panel_id[i]
+                il=pdata.local_id[i]
+
+                # target-normal kernel:
+                # ∂_{n_i}G(x_i,x_j) = source-normal kernel with swapped points.
                 d=G.d[j,i]
                 dn=G.dn[j,i]
-                if p_row==p_col
-                    l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_col
-                    full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_col
-                    l2=full-l1*log(abs(ξ[row_local]-ξ[col_local]))
-                    Dji=Λ[row_local,col_local]*l1+ω[col_local]*l2
+
+                if p_i==p_j
+                    l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                    full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                    l2=full-l1*log(abs(ξ[il]-ξ[jl]))
+                    Ddag[i,j]=Λ[il,jl]*l1+ω[jl]*l2
                 else
-                    r=cyclic_panel_offset(p_row,p_col,npan)
+                    r=cyclic_panel_offset(p_i,p_j,npan)
                     if abs(r)<=near_panels && haskey(nearΛ,r)
-                        x0=ξ[row_local]+T(2*r)
-                        l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_col
-                        full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_col
-                        l2=full-l1*log(abs(ξ[col_local]-x0))
-                        Dji=nearΛ[r][row_local,col_local]*l1+ω[col_local]*l2
+                        x0=ξ[il]+T(2*r)
+                        l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_j
+                        full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_j
+                        l2=full-l1*log(abs(ξ[jl]-x0))
+                        Ddag[i,j]=nearΛ[r][il,jl]*l1+ω[jl]*l2
                     else
-                        Dji=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[i]
+                        Ddag[i,j]=hyp_raw_dlp(qtab,Float64(d),dn)*pts.ds[j]
                     end
                 end
             end
-            @inbounds for rimg in eachindex(G.imgscale)
+
+            # For symmetry=none this loop is empty.
+            # Keep this path for now, but validate symmetry separately.
+            for rimg in eachindex(G.imgscale)
                 dI=G.dimg[rimg][j,i]
                 dI<=eps(T)&&continue
                 dnI=G.dnimg[rimg][j,i]
-                Dji+=G.imgscale[rimg]*hyp_raw_dlp(qtab,Float64(dI),dnI)*pts.ds[i]
+                Ddag[i,j]+=G.imgscale[rimg]*hyp_raw_dlp(qtab,Float64(dI),dnI)*pts.ds[j]
             end
-            Ddag[i,j]=Dji*(dsj/dsi)
         end
     end
+
     return Ddag
 end
 
