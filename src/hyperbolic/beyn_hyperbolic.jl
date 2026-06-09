@@ -73,6 +73,8 @@ function _hyp_contour_workspace(solver::Union{DLP_hyperbolic_kress,DLP_hyperboli
     return gws,kws
 end
 
+@inline _hyp_contour_workspace(solver::BIM_hyperbolic,pts::BoundaryPointsHyp,k,cache;mp_dps::Int=80,leg_type::Int=3)=nothing
+
 function precompute_hyp_contour(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},pts::HyperbolicBeynPoints,k0::Complex{T},R::T;nq::Int=64,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
