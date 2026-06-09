@@ -1152,15 +1152,22 @@ end
 
 function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {T<:Real}
     @blas_1 begin
-        @benchit timeit=timeit "DLP_hyperbolic_kress GeometryWorkspace" gws=build_dlp_hyperbolic_kress_geom_workspace(solver,pts)
+        @benchit timeit=timeit "DLP_hyperbolic_kress GeometryWorkspace" begin
+            gws=build_dlp_hyperbolic_kress_geom_workspace(solver,pts)
+        end
         n=_workspace_dim(gws)
         @inbounds for q in eachindex(zj)
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-hyperbolic-Kress requires ($n,$n)."
-            @benchit timeit=timeit "DLP_hyperbolic_kress TaylorWorkspace" kws=build_dlp_hyperbolic_kress_k_workspace(solver,pts,zj[q])
+            @benchit timeit=timeit "DLP_hyperbolic_kress TaylorWorkspace" begin
+                kws=build_dlp_hyperbolic_kress_k_workspace(solver,pts,zj[q])
+            end
             fill!(Tbufs[q],0.0+0.0im)
-            @benchit timeit=timeit "DLP_hyperbolic_kress AdjointAssembly" construct_adjoint_fredholm_hyperbolic_kress_matrix!(Tbufs[q],solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+            @benchit timeit=timeit "DLP_hyperbolic_kress Assembly" begin
+                construct_matrices!(solver,Tbufs[q],pts,gws,kws,zj[q];multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+            end
         end
     end
+
     return nothing
 end
 
@@ -1257,8 +1264,9 @@ end
     solve_vect(solver,basis,pts,ws,k; kwargs...)
     solve_vect(solver,basis,A,pts,ws,k; kwargs...)
 
-Compute the smallest null singular value together with the corresponding
-physical boundary vector.
+If adjoint_mode=:source, the returned vector is the DLP layer density.
+If adjoint_mode=:direct or :via_D, the returned vector is the physical
+boundary function u=∂ₙψ.
 
 This function is used when the boundary representation of an eigenstate is
 required, rather than only a scalar spectral diagnostic.
@@ -1346,7 +1354,7 @@ This is the correct function for:
 If only eigenvalue detection is needed, [`solve`] is cheaper.
 """
 function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 construct_adjoint_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+    @blas_1 construct_matrices!(solver,A,pts,gws,kws,k;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
