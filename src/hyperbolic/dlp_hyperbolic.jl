@@ -310,13 +310,15 @@ function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,
         error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
     end
     if use_krylov
-        σ,u,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
+        σ,_,v,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
+        u=v
     else
         @blas_multi_then_1 MAX_BLAS_THREADS U,S,Vt=LAPACK.gesvd!('S','S',K)
         idx=findmin(S)[2]
         σ=S[idx]
-        u=copy(view(U,:,idx))
+        u=copy(@view(Vt[idx,:]))
     end
+
     normalize_boundary_left!(u,pts_hyp.dsH)
     return σ,u
 end
