@@ -47,10 +47,10 @@ const HyperbolicBeynPoints=Union{BoundaryPointsHyp,DLPHypLogDiscretization}
 @inline hyp_bp(disc::DLPHypLogDiscretization)=disc.bp
 @inline _hyp_precompute_points(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard)=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
 @inline _hyp_precompute_points(solver::DLP_hyperbolic_log_product,billiard)=nothing
-@inline _hyp_precompute_points(solver::BIM_hyperbolic,billiard)=nothing
+@inline _hyp_precompute_points(solver::BIM_hyperbolic,billiard)=precompute_hyperbolic_boundary_cdfs(solver,billiard;M_cdf_base=4000,safety=1e-14)
 @inline _hyp_evaluate_points(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k,pre;safety=1e-14,threaded=threaded)
 @inline _hyp_evaluate_points(solver::DLP_hyperbolic_log_product,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k)
-@inline _hyp_evaluate_points(solver::BIM_hyperbolic,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k;threaded=threaded)
+@inline _hyp_evaluate_points(solver::BIM_hyperbolic,billiard,k,pre;threaded=true)=evaluate_points(solver,billiard,k,pre;safety=1e-14,threaded=threaded)
 
 struct HypContourPrecomp{T,W}
     zj::Vector{ComplexF64}
