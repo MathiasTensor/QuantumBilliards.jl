@@ -780,16 +780,14 @@ function compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,
     return nothing
 end
 
-function construct_matrices!(solver::BIM_hyperbolic,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws,k;multithreaded::Bool=true,adjoint_mode::Symbol=:source) where {T<:Real}
+function construct_matrices!(solver::BIM_hyperbolic,A::Matrix{Complex{T}},pts::BoundaryPointsHyp{T},tab::QTaylorTable;multithreaded::Bool=true,adjoint_mode::Symbol=:source) where {T<:Real}
     bp=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
-    _,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
-    tab=build_QTaylorTable(k;dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     if adjoint_mode===:source
-        compute_source_fredholm_matrices_DLP_hyperbolic!(solver,A,bp,tab;multithreaded=multithreaded)
+        compute_kernel_matrices_DLP_hyperbolic!(solver,A,bp,tab;multithreaded=multithreaded)
     elseif adjoint_mode===:direct || adjoint_mode===:via_D
-        compute_adjoint_fredholm_matrices_DLP_hyperbolic!(solver,A,bp,tab;multithreaded=multithreaded)
+        compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,A,bp,tab;multithreaded=multithreaded)
     else
-        error("Invalid adjoint_mode $adjoint_mode")
+        error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
     end
     return nothing
 end
