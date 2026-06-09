@@ -3,13 +3,13 @@
 # ==============================================================================
 #
 # This solver discretizes the interior Dirichlet eigenvalue problem in the
-# Poincare disk using the source-normal hyperbolic double-layer operator
+# Poincare disk. The code uses the jump-scaled source-normal DLP
 #
-#     D(k)φ(x) = ∫_Γ ∂_{n_y} G_k(d_H(x,y)) φ(y) ds_E(y),
+#     D(k)φ(x)=2∫_Γ ∂_{n_y}G_k(d_H(x,y))φ(y)ds_E(y),
 #
-# and forms the Fredholm equation
+# so that the interior Dirichlet Fredholm equation is
 #
-#     A(k)φ = (I - D(k))φ = 0.
+#     A(k)φ=(I-D(k))φ=0.
 #
 # Although the Green function is hyperbolic, the boundary quadrature uses
 # Euclidean normals and Euclidean arclength weights. This follows from the
@@ -50,7 +50,7 @@
 # Here
 #
 #     K(ξ_i,ξ_j)
-#       = ∂_{n_y}G_k(d_H(x_i,x_j)) J(ξ_j),
+#       = 2 ∂_{n_y}G_k(d_H(x_i,x_j)) J(ξ_j),
 #
 # with
 #
@@ -112,8 +112,8 @@
 # For eigenfunction postprocessing, the physical boundary function is obtained
 # from the weighted adjoint problem
 #
-#     D†[i,j] = D[j,i] ds[j]/ds[i],
-#     A† = I - D†,
+#     D'[i,j] = D[j,i] ds[j]/ds[i],
+#     A' = I - D',
 #
 # whose null vector is proportional to the boundary normal derivative
 #
@@ -143,7 +143,7 @@ panels use the ordinary smooth Nyström rule.
 
 The continuous operator is
 
-    D(k)φ(x) = ∫Γ ∂_{n_y}G_k(d_H(x,y)) φ(y) ds_E(y),
+    D(k)φ(x) = 2∫Γ ∂_{n_y}G_k(d_H(x,y)) φ(y) ds_E(y),
 
 using Euclidean normals and Euclidean arclength weights, relying on the
 conformal cancellation `∂ₙᴴG ds_H = ∂ₙᴱG ds_E`.
@@ -809,21 +809,134 @@ function construct_dlp_hyp_log_product_matrix!(D::AbstractMatrix{Complex{T}},sol
 end
 
 """
+    construct_adjoint_dlp_hyp_log_product_matrix!(Ddag,solver,disc,ws;multithreaded=true)
+
+Assemble the weighted discrete adjoint DLP matrix directly.
+
+The source-normal Nyström matrix is
+
+    D[i,j] = ∂_{n_j}G_k(x_i,x_j) ds[j].
+
+This routine constructs
+
+    D'[i,j] = D[j,i] ds[j]/ds[i]
+
+without first forming `D`.
+
+Same-panel swapped entries use the logarithmic product rule with indices
+`(j,i)`. Image contributions are regular and are added with the same weighted
+adjoint factor. The output is the DLP adjoint only; the Fredholm matrix
+`I-D'` is formed by `construct_adjoint_fredholm_hyp_log_product_matrix!`.
+"""
+function construct_adjoint_dlp_hyp_log_product_matrix!(Ddag::AbstractMatrix{Complex{T}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+    pts=disc.bp
+    pdata=disc.pdata
+    npan=length(pdata.panels)
+    near_panels=solver.near_panels
+    qtab=ws.taylor.qtab
+    ptab=ws.taylor.ptab
+    Λ=disc.Λ
+    nearΛ=disc.nearΛ
+    ξ=disc.ξ
+    ω=disc.ω
+    G=ws.G
+    ds=pts.ds
+    N=length(pts.xy)
+    fill!(Ddag,zero(Complex{T}))
+    @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
+        dsj=ds[j]
+        p_j=pdata.panel_id[j]
+        jl=pdata.local_id[j]
+        for i in 1:N
+            dsi=ds[i]
+            if i==j
+                Ddag[i,i]=dsi*hyp_L2_diag_GL(pts.kappa[i],G.dnlogλ[i])
+            else
+                p_i=pdata.panel_id[i]
+                il=pdata.local_id[i]
+                speed_half_i=G.speed_half[i]
+                d=G.d[j,i]
+                dn=G.dn[j,i]
+                Dji=zero(Complex{T})
+                if p_i==p_j
+                    l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_i
+                    full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_i
+                    l2=full-l1*log(abs(ξ[jl]-ξ[il]))
+                    Dji=Λ[jl,il]*l1+ω[il]*l2
+                else
+                    r=cyclic_panel_offset(p_j,p_i,npan)
+                    if abs(r)<=near_panels&&haskey(nearΛ,r)
+                        x0=ξ[jl]+T(2*r)
+                        l1=2*hyp_L1(ptab,Float64(d),dn)*speed_half_i
+                        full=hyp_raw_dlp(qtab,Float64(d),dn)*speed_half_i
+                        l2=full-l1*log(abs(ξ[il]-x0))
+                        Dji=nearΛ[r][jl,il]*l1+ω[il]*l2
+                    else
+                        Dji=hyp_raw_dlp(qtab,Float64(d),dn)*dsi
+                    end
+                end
+                @inbounds for rimg in eachindex(G.imgscale)
+                    dI=G.dimg[rimg][j,i]
+                    dI<=eps(T)&&continue
+                    dnI=G.dnimg[rimg][j,i]
+                    Dji+=G.imgscale[rimg]*hyp_raw_dlp(qtab,Float64(dI),dnI)*dsi
+                end
+                Ddag[i,j]=Dji*(dsj/dsi)
+            end
+        end
+    end
+    return Ddag
+end
+
+"""
     construct_fredholm_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=true)
 
-Construct the Fredholm matrix
+Assemble the source Fredholm matrix
 
-    A(k) = I - D(k)
+    A = I - D,
 
-in-place, where `D(k)` is assembled by
-`construct_dlp_hyp_log_product_matrix!`.
+where `D` is the source-normal hyperbolic double-layer Nyström matrix.
 
-This is the original source-normal double-layer Fredholm matrix. For boundary
-normal-derivative vectors used in Husimi or wavefunction reconstruction, use the
-weighted adjoint path instead.
+The matrix `A` is formed in-place by first assembling `D` with
+`construct_dlp_hyp_log_product_matrix!`, multiplying by `-1`, and then adding
+the identity. This is the formulation used for the original interior Dirichlet
+eigenvalue problem and for Beyn contour searches.
 """
 function construct_fredholm_hyp_log_product_matrix!(A::AbstractMatrix{Complex{T}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     construct_dlp_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=multithreaded)
+    @inbounds for j in axes(A,2), i in axes(A,1)
+        A[i,j]*=-1
+    end
+    @inbounds for i in axes(A,1)
+        A[i,i]+=one(Complex{T})
+    end
+    return A
+end
+
+"""
+    construct_adjoint_fredholm_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=true)
+
+Assemble the weighted-adjoint Fredholm matrix
+
+    A = I - D',
+
+where
+
+    D'[i,j] = D[j,i] ds[j]/ds[i]
+
+is the weighted discrete adjoint of the source-normal DLP matrix with respect to
+the Euclidean boundary measure.
+
+This is the formulation whose null vectors are proportional to the physical
+boundary normal derivative
+
+    u(s)=∂ₙψ(s),
+
+and is therefore used for boundary-Husimi plots, localization diagnostics, and
+SLP wavefunction reconstruction.
+"""
+function construct_adjoint_fredholm_hyp_log_product_matrix!(A::AbstractMatrix{Complex{T}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T};multithreaded::Bool=true) where {T<:Real}
+    construct_adjoint_dlp_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=multithreaded)
     @inbounds for j in axes(A,2),i in axes(A,1)
         A[i,j]*=-1
     end
@@ -834,113 +947,80 @@ function construct_fredholm_hyp_log_product_matrix!(A::AbstractMatrix{Complex{T}
 end
 
 """
-    adjoint_fredholm_matrix!(A,D,solver,disc,ws;multithreaded=true)
+    construct_matrices!(solver,A,disc,ws,k;multithreaded=true,adjoint_mode=:direct)
 
-Construct the weighted Nyström adjoint Fredholm matrix.
+Assemble one of the Fredholm operators associated with the
+source-normal hyperbolic double-layer discretization.
 
-The original DLP uses the source-normal kernel. The weighted discrete adjoint is
+Depending on `adjoint_mode`, the assembled matrix is
 
-    D'ᵢⱼ = Dⱼᵢ dsⱼ / dsᵢ,
+    :source
+        A = I - D
 
-and the adjoint Fredholm matrix is
+    :direct
+        A = I - D'
 
-    A = I - D'.
+where
 
-This is the appropriate matrix for extracting the boundary function
-`u = ∂ₙψ` used in boundary-Husimi and wavefunction reconstruction.
+    D'[i,j] = D[j,i] ds[j]/ds[i]
+
+is the weighted discrete adjoint with respect to the Euclidean
+boundary measure.
+
+The source formulation corresponds to the original Dirichlet
+boundary-integral equation. The adjoint formulation is used when
+computing boundary functions proportional to
+
+    u(s)=∂ₙψ(s),
+
+which lie in the nullspace of `I-D'`.
+
+Arguments:
+- `solver`: hyperbolic DLP log-product solver.
+- `A`: output matrix.
+- `disc`: boundary discretization.
+- `ws`: assembly workspace.
+- `k`: spectral parameter.
+
+Keyword arguments:
+- `multithreaded=true`: enable threaded assembly.
+- `adjoint_mode=:direct`: choose source or adjoint formulation.
 """
-function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T};multithreaded::Bool=true) where {T<:Real}
-    construct_dlp_hyp_log_product_matrix!(D,solver,disc,ws;multithreaded=multithreaded)
-    ds=disc.bp.ds
-    N=length(ds)
-    @inbounds for i in 1:N,j in 1:N
-        A[i,j]=-D[j,i]*ds[j]/ds[i]
-    end
-    @inbounds for i in 1:N
-        A[i,i]+=one(Complex{T})
+function construct_matrices!(solver::DLP_hyperbolic_log_product,A::AbstractMatrix{Complex{T}},disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real}
+    if adjoint_mode===:source
+        construct_fredholm_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=multithreaded)
+    elseif adjoint_mode===:direct
+        construct_adjoint_fredholm_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=multithreaded)
+    else
+        error("Invalid adjoint_mode: $adjoint_mode. Expected :source or :direct.")
     end
     return A
 end
 
 """
-    construct_matrices!(solver,A,disc,ws,k;multithreaded=true)
-
-Construct the original hyperbolic DLP Fredholm matrix in-place.
-
-This is the library-facing matrix assembly function for
-`DLP_hyperbolic_log_product`. It fills the caller-provided dense matrix `A`
-with the Fredholm operator
-
-    A(k) = I - D(k),
-
-where `D(k)` is the source-normal hyperbolic double-layer operator
-discretized by panelwise Gauss-Legendre Nyström quadrature with same-panel
-logarithmic product integration.
-
-More explicitly:
-
-- off-panel interactions use the regular hyperbolic DLP kernel;
-- same-panel interactions use the split
-
-      K = L₁ log|ξ_i-ξ_j| + L₂
-
-  together with the precomputed logarithmic product weights `Λ`;
-- diagonal entries use the analytic removable DLP limit;
-- if a symmetry sector is active, reflected / rotated image contributions are
-  added through the method of images.
-
-The supplied workspace `ws` is assumed to have been built for the same
-spectral parameter `k`, since it contains the corresponding Legendre-Q/P
-Taylor expansions used for fast hyperbolic kernel evaluation.
-
-This function performs no allocations aside from any hidden BLAS temporaries,
-making it the preferred low-level assembly path for repeated solves or contour
-methods.
-
-Arguments:
-- `solver`: hyperbolic DLP log-product solver configuration.
-- `A`: preallocated dense output matrix.
-- `disc`: fixed boundary discretization.
-- `ws`: k-dependent assembly workspace.
-- `k`: spectral parameter (assumed consistent with `ws`).
-
-Keyword arguments:
-- `multithreaded=true`: enable threaded dense assembly.
-
-See also:
-`construct_fredholm_hyp_log_product_matrix!`,
-`build_dlp_hyp_log_workspace`,
-`construct_boundary_matrices!`.
-"""
-function construct_matrices!(solver::DLP_hyperbolic_log_product,A::AbstractMatrix{Complex{T}},disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true) where {T<:Real}
-    construct_fredholm_hyp_log_product_matrix!(A,solver,disc,ws;multithreaded=multithreaded)
-end
-
-"""
-    construct_boundary_matrices!(Tbufs,solver,disc,zj;multithreaded=true,timeit=false)
+    construct_boundary_matrices!(Tbufs,solver,disc,zj;multithreaded=true,timeit=false,adjoint_mode=:direct)
 
 Construct boundary-integral matrices for a Beyn contour solve.
 
-For each complex contour node `zj[q]`, this function assembles the nonlinear
-Fredholm matrix
+For each complex contour node `zj[q]`, this function assembles either
 
-    T(zj[q]) = I - D(zj[q]),
+    T(z) = I - D(z)
 
-where `D(z)` is the hyperbolic source-normal double-layer operator evaluated
-at the complex spectral parameter `z`.
+or
 
-This is the standard interface used by contour-based nonlinear eigenvalue
-methods such as Beyn's algorithm, where the matrices
+    T(z) = I - D'(z),
 
-    T(z₁), T(z₂), ..., T(z_m)
+depending on the value of `adjoint_mode`.
 
-are required to evaluate contour integrals of the resolvent
+Here `D(z)` is the source-normal hyperbolic double-layer operator and
 
-    T(z)^(-1).
+    D'[i,j] = D[j,i] ds[j]/ds[i]
 
-The boundary discretization `disc` is reused across all contour points, while
-the hyperbolic special-function tables are rebuilt because they depend on the
-complex spectral parameter.
+is the weighted discrete adjoint.
+
+The boundary discretization `disc` is reused across all contour points,
+while the hyperbolic special-function Taylor tables are rebuilt because
+they depend on the complex spectral parameter.
 
 Arguments:
 - `Tbufs`: vector of preallocated dense matrices, one per contour node.
@@ -950,20 +1030,27 @@ Arguments:
 
 Keyword arguments:
 - `multithreaded=true`: enable threaded matrix assembly.
-- `timeit=false`: enable timing diagnostics through benchmarking macros.
+- `timeit=false`: enable timing diagnostics.
+- `adjoint_mode=:direct`: choose source or adjoint Fredholm operator.
 
 Notes:
-This is intentionally allocation-aware and optimized for repeated contour
-assembly in nonlinear eigenvalue searches.
+For nonlinear eigenvalue searches and Beyn contour methods one normally
+uses
+
+    adjoint_mode = :source
+
+while adjoint modes are primarily intended for boundary-function
+extraction and diagnostics.
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscretization{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {T<:Real}
+    G=build_dlp_hyp_log_geom_cache(solver,disc)
     @blas_1 begin
         @inbounds for q in eachindex(zj)
-            @benchit timeit=timeit "DLP_hyperbolic_log_product Workspace" ws=build_dlp_hyp_log_workspace(solver,disc,zj[q])
+            @benchit timeit=timeit "DLP_hyperbolic_log_product Workspace" ws=build_dlp_hyp_log_workspace(solver,disc,G,zj[q])
             n=_workspace_dim(ws)
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-hyperbolic-log-product requires ($n,$n)."
             fill!(Tbufs[q],0.0+0.0im)
-            @benchit timeit=timeit "DLP_hyperbolic_log_product Assembly" construct_matrices!(solver,Tbufs[q],disc,ws,zj[q];multithreaded=multithreaded)
+            @benchit timeit=timeit "DLP_hyperbolic_log_product Assembly" construct_matrices!(solver,Tbufs[q],disc,ws,zj[q];multithreaded=multithreaded,adjoint_mode=adjoint_mode)
         end
     end
     return nothing
@@ -974,20 +1061,34 @@ function _hyp_beyn_dim(solver::DLP_hyperbolic_log_product,disc::DLPHypLogDiscret
 end
 
 """
-    solve(solver,basis,A,disc,ws,k;multithreaded=true,use_krylov=true,which=:svd)
+    solve(solver,basis,A,disc,ws,k;multithreaded=true,use_krylov=true,which=:svd,adjoint_mode=:direct)
 
-Solve the original hyperbolic DLP spectral problem using a preallocated matrix.
+Solve a hyperbolic DLP Fredholm problem using a preallocated matrix.
 
-This assembles the Fredholm operator
+Depending on `adjoint_mode`, the assembled operator is
 
-    A(k) = I - D(k),
+    :source
+        A = I - D
 
-for the hyperbolic source-normal double-layer formulation and then applies the
-standard solver backend (`SVD`, determinant minimization, or Krylov-based null
-search depending on `which`).
+    :direct
+        A = I - D'
 
-This is the lowest-allocation solve path and is intended for repeated spectral
-queries at fixed discretization.
+where
+
+    D'[i,j] = D[j,i] ds[j]/ds[i].
+
+The source formulation corresponds to the original Dirichlet
+eigenvalue problem, while the adjoint formulation is used to
+compute boundary functions proportional to the normal derivative
+
+    u(s)=∂ₙψ(s).
+
+After assembly, the requested solver backend is applied (`SVD`,
+determinant minimization, or Krylov-based null search depending on
+`which`).
+
+This is the lowest-allocation solve path and is intended for repeated
+spectral queries at fixed discretization.
 
 Arguments:
 - `solver`: hyperbolic DLP log-product solver.
@@ -1000,76 +1101,50 @@ Arguments:
 Keyword arguments:
 - `multithreaded=true`: threaded assembly.
 - `use_krylov=true`: use KrylovKit for smallest singular vector.
+- `adjoint_mode=:direct`: choose source or adjoint operator.
 """
-function solve(solver::DLP_hyperbolic_log_product,basis::Ba,A::AbstractMatrix{Complex{T}},disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 construct_matrices!(solver,A,disc,ws,k;multithreaded=multithreaded)
+function solve(solver::DLP_hyperbolic_log_product,basis::Ba,A::AbstractMatrix{Complex{T}},disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_matrices!(solver,A,disc,ws,k;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-"""
-    solve(solver,basis,disc,ws,k; kwargs...)
-
-Solve the original hyperbolic DLP spectral problem using a prebuilt workspace.
-
-Equivalent to
-
-    A = Matrix(...)
-    solve(solver,basis,A,disc,ws,k)
-
-but allocates the dense matrix internally.
-
-This is convenient when repeated solves reuse the same hyperbolic Taylor
-workspace but explicit matrix management is unnecessary.
-"""
-function solve(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.N,ws.N)
-    return solve(solver,basis,A,disc,ws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+    return solve(solver,basis,A,disc,ws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which,adjoint_mode=adjoint_mode)
 end
 
-function solve(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     ws=build_dlp_hyp_log_workspace(solver,disc,k)
-    return solve(solver,basis,disc,ws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+    return solve(solver,basis,disc,ws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which,adjoint_mode=adjoint_mode)
 end
 
 """
-    solve_vect(solver,basis,A,disc,ws,k;
-               multithreaded=true,
-               tol=1e-12,
-               maxiter=2000,
-               krylovdim=40)
+    solve_vect(solver,basis,A,disc,ws,k;multithreaded=true,tol=1e-12,maxiter=2000,krylovdim=40,adjoint_mode=:direct)
 
-Compute the adjoint boundary vector for the hyperbolic DLP formulation.
+Compute a null vector of the selected hyperbolic DLP Fredholm operator.
 
-This function assembles the weighted discrete adjoint Fredholm operator
+Depending on `adjoint_mode`, the assembled operator is
 
-    A† = I - D†,
+    :source
+        A = I - D
+
+    :direct
+        A = I - D'
 
 where
 
-    D†[i,j] = D[j,i] * ds[j] / ds[i],
+    D'[i,j] = D[j,i] ds[j]/ds[i].
 
-corresponding to the adjoint with respect to the quadrature-weighted boundary
-inner product.
+The source formulation corresponds to the original Dirichlet
+eigenvalue problem, while the adjoint formulation is used to
+compute boundary functions proportional to the normal derivative
 
-It then computes the smallest right null vector using the iterative Krylov
-solver
-
-    smallest_nullvec_krylov!.
-
-The returned vector is the natural adjoint boundary function for the
-Dirichlet eigenproblem and is proportional to the physical normal derivative
-
-    u ≈ ∂ₙψ.
-
-This is the correct vector object for:
-- Poincare-Husimi constructions,
-- IPR statistics,
-- wavefunction reconstruction.
+    u(s)=∂ₙψ(s).
 
 Arguments:
 - `solver`: hyperbolic DLP log-product solver.
 - `basis`: interface compatibility argument.
-- `A`: preallocated adjoint Fredholm matrix.
+- `A`: preallocated Fredholm matrix.
 - `disc`: boundary discretization.
 - `ws`: k-dependent workspace.
 - `k`: spectral parameter.
@@ -1079,48 +1154,24 @@ Keyword arguments:
 - `tol=1e-12`: Krylov convergence tolerance.
 - `maxiter=2000`: maximum Krylov iterations.
 - `krylovdim=40`: Krylov subspace dimension.
+- `adjoint_mode=:direct`: choose source or adjoint operator.
 
 Returns:
-- `σ`: smallest singular / null residual diagnostic.
-- `u`: adjoint boundary vector.
+- `σ`: smallest singular/null residual diagnostic.
+- `u`: computed null vector.
 """
-function solve_vect(solver::DLP_hyperbolic_log_product,basis::Ba,A::AbstractMatrix{Complex{T}},disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    D=similar(A)
-    @blas_1 adjoint_fredholm_matrix!(A,D,solver,disc,ws;multithreaded=multithreaded)
+function solve_vect(solver::DLP_hyperbolic_log_product,basis::Ba,A::AbstractMatrix{Complex{T}},disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_matrices!(solver,A,disc,ws,k;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
 
-"""
-    solve_vect(solver,basis,disc,ws,k; kwargs...)
-
-Adjoint vector solve with internal matrix allocation.
-
-Equivalent to the fully explicit `solve_vect` method, but allocates the dense
-adjoint matrix internally.
-
-Useful when repeated solves reuse the same workspace but explicit matrix
-management is unnecessary.
-"""
-function solve_vect(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},ws::DLPHypLogWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     A=Matrix{Complex{T}}(undef,ws.N,ws.N)
-    return solve_vect(solver,basis,A,disc,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return solve_vect(solver,basis,A,disc,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim,adjoint_mode=adjoint_mode)
 end
 
-"""
-    solve_vect(solver,basis,disc,k; kwargs...)
-
-High-level adjoint vector solve.
-
-This constructs the k-dependent hyperbolic assembly workspace internally,
-assembles the weighted adjoint Fredholm matrix, and computes the smallest
-null vector.
-
-This is the simplest interface for obtaining boundary normal-derivative
-vectors, but repeated calls should prefer the workspace-aware overloads to
-avoid rebuilding the special-function Taylor tables.
-"""
-function solve_vect(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::DLP_hyperbolic_log_product,basis::Ba,disc::DLPHypLogDiscretization{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     ws=build_dlp_hyp_log_workspace(solver,disc,k)
-    return solve_vect(solver,basis,disc,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return solve_vect(solver,basis,disc,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim,adjoint_mode=adjoint_mode)
 end

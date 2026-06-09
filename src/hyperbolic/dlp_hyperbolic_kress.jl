@@ -944,15 +944,206 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
     return A
 end
 
-function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true) where {T<:Real}
-    construct_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded)
+################################
+#### TARGET NORMAL APPROACH ####
+################################
+
+# Direct assembly of the weighted adjoint Kress entry.
+#
+# This is algebraically identical to first assembling the source-normal DLP
+# entry
+#
+#     D[j,i] = R[j,i] L1[j,i] ds_i/ws_i + ds_i L2[j,i],
+#
+# and then applying the weighted adjoint relation
+#
+#     D'ᵢⱼ = Dⱼᵢ dsⱼ/dsᵢ.
+#
+# The cancellation of dsᵢ is kept in the formula in this explicit form so that
+# the code mirrors the derivation and is easy to compare against the reference
+# `adjoint_fredholm_matrix!` path.
+@inline function hyp_kress_entry_weighted_adjoint(qtab::QTaylorTable,ptab::PTaylorTable,Rji::T,dsi::T,dsj::T,wsi::T,d::Float64,dn::T,logterm::T) where {T<:Real}
+    l1=2*hyperbolic_Alog_d(ptab,d)*dn
+    raw=_eval_dQdd(qtab,d)*dn*(2*INV_TWO_PI)
+    l2=raw-l1*logterm
+    return (Rji*(l1*(dsi/wsi))+dsi*l2)*(dsj/dsi)
 end
 
-function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true) where {T<:Real}
-    construct_matrices!(solver,A,pts,ws[1],ws[2],k;multithreaded=multithreaded)
+"""
+    construct_adjoint_fredholm_hyperbolic_kress_matrix_direct!(A,solver,pts,gws,kws;multithreaded=true)
+
+Assemble the weighted adjoint Fredholm matrix directly, without first building
+the primal source-normal DLP matrix.
+
+The source-normal discretization has entries
+
+    Dᵢⱼ ≈ ∂_{n_j}G(xᵢ,xⱼ) dsⱼ.
+
+The boundary function needed for Husimi/postprocessing is obtained from the
+weighted adjoint operator
+
+    D'ᵢⱼ = Dⱼᵢ dsⱼ/dsᵢ,
+
+and the Fredholm matrix is
+
+    A' = I - D'.
+
+This routine constructs `A'` directly by using the symmetry of the Green
+function,
+
+    ∂_{n_i}G(xᵢ,xⱼ) = ∂_{n_j}G(xⱼ,xᵢ),
+
+which means that the target-normal entry is obtained by reusing the
+source-normal kernel with swapped indices `(j,i)`.
+
+For off-diagonal same-copy interactions the Kress split is also used with
+swapped indices:
+
+    R[j,i], d[j,i], dnd[j,i], logterm[j,i].
+
+The diagonal is unchanged by the weighted adjoint relation, since
+`dsᵢ/dsᵢ = 1`.
+
+This is the fast production path for `solve_vect`; the older `:via_D` path is
+kept as a reference/regression implementation.
+"""
+function construct_adjoint_fredholm_hyperbolic_kress_matrix_direct!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},gws::DLPHyperbolicKressGeomWorkspace{T},kws::DLPHyperbolicKressTaylorOnlyWorkspace;multithreaded::Bool=true) where {T<:Real}
+    N=gws.N
+    R=gws.Rmat
+    G=gws.G
+    qtab=kws.taylor.qtab
+    ptab=kws.taylor.ptab
+    ds=pts.ds
+    fill!(A,zero(Complex{T}))
+    @inbounds for i in 1:N
+        A[i,i]=one(Complex{T})-ds[i]*hyp_L2_diag_Kress(G,i)
+    end
+    @use_threads multithreading=(multithreaded && N>=32) for j in 1:N
+        dsj=ds[j]
+        @inbounds for i in 1:N
+            i==j && continue
+            A[i,j]=-hyp_kress_entry_weighted_adjoint(qtab,ptab,R[j,i],ds[i],dsj,pts.ws[i],Float64(G.d[j,i]),G.dnd[j,i],G.logterm[j,i])
+        end
+    end
+    return A
 end
 
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+"""
+    construct_adjoint_fredholm_hyperbolic_kress_matrix_direct!(A,solver,pts,rgws,kws;multithreaded=true)
+
+Directly assemble the symmetry-reduced weighted adjoint Fredholm matrix.
+
+The reduced source-normal DLP matrix is assembled on the fundamental-domain
+indices `Ifund`. Its weighted adjoint is
+
+    D'ₐᵦ = Dᵦₐ dsⱼ/dsᵢ,
+
+where
+
+    i = Ifund[a],
+    j = Ifund[b].
+
+The same-copy singular contribution is handled by the full periodic Kress data
+with swapped full indices `(j,i)`. This preserves the same logarithmic
+quadrature structure as the source-normal assembly.
+
+The additional symmetry-image contributions are regular. For the direct adjoint
+assembly they are obtained by swapping source/target roles relative to the
+primal reduced assembly and then applying the same weight factor `dsⱼ/dsᵢ`.
+
+This routine should agree with adjoint_fredholm_matrix!(A,D,solver,pts,rgws,kws)
+up to roundoff, while avoiding allocation and assembly of the intermediate `D`.
+"""
+function construct_adjoint_fredholm_hyperbolic_kress_matrix_direct!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},rgws::DLPHyperbolicKressReducedGeomWorkspace{T},kws::DLPHyperbolicKressTaylorOnlyWorkspace;multithreaded::Bool=true) where {T<:Real}
+    m=rgws.m
+    @assert size(A,1)==m && size(A,2)==m
+    full=rgws.full
+    R=full.Rmat
+    G=full.G
+    qtab=kws.taylor.qtab
+    ptab=kws.taylor.ptab
+    Ifund=rgws.Ifund
+    ds=pts.ds
+    fill!(A,zero(Complex{T}))
+    @use_threads multithreading=(multithreaded && m>=32) for b in 1:m
+        j=Ifund[b]
+        dsj=ds[j]
+        @inbounds for a in 1:m
+            i=Ifund[a]
+            dsi=ds[i]
+            if i==j
+                A[a,b]=-dsi*hyp_L2_diag_Kress(G,i)
+            else
+                A[a,b]=-hyp_kress_entry_weighted_adjoint(qtab,ptab,R[j,i],dsi,dsj,pts.ws[i],Float64(G.d[j,i]),G.dnd[j,i],G.logterm[j,i])
+            end
+        end
+    end
+    @inbounds for b in 1:m
+        j=Ifund[b]
+        dsj=ds[j]
+        for a in 1:m
+            i=Ifund[a]
+            dsi=ds[i]
+            imgs=rgws.fund_to_full[a]
+            scales=rgws.fund_to_scale[a]
+            simg=zero(Complex{T})
+            for l in eachindex(imgs)
+                q=imgs[l]
+                q==i && continue
+                simg+=_regular_hyp_dlp_image_D(qtab,rgws.xs[j],rgws.ys[j],rgws.xs[q],rgws.ys[q],rgws.nx[q],rgws.ny[q],rgws.wE[q],scales[l])
+            end
+            A[a,b]-=simg*(dsj/dsi)
+        end
+    end
+    @inbounds for a in 1:m
+        A[a,a]+=one(Complex{T})
+    end
+    return A
+end
+
+"""
+    construct_adjoint_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=true,adjoint_mode=:direct)
+
+Assemble the weighted adjoint Fredholm matrix used by `solve_vect`.
+Keyword `adjoint_mode` selects the implementation:
+
+- `:direct`
+    Assemble `A' = I-D'` directly using swapped Kress/source-normal data.
+    This avoids allocating and assembling an intermediate primal DLP matrix.
+
+- `:via_D`
+    Reference path. Assemble the primal source-normal DLP matrix `D`, then form
+
+        D'ᵢⱼ = Dⱼᵢ dsⱼ/dsᵢ.
+
+    This is slower and allocates `D`, but is useful for regression testing the
+    direct implementation.
+
+Both modes should produce the same matrix up to roundoff.
+"""
+function construct_adjoint_fredholm_hyperbolic_kress_matrix!(A::AbstractMatrix{Complex{T}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace;multithreaded::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real}
+    if adjoint_mode===:direct
+        construct_adjoint_fredholm_hyperbolic_kress_matrix_direct!(A,solver,pts,gws,kws;multithreaded=multithreaded)
+    elseif adjoint_mode===:via_D
+        D=similar(A)
+        adjoint_fredholm_matrix!(A,D,solver,pts,gws,kws;multithreaded=multithreaded)
+    else
+        error("Unknown adjoint_mode=$(adjoint_mode). Use :direct or :via_D.")
+    end
+    return A
+end
+
+################################
+
+function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real}
+    construct_adjoint_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+end
+
+function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real}
+    construct_matrices!(solver,A,pts,ws[1],ws[2],k;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+end
+
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {T<:Real}
     @blas_1 begin
         @benchit timeit=timeit "DLP_hyperbolic_kress GeometryWorkspace" gws=build_dlp_hyperbolic_kress_geom_workspace(solver,pts)
         n=_workspace_dim(gws)
@@ -960,7 +1151,7 @@ function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but DLP-hyperbolic-Kress requires ($n,$n)."
             @benchit timeit=timeit "DLP_hyperbolic_kress TaylorWorkspace" kws=build_dlp_hyperbolic_kress_k_workspace(solver,pts,zj[q])
             fill!(Tbufs[q],0.0+0.0im)
-            @benchit timeit=timeit "DLP_hyperbolic_kress Assembly" construct_matrices!(solver,Tbufs[q],pts,gws,kws,zj[q];multithreaded=multithreaded)
+            @benchit timeit=timeit "DLP_hyperbolic_kress AdjointAssembly" construct_adjoint_fredholm_hyperbolic_kress_matrix!(Tbufs[q],solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
         end
     end
     return nothing
@@ -971,86 +1162,87 @@ end
     solve(solver,basis,pts,ws,k; kwargs...)
     solve(solver,basis,A,pts,ws,k; kwargs...)
 
-Compute a scalar spectral diagnostic for a boundary integral eigenvalue problem.
+Compute a scalar spectral diagnostic for the hyperbolic DLP-Kress Fredholm
+matrix.
 
-This is the standard high-level entry point for detecting eigenvalues of the
-Fredholm operator associated with `solver`. Depending on the chosen `which`
-option, the returned scalar is typically:
+This is the standard high-level entry point for detecting eigenvalues. Depending
+on `which`, the returned scalar is typically:
 
 - the smallest singular value (`which = :svd`),
-- a determinant-based diagnostic (`which = :det`),
+- a determinant-based diagnostic (`which = :det`).
+
+By default this solver assembles the weighted adjoint Fredholm matrix
+
+    A' = I - D',
+
+rather than the primal source-normal matrix
+
+    A = I - D.
+
+This is intentional: `A` and `A'` have the same eigenvalue condition, while the
+null vectors of `A'` are the physical boundary functions needed for
+Poincaré--Husimi and boundary postprocessing.
 
 Method variants
 ---------------
-The different method signatures allow progressive reuse of precomputed data:
+The signatures differ only in how much reusable data is supplied:
 
     solve(solver,basis,pts,k)
 
-Builds the solver workspace internally and constructs the Fredholm matrix.
+Build workspace and matrix storage internally.
 
     solve(solver,basis,pts,ws,k)
 
-Reuses a previously constructed workspace `ws`, avoiding repeated geometry and
-kernel precomputation.
+Reuse a previously constructed workspace.
 
     solve(solver,basis,A,pts,ws,k)
 
-Fully allocation-minimizing variant. Reuses both the matrix storage `A` and the
-workspace `ws`.
-
-Arguments
----------
-- `solver`:
-    Boundary integral solver (e.g. DLP, CFIE, hyperbolic DLP-Kress).
-- `basis`:
-    Basis object controlling the spectral reduction strategy.
-- `pts`:
-    Boundary discretization points.
-- `ws`:
-    Optional reusable solver workspace.
-- `A`:
-    Optional preallocated Fredholm matrix storage.
-- `k`:
-    Spectral parameter / wavenumber.
+Reuse both matrix storage `A` and workspace `ws`.
 
 Keyword arguments
 -----------------
 - `multithreaded=true`:
     Enable threaded matrix assembly when supported.
+
 - `use_krylov=true`:
-    Use Krylov iterative solver for the SVD-based diagnostic. This is typically faster for large matrices.
+    Use Krylov iterative solver for the SVD-based diagnostic.
+
 - `which=:svd`:
     Spectral diagnostic to compute.
+
+- `adjoint_mode=:direct`:
+    Select how the weighted adjoint Fredholm matrix is assembled.
+    `:direct` assembles `A'` directly using swapped Kress/source-normal data.
+    `:via_D` first assembles the source-normal DLP matrix `D` and then forms
+    `D'ᵢⱼ = Dⱼᵢ dsⱼ/dsᵢ`.
 
 Returns
 -------
 A scalar diagnostic whose minima indicate eigenvalues.
-For boundary-function recovery (e.g. Husimi or wavefunction reconstruction),
-use [`solve_vect`] instead.
 """
-function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 construct_matrices!(solver,A,pts,gws,kws,k;multithreaded=multithreaded)
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_matrices!(solver,A,pts,gws,kws,k;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     n=_workspace_dim(gws)
     A=Matrix{Complex{T}}(undef,n,n)
-    return solve(solver,basis,A,pts,gws,kws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+    return solve(solver,basis,A,pts,gws,kws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which,adjoint_mode=adjoint_mode)
 end
 
-function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
-    return solve(solver,basis,pts,ws[1],ws[2],k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    return solve(solver,basis,pts,ws[1],ws[2],k;multithreaded=multithreaded,use_krylov=use_krylov,which=which,adjoint_mode=adjoint_mode)
 end
 
-function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd) where {T<:Real,Ba<:AbsBasis}
-    return solve(solver,basis,A,pts,ws[1],ws[2],k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    return solve(solver,basis,A,pts,ws[1],ws[2],k;multithreaded=multithreaded,use_krylov=use_krylov,which=which,adjoint_mode=adjoint_mode)
 end
 
-function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,mp_dps::Int=80,leg_type::Int=3,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     gws=build_dlp_hyperbolic_kress_geom_workspace(solver,pts)
     kws=build_dlp_hyperbolic_kress_k_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
-    return solve(solver,basis,pts,gws,kws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which)
+    return solve(solver,basis,pts,gws,kws,k;multithreaded=multithreaded,use_krylov=use_krylov,which=which,adjoint_mode=adjoint_mode)
 end
 
 """
@@ -1059,28 +1251,36 @@ end
     solve_vect(solver,basis,A,pts,ws,k; kwargs...)
 
 Compute the smallest null singular value together with the corresponding
-boundary vector.
+physical boundary vector.
 
 This function is used when the boundary representation of an eigenstate is
 required, rather than only a scalar spectral diagnostic.
 
-Unlike [`solve`], which returns only a scalar indicator, `solve_vect`
-constructs and solves the adjoint Fredholm problem so that the returned vector
-corresponds to the physically meaningful boundary function.
+For the source-normal DLP formulation, the primal Fredholm matrix
 
-For source-normal DLP formulations this means solving
+    A = I - D
 
-    A' = I - D'
+has a null vector corresponding to the double-layer density. For Husimi,
+wavefunction reconstruction, and boundary-function diagnostics, we instead need
+the physical boundary function
 
-rather than the primal operator
+    u = ∂ₙψ.
 
-    A = I - D,
+Therefore `solve_vect` solves the weighted adjoint Fredholm problem
+
+    A' = I - D',
 
 where
 
-    D'ᵢⱼ = Dⱼᵢ wⱼ / wᵢ
+    D'ᵢⱼ = Dⱼᵢ dsⱼ/dsᵢ.
 
-with the appropriate quadrature weights for the formulation.
+Equivalently, this is the target-normal formulation
+
+    D'u(xᵢ) ≈ ∫_Γ ∂_{n_i}G(xᵢ,y)u(y)ds_y.
+
+The Euclidean weights `ds` are used because of the conformal cancellation
+
+    ∂ₙᴴG ds_H = ∂ₙᴱG ds_E.
 
 Method variants
 ---------------
@@ -1098,38 +1298,36 @@ Reuse a previously constructed workspace.
 
 Fully allocation-minimizing variant with preallocated matrix storage.
 
-Arguments
----------
-- `solver`:
-    Boundary integral solver.
-- `basis`:
-    Basis object controlling null-vector extraction.
-- `pts`:
-    Boundary discretization points.
-- `ws`:
-    Optional reusable solver workspace.
-- `A`:
-    Optional preallocated matrix storage.
-- `k`:
-    Spectral parameter / wavenumber.
-
 Keyword arguments
 -----------------
 - `multithreaded=true`:
     Enable threaded matrix assembly where supported.
+
 - `tol=1e-12`:
     Null-vector convergence tolerance.
+
 - `maxiter=2000`:
     Maximum Krylov iterations.
+
 - `krylovdim=40`:
     Krylov subspace dimension.
+
+- `adjoint_mode=:direct`:
+    Select how the weighted adjoint Fredholm matrix is assembled.
+
+    `:direct` assembles `A' = I-D'` directly using swapped Kress/source-normal
+    data. This avoids allocating and assembling an intermediate primal DLP
+    matrix and is the preferred production path.
+
+    `:via_D` first assembles the source-normal DLP matrix `D` and then forms
+    `D'ᵢⱼ = Dⱼᵢ dsⱼ/dsᵢ`. This is mainly useful for regression tests.
 
 Returns
 -------
 `(σ,u)`, where:
 
 - `σ` is the smallest null singular value,
-- `u` is the associated boundary vector.
+- `u` is the associated physical boundary vector.
 
 This is the correct function for:
 
@@ -1140,29 +1338,28 @@ This is the correct function for:
 
 If only eigenvalue detection is needed, [`solve`] is cheaper.
 """
-function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    D=similar(A)
-    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,gws,kws;multithreaded=multithreaded)
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    @blas_1 construct_adjoint_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
 
-function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     n=_workspace_dim(gws)
     A=Matrix{Complex{T}}(undef,n,n)
-    return solve_vect(solver,basis,A,pts,gws,kws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return solve_vect(solver,basis,A,pts,gws,kws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim,adjoint_mode=adjoint_mode)
 end
 
-function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    return solve_vect(solver,basis,pts,ws[1],ws[2],k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    return solve_vect(solver,basis,pts,ws[1],ws[2],k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim,adjoint_mode=adjoint_mode)
 end
 
-function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    return solve_vect(solver,basis,A,pts,ws[1],ws[2],k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
+    return solve_vect(solver,basis,A,pts,ws[1],ws[2],k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim,adjoint_mode=adjoint_mode)
 end
 
-function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,mp_dps::Int=80,leg_type::Int=3) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},basis::Ba,pts::BoundaryPointsHyp{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,mp_dps::Int=80,leg_type::Int=3,adjoint_mode::Symbol=:direct) where {T<:Real,Ba<:AbsBasis}
     gws=build_dlp_hyperbolic_kress_geom_workspace(solver,pts)
     kws=build_dlp_hyperbolic_kress_k_workspace(solver,pts,k;mp_dps=mp_dps,leg_type=leg_type)
-    return solve_vect(solver,basis,pts,gws,kws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
+    return solve_vect(solver,basis,pts,gws,kws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim,adjoint_mode=adjoint_mode)
 end

@@ -1,140 +1,105 @@
 #################################################################################
-# Hyperbolic Helmholtz DLP kernel on the Poincaré disk
+# Hyperbolic Helmholtz Boundary Integral Operators on the Poincaré Disk
 #
-# Constructs double-layer Fredholm matrices for the operator
+# This file implements source-normal and adjoint double-layer boundary integral
+# operators for the hyperbolic Helmholtz equation
 #
-#    (Δ_H + 1/4 + k^2) u = 0
+#     (Δ_H + 1/4 + k²) u = 0,
 #
-# in the Poincaré disk model, using the Green's function
+# on bounded domains in the Poincaré disk model of the hyperbolic plane.
 #
-#    G_k(z,z0) = (1 / (2π)) * Q_ν(χ(z,z0)),   ν = -1/2 + i k
+# ---------------------------------------------------------------------------
+# Green's function
+# ---------------------------------------------------------------------------
+#
+# Let
+#
+#     ν = -1/2 + i k.
+#
+# The outgoing Green's function is
+#
+#     G_k(z,z₀)
+#       = (1/(2π)) Q_ν(χ(z,z₀)),
+#
+# where Q_ν is the Legendre function of the second kind and
+#
+#     χ(z,z₀)
+#       = cosh d_H(z,z₀)
+#       = 1 + 2|z-z₀|²
+#           /((1-|z|²)(1-|z₀|²)).
+#
+# Here d_H denotes hyperbolic distance in the Poincaré disk.
+#
+# ---------------------------------------------------------------------------
+# Double-layer operator
+# ---------------------------------------------------------------------------
+#
+# The boundary integral operator used by BIM is the source-normal
+# double-layer operator
+#
+#     (D μ)(x)
+#       = ∫_Γ ∂_{n_y} G_k(x,y) μ(y) ds_y.
+#
+# Writing
+#
+#     y(d) = d/dd Q_ν(cosh d),
+#
+# the kernel becomes
+#
+#     ∂_{n_y} G_k(x,y)
+#       = (1/(2π))
+#         y(d_H(x,y))
+#         ∂_{n_y} d_H(x,y).
+#
+# The corresponding Fredholm operator for the interior Dirichlet problem is
+#
+#     A = D - 1/2 I.
+#
+# ---------------------------------------------------------------------------
+# Adjoint operator
+# ---------------------------------------------------------------------------
+#
+# For boundary-function extraction and Husimi analysis we also assemble the
+# weighted discrete adjoint
+#
+#     A† = D† - 1/2 I,
 #
 # where
-#    χ(z,z0) = cosh d_H(z,z0) = 1 + 2|z - z0|^2 / ((1 - |z|^2) (1 - |z0|^2)).
 #
+#     D†[i,j]
+#       = D[j,i] ds_j/ds_i.
 #
-# The DLP kernel we discretize is
+# The null vectors of A† are proportional to the physical boundary normal
+# derivative ∂ₙψ.
 #
-#    K_k(z_i, z_j) = ∂/∂n_E(z_i) G_k(z_i, z_j)
-#                  = (1/(2π)) * y(d) * ∂_{n_E} d(z_i, z_j)
+# ---------------------------------------------------------------------------
+# Geometry conventions
+# ---------------------------------------------------------------------------
 #
-#    y(d) = d/dd Q_ν(cosh d),   d = d_H(z_i, z_j)
+# Everything is evaluated in Euclidean disk coordinates.
 #
-# where n_E is the Euclidean unit normal at the *target* point z_i.
+# The Poincaré metric is
 #
-# IMPORTANT:
-#   - We work entirely in Euclidean coordinates (x,y) in the disk due to the
-#     conformal invariance of the DLP.
-#   - For the double-layer, the hyperbolic metric factor cancels against ds_H,
-#     so we use Euclidean normals and Euclidean quadrature weights ds (bp.ds).
-#   - The boundary geometry (bp.xy, bp.normal, bp.curvature) is Euclidean.
+#     ds_H² = λ²(dx²+dy²),
 #
-# API
-# -----------------------------------------------------------------
-# _one_k_nosymm_DLP_hyperbolic!  - build one DLP matrix for a single complex k
-# _all_k_nosymm_DLP_hyperbolic!  - build DLP matrices for a vector of ks
-# compute_kernel_matrices_DLP_hyperbolic! - public entry points (single / multiple k)
+#     λ(x,y) = 2/(1-r²).
 #
-# M0 / 22/12/2025
+# Because the double-layer kernel is conformally invariant,
+# Euclidean boundary coordinates, Euclidean unit normals, and Euclidean
+# quadrature weights ds are used throughout.
+#
+# Hyperbolic geometric information enters only through:
+#
+#   • d_H(x,y)
+#   • ∂ₙ d_H(x,y)
+#   • the geodesic curvature κ_g
+#
+# appearing in the principal-value diagonal limit
+#
+#     K(x,x) = -κ_g(x)/(4π).
+#
+# M0 9/6/2026
 #################################################################################
-
-################################################################################
-# DEFAULT HYPERBOLIC KERNEL FUN FOR GENERIC BUILDERS
-#
-# Signature is identical to the Euclidean custom kernel_fun! used in
-# _all_k_nosymm_DLP_chebyshev!(..., kernel_fun!) etc.
-#
-# IMPORTANT:
-#   * This function DOES NOT know about curvature, so it cannot set the
-#     diagonal κ/(2π) itself. For default hyperbolic DLP we use specialized
-#     builders that see bp.curvature and handle the diagonal there.
-#   * This function uses the *target* normal (nxi, nyi) (Bäcker convention).
-################################################################################
-
-################################################################################
-# invlambda2_poincare
-#
-# PURPOSE
-#   Compute the conformal prefactor 1/λ(x,y)^2 for the Poincaré disk model
-#   (constant curvature -1).
-#
-#   Metric:    ds^2 = λ(x,y)^2 (dx^2 + dy^2),   λ(x,y) = 2 / (1 - r^2), r^2=x^2+y^2
-#   Therefore: 1/λ^2 = (1 - r^2)^2 / 4
-#
-# INPUTS
-#   x::T, y::T        (T<:Real) Euclidean coordinates in disk |x|^2+|y|^2 < 1
-#
-# OUTPUTS
-#   invλ2::T          (T<:Real) 1/λ(x,y)^2
-################################################################################
-@inline function invlambda2_poincare(x::T,y::T) where {T<:Real}
-    a=one(T)-muladd(x,x,y*y) # a = 1 - r^2
-    return (a*a)/T(4)
-end
-
-################################################################################
-# hyperbolic_dn_d_target
-#
-# PURPOSE
-#   Compute ∂d/∂n_x at the TARGET point x=(xi,yi) for the hyperbolic distance
-#   d(x,y) in the Poincaré disk model (curvature -1).
-#
-#   Here n_x = (nxi,nyi) is the outward Euclidean unit normal at the target.
-#
-# INPUTS
-#   xi::T, yi::T      (T<:Real) target point x
-#   xj::T, yj::T      (T<:Real) source point y
-#   nxi::T, nyi::T    (T<:Real) Euclidean unit normal at target
-#
-# OUTPUTS
-#   ddn::T            (T<:Real) ddn = ∂d(x,y)/∂n_x
-#
-# LOGIC
-#   - Uses closed-form cosh(d) in terms of Euclidean coordinates.
-#   - Differentiates cosh(d) w.r.t. target coordinates, then:
-#       d = acosh(c), so ∂d = (∂c)/sinh(d)  with sinh(d)=sqrt(c^2-1).
-#   - Contracts ∇_x d with the Euclidean normal n_x.
-################################################################################
-@inline function hyperbolic_dn_d_target(xi::T,yi::T,xj::T,yj::T,nxi::T,nyi::T) where{T<:Real}
-    ax=one(T)-muladd(xi,xi,yi*yi)
-    bx=one(T)-muladd(xj,xj,yj*yj)
-    dx=xi-xj;dy=yi-yj
-    r2=muladd(dx,dx,dy*dy)
-    invab=inv(ax*bx)
-    t=2*r2*invab
-    sh=sqrt(max(t*(t+2),zero(T)))
-    sh<eps(T) && return zero(T)
-    dotdxn=muladd(dx,nxi,dy*nyi)
-    dotxn=muladd(xi,nxi,yi*nyi)
-    return (4*invab)*dotdxn/sh+(4*r2/(bx*ax*ax))*dotxn/sh
-end
-
-################################################################################
-# hyperbolic_dlp_kernel_scalar_target
-#
-# PURPOSE
-#   Evaluate scalar Double-Layer Potential (DLP) kernel for hyperbolic Helmholtz
-#   at target-normal derivative:
-#
-#     K(x_i,x_j) = (1/2π) * (d/dd Q_ν(cosh d)) * (∂d/∂n_x)
-#
-#   where d = d_H(x_i,x_j), ν = -1/2 + i k (encoded inside tab).
-#
-# INPUTS
-#   tab::QTaylorTable   Precomputed table for Q_ν and its d-derivatives vs d
-#   xi,yi::T            target point
-#   xj,yj::T            source point
-#   nxi,nyi::T          Euclidean unit normal at target
-#
-# OUTPUTS
-#   Kij::T              Scalar kernel value 
-################################################################################
-@inline function hyperbolic_dlp_kernel_scalar_target(tab::QTaylorTable,xi::T,yi::T,xj::T,yj::T,nxi::T,nyi::T) where{T<:Real}
-    d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
-    y=_eval_dQdd(tab,d)
-    dn=hyperbolic_dn_d_target(xi,yi,xj,yj,nxi,nyi)
-    return (y*dn)*inv2π
-end
 
 ################################################################################
 # hyperbolic_dlp_kernel_scalar_source
@@ -160,25 +125,8 @@ end
     return (y*dn)*inv2π
 end
 
-################################################################################
-# hyperbolic_slp_kernel_scalar_target
-#
-# PURPOSE
-#   Evaluate scalar Single-Layer Potential (SLP) kernel in hyperbolic geometry:
-#
-#     S(x_i,x_j) = (1/2π) * Q_ν(cosh d_H(x_i,x_j))
-#
-# INPUTS
-#   tab::QTaylorTable   Table for Q_ν(d)
-#   xi,yi::T            target point
-#   xj,yj::T            source point
-#
-# OUTPUTS
-#   Sij::T              Scalar kernel value
-################################################################################
-@inline function hyperbolic_slp_kernel_scalar_target(tab::QTaylorTable,xi::T,yi::T,xj::T,yj::T) where {T<:Real}
-    d=Float64(hyperbolic_distance_poincare(xi,yi,xj,yj))
-    return _eval_Q(tab,d)*inv2π
+@inline function _hyp_bim_adjoint_entry(tab::QTaylorTable,xj::T,yj::T,xi::T,yi::T,nxi::T,nyi::T,dsj::T) where {T<:Real}
+    return hyperbolic_dlp_kernel_scalar_source(tab,xj,yj,xi,yi,nxi,nyi)*dsj
 end
 
 ################################################################################
@@ -231,36 +179,36 @@ end
     return -κg/(2*TWO_PI)
 end
 
-################################################################################
-# _all_k_nosymm_DLP_hyperbolic!
-#
-# PURPOSE
-#   Assemble DLP Fredholm matrices for multiple wavenumbers (tabs) for a single
-#   boundary discretization (bp), WITHOUT symmetry images.
-#
-#   This fills Ks[m] with the discretized DLP operator K(k_m) using:
-#     - off-diagonal: hyperbolic_dlp_kernel_scalar_source(...)
-#     - diagonal PV : dlp_diag_source_normal_poincare(...)
-#
-# INPUTS
-#   Ks::Vector{Matrix{Complex{T}}}
-#       Preallocated matrices, length Mk, each N×N
-#   bp::BoundaryPoints{T}
-#       Boundary discretization struct containing:
-#         bp.xy         :: Vector{SVector{2,T}}  collocation points
-#         bp.normal     :: Vector{SVector{2,T}}  outward normals
-#         bp.curvature  :: Vector{T}             Euclidean curvature κ_E at points
-#         bp.ds         :: Vector{T}             quadrature weights (used later)
-#   tabs::Vector{QTaylorTable}
-#       Precomputed Q_ν tables (one per k)
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#       Enable threading over m using @use_threads macro.
-#
-# OUTPUTS
-#   nothing (fills Ks in-place)
-################################################################################
+"""
+    _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded=true)
+    _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded=true)
+
+Assemble the unweighted source-normal hyperbolic double-layer kernel matrices
+without symmetry images.
+
+For each spectral parameter `k`, encoded in the corresponding `QTaylorTable`,
+the off-diagonal entries are
+
+    K[i,j] = ∂_{n_y}G_k(x_i,x_j)
+           = (1/2π) Q'_ν(cosh d_H(x_i,x_j)) ∂_{n_y}d_H(x_i,x_j),
+
+where `ν = -1/2 + i k`. The normal is the Euclidean outward normal at the
+source node `x_j`.
+
+The diagonal is replaced by the principal-value source-normal limit
+
+    K[i,i] = -κ_g(x_i)/(4π),
+
+with the hyperbolic geodesic curvature computed from the Euclidean curvature by
+
+    κ_g = (1/λ)(κ_E + ∂_n log λ).
+
+These routines build only the raw DLP kernel. Quadrature weights and the
+interior jump term `-1/2 I` are applied later by `assemble_DLP_hyperbolic!`.
+
+`_all_k_...` fills one matrix per table. `_one_k_...` is the single-table
+variant.
+"""
 function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     Mk=length(tabs)
     N=length(bp.xy)
@@ -286,74 +234,90 @@ function _all_k_nosymm_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bounda
     return nothing
 end
 
-################################################################################
-# _one_k_nosymm_DLP_hyperbolic!
-#
-# PURPOSE
-#   Assemble a single DLP Fredholm matrix K for one wavenumber table (tab),
-#   WITHOUT symmetry images.
-#
-# INPUTS
-#   K::Matrix{Complex{T}}   Preallocated N×N output
-#   bp::BoundaryPoints{T} boundary discretization
-#   tab::QTaylorTable       Q_ν table for this k
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool     Thread over i using @use_threads
-#
-# OUTPUTS
-#   nothing (fills K in-place)
-################################################################################
 function _one_k_nosymm_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    _all_k_nosymm_DLP_hyperbolic!([K],bp,[tab];multithreaded=multithreaded)
+    return K
+end
+
+"""
+    _all_k_nosymm_adjoint_DLP_hyperbolic!(As,bp,tabs;multithreaded=true)
+    _one_k_nosymm_adjoint_DLP_hyperbolic!(A,bp,tab;multithreaded=true)
+
+Assemble the weighted adjoint Fredholm matrices without symmetry images.
+
+The source-normal DLP Nyström matrix has entries
+
+    D[i,j] = ∂_{n_y}G_k(x_i,x_j) ds_j.
+
+The weighted discrete adjoint is
+
+    D†[i,j] = D[j,i] ds_j/ds_i,
+
+which is equivalent here to evaluating the source-normal kernel with the roles
+of target and source interchanged and multiplying by `ds_j`.
+
+This routine directly fills the adjoint Fredholm matrix
+
+    A = D† - 1/2 I,
+
+using the same diagonal principal-value limit as the source matrix, weighted by
+`ds_j`, and then applying the interior jump term. The resulting null vector is
+the boundary normal derivative density used for Husimi plots, localization
+diagnostics, and SLP reconstruction.
+
+`_all_k_...` fills one matrix per table. `_one_k_...` calls the all-version on a
+one-element vector.
+"""
+function _all_k_nosymm_adjoint_DLP_hyperbolic!(As::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+    Mk=length(tabs)
     N=length(bp.xy)
-    fill!(K,zero(eltype(K)))
-    @use_threads multithreading=multithreaded for i in 1:N
-        xi,yi=bp.xy[i]
-        κi=bp.curvature[i]
-        @inbounds for j in 1:N
-            xj,yj=bp.xy[j]
-            if i==j
-                nxj,nyj=bp.normal[j]
-                K[i,i]=Complex{T}(dlp_diag_source_normal_poincare(xj,yj,nxj,nyj,κi),zero(T))
-            else
-                nxj,nyj=bp.normal[j]
-                K[i,j]=hyperbolic_dlp_kernel_scalar_source(tab,xi,yi,xj,yj,nxj,nyj)
+    @use_threads multithreading=multithreaded for m in 1:Mk
+        A=As[m]
+        tab=tabs[m]
+        fill!(A,zero(Complex{T}))
+        @inbounds for i in 1:N
+            xi,yi=bp.xy[i]
+            nxi,nyi=bp.normal[i]
+            κi=bp.curvature[i]
+            for j in 1:N
+                dsj=bp.ds[j]
+                if i==j
+                    A[i,i]=Complex{T}(dlp_diag_source_normal_poincare(xi,yi,nxi,nyi,κi)*dsj-T(0.5),zero(T))
+                else
+                    xj,yj=bp.xy[j]
+                    A[i,j]=_hyp_bim_adjoint_entry(tab,xj,yj,xi,yi,nxi,nyi,dsj)
+                end
             end
         end
+        filter_matrix!(A)
     end
     return nothing
 end
 
-################################################################################
-# _all_k_reflection_DLP_hyperbolic!
-#
-# PURPOSE
-#   Assemble DLP Fredholm matrices for multiple wavenumbers INCLUDING reflection
-#   symmetry images.
-#
-# INPUTS
-#   Ks::Vector{Matrix{Complex{T}}}
-#       Preallocated, length Mk, each N×N (filled in-place)
-#   bp::BoundaryPoints{T}
-#       Boundary discretization:
-#         bp.xy        :: Vector{SVector{2,T}}  collocation points (source/target)
-#         bp.normal    :: Vector{SVector{2,T}}  Euclidean normals at source points
-#         bp.curvature :: Vector{T}             Euclidean curvature at points
-#         bp.shift_x   :: T                     reflection axis x-shift (if any)
-#         bp.shift_y   :: T                     reflection axis y-shift (if any)
-#   sym::Reflection
-#       Reflection symmetry descriptor used by QuantumBilliards (encodes which
-#       axes are reflected, and the parity sector via its internal sign)
-#   tabs::Vector{QTaylorTable}
-#       Q_ν tables, one per wavenumber
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#       Enable threading over i.
-#
-# OUTPUTS
-#   nothing (fills Ks in-place)
-################################################################################
+function _one_k_nosymm_adjoint_DLP_hyperbolic!(A::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    _all_k_nosymm_adjoint_DLP_hyperbolic!([A],bp,[tab];multithreaded=multithreaded)
+    return A
+end
+
+"""
+    _all_k_reflection_DLP_hyperbolic!(Ks,bp,sym,tabs;multithreaded=true)
+    _one_k_reflection_DLP_hyperbolic!(K,bp,sym,tab;multithreaded=true)
+
+Assemble source-normal hyperbolic DLP kernel matrices with reflection symmetry
+images.
+
+The physical boundary contribution is first assembled as in the no-symmetry
+case. Reflected source copies are then added with the parity factors determined
+by `sym`. For each reflected source image `R x_j`, the added off-diagonal term is
+
+    χ_R ∂_{n_{Rj}}G_k(x_i,Rx_j),
+
+where both the source point and its Euclidean normal are reflected. Image
+self-coincidences are skipped using an `eps(T)^2` distance cutoff.
+
+The matrices remain unweighted kernel matrices. Column quadrature weights and
+the interior jump term are applied later by `assemble_DLP_hyperbolic!`.
+"""
 function _all_k_reflection_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     Mk=length(tabs)
@@ -400,25 +364,6 @@ function _all_k_reflection_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Bo
     return nothing
 end
 
-################################################################################
-# _one_k_reflection_DLP_hyperbolic!
-#
-# PURPOSE
-#   Assemble a single DLP Fredholm matrix K for one wavenumber INCLUDING
-#   reflection symmetry images.
-#
-# INPUTS
-#   K::Matrix{Complex{T}}   Preallocated N×N output
-#   bp::BoundaryPoints{T}
-#   sym::Reflection
-#   tab::QTaylorTable
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#
-# OUTPUTS
-#   nothing (fills Ks in-place)
-################################################################################
 function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
     _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     N=length(bp.xy)
@@ -453,31 +398,92 @@ function _one_k_reflection_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoi
     return nothing
 end
 
-################################################################################
-# _all_k_rotation_DLP_hyperbolic!
-#
-# PURPOSE
-#   Assemble DLP Fredholm matrices for multiple wavenumbers INCLUDING rotation
-#   symmetry images (Cn symmetry).
-#
-#   Strategy:
-#     1) Fill no-symmetry contributions (physical boundary itself).
-#     2) Add contributions from rotated copies of each source point:
-#          y -> R^l(y),  l = 1,...,n-1
-#        with phase/character factor χ[l] for the chosen symmetry sector.
-#
-# INPUTS
-#   Ks::Vector{Matrix{Complex{T}}}   (Mk matrices, each N×N) filled in-place
-#   bp::BoundaryPoints{T}         boundary discretization
-#   sym::Rotation                   rotation symmetry descriptor (n-fold, sector m)
-#   tabs::Vector{QTaylorTable}       Q_ν tables for each wavenumber
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#
-# OUTPUTS
-#   nothing
-################################################################################
+"""
+    _all_k_reflection_adjoint_DLP_hyperbolic!(As,bp,sym,tabs;multithreaded=true)
+    _one_k_reflection_adjoint_DLP_hyperbolic!(A,bp,sym,tab;multithreaded=true)
+
+Assemble weighted adjoint Fredholm matrices with reflection symmetry images.
+
+The no-symmetry adjoint matrix is assembled first. Reflection images are then
+added by reflecting the adjoint-side source point and normal, with the parity
+factor from `sym`. For each reflected target-side image in the adjoint
+construction, the added term has the form
+
+    χ_R ∂_{n_{Ri}}G_k(x_j,Rx_i) ds_j.
+
+The matrices are already weighted Fredholm matrices, including the jump term.
+No additional call to `assemble_DLP_hyperbolic!` should be made.
+"""
+function _all_k_reflection_adjoint_DLP_hyperbolic!(As::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Reflection,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+    _all_k_nosymm_adjoint_DLP_hyperbolic!(As,bp,tabs;multithreaded=multithreaded)
+    Mk=length(tabs)
+    N=length(bp.xy)
+    tol2=eps(T)^2
+    shift_x=bp.shift_x
+    shift_y=bp.shift_y
+    ops=_reflect_ops_and_scales(T,sym)
+    pt_tls=[zeros(T,2) for _ in 1:Threads.nthreads()]
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i]
+        nxi,nyi=bp.normal[i]
+        pt=pt_tls[Threads.threadid()]
+        @inbounds for (op,scale_r) in ops
+            if op==1
+                x_reflect_point!(pt,xi,yi,shift_x);nxr=-nxi;nyr=nyi
+            elseif op==2
+                y_reflect_point!(pt,xi,yi,shift_y);nxr=nxi;nyr=-nyi
+            else
+                xy_reflect_point!(pt,xi,yi,shift_x,shift_y);nxr=-nxi;nyr=-nyi
+            end
+            xir,yir=pt[1],pt[2]
+            sc=Complex{T}(scale_r,zero(T))
+            for j in 1:N
+                xj,yj=bp.xy[j]
+                dx=xj-xir
+                dy=yj-yir
+                muladd(dx,dx,dy*dy)<=tol2 && continue
+                dsj=bp.ds[j]
+                for m in 1:Mk
+                    As[m][i,j]+=sc*_hyp_bim_adjoint_entry(tabs[m],xj,yj,xir,yir,nxr,nyr,dsj)
+                end
+            end
+        end
+    end
+    @inbounds for A in As
+        filter_matrix!(A)
+    end
+    return nothing
+end
+
+function _one_k_reflection_adjoint_DLP_hyperbolic!(A::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Reflection,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    _all_k_reflection_adjoint_DLP_hyperbolic!([A],bp,sym,[tab];multithreaded=multithreaded)
+    return A
+end
+
+"""
+    _all_k_rotation_DLP_hyperbolic!(Ks,bp,sym,tabs;multithreaded=true)
+    _one_k_rotation_DLP_hyperbolic!(K,bp,sym,tab;multithreaded=true)
+
+Assemble source-normal hyperbolic DLP kernel matrices with rotation symmetry
+images.
+
+The physical boundary contribution is assembled first. For an `n`-fold rotation
+sector `m`, the missing source copies
+
+    x_j -> R^l x_j,    l = 1,...,n-1,
+
+are added with character factors
+
+    χ_l = exp(2π i m l/n).
+
+Each image contribution uses the rotated Euclidean source normal, so the added
+kernel is
+
+    χ_l ∂_{n_{R^l j}}G_k(x_i,R^l x_j).
+
+The result is an unweighted kernel matrix. The Nyström weights and interior
+jump contribution are added by `assemble_DLP_hyperbolic!`.
+"""
 function _all_k_rotation_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Rotation,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
     Mk=length(tabs)
@@ -516,25 +522,6 @@ function _all_k_rotation_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::Boun
     return nothing
 end
 
-################################################################################
-# _one_k_rotation_DLP_hyperbolic!
-#
-# PURPOSE
-#   Assemble a single DLP Fredholm matrix K for one wavenumber INCLUDING rotation
-#   symmetry images.
-#
-# INPUTS
-#   K::AbstractMatrix{Complex{T}}  Preallocated N×N output 
-#   bp::BoundaryPoints{T}
-#   sym::Rotation
-#   tab::QTaylorTable
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#
-# OUTPUTS
-#   nothing
-################################################################################
 function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where{T<:Real}
     _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
     N=length(bp.xy)
@@ -564,6 +551,86 @@ function _one_k_rotation_DLP_hyperbolic!(K::AbstractMatrix{Complex{T}},bp::Bound
     return nothing
 end
 
+"""
+    _all_k_rotation_adjoint_DLP_hyperbolic!(As,bp,sym,tabs;multithreaded=true)
+    _one_k_rotation_adjoint_DLP_hyperbolic!(A,bp,sym,tab;multithreaded=true)
+
+Assemble weighted adjoint Fredholm matrices with rotation symmetry images.
+
+The no-symmetry adjoint matrix is assembled first. For an `n`-fold rotation
+sector `m`, rotated copies of the adjoint-side point are added with characters
+
+    χ_l = exp(2π i m l/n),    l = 1,...,n-1.
+
+Each image contribution uses the rotated Euclidean normal and has the form
+
+    χ_l ∂_{n_{R^l i}}G_k(x_j,R^l x_i) ds_j.
+
+The matrices are final adjoint Fredholm matrices, including quadrature weights
+and the interior jump term.
+"""
+function _all_k_rotation_adjoint_DLP_hyperbolic!(As::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},sym::Rotation,tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+    _all_k_nosymm_adjoint_DLP_hyperbolic!(As,bp,tabs;multithreaded=multithreaded)
+    Mk=length(tabs)
+    N=length(bp.xy)
+    tol2=eps(T)^2
+    cx,cy=sym.center
+    ctab,stab,χ=_rotation_tables(T,sym.n,mod(sym.m,sym.n))
+    pt_tls=[zeros(T,2) for _ in 1:Threads.nthreads()]
+    @use_threads multithreading=multithreaded for i in 1:N
+        xi,yi=bp.xy[i]
+        nxi,nyi=bp.normal[i]
+        pt=pt_tls[Threads.threadid()]
+        @inbounds for l in 2:sym.n
+            rot_point!(pt,xi,yi,cx,cy,ctab[l],stab[l])
+            xir,yir=pt[1],pt[2]
+            nxr=ctab[l]*nxi-stab[l]*nyi
+            nyr=stab[l]*nxi+ctab[l]*nyi
+            phase=Complex{T}(χ[l])
+            for j in 1:N
+                xj,yj=bp.xy[j]
+                dx=xj-xir
+                dy=yj-yir
+                muladd(dx,dx,dy*dy)<=tol2 && continue
+                dsj=bp.ds[j]
+                for m in 1:Mk
+                    As[m][i,j]+=phase*_hyp_bim_adjoint_entry(tabs[m],xj,yj,xir,yir,nxr,nyr,dsj)
+                end
+            end
+        end
+    end
+    @inbounds for A in As
+        filter_matrix!(A)
+    end
+    return nothing
+end
+
+function _one_k_rotation_adjoint_DLP_hyperbolic!(A::Matrix{Complex{T}},bp::BoundaryPoints{T},sym::Rotation,tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    _all_k_rotation_adjoint_DLP_hyperbolic!([A],bp,sym,[tab];multithreaded=multithreaded)
+    return A
+end
+
+################################################################################
+
+"""
+    compute_kernel_matrices_DLP_hyperbolic!(solver,Ks,bp,tabs;multithreaded=true)
+    compute_kernel_matrices_DLP_hyperbolic!(solver,K,bp,tab;multithreaded=true)
+
+Public assembly wrapper for the source-normal hyperbolic DLP Fredholm matrix.
+
+Depending on `solver.symmetry`, this dispatches to the no-symmetry, reflection,
+or rotation source-kernel builder. It then applies Nyström column weights and
+the interior Dirichlet jump term via
+
+    A = D - 1/2 I,
+
+where
+
+    D[i,j] = ∂_{n_y}G_k(x_i,x_j) ds_j.
+
+The one-matrix method is a compact wrapper around the vector method with
+one-element vectors.
+"""
 function compute_kernel_matrices_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
     return _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
 end
@@ -589,38 +656,33 @@ function compute_kernel_matrices_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::Bound
 end
 
 ################################################################################
-# assemble_DLP_hyperbolic!
-#
-#   Discretizes the hyperbolic double–layer boundary integral operator
-#
-#       (K μ)(x) = ∫_Γ ∂_{n_y} G_k^ℍ(x,y) μ(y) ds_y
-#
-#   acting on the Dirichlet density μ represented in the Poincaré disk model.
-#
-# Inputs
-#
-#   K  : N×N matrix with entries K[i,j] = ∂_{n_y} G_k^ℍ(x_i,x_j)
-#
-#   bp : BoundaryPoints containing quadrature weights ds_j
-#        (Euclidean arclength elements along Γ)
-#
-# Discretization
-#
-#   1) Quadrature:
-#
-#        ∫_Γ f(y) ds_y  ≈  Σ_j f(y_j) ds_j
-#
-#      hence each column j is multiplied by ds_j.
-#
-#   2) Principal value limit (interior Dirichlet problem):
-#
-#        lim_{x→Γ^-} ∫_Γ ∂_{n_y} G_k^ℍ(x,y) μ(y) ds_y
-#          = -½ μ(x) + K μ(x)
-#
-#      implemented by adding −1/2 to the diagonal.
-#
-#   3) filter_matrix! removes noise-induced numerical artifacts.
-################################################################################
+
+"""
+    assemble_DLP_hyperbolic!(K,bp)
+    assemble_DLP_hyperbolic!(Ks,bp)
+
+Convert raw source-normal DLP kernel matrices into source Fredholm matrices.
+
+The raw source builders fill
+
+    K[i,j] = ∂_{n_y}G_k(x_i,x_j),
+
+with the principal-value diagonal already inserted. This routine applies the
+Nyström column weights and the interior Dirichlet jump term,
+
+    A[i,j] = K[i,j] ds_j,
+    A[i,i] = A[i,i] - 1/2.
+
+Thus the resulting matrix is
+
+    A = D - 1/2 I,
+
+where
+
+    D[i,j] = ∂_{n_y}G_k(x_i,x_j) ds_j.
+
+The vector version applies this operation to every matrix in `Ks`.
+"""
 function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T}) where {T<:Real}
     @inbounds for j in axes(K,2)
         @views K[:,j].*=bp.ds[j]
@@ -632,100 +694,130 @@ function assemble_DLP_hyperbolic!(K::Matrix{Complex{T}},bp::BoundaryPoints{T}) w
     return nothing
 end
 
-#------------------------------------------------------------------------------
-# assemble_DLP_hyperbolic!(Ks,bp)::Nothing
-#
-# INPUTS:
-#   Ks::Vector{Matrix{Complex{T}}}   Mk matrices, each N×N (filled in-place)
-#   bp::BoundaryPoints{T}         provides bp.ds (Euclidean quadrature weights)
-#
-# OUTPUTS:
-#   nothing
-#------------------------------------------------------------------------------
 function assemble_DLP_hyperbolic!(Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T}) where {T<:Real}
-    ds=bp.ds
-    N=length(ds)
-    Mk=length(Ks)
-    @inbounds Threads.@threads for m in 1:Mk
-        K=Ks[m]
-        for j in 1:N
-            sj=ds[j]
-            @views K[:,j].*=sj
-        end
-        for i in 1:N
-            K[i,i]+=Complex{T}(-T(0.5),zero(T))
-        end
-        filter_matrix!(K)
+    @inbounds Threads.@threads for m in eachindex(Ks)
+        assemble_DLP_hyperbolic!(Ks[m],bp)
     end
     return nothing
 end
 
-################################################################################
-# compute_kernel_matrices_DLP_hyperbolic!  (dispatch wrapper)
-#
-# PURPOSE
-#   User-facing convenience wrapper that dispatches to the appropriate DLP
-#   hyperbolic assembly routine depending on the symmetry specification.
-#
-# INPUTS (MULTI-k)
-#   Ks::Vector{Matrix{Complex{T}}}
-#   bp::BoundaryPoints{T}
-#   symmetry::Union{AbsSymmetry,Nothing} nothing or a symmetry element (Reflection or Rotation)
-#   tabs::Vector{QTaylorTable}
-#
-# KEYWORD INPUTS
-#   multithreaded::Bool
-#
-# OUTPUTS
-#   nothing (fills Ks)
-################################################################################
+"""
+    compute_kernel_matrices_DLP_hyperbolic!(solver,Ks,bp,tabs;multithreaded=true)
+    compute_kernel_matrices_DLP_hyperbolic!(solver,K,bp,tab;multithreaded=true)
+
+Assemble source-normal hyperbolic DLP Fredholm matrices.
+
+Depending on `solver.symmetry`, this dispatches to the no-symmetry, reflection,
+or rotation raw source-kernel builder. It then applies Euclidean quadrature
+weights and the interior jump term, producing
+
+    A = D - 1/2 I,
+
+with
+
+    D[i,j] = ∂_{n_y}G_k(x_i,x_j) ds_j.
+
+This is the matrix used for eigenvalue searches and Beyn contour solves.
+"""
 function compute_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,Ks::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
-    if isnothing(solver.symmetry)
-        _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded)
+    s=solver.symmetry
+    if isnothing(s)
+        _all_k_nosymm_DLP_hyperbolic!(Ks,bp,tabs;multithreaded=multithreaded)
+    elseif s isa Reflection
+        _all_k_reflection_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded=multithreaded)
+    elseif s isa Rotation
+        _all_k_rotation_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded=multithreaded)
     else
-        s=solver.symmetry
-        if s isa Reflection
-            _all_k_reflection_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
-        elseif s isa Rotation
-            _all_k_rotation_DLP_hyperbolic!(Ks,bp,s,tabs;multithreaded)
-        else
-            error("Unsupported symmetry type: $(typeof(s))")
-        end
+        error("Unsupported symmetry type: $(typeof(s))")
     end
     assemble_DLP_hyperbolic!(Ks,bp)
     return nothing
 end
 
 function compute_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,K::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
-    if isnothing(solver.symmetry)
-        _one_k_nosymm_DLP_hyperbolic!(K,bp,tab;multithreaded)
-    else
-        s=solver.symmetry
-        if s isa Reflection
-            _one_k_reflection_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
-        elseif s isa Rotation
-            _one_k_rotation_DLP_hyperbolic!(K,bp,s,tab;multithreaded)
-        else
-            error("Unsupported symmetry type: $(typeof(s))")
-        end
-    end
-    assemble_DLP_hyperbolic!(K,bp)
+    compute_kernel_matrices_DLP_hyperbolic!(solver,[K],bp,[tab];multithreaded=multithreaded)
     return nothing
 end
 
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+"""
+    compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,As,bp,tabs;multithreaded=true)
+    compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,A,bp,tab;multithreaded=true)
+
+Assemble weighted adjoint hyperbolic DLP Fredholm matrices.
+
+The source Nyström matrix is
+
+    D[i,j] = ∂_{n_y}G_k(x_i,x_j) ds_j.
+
+The weighted discrete adjoint is
+
+    D†[i,j] = D[j,i] ds_j/ds_i.
+
+The adjoint builders construct the Fredholm matrix directly as
+
+    A = D† - 1/2 I.
+
+These matrices are intended for boundary normal-derivative extraction; their
+null vectors are proportional to `∂ₙψ` and are the correct objects for Husimi,
+IPR/entropy, and SLP reconstruction.
+"""
+function compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,As::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
+    s=solver.symmetry
+    if isnothing(s)
+        _all_k_nosymm_adjoint_DLP_hyperbolic!(As,bp,tabs;multithreaded=multithreaded)
+    elseif s isa Reflection
+        _all_k_reflection_adjoint_DLP_hyperbolic!(As,bp,s,tabs;multithreaded=multithreaded)
+    elseif s isa Rotation
+        _all_k_rotation_adjoint_DLP_hyperbolic!(As,bp,s,tabs;multithreaded=multithreaded)
+    else
+        error("Unsupported symmetry type: $(typeof(s))")
+    end
+    return nothing
+end
+
+function compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,A::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,[A],bp,[tab];multithreaded=multithreaded)
+    return nothing
+end
+
+"""
+    construct_boundary_matrices!(Tbufs,solver::BIM_hyperbolic,pts,zj;multithreaded=true,timeit=false,adjoint_mode=:source)
+
+Construct hyperbolic BIM boundary matrices for all complex contour nodes `zj`.
+
+The hyperbolic Legendre-Q Taylor tables are built once per contour node over the
+distance range of `pts`. The matrix type is selected by `adjoint_mode`:
+
+- `:source` assembles the source-normal Fredholm matrix
+
+      A(z) = D(z) - 1/2 I,
+
+  used for eigenvalue searches and Beyn contour solves.
+
+- `:direct` and `:via_D` assemble the weighted adjoint Fredholm matrix
+
+      A†(z) = D†(z) - 1/2 I,
+
+  used for boundary normal-derivative vectors.
+"""
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::BoundaryPointsHyp{T},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:source) where {T<:Real}
     bp=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
     N=length(bp.xy)
     @inbounds for q in eachindex(Tbufs)
         @assert size(Tbufs[q])==(N,N) "Tbufs[$q] has size $(size(Tbufs[q])), but BIM_hyperbolic requires ($N,$N)."
         fill!(Tbufs[q],0.0+0.0im)
     end
-    dmin,dmax=d_bounds_hyp(pts,solver.symmetry)
-    dmin=max(dmin,1e-3)
+    _,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
     tabs=Vector{QTaylorTable}(undef,length(zj))
     @inbounds for q in eachindex(zj)
-        tabs[q]=build_QTaylorTable(zj[q];dmin=dmin,dmax=dmax)
+        tabs[q]=build_QTaylorTable(zj[q];dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     end
-    compute_kernel_matrices_DLP_hyperbolic!(solver,Tbufs,bp,tabs;multithreaded=multithreaded)
+    if adjoint_mode===:source
+        @benchit timeit=timeit "BIM_hyperbolic SourceAssembly" compute_kernel_matrices_DLP_hyperbolic!(solver,Tbufs,bp,tabs;multithreaded=multithreaded)
+    elseif adjoint_mode===:direct || adjoint_mode===:via_D
+        @benchit timeit=timeit "BIM_hyperbolic AdjointAssembly" compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,Tbufs,bp,tabs;multithreaded=multithreaded)
+    else
+        error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
+    end
     return nothing
 end
