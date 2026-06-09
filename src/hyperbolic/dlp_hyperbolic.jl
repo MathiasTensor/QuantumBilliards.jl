@@ -296,28 +296,29 @@ end
 #     quadrature weights:
 #       ∑_j |u_j|^2 dsH[j] = 1
 #------------------------------------------------------------------------------
-function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000) where {Ba<:AbstractHankelBasis}
-    symmetry=solver.symmetry
+function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,k;multithreaded::Bool=true,use_krylov::Bool=true,tol=1e-12,maxiter::Int=2000,adjoint_mode::Symbol=:source) where {Ba<:AbstractHankelBasis}
     pts=_BoundaryPointsHypBIM_to_BoundaryPoints(pts_hyp)
     N=length(pts.xy)
-    dmin_m,dmax_m=d_bounds_hyp(pts_hyp,symmetry)
-    dmin_m=max(dmin_m,1e-3) # this needs to be enforced to avoid issues in QTaylor table construction due to the nature of propagation
-    tab=build_QTaylorTable(complex(k);dmin=dmin_m,dmax=dmax_m)
+    _,dmax=d_bounds_hyp(pts_hyp,solver.symmetry;dmin_floor=eltype(pts.ds)(1e-15),pad_max=eltype(pts.ds)(1.1))
+    tab=build_QTaylorTable(ComplexF64(k);dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     K=Matrix{ComplexF64}(undef,N,N)
-    compute_kernel_matrices_DLP_hyperbolic!(K,pts,symmetry,tab;multithreaded=multithreaded)
-    assemble_DLP_hyperbolic!(K,pts)
+    if adjoint_mode===:source
+        compute_kernel_matrices_DLP_hyperbolic!(solver,K,pts,tab;multithreaded=multithreaded)
+    elseif adjoint_mode===:direct || adjoint_mode===:via_D
+        compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,K,pts,tab;multithreaded=multithreaded)
+    else
+        error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
+    end
     if use_krylov
         σ,u,_,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
-        normalize_boundary_left!(u,pts_hyp.dsH) # ∑|u|² dsH = 1
-        return σ,u
     else
         @blas_multi_then_1 MAX_BLAS_THREADS U,S,Vt=LAPACK.gesvd!('S','S',K)
         idx=findmin(S)[2]
         σ=S[idx]
-        u=copy(view(U,:,idx)) 
-        normalize_boundary_left!(u,pts_hyp.dsH)# ∑|u|² dsH = 1
-        return σ,u
+        u=copy(view(U,:,idx))
     end
+    normalize_boundary_left!(u,pts_hyp.dsH)
+    return σ,u
 end
 
 # ==============================================================================
