@@ -38,10 +38,8 @@
 #   - Hyperbolic DLP assembly uses Euclidean ds weights and adds the -1/2 jump.
 #   - Symmetry handling (none / Reflection / Rotation) is supported via dispatch.
 #
-# AUTHOR / DATE
-#   MO / 22-12-2025
+#   MO 9/6/2026
 # ===============================================================================
-
 const HyperbolicBoundarySolver=Union{BIM_hyperbolic,DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product}
 const HyperbolicBeynPoints=Union{BoundaryPointsHyp,DLPHypLogDiscretization}
 
@@ -90,19 +88,19 @@ function precompute_hyp_contour(solver::Union{DLP_hyperbolic_kress,DLP_hyperboli
     return HypContourPrecomp{T,typeof(ws1)}(zj,wj,ws)
 end
 
-function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},pts::HyperbolicBeynPoints,pc::HypContourPrecomp;multithreaded::Bool=true,timeit::Bool=false)
+function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners,DLP_hyperbolic_log_product},pts::HyperbolicBeynPoints,pc::HypContourPrecomp;multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct)
     @blas_1 begin
         @inbounds for q in eachindex(pc.zj)
             n=_workspace_dim(pc.ws[q])
             @assert size(Tbufs[q])==(n,n) "Tbufs[$q] has size $(size(Tbufs[q])), but solver requires ($n,$n)."
             fill!(Tbufs[q],0.0+0.0im)
-            @benchit timeit=timeit "hyp precomputed assembly" construct_matrices!(solver,Tbufs[q],pts,pc.ws[q],pc.zj[q];multithreaded=multithreaded)
+            @benchit timeit=timeit "hyp precomputed assembly" construct_matrices!(solver,Tbufs[q],pts,pc.ws[q],pc.zj[q];multithreaded=multithreaded,adjoint_mode=adjoint_mode)
         end
     end
     return nothing
 end
 
-function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::HyperbolicBeynPoints,pc;multithreaded::Bool=true,timeit::Bool=false)
+function construct_boundary_matrices_precomputed!(Tbufs::Vector{Matrix{ComplexF64}},solver::BIM_hyperbolic,pts::HyperbolicBeynPoints,pc;multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct)
     construct_boundary_matrices!(Tbufs,solver,pts,pc.zj;multithreaded=multithreaded,timeit=timeit)
 end
 
@@ -294,19 +292,19 @@ end
 #   4) SVD(A0) => rank rk by svd_tol.
 #   5) Build reduced B via Uk,Wk,Σk and A1.
 # ===============================================================================
-function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::HyperbolicBeynPoints,N::Int,pc::HypContourPrecomp;r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false)
+function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::HyperbolicBeynPoints,N::Int,pc::HypContourPrecomp;r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct)
     nq=length(pc.zj)
     zj=pc.zj
     wj=pc.wj
     Tbufs=[zeros(ComplexF64,N,N) for _ in 1:nq]
-    construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;multithreaded=multithreaded,timeit=timeit)
+    construct_boundary_matrices_precomputed!(Tbufs,solver,pts,pc;multithreaded=multithreaded,timeit=timeit,adjoint_mode=adjoint_mode)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
-    Fs=Vector{typeof(F1)}(undef,nq); Fs[1]=F1
+    Fs=Vector{typeof(F1)}(undef,nq);Fs[1]=F1
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 2:nq
         Fs[j]=lu!(Tbufs[j];check=false)
     end
     function accum_moments!(A0,A1,X,V)
-        xv=reshape(X,:); a0v=reshape(A0,:); a1v=reshape(A1,:)
+        xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
         @blas_multi_then_1 MAX_BLAS_THREADS @inbounds for j in 1:nq
             ldiv!(X,Fs[j],V)
             BLAS.axpy!(wj[j],xv,a0v)
@@ -320,7 +318,7 @@ function construct_B_matrix_hyp(solver::HyperbolicBoundarySolver,pts::Hyperbolic
     accum_moments!(A0,A1,X,V)
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
-    rk==0 && return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
+    rk==0&&return Matrix{Complex{T}}(undef,N,0),Matrix{Complex{T}}(undef,N,0)
     Uk=@view U[:,1:rk]
     Wk=@view W[:,1:rk]
     Σk=@view Σ[1:rk]
@@ -372,10 +370,10 @@ end
 # NOTES
 #   - If rk==0 (empty B), returns empty λ and empty matrices.
 # ===============================================================================
-function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,pc::HypContourPrecomp;r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis}
+function solve_vect_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,pc::HypContourPrecomp;r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {Ba<:AbstractHankelBasis}
     N=_hyp_beyn_dim(solver,pts,pc.zj[1])
-    B,Uk=construct_B_matrix_hyp(solver,pts,N,pc;r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
-    isempty(B) && return ComplexF64[],Uk,Matrix{ComplexF64}(undef,0,0),pc.zj[1],zero(real(eltype(pc.wj))),pts
+    B,Uk=construct_B_matrix_hyp(solver,pts,N,pc;r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit,adjoint_mode=adjoint_mode)
+    isempty(B)&&return ComplexF64[],Uk,Matrix{ComplexF64}(undef,0,0),pc.zj[1],zero(real(eltype(pc.wj))),pts
     @blas_multi_then_1 MAX_BLAS_THREADS λ,Y=eigen!(B)
     return λ,Uk,Y,pc.zj[1],zero(real(eltype(pc.wj))),pts
 end
@@ -392,9 +390,8 @@ end
 # OUTPUTS
 #   λ :: Vector{Complex{T}}
 # ===============================================================================
-@inline function solve_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,pc::HypContourPrecomp;
-    r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis}
-    λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,pc;r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit)
+@inline function solve_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,pc::HypContourPrecomp;r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {Ba<:AbstractHankelBasis}
+    λ,_,_,_,_,_=solve_vect_hyp(solver,basis,pts,pc;r=r,svd_tol=svd_tol,rng=rng,multithreaded=multithreaded,timeit=timeit,adjoint_mode=adjoint_mode)
     return λ
 end
 
@@ -473,7 +470,7 @@ end
 #   - This is expensive because it builds a FULL N×N matrix T(λ_j) for each λ_j.
 #     That is often the dominant cost after Beyn if many candidates exist.
 # ===============================================================================
-function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::HyperbolicBeynPoints;res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,timeit::Bool=false) where {T<:Real}
+function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},k0::Complex{T},R::T,pts::HyperbolicBeynPoints;res_tol::T,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {T<:Real}
     cache=_hyp_contour_cache(solver,pts)
     N,rk=size(Uk)
     Φtmp=Matrix{Complex{T}}(undef,N,rk)
@@ -489,7 +486,7 @@ function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::Abstr
         abs(λj-k0)>R&&(tens[j]=T(NaN);tensN[j]=T(NaN);continue)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
         wsj=_hyp_contour_workspace(solver,pts,ComplexF64(λj),cache)
-        construct_matrices!(solver,A_buf,pts,wsj,λj;multithreaded=multithreaded)
+        construct_matrices!(solver,A_buf,pts,wsj,λj;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(y,A_buf,@view(Φtmp[:,j]))
         rj=norm(y)
         tens[j]=rj
@@ -497,7 +494,7 @@ function residual_and_norm_select_hyp(solver::HyperbolicBoundarySolver,λ::Abstr
         φn=vecnorm(@view(Φtmp[:,j]))
         yn=vecnorm(y)
         tensN[j]=yn/(nA*(φn+epss)+epss)
-        if auto_discard_spurious&&rj≥res_tol
+        if auto_discard_spurious&&rj>=res_tol
             collect_logs&&push!(logs,"λ=$(λj) ||Aφ||=$(rj) > $res_tol → DROP")
         else
             keep[j]=true
@@ -540,16 +537,16 @@ end
 #   4) Compute eigen(B) => λ candidates.
 #   5) Optionally rebuild T(λ_j) and compute residual ||T(λ_j) Φ_j||.
 # ===============================================================================
-function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::HyperbolicBeynPoints,k0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,timeit::Bool=false,adjoint_mode::Symbol=:direct) where {Ba<:AbstractHankelBasis,T<:Real}
     N=_hyp_beyn_dim(solver,pts,k0)
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
     zj=ComplexF64.(k0.+R.*ej)
     wj=Complex{T}.((R/nq).*ej)
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
-    @info "beyn:start(hyp)" k0=k0 R=R nq=nq N=N r=r
+    @info "beyn:start(hyp)" k0=k0 R=R nq=nq N=N r=r adjoint_mode=adjoint_mode
     Tbufs=[zeros(ComplexF64,N,N) for _ in 1:nq]
-    @time "Boundary matrices (hyp)" construct_boundary_matrices!(Tbufs,solver,pts,zj;multithreaded=multithreaded,timeit=timeit)
+    @time "Boundary matrices (hyp)" construct_boundary_matrices!(Tbufs,solver,pts,zj;multithreaded=multithreaded,timeit=timeit,adjoint_mode=adjoint_mode)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq)
     Fs[1]=F1
@@ -582,7 +579,7 @@ function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::Hyperbol
     svd_tol_eff=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
     rk=0
     @inbounds for i in eachindex(Σ)
-        if Σ[i]≥svd_tol_eff
+        if Σ[i]>=svd_tol_eff
             rk+=1
         else
             break
@@ -611,17 +608,19 @@ function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::Hyperbol
     A_buf=zeros(ComplexF64,N,N)
     dropped_out=0
     dropped_res=0
+    cache=_hyp_contour_cache(solver,pts)
     @inbounds for j in eachindex(λ)
         if abs(λ[j]-k0)>R
             keep[j]=false
             dropped_out+=1
             continue
         end
-        construct_boundary_matrices!([A_buf],solver,pts,ComplexF64[ComplexF64(λ[j])];multithreaded=multithreaded,timeit=timeit)
+        wsj=_hyp_contour_workspace(solver,pts,ComplexF64(λ[j]),cache)
+        construct_matrices!(solver,A_buf,pts,wsj,λ[j];multithreaded=multithreaded,adjoint_mode=adjoint_mode)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,A_buf,@view(Phi[:,j]))
         ybn=norm(ybuf)
-        @info "k=$(λ[j]) ||A(k)v(k)|| = $(ybn) vs. res_tol $res_tol"
-        if auto_discard_spurious&&ybn≥res_tol
+        @info "k=$(λ[j]) ||A(k)v(k)|| = $(ybn) vs. res_tol $res_tol" adjoint_mode=adjoint_mode
+        if auto_discard_spurious&&ybn>=res_tol
             keep[j]=false
             dropped_res+=1
             if ybn>1e-8
@@ -635,7 +634,7 @@ function solve_INFO_hyp(solver::HyperbolicBoundarySolver,basis::Ba,pts::Hyperbol
         push!(res_keep,T(ybn))
     end
     kept=count(keep)
-    kept>0 ? @info("STATUS(hyp): ",kept=kept,dropped_outside=dropped_out,dropped_residual=dropped_res,max_residual=maximum(res_keep)) : @info("STATUS(hyp): ",kept=0,dropped_outside=dropped_out,dropped_residual=dropped_res)
+    kept>0 ? @info("STATUS(hyp): ",kept=kept,dropped_outside=dropped_out,dropped_residual=dropped_res,max_residual=maximum(res_keep),adjoint_mode=adjoint_mode) : @info("STATUS(hyp): ",kept=0,dropped_outside=dropped_out,dropped_residual=dropped_res,adjoint_mode=adjoint_mode)
     return λ[keep],Phi[:,keep],tens
 end
 
@@ -677,7 +676,7 @@ end
 #         construct_matrices!
 #   - Experimental heuristic: validate against full residual checks when
 #     changing geometry, discretization, or quadrature parameters.
-function imag_k_check_hyp_EXPERIMENTAL(solver::HyperbolicBoundarySolver,λs::Vector{Vector{Complex{T}}},Uks::Vector{Matrix{Complex{T}}},Ys::Vector{Matrix{Complex{T}}},k0s::Vector{Complex{T}},Rs::Vector{T},all_pts;res_tol::T,pad::Int=20,group_size::Int=64,multithreaded::Bool=true,verbose::Bool=true,mp_dps::Int=80,leg_type::Int=3) where {T<:Real}
+function imag_k_check_hyp_EXPERIMENTAL(solver::HyperbolicBoundarySolver,λs::Vector{Vector{Complex{T}}},Uks::Vector{Matrix{Complex{T}}},Ys::Vector{Matrix{Complex{T}}},k0s::Vector{Complex{T}},Rs::Vector{T},all_pts;res_tol::T,pad::Int=20,group_size::Int=64,multithreaded::Bool=true,verbose::Bool=true,mp_dps::Int=80,leg_type::Int=3,adjoint_mode::Symbol=:direct) where {T<:Real}
     nw=length(λs)
     idx_inside=Vector{Vector{Int}}(undef,nw)
     idx_keep=Vector{Vector{Int}}(undef,nw)
@@ -724,7 +723,7 @@ function imag_k_check_hyp_EXPERIMENTAL(solver::HyperbolicBoundarySolver,λs::Vec
                 λj=λs[i][j]
                 wsj=_hyp_contour_workspace(solver,pts,ComplexF64(λj),cache;mp_dps=mp_dps,leg_type=leg_type)
                 fill!(A,zero(Complex{T}))
-                construct_matrices!(solver,A,pts,wsj,λj;multithreaded=multithreaded)
+                construct_matrices!(solver,A,pts,wsj,λj;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
                 mul!(φ,Uks[i],@view Ys[i][:,j])
                 mul!(y,A,φ)
                 rdict[(i,j)]=norm(y)
@@ -818,7 +817,7 @@ end
 #   tensN_all :: Vector{T}
 #       Normalized residuals (if computed in residual stage).
 # ===============================================================================
-function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true,origin_vertex_tol::Real=0.0,use_imag_residual_check::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiard::Bi,k1::T,k2::T;m::Int=10,Rmax::T=T(0.8),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,multithreaded_matrix::Bool=true,kref::T=T(1000.0),do_INFO::Bool=true,Rfloor::T=T(1e-6),timeit::Bool=false,return_imag_part::Bool=true,origin_vertex_tol::Real=0.0,use_imag_residual_check::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "k-windows (hyp)" k0s,Rs=plan_k_windows_hyp(solver,billiard,k1,k2;M=m,Rmax=Rmax,Rfloor=Rfloor,kref=kref,origin_vertex_tol=origin_vertex_tol)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     k0s=isempty(idx) ? T[] : k0s[idx]
@@ -842,7 +841,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     if do_INFO
         iinfo=cld(nw,2)
         @time "solve_INFO middle disk (hyp)" begin
-            _=solve_INFO_hyp(solver,basis,all_pts[iinfo],complex(k0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,timeit=timeit)
+            _=solve_INFO_hyp(solver,basis,all_pts[iinfo],complex(k0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,timeit=timeit,adjoint_mode=adjoint_mode)
         end
     end
     λs=Vector{Vector{Complex{T}}}(undef,nw)
@@ -851,7 +850,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (hyp)" @inbounds for i in 1:nw
         pc=precompute_hyp_contour(solver,all_pts[i],complex(k0s[i],zero(T)),Rs[i];nq=nq)
-        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,timeit=timeit)
+        λ,Uk,Y,_,_,_=solve_vect_hyp(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),multithreaded=multithreaded_matrix,timeit=timeit,adjoint_mode=adjoint_mode)
         λs[i]=λ
         Uks[i]=Uk
         Ys[i]=Y
@@ -863,7 +862,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
     tensN_list=Vector{Vector{T}}(undef,nw)
     phi_list=Vector{Matrix{Complex{T}}}(undef,nw)
     if use_imag_residual_check
-        idx_keep,residuals=imag_k_check_hyp_EXPERIMENTAL(solver,λs,Uks,Ys,complex.(k0s,zero(T)),Rs,all_pts;res_tol=T(res_tol),pad=20,group_size=64,multithreaded=multithreaded_matrix,verbose=timeit)
+        idx_keep,residuals=imag_k_check_hyp_EXPERIMENTAL(solver,λs,Uks,Ys,complex.(k0s,zero(T)),Rs,all_pts;res_tol=T(res_tol),pad=20,group_size=64,multithreaded=multithreaded_matrix,verbose=timeit,adjoint_mode=adjoint_mode)
         @time "Imag-check selection pass (hyp)" @inbounds @showprogress desc="Imag-check selection (hyp)" for i in 1:nw
             idx=idx_keep[i]
             if isempty(idx)
@@ -894,7 +893,7 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
                 phi_list[i]=Matrix{Complex{T}}(undef,length(bp.xy),0)
                 continue
             end
-            idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,timeit=timeit)
+            idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_hyp(solver,λs[i],Uks[i],Ys[i],complex(k0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matnorm=:one,epss=1e-15,auto_discard_spurious=auto_discard_spurious,collect_logs=false,multithreaded=multithreaded_matrix,timeit=timeit,adjoint_mode=adjoint_mode)
             ks_list[i]=λs[i][idx2]
             tens_list[i]=traw
             tensN_list[i]=tnorm

@@ -1136,7 +1136,14 @@ end
 ################################
 
 function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},gws::Union{DLPHyperbolicKressGeomWorkspace{T},DLPHyperbolicKressReducedGeomWorkspace{T}},kws::DLPHyperbolicKressTaylorOnlyWorkspace,k;multithreaded::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real}
-    construct_adjoint_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+    if adjoint_mode===:source
+        construct_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded)
+    elseif adjoint_mode===:direct || adjoint_mode===:via_D
+        construct_adjoint_fredholm_hyperbolic_kress_matrix!(A,solver,pts,gws,kws;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
+    else
+        error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
+    end
+    return A
 end
 
 function construct_matrices!(solver::Union{DLP_hyperbolic_kress,DLP_hyperbolic_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws::Tuple{<:Union{DLPHyperbolicKressGeomWorkspace,DLPHyperbolicKressReducedGeomWorkspace},DLPHyperbolicKressTaylorOnlyWorkspace},k;multithreaded::Bool=true,adjoint_mode::Symbol=:direct) where {T<:Real}
