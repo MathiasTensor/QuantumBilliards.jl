@@ -761,29 +761,27 @@ These matrices are intended for boundary normal-derivative extraction; their
 null vectors are proportional to `∂ₙψ` and are the correct objects for Husimi,
 IPR/entropy, and SLP reconstruction.
 """
+function compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,A::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
+    S=similar(A)
+    compute_kernel_matrices_DLP_hyperbolic!(solver,S,bp,tab;multithreaded=multithreaded)
+    ds=bp.ds
+    N=size(S,1)
+    @inbounds for j in 1:N, i in 1:N
+        A[i,j]=S[j,i]*ds[j]/ds[i]
+    end
+    filter_matrix!(A)
+    return nothing
+end
+
 function compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,As::Vector{Matrix{Complex{T}}},bp::BoundaryPoints{T},tabs::Vector{QTaylorTable};multithreaded::Bool=true) where {T<:Real}
-    s=solver.symmetry
-    if isnothing(s)
-        _all_k_nosymm_adjoint_DLP_hyperbolic!(As,bp,tabs;multithreaded=multithreaded)
-    elseif s isa Reflection
-        _all_k_reflection_adjoint_DLP_hyperbolic!(As,bp,s,tabs;multithreaded=multithreaded)
-    elseif s isa Rotation
-        _all_k_rotation_adjoint_DLP_hyperbolic!(As,bp,s,tabs;multithreaded=multithreaded)
-    else
-        error("Unsupported symmetry type: $(typeof(s))")
+    @inbounds Threads.@threads for q in eachindex(As)
+        compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,As[q],bp,tabs[q];multithreaded=multithreaded)
     end
     return nothing
 end
 
-function compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver::BIM_hyperbolic,A::Matrix{Complex{T}},bp::BoundaryPoints{T},tab::QTaylorTable;multithreaded::Bool=true) where {T<:Real}
-    compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,[A],bp,[tab];multithreaded=multithreaded)
-    return nothing
-end
-
-function construct_matrices!(solver::BIM_hyperbolic,A::Matrix{Complex{T}},pts::BoundaryPointsHyp{T},ws,k;multithreaded::Bool=true,adjoint_mode::Symbol=:source) where {T<:Real}
+function construct_matrices!(solver::BIM_hyperbolic,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},tab::QTaylorTable;multithreaded::Bool=true,adjoint_mode::Symbol=:source) where {T<:Real}
     bp=_BoundaryPointsHypBIM_to_BoundaryPoints(pts)
-    _,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
-    tab=build_QTaylorTable(ComplexF64(k);dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     if adjoint_mode===:source
         compute_kernel_matrices_DLP_hyperbolic!(solver,A,bp,tab;multithreaded=multithreaded)
     elseif adjoint_mode===:direct || adjoint_mode===:via_D
@@ -791,6 +789,13 @@ function construct_matrices!(solver::BIM_hyperbolic,A::Matrix{Complex{T}},pts::B
     else
         error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
     end
+    return A
+end
+
+function construct_matrices!(solver::BIM_hyperbolic,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsHyp{T},ws,k;multithreaded::Bool=true,adjoint_mode::Symbol=:source) where {T<:Real}
+    _,dmax=d_bounds_hyp(pts,solver.symmetry;dmin_floor=T(1e-15),pad_max=T(1.1))
+    tab=build_QTaylorTable(k;dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
+    construct_matrices!(solver,A,pts,tab;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     return A
 end
 
