@@ -302,23 +302,15 @@ function solve_vect(solver::BIM_hyperbolic,basis::Ba,pts_hyp::BoundaryPointsHyp,
     _,dmax=d_bounds_hyp(pts_hyp,solver.symmetry;dmin_floor=eltype(pts.ds)(1e-15),pad_max=eltype(pts.ds)(1.1))
     tab=build_QTaylorTable(ComplexF64(k);dmin=legendre_d_threshold(),dmax=Float64(dmax)*1.05)
     K=Matrix{ComplexF64}(undef,N,N)
-    if adjoint_mode===:source
-        compute_kernel_matrices_DLP_hyperbolic!(solver,K,pts,tab;multithreaded=multithreaded)
-    elseif adjoint_mode===:direct || adjoint_mode===:via_D
-        compute_adjoint_kernel_matrices_DLP_hyperbolic!(solver,K,pts,tab;multithreaded=multithreaded)
-    else
-        error("Invalid adjoint_mode: $adjoint_mode. Expected :source, :direct, or :via_D.")
-    end
+    construct_matrices!(solver,K,pts_hyp,tab;multithreaded=multithreaded,adjoint_mode=adjoint_mode)
     if use_krylov
-        σ,_,v,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
-        u=v
+        σ,_,u,_=smallest_svd_triplet(K;tol=tol,maxiter=maxiter)
     else
         @blas_multi_then_1 MAX_BLAS_THREADS U,S,Vt=LAPACK.gesvd!('S','S',K)
         idx=findmin(S)[2]
         σ=S[idx]
-        u=copy(@view(Vt[idx,:]))
+        u=copy(view(Vt',:,idx))
     end
-
     normalize_boundary_left!(u,pts_hyp.dsH)
     return σ,u
 end
