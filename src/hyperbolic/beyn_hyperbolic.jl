@@ -903,6 +903,8 @@ function compute_spectrum_hyp(solver::HyperbolicBoundarySolver,basis::Ba,billiar
             phi_list[i]=Matrix(Φ_kept)
         end
     end
+    GC.gc()
+    GC.gc()
     n_by_win=Vector{Int}(undef,nw)
     @inbounds for i in 1:nw
         n_by_win[i]=size(phi_list[i],2)
