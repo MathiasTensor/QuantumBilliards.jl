@@ -26,6 +26,8 @@ using BenchmarkTools
 include("taylor/pycall_init.jl")
 function __init__()
     __init_mpmath_specials__()
+    __init_legendre_seed_helpers__()
+    __init_confluent_u_helpers__()
     return nothing
 end
 

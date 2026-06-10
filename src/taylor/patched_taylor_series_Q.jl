@@ -274,7 +274,7 @@ end
 # Output
 #   ComplexF64 Approximation of Q_ν(cosh d).
 # =============================================================================
-@inline function _small_z_Q(k::ComplexF64,d::T;terms::Int=legendre_dQ_small_terms())::ComplexF64 where {T<:Real}
+@inline function _small_z_Q(k::ComplexF64,d::T;terms::Int=legendre_P_small_terms())::ComplexF64 where {T<:Real}
     a,b=small_qd_buffers(terms)
     nu=ν(k)
     lam=nu*(nu+1)
@@ -567,6 +567,7 @@ end
 # Outputs
 #   (u0,y0)::Tuple{ComplexF64,ComplexF64}
 # =============================================================================
+#=
 function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
     lock(PYCALL_MPMATH_LOCK)
     try
@@ -583,6 +584,16 @@ function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
         y_re=pycall(_pyfloat[],Float64,y0.real)
         y_im=pycall(_pyfloat[],Float64,y0.imag)
         ComplexF64(u_re,u_im),ComplexF64(y_re,y_im)
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
+end
+=#
+function seed_u_y_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60,leg_type::Int=3)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        a,b,c,d=pycall(_py_seed_q,NTuple{4,Float64},real(nu),imag(nu),d0,dps,leg_type)
+        return ComplexF64(a,b),ComplexF64(c,d)
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
@@ -1571,6 +1582,7 @@ end
 #   Only a single seed point is required; all other values are propagated
 #   internally via Taylor recurrence.
 # =============================================================================
+#=
 function seed_p_dp_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60)
     lock(PYCALL_MPMATH_LOCK)
     try
@@ -1587,6 +1599,16 @@ function seed_p_dp_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60)
         y_re=pycall(_pyfloat[],Float64,yp.real)
         y_im=pycall(_pyfloat[],Float64,yp.imag)
         return ComplexF64(p_re,p_im),ComplexF64(y_re,y_im)
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
+end
+=#
+function seed_p_dp_mpmath(nu::ComplexF64,d0::Float64;dps::Int=60)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        a,b,c,d=pycall(_py_seed_p,NTuple{4,Float64},real(nu),imag(nu),d0,dps)
+        return ComplexF64(a,b),ComplexF64(c,d)
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
