@@ -123,7 +123,8 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
     nq=length(pc.νj)
     νj=pc.νj
     wj=pc.wj
-    Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit)
+    opconv=isnothing(mcut) ? :regularized : :unregularized
+    Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit,operator_convention=opconv)
     Nfull=size(Tbufs[1],1)
     filt=isnothing(mcut) ? nothing : magnetic_fourier_filter(Nfull,mcut;T=real(eltype(pc.wj)),keep=:high)
     if !isnothing(filt)
@@ -183,7 +184,8 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
     pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
     νj=pc.νj
     wj=pc.wj
-    @time "Boundary matrices (magnetic)" Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit)
+    opconv=isnothing(mcut) ? :regularized : :unregularized
+    @time "Boundary matrices (magnetic)" Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit,operator_convention=opconv)
     Nfull=size(Tbufs[1],1)
     filt=isnothing(mcut) ? nothing : magnetic_fourier_filter(Nfull,mcut;T=real(eltype(wj)),keep=:high)
     if !isnothing(filt)
