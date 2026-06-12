@@ -25,6 +25,26 @@ function _mag_contour_workspace(solver::MagneticKressSolver,pts,ν,cache;h=1e-5,
     return cache,kws
 end
 
+struct MagneticFourierFilter{T}
+    U::Matrix{Complex{T}}
+    idx::Vector{Int}
+    mcut::Int
+end
+
+function magnetic_fourier_filter(N::Int,mcut::Int;T=Float64,keep::Symbol=:high)
+    modes=collect(-fld(N,2):cld(N,2)-1)
+    idx=keep===:high ? findall(abs.(modes).>mcut) :
+        keep===:low ? findall(abs.(modes).<=mcut) :
+        error("keep must be :high or :low")
+    F=fft(Matrix{Complex{T}}(I,N,N),1)/sqrt(T(N))
+    F=fftshift(F,1)
+    U=Matrix(F[idx,:]')
+    return MagneticFourierFilter{T}(U,idx,mcut)
+end
+
+@inline project_matrix(A,F::MagneticFourierFilter)=F.U'*A*F.U
+@inline lift_vector(v,F::MagneticFourierFilter)=F.U*v
+
 function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;nq::Int=64,h=1e-5,P=6,Msmall=30,mp_dps::Int=30) where {T<:Real}
     θ=(TWO_PI/nq).*(collect(0:nq-1).+T(0.5))
     ej=cis.(θ)
@@ -99,11 +119,18 @@ function plan_ν_windows_magnetic(solver::MagneticKressSolver,billiard::Bi,ν1::
     return ν0s,Rs
 end
 
-function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false)
+function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;r::Int=48,svd_tol=1e-14,rng=MersenneTwister(0),matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false,mcut::Union{Nothing,Int}=nothing)
     nq=length(pc.νj)
     νj=pc.νj
     wj=pc.wj
     Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit)
+    Nfull=size(Tbufs[1],1)
+    filt=isnothing(mcut) ? nothing : magnetic_fourier_filter(Nfull,mcut;T=real(eltype(pc.wj)),keep=:high)
+    if !isnothing(filt)
+        @inbounds for q in 1:nq
+            Tbufs[q]=project_matrix(Tbufs[q],filt)
+        end
+    end
     N=size(Tbufs[1],1)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq)
@@ -113,7 +140,9 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
     end
     T=real(eltype(wj))
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
-    xv=reshape(X,:);a0v=reshape(A0,:);a1v=reshape(A1,:)
+    xv=reshape(X,:)
+    a0v=reshape(A0,:)
+    a1v=reshape(A1,:)
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds @showprogress desc="ldiv!+axpy!(magnetic)" for j in 1:nq
         ldiv!(X,Fs[j],V)
         c=Complex{T}(cospi(νj[j]))
@@ -122,7 +151,7 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
     end
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
-    rk==0 && return Matrix{Complex{T}}(undef,0,0),Matrix{Complex{T}}(undef,N,0)
+    rk==0 && return Matrix{Complex{T}}(undef,0,0),Matrix{Complex{T}}(undef,N,0),filt
     Uk=@view U[:,1:rk]
     Wk=@view W[:,1:rk]
     Σk=@view Σ[1:rk]
@@ -133,29 +162,35 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
     end
     B=Matrix{Complex{T}}(undef,rk,rk)
     @blas_multi_then_1 MAX_BLAS_THREADS mul!(B,adjoint(Uk),tmp)
-    return B,Uk
+    return B,Matrix(Uk),filt
 end
 
-function solve_vect_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false) where {Ba<:AbstractHankelBasis}
-    B,Uk=construct_B_matrix_magnetic(solver,pts,pc;r=r,svd_tol=svd_tol,rng=rng,matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit)
-    isempty(B) && return ComplexF64[],Uk,Matrix{ComplexF64}(undef,0,0),pc.νj[1],zero(real(eltype(pc.wj))),pts
+function solve_vect_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;r::Int=48,svd_tol::Real=1e-14,rng=MersenneTwister(0),matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false,mcut::Union{Nothing,Int}=nothing) where {Ba<:AbstractHankelBasis}
+    B,Uk,filt=construct_B_matrix_magnetic(solver,pts,pc;r=r,svd_tol=svd_tol,rng=rng,matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit,mcut=mcut)
+    isempty(B) && return ComplexF64[],Uk,Matrix{ComplexF64}(undef,0,0),pc.νj[1],zero(real(eltype(pc.wj))),pts,filt
     @blas_multi_then_1 MAX_BLAS_THREADS λ,Y=eigen!(B)
-    return λ,Uk,Y,pc.νj[1],zero(real(eltype(pc.wj))),pts
+    return λ,Uk,Y,pc.νj[1],zero(real(eltype(pc.wj))),pts,filt
 end
 
 @inline function solve_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;kwargs...) where {Ba<:AbstractHankelBasis}
-    λ,_,_,_,_,_=solve_vect_magnetic(solver,basis,pts,pc;kwargs...)
+    λ,_,_,_,_,_,_=solve_vect_magnetic(solver,basis,pts,pc;kwargs...)
     return λ
 end
 
-function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,timeit::Bool=false) where {Ba<:AbstractHankelBasis,T<:Real}
+function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::BoundaryPointsCFIE,ν0::Complex{T},R::T;multithreaded::Bool=true,nq::Int=64,r::Int=48,svd_tol::Real=1e-10,res_tol::Real=1e-10,rng=MersenneTwister(0),use_adaptive_svd_tol::Bool=false,auto_discard_spurious::Bool=false,matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,timeit::Bool=false,mcut::Union{Nothing,Int}=nothing) where {Ba<:AbstractHankelBasis,T<:Real}
     pc=precompute_magnetic_contour(solver,pts,ν0,R;nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
     νj=pc.νj
     wj=pc.wj
     @time "Boundary matrices (magnetic)" Tbufs=construct_boundary_matrices_precomputed!(solver,pts,pc;matrix_kind=matrix_kind,multithreaded=multithreaded,timeit=timeit)
+    Nfull=size(Tbufs[1],1)
+    filt=isnothing(mcut) ? nothing : magnetic_fourier_filter(Nfull,mcut;T=real(eltype(wj)),keep=:high)
+    if !isnothing(filt)
+        @inbounds for q in 1:nq
+            Tbufs[q]=project_matrix(Tbufs[q],filt)
+        end
+    end
     N=size(Tbufs[1],1)
-    Nfull=length(pts.xy)
-    @info "beyn:start(magnetic)" ν0=ν0 R=R nq=nq N=N Nfull=Nfull r=r matrix_kind=matrix_kind
+    @info "beyn:start(magnetic)" ν0=ν0 R=R nq=nq N=N Nfull=Nfull r=r matrix_kind=matrix_kind mcut=mcut
     V,X,A0,A1=beyn_buffer_matrices(T,N,r,rng)
     @blas_multi MAX_BLAS_THREADS F1=lu!(Tbufs[1];check=false)
     Fs=Vector{typeof(F1)}(undef,nq)
@@ -191,7 +226,7 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
         end
     end
     rk==r && @warn "All singular values are above svd_tol=$(svd_tol_eff), r=$(r) may need to be increased"
-    rk==0 && return Complex{T}[],Matrix{Complex{T}}(undef,N,0),T[]
+    rk==0 && return Complex{T}[],Matrix{Complex{T}}(undef,Nfull,0),T[]
     Uk=@view U[:,1:rk]
     Wk=@view W[:,1:rk]
     Σk=@view Σ[1:rk]
@@ -205,12 +240,14 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
     @time "eigen(magnetic)" @blas_multi_then_1 MAX_BLAS_THREADS ev=eigen!(B)
     λ=ev.values
     Y=ev.vectors
-    Φ=Uk*Y
+    Φf=Matrix{Complex{T}}(undef,N,rk)
+    @blas_multi MAX_BLAS_THREADS mul!(Φf,Uk,Y)
+    Φ=isnothing(filt) ? Φf : filt.U*Φf
     keep=trues(length(λ))
     tens=T[]
     res_keep=T[]
-    ybuf=Vector{Complex{T}}(undef,N)
-    A=Matrix{Complex{T}}(undef,N,N)
+    ybuf=Vector{Complex{T}}(undef,Nfull)
+    A=Matrix{Complex{T}}(undef,Nfull,Nfull)
     cache=_mag_contour_cache(solver,pts)
     dropped_out=0
     dropped_res=0
@@ -224,7 +261,7 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
         construct_matrices!(solver,A,pts,wsj[1],wsj[2],λ[j];matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded,operator_convention=:regularized)
         @blas_multi_then_1 MAX_BLAS_THREADS mul!(ybuf,A,@view(Φ[:,j]))
         rj=norm(ybuf)
-        @info "ν=$(λ[j]) ||A(ν)v|| = $(rj) vs. res_tol $res_tol"
+        @info "ν=$(λ[j]) ||A_full(ν)v_full|| = $(rj) vs. res_tol $res_tol"
         if auto_discard_spurious && rj>=res_tol
             keep[j]=false
             dropped_res+=1
@@ -238,16 +275,18 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
     return λ[keep],Φ[:,keep],tens
 end
 
-function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},ν0::Complex{T},R::T,pts::BoundaryPointsCFIE;res_tol::T,matrix_kind::Symbol=:cfie_src,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30) where {T<:Real}
+function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::AbstractVector{Complex{T}},Uk::AbstractMatrix{Complex{T}},Y::AbstractMatrix{Complex{T}},ν0::Complex{T},R::T,pts::BoundaryPointsCFIE;filt=nothing,res_tol::T,matrix_kind::Symbol=:cfie_src,matnorm::Symbol=:one,epss::Real=1e-15,auto_discard_spurious::Bool=true,collect_logs::Bool=false,multithreaded::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30) where {T<:Real}
     cache=_mag_contour_cache(solver,pts)
-    N,rk=size(Uk)
-    Φtmp=Matrix{Complex{T}}(undef,N,rk)
-    y=Vector{Complex{T}}(undef,N)
+    Nf,rk=size(Uk)
+    Nfull=isnothing(filt) ? Nf : size(filt.U,1)
+    Φtmp=Matrix{Complex{T}}(undef,Nfull,rk)
+    y=Vector{Complex{T}}(undef,Nfull)
     keep=falses(rk)
     tens=Vector{T}(undef,rk)
     tensN=Vector{T}(undef,rk)
     logs=collect_logs ? String[] : nothing
-    A=Matrix{Complex{T}}(undef,N,N)
+    A=Matrix{Complex{T}}(undef,Nfull,Nfull)
+    φf=Vector{Complex{T}}(undef,Nf)
     vecnorm=matnorm===:one ? (v->norm(v,1)) : matnorm===:two ? (v->norm(v)) : (v->norm(v,Inf))
     @inbounds for j in 1:rk
         λj=λ[j]
@@ -256,7 +295,12 @@ function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::Abstr
             tensN[j]=T(NaN)
             continue
         end
-        mul!(@view(Φtmp[:,j]),Uk,@view(Y[:,j]))
+        mul!(φf,Uk,@view(Y[:,j]))
+        if isnothing(filt)
+            copyto!(@view(Φtmp[:,j]),φf)
+        else
+            mul!(@view(Φtmp[:,j]),filt.U,φf)
+        end
         wsj=_mag_contour_workspace(solver,pts,ComplexF64(λj),cache;h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
         construct_matrices!(solver,A,pts,wsj[1],wsj[2],λj;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded,operator_convention=:regularized)
         mul!(y,A,@view(Φtmp[:,j]))
@@ -269,7 +313,7 @@ function residual_and_norm_select_magnetic(solver::MagneticKressSolver,λ::Abstr
         keep[j]=!(auto_discard_spurious && rj>=res_tol)
     end
     idx=findall(keep)
-    Φ_kept=isempty(idx) ? Matrix{Complex{T}}(undef,N,0) : Φtmp[:,idx]
+    Φ_kept=isempty(idx) ? Matrix{Complex{T}}(undef,Nfull,0) : Φtmp[:,idx]
     return idx,Φ_kept,tens[idx],tensN[idx],(collect_logs ? logs : String[])
 end
 
@@ -352,7 +396,7 @@ function imag_ν_check_magnetic_EXPERIMENTAL(solver::MagneticKressSolver,λs::Ve
     return idx_keep,residuals
 end
 
-function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiard::Bi,ν1::T,ν2::T;A=nothing,L=nothing,use_perimeter::Bool=false,m::Int=10,Rmax::T=T(0.8),Rfloor::T=T(1e-6),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,matrix_kind::Symbol=:cfie_src,multithreaded_matrix::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,return_imag_part::Bool=true,use_imag_residual_check::Bool=false,timeit::Bool=false,do_INFO::Bool=true) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
+function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiard::Bi,ν1::T,ν2::T;A=nothing,L=nothing,use_perimeter::Bool=false,m::Int=10,Rmax::T=T(0.8),Rfloor::T=T(1e-6),nq::Int=64,r::Int=m+15,svd_tol::Real=1e-12,res_tol::Real=1e-9,auto_discard_spurious::Bool=true,matrix_kind::Symbol=:cfie_src,multithreaded_matrix::Bool=true,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,return_imag_part::Bool=true,use_imag_residual_check::Bool=false,timeit::Bool=false,do_INFO::Bool=true,mcut::Union{Nothing,Int}=nothing) where {T<:Real,Bi<:AbsBilliard,Ba<:AbstractHankelBasis}
     @time "ν-windows (magnetic)" ν0s,Rs=plan_ν_windows_magnetic(solver,billiard,ν1,ν2;A=A,L=L,use_perimeter=use_perimeter,M=m,Rmax=Rmax,Rfloor=Rfloor)
     idx=findall(>(max(zero(T),Rfloor)),Rs)
     ν0s=isempty(idx) ? T[] : ν0s[idx]
@@ -373,19 +417,21 @@ function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiar
     if do_INFO
         iinfo=cld(nw,2)
         @time "solve_INFO middle disk (magnetic)" begin
-            _=solve_INFO_magnetic(solver,basis,all_pts[iinfo],complex(ν0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,matrix_kind=matrix_kind,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps,timeit=timeit)
+            _=solve_INFO_magnetic(solver,basis,all_pts[iinfo],complex(ν0s[iinfo],zero(T)),Rs[iinfo];multithreaded=multithreaded_matrix,nq=nq,r=r,svd_tol=svd_tol,res_tol=res_tol,rng=MersenneTwister(0),use_adaptive_svd_tol=false,auto_discard_spurious=false,matrix_kind=matrix_kind,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps,timeit=timeit,mcut=mcut)
         end
     end
     λs=Vector{Vector{Complex{T}}}(undef,nw)
     Uks=Vector{Matrix{Complex{T}}}(undef,nw)
     Ys=Vector{Matrix{Complex{T}}}(undef,nw)
+    filts=Vector{Any}(undef,nw)
     p=Progress(nw,1)
     @time "Beyn pass (all disks) (magnetic)" @inbounds for i in 1:nw
         pc=precompute_magnetic_contour(solver,all_pts[i],complex(ν0s[i],zero(T)),Rs[i];nq=nq,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
-        λ,Uk,Y,_,_,_=solve_vect_magnetic(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),matrix_kind=matrix_kind,multithreaded=multithreaded_matrix,timeit=timeit)
+        λ,Uk,Y,_,_,_,filt=solve_vect_magnetic(solver,basis,all_pts[i],pc;r=r,svd_tol=svd_tol,rng=MersenneTwister(0),matrix_kind=matrix_kind,multithreaded=multithreaded_matrix,timeit=timeit,mcut=mcut)
         λs[i]=λ
         Uks[i]=Uk
         Ys[i]=Y
+        filts[i]=filt
         pc=nothing
         next!(p)
     end
@@ -401,7 +447,7 @@ function compute_spectrum_magnetic(solver::MagneticKressSolver,basis::Ba,billiar
             phi_list[i]=Matrix{Complex{T}}(undef,size(Uks[i],1),0)
             continue
         end
-        idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_magnetic(solver,λs[i],Uks[i],Ys[i],complex(ν0s[i],zero(T)),Rs[i],all_pts[i];res_tol=T(res_tol),matrix_kind=matrix_kind,matnorm=:one,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
+        idx2,Φ_kept,traw,tnorm,_=residual_and_norm_select_magnetic(solver,λs[i],Uks[i],Ys[i],complex(ν0s[i],zero(T)),Rs[i],all_pts[i];filt=filts[i],res_tol=T(res_tol),matrix_kind=matrix_kind,matnorm=:one,auto_discard_spurious=auto_discard_spurious,multithreaded=multithreaded_matrix,h=h,P=P,Msmall=Msmall,mp_dps=mp_dps)
         ν_list[i]=λs[i][idx2]
         tens_list[i]=traw
         tensN_list[i]=tnorm
