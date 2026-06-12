@@ -145,9 +145,11 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
     a1v=reshape(A1,:)
     @blas_multi_then_1 MAX_BLAS_THREADS @inbounds @showprogress desc="ldiv!+axpy!(magnetic)" for j in 1:nq
         ldiv!(X,Fs[j],V)
-        c=Complex{T}(cospi(νj[j]))
-        BLAS.axpy!(wj[j]*c,xv,a0v)
-        BLAS.axpy!(wj[j]*Complex{T}(νj[j])*c,xv,a1v)
+        #c=Complex{T}(cospi(νj[j]))
+        #BLAS.axpy!(wj[j]*c,xv,a0v)
+        #BLAS.axpy!(wj[j]*Complex{T}(νj[j])*c,xv,a1v)
+        BLAS.axpy!(wj[j],xv,a0v)
+        BLAS.axpy!(wj[j]*Complex{T}(νj[j]),xv,a1v)
     end
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
@@ -207,9 +209,11 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
     @time "ldiv!+axpy!(magnetic)" begin
         @blas_multi_then_1 MAX_BLAS_THREADS @inbounds @showprogress desc="ldiv!+axpy!(magnetic)" for j in 1:nq
             ldiv!(X,Fs[j],V)
-            c=Complex{T}(cospi(νj[j]))
-            BLAS.axpy!(wj[j]*c,xv,a0v)
-            BLAS.axpy!(wj[j]*Complex{T}(νj[j])*c,xv,a1v)
+            #c=Complex{T}(cospi(νj[j]))
+            #BLAS.axpy!(wj[j]*c,xv,a0v)
+            #BLAS.axpy!(wj[j]*Complex{T}(νj[j])*c,xv,a1v)
+            BLAS.axpy!(wj[j],xv,a0v)
+            BLAS.axpy!(wj[j]*Complex{T}(νj[j]),xv,a1v)
         end
     end
     @show typeof(A0) size(A0) strides(A0)
