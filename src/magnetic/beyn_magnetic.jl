@@ -60,7 +60,7 @@ function precompute_magnetic_contour(solver::MagneticKressSolver,pts::BoundaryPo
     return MagneticContourPrecomp{T,typeof(ws1)}(νj,wj,ws)
 end
 
-function construct_boundary_matrices_precomputed!(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false,operator_convention::Symbol=:regularized)
+function construct_boundary_matrices_precomputed!(solver::MagneticKressSolver,pts::BoundaryPointsCFIE,pc::MagneticContourPrecomp;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,timeit::Bool=false,operator_convention::Symbol=:unregularized)
     gws=pc.ws[1][1]
     N=_workspace_dim(gws)
     nq=length(pc.νj)
