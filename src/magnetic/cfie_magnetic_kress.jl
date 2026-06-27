@@ -10,36 +10,41 @@
 #
 #     k(ν,B) = 2√ν/B.
 #
-# The magnetic Green function is written in the gauge-covariant form
-#     G_B(x,y;ν) = exp[-i(x₁y₂-x₂y₁)/B²] Fν(|x-y|²/B²),
-# where Fν has the logarithmic decomposition
+# The magnetic Green function is used in gauge-covariant form
+#
+#     G_B(x,y;ν) = exp[-i(x₁y₂-x₂y₁)/B²] Fν(|x-y|²/B²).
+#
+# In this implementation Fν denotes the Gamma-stripped radial kernel. The scalar
+# factor Γ(1/2-ν), which carries the free Landau poles, is never evaluated.
+# Since this factor depends only on ν, the homogeneous boundary nullspaces away
+# from Landau levels are unchanged.
+#
+# The stripped radial kernel has the logarithmic decomposition
+#
 #     Fν(z) = Aν(z) log(z) + Bν(z).
-# and Fν(z) is the confluent hypergeometric U function with parameters depending on ν.
 #
 # Hence the boundary kernel has the same universal logarithmic singularity as
 # the ordinary Helmholtz Green function. For a periodic boundary parameter σ,
 # the singularity is split as
+#
 #     log(|x(σ)-x(σ')|²/B²)
 #       = log(4sin²((σ-σ')/2)) + logratio(σ,σ'),
+#
 # where the first term is integrated by the Kress matrix and the second is a
 # smooth remainder.
 #
-# The implemented operators are:
-#   S_B(ν)      magnetic single-layer operator,
-#   D_B(ν)      covariant source-normal magnetic double-layer operator,
-#   C_B(ν)      combined-field operator D_B(ν)+i k(ν,B)S_B(ν).
+# The implemented stripped operators are:
 #
-# The assembled layer kernels are cos(πν)-regularized:
-#     S_reg(ν)=cos(πν)S_unreg(ν),
-#     D_reg(ν)=cos(πν)D_unreg(ν).
+#   S_strip(ν)   magnetic single-layer operator,
+#   D_strip(ν)   covariant source-normal magnetic double-layer operator,
+#   C_strip(ν)   combined-field operator
+#                D_strip(ν)+i k(ν,B)S_strip(ν).
 #
 # The default Fredholm matrix is
-#     D_reg(ν)+i k(ν,B)S_reg(ν)+0.5 cos(πν)I.
 #
-# With `operator_convention=:unregularized`, the final matrix is divided by
-# cos(πν), giving
-#     D_unreg(ν)+i k(ν,B)S_unreg(ν)+0.5I,
-# provided the contour node is away from Landau levels.
+#     D_strip(ν)+i k(ν,B)S_strip(ν)+jump_strip(ν)I.
+#
+# This is the only convention used for Beyn contour integration.
 #
 # Source-normal convention
 # ------------------------
@@ -111,9 +116,13 @@ Return `cos(x)+i sin(x)` with complex element type compatible with real type `T`
 Construct the smooth-boundary magnetic Kress solver.
 
 The spectral parameter is ν and the magnetic scale is k(ν,B)=2√ν/B. The default
-combined-field operator is C(ν)=D_B(ν)+i k(ν,B)S_B(ν)+0.5cos(πν)I, where S_B is
-the magnetic single-layer operator and D_B is the covariant source-normal
-double-layer operator. The boundary must be one smooth periodic curve.
+combined-field operator is the Gamma-stripped operator
+
+    C(ν)=D_strip(ν)+i k(ν,B)S_strip(ν)+jump_strip(ν)I,
+
+where S_strip is the magnetic single-layer operator and D_strip is the
+covariant source-normal double-layer operator. The boundary must be one smooth
+periodic curve.
 """
 struct MagneticCFIE_kress{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     sampler::Vector{LinearNodes}
@@ -486,11 +495,12 @@ end
 """
     build_magnetic_kress_taylor_workspace(ν,zmax; zmin=1e-3, zsmall=1e-3, h=1e-5, P=6, Msmall=30, mp_dps=30)
 
-Build the ν-dependent Taylor workspace for the magnetic Green function.
+Build the ν-dependent Taylor workspace for the Gamma-stripped magnetic Green
+function.
 
-The radial kernel is represented as F(z)=A(z)log(z)+B(z), z=r²/B². The table
-stores F, Fz, A, Az and B on the required z-range and is reused for all
-source-target pairs at fixed ν.
+The stripped radial kernel is represented as F(z)=A(z)log(z)+B(z), z=r²/B².
+The table stores F, Fz, A, Az and B on the required z-range and is reused for
+all source-target pairs at fixed ν.
 """
 function build_magnetic_kress_taylor_workspace(ν::ComplexF64,zmax;zmin=1e-3,zsmall=1e-3,h=1e-5,P=6,Msmall=30,mp_dps::Int=30)
     confluent_U_set_taylor_params!(h_patch=h,P_patch=P)
@@ -650,29 +660,30 @@ end
 """
     _magnetic_apply_operator_convention!(A,ν,operator_convention)
 
-Apply the requested magnetic operator convention.
+Apply the magnetic operator convention.
 
-`:regularized` leaves the cos-regularized matrix unchanged.
-`:unregularized` divides by cos(πν), giving the physical unregularized
-operator away from Landau levels.
+The only active convention is the Gamma-stripped convention. The aliases
+`:gamma_stripped` and `:regularized` both leave the assembled matrix unchanged.
+The old `:unregularized` path is disabled because it would reintroduce Landau
+pole factors into Beyn contour calculations.
 """
 function _magnetic_apply_operator_convention!(A::AbstractMatrix{Complex{T}},ν::ComplexF64,operator_convention::Symbol;tol::T=T(1e-10)) where {T<:Real}
-    operator_convention===:regularized && return A
-    if operator_convention===:unregularized
-        c=cospi(ν)
-        abs(c)<tol && error("Cannot use unregularized magnetic convention near Landau pole: ν=$ν, cospi(ν)=$c.")
-        A.*=inv(c)
+    if operator_convention===:gamma_stripped || operator_convention===:regularized
         return A
+    elseif operator_convention===:unregularized
+        error("operator_convention=:unregularized is disabled. Use :gamma_stripped.")
+    else
+        error("Unknown magnetic operator_convention=$operator_convention.")
     end
-    error("Unknown magnetic operator_convention=$operator_convention.")
 end
 
 """
-    _magnetic_add_jump!(A,ν,matrix_kind::Symbol)
+    _magnetic_add_jump!(A,tab,matrix_kind::Symbol)
 
-Add the magnetic double-layer jump term.
-For `:slp` nothing is added. In the regularized convention the diagonal addition
-is 2π aν I, where aν=Aν(0)=1/(4 Γ(1/2-ν) Γ(1/2+ν)).
+Add the stripped magnetic double-layer jump term.
+For `:slp` nothing is added. For `:dlp_src` and `:cfie_src`, the diagonal
+addition is 2π aν I, where aν is the logarithmic coefficient of the
+Gamma-stripped radial kernel at z=0.
 """
 function _magnetic_add_jump!(A,tab,matrix_kind::Symbol)
     matrix_kind===:slp && return A
@@ -699,7 +710,7 @@ z=|x-y|²/B², and the periodic Kress logarithm log(4sin²((σᵢ-σⱼ)/2)).
 After assembly, the magnetic double-layer jump is added: in the regularized
 form this is 0.5cos(πν)I.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:regularized) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:gamma_stripped) where {T<:Real}
     G=gws.G;N=gws.N;tab=kws.tab;ν=kws.ν
     fill!(A,zero(Complex{T}))
     @use_threads multithreading=(multithreaded&&N>=32) for j in 1:N
@@ -729,7 +740,7 @@ copy uses Kress splitting, while all symmetry copies are geometrically separated
 and are therefore evaluated by `_magnetic_regular_image_entry`. The final jump
 term is added in the same convention as the full matrix.
 """
-function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:regularized) where {T<:Real}
+function construct_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:gamma_stripped) where {T<:Real}
     full=rgws.full
     G=full.G
     tab=kws.tab
@@ -773,7 +784,7 @@ The source source-normal operator is first assembled into `D`. The adjoint
 matrix is then formed by the quadrature-weight similarity transpose
 Aᵢⱼ = Dⱼᵢ wⱼ/wᵢ, where wⱼ=|γσ(σⱼ)|dσ is stored as `gws.G.wsrc[j]`.
 """
-function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:regularized) where {T<:Real}
+function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::MagneticKressGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:gamma_stripped) where {T<:Real}
     construct_magnetic_operator_matrix!(D,pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded,operator_convention=operator_convention)
     w=gws.G.wsrc;N=gws.N
     @inbounds for i in 1:N,j in 1:N
@@ -797,7 +808,7 @@ Use this matrix when `solve_vect` is requested in a symmetry sector, so that the
 returned null vector corresponds to the adjoint boundary data in the reduced
 basis.
 """
-function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:regularized) where {T<:Real}
+function adjoint_magnetic_operator_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},rgws::MagneticKressReducedGeomWorkspace{T},kws::MagneticKressTaylorWorkspace;matrix_kind::Symbol=:cfie_src,multithreaded::Bool=true,operator_convention::Symbol=:gamma_stripped) where {T<:Real}
     construct_magnetic_operator_matrix!(D,pts,rgws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded,operator_convention=operator_convention)
     w=rgws.full.G.wsrc;Ifund=rgws.Ifund;m=rgws.m
     @inbounds for a in 1:m,b in 1:m
@@ -817,7 +828,7 @@ The geometry workspace `gws` is ν-independent and is reused. The Taylor workspa
 `construct_magnetic_operator_matrix!` fills `A`. This is the standard reusable
 assembly path for sweeps and contour methods.
 """
-function construct_matrices!(solver::MagneticKressSolver,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,operator_convention::Symbol=:regularized) where {T<:Real}
+function construct_matrices!(solver::MagneticKressSolver,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,operator_convention::Symbol=:gamma_stripped) where {T<:Real}
     update_magnetic_kress_taylor_workspace!(kws,ComplexF64(ν);mp_dps=mp_dps)
     return construct_magnetic_operator_matrix!(A,pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded,operator_convention=operator_convention)
 end
@@ -833,7 +844,7 @@ For determinant-based diagnostics, `which=:det` follows the same dispatch as the
 other boundary-integral solvers. The supplied matrix `A` and workspaces are
 reused to avoid allocation in sweeps.
 """
-function solve(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,operator_convention::Symbol=:regularized) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:svd,operator_convention::Symbol=:gamma_stripped) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,gws,kws,ν;matrix_kind=matrix_kind,mp_dps=mp_dps,multithreaded=multithreaded,operator_convention=operator_convention)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
@@ -884,7 +895,7 @@ This should be used for boundary-function postprocessing, Husimi transforms and
 wavefunction reconstruction, whereas `solve` is sufficient for scalar
 eigenvalue detection.
 """
-function solve_vect(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,operator_convention::Symbol=:regularized) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::MagneticKressSolver,basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPointsCFIE{T},gws::Union{MagneticKressGeomWorkspace{T},MagneticKressReducedGeomWorkspace{T}},kws::MagneticKressTaylorWorkspace,ν;matrix_kind::Symbol=:cfie_src,mp_dps::Int=30,multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40,operator_convention::Symbol=:gamma_stripped) where {T<:Real,Ba<:AbsBasis}
     update_magnetic_kress_taylor_workspace!(kws,ComplexF64(ν);mp_dps=mp_dps)
     D=similar(A)
     @blas_1 adjoint_magnetic_operator_matrix!(A,D,pts,gws,kws;matrix_kind=matrix_kind,multithreaded=multithreaded,operator_convention=operator_convention)
@@ -935,7 +946,7 @@ Each buffer must have size `_workspace_dim(gws) × _workspace_dim(gws)`, where
 the dimension is either the full boundary size or the reduced symmetry-sector
 size.
 """
-function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,multithreaded::Bool=true,timeit::Bool=false,operator_convention::Symbol=:regularized) where {T<:Real}
+function construct_boundary_matrices!(Tbufs::Vector{Matrix{ComplexF64}},solver::MagneticKressSolver,pts::BoundaryPointsCFIE{T},zj::AbstractVector{ComplexF64};matrix_kind::Symbol=:cfie_src,h=1e-5,P=6,Msmall=30,mp_dps::Int=30,multithreaded::Bool=true,timeit::Bool=false,operator_convention::Symbol=:gamma_stripped) where {T<:Real}
     @blas_1 begin
         @benchit timeit=timeit "Magnetic Kress geometry workspace" gws=build_magnetic_kress_geom_workspace(solver,pts)
         N=_workspace_dim(gws)

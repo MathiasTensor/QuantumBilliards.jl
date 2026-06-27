@@ -1,11 +1,11 @@
 # =============================================================================
-# Fast Taylor-patch evaluator for the Landau-regularized magnetic Green radial
-# factor
+# Fast Taylor-patch evaluator for the no-global-gamma Landau-regularized
+# magnetic Green radial factor
 # =============================================================================
 # This file provides fast, allocation-free evaluation of the gauge-independent
 # radial factor
 #
-#     F(z;ν) = -exp(-z/2) U(1/2-ν,1,z) / (4 Γ(ν+1/2)),
+#     F(z;ν) = -exp(-z/2) U(1/2-ν,1,z) / 4
 #
 # where
 #
@@ -29,11 +29,8 @@
 # Near z=0,
 #
 #     F(z;ν) = aν log(z) + Rν(z),
-#     aν = cos(πν)/(4π),
-#
-# with finite part
-#
-#     Rν(0) = aν[ψ(ν+1/2)-2ψ(1)] - sin(πν)/4.
+#     aν = 1/(4Γ(1/2-ν))
+#     Rν(0) = aν[ψ(1/2-ν)+2γ]
 #
 # The evaluator provides both F(z) and Rν(z). The Kress-specific combination
 # involving log(|x(t)-x(τ)|²/(4b²sin²((t-τ)/2))) belongs in the separate Kress
@@ -78,7 +75,7 @@ const inv4π=1/(4*pi)
 #
 # Global numerical configuration for the Taylor-patch evaluator of
 #
-#     F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/(4Γ(ν+1/2)).
+#     F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/4.
 #
 # The runtime table is built in s=sqrt(z), where G(s)=F(s²) satisfies
 #
@@ -213,7 +210,7 @@ end
 #
 # The evaluated radial factor is
 #
-#     F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/(4Γ(ν+1/2)),
+#     F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/4
 #
 # with
 #
@@ -366,16 +363,15 @@ end
 # =============================================================================
 # magnetic_log_coeff
 #
-#   Return the coefficient of the logarithmic singularity of the regularized
-#   magnetic Green radial factor.
+#   Return the coefficient of the logarithmic singularity
 #
-#   Near z=0,
+#    aν = 1/(4Γ(1/2-ν)).
 #
-#   F(z;ν) = a_ν log(z) + R_ν(z),
+# Near z=0,
 #
-#   where R_ν is finite at z=0 and
+#    F(z;ν)=aν log(z)+Rν(z).
 #
-#   a_ν = cos(πν)/(4π).
+# This coefficient vanishes at Landau values; it has no poles.
 #
 # Inputs
 #   ν::ComplexF64 Complex spectral parameter.
@@ -388,21 +384,19 @@ end
 #   separately during boundary-kernel assembly.
 # =============================================================================
 @inline function magnetic_log_coeff(ν::ComplexF64)
-    return cospi(ν)*inv4π
+    return magnetic_log_coeff_mpmath(ν;dps=80)
 end
 
 # =============================================================================
 # magnetic_R0
 #
-# Purpose
-# Return the diagonal finite part R_ν(0) of the regularized magnetic Green
-# radial factor.
+# Return the finite diagonal part
 #
-#   F(z;ν)=a_ν log(z)+R_ν(z),
+#    Rν(0)=aν[ψ(1/2-ν)+2γ],
 #
-#   the finite part is 
+# where
 #
-#   R_ν(0) = a_ν[ψ(ν+1/2)-2ψ(1)] - sin(πν)/4.
+#    aν=1/(4Γ(1/2-ν)).
 #
 # Inputs
 #   ν::ComplexF64 Complex spectral parameter.
@@ -416,18 +410,54 @@ end
 #   `magnetic_R0_mpmath`.
 # =============================================================================
 @inline function magnetic_R0(ν::ComplexF64)
-    A0=magnetic_log_coeff(ν)
-    return A0*(SpecialFunctions.digamma(ν+0.5)-2*SpecialFunctions.digamma(1.0+0.0im))-sin(pi*ν)/4
+    return magnetic_R0_mpmath(ν;dps=80)
 end
 
+# =============================================================================
+# magnetic_constants_mpmath
+#
+# High-precision constants for
+#
+#     F(z;ν)=-exp(-z/2)U(1/2-ν,1,z)/4.
+#
+# Returns
+#   a0      = 1/(4Γ(1/2-ν))
+#   R0      = a0[ψ(1/2-ν)+2γ]
+#   a0ν,a0νν
+#   R0ν,R0νν
+# =============================================================================
 function magnetic_constants_mpmath(ν::ComplexF64;dps::Int=80)
     lock(PYCALL_MPMATH_LOCK)
     try
-        a0r,a0i,r0r,r0i,r1r,r1i,r2r,r2i =pycall(_py_mag_consts,NTuple{8,Float64},real(ν),imag(ν),dps)
-        return (ComplexF64(a0r,a0i),ComplexF64(r0r,r0i),ComplexF64(r1r,r1i),ComplexF64(r2r,r2i))
+        _mpctx[].dps=dps
+        a=_mpf[](0.5)-_mpc[](real(ν),imag(ν))
+        rg=_mp_rgamma_val(a)
+        ψ=_mp_digamma[](a)
+        ψ1=_mp_polygamma[](1,a)
+        ψ2=_mp_polygamma[](2,a)
+        D=ψ+2*_mp_euler[]
+        a0=rg/4
+        a0ν=a0*ψ
+        a0νν=a0*(ψ^2-ψ1)
+        R0=a0*D
+        R0ν=a0ν*D-a0*ψ1
+        R0νν=a0νν*D-2*a0ν*ψ1+a0*ψ2
+        return (
+            ComplexF64(pycall(_pyfloat[],Float64,a0.real),pycall(_pyfloat[],Float64,a0.imag)),
+            ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag)),
+            ComplexF64(pycall(_pyfloat[],Float64,a0ν.real),pycall(_pyfloat[],Float64,a0ν.imag)),
+            ComplexF64(pycall(_pyfloat[],Float64,a0νν.real),pycall(_pyfloat[],Float64,a0νν.imag)),
+            ComplexF64(pycall(_pyfloat[],Float64,R0ν.real),pycall(_pyfloat[],Float64,R0ν.imag)),
+            ComplexF64(pycall(_pyfloat[],Float64,R0νν.real),pycall(_pyfloat[],Float64,R0νν.imag)),
+        )
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
+end
+
+function magnetic_log_coeff_derivs_mpmath(ν::ComplexF64;dps::Int=80)
+    _,_,a0ν,a0νν,_,_=magnetic_constants_mpmath(ν;dps=dps)
+    return a0ν,a0νν
 end
 
 # =============================================================================
@@ -450,21 +480,8 @@ end
 # Output
 #   ComplexF64 High-precision-computed a_ν, rounded back to ComplexF64.
 # =============================================================================
-#=
-function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=30)
-    lock(PYCALL_MPMATH_LOCK)
-    try
-        _mpctx[].dps=dps
-        νp=_mpc[](real(ν),imag(ν))
-        A0=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
-        return ComplexF64(pycall(_pyfloat[],Float64,A0.real),pycall(_pyfloat[],Float64,A0.imag))
-    finally
-        unlock(PYCALL_MPMATH_LOCK)
-    end
-end
-=#
-function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=30)
-    a0,_,_,_=magnetic_constants_mpmath(ν;dps=dps)
+function magnetic_log_coeff_mpmath(ν::ComplexF64;dps::Int=80)
+    a0,_,_,_,_,_=magnetic_constants_mpmath(ν;dps=dps)
     return a0
 end
 
@@ -474,7 +491,7 @@ end
 # Purpose
 # High-precision mpmath version of `magnetic_R0`.
 #
-#       R_ν(0) = a_ν[ψ(ν+1/2)-2ψ(1)] - sin(πν)/4
+#       R_ν(0) = a_ν[ψ(1/2-ν)+2γ]
 #
 # using mpmath arithmetic.
 #
@@ -491,22 +508,8 @@ end
 # Output
 #   ComplexF64 High-precision-computed R_ν(0), rounded back to ComplexF64.
 # =============================================================================
-#=
-function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=30)
-    lock(PYCALL_MPMATH_LOCK)
-    try
-        _mpctx[].dps=dps
-        νp=_mpc[](real(ν),imag(ν))
-        A0=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
-        R0=A0*(_mp_digamma[](νp+_mpf[](0.5))-2*_mp_digamma[](_mpf[](1)))-_mp_sin[](_mp_pi[]*νp)/4
-        return ComplexF64(pycall(_pyfloat[],Float64,R0.real),pycall(_pyfloat[],Float64,R0.imag))
-    finally
-        unlock(PYCALL_MPMATH_LOCK)
-    end
-end
-=#
-function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=30)
-    _,R0,_,_=magnetic_constants_mpmath(ν;dps=dps)
+function magnetic_R0_mpmath(ν::ComplexF64;dps::Int=80)
+    _,R0,_,_,_,_=magnetic_constants_mpmath(ν;dps=dps)
     return R0
 end
 
@@ -524,7 +527,7 @@ end
 #
 # The radial Green factor is
 #
-#       F(z;ν) = -exp(-z/2) U(1/2-ν,1,z) / (4Γ(ν+1/2)).
+#       F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/4.
 #
 #   Differentiating with respect to z gives
 #
@@ -533,8 +536,8 @@ end
 #
 #   where
 #
-#       a = 1/2 - ν,
-#       C = -1/(4Γ(ν+1/2)).
+#       a = 1/2-ν,
+#       C = -1/4.
 #
 # Why this is needed
 #   Direct calls to HypergeometricU are too expensive for every matrix entry.
@@ -553,36 +556,23 @@ end
 #    G0  = G(s0;ν)
 #    Gp0 = dG/ds(s0;ν)
 # =============================================================================
-#=
 function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
     lock(PYCALL_MPMATH_LOCK)
     try
         _mpctx[].dps=dps
-        s_py=_mpf[](s0)
-        z=s_py*s_py
-        ν_py=_mpc[](real(ν),imag(ν))
-        a_py=_mpf[](0.5)-ν_py
-        C=-_mpf[](0.25)/_mp_gamma[](1-a_py)
-        U0=_mp_hyperu[](a_py,1,z)
-        U1=_mp_hyperu[](a_py+1,2,z)
+        s=_mpf[](s0)
+        z=s*s
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        C=-_mpf[](0.25)
+        U0=_mp_hyperu[](a,1,z)
+        U1=_mp_hyperu[](a+1,2,z)
         ez=_mp_exp[](-z/2)
         F=C*ez*U0
-        Fz=C*ez*(-_mpf[](0.5)*U0-a_py*U1)
-        G=F
-        Gp=2*s_py*Fz
-        Gre=pycall(_pyfloat[],Float64,G.real);Gim=pycall(_pyfloat[],Float64,G.imag)
-        Gpre=pycall(_pyfloat[],Float64,Gp.real);Gpim=pycall(_pyfloat[],Float64,Gp.imag)
-        return ComplexF64(Gre,Gim),ComplexF64(Gpre,Gpim)
-    finally
-        unlock(PYCALL_MPMATH_LOCK)
-    end
-end
-=#
-function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
-    lock(PYCALL_MPMATH_LOCK)
-    try
-        a,b,c,d=pycall(_py_seed_u,NTuple{4,Float64},real(ν),imag(ν),s0,dps)
-        return ComplexF64(a,b),ComplexF64(c,d)
+        Fz=C*ez*(-_mpf[](0.5)*U0-a*U1)
+        Gp=2*s*Fz
+        return ComplexF64(pycall(_pyfloat[],Float64,F.real),pycall(_pyfloat[],Float64,F.imag)),
+               ComplexF64(pycall(_pyfloat[],Float64,Gp.real),pycall(_pyfloat[],Float64,Gp.imag))
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
@@ -618,7 +608,7 @@ end
 #
 # where
 #
-#     Aν(z)=cos(πν)/(4π)*exp(-z/2)*1F1(1/2-ν;1;z).
+#     Aν(z)=exp(-z/2)1F1(1/2-ν;1;z)/(4Γ(1/2-ν)).
 #
 # This is the full z-dependent logarithmic coefficient in
 #
@@ -627,7 +617,6 @@ end
 # Output
 #   (A0,Ap0), where Ap0=dH/ds(s0).
 # =============================================================================
-#=
 function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
     lock(PYCALL_MPMATH_LOCK)
     try
@@ -636,7 +625,7 @@ function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         z=s*s
         νp=_mpc[](real(ν),imag(ν))
         a=_mpf[](0.5)-νp
-        c=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
+        c=_mp_rgamma_val(a)/4
         M0=_mp_hyp1f1[](a,1,z)
         M1=_mp_hyp1f1[](a+1,2,z)
         ez=_mp_exp[](-z/2)
@@ -645,16 +634,6 @@ function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         Ap=2*s*Az
         return ComplexF64(pycall(_pyfloat[],Float64,A.real),pycall(_pyfloat[],Float64,A.imag)),
                ComplexF64(pycall(_pyfloat[],Float64,Ap.real),pycall(_pyfloat[],Float64,Ap.imag))
-    finally
-        unlock(PYCALL_MPMATH_LOCK)
-    end
-end
-=#
-function seed_A_Ap_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
-    lock(PYCALL_MPMATH_LOCK)
-    try
-        a,b,c,d=pycall(_py_seed_a,NTuple{4,Float64},real(ν),imag(ν),s0,dps)
-        return ComplexF64(a,b),ComplexF64(c,d)
     finally
         unlock(PYCALL_MPMATH_LOCK)
     end
@@ -836,15 +815,14 @@ end
 # =============================================================================
 # build_small_z_coeffs
 #
-# Purpose
-# Build coefficients for the small-z log representation
+# Build coefficients for
 #
-#       F(z;ν)=A(z)log(z)+B(z),
+#       F(z)=A(z)log(z)+B(z),
 #
 # where
 #
-#       A(z)=Σ A_m z^m,
-#       B(z)=Σ B_m z^m.
+#    A(0)=1/(4Γ(1/2-ν)),
+#    B(0)=A(0)[ψ(1/2-ν)+2γ].
 #
 # Initial values
 # The leading coefficients are
@@ -911,7 +889,7 @@ end
 #
 #   where
 #
-#       F(z;ν) = -exp(-z/2)U(1/2-ν,1,z)/(4Γ(ν+1/2)).
+#      F(z;ν)=-exp(-z/2)U(1/2-ν,1,z)/4.
 #
 # Small-z representation
 #   For z<zsmall, the table does not extrapolate the s-Taylor patches. Instead
@@ -939,7 +917,7 @@ end
 #   gcoeffs::Matrix{ComplexF64} Taylor coefficients of G(s). Column j stores the coefficients for the
 #   patch centered at centers[j].
 #
-#   a_log::ComplexF64 Logarithmic coefficient aν=cos(πν)/(4π).
+#   a_log::ComplexF64: aν=1/(4Γ(1/2-ν))
 #
 #   R0::ComplexF64 Finite regular part Rν(0).
 #
@@ -1345,24 +1323,9 @@ end
 # Keyword arguments
 #   mp_dps::Int=100 mpmath precision for a_ν and Rν(0).
 # =============================================================================
-#=
 function _update_small_z!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ν::ComplexF64;mp_dps::Int=100)
     tab.ν=ν
-    tab.a_log=magnetic_log_coeff_mpmath(ν;dps=mp_dps)
-    tab.R0=magnetic_R0_mpmath(ν;dps=mp_dps)
-    A,B=build_small_z_coeffs(ν,tab.R0;a0=tab.a_log,M=pre.Msmall)
-    A[1]=tab.a_log
-    B[1]=tab.R0
-    resize!(tab.smallA,length(A))
-    resize!(tab.smallB,length(B))
-    copyto!(tab.smallA,A)
-    copyto!(tab.smallB,B)
-    return nothing
-end
-=#
-function _update_small_z!(tab::MagneticGreenSTaylorTable,pre::MagneticGreenSPrecomp,ν::ComplexF64;mp_dps::Int=100)
-    tab.ν=ν
-    tab.a_log,tab.R0,_,_=magnetic_constants_mpmath(ν;dps=mp_dps)
+    tab.a_log,tab.R0,_,_,_,_=magnetic_constants_mpmath(ν;dps=mp_dps)
     A,B=build_small_z_coeffs(ν,tab.R0;a0=tab.a_log,M=pre.Msmall)
     A[1]=tab.a_log
     B[1]=tab.R0
@@ -1674,7 +1637,7 @@ end
 # Purpose
 # Evaluate the full logarithmic coefficient
 #
-#     Aν(z)=cos(πν)/(4π)*exp(-z/2)*1F1(1/2-ν;1;z),
+#     Aν(z)=exp(-z/2)1F1(1/2-ν;1;z)/(4Γ(1/2-ν)).
 #
 # appearing in the exact local split
 #
@@ -1685,7 +1648,7 @@ end
 #     log(4sin²((t-τ)/2)).
 #
 # Notes
-#   At z=0, Aν(0)=aν=cos(πν)/(4π).
+#   At z=0, Aν(0)=aν=1/(4Γ(1/2-ν)).
 # =============================================================================
 @inline function _eval_Alog(tab::MagneticGreenSTaylorTable,z::Float64)
     z==0.0 && return tab.a_log
@@ -1928,20 +1891,14 @@ end
     return MagneticDerivativesGreenSTaylorTable(base,Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Matrix{ComplexF64}(undef,pre.P+1,pre.Npatch),Vector{ComplexF64}(undef,pre.Msmall+1),Vector{ComplexF64}(undef,pre.Msmall+1),Vector{ComplexF64}(undef,pre.Msmall+1),Vector{ComplexF64}(undef,pre.Msmall+1))
 end
 
-# =============================================================================
-# magnetic_log_coeff_ν, magnetic_log_coeff_νν
-#
-# Purpose
-# Return the first and second ν-derivatives of
-#
-#   aν = cos(πν)/(4π).
-#
-# Formulas
-#   ∂ν aν  = -sin(πν)/4,
-#   ∂νν aν = -π cos(πν)/4.
-# =============================================================================
-@inline magnetic_log_coeff_ν(ν::ComplexF64)=-sinpi(ν)/4
-@inline magnetic_log_coeff_νν(ν::ComplexF64)=-(π/4)*cospi(ν)
+@inline function magnetic_log_coeff_ν(ν::ComplexF64)
+    a0ν,_=magnetic_log_coeff_derivs_mpmath(ν;dps=80)
+    return a0ν
+end
+@inline function magnetic_log_coeff_νν(ν::ComplexF64)
+    _,a0νν=magnetic_log_coeff_derivs_mpmath(ν;dps=80)
+    return a0νν
+end
 
 # =============================================================================
 # magnetic_R0_derivs_mpmath
@@ -1949,7 +1906,8 @@ end
 # Compute high-precision first and second ν-derivatives of the finite diagonal
 # part
 #
-#   R0(ν)=aν[ψ(ν+1/2)-2ψ(1)]-sin(πν)/4.
+#     R0(ν)=aν[ψ(1/2-ν)+2γ],
+#     aν=1/(4Γ(1/2-ν)).
 #
 # Returns
 #   (R0ν,R0νν)
@@ -1958,29 +1916,8 @@ end
 #   This is called only during table construction. Runtime evaluation uses the
 #   propagated Taylor coefficients and does not call mpmath.
 # =============================================================================
-#=
 function magnetic_R0_derivs_mpmath(ν::ComplexF64;dps::Int=80)
-    lock(PYCALL_MPMATH_LOCK)
-    try
-        _mpctx[].dps=dps
-        νp=_mpc[](real(ν),imag(ν))
-        h=_mpf[](0.5)
-        A0=_mp_cos[](_mp_pi[]*νp)/(4*_mp_pi[])
-        A1=-_mp_sin[](_mp_pi[]*νp)/4
-        A2=-_mp_pi[]*_mp_cos[](_mp_pi[]*νp)/4
-        D=_mp_digamma[](νp+h)-2*_mp_digamma[](_mpf[](1))
-        P1=_mp_polygamma[](1,νp+h)
-        P2=_mp_polygamma[](2,νp+h)
-        R1=A1*D+A0*P1-_mp_pi[]*_mp_cos[](_mp_pi[]*νp)/4
-        R2=A2*D+2*A1*P1+A0*P2+(_mp_pi[]^2)*_mp_sin[](_mp_pi[]*νp)/4
-        return ComplexF64(pycall(_pyfloat[],Float64,R1.real),pycall(_pyfloat[],Float64,R1.imag)),ComplexF64(pycall(_pyfloat[],Float64,R2.real),pycall(_pyfloat[],Float64,R2.imag))
-    finally
-        unlock(PYCALL_MPMATH_LOCK)
-    end
-end
-=#
-function magnetic_R0_derivs_mpmath(ν::ComplexF64;dps::Int=80)
-    _,_,R0ν,R0νν=magnetic_constants_mpmath(ν;dps=dps)
+    _,_,_,_,R0ν,R0νν=magnetic_constants_mpmath(ν;dps=dps)
     return R0ν,R0νν
 end
 
@@ -2307,8 +2244,8 @@ end
 function build_MagneticDerivativesGreenSTaylorTable!(dtab::MagneticDerivativesGreenSTaylorTable,pre::MagneticGreenSPrecomp,basews::MagneticGreenSWorkspace,derws::MagneticDerivativesGreenSWorkspace,ν::ComplexF64;mp_dps::Int=80,anchor_s::Union{Nothing,Float64}=nothing)
     base=dtab.base
     build_MagneticGreenSTaylorTable!(base,pre,basews,ν;mp_dps=mp_dps,anchor_s=anchor_s)
-    R0ν,R0νν=magnetic_R0_derivs_mpmath(ν;dps=mp_dps)
-    Aν,Aνν,Bν,Bνν=build_small_z_deriv_coeffs(ν,base.R0,R0ν,R0νν;a0=base.a_log,M=pre.Msmall)
+    _,_,a0ν,a0νν,R0ν,R0νν=magnetic_constants_mpmath(ν;dps=mp_dps)
+    Aν,Aνν,Bν,Bνν=build_small_z_deriv_coeffs(ν,base.R0,R0ν,R0νν;a0=base.a_log,a0ν=a0ν,a0νν=a0νν,M=pre.Msmall)
     resize!(dtab.smallAν,length(Aν));resize!(dtab.smallAνν,length(Aνν))
     resize!(dtab.smallBν,length(Bν));resize!(dtab.smallBνν,length(Bνν))
     copyto!(dtab.smallAν,Aν);copyto!(dtab.smallAνν,Aνν)
@@ -2416,6 +2353,36 @@ end
 ##### FOR TESTING: REFERENCE EVALUATION WITH MP MPMATH #####
 ############################################################
 
+function F_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        zp=_mpf[](z)
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        F=-_mpf[](0.25)*_mp_exp[](-zp/2)*_mp_hyperu[](a,1,zp)
+        return ComplexF64(pycall(_pyfloat[],Float64,F.real),pycall(_pyfloat[],Float64,F.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
+end
+
+function Fz_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
+    lock(PYCALL_MPMATH_LOCK)
+    try
+        _mpctx[].dps=dps
+        zp=_mpf[](z)
+        νp=_mpc[](real(ν),imag(ν))
+        a=_mpf[](0.5)-νp
+        U0=_mp_hyperu[](a,1,zp)
+        U1=_mp_hyperu[](a+1,2,zp)
+        Fz=-_mpf[](0.25)*_mp_exp[](-zp/2)*(-_mpf[](0.5)*U0-a*U1)
+        return ComplexF64(pycall(_pyfloat[],Float64,Fz.real),pycall(_pyfloat[],Float64,Fz.imag))
+    finally
+        unlock(PYCALL_MPMATH_LOCK)
+    end
+end
+
 function Alog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
     lock(PYCALL_MPMATH_LOCK)
     try
@@ -2423,7 +2390,7 @@ function Alog_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
         zp=_mpf[](z)
         νp=_mpc[](real(ν),imag(ν))
         a=_mpf[](0.5)-νp
-        c=_mpf[](0.25)*_mp_rgamma_val(a)*_mp_rgamma_val(1-a)
+        c=_mp_rgamma_val(a)/4
         A=c*_mp_exp[](-zp/2)*_mp_hyp1f1[](a,1,zp)
         return ComplexF64(pycall(_pyfloat[],Float64,A.real),pycall(_pyfloat[],Float64,A.imag))
     finally
@@ -2436,9 +2403,8 @@ function Alog_z_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
     try
         _mpctx[].dps=dps
         zp=_mpf[](z)
-        νp=_mpc[](real(ν),imag(ν))
-        a=_mpf[](0.5)-νp
-        c=_mpf[](0.25)*_mp_rgamma_val(a)*_mp_rgamma_val(1-a)
+        a=_mpf[](0.5)-_mpc[](real(ν),imag(ν))
+        c=_mp_rgamma_val(a)/4
         M0=_mp_hyp1f1[](a,1,zp)
         M1=_mp_hyp1f1[](a+1,2,zp)
         Az=c*_mp_exp[](-zp/2)*(a*M1-_mpf[](0.5)*M0)
