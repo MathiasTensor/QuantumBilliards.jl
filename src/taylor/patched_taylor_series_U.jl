@@ -564,7 +564,7 @@ function seed_G_Gp_mpmath(s0::Float64,ν::ComplexF64;dps::Int=80)
         z=s*s
         νp=_mpc[](real(ν),imag(ν))
         a=_mpf[](0.5)-νp
-        C=-_mpf[](0.25)
+        C=-_mp_rgamma_val(a)/4
         U0=_mp_hyperu[](a,1,z)
         U1=_mp_hyperu[](a+1,2,z)
         ez=_mp_exp[](-z/2)
@@ -2360,7 +2360,7 @@ function F_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
         zp=_mpf[](z)
         νp=_mpc[](real(ν),imag(ν))
         a=_mpf[](0.5)-νp
-        F=-_mpf[](0.25)*_mp_exp[](-zp/2)*_mp_hyperu[](a,1,zp)
+        F=-_mp_rgamma_val(a)/4*_mp_exp[](-zp/2)*_mp_hyperu[](a,1,zp)
         return ComplexF64(pycall(_pyfloat[],Float64,F.real),pycall(_pyfloat[],Float64,F.imag))
     finally
         unlock(PYCALL_MPMATH_LOCK)
@@ -2376,7 +2376,7 @@ function Fz_ref_mpmath(z::Float64,ν::ComplexF64;dps::Int=100)
         a=_mpf[](0.5)-νp
         U0=_mp_hyperu[](a,1,zp)
         U1=_mp_hyperu[](a+1,2,zp)
-        Fz=-_mpf[](0.25)*_mp_exp[](-zp/2)*(-_mpf[](0.5)*U0-a*U1)
+        Fz=-_mp_rgamma_val(a)/4*_mp_exp[](-zp/2)*(-_mpf[](0.5)*U0-a*U1)
         return ComplexF64(pycall(_pyfloat[],Float64,Fz.real),pycall(_pyfloat[],Float64,Fz.imag))
     finally
         unlock(PYCALL_MPMATH_LOCK)
