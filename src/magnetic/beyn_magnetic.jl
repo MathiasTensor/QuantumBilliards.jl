@@ -122,6 +122,10 @@ function construct_B_matrix_magnetic(solver::MagneticKressSolver,pts::BoundaryPo
         BLAS.axpy!(wj[j],xv,a0v)
         BLAS.axpy!(wj[j]*Complex{T}(νj[j]),xv,a1v)
     end
+    scaleA=maximum(abs,A0)
+    scaleA>0 || return Matrix{Complex{T}}(undef,0,0),Matrix{Complex{T}}(undef,N,0)
+    A0./=scaleA
+    A1./=scaleA
     @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     rk=count(>=(svd_tol),Σ)
     rk==0 && return Matrix{Complex{T}}(undef,0,0),Matrix{Complex{T}}(undef,N,0)
@@ -180,6 +184,10 @@ function solve_INFO_magnetic(solver::MagneticKressSolver,basis::Ba,pts::Boundary
     end
     @show typeof(A0) size(A0) strides(A0)
     @assert all(isfinite,A0)
+    scaleA=maximum(abs,A0)
+    scaleA>0 || return Matrix{Complex{T}}(undef,0,0),Matrix{Complex{T}}(undef,N,0)
+    A0./=scaleA
+    A1./=scaleA
     @time "SVD(magnetic)" @blas_multi_then_1 MAX_BLAS_THREADS U,Σ,W=svd!(A0;full=false)
     println("Singular values of A0: ",Σ)
     svd_tol_eff=use_adaptive_svd_tol ? maximum(Σ)*1e-15 : svd_tol
