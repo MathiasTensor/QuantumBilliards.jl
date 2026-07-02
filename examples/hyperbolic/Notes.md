@@ -1,0 +1,1 @@
+Here are the eigenvalues (real and im part from Beyn) for the triangles in the paper "Perturbed quantum billiards on the hyperbolic plane". Also you can find there the localization entropy data that was used to generate the std(beta) in the paper.
