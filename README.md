@@ -3,7 +3,7 @@
 A Julia library for computing eigenvalues, eigenfunctions and Husimi functions of 2D quantum billiards using boundary integral and basis-expansion methods.
 
 **See examples folder for most common and practical uses of this library!**
-**Manual coming soon!!!**
+**Manual (and paper) coming soon!!!**
 
 ## Overview
 
