@@ -24,6 +24,20 @@ Targets high-frequency spectral computations on smooth and piecewise-smooth doma
 
 Focus is on the balance between **performance** and **spectral resolution**, with a high-level API and low-level optimizations.
 
+## Citing
+
+If you use `QuantumBilliards.jl` in your research, please cite it as:
+
+```bibtex
+@software{Orel_Lozej_QuantumBilliards_jl,
+  author = {Orel, Matic and Lozej, Črt},
+  title = {{QuantumBilliards.jl}: High-frequency spectral computations for two-dimensional quantum billiards},
+  url = {https://github.com/Quantum-Chaos-Julia/QuantumBilliards.jl},
+  version = {0.1.0},
+  year = {2026}
+}
+```
+
 ---
 
 ## Methods
