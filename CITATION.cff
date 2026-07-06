@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use QuantumBilliards.jl in your research, please cite it as below."
+title: "QuantumBilliards.jl: High-frequency spectral computations for two-dimensional quantum billiards"
+authors:
+  - family-names: "Orel"
+    given-names: "Matic"
+  - family-names: "Lozej"
+    given-names: "Črt"
+repository-code: "https://github.com/Quantum-Chaos-Julia/QuantumBilliards.jl"
+url: "https://github.com/Quantum-Chaos-Julia/QuantumBilliards.jl"
+abstract: "A Julia library for computing eigenvalues, eigenfunctions, and Poincaré-Husimi functions of two-dimensional quantum billiards using boundary-integral, basis-expansion, EBIM, Vergini-Saraceno, and Beyn contour methods."
+keywords:
+  - quantum billiards
+  - quantum chaos
+  - boundary integral methods
+  - Vergini-Saraceno method
+  - Beyn method
+  - Poincaré-Husimi functions
+  - Julia
+license: "MIT"
