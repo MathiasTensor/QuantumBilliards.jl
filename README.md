@@ -164,7 +164,7 @@ Symmetry reduction reduces problem size and improves performance, but:
 - the spectrum splits into symmetry sectors -> removing degeneracies.
 - level counting must match the reduced domain -> only get parts of the full spectrum for that irrep.
 
-Some solvers (e.g. CFIE Kress, Alpert) assume periodic parametrizations and do not directly support desymmetrization. Beyn provides a natural workaround in these cases, but still requires full matrix assembly and inversion (lu!).
+Some solvers (e.g. CFIE Kress, Alpert) assume periodic parametrizations and do not directly support desymmetrization **(now implemented!)**. 
 
 **Use symmetry whenever possible for improved performance and removal of degeneracies**
 
