@@ -231,11 +231,11 @@
 # cutoffs, and the fact that Hankel and Bessel-J plans may use different radial
 # panelizations.
 #
-# MO/8/5/26
+# MO/19/7/26
 #############################################################################
 
 const γ=MathConstants.eulergamma
-const hankel_z_chebyshev_cutoff_small_z=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
+const hankel_z_chebyshev_cutoff_small_z=0.2 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 const hankel_z_chebyshev_cutoff=0.2 # this is the region between [hankel_z_chebyshev_cutoff_small_z, hankel_z_chebyshev_cutoff] where we switch from the small-argument series expansions to the direct evaluation since only 12th degree small z poly.
 #TODO Differentiation of Chebyshev polynomials to get other orders of hankels. Is this even good to do for performance, how much does it really matter?
 
@@ -717,6 +717,18 @@ function precompute_phase(k::ComplexF64,r::AbstractVector{Float64})::Vector{Comp
         φ[i]=_exp_ikr(a,b,r[i])
     end
     return φ
+end
+
+##################################################################
+############## NEAR 0 EXPANSIONS FOR J0 AND J1 ###################
+##################################################################
+
+# for z<0.2 this is accurate to machine precision
+@inline function _small_j0_j1(z::ComplexF64)
+    z2=z*z
+    j0=1+z2*(-1/4+z2*(1/64+z2*(-1/2304+z2*(1/147456+z2*(-1/14745600+z2/2123366400)))))
+    j1=z*(1/2+z2*(-1/16+z2*(1/384+z2*(-1/18432+z2*(1/1474560+z2*(-1/176947200+z2/29727129600))))))
+    return ComplexF64(j0),ComplexF64(j1)
 end
 
 ##################################################################
