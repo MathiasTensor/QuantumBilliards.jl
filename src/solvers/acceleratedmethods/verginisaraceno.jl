@@ -239,14 +239,6 @@ function sm_results(mu,k)
     return ks, ten
 end
 
-#=
-function sm_vects_results(mu,k)
-    ks = k .- 2 ./mu .+ 2/k ./(mu.^2) 
-    ten = 2.0 .*(2.0 ./ mu).^2
-    #does not sort the results
-    return ks, ten
-end
-=#
 """
     solve(solver::VerginiSaracenoSolver, basis::Ba, pts::BoundaryPoints, k, dk; multithreaded::Bool = true) where {Ba<:AbsBasis} → (ks::Vector, ten::Vector)
 
