@@ -7,13 +7,11 @@ using FFTW
 using Logging, TimerOutputs
 using Random, Distributions
 using BilliardGeometry
-#using Reexport
 
 #abstract types
 include("abstracttypes.jl")
 export AbsBasis, AbsSolver
-#utils must be included here so modules work
-#export AbsBasis
+
 include("utils/coordinatesystems.jl")
 include("utils/geometryutils.jl")
 include("utils/typeutils.jl")
@@ -21,10 +19,6 @@ include("utils/macros.jl")
 include("utils/billiardutils.jl")
 export make_triangle_and_basis, adapt_basis
 
-
-#basis
-#include("basis/Basis.jl")
-#@reexport using .Basis
 include("basis/planewaves/realplanewaves.jl")
 export RealPlaneWaves
 include("basis/fourierbessel/corneradapted.jl")
@@ -48,23 +42,17 @@ export solve, solve_vect
 export solve_wavenumber, solve_spectrum
 export k_sweep
 
-#spectra
-#include("spectra/Spectra.jl")
-#@reexport using .Spectra
-
 include("spectra/spectralutils.jl")
 export SpectralData, compute_spectrum, merge_spectra, overlap_and_merge!
 include("spectra/unfolding.jl")
 export weyl_law
-#states
-#include("states/States.jl")
-#@reexport using .States
+
 include("states/eigenstates.jl")
 include("states/basisstates.jl")
 include("states/randomstates.jl")
 
-export Eigenstate, EigenstateBundle, BasisState, GaussianRandomState
-export compute_eigenstate, compute_eigenstate_bundle
+export Eigenstate, BasisState, GaussianRandomState
+export compute_eigenstate
 include("states/symmetry/reflections.jl")
 include("states/wavefunctions.jl")
 include("states/boundaryfunctions.jl")

@@ -1,3 +1,34 @@
+"""
+    apply_symmetries_to_wavefunction(Psi, x_grid::AbstractVector, y_grid::AbstractVector, symmetries::Vector{<:BilliardGeometry.AbsReflection}, sym_qnumbers::Vector{T}) where {T<:Real} → (full_Psi, full_x::Vector, full_y::Vector)
+
+Unfolds a wavefunction `Psi`, computed on the fundamental domain grid
+`(x_grid, y_grid)`, onto the full billiard by reflecting it across each axis
+of reflection symmetry in `symmetries`, weighted by the corresponding
+parities `sym_qnumbers`.
+
+## Description
+`Psi` is assumed to be evaluated on the `x > 0`, `y > 0` quadrant (relative to
+the reflection axes). For each `XAxisReflection`/`YAxisReflection` in
+`symmetries`, the corresponding quantum number in `sym_qnumbers` gives the
+parity `p = \\pm 1` under that reflection, and the missing quadrant(s) are
+obtained by reversing `Psi` along the appropriate grid dimension and
+multiplying by `p`. If both symmetries are present, all four quadrants are
+assembled (`Q1` = base, `Q2` = `Y`-reflected, `Q3` = both reflected, `Q4` =
+`X`-reflected); if only one is present, only that reflection is applied; if
+`symmetries` contains neither, `Psi` and the grids are returned unchanged.
+
+## Arguments
+* `Psi`: The wavefunction values on the fundamental domain grid `(x_grid, y_grid)`.
+* `x_grid`: The `x` coordinates of the fundamental domain grid.
+* `y_grid`: The `y` coordinates of the fundamental domain grid.
+* `symmetries`: The reflection symmetries of the basis, e.g. `XAxisReflection`, `YAxisReflection`.
+* `sym_qnumbers`: The parity quantum number (`\\pm 1`) associated with each entry of `symmetries`.
+
+## Returns
+*  `full_Psi` : The wavefunction unfolded onto the full domain covered by the applicable reflections.
+*  `full_x` : The `x` coordinates of the unfolded grid.
+*  `full_y` : The `y` coordinates of the unfolded grid.
+"""
 function apply_symmetries_to_wavefunction(
     Psi, x_grid, y_grid,
     symmetries::Vector{<:BilliardGeometry.AbsReflection},
@@ -45,6 +76,31 @@ function apply_symmetries_to_wavefunction(
 end
 
 
+"""
+    apply_symmetries_to_boundary_function(u::AbstractVector{U}, symmetries::Vector{<:BilliardGeometry.AbsReflection}, sym_qnumbers::Vector{T}) where {U<:Number, T<:Real} → full_u::Vector{U}
+
+Unfolds a boundary function `u`, computed on the fundamental-domain arc of the
+boundary, onto the full boundary by appending its reflected copies for each
+reflection symmetry in `symmetries`, weighted by the corresponding parities
+`sym_qnumbers`.
+
+## Description
+Returns `u` unchanged if `symmetries` is empty. Otherwise, for each
+`XAxisReflection`/`YAxisReflection` present, a reflected and (for a
+counter-clockwise-consistent boundary traversal) order-reversed copy of `u`,
+scaled by its parity from `sym_qnumbers`, is appended. If both symmetries are
+present, three additional copies are appended in the order `Y`-reflected,
+`XY`-reflected (not reversed), `X`-reflected, matching the point ordering
+produced by [`apply_symmetries_to_boundary_points`](@ref).
+
+## Arguments
+* `u`: The boundary function values on the fundamental-domain arc.
+* `symmetries`: The reflection symmetries of the basis, e.g. `XAxisReflection`, `YAxisReflection`.
+* `sym_qnumbers`: The parity quantum number (`\\pm 1`) associated with each entry of `symmetries`.
+
+## Returns
+*  `full_u` : `u` with its symmetry-reflected copies appended, covering the full boundary.
+"""
 function apply_symmetries_to_boundary_function(
     u::AbstractVector{U},
     symmetries::Vector{<:BilliardGeometry.AbsReflection},
@@ -86,6 +142,36 @@ function apply_symmetries_to_boundary_function(
 end
 
 
+"""
+    apply_symmetries_to_boundary_points(pts::BoundaryPoints{T}, symmetries::Vector{BilliardGeometry.AbsReflection}, billiard::Bi) where {Bi<:AbsBilliard, T<:Real} → full_pts::BoundaryPoints{T}
+
+Unfolds the boundary points `pts`, sampled on the fundamental-domain arc of
+`billiard`, onto the full boundary by appending reflected copies of the
+points, normals and arc-length elements for each reflection symmetry in
+`symmetries`.
+
+## Description
+Returns `pts` unchanged if `symmetries` is empty. Otherwise, the positions
+`xy` and normals `normal` are reflected with `apply_symmetry` for each
+applicable `XAxisReflection`/`YAxisReflection`/`XYAxisReflection`, and
+appended (with the arc-length element `ds`) in an order consistent with a
+continuous counter-clockwise traversal of the full boundary; reflections that
+reverse the boundary orientation also reverse the order of the appended
+points. If both `XAxisReflection` and `YAxisReflection` are present, three
+quadrants are appended in the order `Y`-reflected (reversed), `XY`-reflected
+(preserved), `X`-reflected (reversed); if only one is present, only that
+reflected copy is appended. The arc-length coordinate `s` of the returned
+points is recomputed as the cumulative sum of the full `ds`, and all other
+fields of [`BoundaryPoints`](@ref) are left empty.
+
+## Arguments
+* `pts`: The [`BoundaryPoints`](@ref) sampled on the fundamental-domain arc.
+* `symmetries`: The reflection symmetries of the basis, e.g. `XAxisReflection`, `YAxisReflection`.
+* `billiard`: The billiard the points are sampled on (unused beyond dispatch, kept for interface consistency).
+
+## Returns
+*  `full_pts` : A new [`BoundaryPoints`](@ref) with the symmetry-unfolded points, normals, arc-length elements and cumulative arc-length coordinate `s`.
+"""
 function apply_symmetries_to_boundary_points(
     pts::BoundaryPoints{T},
     symmetries::Vector{BilliardGeometry.AbsReflection},

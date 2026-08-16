@@ -1,7 +1,42 @@
+"""
+    pad_limits(xlim, ylim; padding::Real = 0.01) → (xlim_padded::Tuple, ylim_padded::Tuple)
+
+Pads a pair of `(min, max)` limits `xlim` and `ylim` symmetrically by
+`padding` on each side.
+
+## Arguments
+* `xlim`: The `(xmin, xmax)` limits to pad.
+* `ylim`: The `(ymin, ymax)` limits to pad.
+
+## Keyword arguments
+*  `padding::Real = 0.01` : Amount subtracted from the lower limit and added to the upper limit of each pair.
+
+## Returns
+*  `xlim_padded` : `(xlim[1] - padding, xlim[2] + padding)`.
+*  `ylim_padded` : `(ylim[1] - padding, ylim[2] + padding)`.
+"""
 function pad_limits(xlim, ylim; padding=0.01)
     return (xlim[1] - padding, xlim[2] + padding), (ylim[1] - padding, ylim[2] + padding)
 end
 
+"""
+    rectify_grid(grid::AbstractVector) → new_grid::AbstractVector
+
+Shifts `grid` so that its entry closest to zero is exactly `0`, then keeps
+only the strictly positive half of the shifted grid; returns `grid`
+unchanged if it does not straddle zero.
+
+## Description
+This is used to build a half-grid for wavefunction evaluation on the
+fundamental domain of a reflection-symmetric billiard, where only the `x > 0`
+(or `y > 0`) half-plane needs to be sampled.
+
+## Arguments
+* `grid`: The coordinate grid to rectify.
+
+## Returns
+*  `new_grid` : The shifted, strictly-positive half of `grid` if `grid` straddles zero (i.e. `grid[1] <= 0 <= grid[end]`), otherwise `grid` unchanged.
+"""
 function rectify_grid(grid)
     type = eltype(grid)
     if grid[1] <= zero(type) <= grid[end]
@@ -13,6 +48,29 @@ function rectify_grid(grid)
     end
 end
 
+"""
+    boundary_limits(curves; grd::Int = 1000, padding::Real = 0.01) → (xlim::Tuple, ylim::Tuple)
+
+Computes padded bounding-box limits `(xlim, ylim)` enclosing a collection of
+boundary `curves`.
+
+## Description
+Each curve is sampled at `N_bnd = max(512, round(Int, grd/L))` equally spaced
+parameter values (with `L` the curve length), the sampled points from all
+curves are pooled, and the extrema of their `x` and `y` coordinates are
+padded with [`pad_limits`](@ref).
+
+## Arguments
+* `curves`: A collection of boundary curves to sample, e.g. from `get_boundary_curves`.
+
+## Keyword arguments
+*  `grd::Int = 1000` : Target total sampling density (points per unit curve length) used to set the number of points sampled per curve.
+*  `padding::Real = 0.01` : Padding added to the bounding box, passed to [`pad_limits`](@ref).
+
+## Returns
+*  `xlim` : Padded `(xmin, xmax)` limits enclosing all sampled boundary points.
+*  `ylim` : Padded `(ymin, ymax)` limits enclosing all sampled boundary points.
+"""
 function boundary_limits(curves; grd=1000, padding=0.01) 
     x_bnd = Vector{Any}()
     y_bnd = Vector{Any}()
@@ -34,7 +92,37 @@ function boundary_limits(curves; grd=1000, padding=0.01)
 end
 
 
-#try using strided to optimize this
+"""
+    compute_psi(state::S, x_grid::AbstractVector, y_grid::AbstractVector; inside_only::Bool = true, memory_limit::Real = 10.0e9, multithreaded::Bool = true) where {S<:AbsState} → Psi::Vector
+
+Evaluates the wavefunction of `state` on the Cartesian grid formed by
+`x_grid` and `y_grid`, returning it as a flattened vector.
+
+## Description
+The evaluation points are the tensor-product grid `(x,y)` for `y in y_grid`,
+`x in x_grid`, optionally restricted to points inside `state.billiard` when
+`inside_only = true` (via `is_inside`). If the estimated memory required to
+build the full basis matrix (`sizeof(eltype(vec)) * basis.dim * n_pts`) is
+below `memory_limit`, the basis matrix is built in one shot with
+`basis_matrix` and multiplied by the coefficient vector; otherwise the
+wavefunction is accumulated basis function by basis function with
+`basis_fun`, skipping coefficients smaller than `state.eps` in magnitude,
+trading memory for compute time. Points outside the billiard (when
+`inside_only = true`) are set to `NaN`.
+
+## Arguments
+* `state`: The eigenstate (`S<:AbsState`) whose wavefunction is evaluated.
+* `x_grid`: Grid of `x` coordinates.
+* `y_grid`: Grid of `y` coordinates.
+
+## Keyword arguments
+*  `inside_only::Bool = true` : Whether to evaluate only at points inside `state.billiard`, setting the wavefunction to `NaN` elsewhere.
+*  `memory_limit::Real = 10.0e9` : Memory threshold (in bytes) above which the wavefunction is accumulated basis function by basis function instead of via a full basis matrix.
+*  `multithreaded::Bool = true` : Whether the basis matrix construction is multithreaded.
+
+## Returns
+*  `Psi` : The wavefunction values on the flattened grid `(x_grid, y_grid)`, ordered as `x` varying fastest.
+"""
 function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 10.0e9, multithreaded = true) where {S<:AbsState}
     let vec = state.vec, k = state.k_basis, basis=state.basis, billiard=state.billiard, eps=state.eps #basis is correct size
         sz = length(x_grid)*length(y_grid)
@@ -81,6 +169,41 @@ function compute_psi(state::S, x_grid, y_grid; inside_only=true, memory_limit = 
     end
 end
 
+"""
+    wavefunction(state::S; b::Real = 5.0, inside_only::Bool = true, fundamental_domain::Bool = true, memory_limit::Real = 10.0e9, multithreaded::Bool = true) where {S<:AbsState} → (Psi2d::Matrix, x_grid::Vector, y_grid::Vector)
+
+Computes the wavefunction of an eigenstate `state` on a regular grid covering
+its billiard, optionally unfolding it from the fundamental domain onto the
+full billiard.
+
+## Description
+A bounding box for `state.billiard` is computed with [`boundary_limits`](@ref)
+at a sampling density of `max(1000, round(Int, k*L*b/(2*pi)))` (with `L` the
+boundary length), and grids `x_grid`, `y_grid` are built with
+`max(round(Int, k*d*b/(2*pi)), 512)` points along each dimension `d` (`dx` or
+`dy`), giving roughly `b` grid points per de Broglie wavelength. If the basis
+carries reflection symmetries, the corresponding grid(s) are restricted to
+the fundamental domain with [`rectify_grid`](@ref). The wavefunction is then
+evaluated with [`compute_psi`](@ref) and reshaped into a 2D array `Psi2d`. If
+`fundamental_domain = false` and the basis has symmetries, `Psi2d` and the
+grids are unfolded onto the full billiard with
+[`apply_symmetries_to_wavefunction`](@ref).
+
+## Arguments
+* `state`: The eigenstate (`S<:AbsState`) for which the wavefunction is computed.
+
+## Keyword arguments
+*  `b::Real = 5.0` : Oversampling factor controlling the grid resolution; roughly `b` grid points per de Broglie wavelength.
+*  `inside_only::Bool = true` : Whether to evaluate only at points inside `state.billiard`, passed to [`compute_psi`](@ref).
+*  `fundamental_domain::Bool = true` : Whether to return the wavefunction restricted to the symmetry-reduced fundamental domain (`true`) or unfolded onto the full billiard (`false`).
+*  `memory_limit::Real = 10.0e9` : Memory threshold (in bytes) passed to [`compute_psi`](@ref).
+*  `multithreaded::Bool = true` : Whether the underlying matrix construction is multithreaded.
+
+## Returns
+*  `Psi2d` : The wavefunction values on the grid `(x_grid, y_grid)`.
+*  `x_grid` : The `x` coordinates of the grid.
+*  `y_grid` : The `y` coordinates of the grid.
+"""
 function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = true, memory_limit = 10.0e9, multithreaded = true) where {S<:AbsState}
     let k = state.k, billiard=state.billiard, symmetries=state.basis.symmetries     
         #println(new_basis.dim)
@@ -121,6 +244,32 @@ function wavefunction(state::S; b=5.0, inside_only=true, fundamental_domain = tr
     end
 end
 
+"""
+    wavefunction(state::BasisState; xlim::Tuple = (-2.0, 2.0), ylim::Tuple = (-2.0, 2.0), b::Real = 5.0) → (Psi2d::Matrix, x_grid::Vector, y_grid::Vector)
+
+Computes a single basis function represented by `state` on a regular grid
+over the fixed box `xlim × ylim`, without reference to any billiard geometry.
+
+## Description
+Grids `x_grid`, `y_grid` are built with `max(round(Int, k*d*b/(2*pi)), 512)`
+points along each dimension `d` (`dx` or `dy`, from `xlim`/`ylim`), giving
+roughly `b` grid points per de Broglie wavelength. The `idx`-th basis function
+of `state.basis` is evaluated directly on the grid with `basis_fun` and
+reshaped into a 2D array.
+
+## Arguments
+* `state`: The [`BasisState`](@ref) whose basis function is evaluated.
+
+## Keyword arguments
+*  `xlim::Tuple = (-2.0, 2.0)` : The `(xmin, xmax)` extent of the evaluation grid.
+*  `ylim::Tuple = (-2.0, 2.0)` : The `(ymin, ymax)` extent of the evaluation grid.
+*  `b::Real = 5.0` : Oversampling factor controlling the grid resolution; roughly `b` grid points per de Broglie wavelength.
+
+## Returns
+*  `Psi2d` : The basis function values on the grid `(x_grid, y_grid)`.
+*  `x_grid` : The `x` coordinates of the grid.
+*  `y_grid` : The `y` coordinates of the grid.
+"""
 function wavefunction(state::BasisState; xlim =(-2.0,2.0), ylim=(-2.0,2.0), b=5.0) 
     let k = state.k, basis=state.basis      
         #println(new_basis.dim)

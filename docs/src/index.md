@@ -1,7 +1,4 @@
-# QuantumBilliards
-
-[![Build Status](https://github.com/clozej/QuantumBilliards.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/clozej/QuantumBilliards.jl/actions/workflows/CI.yml?query=branch%3Amain)
-
+# Home
 Welcome to the QuantumBilliards.jl - a high performance Julia library for computing the states and spectra of quantum billiards. The goal is to provide a library that is a learning tool for students as well as full computational suite for seasoned quantum chaos researchers that want to attain that last bit of performance for their research publications. We hope this tool will invigorate the study of quantum billiards and related problems and make it more accessible to a wider research community. 
 
 ## Introduction
@@ -17,10 +14,19 @@ with the boundary condition $\psi_n|_{\partial \mathcal{B}}=0$. Thus we find the
 The library implements extremely efficient numerical methods for computing the spectra (wavenumbers) and states (represented as wavefunctions) allowing us to compute up to a millions of eigenstates!
 Each method has its own strengths and limitations and is more suitable for specific use cases for instance either sacrificing some accuracy for computation speed or vice versa. 
 
-# Package features
+Consult the Methods section for detailed descriptions of the methods and their application.
+
+The Tutorial section explains how to get started using QuantumBilliards.
+
+See the API section for the complete documentation on all the exported types and functions. 
+## Package features
 - General purpose solvers that can handle arbitrary billiard tables - seamless integration with BilliardGeomery.jl
 - State of the art billiard solvers featuring all the most efficient solution methods like VerginiSaraceno...
 - Eigenstates, wavefunctions, boundary functions, and Husimi (phase-space) representations.
 - Highly tunable numerical parameters, integration schemes and basis constructions for fine tuning to specific geometries.
 - Discrete symmetry reduction schemes, allows separation fo spectral symmetry sectors and improved computation efficiency.  
 - Extensible API ready for future updates to related problems like microwave resonators, neutrino billiards etc.
+
+## Contents
+```@contents
+```

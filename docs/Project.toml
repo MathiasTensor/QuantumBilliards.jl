@@ -1,0 +1,8 @@
+[deps]
+BilliardGeometry = "944b2192-ee8e-4a70-bd94-055ac7d6d7d6"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+LiveServer = "16fef848-5104-11e9-1b77-fb7a48bbb589"
+QuantumBilliards = "7c03dc60-f10f-4d5b-b776-32bcaab55394"
+
+[compat]
+Documenter = "1.1"
