@@ -31,5 +31,10 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v1
+      - name: Install unregistered dependency (BilliardGeometry.jl)
+        run: |
+          import Pkg
+          Pkg.develop(url="https://github.com/Quantum-Chaos-Julia/BilliardGeometry.jl.git")
+        shell: julia --color=yes --project=. {0}
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
