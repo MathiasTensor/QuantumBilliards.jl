@@ -1,8 +1,9 @@
 # QuantumBilliards
 
 [![Build Status](https://github.com/clozej/QuantumBilliards.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/clozej/QuantumBilliards.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://Quantum-Chaos-Julia.github.io/QuantumBilliards.jl/)
 
-Welcome to the QuantumBilliards.jl - a high performance Julia library for computing the states and spectra of quantum billiards. The goal is to provide a library that is a learning tool for students as well as full computational suite for seasoned quantum chaos researchers that want to attain that last bit of performance for their research publications. We hope this tool will invigorate the study of quantum billiards and related problems and make it more accessible to a wider research community. 
+Welcome to the QuantumBilliards.jl - a high performance Julia library for computing the states and spectra of quantum billiards. The goal is to provide a library that is a learning tool for students as well as full computational suite for seasoned quantum chaos researchers that want to attain that last bit of performance for their research publications. We hope this tool will invigorate the study of quantum billiards and related problems and make it more accessible to a wider research community. The documentation is available [here](https://Quantum-Chaos-Julia.github.io/QuantumBilliards.jl/).
 
 ## Introduction
 Quantum billiards are fundamental models, widely studied in the context of quantum chaos, quantum classical correspondence and semiclassical analysis. 
