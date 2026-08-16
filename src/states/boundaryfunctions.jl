@@ -152,30 +152,34 @@ one-sided power spectral density and the corresponding angular wavenumbers.
 ## Description
 The real FFT of `u` is taken with `rfft`, and the associated frequencies from
 `rfftfreq` are rescaled to angular wavenumbers via \$k_s = 2\\pi f\$. Each
-coefficient is normalized by \$N\$ (with `N = length(u)`), and all bins
-except the DC term (and the Nyquist term, when `N` is even) are doubled to
-account for the folded negative-frequency content, giving a one-sided power
-spectral density that satisfies Parseval's theorem:
+coefficient is normalized by \$N^2\$ (with `N = length(u)`) and further
+divided by the wavenumber spacing \$\\Delta k = 2\\pi/L\$ (with
+`L = s[end]` the total arc length), converting the discrete Fourier
+coefficients into a power *spectral density* in `k`. All bins except the DC
+term (and the Nyquist term, when `N` is even) are doubled to account for the
+folded negative-frequency content, giving a one-sided power spectral density
+whose integral over `ks` recovers the mean-square value of `u`:
 
 ```math
-\\sum_i |u_i|^2 = \\sum_j \\mathrm{power}_j.
+\\int \\mathrm{power}(k)\\, dk \\;\\approx\\; \\sum_j \\mathrm{power}_j\\, \\Delta k \\;=\\; \\frac{1}{L}\\int_0^L |u(s)|^2\\, ds \\;\\approx\\; \\frac{1}{N}\\sum_i |u_i|^2.
 ```
 
 ## Arguments
 * `u`: The boundary function values, typically obtained from
   [`boundary_function`](@ref), sampled at equally spaced arc-length points.
 * `s`: The arc-length coordinates of `u`; only the sample spacing
-  `diff(s)[1]` is used to determine the sampling rate.
+  `diff(s)[1]` (for the sampling rate) and `s[end]` (for the total arc
+  length `L`) are used.
 
 ## Returns
-*  `power` : The one-sided power spectral density of `u`, normalized so that
-   `sum(power) ≈ sum(abs2, u)`.
+*  `power` : The one-sided power spectral density of `u` as a function of
+   `ks`, normalized so that `sum(power) * (ks[2] - ks[1]) ≈ mean(abs2, u)`.
 *  `ks` : The angular wavenumbers corresponding to `power`.
 """
 function momentum_function(u,s)
     N = length(u)
     fu = rfft(u)
-    power = abs2.(fu)./N
+    power = abs2.(fu) ./ N^2 ./ (2*pi/s[end]) 
     power[2:(iseven(N) ? end-1 : end)] .*= 2
     sr = 1.0/diff(s)[1]
     ks = rfftfreq(N,sr).*(2*pi)
