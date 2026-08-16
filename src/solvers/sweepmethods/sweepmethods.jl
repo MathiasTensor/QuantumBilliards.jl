@@ -1,5 +1,33 @@
 include("decompositionmethod.jl")
 
+"""
+    solve_wavenumber(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, k, dk; multithreaded::Bool = true) → (k0::Real, t0::Real)
+
+Finds the wavenumber `k0` within `[k - dk/2, k + dk/2]` that minimizes the tension
+computed by the sweep `solver`, together with the minimal tension `t0`.
+
+## Description
+The basis dimension is scaled with the boundary length and wavenumber via
+`solver.dim_scaling_factor` (bounded below by `solver.min_dim`), the basis is
+resized to this dimension with [`resize_basis`](@ref), boundary points are
+generated once with [`evaluate_points`](@ref), and the tension
+`solve(solver, new_basis, pts, k; multithreaded)` is minimized over `k` in the
+search window with `Optim.optimize`.
+
+## Arguments
+* `solver`: The [`SweepSolver`](@ref) used to solve for the tension at each wavenumber.
+* `basis`: The basis used to approximate the eigenstate.
+* `billiard`: The billiard whose boundary is discretized.
+* `k`: The center of the wavenumber search window.
+* `dk`: Width of the wavenumber search window, `[k - dk/2, k + dk/2]`.
+
+## Keyword arguments
+* `multithreaded::Bool = true`: Whether the matrix construction is multithreaded.
+
+## Returns
+* `k0`: The wavenumber minimizing the tension within the search window.
+* `t0`: The minimal tension found at `k0`.
+"""
 function solve_wavenumber(solver::SweepSolver,basis::AbsBasis, billiard::AbsBilliard, k, dk; multithreaded=true)
     L = CompositeCurve(get_boundary_curves(billiard)).length
     dim = max(solver.min_dim,round(Int, L*k*solver.dim_scaling_factor/(2*pi)))
@@ -13,6 +41,31 @@ function solve_wavenumber(solver::SweepSolver,basis::AbsBasis, billiard::AbsBill
     return k0, t0
 end
 
+"""
+    k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks; multithreaded::Bool = true) → res::Vector
+
+Computes the tension of the sweep `solver` at every wavenumber in `ks`, using a
+single basis resized to the largest wavenumber in `ks`.
+
+## Description
+The basis dimension is scaled with the boundary length and `maximum(ks)` via
+`solver.dim_scaling_factor` (bounded below by `solver.min_dim`), the basis is
+resized to this dimension with [`resize_basis`](@ref), boundary points are
+generated once with [`evaluate_points`](@ref), and [`solve`](@ref) is called for
+every wavenumber in `ks`.
+
+## Arguments
+* `solver`: The [`SweepSolver`](@ref) used to solve for the tension at each wavenumber.
+* `basis`: The basis used to approximate the eigenstate.
+* `billiard`: The billiard whose boundary is discretized.
+* `ks`: Vector (or range) of wavenumbers at which the tension is evaluated.
+
+## Keyword arguments
+* `multithreaded::Bool = true`: Whether the matrix construction is multithreaded.
+
+## Returns
+* `res`: Vector of tensions, one for each wavenumber in `ks`.
+"""
 function k_sweep(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, ks; multithreaded=true)
     k = maximum(ks)
     L = CompositeCurve(get_boundary_curves(billiard)).length

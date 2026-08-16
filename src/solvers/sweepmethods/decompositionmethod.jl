@@ -1,4 +1,37 @@
 
+"""
+    DecompositionMethodSolver{T} <: SweepSolver
+
+`DecompositionMethodSolver` is a concrete [`SweepSolver`](@ref) implementing the
+boundary decomposition method for computing quantum billiard spectra by sweeping
+over individual wavenumbers.
+
+## Description
+For a fixed wavenumber `k`, the method constructs the matrices `F` and `G` (see
+[`construct_matrices`](@ref)) from a boundary quadrature with weights `ds` and
+`w_dm` (see [`evaluate_points`](@ref)) and extracts a tension `t = 1/λ0` from the
+largest generalized eigenvalue λ0 of `F * x = λ * G * x` (see [`solve`](@ref)). A
+sequence of tensions over a range of wavenumbers is minimized/scanned by
+[`solve_wavenumber`](@ref) or [`k_sweep`](@ref) to locate the eigenvalues of the
+billiard.
+
+## Attributes
+* `dim_scaling_factor`: Scaling factor used to determine the basis dimension from the boundary length and wavenumber.
+* `pts_scaling_factor`: Vector of scaling factors, one per fundamental boundary curve, used to determine the number of boundary sampling points.
+* `sampler`: Vector of samplers, one per fundamental boundary curve, used to generate boundary points.
+* `eps`: Relative tolerance used to filter small eigenvalues in the generalized eigenvalue decomposition.
+* `min_dim`: Minimum basis dimension.
+* `min_pts`: Minimum number of boundary sampling points.
+
+## API
+The following functions can be evaluated for this type:
+- [`evaluate_points`](@ref)
+- [`construct_matrices`](@ref)
+- [`solve`](@ref)
+- [`solve_vect`](@ref)
+- [`solve_wavenumber`](@ref)
+- [`k_sweep`](@ref)
+"""
 struct DecompositionMethodSolver{T} <: SweepSolver where {T<:Real}
     dim_scaling_factor::T
     pts_scaling_factor::Vector{T}
@@ -9,6 +42,23 @@ struct DecompositionMethodSolver{T} <: SweepSolver where {T<:Real}
 end
 
 
+"""
+    DecompositionMethodSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim::Int = 100, min_pts::Int = 500) where T<:Real → solver::DecompositionMethodSolver{T}
+
+Constructs a [`DecompositionMethodSolver`](@ref) with a single `GaussLegendreNodes`
+sampler shared by every fundamental boundary curve.
+
+## Arguments
+* `dim_scaling_factor`: Scaling factor used to determine the basis dimension.
+* `pts_scaling_factor`: Scaling factor, or vector thereof (one per fundamental boundary curve), used to determine the number of boundary sampling points.
+
+## Keyword arguments
+* `min_dim::Int = 100`: Minimum basis dimension.
+* `min_pts::Int = 500`: Minimum number of boundary sampling points.
+
+## Returns
+* `solver`: A [`DecompositionMethodSolver{T}`](@ref) instance.
+"""
 function DecompositionMethodSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}; min_dim = 100, min_pts = 500) where T<:Real 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
@@ -16,6 +66,24 @@ function DecompositionMethodSolver(dim_scaling_factor::T, pts_scaling_factor::Un
 return DecompositionMethodSolver(d, bs, sampler, eps(T), min_dim, min_pts)
 end
 
+"""
+    DecompositionMethodSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim::Int = 100, min_pts::Int = 500) where T<:Real → solver::DecompositionMethodSolver{T}
+
+Constructs a [`DecompositionMethodSolver`](@ref) with a user-supplied sampler for
+each fundamental boundary curve.
+
+## Arguments
+* `dim_scaling_factor`: Scaling factor used to determine the basis dimension.
+* `pts_scaling_factor`: Scaling factor, or vector thereof (one per fundamental boundary curve), used to determine the number of boundary sampling points.
+* `samplers`: Vector of samplers, one per fundamental boundary curve.
+
+## Keyword arguments
+* `min_dim::Int = 100`: Minimum basis dimension.
+* `min_pts::Int = 500`: Minimum number of boundary sampling points.
+
+## Returns
+* `solver`: A [`DecompositionMethodSolver{T}`](@ref) instance.
+"""
 function DecompositionMethodSolver(dim_scaling_factor::T, pts_scaling_factor::Union{T,Vector{T}}, samplers::Vector{AbsSampler}; min_dim = 100, min_pts = 500) where {T<:Real} 
     d = dim_scaling_factor
     bs = typeof(pts_scaling_factor) == T ? [pts_scaling_factor] : pts_scaling_factor
@@ -23,6 +91,27 @@ function DecompositionMethodSolver(dim_scaling_factor::T, pts_scaling_factor::Un
 end
 
 
+"""
+    evaluate_points(solver::DecompositionMethodSolver, billiard::Bi, k) where {Bi<:AbsBilliard} → pts::BoundaryPoints
+
+Samples the boundary of `billiard` and computes the boundary decomposition method
+quadrature weights needed to construct the matrices in [`construct_matrices`](@ref).
+
+## Description
+The scaling factors and samplers are first adjusted to match the number of
+fundamental boundary curves with [`adjust_scaling_and_samplers`](@ref). Each curve
+is then sampled with its own sampler, and the normal-derivative quadrature weight
+at each point is computed as `w_dm = (ds * r ⋅ n) / (2 k^2)`, where `r` is the
+boundary point and `n` its outward unit normal.
+
+## Arguments
+* `solver`: The [`DecompositionMethodSolver`](@ref) used to determine the sampling parameters.
+* `billiard`: The billiard whose boundary is sampled.
+* `k`: The wavenumber used to determine the number of boundary sampling points and the `w_dm` weights.
+
+## Returns
+* `pts`: A [`BoundaryPoints`](@ref) instance with the `xy`, `normal`, `ds` and `w_dm` fields populated.
+"""
 function evaluate_points(solver::DecompositionMethodSolver, billiard::Bi, k) where {Bi<:AbsBilliard}
     bs, samplers = adjust_scaling_and_samplers(solver, billiard)
     curves = get_boundary_curves(billiard)
@@ -53,6 +142,35 @@ function evaluate_points(solver::DecompositionMethodSolver, billiard::Bi, k) whe
 end
 
 
+"""
+    construct_matrices(solver::DecompositionMethodSolver, basis::Ba, pts::BoundaryPoints, k; multithreaded::Bool = true) where {Ba<:AbsBasis} → (F::Matrix, G::Matrix)
+
+Constructs the boundary decomposition method matrices `F` and `G` used to compute
+the generalized eigenvalue problem `F * x = λ * G * x` at wavenumber `k`.
+
+## Description
+`F = B' * W * B`, where `B` is the [`basis_and_gradient_matrices`](@ref) basis
+matrix at `k` and `W` is the diagonal quadrature weight matrix built from
+`pts.ds`. `G = Bn' * Wn * Bn`, where `Bn = nx * dB/dx + ny * dB/dy` is the normal
+derivative of the basis (built from `pts.normal`) and `Wn` is the diagonal
+quadrature weight matrix built from `pts.w_dm`. Both weight matrices are further
+normalized by the number of basis symmetries `nsym`. Both `F` and `G` are
+assembled with BLAS `syrk!` rank-k updates on the upper triangle, which is then
+mirrored to the lower triangle, to minimize memory allocations.
+
+## Arguments
+* `solver`: The [`DecompositionMethodSolver`](@ref) whose matrices are constructed.
+* `basis`: The basis used to evaluate `B` and its gradient.
+* `pts`: The [`BoundaryPoints`](@ref) with sampled boundary points, normals and quadrature weights `ds`, `w_dm`.
+* `k`: The wavenumber at which the basis and its gradient are evaluated.
+
+## Keyword arguments
+* `multithreaded::Bool = true`: Whether the matrix construction is multithreaded.
+
+## Returns
+* `F`: The `F = B' * W * B` matrix.
+* `G`: The `G = Bn' * Wn * Bn` matrix.
+"""
 function construct_matrices(solver::DecompositionMethodSolver,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     @timeit_debug "construct_matrices" begin
         xy=pts.xy
@@ -91,6 +209,30 @@ function construct_matrices(solver::DecompositionMethodSolver,basis::Ba,pts::Bou
 end
 
 
+"""
+    solve(solver::DecompositionMethodSolver, basis::Ba, pts::BoundaryPoints, k; multithreaded::Bool = true) where {Ba<:AbsBasis} → t::Real
+
+Computes the boundary decomposition method tension `t` at wavenumber `k` for
+`basis` on the boundary points `pts`.
+
+## Description
+The matrices `F` and `G` are built with [`construct_matrices`](@ref), and the
+generalized eigenvalues `mu` of `F * x = λ * G * x` are computed with
+[`generalized_eigvals`](@ref) (truncated using `solver.eps`). The tension is
+`t = 1 / mu[end]`, where `mu[end]` is the largest generalized eigenvalue.
+
+## Arguments
+* `solver`: The [`DecompositionMethodSolver`](@ref) used to solve the eigenvalue problem.
+* `basis`: The basis used to approximate the eigenstate.
+* `pts`: The [`BoundaryPoints`](@ref) with sampled boundary points and quadrature weights `ds`, `w_dm`.
+* `k`: The wavenumber at which the tension is evaluated.
+
+## Keyword arguments
+* `multithreaded::Bool = true`: Whether the matrix construction is multithreaded.
+
+## Returns
+* `t`: The tension at wavenumber `k`, `t = 1 / mu[end]`.
+"""
 function solve(solver::DecompositionMethodSolver,basis::Ba,pts::BoundaryPoints,k;multithreaded::Bool=true) where {Ba<:AbsBasis}
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
@@ -99,6 +241,21 @@ function solve(solver::DecompositionMethodSolver,basis::Ba,pts::BoundaryPoints,k
     return t
 end
 
+"""
+    solve(solver::DecompositionMethodSolver, F, G) → t::Real
+
+Computes the boundary decomposition method tension `t` directly from precomputed
+matrices `F` and `G` (see [`construct_matrices`](@ref)), instead of constructing
+them from a basis and boundary points. See [`solve`](@ref) for details.
+
+## Arguments
+* `solver`: The [`DecompositionMethodSolver`](@ref) used to solve the eigenvalue problem.
+* `F`: Precomputed `F` matrix, see [`construct_matrices`](@ref).
+* `G`: Precomputed `G` matrix, see [`construct_matrices`](@ref).
+
+## Returns
+* `t`: The tension, `t = 1 / mu[end]`, where `mu` are the generalized eigenvalues of `F * x = λ * G * x`.
+"""
 function solve(solver::DecompositionMethodSolver,F,G)
     @blas_multi_then_1 MAX_BLAS_THREADS mu=generalized_eigvals(Symmetric(F),Symmetric(G);eps=solver.eps)
     lam0=mu[end]
@@ -106,6 +263,34 @@ function solve(solver::DecompositionMethodSolver,F,G)
     return t
 end
 
+"""
+    solve_vect(solver::DecompositionMethodSolver, basis::AbsBasis, pts::BoundaryPoints, k; multithreaded::Bool = true) → (t::Real, x::Vector)
+
+Computes the boundary decomposition method tension `t` and the corresponding
+eigenvector `x` (expressed in the original basis) at wavenumber `k`.
+
+## Description
+The matrices `F` and `G` are built with [`construct_matrices`](@ref), and the
+generalized eigenproblem `F * x = λ * G * x` is solved with
+[`generalized_eigen`](@ref) (truncated using `solver.eps`) to obtain the largest
+eigenvalue `mu[end]`, its eigenvector `Z[:,end]` in the reduced space, and the
+change-of-basis matrix `C`. The eigenvector is transformed back into the original
+basis as `x = C * Z[:,end]`, normalized by `sqrt(mu[end])`, and the tension is
+`t = 1 / mu[end]`.
+
+## Arguments
+* `solver`: The [`DecompositionMethodSolver`](@ref) used to solve the eigenvalue problem.
+* `basis`: The basis used to approximate the eigenstate.
+* `pts`: The [`BoundaryPoints`](@ref) with sampled boundary points and quadrature weights `ds`, `w_dm`.
+* `k`: The wavenumber at which the eigenstate is evaluated.
+
+## Keyword arguments
+* `multithreaded::Bool = true`: Whether the matrix construction is multithreaded.
+
+## Returns
+* `t`: The tension at wavenumber `k`, `t = 1 / mu[end]`.
+* `x`: The eigenvector expressed in the original basis, normalized by `sqrt(mu[end])`.
+"""
 function solve_vect(solver::DecompositionMethodSolver,basis::AbsBasis,pts::BoundaryPoints,k;multithreaded::Bool=true)
     F,G=construct_matrices(solver,basis,pts,k;multithreaded=multithreaded)
     @blas_multi MAX_BLAS_THREADS mu,Z,C=generalized_eigen(Symmetric(F),Symmetric(G);eps=solver.eps)
