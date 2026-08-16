@@ -174,13 +174,13 @@ end
     boundary_coords(billiard::Bi, fourier_sampler::FourierNodes, M) where {Bi<:AbsBilliard} → bp::BoundaryPoints
 
 Samples the full boundary of `billiard` (including curves marked with
-`QuantumSolverIgnore`) using a single [`FourierNodes`](@ref) sampler that
+`QuantumSolverIgnore`) using a single `FourierNodes` sampler that
 distributes a total of `M` points across all boundary curves. Otherwise behaves
 like [`boundary_coords(::AbsBilliard, ::Vector{AbsSampler}, ::Vector{Int64})`](@ref).
 
 ## Arguments
 * `billiard`: The billiard whose boundary is sampled.
-* `fourier_sampler`: The [`FourierNodes`](@ref) sampler used to distribute the `M` points among all boundary curves.
+* `fourier_sampler`: The `FourierNodes` sampler used to distribute the `M` points among all boundary curves.
 * `M`: Total number of sample points to generate over the whole boundary.
 
 ## Returns
