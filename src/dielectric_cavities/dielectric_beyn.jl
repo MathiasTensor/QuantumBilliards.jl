@@ -337,7 +337,7 @@ function _wiersig_beyn_build_nested_direct(solver::AbstractWiersigSolver,pts::Ve
         verbose && next!(p)
     end
     fine=_wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
-    coarse=_wiersig_beyn_build_reduced_problem(C0,C1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=false)
+    coarse=_wiersig_beyn_build_reduced_problem(C0,C1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
     return (fine=fine,coarse=coarse)
 end
 
@@ -642,7 +642,7 @@ function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts:
     As=nothing
     GC.gc()
     fine=_wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
-    coarse=_wiersig_beyn_build_reduced_problem(C0,C1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=false)
+    coarse=_wiersig_beyn_build_reduced_problem(C0,C1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
     return (fine=fine,coarse=coarse)
 end
 
