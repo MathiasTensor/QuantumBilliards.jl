@@ -934,9 +934,9 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
             Δwanted=result.all_refinement_displacements[wanted]
             Δfinite=filter(isfinite,Δwanted)
             maxΔ=isempty(Δfinite) ? T(NaN) : maximum(Δfinite)
-            medianΔ=isempty(Δfinite) ? T(NaN) : Statistics.median(Δfinite)
-            meanΔ=isempty(Δfinite) ? T(NaN) : Statistics.mean(Δfinite)
-            q99Δ=isempty(Δfinite) ? T(NaN) : Statistics.quantile(Δfinite,T(0.99))
+            medianΔ=isempty(Δfinite) ? T(NaN) : median(Δfinite)
+            meanΔ=isempty(Δfinite) ? T(NaN) : mean(Δfinite)
+            q99Δ=isempty(Δfinite) ? T(NaN) : quantile(Δfinite,T(0.99))
             nunmatched=count(!isfinite,Δwanted)
             println("contour ",ic,"/",ncontours,": center=",contour.center,", dim=",N,", rank=",result.rank,", probe=",result.probe_dimension,", accepted=",nwanted,", max Δ=",maxΔ,", q99 Δ=",q99Δ,", median Δ=",medianΔ,", mean Δ=",meanΔ,", unmatched=",nunmatched)
         end

@@ -166,6 +166,15 @@ function median(v::AbstractVector{T}) where {T<:Real}
     end
 end
 
+function quantile(v::AbstractVector{T},p::Real) where {T<:Real}
+    n=length(v);n==1&&return v[firstindex(v)]
+    h=1+(n-1)*p;k=floor(Int,h);γ=h-k
+    w=copy(v);x0=partialsort!(w,k)
+    k==n&&return x0
+    x1=partialsort!(w,k+1)
+    return x0+γ*(x1-x0)
+end
+
 # Batch n objects into batches of size batch_size
 @inline function _nbatches(n::Int,batch_size::Int)
     return cld(n,batch_size)
