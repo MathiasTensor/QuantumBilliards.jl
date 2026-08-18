@@ -324,7 +324,7 @@ function _wiersig_beyn_build_nested_direct(solver::AbstractWiersigSolver,pts::Ve
     C0=zeros(Complex{T},N,rmax);C1=zeros(Complex{T},N,rmax)
     A=Matrix{Complex{T}}(undef,N,N)
     xv=vec(X);a0v=vec(A0);a1v=vec(A1);c0v=vec(C0);c1v=vec(C1)
-    verbose && p=Progress(length(z),desc="Beyn contour")
+    p=verbose ? Progress(length(z),desc="Beyn contour") : nothing
     @inbounds for j in eachindex(z)
         construct_matrices!(solver,A,pts,ws,z[j];dlp_kernel=dlp_kernel,multithreaded=multithreaded)
         F=lu!(A,ws;check=false)
@@ -563,7 +563,7 @@ function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts:
     xv=vec(X);a0v=vec(A0);a1v=vec(A1);c0v=vec(C0);c1v=vec(C1)
     As=[Matrix{ComplexF64}(undef,N,N) for _ in eachindex(z)]
     @benchit timeit=verbose "All-k matrix construction" construct_matrices!(solver,As,pts,cws;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-    verbose && p=Progress(length(z),desc="Beyn contour")
+    p=verbose ? Progress(length(z),desc="Beyn contour") : nothing
     @inbounds for j in eachindex(z)
         F=lu!(As[j],ws;check=false)
         ldiv!(X,F,V)
