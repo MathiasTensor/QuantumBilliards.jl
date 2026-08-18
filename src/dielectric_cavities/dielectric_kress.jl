@@ -286,10 +286,6 @@ function evaluate_points(s::WiersigKress{T},q_resolution::AbstractVector{T})::Ve
     end
     return pts
 end
-function evaluate_points(s::WiersigKress{T},q_resolution::T)::Vector{BoundaryPointsCFIE{T}} where {T<:Real}
-    return evaluate_points(s,fill(q_resolution,length(s.billiards)))
-end
-
 # Evaluate every Γ_a at the same requested spectral resolution q_resolution, q_resolution,a = q_resolution, a=1,...,C. Just a way to specificy a single ppw for all the billiards in the system.
 function evaluate_points(s::WiersigKress{T},q_resolution::T)::Vector{BoundaryPointsCFIE{T}} where {T<:Real}
     return evaluate_points(s,fill(q_resolution,length(s.billiards)))
