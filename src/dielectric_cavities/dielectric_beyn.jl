@@ -544,26 +544,22 @@ function wiersig_beyn_INFO(solver::AbstractWiersigSolver,pts::Vector{BoundaryPoi
 end
 
 """
-    _wiersig_beyn_matrix_batch_plan(N,nmat,rmax,cws;ram_cap_gib=nothing,ram_fraction=0.75)
+    _wiersig_beyn_matrix_batch_plan(N,nmat;ram_cap_gib=nothing,ram_fraction=0.75)
 
-Choose the largest contour-matrix batch fitting the allowed RAM.
+Choose the largest contour-matrix batch fitting the available RAM.
 - `N`: Wiersig matrix dimension.
 - `nmat`: total number of contour matrices.
-- `rmax`: maximum Beyn probe dimension.
-- `cws`: Chebyshev workspace whose storage contributes to the RAM budget.
-- `ram_cap_gib`: optional explicit RAM cap in GiB.
-- `ram_fraction`: fraction of `Sys.total_memory()` used when `ram_cap_gib=nothing`.
+- `ram_cap_gib`: optional explicit matrix-storage budget in GiB.
+- `ram_fraction`: fraction of currently free RAM used when `ram_cap_gib=nothing`.
 Returns RAM estimates and the selected `batch_size`.
 """
-function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int,rmax::Int,cws;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75)
+function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75)
     matrix_bytes=N*N*sizeof(ComplexF64)
-    total_bytes=Int(Sys.total_memory())
-    cap_bytes=isnothing(ram_cap_gib) ? floor(Int,ram_fraction*total_bytes) : floor(Int,ram_cap_gib*2.0^30)
-    fixed_bytes=6*N*rmax*sizeof(ComplexF64)+Base.summarysize(cws)
-    free_bytes=cap_bytes-fixed_bytes
-    free_bytes>=matrix_bytes||throw(ArgumentError("RAM budget too small for one dense Wiersig matrix"))
-    B=clamp(free_bytes÷matrix_bytes,1,nmat)
-    return (batch_size=B,matrix_bytes=matrix_bytes,fixed_bytes=fixed_bytes,total_bytes=total_bytes,cap_bytes=cap_bytes,free_bytes=free_bytes,automatic=isnothing(ram_cap_gib))
+    free_bytes=Int(Sys.free_memory())
+    budget_bytes=isnothing(ram_cap_gib) ? floor(Int,ram_fraction*free_bytes) : floor(Int,ram_cap_gib*2.0^30)
+    budget_bytes>=matrix_bytes||throw(ArgumentError("RAM budget too small for one dense Wiersig matrix"))
+    B=clamp(budget_bytes÷matrix_bytes,1,nmat)
+    return (batch_size=B,matrix_bytes=matrix_bytes,free_bytes=free_bytes,budget_bytes=budget_bytes,automatic=isnothing(ram_cap_gib))
 end
 
 """
@@ -617,13 +613,13 @@ function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts:
     V,X,A0,A1=wiersig_beyn_buffers(T,N,rmax,rng)
     C0=zeros(Complex{T},N,rmax);C1=zeros(Complex{T},N,rmax)
     xv=vec(X);a0v=vec(A0);a1v=vec(A1);c0v=vec(C0);c1v=vec(C1)
-    mem=_wiersig_beyn_matrix_batch_plan(N,nq,rmax,cws;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     B=mem.batch_size
     if verbose
-        println("system RAM                   = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
-        println("Beyn RAM budget              = ",round(mem.cap_bytes/2.0^30,digits=2)," GiB")
-        println("matrix storage mode          = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
-        println("matrix batch size            = ",B," / ",nq)
+        println("currently free RAM            = ",round(mem.free_bytes/2.0^30,digits=2)," GiB")
+        println("matrix RAM budget             = ",round(mem.budget_bytes/2.0^30,digits=2)," GiB")
+        println("matrix storage mode           = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
+        println("matrix batch size             = ",B," / ",nq)
     end
     As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:B]
     p=verbose ? Progress(nq,desc="Beyn contour") : nothing
@@ -808,12 +804,12 @@ function wiersig_beyn_chebyshev_INFO(solver::AbstractWiersigSolver,pts::Vector{B
     f0=zeros(Complex{T},N,rmax);f1=zeros(Complex{T},N,rmax)
     c0=zeros(Complex{T},N,rmax);c1=zeros(Complex{T},N,rmax)
     xv=vec(X);f0v=vec(f0);f1v=vec(f1);c0v=vec(c0);c1v=vec(c1)
-    mem=_wiersig_beyn_matrix_batch_plan(N,nq,rmax,cws;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     B=mem.batch_size
-    println("system RAM                 = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
-    println("Beyn RAM budget            = ",round(mem.cap_bytes/2.0^30,digits=2)," GiB")
-    println("matrix storage mode        = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
-    println("matrix batch size          = ",B," / ",nq)
+    println("currently free RAM            = ",round(mem.free_bytes/2.0^30,digits=2)," GiB")
+    println("matrix RAM budget             = ",round(mem.budget_bytes/2.0^30,digits=2)," GiB")
+    println("matrix storage mode           = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
+    println("matrix batch size             = ",B," / ",nq)
     As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:B]
     p=Progress(nq,desc="contour...")
     for first in 1:B:nq
