@@ -544,6 +544,62 @@ function wiersig_beyn_INFO(solver::AbstractWiersigSolver,pts::Vector{BoundaryPoi
 end
 
 """
+    _wiersig_beyn_matrix_batch_plan(N,nmat,rmax,cws;ram_cap_gib=nothing,ram_fraction=0.75)
+
+Choose the largest contour-matrix batch fitting the allowed RAM.
+- `N`: Wiersig matrix dimension.
+- `nmat`: total number of contour matrices.
+- `rmax`: maximum Beyn probe dimension.
+- `cws`: Chebyshev workspace whose storage contributes to the RAM budget.
+- `ram_cap_gib`: optional explicit RAM cap in GiB.
+- `ram_fraction`: fraction of `Sys.total_memory()` used when `ram_cap_gib=nothing`.
+Returns RAM estimates and the selected `batch_size`.
+"""
+function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int,rmax::Int,cws;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75)
+    matrix_bytes=N*N*sizeof(ComplexF64)
+    total_bytes=Int(Sys.total_memory())
+    cap_bytes=isnothing(ram_cap_gib) ? floor(Int,ram_fraction*total_bytes) : floor(Int,ram_cap_gib*2.0^30)
+    fixed_bytes=6*N*rmax*sizeof(ComplexF64)+Base.summarysize(cws)
+    free_bytes=cap_bytes-fixed_bytes
+    free_bytes>=matrix_bytes||throw(ArgumentError("RAM budget too small for one dense Wiersig matrix"))
+    B=clamp(free_bytes÷matrix_bytes,1,nmat)
+    return (batch_size=B,matrix_bytes=matrix_bytes,fixed_bytes=fixed_bytes,total_bytes=total_bytes,cap_bytes=cap_bytes,free_bytes=free_bytes,automatic=isnothing(ram_cap_gib))
+end
+
+"""
+    _wiersig_subset_chebyshev_workspace(cws,js)
+
+Extract a batch of vacuum-wavenumber entries from an existing Chebyshev
+workspace without rebuilding radial plans or geometry caches. If the parent
+contains M vacuum wavenumbers and C cavities, `js` selects the corresponding
+interior plans `(a-1)M+j` and exterior plans `CM+j`, restoring the usual
+component-major ordering for the smaller batch.
+"""
+function _wiersig_subset_chebyshev_workspace(cws::WiersigChebyshevWorkspace{T},js::AbstractVector{<:Integer}) where {T<:Real}
+    M=length(cws.ks);C=cws.ncavities;Mb=length(js)
+    all(j->1<=j<=M,js)||throw(BoundsError(cws.ks,js))
+    ids=Vector{Int}(undef,(C+1)*Mb)
+    qin=Matrix{Complex{T}}(undef,C,Mb)
+    qout=Vector{Complex{T}}(undef,Mb)
+    @inbounds for a in 1:C,l in 1:Mb
+        j=js[l]
+        ids[(a-1)*Mb+l]=(a-1)*M+j
+        qin[a,l]=cws.qin[a,j]
+    end
+    @inbounds for l in 1:Mb
+        j=js[l]
+        ids[C*Mb+l]=C*M+j
+        qout[l]=cws.qout[j]
+    end
+    ks=Complex{T}[cws.ks[j] for j in js]
+    qall=cws.qall[ids]
+    plans0=cws.plans0[ids];plans1=cws.plans1[ids]
+    plansj0=cws.plansj0[ids];plansj1=cws.plansj1[ids]
+    bfs=CFIE_H0_H1_J0_J1_BesselWorkspace((C+1)*Mb;ntls=Threads.nthreads())
+    return WiersigChebyshevWorkspace(cws.direct_ws,cws.block_cache,ks,qin,qout,qall,C,plans0,plans1,plansj0,plansj1,bfs,cws.npanels_h,cws.M_h,cws.npanels_j,cws.M_j,cws.errH0[ids],cws.errH1[ids],cws.errJ0[ids],cws.errJ1[ids])
+end
+
+"""
     _wiersig_beyn_build_nested_chebyshev(solver::WiersigKress,pts::Vector{BoundaryPointsCFIE{T}},ws::WiersigGeometryWorkspace,z::AbstractVector{Complex{T}},w::AbstractVector{Complex{T}},cws::WiersigChebyshevWorkspace{T};r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Real=1e-12,relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
 
 Accumulate Beyn moments after assembling all contour matrices simultaneously
@@ -554,27 +610,39 @@ Each matrix is factorized once and all `rmax` probe right-hand sides are solved
 simultaneously. The matrices are destroyed by `lu!(A,ws)` after assembly, which
 is harmless because they are not needed again.
 """
-function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,z::AbstractVector{Complex{T}},w::AbstractVector{Complex{T}},cws::WiersigChebyshevWorkspace{T};r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,z::AbstractVector{Complex{T}},w::AbstractVector{Complex{T}},cws::WiersigChebyshevWorkspace{T};r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
-    iseven(length(z))||throw(ArgumentError("nested Beyn refinement requires even nq")) # ! Important for diadic refinement
-    N=boundary_matrix_size(ws);rmax=min(max_r,N)
+    iseven(length(z))||throw(ArgumentError("nested Beyn refinement requires even nq"))
+    N=boundary_matrix_size(ws);rmax=min(max_r,N);nq=length(z)
     V,X,A0,A1=wiersig_beyn_buffers(T,N,rmax,rng)
     C0=zeros(Complex{T},N,rmax);C1=zeros(Complex{T},N,rmax)
     xv=vec(X);a0v=vec(A0);a1v=vec(A1);c0v=vec(C0);c1v=vec(C1)
-    As=[Matrix{ComplexF64}(undef,N,N) for _ in eachindex(z)]
-    @benchit timeit=verbose "All-k matrix construction" construct_matrices!(solver,As,pts,cws;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-    p=verbose ? Progress(length(z),desc="Beyn contour") : nothing
-    @inbounds for j in eachindex(z)
-        F=lu!(As[j],ws;check=false)
-        ldiv!(X,F,V)
-        BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
-        if isodd(j)
-            wc=T(2)*w[j]
-            BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
-        end
-        verbose && next!(p)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nq,rmax,cws;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+    B=mem.batch_size
+    if verbose
+        println("system RAM                   = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
+        println("Beyn RAM budget              = ",round(mem.cap_bytes/2.0^30,digits=2)," GiB")
+        println("matrix storage mode          = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
+        println("matrix batch size            = ",B," / ",nq)
     end
-    # these are quite cheap, and they give useful info
+    As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:B]
+    p=verbose ? Progress(nq,desc="Beyn contour") : nothing
+    for first in 1:B:nq
+        last=min(first+B-1,nq);js=first:last;nb=length(js)
+        work=nb==nq ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
+        Asb=nb==B ? As : As[1:nb]
+        @benchit timeit=verbose "Chebyshev matrix batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        @inbounds for (l,j) in enumerate(js)
+            F=lu!(Asb[l],ws;check=false)
+            ldiv!(X,F,V)
+            BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
+            if isodd(j)
+                wc=T(2)*w[j]
+                BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
+            end
+            verbose&&next!(p)
+        end
+    end
     fine=_wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
     coarse=_wiersig_beyn_build_reduced_problem(C0,C1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=false)
     return (fine=fine,coarse=coarse)
@@ -590,11 +658,11 @@ families. All `nq` contour matrices are assembled together in one multi-k
 geometry traversal, after which each matrix is independently factorized and
 applied to the common nested probe matrix.
 """
-function construct_wiersig_B_matrix_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false) where {T<:Real}
+function construct_wiersig_B_matrix_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     z,w=wiersig_beyn_contour(contour,nq)
     @benchit timeit=verbose "Chebyshev workspace" cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
-    nested=_wiersig_beyn_build_nested_chebyshev(solver,pts,ws,z,w,cws;r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
+    nested=_wiersig_beyn_build_nested_chebyshev(solver,pts,ws,z,w,cws;r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     return merge(nested.fine,(coarse=nested.coarse,contour=contour,contour_nodes=z,contour_weights=w,cheb_workspace=cws))
 end
 
@@ -635,8 +703,8 @@ the checked region is extended until that many good roots follow the last failur
 assembly. `validate_roots=false, adaptive_validation=false` performs no residual
 checks.
 """
-function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=true,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false) where {T<:Real}
-    reduced=construct_wiersig_B_matrix_chebyshev(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose)
+function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=true,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+    reduced=construct_wiersig_B_matrix_chebyshev(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     N=boundary_matrix_size(ws)
     if reduced.rank==0
         empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],refinement_displacements=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_refinement_displacements=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
@@ -730,28 +798,39 @@ adaptive production validation.
 - `grow_M::Int=2`: polynomial-degree increment during Chebyshev refinement.
 - `cheb_verbose::Bool=false`: print Chebyshev-plan construction diagnostics.
 """
-function wiersig_beyn_chebyshev_INFO(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,movement_tol::T=T(1e-8),dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),matnorm::Symbol=:one,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false) where {T<:Real}
+function wiersig_beyn_chebyshev_INFO(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,movement_tol::T=T(1e-8),dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),matnorm::Symbol=:one,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     iseven(nq)||throw(ArgumentError("nested Beyn diagnostic requires even nq"))
     nqcoarse=nq÷2;N=boundary_matrix_size(ws);rmax=min(max_r,N)
     z,w=wiersig_beyn_contour(contour,nq)
     cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
-    As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:nq]
-    @benchit timeit=true "All-k matrix construction" construct_matrices!(solver,As,pts,cws;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
     V=randn(rng,Complex{T},N,rmax);X=similar(V)
     f0=zeros(Complex{T},N,rmax);f1=zeros(Complex{T},N,rmax)
     c0=zeros(Complex{T},N,rmax);c1=zeros(Complex{T},N,rmax)
     xv=vec(X);f0v=vec(f0);f1v=vec(f1);c0v=vec(c0);c1v=vec(c1)
-    @showprogress "contour..." for j in 1:nq
-        F=lu!(As[j],ws;check=false)
-        ldiv!(X,F,V)
-        wj=w[j]
-        BLAS.axpy!(wj,xv,f0v)
-        BLAS.axpy!(wj*z[j],xv,f1v)
-        if isodd(j)
-            wc=T(2)*wj
-            BLAS.axpy!(wc,xv,c0v)
-            BLAS.axpy!(wc*z[j],xv,c1v)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nq,rmax,cws;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+    B=mem.batch_size
+    println("system RAM                 = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
+    println("Beyn RAM budget            = ",round(mem.cap_bytes/2.0^30,digits=2)," GiB")
+    println("matrix storage mode        = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
+    println("matrix batch size          = ",B," / ",nq)
+    As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:B]
+    p=Progress(nq,desc="contour...")
+    for first in 1:B:nq
+        last=min(first+B-1,nq);js=first:last;nb=length(js)
+        work=nb==nq ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
+        Asb=nb==B ? As : As[1:nb]
+        @benchit timeit=true "Chebyshev matrix batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        @inbounds for (l,j) in enumerate(js)
+            F=lu!(Asb[l],ws;check=false)
+            ldiv!(X,F,V)
+            wj=w[j]
+            BLAS.axpy!(wj,xv,f0v);BLAS.axpy!(wj*z[j],xv,f1v)
+            if isodd(j)
+                wc=T(2)*wj
+                BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
+            end
+            next!(p)
         end
     end
     coarse=_wiersig_beyn_build_reduced_problem(c0,c1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=false)
@@ -842,7 +921,7 @@ A named tuple with:
 - `contour_k_resolution`, `contour_q_resolution`: local spectral-resolution bounds.
 - `INFO`: representative diagnostic result when `do_INFO=true`, otherwise `nothing`.
 """
-function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,merge_atol::T=T(1e-10),merge_rtol::T=T(1e-10),npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5) where {T<:Real}
+function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,merge_atol::T=T(1e-10),merge_rtol::T=T(1e-10),npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     iseven(nq)||throw(ArgumentError("nested Beyn refinement requires even nq"))
     ncontours=length(contours)
@@ -896,7 +975,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         maxri=min(max_r,N)
         rstepi=min(r_step,maxri)
         verbose&&println("Running Beyn diagnostic on contour at: ",contour.center,", dim=",N)
-        info_result=wiersig_beyn_chebyshev_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose)
+        info_result=wiersig_beyn_chebyshev_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     end
     results=Vector{Any}(undef,ncontours)
     @showprogress "Beyn spectrum" for ic in eachindex(contours)
@@ -909,7 +988,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         rstepi=min(r_step,maxri)
         rng=MersenneTwister(rng_seed+ic)
         result=if chebyshev
-            wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,movement_tol=movement_tol,validation_padding=validation_padding)
+            wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,movement_tol=movement_tol,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
         else
             wiersig_beyn(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,movement_tol=movement_tol,validation_padding=validation_padding)
         end
