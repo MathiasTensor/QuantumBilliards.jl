@@ -56,6 +56,11 @@ struct WiersigContour{T<:Real,F,G,H}
     z::F
     dz::G
     inside::H
+    function WiersigContour(center::Complex{T},halfwidth::T,halfheight::T,z::F,dz::G,inside::H) where {T<:Real,F,G,H}
+        halfwidth>zero(T)||throw(ArgumentError("halfwidth must be positive"))
+        halfheight>zero(T)||throw(ArgumentError("halfheight must be positive"))
+        return new{T,F,G,H}(center,halfwidth,halfheight,z,dz,inside)
+    end
 end
 
 """
@@ -90,24 +95,6 @@ function WiersigContour(center::Complex{T},halfwidth::T,halfheight::T) where {T<
         ξ^2+η^2<=one(T)
     end
     return WiersigContour{T,typeof(z),typeof(dz),typeof(inside)}(center,halfwidth,halfheight,z,dz,inside)
-end
-
-"""
-    WiersigContour(center,halfwidth,halfheight,z,dz,inside)
-
-Construct a custom Beyn contour. `z(θ)` must give the positively oriented contour
-parametrization, `dz(θ)` its derivative, and `inside(k)` must test membership.
-
-For spectral convergence of the periodic trapezoidal rule, `z` and `dz` should
-be analytic in a strip about the real θ axis. Entire parametrizations are ideal.
-
-`halfwidth` and `halfheight` are geometric bounding half-sizes used by spectrum
-tessellation and local boundary-resolution estimates.
-"""
-function WiersigContour(center::Complex{T},halfwidth::T,halfheight::T,z::F,dz::G,inside::H) where {T<:Real,F,G,H}
-    halfwidth>zero(T)||throw(ArgumentError("halfwidth must be positive"))
-    halfheight>zero(T)||throw(ArgumentError("halfheight must be positive"))
-    return WiersigContour{T,F,G,H}(center,halfwidth,halfheight,z,dz,inside)
 end
 
 """
