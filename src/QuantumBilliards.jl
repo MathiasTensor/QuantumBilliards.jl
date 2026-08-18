@@ -5,6 +5,7 @@ using FFTW
 using Bessels
 using SpecialFunctions
 using LinearAlgebra
+import LinearAlgebra: lu!,ldiv!,issuccess
 using SparseArrays
 using StaticArrays
 using Arpack
@@ -254,4 +255,13 @@ include("hyperbolic/wavefunctions_hyperbolic.jl")
 include("magnetic/cfie_magnetic_kress.jl")
 include("magnetic/beyn_magnetic.jl")
 
+# dielectric cavities
+include("dielectric_cavities/dielectric_kress.jl")
+export AbstractWiersigSolver,AbstractWiersigGeometryWorkspace,WiersigKress,WiersigMixedReflection,WiersigGeometryWorkspace,WiersigChebyshevWorkspace,build_wiersig_workspace,build_chebyshev_workspace,chebyshev_params,wiersig_chebyshev_nk,wiersig_chebyshev_ncavities,split_wiersig_trace,expand_wiersig_trace,split_wiersig_components,wiersig_component_range,solve_vect
+include("dielectric_cavities/dielectric_lu.jl")
+export AbstractWiersigLU,WiersigDenseLU,WiersigBlockLU
+include("dielectric_cavities/dielectric_beyn.jl")
+export WiersigContour,wiersig_rectangle_contour,wiersig_beyn_contour,wiersig_inside_contour,wiersig_contour_tessellation,wiersig_beyn_buffers,construct_wiersig_B_matrix,construct_wiersig_B_matrix_chebyshev,wiersig_beyn_residual,wiersig_beyn,wiersig_beyn_INFO,wiersig_beyn_chebyshev,wiersig_beyn_chebyshev_INFO,compute_spectrum
+include("dielectric_cavities/dielectric_wavefunctions.jl")
+export WiersigWavefunctionCache,WiersigWavefunctionPlans,WiersigWavefunctionCoefficients,build_wiersig_wavefunction_cache,build_wiersig_wavefunction_plans,wavefunction_multi,plot_dielectric_wavefunctions
 end
