@@ -324,18 +324,17 @@ function _wiersig_beyn_build_nested_direct(solver::AbstractWiersigSolver,pts::Ve
     C0=zeros(Complex{T},N,rmax);C1=zeros(Complex{T},N,rmax)
     A=Matrix{Complex{T}}(undef,N,N)
     xv=vec(X);a0v=vec(A0);a1v=vec(A1);c0v=vec(C0);c1v=vec(C1)
+    verbose && p=Progress(length(z),desc="Beyn contour")
     @inbounds for j in eachindex(z)
-        verbose&&println("Beyn direct contour node ",j,"/",length(z),": z = ",z[j])
-        @benchit timeit=verbose "Matrix construction" construct_matrices!(solver,A,pts,ws,z[j];dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-        @benchit timeit=verbose "LU!" F=lu!(A,ws;check=false)
-        @benchit timeit=verbose "LDIV!" ldiv!(X,F,V)
-        @benchit timeit=verbose "AXPY!" begin
-            BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
-            if isodd(j)
-                wc=T(2)*w[j]
-                BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
-            end
+        construct_matrices!(solver,A,pts,ws,z[j];dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        F=lu!(A,ws;check=false)
+        ldiv!(X,F,V)
+        BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
+        if isodd(j)
+            wc=T(2)*w[j]
+            BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
         end
+        verbose && next!(p)
     end
     fine=_wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
     coarse=_wiersig_beyn_build_reduced_problem(C0,C1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=false)
@@ -564,16 +563,16 @@ function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts:
     xv=vec(X);a0v=vec(A0);a1v=vec(A1);c0v=vec(C0);c1v=vec(C1)
     As=[Matrix{ComplexF64}(undef,N,N) for _ in eachindex(z)]
     @benchit timeit=verbose "All-k matrix construction" construct_matrices!(solver,As,pts,cws;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+    verbose && p=Progress(length(z),desc="Beyn contour")
     @inbounds for j in eachindex(z)
-        @benchit timeit=verbose "LU!" F=lu!(As[j],ws;check=false)
-        @benchit timeit=verbose "LDIV!" ldiv!(X,F,V)
-        @benchit timeit=verbose "AXPY!" begin
-            BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
-            if isodd(j)
-                wc=T(2)*w[j]
-                BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
-            end
+        F=lu!(As[j],ws;check=false)
+        ldiv!(X,F,V)
+        BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
+        if isodd(j)
+            wc=T(2)*w[j]
+            BLAS.axpy!(wc,xv,c0v);BLAS.axpy!(wc*z[j],xv,c1v)
         end
+        verbose && next!(p)
     end
     # these are quite cheap, and they give useful info
     fine=_wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
