@@ -1148,7 +1148,7 @@ end
 end
 
 """
-    compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}};...) where {T<:Real}
+    compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};...) where {T<:Real}
 
 # Kwargs
 
@@ -1156,14 +1156,13 @@ end
 - `nq::Int=64`: number of production contour quadrature nodes. It need only be even when `do_INFO=true`, because the INFO diagnostic additionally forms the nested `nq÷2` rule.
 - `r::Int=16`: initial probe dimension.
 - `r_step::Int=r`, `max_r::Int=4*r`: probe-growth controls used when the detected Beyn moment rank saturates the current probe dimension.
-- `svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10,5e-11,1e-11]`: numerical-rank threshold for the zeroth Beyn moment.
+- `svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10]`: decreasing numerical-rank thresholds for the zeroth Beyn moment.
 - `do_INFO::Bool=true`: run one representative-contour convergence diagnostic before the complete sweep.
 - `validate_roots::Bool=false`: directly validate every enclosed root when true.
 - `adaptive_validation::Bool=true`: validate candidates in increasing effective moment singular value `σeff`, stopping after `validation_padding` consecutive good candidates follow the last failure.
 - `validation_padding::Int=5`: number of consecutive residual-good candidates required before adaptive validation stops.
 - `movement_tol::T=T(1e-8)`: coarse/fine pole-displacement threshold used only by the optional dyadic INFO diagnostic.
 - `normalized_res_tol::T=T(1e-10)`: normalized nonlinear-residual threshold.
-- `merge_atol::T=T(1e-10)`, `merge_rtol::T=T(1e-10)`: tolerances used to merge roots found on overlapping contours.
 - `rng_seed::Int=0`: deterministic random-probe seed.
 - `multithreaded::Bool=true`: enable threaded matrix assembly.
 - `verbose::Bool=true`: print progress and the final spectrum summary.
@@ -1172,29 +1171,26 @@ end
 
 A named tuple with:
 
-- `values::Vector{Complex{T}}`: overlap-merged resonances enclosed by the contour union.
+- `values::Vector{Complex{T}}`: all accepted resonances lying in `region`, with no inter-contour merging.
 - `vectors::Vector{Vector{Complex{T}}}`: corresponding boundary vectors. Vector lengths may differ because each resonance retains the discretization of its source contour.
 - `residuals::Vector{T}`: raw residuals; `NaN` when not evaluated.
 - `normalized_residuals::Vector{T}`: normalized residuals; `NaN` when not evaluated.
-- `source_contours::Vector{Int}`: source contour retained for each resonance.
+- `source_contours::Vector{Int}`: source contour of every returned resonance.
 - `contours`: supplied contour collection.
-- `contour_results`: individual contour results before overlap merging.
+- `contour_results`: individual contour results.
 - `contour_pts`, `contour_workspaces`: local boundary discretizations and workspaces.
 - `contour_dimensions`: boundary-matrix dimension for each contour.
 - `contour_k_resolution`, `contour_q_resolution`: local spectral-resolution bounds.
 - `INFO`: representative diagnostic result when `do_INFO=true`, otherwise `nothing`.
 """
-function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10,5e-11,1e-11],relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,merge_atol::T=T(1e-10),merge_rtol::T=T(1e-10),npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     do_INFO&&isodd(nq)&&throw(ArgumentError("do_INFO=true requires even nq for the dyadic nq÷2 -> nq diagnostic"))
-    ncontours=length(contours)
-    C=length(solver.billiards)
-    nin=_wiersig_component_indices(solver,C)
-    contour_pts=Vector{Any}(undef,ncontours)
-    contour_ws=Vector{Any}(undef,ncontours)
-    contour_dims=Vector{Int}(undef,ncontours)
-    contour_kmax=Vector{T}(undef,ncontours)
-    contour_qres=Vector{Vector{T}}(undef,ncontours)
+    isempty(contours)&&throw(ArgumentError("contours must not be empty"))
+    isempty(svd_tol)&&throw(ArgumentError("svd_tol must not be empty"))
+    ncontours=length(contours);C=length(solver.billiards);nin=_wiersig_component_indices(solver,C)
+    contour_pts=Vector{Any}(undef,ncontours);contour_ws=Vector{Any}(undef,ncontours)
+    contour_dims=Vector{Int}(undef,ncontours);contour_kmax=Vector{T}(undef,ncontours);contour_qres=Vector{Vector{T}}(undef,ncontours)
     @showprogress "Boundary workspaces" for ic in eachindex(contours)
         contour=contours[ic]
         kr=abs(real(contour.center))+contour.halfwidth
@@ -1203,11 +1199,8 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         qres=T[max(nin[a],solver.n_out)*kmax for a in 1:C]
         pts=evaluate_points(solver,qres)
         ws=build_cfie_kress_workspace(solver,pts)
-        contour_pts[ic]=pts
-        contour_ws[ic]=ws
-        contour_dims[ic]=boundary_matrix_size(ws)
-        contour_kmax[ic]=kmax
-        contour_qres[ic]=qres
+        contour_pts[ic]=pts;contour_ws[ic]=ws;contour_dims[ic]=boundary_matrix_size(ws)
+        contour_kmax[ic]=kmax;contour_qres[ic]=qres
     end
     if verbose
         println()
@@ -1222,6 +1215,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         println("normalized residual tol = ",normalized_res_tol)
         println("Chebyshev               = ",chebyshev ? "local per contour" : "disabled")
         println("discretization          = local per contour")
+        println("inter-contour merging   = disabled")
         println("─────────────────────────────────────────────────")
         println()
     end
@@ -1229,10 +1223,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
     if do_INFO
         zmean=sum(c.center for c in contours)/ncontours
         info_index=argmin(abs(c.center-zmean) for c in contours)
-        contour=contours[info_index]
-        pts=contour_pts[info_index]
-        ws=contour_ws[info_index]
-        N=contour_dims[info_index]
+        contour=contours[info_index];pts=contour_pts[info_index];ws=contour_ws[info_index];N=contour_dims[info_index]
         ri=min(r,N);maxri=min(max_r,N);rstepi=min(r_step,maxri)
         verbose&&println("Running Beyn diagnostic on contour at: ",contour.center,", dim=",N)
         info_result=if chebyshev
@@ -1243,14 +1234,8 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
     end
     results=Vector{Any}(undef,ncontours)
     @showprogress "Beyn spectrum" for ic in eachindex(contours)
-        contour=contours[ic]
-        pts=contour_pts[ic]
-        ws=contour_ws[ic]
-        N=contour_dims[ic]
-        ri=min(r,N)
-        maxri=min(max_r,N)
-        rstepi=min(r_step,maxri)
-        rng=MersenneTwister(rng_seed+ic)
+        contour=contours[ic];pts=contour_pts[ic];ws=contour_ws[ic];N=contour_dims[ic]
+        ri=min(r,N);maxri=min(max_r,N);rstepi=min(r_step,maxri);rng=MersenneTwister(rng_seed+ic)
         result=if chebyshev
             wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
         else
@@ -1260,67 +1245,35 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         if verbose
             wanted=result.inside .& map(k->_wiersig_in_spectrum_region(k,region),result.all_values)
             checked_wanted=wanted .& result.all_checked
-            nwanted=count(wanted .& result.kept)
-            nchecked=count(checked_wanted)
-            nrejected=count(wanted .& .!result.kept)
-            σwanted=result.all_effective_singular_values[wanted]
-            σchecked=result.all_effective_singular_values[checked_wanted]
+            nwanted=count(wanted .& result.kept);nchecked=count(checked_wanted);nrejected=count(wanted .& .!result.kept)
+            σwanted=result.all_effective_singular_values[wanted];σchecked=result.all_effective_singular_values[checked_wanted]
             println("contour ",ic,"/",ncontours,": center=",contour.center,", dim=",N,", rank=",result.rank,", probe=",result.probe_dimension,", accepted=",nwanted,", checked=",nchecked,", rejected=",nrejected,", min σeff=",isempty(σwanted) ? T(NaN) : minimum(σwanted),", checked-through σeff=",isempty(σchecked) ? T(NaN) : maximum(σchecked))
         end
         gc_between_contours&&(GC.gc();GC.gc())
     end
-    values=Complex{T}[]
-    vectors=Vector{Vector{Complex{T}}}()
-    residuals=T[]
-    normalized_residuals=T[]
-    source_contours=Int[]
+    values=Complex{T}[];vectors=Vector{Vector{Complex{T}}}();residuals=T[];normalized_residuals=T[];source_contours=Int[]
     for ic in eachindex(results)
         result=results[ic]
-        for j in eachindex(result.values)
+        @inbounds for j in eachindex(result.values)
             k=result.values[j]
-            _wiersig_in_spectrum_region(k,region)||continue # skip value of inside contour but outside the wanted region
-            match=0
-            best=typemax(T)
-            @inbounds for l in eachindex(values)
-                tol=merge_atol+merge_rtol*max(one(T),abs(k),abs(values[l]))
-                d=abs(k-values[l])
-                if d<=tol&&d<best
-                    match=l
-                    best=d
-                end
-            end
-            raw=result.residuals[j]
-            nr=result.normalized_residuals[j]
-            if match==0
-                push!(values,k)
-                push!(vectors,Vector{Complex{T}}(@view result.vectors[:,j]))
-                push!(residuals,raw)
-                push!(normalized_residuals,nr)
-                push!(source_contours,ic)
-            elseif isfinite(nr)&&(!isfinite(normalized_residuals[match])||nr<normalized_residuals[match])
-                values[match]=k
-                vectors[match]=Vector{Complex{T}}(@view result.vectors[:,j])
-                residuals[match]=raw
-                normalized_residuals[match]=nr
-                source_contours[match]=ic
-            end
+            _wiersig_in_spectrum_region(k,region)||continue
+            push!(values,k)
+            push!(vectors,Vector{Complex{T}}(@view result.vectors[:,j]))
+            push!(residuals,result.residuals[j])
+            push!(normalized_residuals,result.normalized_residuals[j])
+            push!(source_contours,ic)
         end
     end
     order=sortperm(eachindex(values);by=i->(real(values[i]),imag(values[i])))
-    spectrum_values=values[order]
-    spectrum_vectors=vectors[order]
-    spectrum_residuals=residuals[order]
-    spectrum_normalized_residuals=normalized_residuals[order]
+    spectrum_values=values[order];spectrum_vectors=vectors[order]
+    spectrum_residuals=residuals[order];spectrum_normalized_residuals=normalized_residuals[order]
     spectrum_source_contours=source_contours[order]
     if verbose
         println()
         println("──── SPECTRUM SUMMARY ────")
         println("contours solved          = ",ncontours)
-        accepted=sum(results) do result
-            count(k->_wiersig_in_spectrum_region(k,region),result.values)
-        end
-        println("accepted                 = ",accepted)
-        println("unique overlap merged    = ",length(spectrum_values))
+        println("accepted                 = ",length(spectrum_values))
+        println("inter-contour merging    = disabled")
         println("matrix dimension min/max = ",minimum(contour_dims)," / ",maximum(contour_dims))
         for i in eachindex(spectrum_values)
             k=spectrum_values[i];ic=spectrum_source_contours[i];nr=spectrum_normalized_residuals[i]
