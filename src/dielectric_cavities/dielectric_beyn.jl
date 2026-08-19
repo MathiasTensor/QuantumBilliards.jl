@@ -555,6 +555,7 @@ Returns RAM estimates and the selected `batch_size`.
 """
 function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75)
     matrix_bytes=N*N*sizeof(ComplexF64)
+    GC.gc()
     free_bytes=Int(Sys.free_memory())
     budget_bytes=isnothing(ram_cap_gib) ? floor(Int,ram_fraction*free_bytes) : floor(Int,ram_cap_gib*2.0^30)
     budget_bytes>=matrix_bytes||throw(ArgumentError("RAM budget too small for one dense Wiersig matrix"))
