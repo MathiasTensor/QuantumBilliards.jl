@@ -14,13 +14,24 @@ If A₀=UΣW* has numerical rank rk, the reduced Beyn matrix is B=U_r*A₁W_rΣ_
 If BY=YΛ, the eigenvalues Λ approximate the enclosed nonlinear resonances and Φ=U_rY
 contains the corresponding active Wiersig boundary vectors.
 
+#=
 VERIFICATION & SPURIOUS ROOTS
 
-One must choose an even nq number of qudrature points since we will halve them once and use the cruder
-quadrature to approximately find the roots so we can track the "movenent" of the found poles.
-If poles move very little then tipically they are not spurious. Only those that are unresolved
-(one should choose a contour of size such that a smaller quadrature can still approximately find the
-solution) are then checked directly via their residual.
+Production Beyn uses a single nq-point contour quadrature. After
+B=U_r'*A₁W_rΣ_r⁻¹ is diagonalized as BY=YΛ, each candidate is assigned the
+effective retained singular value
+
+    σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]^(-1/2).
+
+Candidates with small σeff depend most strongly on weak retained directions of
+the zeroth Beyn moment and are checked first with the original nonlinear
+residual. Validation proceeds in increasing σeff and stops once
+`validation_padding` consecutive checked candidates pass after the last failed
+candidate. Unchecked enclosed candidates are retained.
+The dyadic nq÷2 -> nq contour comparison is diagnostic only. It is performed by
+the INFO routine to verify that the chosen production nq resolves the contour
+integrals adequately; it is not part of the production spectrum calculation.
+=#
 
 SPECTRUM
 
@@ -264,6 +275,59 @@ function wiersig_beyn_buffers(::Type{T},N::Int,r::Int,rng::AbstractRNG) where {T
 end
 
 """
+    _wiersig_beyn_effective_sigma(Y,Σ)
+
+Return the effective retained moment singular value associated with each reduced
+Beyn eigenvector. For `Y[:,j]`, σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ².
+Small `σeff` means that the candidate depends strongly on weak retained
+directions of the zeroth Beyn moment and is therefore checked first.
+"""
+function _wiersig_beyn_effective_sigma(Y::AbstractMatrix{Complex{T}},Σ::AbstractVector{T}) where {T<:Real}
+    rk,n=size(Y)
+    length(Σ)>=rk||throw(DimensionMismatch("need at least $rk singular values; received $(length(Σ))"))
+    out=Vector{T}(undef,n)
+    @inbounds for j in 1:n
+        a=zero(T);b=zero(T)
+        for l in 1:rk
+            y=abs2(Y[l,j])
+            a+=y
+            b+=y/(Σ[l]^2)
+        end
+        out[j]=iszero(a)||iszero(b) ? T(Inf) : sqrt(a/b)
+    end
+    return out
+end
+
+"""
+    _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=5)
+
+Check enclosed candidates in increasing `σeff`. Stop once
+`validation_padding` consecutive checked candidates are good after the most
+recent failure. `validator(idx)` must evaluate and update `checked` and `keep`
+for the supplied candidate indices.
+"""
+function _wiersig_beyn_singular_validation!(validator,inside::BitVector,σeff::AbstractVector{T},checked::BitVector,keep::BitVector;validation_padding::Int=5) where {T<:Real}
+    validation_padding>0||throw(ArgumentError("validation_padding must be positive"))
+    order=findall(inside)
+    sort!(order;by=j->σeff[j])
+    isempty(order)&&return order
+    ncheck=min(length(order),validation_padding);checked_upto=0
+    while checked_upto<ncheck
+        validator(Vector{Int}(@view order[checked_upto+1:ncheck]))
+        checked_upto=ncheck
+        lastbad=0
+        @inbounds for p in 1:checked_upto
+            j=order[p]
+            checked[j]&&!keep[j]&&(lastbad=p)
+        end
+        needed=lastbad==0 ? checked_upto : min(length(order),lastbad+validation_padding)
+        needed<=checked_upto&&break
+        ncheck=needed
+    end
+    return order
+end
+
+"""
     _wiersig_beyn_rank(Σ::AbstractVector{T},svd_tol::T,relative_svd_tol::Bool) where {T<:Real}
 
 Determine the numerical rank of A₀. Relative mode retains `σ_j≥svd_tol*σ₁`; absolute mode retains `σ_j≥svd_tol`.
@@ -342,6 +406,30 @@ function _wiersig_beyn_build_nested_direct(solver::AbstractWiersigSolver,pts::Ve
 end
 
 """
+    _wiersig_beyn_build_direct(...)
+
+Accumulate the production Beyn moments using only the requested `nq` contour
+rule. Dyadic `nq÷2 -> nq` refinement is reserved for `wiersig_beyn_INFO`.
+"""
+function _wiersig_beyn_build_direct(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,z::AbstractVector{Complex{T}},w::AbstractVector{Complex{T}};r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+    _wiersig_dlp_normal_mode(dlp_kernel)
+    N=boundary_matrix_size(ws);rmax=min(max_r,N)
+    V,X,A0,A1=wiersig_beyn_buffers(T,N,rmax,rng)
+    A=Matrix{Complex{T}}(undef,N,N)
+    xv=vec(X);a0v=vec(A0);a1v=vec(A1)
+    p=verbose ? Progress(length(z),desc="Beyn contour") : nothing
+    @inbounds for j in eachindex(z)
+        construct_matrices!(solver,A,pts,ws,z[j];dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        F=lu!(A,ws;check=false)
+        ldiv!(X,F,V)
+        BLAS.axpy!(w[j],xv,a0v)
+        BLAS.axpy!(w[j]*z[j],xv,a1v)
+        verbose&&next!(p)
+    end
+    return _wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
+end
+
+"""
     _wiersig_beyn_matrix_residual!(y,A,x;matnorm=:one)
 
 Return `raw=||Ax||₂` and `normalized=||Ax||/(||A|| ||x||)`.
@@ -389,8 +477,8 @@ Construct the direct reduced Beyn matrix `B=U_r*A₁W_rΣ_r⁻¹` together with 
 """
 function construct_wiersig_B_matrix(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
     z,w=wiersig_beyn_contour(contour,nq)
-    nested=_wiersig_beyn_build_nested_direct(solver,pts,ws,z,w;r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
-    return merge(nested.fine,(coarse=nested.coarse,contour=contour,contour_nodes=z,contour_weights=w))
+    reduced=_wiersig_beyn_build_direct(solver,pts,ws,z,w;r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
+    return merge(reduced,(contour=contour,contour_nodes=z,contour_weights=w))
 end
 
 """
@@ -449,21 +537,28 @@ end
 """
     wiersig_beyn(...)
 
-Direct Beyn solve with nested `nq÷2 -> nq` refinement. With
-`adaptive_validation=true`, fine roots whose coarse/fine displacement exceeds
-`movement_tol` are checked directly, together with `validation_padding`
-less-displaced roots. If a padding root fails, checking is extended until
-`validation_padding` good roots follow the last failure.
+Direct Beyn solve using a single `nq`-point production contour quadrature.
 
-`validate_roots=true` checks every enclosed fine root. Setting both
-`validate_roots=false` and `adaptive_validation=false` performs no residual checks.
+After `BY=YΛ`, candidates are assigned effective retained moment singular values
+
+    σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ².
+
+With `adaptive_validation=true`, enclosed candidates are checked with the direct
+Wiersig residual in increasing `σeff`. Checking stops once
+`validation_padding` consecutive candidates pass after the most recent failure.
+Unchecked enclosed candidates are retained.
+
+`validate_roots=true` validates every enclosed candidate. Setting both
+`validate_roots=false` and `adaptive_validation=false` performs no residual
+checks. Dyadic contour refinement is diagnostic only and is not part of this
+production solve.
 """
-function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=true,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-8),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
     reduced=construct_wiersig_B_matrix(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
     N=boundary_matrix_size(ws)
     if reduced.rank==0
-        empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],refinement_displacements=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_refinement_displacements=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,coarse_rank=reduced.coarse.rank,coarse_probe_dimension=reduced.coarse.probe_dimension,coarse_roots=Complex{T}[],contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
+        common=(rank=0,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return merge(empty,common)
     end
     Ef=nothing
@@ -471,87 +566,107 @@ function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCF
     λ=Vector{Complex{T}}(Ef.values);Y=Matrix{Complex{T}}(Ef.vectors)
     Φ=Matrix{Complex{T}}(undef,N,length(λ))
     @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,reduced.U,Y)
+    σeff=_wiersig_beyn_effective_sigma(Y,@view reduced.singular_values[1:reduced.rank])
     nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
-    raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots);Δ=fill(T(NaN),nroots)
+    raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
     @inbounds for j in eachindex(λ)
         inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
         keep[j]=inside[j]
-    end
-    croots=Complex{T}[]
-    if reduced.coarse.rank>0
-        Ec=nothing
-        @blas_multi_then_1 MAX_BLAS_THREADS Ec=eigen(reduced.coarse.B)
-        λc=Vector{Complex{T}}(Ec.values)
-        croots=λc[findall(j->isfinite(real(λc[j]))&&isfinite(imag(λc[j]))&&wiersig_inside_contour(contour,λc[j]),eachindex(λc))]
-    end
-    @inbounds for j in eachindex(λ)
-        inside[j]||continue
-        Δ[j]=isempty(croots) ? T(Inf) : minimum(abs(λ[j]-kc) for kc in croots)
     end
     inside_idx=findall(inside)
     if validate_roots
         _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
     elseif adaptive_validation&&!isempty(inside_idx)
-        order=inside_idx[sortperm(inside_idx;by=j->Δ[j],rev=true)]
-        nsuspicious=count(j->!isfinite(Δ[j])||Δ[j]>movement_tol,order)
-        ncheck=min(length(order),nsuspicious+validation_padding);checked_upto=0
-        while checked_upto<ncheck
-            batch=Vector{Int}(@view order[checked_upto+1:ncheck])
-            _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,batch,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-            checked_upto=ncheck;lastbad=0
-            @inbounds for p in 1:ncheck
-                j=order[p]
-                checked[j]&&!keep[j]&&(lastbad=p)
-            end
-            needed=lastbad==0 ? ncheck : min(length(order),lastbad+validation_padding)
-            needed<=ncheck&&break
-            ncheck=needed
-        end
-        verbose&&println("adaptive validation: suspicious=",nsuspicious,", checked=",count(checked),", rejected=",count(inside .& .!keep))
+        validator=idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
+        order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+        verbose&&println("singular-support validation: checked=",count(checked),", rejected=",count(inside .& .!keep),", padding=",validation_padding,", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
     end
-    idx=findall(keep);!isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
-    method=validate_roots ? :direct_all : adaptive_validation ? :direct_adaptive : :none
-    candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],refinement_displacements=Δ[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_refinement_displacements=Δ,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=reduced.rank,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,coarse_rank=reduced.coarse.rank,coarse_probe_dimension=reduced.coarse.probe_dimension,coarse_roots=croots,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    idx=findall(keep)
+    !isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
+    method=validate_roots ? :direct_all : adaptive_validation ? :direct_singular_support : :none
+    candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
+    common=(rank=reduced.rank,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
     return merge(candidates,common)
 end
 
 """
-    wiersig_beyn_INFO(...)
+    wiersig_beyn_INFO(solver,pts,ws,contour;...)
 
-Verbose direct Beyn solve with nested refinement and adaptive root validation.
+Diagnostic direct Beyn solve comparing nested `nq÷2` and `nq` trapezoidal
+rules. This routine is intended only to verify that a representative production
+contour is sufficiently resolved. Both quadratures use the same probe matrix. 
+The reported displacement:
+
+    Δ_j=min_l|k_j^(fine)-k_l^(coarse)|
+
+measures convergence of each enclosed fine root under dyadic contour
+refinement. Fine roots are additionally checked with the original direct
+Wiersig residual. Production `wiersig_beyn` does not perform this dyadic calculation; 
+it instead uses effective-singular-value ordered residual validation.
 """
-function wiersig_beyn_INFO(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};kwargs...) where {T<:Real}
-    result=wiersig_beyn(solver,pts,ws,contour;verbose=true,kwargs...)
-    println()
-    println("center                       = ",result.contour.center)
-    println("halfwidth                    = ",result.contour.halfwidth)
-    println("halfheight                   = ",result.contour.halfheight)
-    println("DLP kernel                   = ",result.dlp_kernel)
-    println("fine/coarse rank             = ",result.rank," / ",result.coarse_rank)
-    println("fine/coarse probe            = ",result.probe_dimension," / ",result.coarse_probe_dimension)
-    println("validation method            = ",result.validation_method)
-    println("provisional roots            = ",length(result.all_values))
-    println("checked roots                = ",count(result.all_checked))
-    println("kept roots                   = ",length(result.values))
-    println("moment singular values       = ");println(result.moment_singular_values)
-    for j in eachindex(result.all_values)
-        println("candidate ",j,": k=",result.all_values[j],", inside=",result.inside[j],", Δ=",result.all_refinement_displacements[j],", checked=",result.all_checked[j],", raw=",result.all_residuals[j],", normalized=",result.all_normalized_residuals[j],", kept=",result.kept[j])
+function wiersig_beyn_INFO(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,movement_tol::T=T(1e-8),dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),matnorm::Symbol=:one,multithreaded::Bool=true) where {T<:Real}
+    _wiersig_dlp_normal_mode(dlp_kernel)
+    iseven(nq)||throw(ArgumentError("direct Beyn diagnostic requires even nq"))
+    N=boundary_matrix_size(ws);rmax=min(max_r,N)
+    z,w=wiersig_beyn_contour(contour,nq)
+    nested=_wiersig_beyn_build_nested_direct(solver,pts,ws,z,w;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=true)
+    fine=nested.fine;coarse=nested.coarse
+    coarse.rank==0&&error("coarse Beyn moment has zero numerical rank")
+    fine.rank==0&&error("fine Beyn moment has zero numerical rank")
+    Ec=nothing;Ef=nothing
+    @blas_multi_then_1 MAX_BLAS_THREADS begin
+        Ec=eigen(coarse.B)
+        Ef=eigen(fine.B)
     end
-    println("───────────────────────────────────────────────────────────")
+    λc=Vector{Complex{T}}(Ec.values);λf=Vector{Complex{T}}(Ef.values)
+    ic=findall(j->isfinite(real(λc[j]))&&isfinite(imag(λc[j]))&&wiersig_inside_contour(contour,λc[j]),eachindex(λc))
+    iff=findall(j->isfinite(real(λf[j]))&&isfinite(imag(λf[j]))&&wiersig_inside_contour(contour,λf[j]),eachindex(λf))
+    sort!(ic;by=j->(real(λc[j]),imag(λc[j])))
+    sort!(iff;by=j->(real(λf[j]),imag(λf[j])))
+    croots=λc[ic];froots=λf[iff]
+    Yf=Matrix{Complex{T}}(Ef.vectors)
+    Φf=Matrix{Complex{T}}(undef,N,length(iff))
+    !isempty(iff)&&@blas_multi_then_1 MAX_BLAS_THREADS mul!(Φf,fine.U,@view(Yf[:,iff]))
+    dfc=isempty(croots) ? fill(T(Inf),length(froots)) : T[minimum(abs(k-kc) for kc in croots) for k in froots]
+    raw=Vector{T}(undef,length(froots));normalized=similar(raw)
+    Awork=Matrix{Complex{T}}(undef,N,N);ywork=Vector{Complex{T}}(undef,N)
+    @showprogress "Direct residuals..." for j in eachindex(froots)
+        raw[j],normalized[j]=_wiersig_beyn_residual!(Awork,ywork,solver,pts,ws,froots[j],@view(Φf[:,j]);dlp_kernel=dlp_kernel,matnorm=matnorm,multithreaded=multithreaded)
+    end
     println()
-    return result
+    println("nq coarse/fine            = ",nq÷2," / ",nq)
+    println("rank coarse/fine          = ",coarse.rank," / ",fine.rank)
+    println("probe coarse/fine         = ",coarse.probe_dimension," / ",fine.probe_dimension)
+    println("roots coarse/fine         = ",length(croots)," / ",length(froots))
+    println("max/median displacement   = ",isempty(dfc) ? T(NaN) : maximum(dfc)," / ",isempty(dfc) ? T(NaN) : median(dfc))
+    println("max/median direct norm.   = ",isempty(normalized) ? T(NaN) : maximum(normalized)," / ",isempty(normalized) ? T(NaN) : median(normalized))
+    println("coarse singular values    = ");println(coarse.singular_values)
+    println("fine singular values      = ");println(fine.singular_values)
+    @inbounds for j in eachindex(froots)
+        if !isfinite(dfc[j])||dfc[j]>movement_tol
+            @warn "Beyn root" k=froots[j] Δ=dfc[j] normalized=normalized[j]
+        else
+            @info "Beyn root" k=froots[j] Δ=dfc[j] normalized=normalized[j]
+        end
+    end
+    return (coarse_nq=nq÷2,fine_nq=nq,coarse=coarse,fine=fine,coarse_roots=croots,fine_roots=froots,fine_vectors=Φf,fine_displacements=dfc,direct_residuals=raw,direct_normalized_residuals=normalized)
 end
 
 """
-    _wiersig_beyn_matrix_batch_plan(N,nmat;ram_cap_gib=nothing,ram_fraction=0.75)
+    _wiersig_beyn_matrix_batch_plan(N,nmat;ram_cap_gib=nothing,ram_fraction=0.75,reserve_gib=8.0)
 
-Choose the largest contour-matrix batch fitting the available RAM.
-- `N`: Wiersig matrix dimension.
-- `nmat`: total number of contour matrices.
-- `ram_cap_gib`: optional explicit matrix-storage budget in GiB.
-- `ram_fraction`: fraction of currently free RAM used when `ram_cap_gib=nothing`.
-Returns RAM estimates and the selected `batch_size`.
+Choose the largest dense contour-matrix batch allowed by the matrix-storage RAM
+budget.
+
+When `ram_cap_gib=nothing`, the budget is
+
+    ram_fraction*Sys.total_memory()-reserve_gib,
+
+so it is based on total physical RAM rather than instantaneous free memory.
+`ram_cap_gib` overrides this automatic budget.
+
+Returns the selected `batch_size` together with the single-matrix, total-RAM,
+and matrix-budget byte counts.
 """
 function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,reserve_gib::Real=8.0)
     matrix_bytes=N*N*sizeof(ComplexF64)
@@ -648,30 +763,88 @@ function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts:
 end
 
 """
+    _wiersig_beyn_build_chebyshev(...)
+
+Accumulate the production Beyn moments using the requested contour quadrature
+and multi-k Chebyshev matrix assembly.
+
+For the common probe matrix `V∈C^{N×rmax}`, contour matrices are assembled in
+RAM-limited batches. Each `A(z_j)` is factorized once and all probe right-hand
+sides are solved simultaneously,
+
+    X_j=A(z_j)⁻¹V,
+
+after which
+
+    A₀+=w_jX_j,
+    A₁+=w_jz_jX_j.
+
+Only the requested `nq` rule is constructed. No coarse contour moments are
+formed. The dyadic `nq÷2 -> nq` comparison is reserved for
+`wiersig_beyn_chebyshev_INFO`.
+"""
+function _wiersig_beyn_build_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,z::AbstractVector{Complex{T}},w::AbstractVector{Complex{T}},cws::WiersigChebyshevWorkspace{T};r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+    _wiersig_dlp_normal_mode(dlp_kernel)
+    N=boundary_matrix_size(ws);rmax=min(max_r,N);nq=length(z)
+    V,X,A0,A1=wiersig_beyn_buffers(T,N,rmax,rng)
+    xv=vec(X);a0v=vec(A0);a1v=vec(A1)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+    B=mem.batch_size
+    if verbose
+        println("total physical RAM           = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
+        println("matrix RAM budget            = ",round(mem.budget_bytes/2.0^30,digits=2)," GiB")
+        println("matrix storage mode          = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
+        println("matrix batch size            = ",B," / ",nq)
+    end
+    As=[Matrix{ComplexF64}(undef,N,N) for _ in 1:B]
+    p=verbose ? Progress(nq,desc="Beyn contour") : nothing
+    for first in 1:B:nq
+        last=min(first+B-1,nq);js=first:last;nb=length(js)
+        work=nb==nq ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
+        Asb=nb==B ? As : As[1:nb]
+        @benchit timeit=verbose "Chebyshev matrix batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        @inbounds for (l,j) in enumerate(js)
+            F=lu!(Asb[l],ws;check=false)
+            ldiv!(X,F,V)
+            BLAS.axpy!(w[j],xv,a0v)
+            BLAS.axpy!(w[j]*z[j],xv,a1v)
+            verbose&&next!(p)
+        end
+    end
+    As=nothing;GC.gc()
+    return _wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
+end
+
+"""
     construct_wiersig_B_matrix_chebyshev(...)
 
-Construct the reduced Beyn problem using simultaneous all-k Chebyshev assembly.
-
-The parent Chebyshev workspace contains all `(C+1)nq` material-wavenumber
-families. All `nq` contour matrices are assembled together in one multi-k
-geometry traversal, after which each matrix is independently factorized and
-applied to the common nested probe matrix.
+Construct the production reduced Beyn problem using multi-k Chebyshev matrix
+assembly. A Chebyshev workspace is built for all `nq` contour wavenumbers. The contour
+matrices are then assembled in RAM-limited batches. For every contour node
+`z_j`, `A(z_j)` is independently factorized and applied to the common probe
+matrix `V`; the resulting solves are accumulated directly into the zeroth and
+first Beyn moments. Only the requested `nq` quadrature is used. Dyadic contour refinement is not
+part of this production routine.
 """
 function construct_wiersig_B_matrix_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     z,w=wiersig_beyn_contour(contour,nq)
     @benchit timeit=verbose "Chebyshev workspace" cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
-    nested=_wiersig_beyn_build_nested_chebyshev(solver,pts,ws,z,w,cws;r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
-    return merge(nested.fine,(coarse=nested.coarse,contour=contour,contour_nodes=z,contour_weights=w,cheb_workspace=cws))
+    reduced=_wiersig_beyn_build_chebyshev(solver,pts,ws,z,w,cws;r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+    return merge(reduced,(contour=contour,contour_nodes=z,contour_weights=w,cheb_workspace=cws))
 end
 
 """
     _wiersig_beyn_validate_chebyshev!(...)
 
-Validate a small sequence of potentially spurious Beyn roots by batched
-Chebyshev evaluation of the nonlinear residual. Candidates are typically
-flagged by appreciable movement between the nested `nq÷2` and `nq` contour
-quadratures.
+Validate the selected Beyn candidates by batched multi-k Chebyshev evaluation
+of the nonlinear residual. The caller supplies the candidate indices `idx`;
+production adaptive validation normally supplies consecutive candidates ordered
+by increasing effective moment singular value `σeff`.
+A Chebyshev workspace is built only for the selected candidate wavenumbers and
+their Wiersig matrices are assembled simultaneously. `checked[j]` records that
+candidate `j` was evaluated and `keep[j]` records whether it satisfies the
+requested residual tolerances.
 """
 function _wiersig_beyn_validate_chebyshev!(raw::Vector{T},normalized::Vector{T},checked::BitVector,keep::BitVector,idx::Vector{Int},λ::Vector{Complex{T}},Φ::Matrix{Complex{T}},solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace;res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),verbose::Bool=false) where {T<:Real}
     isempty(idx)&&return nothing
@@ -692,22 +865,40 @@ end
 """
     wiersig_beyn_chebyshev(...)
 
-Chebyshev Beyn solve with nested `nq÷2 -> nq` refinement. With
-`adaptive_validation=true`, fine roots whose coarse/fine displacement exceeds
-`movement_tol` are checked by batched multi-k Chebyshev residual evaluation,
-together with `validation_padding` less-displaced roots. If a padding root fails,
-the checked region is extended until that many good roots follow the last failure.
+Solve the dielectric resonance problem with Beyn's contour method using multi-k
+Chebyshev matrix assembly.
 
-`validate_roots=true` checks every enclosed fine root with batched Chebyshev
-assembly. `validate_roots=false, adaptive_validation=false` performs no residual
-checks.
+Production uses only the requested `nq`-point contour quadrature. After the
+reduced problem
+
+    BY=YΛ
+
+is solved, each candidate eigenvector `Y[:,j]` is assigned
+
+    σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²,
+
+where `σ_l` are the retained singular values of the zeroth Beyn moment.
+With `adaptive_validation=true`, enclosed candidates are ordered by increasing
+`σeff` and checked by batched Chebyshev residual evaluation. Validation stops
+once `validation_padding` consecutive checked candidates pass after the most
+recent failure. Unchecked enclosed candidates are retained.
+
+`validate_roots=true` instead validates every enclosed candidate.
+Setting both `validate_roots=false` and `adaptive_validation=false` performs no
+nonlinear residual checks.
+
+The dyadic `nq÷2 -> nq` convergence comparison is diagnostic only and is
+performed by `wiersig_beyn_chebyshev_INFO`.
+
+If `return_workspace=true`, the contour Chebyshev workspace is included in the
+returned named tuple.
 """
-function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=true,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     reduced=construct_wiersig_B_matrix_chebyshev(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     N=boundary_matrix_size(ws)
     if reduced.rank==0
-        empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],refinement_displacements=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_refinement_displacements=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,coarse_rank=reduced.coarse.rank,coarse_probe_dimension=reduced.coarse.probe_dimension,coarse_roots=Complex{T}[],contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
+        common=(rank=0,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return return_workspace ? merge(empty,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(empty,common)
     end
     Ef=nothing
@@ -715,48 +906,27 @@ function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{Bounda
     λ=Vector{Complex{T}}(Ef.values);Y=Matrix{Complex{T}}(Ef.vectors)
     Φ=Matrix{Complex{T}}(undef,N,length(λ))
     @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,reduced.U,Y)
+    σeff=_wiersig_beyn_effective_sigma(Y,@view reduced.singular_values[1:reduced.rank])
     nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
-    raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots);Δ=fill(T(NaN),nroots)
+    raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
     @inbounds for j in eachindex(λ)
         inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
         keep[j]=inside[j]
-    end
-    croots=Complex{T}[]
-    if reduced.coarse.rank>0
-        Ec=nothing
-        @blas_multi_then_1 MAX_BLAS_THREADS Ec=eigen(reduced.coarse.B)
-        λc=Vector{Complex{T}}(Ec.values)
-        croots=λc[findall(j->isfinite(real(λc[j]))&&isfinite(imag(λc[j]))&&wiersig_inside_contour(contour,λc[j]),eachindex(λc))]
-    end
-    @inbounds for j in eachindex(λ)
-        inside[j]||continue
-        Δ[j]=isempty(croots) ? T(Inf) : minimum(abs(λ[j]-kc) for kc in croots)
     end
     inside_idx=findall(inside)
     if validate_roots
         _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
     elseif adaptive_validation&&!isempty(inside_idx)
-        order=inside_idx[sortperm(inside_idx;by=j->Δ[j],rev=true)]
-        nsuspicious=count(j->!isfinite(Δ[j])||Δ[j]>movement_tol,order)
-        ncheck=min(length(order),nsuspicious+validation_padding);checked_upto=0
-        while checked_upto<ncheck
-            batch=Vector{Int}(@view order[checked_upto+1:ncheck])
-            _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,batch,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
-            checked_upto=ncheck;lastbad=0
-            @inbounds for p in 1:ncheck
-                j=order[p]
-                checked[j]&&!keep[j]&&(lastbad=p)
-            end
-            needed=lastbad==0 ? ncheck : min(length(order),lastbad+validation_padding)
-            needed<=ncheck&&break
-            ncheck=needed
-        end
-        verbose&&println("adaptive validation: suspicious=",nsuspicious,", checked=",count(checked),", rejected=",count(inside .& .!keep))
+        validator=idx->_wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
+        order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+        verbose&&println("singular-support validation: checked=",count(checked),", rejected=",count(inside .& .!keep),", padding=",validation_padding,", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
     end
-    idx=findall(keep);!isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
-    method=validate_roots ? :chebyshev_all : adaptive_validation ? :chebyshev_adaptive : :none
-    candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],refinement_displacements=Δ[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_refinement_displacements=Δ,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=reduced.rank,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,coarse_rank=reduced.coarse.rank,coarse_probe_dimension=reduced.coarse.probe_dimension,coarse_roots=croots,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+
+    idx=findall(keep)
+    !isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
+    method=validate_roots ? :chebyshev_all : adaptive_validation ? :chebyshev_singular_support : :none
+    candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
+    common=(rank=reduced.rank,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
     return return_workspace ? merge(candidates,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(candidates,common)
 end
 
@@ -890,14 +1060,15 @@ end
 # Kwargs
 
 - `chebyshev::Bool=true`: use multi-k Chebyshev matrix assembly.
-- `nq::Int=64`: number of contour quadrature nodes. Must be even for the nested `nq÷2 -> nq` refinement.
+- `nq::Int=64`: number of production contour quadrature nodes. It need only be even when `do_INFO=true`, because the INFO diagnostic additionally forms the nested `nq÷2` rule.
 - `r::Int=16`: initial probe dimension.
-- `r_step::Int=r`, `max_r::Int=4*r`: nested-probe controls.
+- `r_step::Int=r`, `max_r::Int=4*r`: probe-growth controls used when the detected Beyn moment rank saturates the current probe dimension.
 - `svd_tol::T=T(1e-12)`, `relative_svd_tol::Bool=true`: numerical-rank threshold for the zeroth Beyn moment.
 - `do_INFO::Bool=true`: run one representative-contour convergence diagnostic before the complete sweep.
 - `validate_roots::Bool=false`: directly validate every enclosed root when true.
-- `adaptive_validation::Bool=true`: selectively validate roots unresolved by the nested contour quadratures.
-- `movement_tol::T=T(1e-8)`: coarse/fine pole-displacement threshold.
+- `adaptive_validation::Bool=true`: validate candidates in increasing effective moment singular value `σeff`, stopping after `validation_padding` consecutive good candidates follow the last failure.
+- `validation_padding::Int=5`: number of consecutive residual-good candidates required before adaptive validation stops.
+- `movement_tol::T=T(1e-8)`: coarse/fine pole-displacement threshold used only by the optional dyadic INFO diagnostic.
 - `normalized_res_tol::T=T(1e-10)`: normalized nonlinear-residual threshold.
 - `merge_atol::T=T(1e-10)`, `merge_rtol::T=T(1e-10)`: tolerances used to merge roots found on overlapping contours.
 - `rng_seed::Int=0`: deterministic random-probe seed.
@@ -922,7 +1093,7 @@ A named tuple with:
 """
 function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::T=T(1e-12),relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,merge_atol::T=T(1e-10),merge_rtol::T=T(1e-10),npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
-    iseven(nq)||throw(ArgumentError("nested Beyn refinement requires even nq"))
+    do_INFO&&isodd(nq)&&throw(ArgumentError("do_INFO=true requires even nq for the dyadic nq÷2 -> nq diagnostic"))
     ncontours=length(contours)
     C=length(solver.billiards)
     nin=_wiersig_component_indices(solver,C)
@@ -963,18 +1134,19 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
     end
     info_result=nothing
     if do_INFO
-        chebyshev||throw(ArgumentError("do_INFO=true currently requires chebyshev=true"))
         zmean=sum(c.center for c in contours)/ncontours
         info_index=argmin(abs(c.center-zmean) for c in contours)
         contour=contours[info_index]
         pts=contour_pts[info_index]
         ws=contour_ws[info_index]
         N=contour_dims[info_index]
-        ri=min(r,N)
-        maxri=min(max_r,N)
-        rstepi=min(r_step,maxri)
+        ri=min(r,N);maxri=min(max_r,N);rstepi=min(r_step,maxri)
         verbose&&println("Running Beyn diagnostic on contour at: ",contour.center,", dim=",N)
-        info_result=wiersig_beyn_chebyshev_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+        info_result=if chebyshev
+            wiersig_beyn_chebyshev_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+        else
+            wiersig_beyn_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded)
+        end
     end
     results=Vector{Any}(undef,ncontours)
     @showprogress "Beyn spectrum" for ic in eachindex(contours)
@@ -987,22 +1159,20 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         rstepi=min(r_step,maxri)
         rng=MersenneTwister(rng_seed+ic)
         result=if chebyshev
-            wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,movement_tol=movement_tol,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+            wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
         else
-            wiersig_beyn(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,movement_tol=movement_tol,validation_padding=validation_padding)
+            wiersig_beyn(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding)
         end
         results[ic]=result
         if verbose
             wanted=result.inside .& map(k->_wiersig_in_spectrum_region(k,region),result.all_values)
+            checked_wanted=wanted .& result.all_checked
             nwanted=count(wanted .& result.kept)
-            Δwanted=result.all_refinement_displacements[wanted]
-            Δfinite=filter(isfinite,Δwanted)
-            maxΔ=isempty(Δfinite) ? T(NaN) : maximum(Δfinite)
-            medianΔ=isempty(Δfinite) ? T(NaN) : median(Δfinite)
-            meanΔ=isempty(Δfinite) ? T(NaN) : sum(Δfinite)/length(Δfinite)
-            q99Δ=isempty(Δfinite) ? T(NaN) : quantile(Δfinite,T(0.99))
-            nunmatched=count(!isfinite,Δwanted)
-            println("contour ",ic,"/",ncontours,": center=",contour.center,", dim=",N,", rank=",result.rank,", probe=",result.probe_dimension,", accepted=",nwanted,", max Δ=",maxΔ,", q99 Δ=",q99Δ,", median Δ=",medianΔ,", mean Δ=",meanΔ,", unmatched=",nunmatched)
+            nchecked=count(checked_wanted)
+            nrejected=count(wanted .& .!result.kept)
+            σwanted=result.all_effective_singular_values[wanted]
+            σchecked=result.all_effective_singular_values[checked_wanted]
+            println("contour ",ic,"/",ncontours,": center=",contour.center,", dim=",N,", rank=",result.rank,", probe=",result.probe_dimension,", accepted=",nwanted,", checked=",nchecked,", rejected=",nrejected,", min σeff=",isempty(σwanted) ? T(NaN) : minimum(σwanted),", checked-through σeff=",isempty(σchecked) ? T(NaN) : maximum(σchecked))
         end
         gc_between_contours&&(GC.gc();GC.gc())
     end
@@ -1060,10 +1230,9 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         println("unique overlap merged    = ",length(spectrum_values))
         println("matrix dimension min/max = ",minimum(contour_dims)," / ",maximum(contour_dims))
         for i in eachindex(spectrum_values)
-            k=spectrum_values[i]
-            ic=spectrum_source_contours[i]
-            if validate_roots
-                println(i,": k=",k,", Q=",-real(k)/(2imag(k)),", residual=",spectrum_normalized_residuals[i],", contour=",ic)
+            k=spectrum_values[i];ic=spectrum_source_contours[i];nr=spectrum_normalized_residuals[i]
+            if isfinite(nr)
+                println(i,": k=",k,", Q=",-real(k)/(2imag(k)),", residual=",nr,", contour=",ic)
             else
                 println(i,": k=",k,", Q=",-real(k)/(2imag(k)),", contour=",ic)
             end
