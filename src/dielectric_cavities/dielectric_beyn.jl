@@ -553,14 +553,14 @@ Choose the largest contour-matrix batch fitting the available RAM.
 - `ram_fraction`: fraction of currently free RAM used when `ram_cap_gib=nothing`.
 Returns RAM estimates and the selected `batch_size`.
 """
-function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75)
+function _wiersig_beyn_matrix_batch_plan(N::Int,nmat::Int;ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,reserve_gib::Real=8.0)
     matrix_bytes=N*N*sizeof(ComplexF64)
-    GC.gc()
-    free_bytes=Int(Sys.free_memory())
-    budget_bytes=isnothing(ram_cap_gib) ? floor(Int,ram_fraction*free_bytes) : floor(Int,ram_cap_gib*2.0^30)
+    total_bytes=Int(Sys.total_memory())
+    reserve_bytes=floor(Int,reserve_gib*2.0^30)
+    budget_bytes=isnothing(ram_cap_gib) ? floor(Int,ram_fraction*total_bytes)-reserve_bytes : floor(Int,ram_cap_gib*2.0^30)
     budget_bytes>=matrix_bytes||throw(ArgumentError("RAM budget too small for one dense Wiersig matrix"))
     B=clamp(budget_bytes÷matrix_bytes,1,nmat)
-    return (batch_size=B,matrix_bytes=matrix_bytes,free_bytes=free_bytes,budget_bytes=budget_bytes,automatic=isnothing(ram_cap_gib))
+    return (batch_size=B,matrix_bytes=matrix_bytes,total_bytes=total_bytes,budget_bytes=budget_bytes)
 end
 
 """
