@@ -1273,7 +1273,6 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         println("──── SPECTRUM SUMMARY ────")
         println("contours solved          = ",ncontours)
         println("accepted                 = ",length(spectrum_values))
-        println("inter-contour merging    = disabled")
         println("matrix dimension min/max = ",minimum(contour_dims)," / ",maximum(contour_dims))
         for i in eachindex(spectrum_values)
             k=spectrum_values[i];ic=spectrum_source_contours[i];nr=spectrum_normalized_residuals[i]
