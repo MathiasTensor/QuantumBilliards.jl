@@ -1156,7 +1156,7 @@ end
 - `nq::Int=64`: number of production contour quadrature nodes. It need only be even when `do_INFO=true`, because the INFO diagnostic additionally forms the nested `nq÷2` rule.
 - `r::Int=16`: initial probe dimension.
 - `r_step::Int=r`, `max_r::Int=4*r`: probe-growth controls used when the detected Beyn moment rank saturates the current probe dimension.
-- `svd_tol::AbstractVector{T}=T[1e-8,1e-9,1e-10,1e-11]`: numerical-rank threshold for the zeroth Beyn moment.
+- `svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10,5e-11,1e-11]`: numerical-rank threshold for the zeroth Beyn moment.
 - `do_INFO::Bool=true`: run one representative-contour convergence diagnostic before the complete sweep.
 - `validate_roots::Bool=false`: directly validate every enclosed root when true.
 - `adaptive_validation::Bool=true`: validate candidates in increasing effective moment singular value `σeff`, stopping after `validation_padding` consecutive good candidates follow the last failure.
@@ -1184,7 +1184,7 @@ A named tuple with:
 - `contour_k_resolution`, `contour_q_resolution`: local spectral-resolution bounds.
 - `INFO`: representative diagnostic result when `do_INFO=true`, otherwise `nothing`.
 """
-function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::AbstractVector{T}=T[1e-8,1e-9,1e-10,1e-11],relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,merge_atol::T=T(1e-10),merge_rtol::T=T(1e-10),npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10,5e-11,1e-11],relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,merge_atol::T=T(1e-10),merge_rtol::T=T(1e-10),npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     do_INFO&&isodd(nq)&&throw(ArgumentError("do_INFO=true requires even nq for the dyadic nq÷2 -> nq diagnostic"))
     ncontours=length(contours)
