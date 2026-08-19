@@ -617,7 +617,7 @@ function _wiersig_beyn_build_nested_chebyshev(solver::AbstractWiersigSolver,pts:
     mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     B=mem.batch_size
     if verbose
-        println("currently free RAM            = ",round(mem.free_bytes/2.0^30,digits=2)," GiB")
+        println("total physical RAM           = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
         println("matrix RAM budget             = ",round(mem.budget_bytes/2.0^30,digits=2)," GiB")
         println("matrix storage mode           = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
         println("matrix batch size             = ",B," / ",nq)
@@ -809,7 +809,7 @@ function wiersig_beyn_chebyshev_INFO(solver::AbstractWiersigSolver,pts::Vector{B
     xv=vec(X);f0v=vec(f0);f1v=vec(f1);c0v=vec(c0);c1v=vec(c1)
     mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     B=mem.batch_size
-    println("currently free RAM            = ",round(mem.free_bytes/2.0^30,digits=2)," GiB")
+    println("total physical RAM           = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
     println("matrix RAM budget             = ",round(mem.budget_bytes/2.0^30,digits=2)," GiB")
     println("matrix storage mode           = ",B==nq ? "all-k" : B==1 ? "streamed" : "batched")
     println("matrix batch size             = ",B," / ",nq)
