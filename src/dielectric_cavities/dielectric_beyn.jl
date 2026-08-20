@@ -34,13 +34,19 @@ integrals adequately; it is not part of the production spectrum calculation.
 =#
 
 SPECTRUM
+#=
+SPECTRUM
 
-To compute all resonances in
-Ω={k∈C: re_min≤Re(k)≤re_max, im_min≤Im(k)≤im_max},
-Ω is covered by overlapping superelliptic Beyn contours. For each contour Γ_c,
+To compute all resonances in Ω={k∈C: re_min≤Re(k)≤re_max, im_min≤Im(k)≤im_max},
+Ω is partitioned into non-overlapping rectangular ownership cells. Each cell is
+contained in a smooth Fourier rounded-rectangle Beyn contour, and neighboring
+integration contours may overlap. For each contour Γ_c,
+
 A₀^(c)=(1/2πi)∮_{Γ_c}A(z)⁻¹V_c dz,
 A₁^(c)=(1/2πi)∮_{Γ_c}zA(z)⁻¹V_c dz,
-followed by the SVD and reduced-eigenproblem construction.
+
+followed by the SVD and reduced eigenproblem. 
+=#
 
 - TODO: Deep regions with Im(k)<0 may be better divided into horizontal strips because outgoing Hankel functions grow rapidly in the lower half-plane.
   TODO: Structured/HSS factorization for large dense boundary matrices.
@@ -67,10 +73,11 @@ struct WiersigContour{T<:Real,F,G,H}
     z::F
     dz::G
     inside::H
-    function WiersigContour(center::Complex{T},halfwidth::T,halfheight::T,z::F,dz::G,inside::H) where {T<:Real,F,G,H}
+    ownership::Union{Nothing,NTuple{4,T}}
+    function WiersigContour(center::Complex{T},halfwidth::T,halfheight::T,z::F,dz::G,inside::H,ownership::Union{Nothing,NTuple{4,T}}=nothing) where {T<:Real,F,G,H}
         halfwidth>zero(T)||throw(ArgumentError("halfwidth must be positive"))
         halfheight>zero(T)||throw(ArgumentError("halfheight must be positive"))
-        return new{T,F,G,H}(center,halfwidth,halfheight,z,dz,inside)
+        return new{T,F,G,H}(center,halfwidth,halfheight,z,dz,inside,ownership)
     end
 end
 
@@ -105,7 +112,7 @@ function WiersigContour(center::Complex{T},halfwidth::T,halfheight::T) where {T<
         η=imag(k-center)/halfheight
         ξ^2+η^2<=one(T)
     end
-    return WiersigContour{T,typeof(z),typeof(dz),typeof(inside)}(center,halfwidth,halfheight,z,dz,inside)
+    return WiersigContour{T,typeof(z),typeof(dz),typeof(inside)}(center,halfwidth,halfheight,z,dz,inside,nothing)
 end
 
 """
@@ -251,17 +258,16 @@ function wiersig_contour_tessellation(re_min::T,re_max::T,im_min::T,im_max::T,se
         nx+=1
     end
     bestnx>0||throw(ArgumentError("could not construct a covering contour tessellation"))
-    dx=W/T(bestnx)
-    dy=H/T(bestny)
+    dx=W/T(bestnx);dy=H/T(bestny)
     xs=T[re_min+(T(j)-T(0.5))*dx for j in 1:bestnx]
     ys=T[im_min+(T(j)-T(0.5))*dy for j in 1:bestny]
-    return map(Iterators.product(xs,ys)) do (x,y) 
-        center=Complex{T}(x,y)
-        z=θ->center+(seed.z(θ)-seed.center)
-        dz=seed.dz
+    return vec([begin
+        x=xs[ix];y=ys[iy];center=Complex{T}(x,y)
+        z=θ->center+(seed.z(θ)-seed.center);dz=seed.dz
         inside=k->seed.inside(seed.center+(k-center))
-        WiersigContour(center,seed.halfwidth,seed.halfheight,z,dz,inside)
-    end |> vec
+        ownership=(re_min+T(ix-1)*dx,re_min+T(ix)*dx,im_min+T(iy-1)*dy,im_min+T(iy)*dy)
+        WiersigContour(center,seed.halfwidth,seed.halfheight,z,dz,inside,ownership)
+    end for ix in eachindex(xs),iy in eachindex(ys)])
 end
 
 """
@@ -1146,6 +1152,15 @@ end
     re_min,re_max,im_min,im_max=region
     return re_min<=real(k)<=re_max&&im_min<=imag(k)<=im_max
 end
+# Restrict an already enclosed contour root to the requested spectral region and, for tessellated contours, to its unique non-overlapping ownership cell.
+@inline function _wiersig_in_spectrum_cell(k::Complex{T},contour::WiersigContour{T},region::Tuple{T,T,T,T}) where {T<:Real}
+    _wiersig_in_spectrum_region(k,region)||return false
+    isnothing(contour.ownership)&&return true
+    xlo,xhi,ylo,yhi=contour.ownership;x=real(k);y=imag(k)
+    xin=xlo<=x&&(x<xhi||xhi==region[2]&&x<=xhi)
+    yin=ylo<=y&&(y<yhi||yhi==region[4]&&y<=yhi)
+    return xin&&yin
+end
 
 """
     compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};...) where {T<:Real}
@@ -1171,7 +1186,7 @@ end
 
 A named tuple with:
 
-- `values::Vector{Complex{T}}`: all accepted resonances lying in `region`, with no inter-contour merging.
+- `values::Vector{Complex{T}}`: accepted resonances in `region`; tessellated contours contribute only roots in their non-overlapping ownership cells.
 - `vectors::Vector{Vector{Complex{T}}}`: corresponding boundary vectors. Vector lengths may differ because each resonance retains the discretization of its source contour.
 - `residuals::Vector{T}`: raw residuals; `NaN` when not evaluated.
 - `normalized_residuals::Vector{T}`: normalized residuals; `NaN` when not evaluated.
@@ -1214,7 +1229,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         println("SVD tolerance           = ",svd_tol)
         println("normalized residual tol = ",normalized_res_tol)
         println("Chebyshev               = ",chebyshev ? "local per contour" : "disabled")
-        println("discretization          = local per contour")
+        println("cell ownership (check)  = ",all(!isnothing(c.ownership) for c in contours) ? "enabled" : "disabled")
         println("inter-contour merging   = disabled")
         println("─────────────────────────────────────────────────")
         println()
@@ -1243,7 +1258,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         end
         results[ic]=result
         if verbose
-            wanted=result.inside .& map(k->_wiersig_in_spectrum_region(k,region),result.all_values)
+            wanted=result.inside .& map(k->_wiersig_in_spectrum_cell(k,contour,region),result.all_values)
             checked_wanted=wanted .& result.all_checked
             nwanted=count(wanted .& result.kept);nchecked=count(checked_wanted);nrejected=count(wanted .& .!result.kept)
             σwanted=result.all_effective_singular_values[wanted];σchecked=result.all_effective_singular_values[checked_wanted]
@@ -1253,10 +1268,10 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
     end
     values=Complex{T}[];vectors=Vector{Vector{Complex{T}}}();residuals=T[];normalized_residuals=T[];source_contours=Int[]
     for ic in eachindex(results)
-        result=results[ic]
+        result=results[ic];contour=contours[ic]
         @inbounds for j in eachindex(result.values)
             k=result.values[j]
-            _wiersig_in_spectrum_region(k,region)||continue
+            _wiersig_in_spectrum_cell(k,contour,region)||continue
             push!(values,k)
             push!(vectors,Vector{Complex{T}}(@view result.vectors[:,j]))
             push!(residuals,result.residuals[j])
