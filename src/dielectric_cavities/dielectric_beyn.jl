@@ -557,14 +557,21 @@ end
 
 Direct Beyn solve using a single `nq`-point production contour quadrature.
 
-After `BY=YΛ`, candidates are assigned effective retained moment singular values
+For a vector of decreasing `svd_tol` values, each numerical rank defines a
+complete nested reduced Beyn problem. These spectra are never merged. Each
+rank is validated independently and the returned spectrum is the complete
+spectrum at the lowest SVD tolerance which strictly increased the number of
+accepted enclosed roots. Lower tolerances which add no accepted roots are
+therefore ignored, preventing weak singular-value pollution from being
+accumulated into the spectrum.
+
+With `adaptive_validation=true`, enclosed candidates at each rank are checked
+with the direct Wiersig residual in increasing effective singular value
 
     σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ².
 
-With `adaptive_validation=true`, enclosed candidates are checked with the direct
-Wiersig residual in increasing `σeff`. Checking stops once
-`validation_padding` consecutive candidates pass after the most recent failure.
-Unchecked enclosed candidates are retained.
+Checking stops once `validation_padding` consecutive candidates pass after the
+most recent failure. Unchecked enclosed candidates are retained.
 
 `validate_roots=true` validates every enclosed candidate. Setting both
 `validate_roots=false` and `adaptive_validation=false` performs no residual
@@ -574,77 +581,53 @@ production solve.
 function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-8),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
     reduced=construct_wiersig_B_matrix(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
     N=boundary_matrix_size(ws)
-    if reduced.rank==0
+    if maximum(reduced.ranks;init=0)==0
         empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return merge(empty,common)
     end
-    rk=reduced.rank
-    Ef=nothing
-    @blas_multi_then_1 MAX_BLAS_THREADS Ef=eigen(Matrix(@view reduced.B[1:rk,1:rk]))
-    λ=Vector{Complex{T}}(Ef.values);Y=Matrix{Complex{T}}(Ef.vectors)
-    Φ=Matrix{Complex{T}}(undef,N,length(λ))
-    @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,@view(reduced.U[:,1:rk]),Y)
-    σeff=_wiersig_beyn_effective_sigma(Y,@view reduced.singular_values[1:reduced.rank])
-    nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
-    raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
-    @inbounds for j in eachindex(λ)
-        inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
-        keep[j]=inside[j]
-    end
-    inside_idx=findall(inside)
-    if validate_roots
-        _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-    elseif adaptive_validation&&!isempty(inside_idx)
-        validator=idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-        order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
-        verbose&&println("singular-support validation: checked=",count(checked),", rejected=",count(inside .& .!keep),", padding=",validation_padding,", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
-    end
-    if length(reduced.ranks)>1
-        @inbounds for it in 2:length(reduced.ranks)
-            rkq=reduced.ranks[it]
-            rkq==reduced.ranks[it-1]&&continue
-            Eq=nothing
-            @blas_multi_then_1 MAX_BLAS_THREADS Eq=eigen(Matrix(@view reduced.B[1:rkq,1:rkq]))
-            λq=Vector{Complex{T}}(Eq.values);Yq=Matrix{Complex{T}}(Eq.vectors)
-            Φq=Matrix{Complex{T}}(undef,N,length(λq))
-            @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φq,@view(reduced.U[:,1:rkq]),Yq)
-            σq=_wiersig_beyn_effective_sigma(Yq,@view reduced.singular_values[1:rkq])
-            iq=findall(j->isfinite(real(λq[j]))&&isfinite(imag(λq[j]))&&wiersig_inside_contour(contour,λq[j]),eachindex(λq))
-            known=λ[findall(keep)]
-            used=falses(length(known));new=Int[]
-            for j in iq
-                best=0;bestd=T(Inf)
-                for l in eachindex(known)
-                    used[l]&&continue
-                    d=abs(λq[j]-known[l])
-                    tol=T(1e-8)*max(one(T),abs(λq[j]),abs(known[l]))
-                    if d<=tol&&d<bestd
-                        best=l;bestd=d
-                    end
-                end
-                best==0 ? push!(new,j) : (used[best]=true)
-            end
-            nvalid=0
-            if !isempty(new)
-                λnew=λq[new];Φnew=Φq[:,new];σnew=σq[new]
-                m=length(new)
-                rawnew=fill(T(NaN),m);normalizednew=fill(T(NaN),m)
-                checkednew=falses(m);keepnew=trues(m)
-                _wiersig_beyn_validate_direct!(rawnew,normalizednew,checkednew,keepnew,collect(1:m),λnew,Φnew,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-                nvalid=count(keepnew)
-                λ=vcat(λ,λnew);Φ=hcat(Φ,Φnew);σeff=vcat(σeff,σnew)
-                raw=vcat(raw,rawnew);normalized=vcat(normalized,normalizednew)
-                inside=vcat(inside,trues(m));checked=vcat(checked,checkednew);keep=vcat(keep,keepnew)
-            end
-            verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rkq,", new candidates=",length(new),", new valid=",nvalid)
+    selected=nothing;bestcount=-1;selected_it=0
+    @inbounds for it in eachindex(reduced.ranks)
+        rk=reduced.ranks[it]
+        rk==0&&continue
+        it>1&&rk==reduced.ranks[it-1]&&continue
+        E=nothing
+        @blas_multi_then_1 MAX_BLAS_THREADS E=eigen(Matrix(@view reduced.B[1:rk,1:rk]))
+        λ=Vector{Complex{T}}(E.values);Y=Matrix{Complex{T}}(E.vectors)
+        Φ=Matrix{Complex{T}}(undef,N,length(λ))
+        @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,@view(reduced.U[:,1:rk]),Y)
+        σeff=_wiersig_beyn_effective_sigma(Y,@view reduced.singular_values[1:rk])
+        nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
+        raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
+        for j in eachindex(λ)
+            inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
+            keep[j]=inside[j]
         end
+        inside_idx=findall(inside)
+        if validate_roots
+            _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
+        elseif adaptive_validation&&!isempty(inside_idx)
+            validator=idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
+            order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+            verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rk,", checked=",count(checked),", rejected=",count(inside .& .!keep),", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
+        end
+        naccepted=count(keep);nrejected=count(inside .& .!keep)
+        if naccepted>bestcount
+            bestcount=naccepted;selected_it=it
+            selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep)
+        end
+        verbose&&println("SVD rank spectrum: tolerance=",reduced.svd_tolerances[it],", rank=",rk,", enclosed=",count(inside),", accepted=",naccepted,", rejected=",nrejected,", selected=",selected_it==it)
     end
+    λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff
+    raw=selected.raw;normalized=selected.normalized
+    inside=selected.inside;checked=selected.checked;keep=selected.keep
+    rk=reduced.ranks[selected_it]
     idx=findall(keep)
     !isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
     method=validate_roots ? :direct_all : adaptive_validation ? :direct_singular_support : :none
     candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=reduced.rank,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    common=(rank=rk,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=reduced.rank_thresholds[selected_it],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    verbose&&println("selected SVD tolerance       = ",reduced.svd_tolerances[selected_it]," (rank ",rk,", accepted ",bestcount,")")
     return merge(candidates,common)
 end
 
@@ -927,24 +910,22 @@ end
 Solve the dielectric resonance problem with Beyn's contour method using multi-k
 Chebyshev matrix assembly.
 
-Production uses only the requested `nq`-point contour quadrature. After the
-reduced problem
+For a vector of decreasing `svd_tol` values, every resulting numerical rank
+defines a complete nested reduced Beyn problem. Spectra from different ranks
+are never merged. Each rank is validated independently and the returned
+spectrum is the complete spectrum at the lowest SVD tolerance which strictly
+increased the number of accepted enclosed roots.
 
-    BY=YΛ
+Consequently a lower SVD tolerance which only exposes weak numerical directions
+without adding validated resonances cannot pollute the returned spectrum, and
+no distance-based matching between successive reduced spectra is required.
 
-is solved, each candidate eigenvector `Y[:,j]` is assigned
+At every rank,
 
-    σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²,
+    σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²
 
-where `σ_l` are the retained singular values of the zeroth Beyn moment.
-With `adaptive_validation=true`, enclosed candidates are ordered by increasing
-`σeff` and checked by batched Chebyshev residual evaluation. Validation stops
-once `validation_padding` consecutive checked candidates pass after the most
-recent failure. Unchecked enclosed candidates are retained.
-
-`validate_roots=true` instead validates every enclosed candidate.
-Setting both `validate_roots=false` and `adaptive_validation=false` performs no
-nonlinear residual checks.
+orders adaptive residual validation from weakest to strongest retained moment
+directions. `validate_roots=true` instead validates every enclosed candidate.
 
 The dyadic `nq÷2 -> nq` convergence comparison is diagnostic only and is
 performed by `wiersig_beyn_chebyshev_INFO`.
@@ -955,77 +936,53 @@ returned named tuple.
 function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::WiersigContour{T};nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     reduced=construct_wiersig_B_matrix_chebyshev(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     N=boundary_matrix_size(ws)
-    if reduced.rank==0
+    if maximum(reduced.ranks;init=0)==0
         empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,rank_threshold=reduced.rank_threshold,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return return_workspace ? merge(empty,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(empty,common)
     end
-    rk=reduced.rank
-    Ef=nothing
-    @blas_multi_then_1 MAX_BLAS_THREADS Ef=eigen(Matrix(@view reduced.B[1:rk,1:rk]))
-    λ=Vector{Complex{T}}(Ef.values);Y=Matrix{Complex{T}}(Ef.vectors)
-    Φ=Matrix{Complex{T}}(undef,N,length(λ))
-    @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,@view(reduced.U[:,1:rk]),Y)
-    σeff=_wiersig_beyn_effective_sigma(Y,@view reduced.singular_values[1:rk])
-    nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
-    raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
-    @inbounds for j in eachindex(λ)
-        inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
-        keep[j]=inside[j]
-    end
-    inside_idx=findall(inside)
-    if validate_roots
-        _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
-    elseif adaptive_validation&&!isempty(inside_idx)
-        validator=idx->_wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
-        order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
-        verbose&&println("singular-support validation: checked=",count(checked),", rejected=",count(inside .& .!keep),", padding=",validation_padding,", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
-    end
-    if length(reduced.ranks)>1
-        @inbounds for it in 2:length(reduced.ranks)
-            rkq=reduced.ranks[it]
-            rkq==reduced.ranks[it-1]&&continue
-            Eq=nothing
-            @blas_multi_then_1 MAX_BLAS_THREADS Eq=eigen(Matrix(@view reduced.B[1:rkq,1:rkq]))
-            λq=Vector{Complex{T}}(Eq.values);Yq=Matrix{Complex{T}}(Eq.vectors)
-            Φq=Matrix{Complex{T}}(undef,N,length(λq))
-            @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φq,@view(reduced.U[:,1:rkq]),Yq)
-            σq=_wiersig_beyn_effective_sigma(Yq,@view reduced.singular_values[1:rkq])
-            iq=findall(j->isfinite(real(λq[j]))&&isfinite(imag(λq[j]))&&wiersig_inside_contour(contour,λq[j]),eachindex(λq))
-            known=λ[findall(keep)]
-            used=falses(length(known));new=Int[]
-            for j in iq
-                best=0;bestd=T(Inf)
-                for l in eachindex(known)
-                    used[l]&&continue
-                    d=abs(λq[j]-known[l])
-                    tol=T(1e-8)*max(one(T),abs(λq[j]),abs(known[l]))
-                    if d<=tol&&d<bestd
-                        best=l;bestd=d
-                    end
-                end
-                best==0 ? push!(new,j) : (used[best]=true)
-            end
-            nvalid=0
-            if !isempty(new)
-                λnew=λq[new];Φnew=Φq[:,new];σnew=σq[new]
-                m=length(new)
-                rawnew=fill(T(NaN),m);normalizednew=fill(T(NaN),m)
-                checkednew=falses(m);keepnew=trues(m)
-                _wiersig_beyn_validate_chebyshev!(rawnew,normalizednew,checkednew,keepnew,collect(1:m),λnew,Φnew,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
-                nvalid=count(keepnew)
-                λ=vcat(λ,λnew);Φ=hcat(Φ,Φnew);σeff=vcat(σeff,σnew)
-                raw=vcat(raw,rawnew);normalized=vcat(normalized,normalizednew)
-                inside=vcat(inside,trues(m));checked=vcat(checked,checkednew);keep=vcat(keep,keepnew)
-            end
-            verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rkq,", new candidates=",length(new),", new valid=",nvalid)
+    selected=nothing;bestcount=-1;selected_it=0
+    @inbounds for it in eachindex(reduced.ranks)
+        rk=reduced.ranks[it]
+        rk==0&&continue
+        it>1&&rk==reduced.ranks[it-1]&&continue
+        E=nothing
+        @blas_multi_then_1 MAX_BLAS_THREADS E=eigen(Matrix(@view reduced.B[1:rk,1:rk]))
+        λ=Vector{Complex{T}}(E.values);Y=Matrix{Complex{T}}(E.vectors)
+        Φ=Matrix{Complex{T}}(undef,N,length(λ))
+        @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,@view(reduced.U[:,1:rk]),Y)
+        σeff=_wiersig_beyn_effective_sigma(Y,@view reduced.singular_values[1:rk])
+        nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
+        raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
+        for j in eachindex(λ)
+            inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
+            keep[j]=inside[j]
         end
+        inside_idx=findall(inside)
+        if validate_roots
+            _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
+        elseif adaptive_validation&&!isempty(inside_idx)
+            validator=idx->_wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
+            order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+            verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rk,", checked=",count(checked),", rejected=",count(inside .& .!keep),", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
+        end
+        naccepted=count(keep);nrejected=count(inside .& .!keep)
+        if naccepted>bestcount
+            bestcount=naccepted;selected_it=it
+            selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep)
+        end
+        verbose&&println("SVD rank spectrum: tolerance=",reduced.svd_tolerances[it],", rank=",rk,", enclosed=",count(inside),", accepted=",naccepted,", rejected=",nrejected,", selected=",selected_it==it)
     end
+    λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff
+    raw=selected.raw;normalized=selected.normalized
+    inside=selected.inside;checked=selected.checked;keep=selected.keep
+    rk=reduced.ranks[selected_it]
     idx=findall(keep)
     !isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
     method=validate_roots ? :chebyshev_all : adaptive_validation ? :chebyshev_singular_support : :none
     candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=reduced.rank,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,rank_threshold=reduced.rank_threshold,rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    common=(rank=rk,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=reduced.rank_thresholds[selected_it],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    verbose&&println("selected SVD tolerance       = ",reduced.svd_tolerances[selected_it]," (rank ",rk,", accepted ",bestcount,")")
     return return_workspace ? merge(candidates,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(candidates,common)
 end
 
