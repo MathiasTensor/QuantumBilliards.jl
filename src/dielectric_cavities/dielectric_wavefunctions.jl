@@ -400,8 +400,9 @@ function wavefunction_multi(solver::WiersigKress,ks::AbstractVector,xs::Abstract
     dx=c.xmax-c.xmin;dy=c.ymax-c.ymin # physical grid extent in x and y
     xpad=T(exterior_pad)*dx;ypad=T(exterior_pad)*dy # pad the domain to include the exterior radiation pattern
     xlim=(c.xmin-xpad,c.xmax+xpad);ylim=(c.ymin-ypad,c.ymax+ypad) # padded Cartesian limits
-    nx=max(round(Int,qmax*(xlim[2]-xlim[1])*bval/TWO_PI),nx_min) # x-grid resolution from points per shortest wavelength
-    ny=max(round(Int,qmax*(ylim[2]-ylim[1])*bval/TWO_PI),ny_min) # y-grid resolution from points per shortest wavelength
+    #nx=max(round(Int,qmax*(xlim[2]-xlim[1])*bval/TWO_PI),nx_min) # x-grid resolution from points per shortest wavelength
+    #ny=max(round(Int,qmax*(ylim[2]-ylim[1])*bval/TWO_PI),ny_min) # y-grid resolution from points per shortest wavelength
+    nx=nx_min;ny=ny_min # fixed grid resolution for now, otherwise this explodes the total cost, as O(Nx * Ny * N) = O(k^3) for N boundary points. This is a lot of work for a single wavefunction, and we have to do this for every resonance.
     x_grid=collect(T,range(xlim...;length=nx));y_grid=collect(T,range(ylim...;length=ny)) # equispaced Cartesian reconstruction grid
     labels=_wiersig_interior_grid(solver,x_grid,y_grid) # classify each target as exterior or belonging to cavity a (for each a)
     full_xs=_wiersig_symmetrize_density(solver,xs,pts,dws) # expand symmetry-reduced density to the full physical boundary
