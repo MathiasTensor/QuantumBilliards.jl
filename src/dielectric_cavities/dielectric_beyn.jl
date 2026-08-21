@@ -822,21 +822,35 @@ function _wiersig_beyn_validate_chebyshev!(raw::Vector{T},normalized::Vector{T},
     return nothing
 end
 
-# for each edge calculate the A0,A1 moments. These are shared by the neighboring contour.
-function _wiersig_beyn_edge_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,edge::WiersigRectangleEdge{T},nq::Int,V::Matrix{Complex{T}};dlp_kernel::Symbol=:source,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,verbose::Bool=false) where {T<:Real}
-    N,r=size(V);z,w=wiersig_beyn_edge(edge,nq)
-    cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
-    A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r)
-    mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction);B=mem.batch_size
-    As=[Matrix{Complex{T}}(undef,N,N) for _ in 1:B]
-    for first in 1:B:nq
-        last=min(first+B-1,nq);js=first:last;nb=length(js)
-        work=nb==nq ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
-        Asb=nb==B ? As : As[1:nb]
-        @benchit timeit=verbose "Chebyshev edge batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-        _wiersig_beyn_accumulate_chebyshev!(A0,A1,V,Asb,ws,@view(z[js]),@view(w[js]))
+# Compute all currently missing edge moments of one rectangular cell with one
+# Chebyshev workspace. The workspace therefore contains at most one contour's
+# quadrature nodes; individual edge moments are returned for caching/reuse.
+function _wiersig_beyn_edges_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,edges::Vector{WiersigRectangleEdge{T}},eids::Vector{Int},nh::Int,nv::Int,V::Matrix{Complex{T}};dlp_kernel::Symbol=:source,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,verbose::Bool=false) where {T<:Real}
+    isempty(eids)&&return WiersigBeynEdgeMoments{T}[],0
+    N,r=size(V);z=Complex{T}[];w=Complex{T}[];owner=Int[]
+    moments=[WiersigBeynEdgeMoments(zeros(Complex{T},N,r),zeros(Complex{T},N,r)) for _ in eids]
+    @inbounds for (l,eid) in enumerate(eids)
+        edge=edges[eid];ne=iszero(imag(edge.z1-edge.z0)) ? nh : nv
+        ze,we=wiersig_beyn_edge(edge,ne)
+        append!(z,ze);append!(w,we)
+        for _ in 1:ne;push!(owner,l);end
     end
-    return WiersigBeynEdgeMoments(A0,A1)
+    nk=length(z)
+    @benchit timeit=verbose "Chebyshev cell workspace" cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nk;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction);B=mem.batch_size
+    As=[Matrix{Complex{T}}(undef,N,N) for _ in 1:B];X=similar(V);xv=vec(X)
+    for first in 1:B:nk
+        last=min(first+B-1,nk);js=first:last;nb=length(js)
+        work=nb==nk ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
+        Asb=nb==B ? As : As[1:nb]
+        @benchit timeit=verbose "Chebyshev cell batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        @inbounds for (l,j) in enumerate(js)
+            F=lu!(Asb[l],ws;check=false);ldiv!(X,F,V)
+            Em=moments[owner[j]]
+            BLAS.axpy!(w[j],xv,vec(Em.A0));BLAS.axpy!(w[j]*z[j],xv,vec(Em.A1))
+        end
+    end
+    return moments,nk
 end
 
 """
@@ -959,9 +973,8 @@ non-overlapping ownership cell of their source contour.
 # Kwargs
 
 - `chebyshev::Bool=true`: use multi-k Chebyshev matrix assembly. For smooth
-  tessellations the Chebyshev workspace is local to each contour. For rectangular
-  tessellations one common workspace is built for the unique edge quadrature
-  nodes.
+  tessellations the Chebyshev workspace is local to each contour. 
+  For rectangular tessellations one workspace is built per cell from only the currently uncached edge quadrature nodes. Thus a workspace never contains more than one contour's nodes, while shared-edge moments are cached and reused by neighboring cells.
 
 - `nq=64`: contour quadrature order. For `WiersigSmoothTessellation`, `nq` must
   be a positive integer giving the number of periodic trapezoidal nodes per
@@ -1219,22 +1232,36 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
     @inbounds for ic in eachindex(contours)
         contour=contours[ic]
         A0=zeros(Complex{T},N,probe);A1=zeros(Complex{T},N,probe);a0v=vec(A0);a1v=vec(A1)
-        for q in 1:4
-            eid=contour.edges[q];edge=tess.edges[eid]
-            Em=if haskey(cache,eid)
-                cache[eid]
-            else
-                ne=iszero(imag(edge.z1-edge.z0)) ? nh : nv
-                E=if chebyshev
-                    _wiersig_beyn_edge_chebyshev(solver,pts,ws,edge,ne,V;dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction,verbose=false)
-                else
-                    _wiersig_beyn_edge_direct(solver,pts,ws,edge,ne,V;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-                end
-                cache[eid]=E;verbose&&next!(pedges;step=ne);E
+        if chebyshev
+            missing=Int[]
+            for q in 1:4
+                eid=contour.edges[q]
+                haskey(cache,eid)||push!(missing,eid)
             end
-            α=Complex{T}(contour.signs[q])
-            BLAS.axpy!(α,vec(Em.A0),a0v);BLAS.axpy!(α,vec(Em.A1),a1v)
-            remaining[eid]-=1;iszero(remaining[eid])&&delete!(cache,eid)
+            if !isempty(missing)
+                newmom,nnew=_wiersig_beyn_edges_chebyshev(solver,pts,ws,tess.edges,missing,nh,nv,V;dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction,verbose=false)
+                for l in eachindex(missing);cache[missing[l]]=newmom[l];end
+                verbose&&next!(pedges;step=nnew)
+            end
+            for q in 1:4
+                eid=contour.edges[q];Em=cache[eid];α=Complex{T}(contour.signs[q])
+                BLAS.axpy!(α,vec(Em.A0),a0v);BLAS.axpy!(α,vec(Em.A1),a1v)
+                remaining[eid]-=1;iszero(remaining[eid])&&delete!(cache,eid)
+            end
+        else
+            for q in 1:4
+                eid=contour.edges[q];edge=tess.edges[eid]
+                Em=if haskey(cache,eid)
+                    cache[eid]
+                else
+                    ne=iszero(imag(edge.z1-edge.z0)) ? nh : nv
+                    E=_wiersig_beyn_edge_direct(solver,pts,ws,edge,ne,V;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+                    cache[eid]=E;verbose&&next!(pedges;step=ne);E
+                end
+                α=Complex{T}(contour.signs[q])
+                BLAS.axpy!(α,vec(Em.A0),a0v);BLAS.axpy!(α,vec(Em.A1),a1v)
+                remaining[eid]-=1;iszero(remaining[eid])&&delete!(cache,eid)
+            end
         end
         R=_wiersig_beyn_build_reduced_problem(A0,A1;r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
         if maximum(R.ranks;init=0)==0
