@@ -173,7 +173,7 @@ function WiersigRectangleContour(center::Complex{T},halfwidth::T,halfheight::T) 
 end
 
 # Leading dielectric Weyl estimate for the number of states whose real part lies across the horizontal span of one Beyn contour. The probe dimension is chosen as a safety factor times this leading-order count.
-function _wiersig_beyn_probe_rank(solver::AbstractWiersigSolver,contour::AbstractWiersigContour{T};factor::Real=2.0,min_probe::Int=50) where {T<:Real}
+function _wiersig_beyn_probe_rank(solver::AbstractWiersigSolver,contour::AbstractWiersigContour{T};factor::Real=3.0,min_probe::Int=50) where {T<:Real}
     fundamental=!isnothing(solver.symmetry)
     kL=real(contour.center)-contour.halfwidth
     kR=real(contour.center)+contour.halfwidth
