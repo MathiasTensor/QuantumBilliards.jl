@@ -54,20 +54,6 @@ Reference:
 W.-J. Beyn, Linear Algebra Appl. 436 (2012), 3839–3863.
 =#
 
-# Leading dielectric Weyl estimate for the number of states whose real part lies across the horizontal span of one Beyn contour. The probe dimension is chosen as a safety factor times this leading-order count.
-function _wiersig_beyn_probe_rank(solver::AbstractWiersigSolver,contour::WiersigContour{T};factor::Real=2.0,min_probe::Int=50) where {T<:Real}
-    fundamental=!isnothing(solver.symmetry)
-    kL=real(contour.center)-contour.halfwidth
-    kR=real(contour.center)+contour.halfwidth
-    C=length(solver.billiards);nin=_wiersig_component_indices(solver,C)
-    Nest=zero(T)
-    @inbounds for a in 1:C
-        b=solver.billiards[a]
-        Nest+=delta_area_count_estimate(b,nin[a]*kL,nin[a]*(kR-kL);fundamental=fundamental)
-    end
-    return max(min_probe,ceil(Int,factor*Nest))
-end
-
 """
     WiersigContour
 
@@ -93,6 +79,20 @@ struct WiersigContour{T<:Real,F,G,H}
         halfheight>zero(T)||throw(ArgumentError("halfheight must be positive"))
         return new{T,F,G,H}(center,halfwidth,halfheight,z,dz,inside,ownership)
     end
+end
+
+# Leading dielectric Weyl estimate for the number of states whose real part lies across the horizontal span of one Beyn contour. The probe dimension is chosen as a safety factor times this leading-order count.
+function _wiersig_beyn_probe_rank(solver::AbstractWiersigSolver,contour::WiersigContour{T};factor::Real=2.0,min_probe::Int=50) where {T<:Real}
+    fundamental=!isnothing(solver.symmetry)
+    kL=real(contour.center)-contour.halfwidth
+    kR=real(contour.center)+contour.halfwidth
+    C=length(solver.billiards);nin=_wiersig_component_indices(solver,C)
+    Nest=zero(T)
+    @inbounds for a in 1:C
+        b=solver.billiards[a]
+        Nest+=delta_area_count_estimate(b,nin[a]*kL,nin[a]*(kR-kL);fundamental=fundamental)
+    end
+    return max(min_probe,ceil(Int,factor*Nest))
 end
 
 """
