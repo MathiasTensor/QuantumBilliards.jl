@@ -28,7 +28,7 @@ dlp_kernel=:source      # source-normal DLP convention
 
 circle,_=make_circle_and_basis(radius) # library geometry constructor
 solver=WiersigKress(n_in,n_out,circle,ppw;quadrature_kind=:smooth,polarization=polarization) # Wiersig BIE solver. No corners so smooth trapezoidal quadraturate.
-contour=wiersig_rectangle_contour(ComplexF64(center),halfwidth,halfheight) # a rectangle-ish contour that is smooth. Compromise between a good efficient tilling of the complex plane and being smooth for spectral convergence of teh contour integral.
+contour=wiersig_fourier_rectangle_contour(ComplexF64(center),halfwidth,halfheight) # a rectangle-ish contour that is smooth. Compromise between a good efficient tilling of the complex plane and being smooth for spectral convergence of teh contour integral.
 
 # ANALYTIC CIRCLE HELPERS 
 
