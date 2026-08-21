@@ -57,6 +57,8 @@ problem independently.
   TODO: Structured/HSS factorization for large dense boundary matrices.
 Reference:
 W.-J. Beyn, Linear Algebra Appl. 436 (2012), 3839–3863.
+For rect. contour: 
+Y. Liu, J. E. Roman, and M. Shao, “Solving nonlinear eigenvalue problems via contour integration and region partitioning,” arXiv:2503.12038 (2025).
 =#
 
 abstract type AbstractWiersigContour{T<:Real} end
@@ -512,31 +514,22 @@ function _wiersig_beyn_build_direct(solver::AbstractWiersigSolver,pts::Vector{Bo
     return _wiersig_beyn_build_reduced_problem(A0,A1;r=r,r_step=r_step,max_r=rmax,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
 end
 
-function _wiersig_beyn_build_direct(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,tess::WiersigRectangleTessellation{T};nq::Union{Int,NTuple{2,Int}}=(8,16),r::Int=50,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
-    nh,nv=nq isa Int ? (nq,nq) : nq
-    nh>0&&nv>0||throw(ArgumentError("Gauss-Legendre orders must be positive"))
-    _wiersig_dlp_normal_mode(dlp_kernel)
-    N=boundary_matrix_size(ws);nc=length(tess.contours)
-    V=randn(rng,Complex{T},N,r);X=similar(V);A=Matrix{Complex{T}}(undef,N,N)
-    A0=[zeros(Complex{T},N,r) for _ in 1:nc];A1=[zeros(Complex{T},N,r) for _ in 1:nc]
-    xv=vec(X);a0v=[vec(A) for A in A0];a1v=[vec(A) for A in A1]
-    nhedges=count(e->iszero(imag(e.z1-e.z0)),tess.edges)
-    ntotal=nhedges*nh+(length(tess.edges)-nhedges)*nv
-    p=verbose ? Progress(ntotal,desc="Beyn edges") : nothing
-    @inbounds for edge in tess.edges
-        ne=iszero(imag(edge.z1-edge.z0)) ? nh : nv
-        z,w=wiersig_beyn_edge(edge,ne)
-        for j in eachindex(z)
-            construct_matrices!(solver,A,pts,ws,z[j];dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-            F=lu!(A,ws;check=false);ldiv!(X,F,V)
-            for u in 1:2
-                c=edge.cells[u];c==0&&continue;α=edge.signs[u]*w[j]
-                BLAS.axpy!(α,xv,a0v[c]);BLAS.axpy!(α*z[j],xv,a1v[c])
-            end
-            verbose&&next!(p)
-        end
+struct WiersigBeynEdgeMoments{T<:Real}
+    A0::Matrix{Complex{T}}
+    A1::Matrix{Complex{T}}
+end
+# for each edge calculate the A0,A1 moments. These are shared by the neighboring contour.
+function _wiersig_beyn_edge_direct(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,edge::WiersigRectangleEdge{T},nq::Int,V::Matrix{Complex{T}};dlp_kernel::Symbol=:source,multithreaded::Bool=true) where {T<:Real}
+    N,r=size(V);z,w=wiersig_beyn_edge(edge,nq)
+    X=similar(V);A=Matrix{Complex{T}}(undef,N,N)
+    A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r)
+    xv=vec(X);a0v=vec(A0);a1v=vec(A1)
+    @inbounds for j in eachindex(z)
+        construct_matrices!(solver,A,pts,ws,z[j];dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        F=lu!(A,ws;check=false);ldiv!(X,F,V)
+        BLAS.axpy!(w[j],xv,a0v);BLAS.axpy!(w[j]*z[j],xv,a1v)
     end
-    return A0,A1
+    return WiersigBeynEdgeMoments(A0,A1)
 end
 
 """
@@ -813,7 +806,7 @@ their Wiersig matrices are assembled simultaneously. `checked[j]` records that
 candidate `j` was evaluated and `keep[j]` records whether it satisfies the
 requested residual tolerances.
 """
-function _wiersig_beyn_validate_chebyshev!(raw::Vector{T},normalized::Vector{T},checked::BitVector,keep::BitVector,idx::Vector{Int},λ::Vector{Complex{T}},Φ::Matrix{Complex{T}},solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace;res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),verbose::Bool=false) where {T<:Real}
+function _wiersig_beyn_validate_chebyshev!(raw::Vector{T},normalized::Vector{T},checked::BitVector,keep::BitVector,idx::Vector{Int},λ::Vector{Complex{T}},Φ::Matrix{Complex{T}},solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace;res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),verbose::Bool=false) where {T<:Real}
     isempty(idx)&&return nothing
     ks=Complex{T}[λ[j] for j in idx];N=boundary_matrix_size(ws)
     cws=build_chebyshev_workspace(solver,pts,ks;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=false)
@@ -827,6 +820,23 @@ function _wiersig_beyn_validate_chebyshev!(raw::Vector{T},normalized::Vector{T},
         verbose&&println("adaptive candidate: k=",λ[j],", raw=",raw[j],", normalized=",normalized[j],", kept=",keep[j])
     end
     return nothing
+end
+
+# for each edge calculate the A0,A1 moments. These are shared by the neighboring contour.
+function _wiersig_beyn_edge_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,edge::WiersigRectangleEdge{T},nq::Int,V::Matrix{Complex{T}};dlp_kernel::Symbol=:source,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,verbose::Bool=false) where {T<:Real}
+    N,r=size(V);z,w=wiersig_beyn_edge(edge,nq)
+    cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
+    A0=zeros(Complex{T},N,r);A1=zeros(Complex{T},N,r)
+    mem=_wiersig_beyn_matrix_batch_plan(N,nq;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction);B=mem.batch_size
+    As=[Matrix{Complex{T}}(undef,N,N) for _ in 1:B]
+    for first in 1:B:nq
+        last=min(first+B-1,nq);js=first:last;nb=length(js)
+        work=nb==nq ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
+        Asb=nb==B ? As : As[1:nb]
+        @benchit timeit=verbose "Chebyshev edge batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+        _wiersig_beyn_accumulate_chebyshev!(A0,A1,V,Asb,ws,@view(z[js]),@view(w[js]))
+    end
+    return WiersigBeynEdgeMoments(A0,A1)
 end
 
 """
@@ -854,7 +864,7 @@ directions. `validate_roots=true` instead validates every enclosed candidate.
 If `return_workspace=true`, the contour Chebyshev workspace is included in the
 returned named tuple.
 """
-function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T};nq=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T};nq=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     reduced=construct_wiersig_B_matrix_chebyshev(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     N=boundary_matrix_size(ws)
     if maximum(reduced.ranks;init=0)==0
@@ -932,14 +942,10 @@ independently. Every contour therefore has its own boundary discretization,
 workspace and probe matrix.
 
 For a `WiersigRectangleTessellation`, all cells use one common boundary
-discretization and one common probe matrix. Geometrically identical shared
-edges are represented only once. Each Gauss-Legendre edge solve
-
-    X(z)=A(z)⁻¹V
-
-is therefore performed once and its contribution is scattered, with the
-appropriate orientation sign, into the Beyn moments of the one or two cells
-sharing that edge.
+discretization and probe matrix. Edge moments are computed lazily on first use,
+cached while they are still required by a neighboring cell, and discarded
+immediately after their final consumer. Each cell is therefore completed and
+solved before advancing to the next cell.
 
 Each cell finally forms
 
@@ -1097,8 +1103,9 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
     isempty(svd_tol)&&throw(ArgumentError("svd_tol must not be empty"))
     rectangle=tess isa WiersigRectangleTessellation{T}
     if rectangle
-        nq isa Integer||nq isa Tuple{<:Integer,<:Integer}||throw(ArgumentError("rectangular tessellation requires scalar nq or (nh,nv)"))
-        nh,nv=nq isa Integer ? (nq,nq) : nq
+        validnq=nq isa Integer||(nq isa Tuple&&length(nq)==2&&all(x->x isa Integer,nq))
+        validnq||throw(ArgumentError("rectangular tessellation requires scalar nq or (nh,nv)"))
+        nh,nv=nq isa Integer ? (Int(nq),Int(nq)) : (Int(nq[1]),Int(nq[2]))
         nh>0&&nv>0||throw(ArgumentError("Gauss-Legendre orders must be positive"))
     else
         nq isa Integer||throw(ArgumentError("smooth tessellation requires scalar nq"))
@@ -1139,23 +1146,9 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
             contour=contours[ic];pts=contour_pts[ic];ws=contour_ws[ic];N=contour_dims[ic]
             probe=probe_ranks[ic];rng=MersenneTwister(rng_seed+ic)
             result=if chebyshev
-                wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,
-                    svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,
-                    normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,
-                    matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,
-                    verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,
-                    npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,
-                    sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,
-                    grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,
-                    validate_roots=validate_roots,adaptive_validation=adaptive_validation,
-                    validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+                wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
             else
-                wiersig_beyn(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,
-                    svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,
-                    normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,
-                    matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,
-                    verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,
-                    validation_padding=validation_padding)
+                wiersig_beyn(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding)
             end
             results[ic]=result
             if verbose
@@ -1163,10 +1156,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
                 checked_wanted=wanted .& result.all_checked
                 nwanted=count(wanted .& result.kept);nchecked=count(checked_wanted);nrejected=count(wanted .& .!result.kept)
                 σwanted=result.all_effective_singular_values[wanted];σchecked=result.all_effective_singular_values[checked_wanted]
-                println("contour ",ic,"/",ncontours,": center=",contour.center,", dim=",N,", rank=",result.rank,
-                    ", probe=",result.probe_dimension,", accepted=",nwanted,", checked=",nchecked,", rejected=",nrejected,
-                    ", min σeff=",isempty(σwanted) ? T(NaN) : minimum(σwanted),
-                    ", checked-through σeff=",isempty(σchecked) ? T(NaN) : maximum(σchecked))
+                println("contour ",ic,"/",ncontours,": center=",contour.center,", dim=",N,", rank=",result.rank,", probe=",result.probe_dimension,", accepted=",nwanted,", checked=",nchecked,", rejected=",nrejected,", min σeff=",isempty(σwanted) ? T(NaN) : minimum(σwanted),", checked-through σeff=",isempty(σchecked) ? T(NaN) : maximum(σchecked))
             end
             gc_between_contours&&(GC.gc();GC.gc())
         end
@@ -1174,16 +1164,14 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
         for ic in eachindex(results)
             result=results[ic];contour=contours[ic]
             @inbounds for j in eachindex(result.values)
-                k=result.values[j]
-                _wiersig_in_spectrum_cell(k,contour,region)||continue
+                k=result.values[j];_wiersig_in_spectrum_cell(k,contour,region)||continue
                 push!(values,k);push!(vectors,Vector{Complex{T}}(@view result.vectors[:,j]))
                 push!(residuals,result.residuals[j]);push!(normalized_residuals,result.normalized_residuals[j]);push!(source_contours,ic)
             end
         end
         order=sortperm(eachindex(values);by=i->(real(values[i]),imag(values[i])))
-        spectrum_values=values[order];spectrum_vectors=vectors[order]
-        spectrum_residuals=residuals[order];spectrum_normalized_residuals=normalized_residuals[order]
-        spectrum_source_contours=source_contours[order]
+        spectrum_values=values[order];spectrum_vectors=vectors[order];spectrum_residuals=residuals[order]
+        spectrum_normalized_residuals=normalized_residuals[order];spectrum_source_contours=source_contours[order]
         if verbose
             println()
             println("──── SPECTRUM SUMMARY ────")
@@ -1204,16 +1192,16 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
     qres=T[max(nin[a],solver.n_out)*kmax for a in 1:C]
     pts=evaluate_points(solver,qres);ws=build_cfie_kress_workspace(solver,pts);N=boundary_matrix_size(ws)
     probe=min(maximum(_wiersig_beyn_probe_rank(solver,c;factor=probe_factor,min_probe=min_probe) for c in contours),N)
-    nh,nv=nq isa Integer ? (nq,nq) : nq
-    rng=MersenneTwister(rng_seed)
+    nh,nv=nq isa Integer ? (Int(nq),Int(nq)) : (Int(nq[1]),Int(nq[2]))
+    rng=MersenneTwister(rng_seed);V=randn(rng,Complex{T},N,probe)
+    nhedges=count(e->iszero(imag(e.z1-e.z0)),tess.edges);nvedges=length(tess.edges)-nhedges;ntotal=nhedges*nh+nvedges*nv
     if verbose
-        nhedges=count(e->iszero(imag(e.z1-e.z0)),tess.edges);nvedges=length(tess.edges)-nhedges
         println()
         println("tessellation            = rectangle")
         println("cells                   = ",ncontours," (",tess.nx," × ",tess.ny,")")
         println("unique edges            = ",length(tess.edges)," (",nhedges," horizontal, ",nvedges," vertical)")
         println("Gauss-Legendre orders   = ",nh," / ",nv)
-        println("unique contour solves   = ",nhedges*nh+nvedges*nv)
+        println("unique contour solves   = ",ntotal)
         println("matrix dimension        = ",N)
         println("probe                   = ",probe)
         println("relative SVD threshold  = ",relative_svd_tol)
@@ -1223,114 +1211,60 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
         println("─────────────────────────────────────────────────")
         println()
     end
-    A0=Vector{Matrix{Complex{T}}}();A1=Vector{Matrix{Complex{T}}}()
-    if !chebyshev
-        A0,A1=_wiersig_beyn_build_direct(solver,pts,ws,tess;nq=(nh,nv),r=probe,
-            dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
-    else
-        z=Complex{T}[];w=Complex{T}[];cells=NTuple{2,Int}[];signs=NTuple{2,Int8}[]
-        @inbounds for edge in tess.edges
-            ne=iszero(imag(edge.z1-edge.z0)) ? nh : nv
-            ze,we=wiersig_beyn_edge(edge,ne)
-            append!(z,ze);append!(w,we)
-            append!(cells,fill(edge.cells,ne));append!(signs,fill(edge.signs,ne))
-        end
-        @benchit timeit=verbose "Chebyshev workspace" cws=build_chebyshev_workspace(solver,pts,z;npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=cheb_verbose)
-        V=randn(rng,Complex{T},N,probe);X=similar(V)
-        A0=[zeros(Complex{T},N,probe) for _ in 1:ncontours];A1=[zeros(Complex{T},N,probe) for _ in 1:ncontours]
-        xv=vec(X);a0v=[vec(A) for A in A0];a1v=[vec(A) for A in A1]
-        nz=length(z);mem=_wiersig_beyn_matrix_batch_plan(N,nz;ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction);B=mem.batch_size
-        As=[Matrix{Complex{T}}(undef,N,N) for _ in 1:B]
-        p=verbose ? Progress(nz,desc="Beyn edges") : nothing
-        if verbose
-            println("total physical RAM       = ",round(mem.total_bytes/2.0^30,digits=2)," GiB")
-            println("matrix RAM budget        = ",round(mem.budget_bytes/2.0^30,digits=2)," GiB")
-            println("matrix batch size        = ",B," / ",nz)
-        end
-        for first in 1:B:nz
-            last=min(first+B-1,nz);js=first:last;nb=length(js)
-            work=nb==nz ? cws : _wiersig_subset_chebyshev_workspace(cws,js)
-            Asb=nb==B ? As : As[1:nb]
-            @benchit timeit=verbose "Chebyshev matrix batch" construct_matrices!(solver,Asb,pts,work;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
-            @inbounds for (l,j) in enumerate(js)
-                F=lu!(Asb[l],ws;check=false);ldiv!(X,F,V)
-                for u in 1:2
-                    c=cells[j][u];c==0&&continue
-                    α=signs[j][u]*w[j]
-                    BLAS.axpy!(α,xv,a0v[c]);BLAS.axpy!(α*z[j],xv,a1v[c])
-                end
-                verbose&&next!(p)
-            end
-        end
-        As=nothing;cws=nothing;GC.gc()
-    end
-    reduced=Vector{Any}(undef,ncontours)
-    @showprogress "Reduced Beyn problems" for ic in eachindex(contours)
-        reduced[ic]=_wiersig_beyn_build_reduced_problem(A0[ic],A1[ic];r=probe,r_step=probe,max_r=probe,
-            svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
-    end
-    A0=nothing;A1=nothing;GC.gc()
+    cache=Dict{Int,WiersigBeynEdgeMoments{T}}()
+    remaining=[count(!=(0),edge.cells) for edge in tess.edges]
     results=Vector{Any}(undef,ncontours)
-    @showprogress "Beyn spectra" for ic in eachindex(contours)
-        contour=contours[ic];R=reduced[ic]
+    pedges=verbose ? Progress(ntotal,desc="Beyn unique edge nodes") : nothing
+    pcells=verbose ? Progress(ncontours,desc="Beyn cells") : nothing
+    @inbounds for ic in eachindex(contours)
+        contour=contours[ic]
+        A0=zeros(Complex{T},N,probe);A1=zeros(Complex{T},N,probe);a0v=vec(A0);a1v=vec(A1)
+        for q in 1:4
+            eid=contour.edges[q];edge=tess.edges[eid]
+            Em=if haskey(cache,eid)
+                cache[eid]
+            else
+                ne=iszero(imag(edge.z1-edge.z0)) ? nh : nv
+                E=if chebyshev
+                    _wiersig_beyn_edge_chebyshev(solver,pts,ws,edge,ne,V;dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction,verbose=false)
+                else
+                    _wiersig_beyn_edge_direct(solver,pts,ws,edge,ne,V;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
+                end
+                cache[eid]=E;verbose&&next!(pedges;step=ne);E
+            end
+            α=Complex{T}(contour.signs[q])
+            BLAS.axpy!(α,vec(Em.A0),a0v);BLAS.axpy!(α,vec(Em.A1),a1v)
+            remaining[eid]-=1;iszero(remaining[eid])&&delete!(cache,eid)
+        end
+        R=_wiersig_beyn_build_reduced_problem(A0,A1;r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
         if maximum(R.ranks;init=0)==0
-            empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],
-                normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],
-                all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],
-                all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],
-                inside=Bool[],kept=Bool[])
-            common=(rank=0,ranks=R.ranks,svd_tolerances=R.svd_tolerances,
-                selected_svd_tolerance=R.svd_tolerances[1],selected_svd_index=1,
-                rank_threshold=R.rank_thresholds[1],rank_thresholds=R.rank_thresholds,
-                probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,
-                contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,
-                adaptive_validation=adaptive_validation,validation_method=:none)
-            results[ic]=merge(empty,common)
-            continue
+            empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
+            common=(rank=0,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[1],selected_svd_index=1,rank_threshold=R.rank_thresholds[1],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+            results[ic]=merge(empty,common);verbose&&next!(pcells);continue
         end
         selected=nothing;bestcount=-1;selected_it=0
-        @inbounds for it in eachindex(R.ranks)
-            rk=R.ranks[it];rk==0&&continue
-            it>1&&rk==R.ranks[it-1]&&continue
-            E=nothing
-            @blas_multi_then_1 MAX_BLAS_THREADS E=eigen(Matrix(@view R.B[1:rk,1:rk]))
-            λ=Vector{Complex{T}}(E.values);Y=Matrix{Complex{T}}(E.vectors)
-            Φ=Matrix{Complex{T}}(undef,N,length(λ))
+        for it in eachindex(R.ranks)
+            rk=R.ranks[it];rk==0&&continue;it>1&&rk==R.ranks[it-1]&&continue
+            E=nothing;@blas_multi_then_1 MAX_BLAS_THREADS E=eigen(Matrix(@view R.B[1:rk,1:rk]))
+            λ=Vector{Complex{T}}(E.values);Y=Matrix{Complex{T}}(E.vectors);Φ=Matrix{Complex{T}}(undef,N,length(λ))
             @blas_multi_then_1 MAX_BLAS_THREADS mul!(Φ,@view(R.U[:,1:rk]),Y)
             σeff=_wiersig_beyn_effective_sigma(Y,@view R.singular_values[1:rk])
             nroots=length(λ);inside=falses(nroots);keep=falses(nroots);checked=falses(nroots)
             raw=fill(T(NaN),nroots);normalized=fill(T(NaN),nroots)
             for j in eachindex(λ)
-                inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j])
-                keep[j]=inside[j]
+                inside[j]=isfinite(real(λ[j]))&&isfinite(imag(λ[j]))&&wiersig_inside_contour(contour,λ[j]);keep[j]=inside[j]
             end
             inside_idx=findall(inside)
             if validate_roots
                 if chebyshev
-                    _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;
-                        res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,
-                        matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,
-                        npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,
-                        cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,
-                        grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
+                    _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
                 else
-                    _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;
-                        res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,
-                        matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
+                    _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
                 end
             elseif adaptive_validation&&!isempty(inside_idx)
-                validator=if chebyshev
-                    idx->_wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;
-                        res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,
-                        matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,
-                        npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,
-                        cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,
-                        grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
-                else
-                    idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;
-                        res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,
-                        matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-                end
+                validator=chebyshev ?
+                    idx->_wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose) :
+                    idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
                 _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
             end
             naccepted=count(keep)
@@ -1338,6 +1272,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
                 bestcount=naccepted;selected_it=it
                 selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep)
             end
+            verbose&&println("SVD rank spectrum: tolerance=",R.svd_tolerances[it],", rank=",rk,", enclosed=",count(inside),", accepted=",naccepted,", rejected=",count(inside .& .!keep),", selected=",selected_it==it)
         end
         λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff;raw=selected.raw;normalized=selected.normalized
         inside=selected.inside;checked=selected.checked;keep=selected.keep;rk=R.ranks[selected_it]
@@ -1346,16 +1281,16 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
         candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
         common=(rank=rk,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=R.rank_thresholds[selected_it],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
         results[ic]=merge(candidates,common)
-
         if verbose
             result=results[ic]
             wanted=result.inside .& map(k->_wiersig_in_spectrum_cell(k,contour,region),result.all_values)
             checked_wanted=wanted .& result.all_checked
-            nwanted=count(wanted .& result.kept);nchecked=count(checked_wanted);nrejected=count(wanted .& .!result.kept)
-            println("cell ",ic,"/",ncontours,": center=",contour.center,", rank=",result.rank,
-                ", accepted=",nwanted,", checked=",nchecked,", rejected=",nrejected)
+            println("cell ",ic,"/",ncontours,": center=",contour.center,", rank=",result.rank,", accepted=",count(wanted .& result.kept),", checked=",count(checked_wanted),", rejected=",count(wanted .& .!result.kept),", cached edges=",length(cache))
+            next!(pcells)
         end
     end
+    isempty(cache)||@warn "rectangle edge cache was not empty after tessellation" cached_edges=collect(keys(cache))
+    any(!iszero,remaining)&&@warn "some rectangle edges were not fully consumed" remaining=remaining
     values=Complex{T}[];vectors=Vector{Vector{Complex{T}}}();residuals=T[];normalized_residuals=T[];source_contours=Int[]
     for ic in eachindex(results)
         result=results[ic];contour=contours[ic]
@@ -1366,9 +1301,8 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
         end
     end
     order=sortperm(eachindex(values);by=i->(real(values[i]),imag(values[i])))
-    spectrum_values=values[order];spectrum_vectors=vectors[order]
-    spectrum_residuals=residuals[order];spectrum_normalized_residuals=normalized_residuals[order]
-    spectrum_source_contours=source_contours[order]
+    spectrum_values=values[order];spectrum_vectors=vectors[order];spectrum_residuals=residuals[order]
+    spectrum_normalized_residuals=normalized_residuals[order];spectrum_source_contours=source_contours[order]
     if verbose
         println()
         println("──── SPECTRUM SUMMARY ────")
@@ -1382,5 +1316,6 @@ function compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTes
         println("─────────────────────────────────────────────────")
         println()
     end
-    return (values=spectrum_values,vectors=spectrum_vectors,residuals=spectrum_residuals,normalized_residuals=spectrum_normalized_residuals,source_contours=spectrum_source_contours,tessellation=tess,contours=contours,contour_results=results,contour_pts=pts,contour_workspaces=ws,contour_dimensions=fill(N,ncontours),contour_k_resolution=fill(kmax,ncontours),contour_q_resolution=[copy(qres) for _ in 1:ncontours])
+    contour_pts=fill(pts,ncontours);contour_ws=fill(ws,ncontours)
+    return (values=spectrum_values,vectors=spectrum_vectors,residuals=spectrum_residuals,normalized_residuals=spectrum_normalized_residuals,source_contours=spectrum_source_contours,tessellation=tess,contours=contours,contour_results=results,contour_pts=contour_pts,contour_workspaces=contour_ws,contour_dimensions=fill(N,ncontours),contour_k_resolution=fill(kmax,ncontours),contour_q_resolution=[copy(qres) for _ in 1:ncontours])
 end
