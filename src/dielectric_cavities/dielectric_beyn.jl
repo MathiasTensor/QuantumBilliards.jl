@@ -71,12 +71,10 @@ struct WiersigSmoothContour{T<:Real,F,G,H}<:AbstractWiersigContour{T}
     inside::H
     ownership::Union{Nothing,NTuple{4,T}}
     function WiersigSmoothContour(center::Complex{T},halfwidth::T,halfheight::T,z::F,dz::G,inside::H,
-        ownership::Union{Nothing,NTuple{4,T}}=nothing) where {T<:Real,F,G,H}
+        ownership::Union{Nothing,NTuple{4,T}}) where {T<:Real,F,G,H}
         return new{T,F,G,H}(center,halfwidth,halfheight,z,dz,inside,ownership)
     end
 end
-
-# generic fallback constructor for a smooth contour
 function WiersigSmoothContour(center::Complex{T},halfwidth::T,halfheight::T,z::F,dz::G,inside::H;
     ownership::Union{Nothing,NTuple{4,T}}=nothing) where {T<:Real,F,G,H}
     return WiersigSmoothContour(center,halfwidth,halfheight,z,dz,inside,ownership)
