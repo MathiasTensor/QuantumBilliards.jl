@@ -54,6 +54,20 @@ Reference:
 W.-J. Beyn, Linear Algebra Appl. 436 (2012), 3839–3863.
 =#
 
+# Leading dielectric Weyl estimate for the number of states whose real part lies across the horizontal span of one Beyn contour. The probe dimension is chosen as a safety factor times this leading-order count.
+function _wiersig_beyn_probe_rank(solver::AbstractWiersigSolver,contour::WiersigContour{T};factor::Real=2.0,min_probe::Int=50) where {T<:Real}
+    fundamental=!isnothing(solver.symmetry)
+    kL=real(contour.center)-contour.halfwidth
+    kR=real(contour.center)+contour.halfwidth
+    C=length(solver.billiards);nin=_wiersig_component_indices(solver,C)
+    Nest=zero(T)
+    @inbounds for a in 1:C
+        b=solver.billiards[a]
+        Nest+=delta_area_count_estimate(b,nin[a]*kL,nin[a]*(kR-kL);fundamental=fundamental)
+    end
+    return max(min_probe,ceil(Int,factor*Nest))
+end
+
 """
     WiersigContour
 
@@ -354,41 +368,34 @@ once at the largest resulting rank. The problem for any earlier tolerance is
 the corresponding leading principal block of this matrix.
 """
 function _wiersig_beyn_build_reduced_problem(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}};r::Int,r_step::Int,max_r::Int,svd_tol::Union{T,AbstractVector{T}},relative_svd_tol::Bool,verbose::Bool=false) where {T<:Real}
-    tols=svd_tol isa AbstractVector ? svd_tol : T[svd_tol]
-    isempty(tols)&&throw(ArgumentError("svd_tol must not be empty"))
-    issorted(tols;rev=true)||throw(ArgumentError("svd_tol must be nonincreasing"))
-    N,ravailable=size(A0)
-    rmax=min(max_r,ravailable);rcur=r
+    tols0=svd_tol isa AbstractVector ? collect(svd_tol) : T[svd_tol]
+    isempty(tols0)&&throw(ArgumentError("svd_tol must not be empty"));issorted(tols0;rev=true)||throw(ArgumentError("svd_tol must be nonincreasing"))
+    N,ravailable=size(A0);rmax=min(max_r,ravailable);rcur=min(r,rmax)
     while true
-        A0cur=Matrix(@view A0[:,1:rcur])
-        @blas_multi_then_1 MAX_BLAS_THREADS F0=svd!(A0cur;full=false)
-        Σ=F0.S
-        ranks=Vector{Int}(undef,length(tols));thresholds=Vector{T}(undef,length(tols))
-        @inbounds for i in eachindex(tols)
-            ranks[i],thresholds[i]=_wiersig_beyn_rank(Σ,tols[i],relative_svd_tol)
-        end
-        rkmax=maximum(ranks)
+        A0cur=Matrix(@view A0[:,1:rcur]);@blas_multi_then_1 MAX_BLAS_THREADS F0=svd!(A0cur;full=false);Σ=F0.S
+        ranks0=Vector{Int}(undef,length(tols0));thresholds0=Vector{T}(undef,length(tols0))
+        @inbounds for i in eachindex(tols0);ranks0[i],thresholds0[i]=_wiersig_beyn_rank(Σ,tols0[i],relative_svd_tol);end
         if verbose
-            println("Beyn probe dimension         = ",rcur)
-            println("Beyn moment singular values = ");println(Σ)
-            println("SVD tolerances              = ",tols)
-            println("detected moment ranks       = ",ranks)
-            println("rank thresholds             = ",thresholds)
+            println("Beyn probe dimension         = ",rcur);println("Beyn moment singular values = ");println(Σ)
+            println("SVD tolerances              = ",tols0);println("detected moment ranks       = ",ranks0);println("rank thresholds             = ",thresholds0)
         end
-        if rkmax<rcur
-            rkmax==0&&return (B=Matrix{Complex{T}}(undef,0,0),U=Matrix{Complex{T}}(undef,N,0),singular_values=copy(Σ),rank=0,ranks=ranks,rank_threshold=thresholds[1],rank_thresholds=thresholds,svd_tolerances=collect(tols),probe_dimension=rcur)
-            Uk=@view F0.U[:,1:rkmax];Wk=@view F0.V[:,1:rkmax];Σk=@view Σ[1:rkmax];A1cur=@view A1[:,1:rcur]
-            tmp=Matrix{Complex{T}}(undef,N,rkmax)
-            @blas_multi_then_1 MAX_BLAS_THREADS mul!(tmp,A1cur,Wk)
-            @inbounds for j in 1:rkmax
-                @views rmul!(tmp[:,j],inv(Σk[j]))
-            end
-            B=Matrix{Complex{T}}(undef,rkmax,rkmax)
-            @blas_multi_then_1 MAX_BLAS_THREADS mul!(B,adjoint(Uk),tmp)
-            return (B=B,U=Matrix(Uk),singular_values=copy(Σ),rank=ranks[1],ranks=ranks,rank_threshold=thresholds[1],rank_thresholds=thresholds,svd_tolerances=collect(tols),probe_dimension=rcur)
+        isat=findfirst(==(rcur),ranks0)
+        if isat==1
+            rcur>=rmax&&throw(ArgumentError("Beyn moment rank saturates probe=$rcur already at svd_tol=$(tols0[1]). Increase the probe factor or reduce the contour size."))
+            rcur=min(rcur+r_step,rmax);continue
         end
-        rcur>=rmax&&throw(ArgumentError("Beyn moment rank remains saturated at max_r=$rmax. Increase max_r and normally nq, or reduce the contour size."))
-        rcur=min(rcur+r_step,rmax)
+        nuse=isnothing(isat) ? length(tols0) : isat-1
+        tols=tols0[1:nuse];ranks=ranks0[1:nuse];thresholds=thresholds0[1:nuse];rkmax=maximum(ranks)
+        if verbose&&!isnothing(isat)
+            println("SVD ladder truncated         = ",tols0[isat]," and below reached probe ceiling ",rcur)
+            println("usable SVD tolerances       = ",tols);println("usable moment ranks         = ",ranks)
+        end
+        rkmax==0&&return (B=Matrix{Complex{T}}(undef,0,0),U=Matrix{Complex{T}}(undef,N,0),singular_values=copy(Σ),rank=0,ranks=ranks,rank_threshold=thresholds[1],rank_thresholds=thresholds,svd_tolerances=tols,probe_dimension=rcur)
+        Uk=@view F0.U[:,1:rkmax];Wk=@view F0.V[:,1:rkmax];Σk=@view Σ[1:rkmax];A1cur=@view A1[:,1:rcur]
+        tmp=Matrix{Complex{T}}(undef,N,rkmax);@blas_multi_then_1 MAX_BLAS_THREADS mul!(tmp,A1cur,Wk)
+        @inbounds for j in 1:rkmax;@views rmul!(tmp[:,j],inv(Σk[j]));end
+        B=Matrix{Complex{T}}(undef,rkmax,rkmax);@blas_multi_then_1 MAX_BLAS_THREADS mul!(B,adjoint(Uk),tmp)
+        return (B=B,U=Matrix(Uk),singular_values=copy(Σ),rank=ranks[1],ranks=ranks,rank_threshold=thresholds[1],rank_thresholds=thresholds,svd_tolerances=tols,probe_dimension=rcur)
     end
 end
 
@@ -1155,7 +1162,7 @@ A named tuple with:
 - `contour_k_resolution`, `contour_q_resolution`: local spectral-resolution bounds.
 - `INFO`: representative diagnostic result when `do_INFO=true`, otherwise `nothing`.
 """
-function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,r::Int=16,r_step::Int=r,max_r::Int=4*r,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=true,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector{<:WiersigContour{T}},region::Tuple{T,T,T,T};chebyshev::Bool=true,nq::Int=64,probe_factor::Real=2.0,min_probe::Int=50,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=false,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),do_INFO::Bool=true,cheb_verbose::Bool=false,verbose::Bool=true,gc_between_contours::Bool=false,validate_roots::Bool=false,adaptive_validation::Bool=true,movement_tol::T=T(1e-8),validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel)
     do_INFO&&isodd(nq)&&throw(ArgumentError("do_INFO=true requires even nq for the dyadic nq÷2 -> nq diagnostic"))
     isempty(contours)&&throw(ArgumentError("contours must not be empty"))
@@ -1163,16 +1170,12 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
     ncontours=length(contours);C=length(solver.billiards);nin=_wiersig_component_indices(solver,C)
     contour_pts=Vector{Any}(undef,ncontours);contour_ws=Vector{Any}(undef,ncontours)
     contour_dims=Vector{Int}(undef,ncontours);contour_kmax=Vector{T}(undef,ncontours);contour_qres=Vector{Vector{T}}(undef,ncontours)
+    probe_ranks=Vector{Int}(undef,ncontours)
     @showprogress "Boundary workspaces" for ic in eachindex(contours)
-        contour=contours[ic]
-        kr=abs(real(contour.center))+contour.halfwidth
-        ki=abs(imag(contour.center))+contour.halfheight
-        kmax=hypot(kr,ki)
-        qres=T[max(nin[a],solver.n_out)*kmax for a in 1:C]
-        pts=evaluate_points(solver,qres)
-        ws=build_cfie_kress_workspace(solver,pts)
-        contour_pts[ic]=pts;contour_ws[ic]=ws;contour_dims[ic]=boundary_matrix_size(ws)
-        contour_kmax[ic]=kmax;contour_qres[ic]=qres
+        contour=contours[ic];kr=abs(real(contour.center))+contour.halfwidth;ki=abs(imag(contour.center))+contour.halfheight;kmax=hypot(kr,ki)
+        qres=T[max(nin[a],solver.n_out)*kmax for a in 1:C];pts=evaluate_points(solver,qres);ws=build_cfie_kress_workspace(solver,pts)
+        contour_pts[ic]=pts;contour_ws[ic]=ws;contour_dims[ic]=boundary_matrix_size(ws);contour_kmax[ic]=kmax;contour_qres[ic]=qres
+        probe_ranks[ic]=min(_wiersig_beyn_probe_rank(solver,contour;factor=probe_factor,min_probe=min_probe),contour_dims[ic])
     end
     if verbose
         println()
@@ -1181,7 +1184,7 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
         println("halfwidth range         = ",minimum(c.halfwidth for c in contours)," : ",maximum(c.halfwidth for c in contours))
         println("halfheight range        = ",minimum(c.halfheight for c in contours)," : ",maximum(c.halfheight for c in contours))
         println("matrix dimension range  = ",minimum(contour_dims)," : ",maximum(contour_dims))
-        println("initial/max probe       = ",r," / ",max_r)
+        println("initial/max probe       = ",minimum(probe_ranks)," / ",maximum(probe_ranks))
         println("relative SVD threshold  = ",relative_svd_tol)
         println("SVD tolerance           = ",svd_tol)
         println("normalized residual tol = ",normalized_res_tol)
@@ -1195,23 +1198,21 @@ function compute_spectrum(solver::AbstractWiersigSolver,contours::AbstractVector
     if do_INFO
         zmean=sum(c.center for c in contours)/ncontours
         info_index=argmin(abs(c.center-zmean) for c in contours)
-        contour=contours[info_index];pts=contour_pts[info_index];ws=contour_ws[info_index];N=contour_dims[info_index]
-        ri=min(r,N);maxri=min(max_r,N);rstepi=min(r_step,maxri)
+        contour=contours[info_index];pts=contour_pts[info_index];ws=contour_ws[info_index];N=contour_dims[info_index];probe=probe_ranks[info_index]
         verbose&&println("Running Beyn diagnostic on contour at: ",contour.center,", dim=",N)
         info_result=if chebyshev
-            wiersig_beyn_chebyshev_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=first(svd_tol),relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+            wiersig_beyn_chebyshev_INFO(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,svd_tol=first(svd_tol),relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
         else
-            wiersig_beyn_INFO(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=first(svd_tol),relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded)
+            wiersig_beyn_INFO(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,svd_tol=first(svd_tol),relative_svd_tol=relative_svd_tol,movement_tol=movement_tol,dlp_kernel=dlp_kernel,rng=MersenneTwister(rng_seed+info_index),matnorm=matnorm,multithreaded=multithreaded)
         end
     end
     results=Vector{Any}(undef,ncontours)
     @showprogress "Beyn spectrum" for ic in eachindex(contours)
-        contour=contours[ic];pts=contour_pts[ic];ws=contour_ws[ic];N=contour_dims[ic]
-        ri=min(r,N);maxri=min(max_r,N);rstepi=min(r_step,maxri);rng=MersenneTwister(rng_seed+ic)
+        contour=contours[ic];pts=contour_pts[ic];ws=contour_ws[ic];N=contour_dims[ic];probe=probe_ranks[ic];rng=MersenneTwister(rng_seed+ic)
         result=if chebyshev
-            wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
+            wiersig_beyn_chebyshev(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,return_workspace=false,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
         else
-            wiersig_beyn(solver,pts,ws,contour;nq=nq,r=ri,r_step=rstepi,max_r=maxri,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding)
+            wiersig_beyn(solver,pts,ws,contour;nq=nq,r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding)
         end
         results[ic]=result
         if verbose
