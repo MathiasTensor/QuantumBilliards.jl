@@ -524,6 +524,33 @@ Determine the numerical rank of A₀. Relative mode retains `σ_j≥svd_tol*σ�
     return count(σ->σ>=threshold,Σ),threshold
 end
 
+function _wiersig_beyn_rank_plateaus(ranks::AbstractVector{<:Integer})
+    isempty(ranks)&&return NamedTuple[]
+    out=NamedTuple[]
+    first=1
+    @inbounds for i in 2:length(ranks)+1
+        if i>length(ranks)||ranks[i]!=ranks[first]
+            push!(out,(rank=ranks[first],first=first,last=i-1,length=i-first))
+            first=i
+        end
+    end
+    return out
+end
+
+function _wiersig_beyn_stable_rank(ranks::AbstractVector{<:Integer})
+    ps=_wiersig_beyn_rank_plateaus(ranks)
+    best=nothing
+    @inbounds for p in ps
+        p.rank>0&&p.length>=2||continue
+        if isnothing(best)||p.length>best.length||(p.length==best.length&&p.rank<best.rank)
+            best=p
+        end
+    end
+    isnothing(best)&&return nothing
+    idx=(best.first+best.last)÷2
+    return (rank=best.rank,index=idx,plateau=best)
+end
+
 """
     _wiersig_beyn_build_reduced_problem(A0::Matrix{Complex{T}},A1::Matrix{Complex{T}};r::Int,r_step::Int,max_r::Int,svd_tol::Union{T,AbstractVector{T}},relative_svd_tol::Bool,verbose::Bool=false) where {T<:Real}
 
@@ -687,13 +714,13 @@ end
 
 Direct Beyn solve using a single `nq`-point production contour quadrature.
 
-For a vector of decreasing `svd_tol` values, each numerical rank defines a
-complete nested reduced Beyn problem. These spectra are never merged. Each
-rank is validated independently and the returned spectrum is the complete
-spectrum at the lowest SVD tolerance which strictly increased the number of
-accepted enclosed roots. Lower tolerances which add no accepted roots are
-therefore ignored, preventing weak singular-value pollution from being
-accumulated into the spectrum.
+For a vector of decreasing `svd_tol` values, each distinct numerical rank
+defines a complete nested reduced Beyn problem. These spectra are never merged.
+Each rank is validated independently. The spectrum with the largest number of
+accepted enclosed roots is selected. If several ranks give the same accepted
+root count, preference is given to a numerical rank which forms a stable
+plateau across consecutive SVD tolerances. The middle tolerance of that plateau
+is reported as the representative SVD tolerance.
 
 With `adaptive_validation=true`, enclosed candidates at each rank are checked
 with the direct Wiersig residual in increasing effective singular value
@@ -715,6 +742,8 @@ function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCF
         common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return merge(empty,common)
     end
+    stable=_wiersig_beyn_stable_rank(reduced.ranks)
+    preferred_rank=isnothing(stable) ? 0 : stable.rank
     selected=nothing;bestcount=-1;selected_it=0
     @inbounds for it in eachindex(reduced.ranks)
         rk=reduced.ranks[it]
@@ -741,11 +770,16 @@ function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCF
             verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rk,", checked=",count(checked),", rejected=",count(inside .& .!keep),", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
         end
         naccepted=count(keep);nrejected=count(inside .& .!keep)
-        if naccepted>bestcount
+        better=naccepted>bestcount
+        preferred=naccepted==bestcount&&rk==preferred_rank&&(selected_it==0||reduced.ranks[selected_it]!=preferred_rank)
+        if better||preferred
             bestcount=naccepted;selected_it=it
             selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep)
         end
         verbose&&println("SVD rank spectrum: tolerance=",reduced.svd_tolerances[it],", rank=",rk,", enclosed=",count(inside),", accepted=",naccepted,", rejected=",nrejected,", selected=",selected_it==it)
+    end
+    if !isnothing(stable)&&reduced.ranks[selected_it]==stable.rank
+        selected_it=stable.index
     end
     λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff
     raw=selected.raw;normalized=selected.normalized
@@ -943,6 +977,8 @@ function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{Bounda
         common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return return_workspace ? merge(empty,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(empty,common)
     end
+    stable=_wiersig_beyn_stable_rank(reduced.ranks)
+    preferred_rank=isnothing(stable) ? 0 : stable.rank
     selected=nothing;bestcount=-1;selected_it=0
     @inbounds for it in eachindex(reduced.ranks)
         rk=reduced.ranks[it]
@@ -969,11 +1005,16 @@ function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{Bounda
             verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rk,", checked=",count(checked),", rejected=",count(inside .& .!keep),", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
         end
         naccepted=count(keep);nrejected=count(inside .& .!keep)
-        if naccepted>bestcount
+        better=naccepted>bestcount
+        preferred=naccepted==bestcount&&rk==preferred_rank&&(selected_it==0||reduced.ranks[selected_it]!=preferred_rank)
+        if better||preferred
             bestcount=naccepted;selected_it=it
             selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep)
         end
         verbose&&println("SVD rank spectrum: tolerance=",reduced.svd_tolerances[it],", rank=",rk,", enclosed=",count(inside),", accepted=",naccepted,", rejected=",nrejected,", selected=",selected_it==it)
+    end
+    if !isnothing(stable)&&reduced.ranks[selected_it]==stable.rank
+        selected_it=stable.index
     end
     λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff
     raw=selected.raw;normalized=selected.normalized
@@ -1003,13 +1044,6 @@ end
     return xin&&yin
 end
 
-
-
-
-
-
-
-
 function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T},A::Matrix{Complex{T}},y::Vector{Complex{T}};validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
     N=boundary_matrix_size(ws)
     if maximum(R.ranks;init=0)==0
@@ -1017,6 +1051,8 @@ function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector
         common=(rank=0,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[1],selected_svd_index=1,rank_threshold=R.rank_thresholds[1],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
         return merge(empty,common)
     end
+    stable=_wiersig_beyn_stable_rank(R.ranks)
+    preferred_rank=isnothing(stable) ? 0 : stable.rank
     selected=nothing;bestcount=-1;selected_it=0
     @inbounds for it in eachindex(R.ranks)
         rk=R.ranks[it];rk==0&&continue;it>1&&rk==R.ranks[it-1]&&continue
@@ -1034,8 +1070,16 @@ function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector
             _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
         end
         naccepted=count(keep)
-        if naccepted>bestcount;bestcount=naccepted;selected_it=it;selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep);end
+        better=naccepted>bestcount
+        preferred=naccepted==bestcount&&rk==preferred_rank&&(selected_it==0||R.ranks[selected_it]!=preferred_rank)
+        if better||preferred
+            bestcount=naccepted;selected_it=it
+            selected=(λ=λ,Φ=Φ,σeff=σeff,raw=raw,normalized=normalized,inside=inside,checked=checked,keep=keep)
+        end
         verbose&&println("SVD rank spectrum: tolerance=",R.svd_tolerances[it],", rank=",rk,", enclosed=",count(inside),", accepted=",naccepted,", rejected=",count(inside .& .!keep),", selected=",selected_it==it)
+    end
+    if !isnothing(stable)&&R.ranks[selected_it]==stable.rank
+        selected_it=stable.index
     end
     λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff;raw=selected.raw;normalized=selected.normalized;inside=selected.inside;checked=selected.checked;keep=selected.keep;rk=R.ranks[selected_it]
     idx=findall(keep);!isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
@@ -1044,9 +1088,6 @@ function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector
     common=(rank=rk,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=R.rank_thresholds[selected_it],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
     return merge(candidates,common)
 end
-
-
-
 
 function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTessellation{T};chebyshev::Bool=true,nq=64,probe_factor::Real=2.0,min_probe::Int=50,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=false,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,verbose::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
     _wiersig_dlp_normal_mode(dlp_kernel);contours=tess.contours;region=tess.region
@@ -1220,8 +1261,7 @@ All remaining keyword arguments are forwarded to `_compute_spectrum`.
   boundary-matrix dimension.
 - `svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10]`:
   nonincreasing sequence of numerical-rank thresholds for the zeroth Beyn
-  moment. Each distinct resulting rank defines a complete reduced spectrum;
-  spectra from different thresholds are not merged.
+  moment. Each distinct resulting rank defines a complete reduced spectrum. Spectra from different thresholds are not merged. Repeated equal ranks across consecutive thresholds define stable rank plateaus, which are preferred when several ranks recover the same number of accepted roots.
 - `relative_svd_tol::Bool=false`: if true, interpret each SVD tolerance relative
   to the largest singular value of `A₀`; otherwise use absolute thresholds.
 - `res_tol::T=T(1e-9)`: raw nonlinear residual tolerance used when
