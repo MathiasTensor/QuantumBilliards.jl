@@ -1216,7 +1216,7 @@ function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector
     return merge(candidates,common)
 end
 
-function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTessellation{T};chebyshev::Bool=true,nq=64,probe_factor::Real=2.0,min_probe::Int=50,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=false,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,verbose::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,adaptive_validation_method::Symbol=:binary) where {T<:Real}
+function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTessellation{T};chebyshev::Bool=true,nq=64,probe_factor::Real=2.0,min_probe::Int=50,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=false,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,verbose::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,adaptive_validation_method::Symbol=:linear) where {T<:Real}
     adaptive_validation_method in (:binary,:linear,:check)||throw(ArgumentError("adaptive_validation_method must be :binary, :linear, or :check"))
     _wiersig_dlp_normal_mode(dlp_kernel);contours=tess.contours;region=tess.region
     isempty(contours)&&throw(ArgumentError("tessellation must not be empty"));isempty(svd_tol)&&throw(ArgumentError("svd_tol must not be empty"))
@@ -1432,14 +1432,14 @@ All remaining keyword arguments are forwarded to `_compute_spectrum`.
   selective nonlinear residual validation after ordering enclosed candidates by
   increasing effective moment singular value
   `σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²`.
-- `adaptive_validation_method::Symbol=:binary`: adaptive-validation algorithm.
-  `:binary` is the production default and assumes that residual acceptance has
-  a single reject -> accept transition as `σeff` increases. The transition is
-  found in O(log M) residual checks for M enclosed candidates, followed by at
-  most `validation_padding` local confirmation checks. `:linear` uses the
-  original padded sequential validator. `:check` runs the binary algorithm and
-  then validates every enclosed candidate, throwing an error if the inferred
-  accepted-root set differs from complete validation.
+- `adaptive_validation_method::Symbol=:linear`: adaptive-validation algorithm.
+  `:binary` assumes that residual acceptance has a single reject -> accept
+  transition as `σeff` increases. The transition is found in O(log M) residual
+  checks for M enclosed candidates, followed by at most `validation_padding`
+  local confirmation checks. `:linear` uses the original padded sequential
+  validator. `:check` runs the binary algorithm and then validates every
+  enclosed candidate, throwing an error if the inferred accepted-root set
+  differs from complete validation.
 - `validation_padding::Int=5`: number of consecutive passing candidates used to
   confirm the accepted side of the binary transition. It retains its original
   meaning for `adaptive_validation_method=:linear`.
