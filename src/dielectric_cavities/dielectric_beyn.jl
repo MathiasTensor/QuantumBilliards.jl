@@ -24,9 +24,16 @@ effective retained singular value
 
 Candidates with small σeff depend most strongly on weak retained directions of
 the zeroth Beyn moment and are checked first with the original nonlinear
-residual. Validation proceeds in increasing σeff and stops once
-`validation_padding` consecutive checked candidates pass after the last failed
-candidate. Unchecked enclosed candidates are retained.
+residual. Empirically their residual acceptance is ordered by σeff: weak
+candidates fail first and sufficiently strong candidates pass. Production
+adaptive validation therefore locates the reject -> accept transition by binary
+search, requiring O(log M) residual evaluations for M enclosed candidates, plus
+a short `validation_padding` confirmation run.
+
+The original padded linear scan is retained as a debugging/reference method.
+A `:check` mode runs the binary search and then validates every enclosed
+candidate, asserting that the binary-inferred accepted-root set was exact.
+Unchecked candidates on the accepted side are retained.
 
 SPECTRUM TESSELLATION
 
@@ -485,14 +492,14 @@ function _wiersig_beyn_effective_sigma(Y::AbstractMatrix{Complex{T}},Σ::Abstrac
 end
 
 """
-    _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=5)
+    _wiersig_beyn_singular_validation_linear!(validator,inside,σeff,checked,keep;validation_padding=5)
 
-Check enclosed candidates in increasing `σeff`. Stop once
-`validation_padding` consecutive checked candidates are good after the most
-recent failure. `validator(idx)` must evaluate and update `checked` and `keep`
-for the supplied candidate indices.
+Reference adaptive validator. Check enclosed candidates in increasing `σeff`.
+After a rejection, continue until `validation_padding` consecutive checked
+candidates pass. This is the original production algorithm and is retained as
+a debugging/reference implementation.
 """
-function _wiersig_beyn_singular_validation!(validator,inside::BitVector,σeff::AbstractVector{T},checked::BitVector,keep::BitVector;validation_padding::Int=5) where {T<:Real}
+function _wiersig_beyn_singular_validation_linear!(validator,inside::BitVector,σeff::AbstractVector{T},checked::BitVector,keep::BitVector;validation_padding::Int=5) where {T<:Real}
     validation_padding>0||throw(ArgumentError("validation_padding must be positive"))
     order=findall(inside)
     sort!(order;by=j->σeff[j])
@@ -512,6 +519,117 @@ function _wiersig_beyn_singular_validation!(validator,inside::BitVector,σeff::A
     end
     return order
 end
+
+######
+# TODO: The linear search is simpler and does not assume monotonic residual
+# acceptance. The binary search is much faster for large candidate sets but
+# assumes a single reject -> accept transition in increasing σeff. A violation
+# detected in the local confirmation window triggers complete validation;
+# undetected non-monotonicity remains possible. Use `:check` to verify the
+# binary inference against complete validation.
+
+"""
+    _wiersig_beyn_singular_validation_binary!(validator,inside,σeff,checked,keep;validation_padding=5)
+
+Production adaptive validator. Locate that transition by binary search, requiring O(log M)
+candidate checks for M enclosed candidates. After the first passing candidate is located, up to `validation_padding`
+consecutive candidates are checked as a local confirmation. If this confirmation
+finds a rejection, monotonicity has already been falsified and all enclosed
+candidates are validated explicitly. Unchecked candidates on the rejected side are marked rejected; unchecked
+candidates on the accepted side retain their initial `keep=true` state.
+"""
+function _wiersig_beyn_singular_validation_binary!(validator,inside::BitVector,σeff::AbstractVector{T},checked::BitVector,keep::BitVector;validation_padding::Int=5) where {T<:Real}
+    validation_padding>0||throw(ArgumentError("validation_padding must be positive"))
+    order=findall(inside)
+    sort!(order;by=j->σeff[j])
+    M=length(order)
+    M==0&&return order
+    @inline function checkpos(p::Int)
+        j=order[p]
+        checked[j]||validator(Int[j])
+        return keep[j]
+    end
+    # If the weakest candidate passes, monotonicity predicts that all pass.
+    if checkpos(1)
+        last=min(M,validation_padding)
+        last>1&&validator(Vector{Int}(@view order[2:last]))
+        if any(p->!keep[order[p]],1:last)
+            validator(order)
+        end
+        return order
+    end
+    # One candidate and it failed.
+    if M==1
+        return order
+    end
+    # If the strongest candidate also fails, monotonicity predicts all reject.
+    if !checkpos(M)
+        @inbounds for j in order
+            keep[j]=false
+        end
+        return order
+    end
+    # Invariant: order[lo] rejects, order[hi] passes.
+    lo=1
+    hi=M
+    while hi-lo>1
+        mid=(lo+hi)>>>1
+        if checkpos(mid)
+            hi=mid
+        else
+            lo=mid
+        end
+    end
+    # Under the monotone model every candidate before `hi` rejects.
+    @inbounds for p in 1:hi-1
+        keep[order[p]]=false
+    end
+    # Confirm a short accepted run at the transition. A failure here proves
+    # that the monotone model is invalid, so fall back to complete validation.
+    last=min(M,hi+validation_padding-1)
+    confirm=Int[]
+    @inbounds for p in hi:last
+        j=order[p]
+        checked[j]||push!(confirm,j)
+    end
+    isempty(confirm)||validator(confirm)
+    if any(p->!keep[order[p]],hi:last)
+        validator(order)
+    end
+    return order
+end
+
+"""
+    _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=5,method=:binary)
+
+Adaptive residual validation method.
+
+- `:binary`: O(log M + validation_padding) production search under the observed
+  reject -> accept ordering in increasing `σeff`.
+- `:linear`: original padded linear search, retained as a reference/debug path.
+- `:check`: run the binary algorithm, then validate every enclosed candidate and
+  assert that its inferred accepted-root set was exact.
+"""
+function _wiersig_beyn_singular_validation!(validator,inside::BitVector,σeff::AbstractVector{T},checked::BitVector,keep::BitVector;validation_padding::Int=5,method::Symbol=:binary) where {T<:Real}
+    method===:binary&&return _wiersig_beyn_singular_validation_binary!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+    method===:linear&&return _wiersig_beyn_singular_validation_linear!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+    method===:check||throw(ArgumentError("adaptive_validation_method must be :binary, :linear, or :check"))
+    order=_wiersig_beyn_singular_validation_binary!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+    inferred=copy(keep)
+    unchecked=Int[]
+    @inbounds for j in order
+        checked[j]||push!(unchecked,j)
+    end
+    isempty(unchecked)||validator(unchecked)
+    bad=Int[]
+    @inbounds for j in order
+        inferred[j]==keep[j]||push!(bad,j)
+    end
+    isempty(bad)||error("binary adaptive validation disagrees with complete validation at $(length(bad)) candidate(s): $(bad)")
+    return order
+end
+
+#########
 
 """
     _wiersig_beyn_rank(Σ::AbstractVector{T},svd_tol::T,relative_svd_tol::Bool) where {T<:Real}
@@ -722,24 +840,31 @@ root count, preference is given to a numerical rank which forms a stable
 plateau across consecutive SVD tolerances. The middle tolerance of that plateau
 is reported as the representative SVD tolerance.
 
-With `adaptive_validation=true`, enclosed candidates at each rank are checked
-with the direct Wiersig residual in increasing effective singular value
+With `adaptive_validation=true`, enclosed candidates at each rank are ordered
+by increasing effective singular value
 
     σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ².
 
-Checking stops once `validation_padding` consecutive candidates pass after the
-most recent failure. Unchecked enclosed candidates are retained.
+`adaptive_validation_method=:binary` assumes that residual acceptance has a
+single reject -> accept transition in this ordering and locates it by binary
+search. This requires O(log M) residual evaluations for M enclosed candidates,
+plus at most `validation_padding` local confirmation checks.
 
-`validate_roots=true` validates every enclosed candidate. Setting both
-`validate_roots=false` and `adaptive_validation=false` performs no residual
-checks.
+`:linear` retains the original padded sequential algorithm for debugging.
+`:check` runs the binary algorithm and subsequently validates every enclosed
+candidate, throwing an error if the inferred keep-set differs from the complete
+residual test.
+
+`validate_roots=true` validates every enclosed candidate independently of the
+adaptive-validation method.
 """
-function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T};nq=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-8),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T};nq=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,adaptive_validation_method::Symbol=:binary,validation_padding::Int=5,res_tol::T=T(1e-8),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+    adaptive_validation_method in (:binary,:linear,:check)||throw(ArgumentError("adaptive_validation_method must be :binary, :linear, or :check"))
     reduced=construct_wiersig_B_matrix(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose)
     N=boundary_matrix_size(ws)
     if maximum(reduced.ranks;init=0)==0
         empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none,adaptive_validation_method=adaptive_validation_method)
         return merge(empty,common)
     end
     stable=_wiersig_beyn_stable_rank(reduced.ranks)
@@ -766,7 +891,7 @@ function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCF
             _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
         elseif adaptive_validation&&!isempty(inside_idx)
             validator=idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-            order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+            order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding,method=adaptive_validation_method)
             verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rk,", checked=",count(checked),", rejected=",count(inside .& .!keep),", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
         end
         naccepted=count(keep);nrejected=count(inside .& .!keep)
@@ -787,9 +912,9 @@ function wiersig_beyn(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCF
     rk=reduced.ranks[selected_it]
     idx=findall(keep)
     !isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
-    method=validate_roots ? :direct_all : adaptive_validation ? :direct_singular_support : :none
+    method=validate_roots ? :direct_all : adaptive_validation ? Symbol(:direct_singular_,adaptive_validation_method) : :none
     candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=rk,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=reduced.rank_thresholds[selected_it],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    common=(rank=rk,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=reduced.rank_thresholds[selected_it],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,adaptive_validation_method=adaptive_validation_method,validation_method=method)
     verbose&&println("selected SVD tolerance       = ",reduced.svd_tolerances[selected_it]," (rank ",rk,", accepted ",bestcount,")")
     return merge(candidates,common)
 end
@@ -964,17 +1089,18 @@ At every rank,
 
     σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²
 
-orders adaptive residual validation from weakest to strongest retained moment
-directions. `validate_roots=true` instead validates every enclosed candidate.
-If `return_workspace=true`, the contour Chebyshev workspace is included in the
-returned named tuple.
+`adaptive_validation_method=:binary` is the production default and locates the
+observed reject -> accept transition in increasing `σeff` by binary search.
+`:linear` retains the original padded sequential validator and `:check` verifies
+the binary inference against complete residual validation.
 """
-function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T};nq=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T};nq=64,r::Int=16,r_step::Int=r,max_r::Int=min(boundary_matrix_size(ws),4*r),svd_tol::Union{T,AbstractVector{T}}=T(1e-12),relative_svd_tol::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-8),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng::AbstractRNG=MersenneTwister(0),multithreaded::Bool=true,verbose::Bool=false,return_workspace::Bool=false,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,adaptive_validation_method::Symbol=:binary) where {T<:Real}
+    adaptive_validation_method in (:binary,:linear,:check)||throw(ArgumentError("adaptive_validation_method must be :binary, :linear, or :check"))
     reduced=construct_wiersig_B_matrix_chebyshev(solver,pts,ws,contour;nq=nq,r=r,r_step=r_step,max_r=max_r,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,dlp_kernel=dlp_kernel,rng=rng,multithreaded=multithreaded,verbose=verbose,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,cheb_verbose=cheb_verbose,ram_cap_gib=ram_cap_gib,ram_fraction=ram_fraction)
     N=boundary_matrix_size(ws)
     if maximum(reduced.ranks;init=0)==0
         empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        common=(rank=0,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[1],selected_svd_index=1,rank_threshold=reduced.rank_thresholds[1],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none,adaptive_validation_method=adaptive_validation_method)
         return return_workspace ? merge(empty,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(empty,common)
     end
     stable=_wiersig_beyn_stable_rank(reduced.ranks)
@@ -1001,7 +1127,7 @@ function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{Bounda
             _wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
         elseif adaptive_validation&&!isempty(inside_idx)
             validator=idx->_wiersig_beyn_validate_chebyshev!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,npanels_h_init=npanels_h_init,M_h_init=M_h_init,npanels_j_init=npanels_j_init,M_j_init=M_j_init,cheb_tol=cheb_tol,sampling_points=sampling_points,max_iter=max_iter,grow_panels=grow_panels,grow_M=grow_M,plan_threads=plan_threads,verbose=verbose)
-            order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+            order=_wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding,method=adaptive_validation_method)
             verbose&&println("SVD tolerance ",reduced.svd_tolerances[it],": rank=",rk,", checked=",count(checked),", rejected=",count(inside .& .!keep),", σeff first/last=",isempty(order) ? T(NaN) : σeff[first(order)]," / ",isempty(order) ? T(NaN) : σeff[last(order)])
         end
         naccepted=count(keep);nrejected=count(inside .& .!keep)
@@ -1022,9 +1148,9 @@ function wiersig_beyn_chebyshev(solver::AbstractWiersigSolver,pts::Vector{Bounda
     rk=reduced.ranks[selected_it]
     idx=findall(keep)
     !isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
-    method=validate_roots ? :chebyshev_all : adaptive_validation ? :chebyshev_singular_support : :none
+    method=validate_roots ? :chebyshev_all : adaptive_validation ? Symbol(:chebyshev_singular_,adaptive_validation_method) : :none
     candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=rk,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=reduced.rank_thresholds[selected_it],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    common=(rank=rk,ranks=reduced.ranks,svd_tolerances=reduced.svd_tolerances,selected_svd_tolerance=reduced.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=reduced.rank_thresholds[selected_it],rank_thresholds=reduced.rank_thresholds,probe_dimension=reduced.probe_dimension,moment_singular_values=reduced.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method,adaptive_validation_method=adaptive_validation_method)
     verbose&&println("selected SVD tolerance       = ",reduced.svd_tolerances[selected_it]," (rank ",rk,", accepted ",bestcount,")")
     return return_workspace ? merge(candidates,common,(cheb_workspace=reduced.cheb_workspace,)) : merge(candidates,common)
 end
@@ -1044,11 +1170,12 @@ end
     return xin&&yin
 end
 
-function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T},A::Matrix{Complex{T}},y::Vector{Complex{T}};validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector{BoundaryPointsCFIE{T}},ws::AbstractWiersigGeometryWorkspace,contour::AbstractWiersigContour{T},A::Matrix{Complex{T}},y::Vector{Complex{T}};validate_roots::Bool=false,adaptive_validation::Bool=true,adaptive_validation_method::Symbol=:binary,validation_padding::Int=5,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,multithreaded::Bool=true,verbose::Bool=false) where {T<:Real}
+    adaptive_validation_method in (:binary,:linear,:check)||throw(ArgumentError("adaptive_validation_method must be :binary, :linear, or :check"))
     N=boundary_matrix_size(ws)
     if maximum(R.ranks;init=0)==0
         empty=(values=Complex{T}[],vectors=Matrix{Complex{T}}(undef,N,0),residuals=T[],normalized_residuals=T[],effective_singular_values=T[],checked=Bool[],all_values=Complex{T}[],all_vectors=Matrix{Complex{T}}(undef,N,0),all_residuals=T[],all_normalized_residuals=T[],all_effective_singular_values=T[],all_checked=Bool[],inside=Bool[],kept=Bool[])
-        common=(rank=0,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[1],selected_svd_index=1,rank_threshold=R.rank_thresholds[1],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none)
+        common=(rank=0,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[1],selected_svd_index=1,rank_threshold=R.rank_thresholds[1],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=:none,adaptive_validation_method=adaptive_validation_method)
         return merge(empty,common)
     end
     stable=_wiersig_beyn_stable_rank(R.ranks)
@@ -1067,7 +1194,7 @@ function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector
             _wiersig_beyn_validate_direct!(raw,normalized,checked,keep,inside_idx,λ,Φ,solver,pts,ws,A,y;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
         elseif adaptive_validation&&!isempty(inside_idx)
             validator=idx->_wiersig_beyn_validate_direct!(raw,normalized,checked,keep,idx,λ,Φ,solver,pts,ws,A,y;res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
-            _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding)
+            _wiersig_beyn_singular_validation!(validator,inside,σeff,checked,keep;validation_padding=validation_padding,method=adaptive_validation_method)
         end
         naccepted=count(keep)
         better=naccepted>bestcount
@@ -1083,13 +1210,14 @@ function _wiersig_beyn_solve_reduced(R,solver::AbstractWiersigSolver,pts::Vector
     end
     λ=selected.λ;Φ=selected.Φ;σeff=selected.σeff;raw=selected.raw;normalized=selected.normalized;inside=selected.inside;checked=selected.checked;keep=selected.keep;rk=R.ranks[selected_it]
     idx=findall(keep);!isempty(idx)&&(idx=idx[sortperm(idx;by=j->(real(λ[j]),imag(λ[j])))])
-    method=validate_roots ? :direct_all : adaptive_validation ? :direct_singular_support : :none
+    method=validate_roots ? :direct_all : adaptive_validation ? Symbol(:direct_singular_,adaptive_validation_method) : :none
     candidates=(values=λ[idx],vectors=Φ[:,idx],residuals=raw[idx],normalized_residuals=normalized[idx],effective_singular_values=σeff[idx],checked=checked[idx],all_values=λ,all_vectors=Φ,all_residuals=raw,all_normalized_residuals=normalized,all_effective_singular_values=σeff,all_checked=checked,inside=inside,kept=keep)
-    common=(rank=rk,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=R.rank_thresholds[selected_it],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,validation_method=method)
+    common=(rank=rk,ranks=R.ranks,svd_tolerances=R.svd_tolerances,selected_svd_tolerance=R.svd_tolerances[selected_it],selected_svd_index=selected_it,rank_threshold=R.rank_thresholds[selected_it],rank_thresholds=R.rank_thresholds,probe_dimension=R.probe_dimension,moment_singular_values=R.singular_values,contour=contour,dlp_kernel=dlp_kernel,roots_validated=validate_roots,adaptive_validation=adaptive_validation,adaptive_validation_method=adaptive_validation_method,validation_method=method)
     return merge(candidates,common)
 end
 
-function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTessellation{T};chebyshev::Bool=true,nq=64,probe_factor::Real=2.0,min_probe::Int=50,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=false,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,verbose::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75) where {T<:Real}
+function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTessellation{T};chebyshev::Bool=true,nq=64,probe_factor::Real=2.0,min_probe::Int=50,svd_tol::AbstractVector{T}=T[1e-7,5e-8,1e-8,5e-9,1e-9,5e-10,1e-10],relative_svd_tol::Bool=false,res_tol::T=T(1e-9),normalized_res_tol::T=T(1e-10),filter_raw_residual::Bool=false,matnorm::Symbol=:one,dlp_kernel::Symbol=:source,rng_seed::Int=0,multithreaded::Bool=true,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,cheb_tol::T=T(1e-11),sampling_points::Int=50_000,max_iter::Int=20,grow_panels::T=T(1.5),grow_M::Int=2,plan_threads::Int=Threads.nthreads(),cheb_verbose::Bool=false,verbose::Bool=true,validate_roots::Bool=false,adaptive_validation::Bool=true,validation_padding::Int=5,ram_cap_gib::Union{Nothing,Real}=nothing,ram_fraction::Real=0.75,adaptive_validation_method::Symbol=:binary) where {T<:Real}
+    adaptive_validation_method in (:binary,:linear,:check)||throw(ArgumentError("adaptive_validation_method must be :binary, :linear, or :check"))
     _wiersig_dlp_normal_mode(dlp_kernel);contours=tess.contours;region=tess.region
     isempty(contours)&&throw(ArgumentError("tessellation must not be empty"));isempty(svd_tol)&&throw(ArgumentError("svd_tol must not be empty"))
     rectangle=tess isa WiersigRectangleTessellation{T}
@@ -1122,7 +1250,7 @@ function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTe
                 _wiersig_beyn_accumulate_direct!(buf.A0,buf.A1,buf.V,buf.X,buf.A,solver,pts,ws,z,w;dlp_kernel=dlp_kernel,multithreaded=multithreaded)
             end
             R=_wiersig_beyn_build_reduced_problem(buf.A0,buf.A1;r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
-            results[ic]=_wiersig_beyn_solve_reduced(R,solver,pts,ws,contour,buf.A,buf.y;validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
+            results[ic]=_wiersig_beyn_solve_reduced(R,solver,pts,ws,contour,buf.A,buf.y;validate_roots=validate_roots,adaptive_validation=adaptive_validation,adaptive_validation_method=adaptive_validation_method,validation_padding=validation_padding,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
             verbose&&next!(p)
         end
     else
@@ -1151,7 +1279,7 @@ function _compute_spectrum(solver::AbstractWiersigSolver,tess::AbstractWiersigTe
                 remaining[eid]-=1;iszero(remaining[eid])&&delete!(cache,eid)
             end
             R=_wiersig_beyn_build_reduced_problem(buf.A0,buf.A1;r=probe,r_step=probe,max_r=probe,svd_tol=svd_tol,relative_svd_tol=relative_svd_tol,verbose=verbose)
-            results[ic]=_wiersig_beyn_solve_reduced(R,solver,pts,ws,contour,buf.A,buf.y;validate_roots=validate_roots,adaptive_validation=adaptive_validation,validation_padding=validation_padding,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
+            results[ic]=_wiersig_beyn_solve_reduced(R,solver,pts,ws,contour,buf.A,buf.y;validate_roots=validate_roots,adaptive_validation=adaptive_validation,adaptive_validation_method=adaptive_validation_method,validation_padding=validation_padding,res_tol=res_tol,normalized_res_tol=normalized_res_tol,filter_raw_residual=filter_raw_residual,matnorm=matnorm,dlp_kernel=dlp_kernel,multithreaded=multithreaded,verbose=verbose)
             verbose&&next!(pcells)
         end
         isempty(cache)||@warn "rectangle edge cache was not empty after tessellation" cached_edges=collect(keys(cache))
@@ -1300,13 +1428,21 @@ All remaining keyword arguments are forwarded to `_compute_spectrum`.
   diagnostics and the final spectrum summary.
 - `validate_roots::Bool=false`: validate every enclosed Beyn candidate with the
   nonlinear Wiersig residual.
-- `adaptive_validation::Bool=true`: when `validate_roots=false`, validate
-  candidates in increasing effective moment singular value `σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²`,
-  so candidates depending most strongly on weak retained moment directions are
-  checked first.
-- `validation_padding::Int=5`: during adaptive validation, stop after this many
-  consecutive checked candidates pass following the most recent rejected
-  candidate.
+- `adaptive_validation::Bool=true`: when `validate_roots=false`, perform
+  selective nonlinear residual validation after ordering enclosed candidates by
+  increasing effective moment singular value
+  `σeff_j=[Σ_l |Y_lj|²/σ_l² / Σ_l |Y_lj|²]⁻¹ᐟ²`.
+- `adaptive_validation_method::Symbol=:binary`: adaptive-validation algorithm.
+  `:binary` is the production default and assumes that residual acceptance has
+  a single reject -> accept transition as `σeff` increases. The transition is
+  found in O(log M) residual checks for M enclosed candidates, followed by at
+  most `validation_padding` local confirmation checks. `:linear` uses the
+  original padded sequential validator. `:check` runs the binary algorithm and
+  then validates every enclosed candidate, throwing an error if the inferred
+  accepted-root set differs from complete validation.
+- `validation_padding::Int=5`: number of consecutive passing candidates used to
+  confirm the accepted side of the binary transition. It retains its original
+  meaning for `adaptive_validation_method=:linear`.
 - `ram_cap_gib::Union{Nothing,Real}=nothing`: optional explicit RAM budget, in
   GiB, for simultaneously stored dense matrices in Chebyshev assembly. If
   `nothing`, the budget is chosen automatically from physical RAM.
