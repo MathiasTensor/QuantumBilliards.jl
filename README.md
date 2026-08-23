@@ -2,6 +2,7 @@
 
 A Julia library for computing eigenvalues, eigenfunctions and Husimi functions of 2D quantum billiards using boundary integral and basis-expansion methods.
 
+**For now use Julia 1.19 due to CairoMakie issue**
 **See examples folder for most common and practical uses of this library!**
 **Manual (and paper) coming soon!!!**
 
@@ -21,6 +22,7 @@ Targets high-frequency spectral computations on smooth and piecewise-smooth doma
     1. An integral method for solving nonlinear eigenvalue problems, Wolf-Jürgen Beyn, 2010 https://arxiv.org/abs/1003.1580
 - Chebyshev-accelerated kernel assembly
     1. Greengard's hank106.f code - idea for panelization implementation
+- Dielectric cavities (hyperbolic metric under development)
 
 Focus is on the balance between **performance** and **spectral resolution**, with a high-level API and low-level optimizations.
 
@@ -233,3 +235,8 @@ Examples of wavefunctions and PH functions for the star billiard desymmetrized w
 ![cfie_holes](examples/cfie_wav_hus_holes.png)
 
 Examples of a domain with holes, restricted via Beyn's subspace projection to Reflection(-1,-1). It is an example of a mixed type system, where the outer high angular momentum nodes do not see the interior holes and behave like a regular circle billiard. Once it penetrates deeper into the billiard it disperses giving rise to nontrivial patterns with localization. The irrep is real, therefore the u(s) should be real. One can check that the resulting u(s) in the plots can be made real with a global phase shift (as can be seen from PH functions being symmetric p -> -p) 
+
+![2_stad](examples/dielectric/2_stadium_XY_symm.png)
+![teardrop_cav](examples/dielectric/teardrop_Y_symm.png)
+
+Example of 2 stadiums with n_in=1.5 and outside having n_out=1.0 (:TM field) with XY reflection symmetry. Also the Kress teardrop with x axis reflection symmetry with -1 parity.

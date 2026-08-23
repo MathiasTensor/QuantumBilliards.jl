@@ -169,7 +169,7 @@ end
 # The interior Helmholtz wavenumber is q_in=n_in k and the exterior one is
 # q_out=n_out k. Native boundary symmetry may therefore be applied directly
 # during discretization of Γ.
-function WiersigKress(n_in::L,n_out::L,billiard::AbsBilliard,ppw::T;min_pts::Int=200,polarization::Symbol=:TM,symmetry::Union{Nothing,Rotation,Reflection,WiersigMixedReflection}=nothing,quadrature_kind::Symbol=:smooth,kressq::Int=4,min_t_spacing::T=1e-12) where {L<:Real,T<:Real}
+function WiersigKress(n_in::L,n_out::L,billiard::AbsBilliard,ppw::T;min_pts::Int=200,polarization::Symbol=:TM,symmetry::Union{Nothing,Rotation,Reflection,WiersigMixedReflection}=nothing,quadrature_kind::Symbol=:smooth,kressq::Int=2,min_t_spacing::T=1e-12) where {L<:Real,T<:Real}
     M=promote_type(typeof(float(n_out)),typeof(float(n_in)),typeof(float(ppw)),typeof(float(min_t_spacing)))
     quadrature=_wiersig_make_quadrature(M(ppw),billiard;min_pts=min_pts,symmetry=symmetry,quadrature_kind=quadrature_kind,kressq=kressq,min_t_spacing=M(min_t_spacing))
     return _wiersig_solver(M[n_in],M(n_out),M[M(ppw)],polarization,quadrature,[billiard],symmetry)
@@ -178,7 +178,7 @@ end
 # Construct a solver for disjoint dielectric domains Ω₁,...,Ω_C.
 # Each cavity may have its own n_a, ppw, and local Kress rule. For C>1 the
 # physical boundaries Γ_a are discretized independently and any symmetry g:Γ_a → Γ_b is applied later.
-function WiersigKress(n_in::AbstractVector{L},n_out::L,billiards::AbstractVector{<:AbsBilliard},ppw::Union{T,AbstractVector{<:T}};min_pts::Union{Int,AbstractVector{<:Integer}}=200,polarization::Symbol=:TM,symmetry::Union{Nothing,Rotation,Reflection,WiersigMixedReflection}=nothing,quadrature_kind::Union{Symbol,AbstractVector{Symbol}}=:smooth,kressq::Union{Int,AbstractVector{<:Integer}}=4,min_t_spacing::Union{T,AbstractVector{<:T}}=1e-12) where {L<:Real,T<:Real}
+function WiersigKress(n_in::AbstractVector{L},n_out::L,billiards::AbstractVector{<:AbsBilliard},ppw::Union{T,AbstractVector{<:T}};min_pts::Union{Int,AbstractVector{<:Integer}}=200,polarization::Symbol=:TM,symmetry::Union{Nothing,Rotation,Reflection,WiersigMixedReflection}=nothing,quadrature_kind::Union{Symbol,AbstractVector{Symbol}}=:smooth,kressq::Union{Int,AbstractVector{<:Integer}}=2,min_t_spacing::Union{T,AbstractVector{<:T}}=1e-12) where {L<:Real,T<:Real}
     C=length(billiards)
     length(n_in) in (1,C)||throw(DimensionMismatch("n_in has $(length(n_in)) entries for $C dielectric cavities"))
     # For C=1, preserve the common vector-valued solver representation.
