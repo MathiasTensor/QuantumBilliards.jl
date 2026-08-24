@@ -17,6 +17,7 @@ include("utils/geometryutils.jl")
 include("utils/typeutils.jl")
 include("utils/macros.jl")
 include("utils/billiardutils.jl")
+include("utils/alpert_table.jl")
 export make_triangle_and_basis, adapt_basis
 
 include("basis/planewaves/realplanewaves.jl")
@@ -32,7 +33,8 @@ include("solvers/matrixconstructors.jl")
 export basis_matrix, basis_and_gradient_matrices, dk_matrix
 
 include("solvers/acceleratedmethods/acceleratedmethods.jl")
-include("solvers/sweepmethods/sweepmethods.jl")
+include("solvers/sweepmethods/sweepmethods/basis_sweep/decomposition_method.jl")
+include("solvers/sweepmethods/sweepmethods/basis_sweep/basis_sweep_methods.jl")
 export SweepSolver, AcceleratedSolver
 export VerginiSaracenoSolver, print_benchmark_info
 export DecompositionMethodSolver, ParticularSolutionsMethod

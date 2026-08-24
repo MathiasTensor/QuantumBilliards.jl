@@ -1,5 +1,3 @@
-include("decompositionmethod.jl")
-
 """
     solve_wavenumber(solver::SweepSolver, basis::AbsBasis, billiard::AbsBilliard, k, dk; multithreaded::Bool = true) → (k0::Real, t0::Real)
 
