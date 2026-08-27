@@ -265,13 +265,6 @@ function symmetry_index_orbits(::Type{T},N::Int,syms::AbstractVector{<:BilliardG
     return symmetry_index_orbits(T,N,syms[1])
 end
 
-"""
-    symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.NFoldRotation)
-Build the periodic symmetry-orbit map associated with a single [`BoundaryPoints`](@ref) discretization.
-This is a convenience forwarding method using `length(pts)` as the full boundary node count.
-"""
-@inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.NFoldRotation) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
-
 ################################################################################
 ######################## MULTICOMPONENT EXACT ORBITS ############################
 ################################################################################
