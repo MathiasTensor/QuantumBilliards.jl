@@ -215,8 +215,8 @@ t_j = 2(2/μ_j)².
 * `ten::Vector{T}`: Corresponding real tensions.
 """
 function sm_results(mu::AbstractVector{T},k::T) where {T<:Real}
-    ks=k.-2./mu.+2/k./(mu.^2)
-    ten=2.*(2./mu).^2
+    ks=k .-2 ./mu .+2/k ./(mu .^2)
+    ten=2 .*(2 ./mu) .^2
     return ks,ten
 end
 
