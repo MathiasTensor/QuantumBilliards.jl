@@ -52,39 +52,6 @@ struct PolarSampler <: AbsSampler
     PolarSampler(α::Float64=20.0,β::Float64=1.0)=new(α,β)
 end
 
-"""
-    sample_points(sampler::PolarSampler,crv::C,N::Int) where {C<:PolarSegments}
-
-Generates a uniform parameterization `ts` over [0,1]. Computes local curvatures along a curve `crv` using a curvature function. Adjusts the spacing `dts` using a two-parameter sigmoid  σ(α,β)=1/(1+βe^{-αx}) based on the curvature.
-Normalizes the modified differentials so the new nodes span the interval [0,1].
-
-# Arguments
-- `sampler::PolarSampler`: Sampler that holds information on the α and β parameters for thr 2 parameter model.
-- `N::Int`: Number of spaced points we want.
-
-# Returns
-- `t::Vector{Float64}`: Array of parametrizations from [0,1]
-- `dt::Vector{Float64}`: Array of step sizes (differentials). 
-"""
-function sample_points(sampler::PolarSampler,crv::C,N::Int) where {C<:PolarSegments}
-    α=sampler.α
-    β=sampler.β
-    # generate liner sampling
-    ts=range(0,1.0,length=N)
-    dts=diff(ts)
-    # generate curvatures
-    curvatures=curvature(crv,ts)
-    # Use a two parameter sigmoid = σ(α, β) = 1/(1+βℯ^-(α*x)) for weights
-    new_dts=dts./(1 .+abs(α)*exp.(-abs(β)*abs.(curvatures[1:end-1])))
-    # Normalize them so we get 0 -> 1
-    new_dts=new_dts/sum(new_dts)
-    new_ts=vcat(0.0, cumsum(new_dts)) # generate new ts from new dts
-    if isapprox(new_ts[end],1.0) # just to make sure
-        new_ts[end]=0.999
-    end 
-    return new_ts,new_dts
-end
-
 struct FourierNodes<:AbsSampler where {T<:Real}
     primes::Union{Vector{Int64},Nothing}
     lengths::Union{Vector{Float64},Nothing} 
