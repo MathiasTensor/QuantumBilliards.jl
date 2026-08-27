@@ -89,6 +89,11 @@ const _DLP_CHEB_INV_TWO_PI=inv(2*pi)
     return Complex{T}(0,one(T)/2)*k*c*SpecialFunctions.hankelh1(1,k*r)
 end
 
+@inline function _h0_h1_one_k_at_r!(h0vals::Vector{ComplexF64},h1vals::Vector{ComplexF64},plans0::Vector{ChebHankelPlanH},plans1::Vector{ChebHankelPlanH},p,t,r)
+    h0_h1_multi_ks_at_r!(h0vals,h1vals,plans0,plans1,p,t,r)
+    return h0vals[1],h1vals[1]
+end
+
 """
     compute_kernel_matrix_complex_k!(K::AbstractMatrix{Complex{T}},bp::BoundaryPoints{T},k::Complex{T};multithreaded::Bool=true) where {T<:Real} → Nothing
 
@@ -551,7 +556,14 @@ function _one_k_nosymm_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},
     nrm=bp.normal
     κ=bp.curvature
     tol2=eps(T)^2
+    plans0=[plan0]
+    plans1=[plan1]
+    h0_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
+    h1_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
     @use_threads multithreading=multithreaded for i in 1:N
+        tid=Threads.threadid()
+        h0vals=h0_tls[tid]
+        h1vals=h1_tls[tid]
         point_i=xy[i]
         normal_i=nrm[i]
         @inbounds begin
@@ -566,7 +578,7 @@ function _one_k_nosymm_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}},
                 r=sqrt(d2)
                 invr=inv(r)
                 p,t=panel_t(plan0,Float64(r))
-                H0,H1=h0_h1_at_r(plan0,plan1,p,t,Float64(r))
+                H0,H1=_h0_h1_one_k_at_r!(h0vals,h1vals,plans0,plans1,p,t,Float64(r))
                 hK,hdK,hddK=_kernel_triplet_from_hankels(k,r,H0,H1)
                 _accum_dlp_triplet_nosym!(K,dK,ddK,i,j,normal_i[1],normal_i[2],normal_j[1],normal_j[2],dx,dy,invr,hK,hdK,hddK)
             end
@@ -792,7 +804,14 @@ function _one_k_reduced_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}}
     κ=bp.curvature
     ds=bp.ds
     tol2=eps(T)^2
+    plans0=[plan0]
+    plans1=[plan1]
+    h0_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
+    h1_tls=[Vector{ComplexF64}(undef,1) for _ in 1:Threads.nthreads()]
     @use_threads multithreading=multithreaded for b in 1:m
+        tid=Threads.threadid()
+        h0vals=h0_tls[tid]
+        h1vals=h1_tls[tid]
         j=Ifund[b]
         wj=ds[j]
         @inbounds for a in 1:m
@@ -818,7 +837,7 @@ function _one_k_reduced_DLP_chebyshev_derivatives!(K::AbstractMatrix{Complex{T}}
                 normal_q=nrm[qimg]
                 c=(normal_q[1]*dx+normal_q[2]*dy)/r
                 p,t=panel_t(plan0,Float64(r))
-                H0,H1=h0_h1_at_r(plan0,plan1,p,t,Float64(r))
+                H0,H1=_h0_h1_one_k_at_r!(h0vals,h1vals,plans0,plans1,p,t,Float64(r))
                 hK,hdK,hddK=_kernel_triplet_from_hankels(k,r,H0,H1)
                 s=scale*weight_ratio*c
                 val+=s*hK
