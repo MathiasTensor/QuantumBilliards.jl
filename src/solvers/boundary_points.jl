@@ -307,7 +307,7 @@ Otherwise the quadrature elements are given by `crv.length .* dt`.
 * `s`: Arc-length coordinates along the curve.
 * `ds`: Arc-length quadrature elements.
 """
-function boundary_coords(crv::C,sampler::S,N) where {C<:BilliardGeometry.AbsCurve,S<:AbsSampler}
+function boundary_coords(crv::C,sampler::S,N) where {C<:BilliardGeometry.AbsCurve,S<:QuantumBilliards.AbsSampler}
     L=crv.length
     t,dt=sample_points(sampler,N)
     xy=BilliardGeometry.curve(crv,t)
@@ -374,7 +374,7 @@ concatenated physical boundary.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with `xy`, `normal`, `s` and `ds` populated.
 """
-function boundary_coords(billiard::Bi,samplers::Vector{<:AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard}
+function boundary_coords(billiard::Bi,samplers::Vector{<:QuantumBilliards.AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard}
     curves=filter(crv->crv.bc isa BilliardGeometry.SpecularReflection||crv.bc isa BilliardGeometry.QuantumSolverIgnore,BilliardGeometry.get_all_curves(billiard))
     T=typeof(curves[1].length)
     M=length(curves)
@@ -420,7 +420,7 @@ over the complete physical boundary.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with `xy`, `normal`, `s` and `ds` populated.
 """
-function boundary_coords(billiard::Bi,sampler::FourierNodes,N) where {Bi<:BilliardGeometry.AbsBilliard}
+function boundary_coords(billiard::Bi,sampler::QuantumBilliards.FourierNodes,N) where {Bi<:BilliardGeometry.AbsBilliard}
     curves=filter(crv->crv.bc isa BilliardGeometry.SpecularReflection||crv.bc isa BilliardGeometry.QuantumSolverIgnore,BilliardGeometry.get_all_curves(billiard))
     T=typeof(curves[1].length)
     M=length(curves)
