@@ -299,12 +299,14 @@ function _reverse_component_orientation(solver::S,pts::BoundaryPoints{T}) where 
     tphys=reverse(pts.tphys)
     ws=reverse(pts.ws)
     ws_der=reverse(pts.ws_der)
+    L=sum(pts.ds)
+    s=L.-reverse(pts.s)
     ds=reverse(pts.ds)
     xL=pts.xR
     xR=pts.xL
     tL=-pts.tR
     tR=-pts.tL
-    return BoundaryPoints(xy,tangent,tangent_2,ts,tphys,ws,ws_der,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
+    return BoundaryPoints(xy,tangent,tangent_2,ts,tphys,ws,ws_der,s,ds,pts.compid,pts.is_periodic,xL,xR,tL,tR)
 end
 
 ###############
@@ -355,22 +357,26 @@ Since no grading is applied,
 * `pts`: Periodic [`BoundaryPoints`](@ref) discretization.
 """
 function _evaluate_points(solver::CFIE_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
-    L=crv.length
+    L=T(crv.length)
     N=max(solver.min_pts,round(Int,k*L*solver.pts_scaling_factor[1]/two_pi))
     needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_order(solver.symmetry))
     N=cld(N,needed)*needed
-    ts=[s_mid(j,N) for j in 1:N]
-    ts_rescaled=ts./two_pi
-    xy=BilliardGeometry.curve(crv,ts_rescaled)
-    tangent_1st=tangent(crv,ts_rescaled)./two_pi
-    tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi^2)
-    ss=BilliardGeometry.arc_length(crv,ts_rescaled)
-    ds=diff(ss)
-    append!(ds,L+ss[1]-ss[end])
-    ws=fill(T(two_pi/N),N)
+    ts=T[s_mid(j,N) for j in 1:N]
+    tphys=ts./T(two_pi)
+    xy=BilliardGeometry.curve(crv,tphys)
+    tangent_1st=tangent(crv,tphys)./T(two_pi)
+    tangent_2nd=tangent_2(crv,tphys)./T(two_pi)^2
+    s=BilliardGeometry.arc_length(crv,tphys)
+    h=T(two_pi)/T(N)
+    ds=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        v=tangent_1st[i]
+        ds[i]=hypot(v[1],v[2])*h
+    end
+    ws=fill(h,N)
     ws_der=ones(T,N)
-    z=SVector(zero(T),zero(T))
-    return BoundaryPoints(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,z,z,z,z)
+    z=SVector{2,T}(zero(T),zero(T))
+    return BoundaryPoints(xy,tangent_1st,tangent_2nd,ts,tphys,ws,ws_der,s,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -410,24 +416,33 @@ The grading Jacobian is retained in `ws_der`.
 * `pts`: Graded periodic [`BoundaryPoints`](@ref) discretization.
 """
 function _evaluate_points(solver::CFIE_kress_corners{T},crv::C,k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
-    L=crv.length
+    L=T(crv.length)
     N=max(solver.min_pts,round(Int,k*L*solver.pts_scaling_factor[1]/two_pi))
     needed=isnothing(solver.symmetry) ? 1 : symmetry_order(solver.symmetry)
     N=cld(N,needed)*needed
     σ,tmap,jac,jac2,_=kress_graded_nodes_data(T,N;q=solver.kressq,minsep_tol=solver.min_t_spacing)
-    u=tmap./two_pi
-    xy=BilliardGeometry.curve(crv,u)
-    γu=tangent(crv,u)
-    γuu=tangent_2(crv,u)
-    tangent_1st=[γu[i]*(jac[i]/two_pi) for i in eachindex(u)]
-    tangent_2nd=[γuu[i]*(jac[i]/two_pi)^2+γu[i]*(jac2[i]/two_pi) for i in eachindex(u)]
-    ss=BilliardGeometry.arc_length(crv,u)
-    ds=diff(ss)
-    append!(ds,L+ss[1]-ss[end])
-    h=T(two_pi/N)
+    tphys=tmap./T(two_pi)
+    xy=BilliardGeometry.curve(crv,tphys)
+    γu=tangent(crv,tphys)
+    γuu=tangent_2(crv,tphys)
+    tangent_1st=Vector{SVector{2,T}}(undef,N)
+    tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    @inbounds for i in 1:N
+        a=jac[i]/T(two_pi)
+        b=jac2[i]/T(two_pi)
+        tangent_1st[i]=γu[i]*a
+        tangent_2nd[i]=γuu[i]*a^2+γu[i]*b
+    end
+    s=BilliardGeometry.arc_length(crv,tphys)
+    h=T(two_pi)/T(N)
+    ds=Vector{T}(undef,N)
+    @inbounds for i in 1:N
+        v=tangent_1st[i]
+        ds[i]=hypot(v[1],v[2])*h
+    end
     ws=fill(h,N)
-    z=SVector(zero(T),zero(T))
-    return BoundaryPoints(xy,tangent_1st,tangent_2nd,σ,tmap,ws,jac,ds,idx,true,z,z,z,z)
+    z=SVector{2,T}(zero(T),zero(T))
+    return BoundaryPoints(xy,tangent_1st,tangent_2nd,σ,tphys,ws,jac,s,ds,idx,true,z,z,z,z)
 end
 
 ############################
@@ -468,23 +483,26 @@ function _evaluate_points_smooth_composite(solver::CFIE_kress_global_corners{T},
     N=max(solver.min_pts,round(Int,k*Ltot*solver.pts_scaling_factor[1]/two_pi))
     needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_order(solver.symmetry))
     N=cld(N,needed)*needed
-    ts=[s_mid(j,N) for j in 1:N]
+    ts=T[s_mid(j,N) for j in 1:N]
+    tphys=copy(ts)
     h=T(two_pi)/T(N)
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
+    s=Vector{T}(undef,N)
     ds=Vector{T}(undef,N)
     @inbounds for i in 1:N
-        q,γt,γtt=_eval_composite_geom_global_t(T,comp,ts[i])
+        q,γt,γtt=_eval_composite_geom_global_t(T,comp,tphys[i])
         xy[i]=q
         tangent_1st[i]=γt
         tangent_2nd[i]=γtt
+        s[i]=_composite_arclength(comp,tphys[i])
         ds[i]=hypot(γt[1],γt[2])*h
     end
     ws=fill(h,N)
     ws_der=ones(T,N)
-    z=SVector(zero(T),zero(T))
-    return BoundaryPoints(xy,tangent_1st,tangent_2nd,ts,copy(ts),ws,ws_der,ds,idx,true,z,z,z,z)
+    z=SVector{2,T}(zero(T),zero(T))
+    return BoundaryPoints(xy,tangent_1st,tangent_2nd,ts,tphys,ws,ws_der,s,ds,idx,true,z,z,z,z)
 end
 
 """
@@ -534,23 +552,25 @@ function _evaluate_points(solver::CFIE_kress_global_corners{T},comp::Vector{C},k
     needed=isnothing(solver.symmetry) ? 1 : symmetry_order(solver.symmetry)
     N=cld(N,needed)*needed
     σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq,minsep_tol=solver.min_t_spacing)
+    tphys=tmap
+    h=T(two_pi)/T(N)
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
     tangent_2nd=Vector{SVector{2,T}}(undef,N)
-    @inbounds for i in 1:N
-        q,γt,γtt=_eval_composite_geom_global_t(T,comp,tmap[i])
-        xy[i]=q
-        tangent_1st[i]=γt*jac[i]
-        tangent_2nd[i]=γtt*(jac[i]^2)+γt*jac2[i]
-    end
-    h=T(two_pi)/T(N)
+    s=Vector{T}(undef,N)
     ds=Vector{T}(undef,N)
     @inbounds for i in 1:N
-        ds[i]=hypot(tangent_1st[i][1],tangent_1st[i][2])*h
+        q,γt,γtt=_eval_composite_geom_global_t(T,comp,tphys[i])
+        xy[i]=q
+        tangent_1st[i]=γt*jac[i]
+        tangent_2nd[i]=γtt*jac[i]^2+γt*jac2[i]
+        s[i]=_composite_arclength(comp,tphys[i])
+        v=tangent_1st[i]
+        ds[i]=hypot(v[1],v[2])*h
     end
     ws=fill(h,N)
-    z=SVector(zero(T),zero(T))
-    return BoundaryPoints(xy,tangent_1st,tangent_2nd,σ,tmap,ws,jac,ds,idx,true,z,z,z,z)
+    z=SVector{2,T}(zero(T),zero(T))
+    return BoundaryPoints(xy,tangent_1st,tangent_2nd,σ,tphys,ws,jac,s,ds,idx,true,z,z,z,z)
 end
 
 ####################
