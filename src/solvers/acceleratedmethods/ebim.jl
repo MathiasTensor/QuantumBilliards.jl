@@ -515,7 +515,7 @@ function solve_spectrum_ebim(solver::EBIMSolver,billiard::Bi,k1::T,k2::T;dk::Fun
     isempty(ks)&&return K[],T[]
     nevs=Vector{Int}(undef,length(ks))
     @inbounds for i in eachindex(ks)
-        nevs[i]=max(1,ceil(Int,(billiard.area*ks[i]/(2*pi)-billiard.length/(4*pi))*dks[i])+10)
+        nevs[i]=max(1,ceil(Int,(fundamental_area(billiard)*ks[i]/(2*pi))*dks[i])+10)
     end
     if use_chebyshev&&cheb_param_strategy==:global
         kref=ks[end]
