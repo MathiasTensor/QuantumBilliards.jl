@@ -76,39 +76,6 @@ function Eigenstate(k::K,k_basis::K,vec::Vector{K},ten::T,solver::S,basis::Ba,bi
 end
 
 """
-    compute_eigenstate(solver::VerginiSaracenoSolver{T},basis::Ba,billiard::Bi,k::T;dk::T=T(0.1),multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard} → state::Eigenstate
-
-Compute the Vergini–Saraceno eigenstate closest to `k`.
-
-The basis and boundary discretization are constructed at `k`.
-[`solve_vectors`](@ref) returns all candidates within `dk`, and the candidate
-closest to `k` is selected. The resulting state therefore has
-`k_basis=k` and `k` equal to the refined Vergini–Saraceno wavenumber.
-
-## Arguments
-* `solver::VerginiSaracenoSolver{T}`: Vergini–Saraceno solver.
-* `basis::Ba`: Basis used to represent the state.
-* `billiard::Bi`: Billiard geometry.
-* `k::T`: Target and basis-evaluation wavenumber.
-
-## Keyword Arguments
-* `dk::T=T(0.1)`: Interval half-width.
-* `multithreaded::Bool=true`: Enable multithreaded matrix construction.
-
-## Returns
-* `state::Eigenstate`: Candidate eigenstate closest to `k`.
-"""
-function compute_eigenstate(solver::VerginiSaracenoSolver{T},basis::Ba,billiard::Bi,k::T;dk::T=T(0.1),multithreaded::Bool=true) where {T<:Real,Ba<:AbsBasis,Bi<:AbsBilliard}
-    L=CompositeCurve(get_boundary_curves(billiard)).length
-    dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
-    basis_new=resize_basis(basis,billiard,dim,k)
-    pts=evaluate_points(solver,billiard,k)
-    ks,tens,X=solve_vectors(solver,basis_new,pts,k,dk;multithreaded)
-    idx=argmin(abs.(ks.-k))
-    return Eigenstate(ks[idx],k,X[:,idx],tens[idx],solver,basis_new,billiard)
-end
-
-"""
     BasisState{K,T,Ba} <: StationaryState
 
 Stationary state representing one basis function.

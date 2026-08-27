@@ -5,7 +5,7 @@
 # - Zhao, L., & Barnett, A. (2015). Robust and efficient solution of the drum problem via Nyström approximation of the Fredholm determinant. SIAM Journal on Numerical Analysis, Stable URL: https://www.jstor.org/stable/24512689
 
 const euler_over_pi=MathConstants.eulergamma/pi
-
+abstract type CFIE<:SweepSolver end
 ############################
 #### CONSTRUCTOR KRESS ######
 ############################
