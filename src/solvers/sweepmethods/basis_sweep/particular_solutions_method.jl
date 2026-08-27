@@ -79,21 +79,6 @@ end
     evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where {Bi<:BilliardGeometry.AbsBilliard} → BoundaryPoints
 
 Generate boundary and interior points for the Particular Solutions Method. Uses the solver's scaling
-factors and minimal point constraints to decide how many points to sample on each boundary segment
-and how many interior points to sample.
-
-# Arguments
-- `solver::ParticularSolutionsMethod`: The PSM solver configuration.
-- `billiard::Bi<:BilliardGeometry.AbsBilliard`: A geometry or domain object holding boundary curves.
-- `k::Real`: Wavenumber, used to scale the number of points (e.g. `k * L * scaling / (2π)`).
-
-# Returns
-- `pts::BoundaryPoints`: Boundary discretization containing the sampled boundary points in `xy` and interior points in `xy_int`.
-"""
-"""
-    evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where {Bi<:BilliardGeometry.AbsBilliard} → BoundaryPoints
-
-Generate boundary and interior points for the Particular Solutions Method. Uses the solver's scaling
 factors and minimal point constraints to decide how many points to sample on each boundary curve
 and how many interior points to sample.
 
