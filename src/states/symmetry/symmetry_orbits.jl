@@ -496,3 +496,8 @@ function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},syms::Ab
     all(s->s.order==order&&s.sector==sector,syms)||throw(ArgumentError("All NFoldRotation images must have identical order and irrep sector"))
     return symmetry_index_orbits(T,pts,syms[1])
 end
+
+@inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.XAxisReflection) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
+@inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.YAxisReflection) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
+@inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.XYAxisReflection) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
+@inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.NFoldRotation) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
