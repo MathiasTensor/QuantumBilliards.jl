@@ -174,8 +174,8 @@ function construct_matrices(solver::DecompositionMethodSolver,basis::Ba,pts::Bou
         wn=pts.w_n
         N=basis.dim
         M=length(xy)
-        nsym=isnothing(basis.symmetries) ? one(eltype(w)) : one(eltype(w))*(length(basis.symmetries)+1)
-        @debug "Matrix construction started" N M k nsym
+        nsym=ione(eltype(w))
+        @debug "Matrix construction started" N M k
         @timeit_debug "basis_and_gradient_matrices" begin
             # the alogrithm consctructs B and the normal derivative Bn with syrk to minimize the allocation cost. It does this with the trick of putting sqrt(w_n) into both the rows of B and the rows of B' so that we can use syrk on sqrt(W)*B to get B'*(W*B) without forming W*B as a temporary matrix (posible b/c W is diagonal)
             @blas_1 B,dX,dY=basis_and_gradient_matrices(basis,k,xy;multithreaded)
