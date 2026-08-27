@@ -134,27 +134,23 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
     soff=zero(T)
     for i in eachindex(curves)
         crv=curves[i]
-        if crv isa AbsRealCurve
-            L=crv.length
-            N=max(solver.min_pts,round(Int,k*L*bs[i]/TWO_PI))
-            if !isnothing(solver.symmetry)
-                order=symmetry_order(solver.symmetry)
-                N=cld(N,order)*order
-            end
-            sampler=samplers[i]
-            t,dt=sample_points(sampler,N)
-            xy,normal,s,ds=boundary_coords(crv,t,dt)
-            append!(xy_all,xy)
-            append!(normal_all,normal)
-            append!(s_all,s.-s[1].+soff)
-            append!(curvature_all,curvature(crv,t))
-            append!(ds_all,ds)
-            soff+=L
+        L=crv.length
+        N=max(solver.min_pts,round(Int,k*L*bs[i]/TWO_PI))
+        if !isnothing(solver.symmetry)
+            order=symmetry_order(solver.symmetry)
+            N=cld(N,order)*order
         end
+        sampler=samplers[i]
+        t,dt=sample_points(sampler,N)
+        xy,normal,s,ds=boundary_coords(crv,t,dt)
+        append!(xy_all,xy)
+        append!(normal_all,normal)
+        append!(s_all,s.-s[1].+soff)
+        append!(curvature_all,curvature(crv,t))
+        append!(ds_all,ds)
+        soff+=L
     end
-    shift_x=hasproperty(billiard,:x_axis) ? T(billiard.x_axis) : zero(T)
-    shift_y=hasproperty(billiard,:y_axis) ? T(billiard.y_axis) : zero(T)
-    return BoundaryPoints(xy_all;normal=normal_all,s=s_all,ds=ds_all,curvature=curvature_all,shift_x=shift_x,shift_y=shift_y)
+    return BoundaryPoints(xy_all;normal=normal_all,s=s_all,ds=ds_all,curvature=curvature_all)
 end
 
 ################################################################################
