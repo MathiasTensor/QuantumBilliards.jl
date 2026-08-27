@@ -32,9 +32,7 @@ its boundary normal derivative.
 
 For a Dirichlet eigenfunction the Rellich identity gives
 
-```math
-\int_\Omega |\psi|^2\,dx=\frac{1}{2k^2}\int_{\partial\Omega}(\mathbf{x}\cdot\mathbf{n})|\partial_n\psi|^2\,ds.
-```
+    ∫_Ω |ψ|² dx = (1/(2k²)) ∫_∂Ω (x ⋅ n)|∂ₙψ|² ds.
 
 The physical boundary quadrature weights are taken directly from `pts.ds`.
 
@@ -70,13 +68,9 @@ eigenstate.
 The symmetry-adapted basis is evaluated directly on the physical fundamental
 boundary and the basis gradients are contracted with the outward normal,
 
-```math
-u(s)=\partial_n\psi(s)=n_x(s)\partial_x\psi(s)+n_y(s)\partial_y\psi(s).
-```
+    u(s) = ∂ₙψ(s) = nₓ(s)∂ₓψ(s) + nᵧ(s)∂ᵧψ(s).
 
-And is returned fully symmetry-expanded to the complete physical boundary. 
-The Rellich normalization factor is computed and applied to `u` so that the 
-interior norm of the corresponding eigenfunction is unity.
+It is then fully symmetry-expanded to the complete physical boundary.
 
 This method is intended for basis-type solvers such as
 `VerginiSaracenoSolver`, `DecompositionMethodSolver` and
@@ -472,21 +466,15 @@ parameter `t`.
 
 For equispaced periodic nodes
 
-```math
-t_j=\frac{2\pi j}{N},
-```
+    tⱼ = 2πj/N,
 
 a sampled periodic function has the Fourier representation
 
-```math
-f(t)=\sum_m \hat f_m e^{imt},
-```
+    f(t) = Σₘ f̂ₘ exp(imt),
 
 so that
 
-```math
-\partial_t f(t)=\sum_m im\hat f_m e^{imt}.
-```
+    ∂ₜf(t) = Σₘ im f̂ₘ exp(imt).
 
 For even `N`, the Nyquist mode is assigned zero derivative.
 
@@ -507,11 +495,10 @@ end
     tangential_derivative_density(pts::BoundaryPoints{T},μ::AbstractVector{Complex{T}}) where {T<:Real} → Vector{Complex{T}}
 
 Compute the tangential derivative `∂ₛμ` on one periodic Kress boundary.
-If the boundary is parameterized by the periodic computational variable `t`, then
+If the boundary is parameterized by the periodic computational variable `t`,
+then
 
-```math
-\partial_s\mu=\frac{1}{|\gamma'(t)|}\partial_t\mu.
-```
+    ∂ₛμ = (1/|γ'(t)|)∂ₜμ.
 
 The computational derivative is evaluated spectrally with
 [`periodic_derivative_t`](@ref), while the physical speed is obtained from the
@@ -537,15 +524,13 @@ end
 Apply the Helmholtz single-layer operator on one periodic boundary using the
 Kress logarithmic singularity split. For
 
-```math
-(S\sigma)(x)=\int_{\partial\Omega}\Phi_k(x,y)\sigma(y)\,ds_y,\qquad\Phi_k(x,y)=\frac{i}{4}H_0^{(1)}(k|x-y|),
-```
+    (Sσ)(x) = ∫_∂Ω Φₖ(x,y)σ(y) ds_y,
+    Φₖ(x,y) = (i/4)H₀⁽¹⁾(k|x-y|),
 
 the same-boundary logarithmic singularity is written as
 
-```math
-\Phi_k(\gamma(t),\gamma(\tau))=m_1(t,\tau)\log\left|2\sin\frac{t-\tau}{2}\right|+m_2(t,\tau),
-```
+    Φₖ(γ(t),γ(τ))
+        = m₁(t,τ) log|2sin((t-τ)/2)| + m₂(t,τ),
 
 where `m₂` is smooth. `Rblock` supplies the Kress product-integration weights
 for the logarithmic part, while `pts.ws` supplies the periodic quadrature
@@ -613,15 +598,11 @@ Direct quadrature of the normal derivative of the double-layer potential is
 hypersingular. Maue's identity rewrites this action using only weakly singular
 single-layer operators:
 
-```math
-N\mu = \partial_s S(\partial_s\mu) + k^2\,\mathbf n\cdot S(\mathbf n\mu).
-```
+    Nμ = ∂ₛS(∂ₛμ) + k² n ⋅ S(nμ).
 
 In Cartesian components,
 
-```math
-N\mu = \partial_s S(\partial_s\mu) + k^2 \left[n_xS(n_x\mu)+n_yS(n_y\mu) \right].
-```
+    Nμ = ∂ₛS(∂ₛμ) + k²[nₓS(nₓμ) + nᵧS(nᵧμ)].
 
 The function therefore:
 
@@ -690,14 +671,10 @@ end
 Assemble the pure double-layer Nyström matrix `D(k)` on the single periodic
 CFIE-Kress boundary. The Helmholtz double-layer operator is
 
-```math
-(D\mu)(x) = \int_{\partial\Omega} \partial_{n_y}\Phi_k(x,y)\mu(y)\,ds_y.
-```
+    (Dμ)(x) = ∫_∂Ω ∂ₙ_y Φₖ(x,y) μ(y) ds_y.
 
 The same-boundary weak singularity is evaluated using the Kress logarithmic
-split already used in the CFIE matrix assembly. `Rmat` contains the product
-integration weights for the logarithmic term, while `pts.ws` weights the
-smooth remainder.
+split already used in the CFIE matrix assembly.
 
 The diagonal uses the analytic curvature limit.
 
@@ -773,15 +750,11 @@ Nyström matrix `D`.
 
 For the quadrature-weighted boundary pairing,
 
-```math
-\langle f,g\rangle_h = f^\mathsf{T}Wg, \qquad W=\operatorname{diag}(ds),
-```
+    ⟨f,g⟩ₕ = fᵀWg,    W = diag(ds),
 
 the discrete formal adjoint is
 
-```math
-K' = W^{-1}D^\mathsf{T}W.
-```
+    K' = W⁻¹DᵀW.
 
 No complex conjugation is used here: this is the formal transpose required by
 the boundary-integral kernel relation.
@@ -812,9 +785,7 @@ Apply the discrete adjoint double-layer operator without explicitly forming `K'`
 
 Using
 
-```math
-K'\mu=W^{-1}D^\mathsf{T}W\mu,
-```
+    K'μ = W⁻¹DᵀWμ,
 
 the method first forms `Wμ`, applies `transpose(D)`, and finally divides by the
 target quadrature weights.
@@ -848,9 +819,7 @@ Compute the `K'μ` contribution required for CFIE boundary-function recovery.
 The pure DLP matrix is assembled at `k`, after which the weighted transpose
 identity
 
-```math
-K'\mu=W^{-1}D^\mathsf{T}W\mu
-```
+    K'μ = W⁻¹DᵀWμ
 
 is applied using the physical boundary quadrature weights `pts.ds`.
 
