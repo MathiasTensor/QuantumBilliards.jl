@@ -9,19 +9,14 @@ real quantum-billiard spectra.
 The method evaluates a real basis on the physical fundamental boundary,
 constructs the real symmetric matrices
 
-```math
-F=G^\mathsf{T}WG,\qquad
-F_k=G^\mathsf{T}WG_k+G_k^\mathsf{T}WG,
-```
+F = Gᵀ W G, Fk = Gᵀ W dG + dGᵀ W G.
 
 and solves the generalized eigenvalue problem associated with the scaling
 method.
 
 The Vergini-Saraceno boundary weight
 
-```math
-w_i=\frac{ds_i}{\mathbf r_i\cdot\mathbf n_i}
-```
+wᵢ = dsᵢ/(rᵢ ⋅ nᵢ)
 
 is stored in `BoundaryPoints.w`.
 
@@ -98,9 +93,7 @@ each curve, [`boundary_coords`](@ref) supplies the positions, outward normals,
 physical arclength coordinates and quadrature weights. The Vergini-Saraceno
 weight
 
-```math
-w_i=\frac{ds_i}{\mathbf r_i\cdot\mathbf n_i}
-```
+wᵢ = dsᵢ/(rᵢ ⋅ nᵢ)
 
 is stored in `BoundaryPoints.w`.
 
@@ -145,10 +138,7 @@ end
 
 Construct the real Vergini-Saraceno matrices
 
-```math
-F=G^\mathsf{T}WG,\qquad
-F_k=G^\mathsf{T}WG_k+G_k^\mathsf{T}WG.
-```
+F = Gᵀ W G, Fk = Gᵀ W dG + dGᵀ W G.
 
 The diagonal weight matrix `W` is not formed explicitly. Instead the rows of
 `G` and `G_k` are scaled by `sqrt(w)` and the symmetric products are assembled
@@ -217,10 +207,8 @@ end
 Convert real generalized eigenvalues `mu` obtained at real scaling wavenumber
 `k` into Vergini-Saraceno wavenumber estimates and tensions,
 
-```math
-k_j=k-\frac{2}{\mu_j}+\frac{2}{k\mu_j^2},\qquad
-t_j=2\left(\frac{2}{\mu_j}\right)^2.
-```
+k_j = k - 2/μ_j + 2/(k μ_j²),
+t_j = 2(2/μ_j)².
 
 ## Returns
 * `ks::Vector{T}`: Estimated real wavenumbers.
@@ -652,11 +640,7 @@ Compute the real Vergini-Saraceno spectrum over `[k1,k2]` using adaptively
 spaced scaling windows.
 
 The window spacing is estimated from the leading Weyl density of the physical
-fundamental domain,
-
-```math
-\frac{dN}{dk}=\frac{Ak}{2\pi}-\frac{L}{4\pi}.
-```
+fundamental domain, dN/dk = Ak/(2π) - L/(4π).
 
 If `vectors=false`, return [`SpectralData`](@ref). If `vectors=true`, retain
 the real basis-expansion coefficients and return [`StateData`](@ref).
