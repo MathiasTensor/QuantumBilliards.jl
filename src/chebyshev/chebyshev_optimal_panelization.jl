@@ -11,9 +11,9 @@
 ################################################################################
 
 # so the user does not need to know the actual :Symbol
-@inline chebyshev_kind(::BoundaryIntegralMethod)=:dlp
-@inline chebyshev_kind(::Union{DLP_kress,DLP_kress_global_corners})=:dlp_kress
-@inline chebyshev_kind(::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners})=:cfie_kress
+@inline chebyshev_kind(::BoundaryIntegralMethod)=Val(:dlp)
+@inline chebyshev_kind(::Union{DLP_kress,DLP_kress_global_corners})=Val(:dlp_kress)
+@inline chebyshev_kind(::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners})=Val(:cfie_kress)
 
 # common API so that e.g. Beyn and EBIM can call the same function to construct the boundary matrices for any solver type
 @inline function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver,pts,zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
