@@ -505,3 +505,26 @@ end
 @inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.YAxisReflection) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
 @inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.XYAxisReflection) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
 @inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.NFoldRotation) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)
+
+# Nice ways to get the fundamental domain size without needing a separate field for it in the billiard struct. Assign to each symmetry in the vector of classical dynamics symmetries and find the one which is the highest
+# Then just divide the area by that number to get the fundamental domain area. This is used in Beyn (and potentially in EBIM if one wants constant level per interval). 
+@inline symmetry_reduction_factor(::BilliardGeometry.AbsSymmetry)=1
+@inline symmetry_reduction_factor(::BilliardGeometry.XAxisReflection)=2
+@inline symmetry_reduction_factor(::BilliardGeometry.YAxisReflection)=2
+@inline symmetry_reduction_factor(::BilliardGeometry.XYAxisReflection)=4
+@inline symmetry_reduction_factor(sym::BilliardGeometry.NFoldRotation)=sym.order
+
+function maximal_symmetry(billiard::BilliardGeometry.AbsBilliard)
+    isempty(billiard.symmetries)&&return nothing
+    _,i=findmax(symmetry_reduction_factor,billiard.symmetries)
+    return billiard.symmetries[i]
+end
+
+@inline function symmetry_reduction_factor(billiard::BilliardGeometry.AbsBilliard)
+    sym=maximal_symmetry(billiard)
+    return isnothing(sym) ? 1 : symmetry_reduction_factor(sym)
+end
+
+@inline function fundamental_area(billiard::BilliardGeometry.AbsBilliard)
+    return area(billiard)/symmetry_reduction_factor(billiard)
+end

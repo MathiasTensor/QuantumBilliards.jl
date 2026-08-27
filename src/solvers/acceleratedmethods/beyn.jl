@@ -32,7 +32,7 @@ const BeynSolver{T}=Union{BoundaryIntegralMethod{T},CFIE_kress{T},CFIE_kress_cor
 
 # Width Δk containing approximately m levels from the leading Weyl estimate A*((k+Δk)^2-k^2)/(4π)=m.
 @inline function weyl_window_width(billiard::Bi,k::T,m::Int;fundamental::Bool=true) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
-    A=fundamental ? billiard.area_fundamental : billiard.area
+    A=fundamental ? fundamental_area(billiard) : area(billiard)
     return sqrt(k^2+T(4*pi*m/A))-k
 end
 

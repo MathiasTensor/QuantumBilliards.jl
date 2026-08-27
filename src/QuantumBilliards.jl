@@ -60,16 +60,16 @@ export BoundaryPanelArrays,BoundaryGeomCache,boundary_geom_cache
 export component_lengths,component_normals,flatten_boundary_components,flatten_boundary_ds
 export print_component_junctions
 
+# spectral geometry utilities
+include("spectra/unfolding.jl")
+export corner_correction,weyl_law,k_at_state,area
+
 # symmetry
 include("states/symmetry/symmetry_orbits.jl")
 export SymmetryOrbitMap,symmetry_index_orbits,symmetry_orbit
 
 include("states/symmetry/reflections.jl")
 export apply_symmetries_to_wavefunction,apply_symmetries_to_boundary_function,apply_symmetries_to_boundary_points
-
-# spectral geometry utilities
-include("spectra/unfolding.jl")
-export corner_correction,weyl_law,k_at_state,area
 
 # matrix helpers
 include("solvers/decompositions.jl")
