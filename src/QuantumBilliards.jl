@@ -25,6 +25,7 @@ using BilliardGeometry
 include("abstracttypes.jl")
 export CoordinateSystem,AbsBasis,AbsSolver,AbsPoints,SweepSolver,AcceleratedSolver,AbsState,StationaryState,CFIE
 include("utils/special_function_calls.jl")
+include("utils/other.jl")
 
 # utilities
 include("utils/macros.jl")
