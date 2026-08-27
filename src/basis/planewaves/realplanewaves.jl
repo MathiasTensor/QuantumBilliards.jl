@@ -1,7 +1,7 @@
 """
     RealPlaneWaves{T,Sa}<:AbsBasis
 
-Concrete real plane-wave basis with an optional reflection symmetry.
+Concrete real plane-wave basis with an optional reflection symmetries.
 
 Each basis function has the separable form
 
@@ -23,7 +23,7 @@ The symmetry object itself stores the relevant parity quantum number(s).
 
 ## Attributes
 * `dim::Int`: Effective number of basis functions.
-* `symmetry`: Reflection symmetry, or `nothing`.
+* `symmetries`: Reflection symmetry, or `nothing`.
 * `angle_arc::T`: Angular range over which directions are sampled.
 * `angle_shift::T`: Angular offset applied to the sampled directions.
 * `angles::Vector{T}`: Propagation angles.
@@ -41,7 +41,7 @@ The following functions can be evaluated for this type:
 """
 struct RealPlaneWaves{T<:Real,Sa<:AbsSampler}<:AbsBasis
     dim::Int
-    symmetry::Union{BilliardGeometry.AbsReflection,Nothing}
+    symmetries::Union{BilliardGeometry.AbsReflection,Nothing}
     angle_arc::T
     angle_shift::T
     angles::Vector{T}
@@ -186,7 +186,7 @@ angular sampling parameters.
 * `basis_new::RealPlaneWaves`: Resized basis.
 """
 @inline function resize_basis(basis::RealPlaneWaves,billiard::AbsBilliard,dim::Int,k)
-    return RealPlaneWaves(dim,basis.symmetry;angle_arc=basis.angle_arc,angle_shift=basis.angle_shift,sampler=basis.sampler)
+    return RealPlaneWaves(dim,basis.symmetries;angle_arc=basis.angle_arc,angle_shift=basis.angle_shift,sampler=basis.sampler)
 end
 
 """
@@ -207,8 +207,8 @@ for a single-axis reflection, and one for `XYAxisReflection`.
 """
 @inline function rescale_dimension(basis::Ba,dim::Integer) where {Ba<:AbsBasis}
     basis isa RealPlaneWaves||return Int(dim)
-    symmetry=basis.symmetry
-    multiplicity=isnothing(symmetry) ? 4 : symmetry isa BilliardGeometry.XYAxisReflection ? 1 : 2
+    symmetries=basis.symmetries
+    multiplicity=isnothing(symmetries) ? 4 : symmetries isa BilliardGeometry.XYAxisReflection ? 1 : 2
     return div(Int(dim),multiplicity)
 end
 
