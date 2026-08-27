@@ -109,7 +109,7 @@ function evaluate_points(solver::ParticularSolutionsMethod,billiard::Bi,k) where
         ds_all[i]=ds
         L0+=curves[i].length
     end
-    M_int=max(solver.min_int_pts,round(Int,k*billiard.length*solver.int_pts_scaling_factor/(2*pi)))
+    M_int=max(solver.min_int_pts,round(Int,k*L0*solver.int_pts_scaling_factor/(2*pi)))
     xy_int=BilliardGeometry.random_interior_points(billiard,M_int)
     return BoundaryPoints(vcat(xy_all...);normal=vcat(normal_all...),s=vcat(s_all...),ds=vcat(ds_all...),xy_int=xy_int)
 end

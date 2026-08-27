@@ -1,6 +1,6 @@
 struct CircleBilliard{T}<:BilliardGeometry.AbsBilliard
     fundamental_domain::BilliardGeometry.SimpleDomain{T}
-    full_boundary::BilliardGeometry.CircleSegment
+    full_boundary::Vector{BilliardGeometry.CircleSegment}
     symmetries::Vector{BilliardGeometry.AbsSymmetry}
 end
 
@@ -33,7 +33,7 @@ function CircleBilliard(R::T=one(T);center=SVector{2,T}(zero(T),zero(T))) where 
     ywall=BilliardGeometry.LineSegment(SVector{2,T}(cx,cy+R),c;bc=BilliardGeometry.ReflectionSymmetry(BilliardGeometry.YAxisReflection(),4),domain_id=1,segment_id=2)
     xwall=BilliardGeometry.LineSegment(c,SVector{2,T}(cx+R,cy);bc=BilliardGeometry.ReflectionSymmetry(BilliardGeometry.XAxisReflection(),4),domain_id=1,segment_id=3)
     fundamental_domain=BilliardGeometry.SimpleDomain{T}(BilliardGeometry.AbsCurve[arc,ywall,xwall],SVector{2,T}[SVector{2,T}(cx+R,cy),SVector{2,T}(cx,cy+R),c],1)
-    full_boundary=BilliardGeometry.CircleSegment(R,T(2pi),zero(T),c;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=1)
+    full_boundary=[BilliardGeometry.CircleSegment(R,T(2pi),zero(T),c;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=1)]
     symmetries=BilliardGeometry.AbsSymmetry[BilliardGeometry.D2_symmetry...]
     return CircleBilliard{T}(fundamental_domain,full_boundary,symmetries)
 end
