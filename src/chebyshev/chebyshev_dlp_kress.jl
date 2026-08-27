@@ -42,22 +42,23 @@
 #     F(k)=I-D(k),   F'(k)=-D'(k),   F''(k)=-D''(k).
 #
 # With symmetry, only fundamental-domain degrees of freedom are retained. For
-# reduced column b let j=Ifund[b] be its representative source node and let
+# fundamental target a and reduced source b, let
 #
-#     j_l=fund_to_full[l,b],   χ_l=fund_to_scale[l,b].
+#     i=Ifund[a],
+#     j_l=fund_to_full[l,b],
+#     χ_l=fund_to_scale[l,b].
 #
-# The representative interaction uses the Kress product-integration formula,
-# while each nonidentity image is a regular source interaction:
+# Symmetry reduction is performed by folding the complete discrete Kress
+# operator:
 #
-#     Dred_ab(k)=D_Kress(i,j;k)+Σ_{l=2}^{ng} χ_l D_reg(i,j_l;k).
+#     Dred_ab(k)=Σ_l χ_l Dfull(i,j_l;k).
 #
-# The same decomposition is used for the first two k-derivatives.
+# Thus every source image is evaluated with exactly the same Kress
+# product-integration formula as its corresponding entry of the full discrete
+# operator. The same folding is applied to the first two k-derivatives:
 #
-# Regular image terms use the physical source quadrature weight
-#
-#     |γ'(t_q)| w_q,
-#
-# exactly as in the direct DLP-Kress implementation.
+#     Dred'_ab(k) =Σ_l χ_l Dfull'(i,j_l;k),
+#     Dred''_ab(k)=Σ_l χ_l Dfull''(i,j_l;k).
 ################################################################################
 #
 # Reference:
@@ -614,8 +615,7 @@ end
 function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{Matrix{ComplexF64}},pts::BoundaryPoints{T},rws::DLPKressReducedH1J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     fullws=rws.fullcheb
     blk=fullws.block_cache.block
-    direct=rws.direct
-    orbits=direct.orbits
+    orbits=rws.direct.orbits
     Ifund=orbits.Ifund
     m=fundamental_size(orbits)
     ng=orbit_size(orbits)
@@ -628,9 +628,8 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{Matrix{ComplexF64}}
     αL1s=Vector{ComplexF64}(undef,Mk)
     αL2s=Vector{ComplexF64}(undef,Mk)
     @inbounds for q in 1:Mk
-        k=ks[q]
-        αL1s[q]=-k*INV_TWO_PI
-        αL2s[q]=0.5im*k
+        αL1s[q]=-ks[q]*INV_TWO_PI
+        αL2s[q]=0.5im*ks[q]
     end
     ntls=length(fullws.bessel_ws.h1_tls)
     acc_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
@@ -649,54 +648,38 @@ function _construct_dlp_kress_matrices_chebyshev!(Ds::Vector{Matrix{ComplexF64}}
     pidxj=blk.pidxj
     tlocj=blk.tlocj
     kappa=blk.kappa
-    xy_nodes=pts.xy
-    normal_nodes=pts.normal
-    tangent_nodes=pts.tangent
     @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h1vals=h1_tls[tid]
         j1vals=j1_tls[tid]
         acc=acc_tls[tid]
-        j=Ifund[b]
         @inbounds for a in 1:m
             fill!(acc,0.0+0.0im)
             i=Ifund[a]
-            if i==j
-                d0=ComplexF64(wi[i]*kappa[i],0.0)
-                for q in 1:Mk
-                    acc[q]=d0
-                end
-            else
-                r=R[i,j]
-                rinv=invR[i,j]
-                lt=logterm[i,j]
-                inn=inner[i,j]
-                Rij=Rkress[i,j]
-                _h1_j1_at_pidx_t!(h1vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans1,plansj1)
-                c1=Rij*inn*rinv
-                c2=wi[j]*inn*rinv
-                c3=c2*lt
-                for q in 1:Mk
-                    l1=αL1s[q]*j1vals[q]
-                    acc[q]=c1*l1+c2*αL2s[q]*h1vals[q]-c3*l1
-                end
-            end
-            point_i=xy_nodes[i]
-            for l in 2:ng
-                qimg=orbits.fund_to_full[l,b]
-                scale=ComplexF64(orbits.fund_to_scale[l,b])
-                point_q=xy_nodes[qimg]
-                dx=point_i[1]-point_q[1]
-                dy=point_i[2]-point_q[2]
-                r=hypot(dx,dy)
-                iszero(r)&&continue
-                normal_q=normal_nodes[qimg]
-                c=(normal_q[1]*dx+normal_q[2]*dy)/r
-                tangent_q=tangent_nodes[qimg]
-                wq=hypot(tangent_q[1],tangent_q[2])*pts.ws[qimg]
-                _h1_j1_at_pidx_t!(h1vals,j1vals,pidx[i,qimg],tloc[i,qimg],pidxj[i,qimg],tlocj[i,qimg],r,plans1,plansj1)
-                for q in 1:Mk
-                    acc[q]+=scale*αL2s[q]*c*h1vals[q]*wq
+            for l in 1:ng
+                j=orbits.fund_to_full[l,b]
+                χ=ComplexF64(orbits.fund_to_scale[l,b])
+                if i==j
+                    d0=ComplexF64(wi[i]*kappa[i],0.0)
+                    for q in 1:Mk
+                        acc[q]+=χ*d0
+                    end
+                else
+                    r=R[i,j]
+                    rinv=invR[i,j]
+                    lt=logterm[i,j]
+                    inn=inner[i,j]
+                    Rij=Rkress[i,j]
+                    wj=wi[j]
+                    _h1_j1_at_pidx_t!(h1vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans1,plansj1)
+                    c1=Rij*inn*rinv
+                    c2=wj*inn*rinv
+                    c3=c2*lt
+                    for q in 1:Mk
+                        l1=αL1s[q]*j1vals[q]
+                        dval=c1*l1+c2*αL2s[q]*h1vals[q]-c3*l1
+                        acc[q]+=χ*dval
+                    end
                 end
             end
             for q in 1:Mk
@@ -802,8 +785,7 @@ end
 function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{Matrix{ComplexF64}},D1s::Vector{Matrix{ComplexF64}},D2s::Vector{Matrix{ComplexF64}},pts::BoundaryPoints{T},rws::DLPKressReducedH0H1J0J1ChebWorkspace{T};multithreaded::Bool=true) where {T<:Real}
     fullws=rws.fullcheb
     blk=fullws.block_cache.block
-    direct=rws.direct
-    orbits=direct.orbits
+    orbits=rws.direct.orbits
     Ifund=orbits.Ifund
     m=fundamental_size(orbits)
     ng=orbit_size(orbits)
@@ -820,9 +802,8 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{Matrix{
     αL1s=Vector{ComplexF64}(undef,Mk)
     αL2s=Vector{ComplexF64}(undef,Mk)
     @inbounds for q in 1:Mk
-        k=ks[q]
-        αL1s[q]=-k*INV_TWO_PI
-        αL2s[q]=0.5im*k
+        αL1s[q]=-ks[q]*INV_TWO_PI
+        αL2s[q]=0.5im*ks[q]
     end
     ntls=length(fullws.bessel_ws.h0_tls)
     acc_tls=[Vector{ComplexF64}(undef,Mk) for _ in 1:ntls]
@@ -847,9 +828,6 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{Matrix{
     pidxj=blk.pidxj
     tlocj=blk.tlocj
     kappa=blk.kappa
-    xy_nodes=pts.xy
-    normal_nodes=pts.normal
-    tangent_nodes=pts.tangent
     @use_threads multithreading=multithreaded for b in 1:m
         tid=Threads.threadid()
         h0vals=h0_tls[tid]
@@ -859,65 +837,47 @@ function _construct_dlp_kress_matrices_derivatives_chebyshev!(Ds::Vector{Matrix{
         acc=acc_tls[tid]
         acc1=acc1_tls[tid]
         acc2=acc2_tls[tid]
-        j=Ifund[b]
         @inbounds for a in 1:m
             fill!(acc,0.0+0.0im)
             fill!(acc1,0.0+0.0im)
             fill!(acc2,0.0+0.0im)
             i=Ifund[a]
-            if i==j
-                d0=ComplexF64(wi[i]*kappa[i],0.0)
-                for q in 1:Mk
-                    acc[q]=d0
-                end
-            else
-                r=R[i,j]
-                rinv=invR[i,j]
-                lt=logterm[i,j]
-                inn=inner[i,j]
-                Rij=Rkress[i,j]
-                wj=wi[j]
-                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans0,plans1,plansj0,plansj1)
-                cD1=Rij*inn*rinv
-                cD2=wj*inn*rinv
-                cD3=cD2*lt
-                cR=Rij*inn*INV_TWO_PI
-                cW=wj*inn*INV_TWO_PI
-                for q in 1:Mk
-                    k=ks[q]
-                    h0=h0vals[q]
-                    h1=h1vals[q]
-                    j0=j0vals[q]
-                    j1=j1vals[q]
-                    kr=k*r
-                    l1=αL1s[q]*j1
-                    acc[q]=cD1*l1+cD2*αL2s[q]*h1-cD3*l1
-                    acc1[q]=cR*(-k*j0)+cW*(k*(lt*j0+im*pi*h0))
-                    acc2[q]=cR*(kr*j1-j0)+cW*(lt*(j0-kr*j1)+im*pi*(h0-kr*h1))
-                end
-            end
-            point_i=xy_nodes[i]
-            for l in 2:ng
-                qimg=orbits.fund_to_full[l,b]
-                scale=ComplexF64(orbits.fund_to_scale[l,b])
-                point_q=xy_nodes[qimg]
-                dx=point_i[1]-point_q[1]
-                dy=point_i[2]-point_q[2]
-                r=hypot(dx,dy)
-                iszero(r)&&continue
-                normal_q=normal_nodes[qimg]
-                c=(normal_q[1]*dx+normal_q[2]*dy)/r
-                tangent_q=tangent_nodes[qimg]
-                wq=hypot(tangent_q[1],tangent_q[2])*pts.ws[qimg]
-                _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx[i,qimg],tloc[i,qimg],pidxj[i,qimg],tlocj[i,qimg],r,plans0,plans1,plansj0,plansj1)
-                for q in 1:Mk
-                    k=ks[q]
-                    h0=h0vals[q]
-                    h1=h1vals[q]
-                    kr=k*r
-                    acc[q]+=scale*0.5im*k*c*h1*wq
-                    acc1[q]+=scale*0.5im*c*(kr*h0)*wq
-                    acc2[q]+=scale*0.5im*c*(r*h0-k*r*r*h1)*wq
+            for l in 1:ng
+                j=orbits.fund_to_full[l,b]
+                χ=ComplexF64(orbits.fund_to_scale[l,b])
+                if i==j
+                    d0=ComplexF64(wi[i]*kappa[i],0.0)
+                    for q in 1:Mk
+                        acc[q]+=χ*d0
+                    end
+                else
+                    r=R[i,j]
+                    rinv=invR[i,j]
+                    lt=logterm[i,j]
+                    inn=inner[i,j]
+                    Rij=Rkress[i,j]
+                    wj=wi[j]
+                    _h0_h1_j0_j1_at_pidx_t!(h0vals,h1vals,j0vals,j1vals,pidx[i,j],tloc[i,j],pidxj[i,j],tlocj[i,j],r,plans0,plans1,plansj0,plansj1)
+                    cD1=Rij*inn*rinv
+                    cD2=wj*inn*rinv
+                    cD3=cD2*lt
+                    cR=Rij*inn*INV_TWO_PI
+                    cW=wj*inn*INV_TWO_PI
+                    for q in 1:Mk
+                        k=ks[q]
+                        h0=h0vals[q]
+                        h1=h1vals[q]
+                        j0=j0vals[q]
+                        j1=j1vals[q]
+                        kr=k*r
+                        l1=αL1s[q]*j1
+                        d0=cD1*l1+cD2*αL2s[q]*h1-cD3*l1
+                        d1=cR*(-k*j0)+cW*(k*(lt*j0+im*pi*h0))
+                        d2=cR*(kr*j1-j0)+cW*(lt*(j0-kr*j1)+im*pi*(h0-kr*h1))
+                        acc[q]+=χ*d0
+                        acc1[q]+=χ*d1
+                        acc2[q]+=χ*d2
+                    end
                 end
             end
             for q in 1:Mk
