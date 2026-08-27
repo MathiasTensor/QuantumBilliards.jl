@@ -374,7 +374,7 @@ concatenated physical boundary.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with `xy`, `normal`, `s` and `ds` populated.
 """
-function boundary_coords(billiard::Bi,samplers::Vector{<:QuantumBilliards.AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard}
+function boundary_coords(billiard::Bi,samplers::Vector{<:BilliardGeometry.AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard}
     curves=filter(crv->crv.bc isa BilliardGeometry.SpecularReflection||crv.bc isa BilliardGeometry.QuantumSolverIgnore,BilliardGeometry.get_all_curves(billiard))
     T=typeof(curves[1].length)
     M=length(curves)
@@ -420,7 +420,7 @@ over the complete physical boundary.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with `xy`, `normal`, `s` and `ds` populated.
 """
-function boundary_coords(billiard::Bi,sampler::QuantumBilliards.FourierNodes,N) where {Bi<:BilliardGeometry.AbsBilliard}
+function boundary_coords(billiard::Bi,sampler::BilliardGeometry.FourierNodes,N) where {Bi<:BilliardGeometry.AbsBilliard}
     curves=filter(crv->crv.bc isa BilliardGeometry.SpecularReflection||crv.bc isa BilliardGeometry.QuantumSolverIgnore,BilliardGeometry.get_all_curves(billiard))
     T=typeof(curves[1].length)
     M=length(curves)
