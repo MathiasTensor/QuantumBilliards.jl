@@ -841,57 +841,45 @@ end
 ############# DESYMMETRIZED PATHWAY ############
 #################################################
 
-@inline function _regular_dlp_image_D(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,k::T,scale::Complex{T}) where {T<:Real}
-    dx=xi-xj
-    dy=yi-yj
-    r=hypot(dx,dy)
-    iszero(r)&&return zero(Complex{T})
-    c=(nxj*dx+nyj*dy)/r
-    return scale*Complex{T}(0,k/2)*c*H(1,k*r)*wj
-end
-
-@inline function _regular_dlp_image_D_derivs(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,k::T,scale::Complex{T}) where {T<:Real}
-    dx=xi-xj
-    dy=yi-yj
-    r=hypot(dx,dy)
-    iszero(r)&&return zero(Complex{T}),zero(Complex{T}),zero(Complex{T})
-    c=(nxj*dx+nyj*dy)/r
-    kr=k*r
-    h0,h1=hankel_pair01(kr)
-    D=scale*Complex{T}(0,k/2)*c*h1*wj
-    D1=scale*Complex{T}(0,1/2)*c*(kr*h0)*wj
-    D2=scale*Complex{T}(0,1/2)*c*(r*h0-k*r^2*h1)*wj
-    return D,D1,D2
-end
-
 """
-    construct_dlp_matrix!(
-        solver::Union{DLP_kress,DLP_kress_global_corners},
-        D::AbstractMatrix{Complex{T}},
-        pts::BoundaryPoints{T},
-        rws::DLPKressReducedWorkspace{T},
-        k::T;
-        multithreaded::Bool=true,
-    ) where {T<:Real} → D
+    construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real} → D
 
-Assemble the symmetry-reduced DLP-Kress matrix.
+Assemble the symmetry-reduced DLP-Kress matrix by folding the complete discrete
+full-boundary Kress operator over each source symmetry orbit.
 
-For each pair of fundamental nodes, the identity copy is evaluated using the
-full-grid Kress split. The remaining members of the source orbit are regular
-and are added using the ordinary DLP kernel weighted by their irrep factors.
+For fundamental target index `a` and reduced source index `b`,
+
+    i=Ifund[a],
+
+and each symmetry image of `b` is
+
+    j_l=fund_to_full[l,b],
+    χ_l=fund_to_scale[l,b].
+
+The reduced matrix is
+
+    Dred[a,b]=Σ_l χ_l Dfull[i,j_l].
+
+Every image therefore uses exactly the same Kress product-integration entry as
+the corresponding full matrix. In particular, nonidentity images on the same
+periodic component must not be replaced by ordinary trapezoidal DLP entries.
+
+The diagonal full-grid entry is
+
+    Dfull[i,i]=ws[i]*κ[i].
 
 ## Arguments
 * `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
 * `D::AbstractMatrix{Complex{T}}`: Preallocated reduced destination matrix.
 * `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
-* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `rws::DLPKressReducedWorkspace{T}`: Full Kress workspace and symmetry-orbit map.
 * `k::T`: Wavenumber.
 
 ## Keyword Arguments
-* `multithreaded::Bool`: Whether to thread the same-copy Kress assembly.
+* `multithreaded::Bool`: Whether to thread reduced-column assembly.
 
 ## Returns
-* `D::AbstractMatrix{Complex{T}}`: Symmetry-reduced DLP matrix.
+* `D::AbstractMatrix{Complex{T}}`: Symmetry-reduced DLP-Kress matrix.
 """
 function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     full=rws.full
@@ -906,65 +894,52 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
     αL2=Complex{T}(0,k/2)
     fill!(D,zero(Complex{T}))
     @use_threads multithreading=(multithreaded&&m>=32) for b in 1:m
-        j=Ifund[b]
         @inbounds for a in 1:m
             i=Ifund[a]
-            if i==j
-                D[a,b]=Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
-            else
-                r=G.R[i,j]
-                invr=G.invR[i,j]
-                lt=G.logterm[i,j]
-                inn=G.inner[i,j]
-                _,h1=hankel_pair01(k*r)
-                j1=real(h1)
-                l1=αL1*inn*j1*invr
-                l2=αL2*inn*h1*invr-l1*lt
-                D[a,b]=Rmat[i,j]*l1+pts.ws[j]*l2
+            acc=zero(Complex{T})
+            for l in 1:ng
+                j=orbits.fund_to_full[l,b]
+                χ=orbits.fund_to_scale[l,b]
+                if i==j
+                    dval=Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
+                else
+                    r=G.R[i,j]
+                    invr=G.invR[i,j]
+                    lt=G.logterm[i,j]
+                    inn=G.inner[i,j]
+                    _,h1=hankel_pair01(k*r)
+                    j1=real(h1)
+                    l1=αL1*inn*j1*invr
+                    l2=αL2*inn*h1*invr-l1*lt
+                    dval=Rmat[i,j]*l1+pts.ws[j]*l2
+                end
+                acc+=χ*dval
             end
-        end
-    end
-    @inbounds for b in 1:m
-        for a in 1:m
-            i=Ifund[a]
-            pi=pts.xy[i]
-            for l in 2:ng
-                q=orbits.fund_to_full[l,b]
-                scale=orbits.fund_to_scale[l,b]
-                pq=pts.xy[q]
-                nq=pts.normal[q]
-                tq=pts.tangent[q]
-                wq=hypot(tq[1],tq[2])*pts.ws[q]
-                D[a,b]+=_regular_dlp_image_D(pi[1],pi[2],pq[1],pq[2],nq[1],nq[2],wq,k,scale)
-            end
+            D[a,b]=acc
         end
     end
     return D
 end
 
 """
-    construct_fredholm_matrix!(
-        solver::Union{DLP_kress,DLP_kress_global_corners},
-        F::AbstractMatrix{Complex{T}},
-        pts::BoundaryPoints{T},
-        rws::DLPKressReducedWorkspace{T},
-        k::T;
-        multithreaded::Bool=true,
-    ) where {T<:Real} → F
+    construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real} → F
 
 Assemble the symmetry-reduced DLP-Kress Fredholm matrix
 
-    F(k)=I-D(k).
+    F(k)=I-Dred(k),
+
+where `Dred` is obtained by exact folding of the full discrete Kress operator
+over the source symmetry orbits.
 
 ## Arguments
 * `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
 * `F::AbstractMatrix{Complex{T}}`: Preallocated reduced destination matrix.
 * `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
-* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `rws::DLPKressReducedWorkspace{T}`: Full Kress workspace and symmetry-orbit map.
 * `k::T`: Wavenumber.
 
 ## Keyword Arguments
-* `multithreaded::Bool`: Whether to thread the DLP assembly.
+* `multithreaded::Bool`: Whether to thread reduced DLP assembly.
 
 ## Returns
 * `F::AbstractMatrix{Complex{T}}`: Symmetry-reduced Fredholm matrix.
@@ -981,35 +956,35 @@ function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_cor
 end
 
 """
-    construct_dlp_matrix_derivatives!(
-        solver::Union{DLP_kress,DLP_kress_global_corners},
-        D::AbstractMatrix{Complex{T}},
-        D1::AbstractMatrix{Complex{T}},
-        D2::AbstractMatrix{Complex{T}},
-        pts::BoundaryPoints{T},
-        rws::DLPKressReducedWorkspace{T},
-        k::T;
-        multithreaded::Bool=true,
-    ) where {T<:Real} → D,D1,D2
+    construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},D1::AbstractMatrix{Complex{T}},D2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real} → D,D1,D2
 
-Assemble the symmetry-reduced DLP matrix and its first two wavenumber
-derivatives.
+Assemble the symmetry-reduced DLP-Kress matrix and its first two wavenumber
+derivatives by folding the complete full-grid Kress discretization.
 
-The identity-copy interaction uses the complete Kress split. All nonidentity
-symmetry images are regular and their analytical wavenumber derivatives are
-added directly.
+For every source symmetry image,
+
+    Dred[a,b]  =Σ_l χ_l Dfull[i,j_l],
+    Dred'[a,b] =Σ_l χ_l Dfull'[i,j_l],
+    Dred''[a,b]=Σ_l χ_l Dfull''[i,j_l].
+
+Thus all orbit images use the same Kress product-integration formula as their
+corresponding full-matrix entries.
+
+The analytic diagonal DLP limit is independent of `k`, hence
+
+    Dfull'[i,i]=Dfull''[i,i]=0.
 
 ## Arguments
 * `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
-* `D::AbstractMatrix{Complex{T}}`: Destination matrix for the reduced DLP operator.
-* `D1::AbstractMatrix{Complex{T}}`: Destination matrix for the first derivative.
-* `D2::AbstractMatrix{Complex{T}}`: Destination matrix for the second derivative.
+* `D::AbstractMatrix{Complex{T}}`: Destination matrix for `Dred(k)`.
+* `D1::AbstractMatrix{Complex{T}}`: Destination matrix for `Dred'(k)`.
+* `D2::AbstractMatrix{Complex{T}}`: Destination matrix for `Dred''(k)`.
 * `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
-* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `rws::DLPKressReducedWorkspace{T}`: Full Kress workspace and symmetry-orbit map.
 * `k::T`: Wavenumber.
 
 ## Keyword Arguments
-* `multithreaded::Bool`: Whether to thread the same-copy Kress assembly.
+* `multithreaded::Bool`: Whether to thread reduced-column assembly.
 
 ## Returns
 * `D::AbstractMatrix{Complex{T}}`: Reduced DLP matrix.
@@ -1033,82 +1008,70 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
     fill!(D1,zero(Complex{T}))
     fill!(D2,zero(Complex{T}))
     @use_threads multithreading=(multithreaded&&m>=32) for b in 1:m
-        j=Ifund[b]
         @inbounds for a in 1:m
             i=Ifund[a]
-            if i==j
-                D[a,b]=Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
-            else
-                r=G.R[i,j]
-                invr=G.invR[i,j]
-                lt=G.logterm[i,j]
-                inn=G.inner[i,j]
-                kr=k*r
-                h0,h1=hankel_pair01(kr)
-                j0=real(h0)
-                j1=real(h1)
-                l1=αL1*inn*j1*invr
-                l2=αL2*inn*h1*invr-l1*lt
-                D[a,b]=Rmat[i,j]*l1+pts.ws[j]*l2
-                l1_1=-(inn*k*j0)*inv_two_pi
-                l1_2=(inn*(k*r*j1-j0))*inv_two_pi
-                l2_1=(inn*k*(lt*j0+im*pi*h0))*inv_two_pi
-                l2_2=(inn*(lt*(j0-k*r*j1)+im*pi*(h0-k*r*h1)))*inv_two_pi
-                D1[a,b]=Rmat[i,j]*l1_1+pts.ws[j]*l2_1
-                D2[a,b]=Rmat[i,j]*l1_2+pts.ws[j]*l2_2
+            acc0=zero(Complex{T})
+            acc1=zero(Complex{T})
+            acc2=zero(Complex{T})
+            for l in 1:ng
+                j=orbits.fund_to_full[l,b]
+                χ=orbits.fund_to_scale[l,b]
+                if i==j
+                    dval=Complex{T}(pts.ws[i]*G.kappa[i],zero(T))
+                    dval1=zero(Complex{T})
+                    dval2=zero(Complex{T})
+                else
+                    r=G.R[i,j]
+                    invr=G.invR[i,j]
+                    lt=G.logterm[i,j]
+                    inn=G.inner[i,j]
+                    kr=k*r
+                    h0,h1=hankel_pair01(kr)
+                    j0=real(h0)
+                    j1=real(h1)
+                    l1=αL1*inn*j1*invr
+                    l2=αL2*inn*h1*invr-l1*lt
+                    dval=Rmat[i,j]*l1+pts.ws[j]*l2
+                    l1_1=-(inn*k*j0)*inv_two_pi
+                    l1_2=(inn*(kr*j1-j0))*inv_two_pi
+                    l2_1=(inn*k*(lt*j0+im*pi*h0))*inv_two_pi
+                    l2_2=(inn*(lt*(j0-kr*j1)+im*pi*(h0-kr*h1)))*inv_two_pi
+                    dval1=Rmat[i,j]*l1_1+pts.ws[j]*l2_1
+                    dval2=Rmat[i,j]*l1_2+pts.ws[j]*l2_2
+                end
+                acc0+=χ*dval
+                acc1+=χ*dval1
+                acc2+=χ*dval2
             end
-        end
-    end
-    @inbounds for b in 1:m
-        for a in 1:m
-            i=Ifund[a]
-            pi=pts.xy[i]
-            for l in 2:ng
-                q=orbits.fund_to_full[l,b]
-                scale=orbits.fund_to_scale[l,b]
-                pq=pts.xy[q]
-                nq=pts.normal[q]
-                tq=pts.tangent[q]
-                wq=hypot(tq[1],tq[2])*pts.ws[q]
-                d,d1,d2=_regular_dlp_image_D_derivs(pi[1],pi[2],pq[1],pq[2],nq[1],nq[2],wq,k,scale)
-                D[a,b]+=d
-                D1[a,b]+=d1
-                D2[a,b]+=d2
-            end
+            D[a,b]=acc0
+            D1[a,b]=acc1
+            D2[a,b]=acc2
         end
     end
     return D,D1,D2
 end
 
 """
-    construct_fredholm_matrix_derivatives!(
-        solver::Union{DLP_kress,DLP_kress_global_corners},
-        F::AbstractMatrix{Complex{T}},
-        F1::AbstractMatrix{Complex{T}},
-        F2::AbstractMatrix{Complex{T}},
-        pts::BoundaryPoints{T},
-        rws::DLPKressReducedWorkspace{T},
-        k::T;
-        multithreaded::Bool=true,
-    ) where {T<:Real} → F,F1,F2
+    construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},F1::AbstractMatrix{Complex{T}},F2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real} → F,F1,F2
 
-Assemble the symmetry-reduced Fredholm matrix and its first two derivatives,
+Assemble the symmetry-reduced DLP-Kress Fredholm matrix and its first two
+wavenumber derivatives,
 
-    F=I-D,
-    F1=-D1,
-    F2=-D2.
+    F=I-Dred,
+    F1=-Dred',
+    F2=-Dred''.
 
 ## Arguments
 * `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
-* `F::AbstractMatrix{Complex{T}}`: Destination matrix for the reduced Fredholm operator.
-* `F1::AbstractMatrix{Complex{T}}`: Destination matrix for the first derivative.
-* `F2::AbstractMatrix{Complex{T}}`: Destination matrix for the second derivative.
+* `F::AbstractMatrix{Complex{T}}`: Destination matrix for `F(k)`.
+* `F1::AbstractMatrix{Complex{T}}`: Destination matrix for `F'(k)`.
+* `F2::AbstractMatrix{Complex{T}}`: Destination matrix for `F''(k)`.
 * `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
-* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `rws::DLPKressReducedWorkspace{T}`: Full Kress workspace and symmetry-orbit map.
 * `k::T`: Wavenumber.
 
 ## Keyword Arguments
-* `multithreaded::Bool`: Whether to thread the DLP assembly.
+* `multithreaded::Bool`: Whether to thread reduced DLP assembly.
 
 ## Returns
 * `F::AbstractMatrix{Complex{T}}`: Reduced Fredholm matrix.
