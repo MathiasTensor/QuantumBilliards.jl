@@ -969,7 +969,7 @@ function boundary_geom_cache(pts::BoundaryPoints{T},corner_kress::Bool=false) wh
     logterm[diagind(logterm)].=zero(T)
     speed=@. hypot(dX,dY)
     κnum=-(dX.*ddY.-dY.*ddX)
-    κden=dX.^2.+dY.^2
+    κden=dX.^2 .+dY.^2
     kappa=inv_two_pi.*(κnum./κden)
     return BoundaryGeomCache(R,invR,inner,logterm,speed,kappa,original_ts)
 end

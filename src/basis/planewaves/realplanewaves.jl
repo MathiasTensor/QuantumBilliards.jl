@@ -100,7 +100,7 @@ symmetry:
 ## Returns
 * `basis::RealPlaneWaves`: Constructed basis.
 """
-function RealPlaneWaves(dim::Int,symmetry::Union{BilliardGeometry.AbsReflection,Nothing}=nothing;angle_arc::Union{Real,Nothing}=nothing,angle_shift::Union{Real,Nothing}=nothing,sampler=LinearNodes())
+function RealPlaneWaves(dim::Int,symmetry::Union{BilliardGeometry.AbsReflection,Nothing};angle_arc::Union{Real,Nothing}=nothing,angle_shift::Union{Real,Nothing}=nothing,sampler=BilliardGeometry.LinearNodes())
     dim>0||throw(ArgumentError("dim must be positive"))
     par_x,par_y=parity_pattern(symmetry)
     pl=length(par_x)
@@ -109,10 +109,9 @@ function RealPlaneWaves(dim::Int,symmetry::Union{BilliardGeometry.AbsReflection,
     default_shift=symmetry isa BilliardGeometry.YAxisReflection ? -π/2 : 0.0
     arc=isnothing(angle_arc) ? default_arc : angle_arc
     shift=isnothing(angle_shift) ? default_shift : angle_shift
-    t,_=sample_points(sampler,dim)
+    t,_=BilliardGeometry.sample_points(sampler,dim)
     T=eltype(t)
-    arcT=T(arc)
-    shiftT=T(shift)
+    arcT=T(arc);shiftT=T(shift)
     angles=Vector{T}(undef,eff_dim)
     parity_x=Vector{Int}(undef,eff_dim)
     parity_y=Vector{Int}(undef,eff_dim)
@@ -156,7 +155,7 @@ The two parity values are represented by a single symmetry object:
 ## Returns
 * `basis::RealPlaneWaves`: Constructed basis.
 """
-function RealPlaneWaves(dim::Int;sym_x::Union{Int,Nothing}=nothing,sym_y::Union{Int,Nothing}=nothing,angle_arc::Union{Real,Nothing}=nothing,angle_shift::Union{Real,Nothing}=nothing,sampler=LinearNodes())
+function RealPlaneWaves(dim::Int;sym_x::Union{Int,Nothing}=nothing,sym_y::Union{Int,Nothing}=nothing,angle_arc::Union{Real,Nothing}=nothing,angle_shift::Union{Real,Nothing}=nothing,sampler=BilliardGeometry.LinearNodes())
     isnothing(sym_x)||(sym_x==1||sym_x==-1)||throw(ArgumentError("sym_x must be ±1 or nothing"))
     isnothing(sym_y)||(sym_y==1||sym_y==-1)||throw(ArgumentError("sym_y must be ±1 or nothing"))
     symmetry=if isnothing(sym_x)&&isnothing(sym_y)
