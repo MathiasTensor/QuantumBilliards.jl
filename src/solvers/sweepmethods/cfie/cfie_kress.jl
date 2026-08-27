@@ -731,6 +731,23 @@ function cfie_reduced_orbit_size(solver::Union{CFIE_kress,CFIE_kress_corners,CFI
     return fundamental_size(symmetry_index_orbits(T,pts,solver.symmetry))
 end
 
+function global_to_component_local(pts::Vector{BoundaryPoints{T}}) where {T<:Real}
+    offs=component_offsets(pts)
+    Ntot=offs[end]-1
+    global_to_block=Vector{Int}(undef,Ntot)
+    global_to_local=Vector{Int}(undef,Ntot)
+    @inbounds for a in eachindex(pts)
+        Na=length(pts[a])
+        off=offs[a]
+        for j in 1:Na
+            g=off+j-1
+            global_to_block[g]=a
+            global_to_local[g]=j
+        end
+    end
+    return global_to_block,global_to_local
+end
+
 """
     build_cfie_kress_workspace(
         solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
