@@ -1,7 +1,3 @@
-function pad_limits(xlim,ylim;padding=0.01)
-    return (xlim[1]-padding,xlim[2]+padding),(ylim[1]-padding,ylim[2]+padding)
-end
-
 function rectify_grid(grid)
     T=eltype(grid)
     if grid[1]<=zero(T)<=grid[end]
@@ -10,24 +6,6 @@ function rectify_grid(grid)
         return new_grid[new_grid.>zero(T)]
     end
     return grid
-end
-
-function boundary_limits(curves;grd=1000,padding=0.01)
-    x_bnd=Vector{Any}()
-    y_bnd=Vector{Any}()
-    for crv in curves
-        L=crv.length
-        N_bnd=max(512,round(Int,grd/L))
-        t=range(0.0,1.0,N_bnd)[1:end-1]
-        pts=curve(crv,t)
-        append!(x_bnd,getindex.(pts,1))
-        append!(y_bnd,getindex.(pts,2))
-    end
-    x_bnd[end]=x_bnd[1]
-    y_bnd[end]=y_bnd[1]
-    xlim=extrema(x_bnd)
-    ylim=extrema(y_bnd)
-    return pad_limits(xlim,ylim;padding=padding)
 end
 
 ###########################################################################
@@ -205,7 +183,7 @@ function wavefunctions(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_
     x_grid=collect(T,range(xlim...,nx))
     y_grid=collect(T,range(ylim...,ny))
     pts=[SVector(x,y) for y in y_grid for x in x_grid]
-    pts_mask=inside_only ? is_inside(billiard,pts) : fill(true,length(pts))
+    pts_mask=inside_only ? BilliardGeometry.is_inside(billiard,pts) : fill(true,length(pts))
     pts_masked_indices=findall(pts_mask)
     if use_chebyshev
         zj=Complex{T}.(ks)
@@ -405,7 +383,7 @@ function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_gl
     x_grid=collect(T,range(xlim[1],xlim[2],length=nx))
     y_grid=collect(T,range(ylim[1],ylim[2],length=ny))
     pts=[SVector(x,y) for y in y_grid for x in x_grid]
-    pts_mask=inside_only ? is_inside(billiard,pts) : fill(true,length(pts))
+    pts_mask=inside_only ? BilliardGeometry.is_inside(billiard,pts) : fill(true,length(pts))
     pts_masked_indices=findall(pts_mask)
     nmask=length(pts_masked_indices)
     NT=Threads.nthreads()

@@ -34,7 +34,7 @@ export CartesianCS,PolarCS,polar_to_cartesian,cartesian_to_polar
 
 include("utils/curve_derivatives.jl")
 export tangent,tangent_2,tangent_vec,normal_vec,curvature
-
+include("solvers/samplers.jl")
 include("utils/kress_grading_single_corner.jl")
 include("utils/kress_grading_multi_corner.jl")
 
