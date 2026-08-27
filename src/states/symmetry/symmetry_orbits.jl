@@ -412,6 +412,7 @@ factors {1,parity_y}.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XAxisReflection) where {T<:Real}
     nc=length(pts)
+    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
     id=_component_block_permutation(pts,_component_identity_map(nc))
     refl=_component_block_permutation(pts,_component_reflection_pair_map(nc);reverse_nodes=true)
     χ=BilliardGeometry.symmetry_irrep_character(T,sym)
@@ -429,6 +430,7 @@ Each reduced degree of freedom represents two full-boundary nodes with factors
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.YAxisReflection) where {T<:Real}
     nc=length(pts)
+    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
     id=_component_block_permutation(pts,_component_identity_map(nc))
     refl=_component_block_permutation(pts,_component_reflection_pair_map(nc);reverse_nodes=true)
     χ=BilliardGeometry.symmetry_irrep_character(T,sym)
@@ -446,6 +448,7 @@ The corresponding irrep factors are {1,parity_x,parity_y,parity_x*parity_y}.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XYAxisReflection) where {T<:Real}
     nc=length(pts)
+    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
     idmap=_component_identity_map(nc)
     rxmap,rymap,rxymap=_component_d2_maps(nc)
     id=_component_block_permutation(pts,idmap)
@@ -470,6 +473,7 @@ The resulting reduced boundary contains one representative for every complete
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.NFoldRotation) where {T<:Real}
     nc=length(pts)
+    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
     n=sym.order
     nc%n==0||throw(ArgumentError("$nc components cannot be partitioned into C$n symmetry orbits"))
     perms=Vector{Vector{Int}}(undef,n)
