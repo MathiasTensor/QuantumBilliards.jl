@@ -22,17 +22,10 @@ The workspace contains the Kress logarithmic correction matrix, the pairwise
 geometry cache, flat panel arrays and the matrix dimension.
 
 ## Attributes
-* `Rmat`: Dense real Kress correction matrix for the logarithmic singular part.
-* `G`: Geometry cache containing pairwise distances, inverse distances,
-  logarithmic terms, curvature data and oriented interaction factors.
-* `parr`: Flat coordinate and tangent arrays used for efficient indexed access.
-* `N`: Number of boundary points and matrix dimension.
-
-## Notes
-For determinant scans, k-sweeps, Newton refinement and repeated spectral
-assembly, rebuilding the geometric quantities for every `k` would be wasteful.
-A workspace should therefore be reused whenever the boundary discretization
-remains fixed.
+* `Rmat::M`: Dense real Kress correction matrix for the logarithmic singular part.
+* `G::BoundaryGeomCache{T}`: Pairwise geometry cache.
+* `parr::BoundaryPanelArrays{T}`: Flat boundary-array cache.
+* `N::Int`: Number of full-boundary points and matrix dimension.
 """
 struct DLPKressWorkspace{T<:Real,M<:AbstractMatrix{T}}
     Rmat::M
@@ -44,47 +37,23 @@ end
 """
     DLPKressReducedWorkspace{T,M}
 
-Reduced workspace for symmetry-desymmetrized DLP-Kress assembly.
+Workspace for symmetry-reduced DLP-Kress assembly.
 
-## Description
-The boundary points remain the complete Kress boundary discretization, so the
-logarithmic splitting and all singular quadrature data are defined on the full
-periodic grid.
-
-The output operator is assembled only on the fundamental index set `Ifund`.
-Missing symmetry copies of each source point are added as regular image-kernel
-contributions. This avoids allocating the full complex Fredholm matrix while
-preserving the full-grid Kress treatment of the singular same-copy
-interaction.
+The full periodic Kress workspace is retained because the singular same-copy
+interaction must still be evaluated on the complete periodic discretization.
+The symmetry information is stored in `orbits`, which maps each fundamental
+boundary node to all full-boundary symmetry images and their irrep factors.
 
 ## Attributes
-* `full`: Complete DLP-Kress workspace on the full periodic boundary.
-* `Ifund`: Full-grid indices belonging to the fundamental boundary.
-* `full_to_fund`: Mapping from full-grid indices to fundamental indices.
-* `full_to_scale`: Symmetry factors mapping full-grid nodes to fundamental nodes.
-* `fund_to_full`: Full-grid symmetry orbit associated with each fundamental node.
-* `fund_to_scale`: Symmetry factors associated with the corresponding orbit.
-* `xs`: Full-grid x coordinates.
-* `ys`: Full-grid y coordinates.
-* `nx`: Full-grid outward-normal x components.
-* `ny`: Full-grid outward-normal y components.
-* `speed`: Full-grid parametrization speeds.
-* `m`: Dimension of the reduced matrix.
+* `full::DLPKressWorkspace{T,M}`: Geometry and Kress data for the complete periodic boundary.
+* `orbits::SymmetryOrbitMap{T}`: Exact full-to-fundamental and fundamental-to-full symmetry map.
 """
 struct DLPKressReducedWorkspace{T<:Real,M<:AbstractMatrix{T}}
     full::DLPKressWorkspace{T,M}
-    Ifund::Vector{Int}
-    full_to_fund::Vector{Int}
-    full_to_scale::Vector{Complex{T}}
-    fund_to_full::Vector{Vector{Int}}
-    fund_to_scale::Vector{Vector{Complex{T}}}
-    xs::Vector{T}
-    ys::Vector{T}
-    nx::Vector{T}
-    ny::Vector{T}
-    speed::Vector{T}
-    m::Int
+    orbits::SymmetryOrbitMap{T}
 end
+
+const DLPKressAnyWorkspace{T}=Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}}
 
 """
     DLP_kress{T,Bi,Sym} <: SweepSolver
@@ -103,38 +72,25 @@ The associated Fredholm matrix is
 where `D(k)` is the Kress-corrected Nyström discretization of the interior
 Helmholtz double-layer operator.
 
-The singular same-boundary interaction is split into a universal periodic
+The singular same-boundary interaction is split into the universal periodic
 logarithmic kernel
 
     log(4sin²((t-s)/2))
 
-and a smooth remainder. The singular part is integrated through the precomputed
-Kress correction matrix.
+and a smooth remainder.
 
 ## Attributes
-* `sampler`: Placeholder sampling descriptor retained for the common solver API.
-* `pts_scaling_factor`: Boundary-resolution scaling factors.
-* `dim_scaling_factor`: Compatibility field used by generic refinement code.
-* `eps`: Numerical tolerance.
-* `min_dim`: Minimum dimension compatibility field.
-* `min_pts`: Minimum number of boundary points.
-* `billiard`: Underlying billiard geometry.
-* `symmetry`: Optional reflection or rotation symmetry descriptor.
-
-## Notes
-The nominal number of boundary points is
-
-    N ≈ k*L*b/(2π),
-
-where `L` is the boundary length and `b=pts_scaling_factor[1]`.
-
-This solver supports exactly one smooth closed outer boundary. Piecewise smooth
-boundaries with corners should use [`DLP_kress_global_corners`](@ref).
-Multiply-connected geometries require a formulation supporting multiple
-boundary components.
+* `sampler::Vector{BilliardGeometry.LinearNodes}`: Sampling descriptor retained for the common solver API.
+* `pts_scaling_factor::Vector{T}`: Boundary-resolution scaling factors.
+* `dim_scaling_factor::T`: Compatibility field used by generic refinement code.
+* `eps::T`: Numerical tolerance.
+* `min_dim::Int64`: Minimum dimension compatibility field.
+* `min_pts::Int64`: Minimum number of boundary points.
+* `billiard::Bi`: Underlying billiard geometry.
+* `symmetry::Sym`: Optional reflection or rotation symmetry descriptor.
 """
-struct DLP_kress{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
-    sampler::Vector{LinearNodes}
+struct DLP_kress{T<:Real,Bi<:BilliardGeometry.AbsBilliard,Sym}<:SweepSolver
+    sampler::Vector{BilliardGeometry.LinearNodes}
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
     eps::T
@@ -151,39 +107,27 @@ Solver for the globally graded Kress-corrected double-layer Fredholm
 formulation on a piecewise smooth outer boundary.
 
 ## Description
-This is the corner-capable counterpart of [`DLP_kress`](@ref). It treats a
-single outer boundary represented by one or more joined smooth curve segments.
+This is the corner-capable counterpart of [`DLP_kress`](@ref). True corners
+are handled by a global Kress grading map that clusters nodes near the corner
+locations.
 
-For boundaries containing true corners, the global periodic parameter is
-transformed through a Kress grading map that clusters nodes near the corner
-locations. The associated Fredholm matrix remains
-
-    F(k)=I-D(k),
-
-but the geometry is evaluated on the graded parameterization.
-
-If the supplied composite boundary contains no true corners, the implementation
-automatically falls back to an ungraded smooth-composite discretization.
+If the composite boundary contains no true corners, the implementation falls
+back to an ungraded smooth-composite periodic discretization.
 
 ## Attributes
-* `sampler`: Placeholder sampling descriptor retained for the common solver API.
-* `pts_scaling_factor`: Boundary-resolution scaling factors.
-* `dim_scaling_factor`: Compatibility field used by generic refinement code.
-* `eps`: Numerical tolerance.
-* `min_dim`: Minimum dimension compatibility field.
-* `min_pts`: Minimum number of boundary points.
-* `billiard`: Underlying billiard geometry.
-* `symmetry`: Optional reflection or rotation symmetry descriptor.
-* `kressq`: Order of the Kress grading map.
-* `min_t_spacing`: Minimum allowed spacing after grading.
-
-## Notes
-This solver supports one outer closed boundary, which may consist of several
-smooth segments. Multiply-connected geometries are not supported by this
-formulation.
+* `sampler::Vector{BilliardGeometry.LinearNodes}`: Sampling descriptor retained for the common solver API.
+* `pts_scaling_factor::Vector{T}`: Boundary-resolution scaling factors.
+* `dim_scaling_factor::T`: Compatibility field used by generic refinement code.
+* `eps::T`: Numerical tolerance.
+* `min_dim::Int64`: Minimum dimension compatibility field.
+* `min_pts::Int64`: Minimum number of boundary points.
+* `billiard::Bi`: Underlying billiard geometry.
+* `symmetry::Sym`: Optional reflection or rotation symmetry descriptor.
+* `kressq::Int`: Order of the Kress grading map.
+* `min_t_spacing::Real`: Minimum allowed spacing after grading.
 """
-struct DLP_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
-    sampler::Vector{LinearNodes}
+struct DLP_kress_global_corners{T<:Real,Bi<:BilliardGeometry.AbsBilliard,Sym}<:SweepSolver
+    sampler::Vector{BilliardGeometry.LinearNodes}
     pts_scaling_factor::Vector{T}
     dim_scaling_factor::T
     eps::T
@@ -195,21 +139,20 @@ struct DLP_kress_global_corners{T<:Real,Bi<:AbsBilliard,Sym}<:SweepSolver
     min_t_spacing::Real
 end
 
-function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:AbsBilliard}
+function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,BilliardGeometry.AbsSymmetry}=nothing) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler=[LinearNodes()]
+    sampler=[BilliardGeometry.LinearNodes()]
     Sym=typeof(symmetry)
     return DLP_kress{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
-function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:AbsBilliard}
+function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,BilliardGeometry.AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
-    sampler=[LinearNodes()]
+    sampler=[BilliardGeometry.LinearNodes()]
     Sym=typeof(symmetry)
     return DLP_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq,min_t_spacing)
 end
 
-# This flag refers to the nontrivial parameter grading used for corner treatment.
 @inline _is_dlp_kress_graded(::DLP_kress,pts::BoundaryPoints)=false
 @inline _is_dlp_kress_graded(::DLP_kress_global_corners,pts::BoundaryPoints)=_is_nontrivial_grading(pts)
 
@@ -218,29 +161,23 @@ end
     return maximum(abs.(pts.ws_der.-one(T)))>sqrt(eps(T))
 end
 
-# Use a reduced symmetry-image assembly whenever a nontrivial symmetry is active.
 @inline _dlp_kress_use_reduced(solver::Union{DLP_kress,DLP_kress_global_corners})=!isnothing(solver.symmetry)
 
 """
-    build_Rmat_dlp_kress(solver::DLP_kress,pts::BoundaryPoints{T}) where {T<:Real} → Rmat::Matrix{T}
+    build_Rmat_dlp_kress(
+        solver::DLP_kress,
+        pts::BoundaryPoints{T},
+    ) where {T<:Real} → Matrix{T}
 
-Builds the periodic Kress logarithmic correction matrix for a smooth closed
+Build the periodic Kress logarithmic correction matrix for a smooth closed
 boundary.
 
-## Description
-For a smooth periodic discretization, the logarithmically singular part of the
-double-layer kernel is represented by the standard periodic Kress quadrature
-matrix.
-
-The matrix depends only on the periodic node count and may therefore be cached
-and reused for all wavenumbers evaluated on the same discretization.
-
 ## Arguments
-* `solver`: Smooth periodic DLP-Kress solver.
-* `pts`: Smooth periodic boundary discretization.
+* `solver::DLP_kress`: Smooth periodic DLP-Kress solver.
+* `pts::BoundaryPoints{T}`: Smooth periodic boundary discretization.
 
 ## Returns
-* `Rmat`: Dense `N×N` Kress logarithmic correction matrix.
+* `Rmat::Matrix{T}`: Dense `N×N` Kress logarithmic correction matrix.
 """
 function build_Rmat_dlp_kress(solver::DLP_kress,pts::BoundaryPoints{T}) where {T<:Real}
     N=length(pts)
@@ -250,21 +187,22 @@ function build_Rmat_dlp_kress(solver::DLP_kress,pts::BoundaryPoints{T}) where {T
 end
 
 """
-    build_Rmat_dlp_kress(solver::DLP_kress_global_corners,pts::BoundaryPoints{T}) where {T<:Real} → Rmat::Matrix{T}
+    build_Rmat_dlp_kress(
+        solver::DLP_kress_global_corners,
+        pts::BoundaryPoints{T},
+    ) where {T<:Real} → Matrix{T}
 
-Builds the Kress logarithmic correction matrix for the global-corner solver.
+Build the Kress logarithmic correction matrix for the global-corner solver.
 
-## Description
-If the boundary discretization contains a nontrivial grading map,
-[`kress_R_corner!`](@ref) is used. If no actual grading is present, the standard
-periodic correction matrix is sufficient.
+For a nontrivially graded boundary, [`kress_R_corner!`](@ref) is used.
+Otherwise the ordinary periodic Kress correction matrix is sufficient.
 
 ## Arguments
-* `solver`: Global-corner DLP-Kress solver.
-* `pts`: Boundary discretization.
+* `solver::DLP_kress_global_corners`: Global-corner DLP-Kress solver.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
 
 ## Returns
-* `Rmat`: Dense `N×N` Kress logarithmic correction matrix.
+* `Rmat::Matrix{T}`: Dense `N×N` Kress logarithmic correction matrix.
 """
 function build_Rmat_dlp_kress(solver::DLP_kress_global_corners,pts::BoundaryPoints{T}) where {T<:Real}
     N=length(pts)
@@ -274,66 +212,43 @@ function build_Rmat_dlp_kress(solver::DLP_kress_global_corners,pts::BoundaryPoin
 end
 
 """
-    _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve} → pts::BoundaryPoints{T}
+    _evaluate_points(
+        solver::DLP_kress{T},
+        crv::C,
+        k::T,
+        idx::Int,
+    ) where {T<:Real,C<:BilliardGeometry.AbsCurve} → BoundaryPoints{T}
 
-Constructs the periodic DLP-Kress discretization of a single smooth closed
-curve.
+Construct the periodic DLP-Kress discretization of a single smooth closed BilliardGeometry.curve.
 
-## Description
-The computational Kress variable is the uniform periodic parameter
+The computational Kress variable is
 
     σ_j=2π(j-1/2)/N,
 
-as generated by `s_mid`.
-
-The physical curve parameter is
-
-    u=σ/(2π).
-
-If `γ(u)` denotes the underlying curve parameterization, derivatives with
-respect to the computational variable satisfy
-
-    γ_σ=γ_u/(2π),
-    γ_σσ=γ_uu/(2π)².
-
-The node count is chosen approximately as
-
-    N ≈ k*L*b/(2π),
-
-and adjusted to satisfy both the periodic Kress requirements and any active
-symmetry.
+and the physical curve parameter is `u=σ/(2π)`. The node count is adjusted so
+that it is compatible with both periodic Kress quadrature and the active
+symmetry group.
 
 ## Arguments
-* `solver`: Smooth DLP-Kress solver.
-* `crv`: Smooth closed curve.
-* `k`: Wavenumber controlling the discretization density.
-* `idx`: Boundary-component label.
+* `solver::DLP_kress{T}`: Smooth DLP-Kress solver.
+* `crv::C`: Smooth closed curve.
+* `k::T`: Wavenumber controlling the discretization density.
+* `idx::Int`: Boundary-component label.
 
 ## Returns
-* `pts`: A [`BoundaryPoints`](@ref) instance containing coordinates, normals,
-  tangent data, parameter nodes and quadrature weights.
+* `pts::BoundaryPoints{T}`: Periodic boundary discretization.
 """
-function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
     L=crv.length
-    bs=solver.pts_scaling_factor
-    N=max(solver.min_pts,round(Int,k*L*bs[1]/two_pi))
-    needed=2
-    if !isnothing(solver.symmetry)
-        sym=solver.symmetry
-        if sym isa Rotation
-            needed=lcm(needed,sym.n)
-        elseif sym isa Reflection
-            needed=lcm(needed,4)
-        end
-    end
-    remN=mod(N,needed)
-    remN!=0&&(N+=needed-remN)
+    N=max(solver.min_pts,round(Int,k*L*solver.pts_scaling_factor[1]/two_pi))
+    needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_order(solver.symmetry))
+    N=cld(N,needed)*needed
     ts=[s_mid(j,N) for j in 1:N]
     ts_rescaled=ts./two_pi
-    xy=curve(crv,ts_rescaled)
+    xy=BilliardGeometry.curve(crv,ts_rescaled)
     tangent_1st=tangent(crv,ts_rescaled)./two_pi
     tangent_2nd=tangent_2(crv,ts_rescaled)./(two_pi^2)
-    ss=arc_length(crv,ts_rescaled)
+    ss=BilliardGeometry.arc_length(crv,ts_rescaled)
     ds=diff(ss)
     append!(ds,L+ss[1]-ss[end])
     ws=fill(T(two_pi/N),N)
@@ -343,50 +258,33 @@ function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:R
 end
 
 """
-    _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve} → pts::BoundaryPoints{T}
+    _evaluate_points_smooth_composite(
+        solver::DLP_kress_global_corners{T},
+        comp::Vector{C},
+        k::T,
+        idx::Int,
+    ) where {T<:Real,C<:BilliardGeometry.AbsCurve} → BoundaryPoints{T}
 
-Constructs an ungraded periodic Nyström discretization of a smooth composite
+Construct an ungraded periodic Nyström discretization of a smooth composite
 boundary.
 
-## Description
-This is the fallback path used by [`DLP_kress_global_corners`](@ref) when the
-boundary is represented by several curve pieces but no true corners are
-detected.
-
-A global periodic variable
-
-    t∈[0,2π)
-
-is mapped to the corresponding segment and local segment parameter by
-[`_eval_composite_geom_global_t`](@ref).
-
-Since no grading is active, the computational and physical global parameters
-coincide.
+This is the fallback used by [`DLP_kress_global_corners`](@ref) when the
+boundary consists of several joined curve pieces but contains no true corners.
 
 ## Arguments
-* `solver`: Global-corner DLP-Kress solver.
-* `comp`: Smooth curve pieces forming one closed composite component.
-* `k`: Wavenumber controlling the discretization density.
-* `idx`: Boundary-component label.
+* `solver::DLP_kress_global_corners{T}`: Global-corner DLP-Kress solver.
+* `comp::Vector{C}`: Smooth curve pieces forming one closed component.
+* `k::T`: Wavenumber controlling the discretization density.
+* `idx::Int`: Boundary-component label.
 
 ## Returns
-* `pts`: Ungraded periodic [`BoundaryPoints`](@ref) discretization.
+* `pts::BoundaryPoints{T}`: Ungraded periodic boundary discretization.
 """
-function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
     _,_,Ltot=component_lengths(comp)
-    bs=solver.pts_scaling_factor
-    N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
-    needed=2
-    if !isnothing(solver.symmetry)
-        sym=solver.symmetry
-        if sym isa Rotation
-            needed=lcm(needed,sym.n)
-        elseif sym isa Reflection
-            needed=lcm(needed,4)
-        end
-    end
-    remN=mod(N,needed)
-    remN!=0&&(N+=needed-remN)
+    N=max(solver.min_pts,round(Int,k*Ltot*solver.pts_scaling_factor[1]/two_pi))
+    needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_order(solver.symmetry))
+    N=cld(N,needed)*needed
     ts=[s_mid(j,N) for j in 1:N]
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
@@ -407,70 +305,41 @@ function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},c
 end
 
 """
-    _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve} → pts::BoundaryPoints{T}
+    _evaluate_points(
+        solver::DLP_kress_global_corners{T},
+        comp::Vector{C},
+        k::T,
+        idx::Int,
+    ) where {T<:Real,C<:BilliardGeometry.AbsCurve} → BoundaryPoints{T}
 
-Constructs a globally graded Nyström discretization for a piecewise smooth
-closed boundary.
+Construct a globally graded Nyström discretization of a piecewise smooth closed
+boundary.
 
-## Description
-True corner locations are first detected from the tangent discontinuities
-between neighboring curve segments.
-
-If no true corners are found, the function delegates to
+True corners are detected from tangent discontinuities between adjacent curve
+segments. If no corners are present, the function delegates to
 [`_evaluate_points_smooth_composite`](@ref).
 
-Otherwise a global periodic grading map
-
-    t=t(σ)
-
-is generated by `multi_kress_graded_nodes_data`. The map returns the physical
-parameter `t`, its first derivative and its second derivative.
-
-If
-
-    γ=γ(t),
-
-then the transformed derivatives are
+For the grading map `t=t(σ)`,
 
     γ_σ=γ_t t_σ,
-
-and
-
     γ_σσ=γ_tt(t_σ)²+γ_t t_σσ.
 
-The resulting speed already contains the grading Jacobian, so the arc-length
-quadrature elements are
-
-    ds_j=|γ_σ(σ_j)|h,
-
-where `h=2π/N`.
-
 ## Arguments
-* `solver`: Global-corner DLP-Kress solver.
-* `comp`: Curve segments forming one closed component.
-* `k`: Wavenumber controlling the discretization density.
-* `idx`: Boundary-component label.
+* `solver::DLP_kress_global_corners{T}`: Global-corner DLP-Kress solver.
+* `comp::Vector{C}`: Curve segments forming one closed component.
+* `k::T`: Wavenumber controlling the discretization density.
+* `idx::Int`: Boundary-component label.
 
 ## Returns
-* `pts`: Globally graded [`BoundaryPoints`](@ref) discretization.
+* `pts::BoundaryPoints{T}`: Globally graded boundary discretization.
 """
-function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:AbsCurve}
+function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
     corners=_component_corner_locations(T,comp)
     isempty(corners)&&return _evaluate_points_smooth_composite(solver,comp,k,idx)
     _,_,Ltot=component_lengths(comp)
-    bs=solver.pts_scaling_factor
-    N=max(solver.min_pts,round(Int,k*Ltot*bs[1]/two_pi))
-    needed=1
-    if !isnothing(solver.symmetry)
-        sym=solver.symmetry
-        if sym isa Rotation
-            needed=lcm(needed,sym.n)
-        elseif sym isa Reflection
-            needed=lcm(needed,4)
-        end
-    end
-    remN=mod(N,needed)
-    remN!=0&&(N+=needed-remN)
+    N=max(solver.min_pts,round(Int,k*Ltot*solver.pts_scaling_factor[1]/two_pi))
+    needed=isnothing(solver.symmetry) ? 1 : symmetry_order(solver.symmetry)
+    N=cld(N,needed)*needed
     σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq,minsep_tol=solver.min_t_spacing)
     xy=Vector{SVector{2,T}}(undef,N)
     tangent_1st=Vector{SVector{2,T}}(undef,N)
@@ -492,28 +361,26 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
 end
 
 """
-    evaluate_points(solver::DLP_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard} → pts::BoundaryPoints{T}
+    evaluate_points(
+        solver::DLP_kress{T},
+        billiard::Bi,
+        k::T,
+    ) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard} → BoundaryPoints{T}
 
-Constructs the smooth periodic DLP-Kress boundary discretization of `billiard`.
+Construct the smooth periodic DLP-Kress discretization of `billiard`.
 
-## Description
-The solver requires exactly one smooth closed outer boundary represented by a
+`DLP_kress` requires exactly one smooth closed outer boundary represented by a
 single curve.
 
-A flat collection of several joined curve segments is considered a composite
-boundary and must instead use [`DLP_kress_global_corners`](@ref).
-
-Multiple closed components are not supported by this formulation.
-
 ## Arguments
-* `solver`: Smooth DLP-Kress solver.
-* `billiard`: Billiard geometry.
-* `k`: Wavenumber controlling the discretization density.
+* `solver::DLP_kress{T}`: Smooth DLP-Kress solver.
+* `billiard::Bi`: Billiard geometry.
+* `k::T`: Wavenumber controlling the discretization density.
 
 ## Returns
-* `pts`: Smooth periodic [`BoundaryPoints`](@ref) discretization.
+* `pts::BoundaryPoints{T}`: Smooth periodic boundary discretization.
 """
-function evaluate_points(solver::DLP_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::DLP_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     boundary=billiard.full_boundary
     isempty(boundary)&&error("Boundary cannot be empty.")
     if length(boundary)==1&&!(boundary[1] isa AbstractVector)
@@ -526,29 +393,28 @@ function evaluate_points(solver::DLP_kress{T},billiard::Bi,k::T) where {T<:Real,
 end
 
 """
-    evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard} → pts::BoundaryPoints{T}
+    evaluate_points(
+        solver::DLP_kress_global_corners{T},
+        billiard::Bi,
+        k::T,
+    ) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard} → BoundaryPoints{T}
 
-Constructs the DLP-Kress discretization of a smooth or piecewise smooth
+Construct the DLP-Kress discretization of a smooth or piecewise smooth
 single-component boundary.
 
-## Description
-A boundary represented by one smooth closed curve is delegated to the smooth
-periodic DLP-Kress discretization.
-
-A flat vector of joined segments is treated as one composite outer boundary and
-is globally graded whenever true corners are detected.
-
-Multiple closed boundary components are not supported.
+A single smooth curve is delegated to the ordinary periodic DLP-Kress
+discretization. A composite outer boundary is globally graded whenever true
+corners are present.
 
 ## Arguments
-* `solver`: Global-corner DLP-Kress solver.
-* `billiard`: Billiard geometry.
-* `k`: Wavenumber controlling the discretization density.
+* `solver::DLP_kress_global_corners{T}`: Global-corner DLP-Kress solver.
+* `billiard::Bi`: Billiard geometry.
+* `k::T`: Wavenumber controlling the discretization density.
 
 ## Returns
-* `pts`: Smooth or globally graded [`BoundaryPoints`](@ref) discretization.
+* `pts::BoundaryPoints{T}`: Smooth or globally graded boundary discretization.
 """
-function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
+function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     boundary=billiard.full_boundary
     isempty(boundary)&&error("Boundary cannot be empty.")
     if length(boundary)==1&&!(boundary[1] isa AbstractVector)
@@ -563,28 +429,19 @@ function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) 
 end
 
 """
-    build_dlp_kress_workspace_full(solver,pts) → ws::DLPKressWorkspace
+    build_dlp_kress_workspace_full(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        pts::BoundaryPoints{T},
+    ) where {T<:Real} → DLPKressWorkspace
 
-Builds the full geometry workspace for a fixed DLP-Kress discretization.
-
-## Description
-The workspace contains all wavenumber-independent data required for repeated
-matrix assembly:
-
-1. the Kress logarithmic correction matrix,
-2. the pairwise geometry cache,
-3. flat panel arrays,
-4. the matrix dimension.
-
-For a nontrivially graded boundary, the geometry cache retains the corner-aware
-parameter data.
+Build the complete geometry workspace for a fixed DLP-Kress discretization.
 
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `pts`: Boundary discretization.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: Smooth or global-corner DLP-Kress solver.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
 
 ## Returns
-* `ws`: Full [`DLPKressWorkspace`](@ref).
+* `ws::DLPKressWorkspace`: Full DLP-Kress workspace.
 """
 function build_dlp_kress_workspace_full(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T}) where {T<:Real}
     Rmat=build_Rmat_dlp_kress(solver,pts)
@@ -595,82 +452,82 @@ function build_dlp_kress_workspace_full(solver::Union{DLP_kress,DLP_kress_global
 end
 
 """
-    dlp_kress_component_normals(pts::BoundaryPoints{T}) where {T<:Real}
+    build_dlp_kress_reduced_workspace(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        pts::BoundaryPoints{T},
+    ) where {T<:Real} → DLPKressReducedWorkspace
 
-Returns outward normals and parametrization speeds for a DLP-Kress boundary.
-
-## Arguments
-* `pts`: DLP-Kress boundary discretization.
-
-## Returns
-* `nx`: Outward-normal x components.
-* `ny`: Outward-normal y components.
-* `speed`: Parametrization speeds.
-"""
-function dlp_kress_component_normals(pts::BoundaryPoints{T}) where {T<:Real}
-    return component_normals(pts)
-end
-
-"""
-    build_dlp_kress_reduced_workspace(solver,pts) → rws::DLPKressReducedWorkspace
-
-Builds the symmetry-reduced DLP-Kress workspace.
-
-## Description
-The complete full-grid workspace is first constructed. Symmetry index orbits
-are then generated and the full coordinates, normals and speeds are stored for
-regular image-kernel evaluation.
+Build the symmetry-reduced DLP-Kress workspace by combining the complete
+periodic Kress geometry with the exact [`SymmetryOrbitMap`](@ref) of the active
+symmetry.
 
 ## Arguments
-* `solver`: DLP-Kress solver with active symmetry.
-* `pts`: Full periodic boundary discretization.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with an active symmetry.
+* `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
 
 ## Returns
-* `rws`: Symmetry-reduced [`DLPKressReducedWorkspace`](@ref).
+* `rws::DLPKressReducedWorkspace`: Reduced workspace containing the full Kress workspace and symmetry-orbit map.
 """
 function build_dlp_kress_reduced_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T}) where {T<:Real}
+    isnothing(solver.symmetry)&&throw(ArgumentError("Cannot build a reduced DLP-Kress workspace without an active symmetry"))
     full=build_dlp_kress_workspace_full(solver,pts)
-    Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
-    xs=getindex.(pts.xy,1)
-    ys=getindex.(pts.xy,2)
-    nx,ny,speed=dlp_kress_component_normals(pts)
-    return DLPKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,speed,length(Ifund))
+    orbits=symmetry_index_orbits(T,pts,solver.symmetry)
+    return DLPKressReducedWorkspace(full,orbits)
 end
 
 """
-    build_dlp_kress_workspace(solver,pts)
+    build_dlp_kress_workspace(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        pts::BoundaryPoints{T},
+    ) where {T<:Real} → DLPKressAnyWorkspace{T}
 
-Builds either the full or symmetry-reduced DLP-Kress workspace.
+Build the appropriate DLP-Kress workspace: full when no symmetry is active and
+symmetry-reduced otherwise.
 
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `pts`: Boundary discretization.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: Smooth or global-corner DLP-Kress solver.
+* `pts::BoundaryPoints{T}`: Full boundary discretization.
 
 ## Returns
-* A [`DLPKressWorkspace`](@ref) if no symmetry is active.
-* A [`DLPKressReducedWorkspace`](@ref) if symmetry reduction is active.
+* `ws::DLPKressWorkspace` when `solver.symmetry===nothing`.
+* `rws::DLPKressReducedWorkspace` when symmetry reduction is active.
 """
 function build_dlp_kress_workspace(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T}) where {T<:Real}
     return _dlp_kress_use_reduced(solver) ? build_dlp_kress_reduced_workspace(solver,pts) : build_dlp_kress_workspace_full(solver,pts)
 end
 
 @inline _workspace_dim(ws::DLPKressWorkspace)=ws.N
-@inline _workspace_dim(ws::DLPKressReducedWorkspace)=ws.m
+@inline _workspace_dim(ws::DLPKressReducedWorkspace)=fundamental_size(ws.orbits)
+@inline function boundary_matrix_size(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T}) where {T<:Real}
+    isnothing(solver.symmetry)&&return boundary_matrix_size(pts)
+    return fundamental_size(symmetry_index_orbits(T,pts,solver.symmetry))
+end
+
+function _dlp_kress_workspace_from_Rmat(solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T}) where {T<:Real}
+    G=boundary_geom_cache(pts,_is_dlp_kress_graded(solver,pts))
+    parr=_boundary_panel_arrays_cache(pts)
+    full=DLPKressWorkspace(Rmat,G,parr,length(pts))
+    isnothing(solver.symmetry)&&return full
+    return DLPKressReducedWorkspace(full,symmetry_index_orbits(T,pts,solver.symmetry))
+end
 
 ###############################################
 ############# NO SYMMETRY PATHWAY #############
 ###############################################
 
 """
-    construct_dlp_matrix!(solver,D,pts,Rmat,G,k;multithreaded=true) → D
+    construct_dlp_matrix!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        D::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        Rmat::AbstractMatrix{T},
+        G::BoundaryGeomCache{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → D
 
-Assembles the Kress-corrected Nyström matrix of the Helmholtz double-layer
+Assemble the Kress-corrected Nyström matrix of the Helmholtz double-layer
 operator.
-
-## Description
-For the two-dimensional Helmholtz Green function, the source-normal
-double-layer kernel in the normalization used here is split into a logarithmic
-part and a smooth remainder.
 
 For off-diagonal entries,
 
@@ -684,26 +541,19 @@ and
 
     l2=(ik/2)*inner*H₁^(1)(kr)/r-l1*logterm.
 
-The quantities `r`, `1/r`, `inner` and `logterm` are read from the
-precomputed [`BoundaryGeomCache`](@ref).
-
-The diagonal limit is stored in `G.kappa` and contributes
-
-    D[i,i]=pts.ws[i]*G.kappa[i].
-
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `D`: Preallocated destination matrix.
-* `pts`: Boundary discretization.
-* `Rmat`: Kress logarithmic correction matrix.
-* `G`: Pairwise geometry cache.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `D::AbstractMatrix{Complex{T}}`: Preallocated destination matrix.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `Rmat::AbstractMatrix{T}`: Kress logarithmic correction matrix.
+* `G::BoundaryGeomCache{T}`: Pairwise geometry cache.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the off-diagonal assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the off-diagonal assembly.
 
 ## Returns
-* `D`: Assembled Kress-corrected DLP matrix.
+* `D::AbstractMatrix{Complex{T}}`: Assembled DLP matrix.
 """
 function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},G::BoundaryGeomCache{T},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
@@ -733,7 +583,7 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
     return D
 end
 
-# INTERNAL debugging version returning the logarithmic and smooth contributions separately.
+# INTERNAL - return the logarithmic and smooth Kress contributions separately.
 function construct_dlp_split!(solver::Union{DLP_kress,DLP_kress_global_corners},Dlog::AbstractMatrix{Complex{T}},Dsmooth::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},G::BoundaryGeomCache{T},parr::BoundaryPanelArrays{T},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
@@ -766,38 +616,35 @@ function construct_dlp_split!(solver::Union{DLP_kress,DLP_kress_global_corners},
 end
 
 """
-    construct_fredholm_matrix!(solver,F,pts,Rmat,G,parr,k;multithreaded=true) → F
+    construct_fredholm_matrix!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        F::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        Rmat::AbstractMatrix{T},
+        G::BoundaryGeomCache{T},
+        parr::BoundaryPanelArrays{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → F
 
-Assembles the DLP-Kress Fredholm matrix
+Assemble the full DLP-Kress Fredholm matrix
 
     F(k)=I-D(k).
 
-## Description
-The Kress split is evaluated directly into the Fredholm matrix, avoiding a
-separate temporary DLP matrix.
-
-For off-diagonal entries,
-
-    F[i,j]=-(Rmat[i,j]*l1+pts.ws[j]*l2),
-
-while the diagonal is
-
-    F[i,i]=1-pts.ws[i]*G.kappa[i].
-
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `F`: Preallocated destination matrix.
-* `pts`: Boundary discretization.
-* `Rmat`: Kress logarithmic correction matrix.
-* `G`: Pairwise geometry cache.
-* `parr`: Flat panel-array cache.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `F::AbstractMatrix{Complex{T}}`: Preallocated destination matrix.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `Rmat::AbstractMatrix{T}`: Kress logarithmic correction matrix.
+* `G::BoundaryGeomCache{T}`: Pairwise geometry cache.
+* `parr::BoundaryPanelArrays{T}`: Flat boundary-array cache.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the off-diagonal assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the off-diagonal assembly.
 
 ## Returns
-* `F`: Assembled Fredholm matrix.
+* `F::AbstractMatrix{Complex{T}}`: Assembled Fredholm matrix.
 """
 function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},G::BoundaryGeomCache{T},parr::BoundaryPanelArrays{T},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
@@ -828,43 +675,44 @@ function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_cor
 end
 
 """
-    construct_dlp_matrix_derivatives!(solver,D,D1,D2,pts,Rmat,G,parr,k;multithreaded=true) → D,D1,D2
+    construct_dlp_matrix_derivatives!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        D::AbstractMatrix{Complex{T}},
+        D1::AbstractMatrix{Complex{T}},
+        D2::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        Rmat::AbstractMatrix{T},
+        G::BoundaryGeomCache{T},
+        parr::BoundaryPanelArrays{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → D,D1,D2
 
-Assembles the Kress-corrected DLP matrix and its first two wavenumber
+Assemble the full Kress-corrected DLP matrix and its first two wavenumber
 derivatives.
 
-## Description
-The function computes
-
-    D=D(k),
-    D1=dD/dk,
-    D2=d²D/dk².
-
-The logarithmic coefficient and smooth remainder are analytically
-differentiated with respect to `k`. Geometry and quadrature data remain fixed.
-
-The diagonal DLP limit is independent of `k`, so
+The diagonal DLP limit is independent of `k`, hence
 
     D1[i,i]=D2[i,i]=0.
 
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `D`: Destination matrix for the DLP operator.
-* `D1`: Destination matrix for its first derivative.
-* `D2`: Destination matrix for its second derivative.
-* `pts`: Boundary discretization.
-* `Rmat`: Kress logarithmic correction matrix.
-* `G`: Pairwise geometry cache.
-* `parr`: Flat panel-array cache.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `D::AbstractMatrix{Complex{T}}`: Destination matrix for `D(k)`.
+* `D1::AbstractMatrix{Complex{T}}`: Destination matrix for `D'(k)`.
+* `D2::AbstractMatrix{Complex{T}}`: Destination matrix for `D''(k)`.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `Rmat::AbstractMatrix{T}`: Kress logarithmic correction matrix.
+* `G::BoundaryGeomCache{T}`: Pairwise geometry cache.
+* `parr::BoundaryPanelArrays{T}`: Flat boundary-array cache.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the off-diagonal assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the off-diagonal assembly.
 
 ## Returns
-* `D`: DLP matrix.
-* `D1`: First wavenumber derivative.
-* `D2`: Second wavenumber derivative.
+* `D::AbstractMatrix{Complex{T}}`: DLP matrix.
+* `D1::AbstractMatrix{Complex{T}}`: First wavenumber derivative.
+* `D2::AbstractMatrix{Complex{T}}`: Second wavenumber derivative.
 """
 function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},D1::AbstractMatrix{Complex{T}},D2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},G::BoundaryGeomCache{T},parr::BoundaryPanelArrays{T},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
@@ -913,36 +761,43 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
 end
 
 """
-    construct_fredholm_matrix_derivatives!(solver,F,F1,F2,pts,Rmat,G,parr,k;multithreaded=true) → F,F1,F2
+    construct_fredholm_matrix_derivatives!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        F::AbstractMatrix{Complex{T}},
+        F1::AbstractMatrix{Complex{T}},
+        F2::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        Rmat::AbstractMatrix{T},
+        G::BoundaryGeomCache{T},
+        parr::BoundaryPanelArrays{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → F,F1,F2
 
-Assembles the DLP-Kress Fredholm matrix and its first two derivatives.
-
-## Description
-The DLP quantities are first assembled into the supplied buffers and converted
-in place according to
+Assemble the full DLP-Kress Fredholm matrix and its first two derivatives,
 
     F=I-D,
     F1=-D1,
     F2=-D2.
 
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `F`: Destination matrix for the Fredholm operator.
-* `F1`: Destination matrix for its first derivative.
-* `F2`: Destination matrix for its second derivative.
-* `pts`: Boundary discretization.
-* `Rmat`: Kress logarithmic correction matrix.
-* `G`: Pairwise geometry cache.
-* `parr`: Flat panel-array cache.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `F::AbstractMatrix{Complex{T}}`: Destination matrix for `F(k)`.
+* `F1::AbstractMatrix{Complex{T}}`: Destination matrix for `F'(k)`.
+* `F2::AbstractMatrix{Complex{T}}`: Destination matrix for `F''(k)`.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `Rmat::AbstractMatrix{T}`: Kress logarithmic correction matrix.
+* `G::BoundaryGeomCache{T}`: Pairwise geometry cache.
+* `parr::BoundaryPanelArrays{T}`: Flat boundary-array cache.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the DLP assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the DLP assembly.
 
 ## Returns
-* `F`: Fredholm matrix.
-* `F1`: First derivative.
-* `F2`: Second derivative.
+* `F::AbstractMatrix{Complex{T}}`: Fredholm matrix.
+* `F1::AbstractMatrix{Complex{T}}`: First derivative.
+* `F2::AbstractMatrix{Complex{T}}`: Second derivative.
 """
 function construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},F1::AbstractMatrix{Complex{T}},F2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},G::BoundaryGeomCache{T},parr::BoundaryPanelArrays{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_dlp_matrix_derivatives!(solver,F,F1,F2,pts,Rmat,G,parr,k;multithreaded=multithreaded)
@@ -958,21 +813,23 @@ function construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kres
 end
 
 #################################################
-############# DESYMMETRIZED PATHWAY #############
+############# DESYMMETRIZED PATHWAY ############
 #################################################
 
 @inline function _regular_dlp_image_D(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,k::T,scale::Complex{T}) where {T<:Real}
-    dx=xi-xj;dy=yi-yj
+    dx=xi-xj
+    dy=yi-yj
     r=hypot(dx,dy)
-    r<eps(T)&&return zero(Complex{T})
+    iszero(r)&&return zero(Complex{T})
     c=(nxj*dx+nyj*dy)/r
     return scale*Complex{T}(0,k/2)*c*H(1,k*r)*wj
 end
 
 @inline function _regular_dlp_image_D_derivs(xi::T,yi::T,xj::T,yj::T,nxj::T,nyj::T,wj::T,k::T,scale::Complex{T}) where {T<:Real}
-    dx=xi-xj;dy=yi-yj
+    dx=xi-xj
+    dy=yi-yj
     r=hypot(dx,dy)
-    r<eps(T)&&return zero(Complex{T}),zero(Complex{T}),zero(Complex{T})
+    iszero(r)&&return zero(Complex{T}),zero(Complex{T}),zero(Complex{T})
     c=(nxj*dx+nyj*dy)/r
     kr=k*r
     h0,h1=hankel_pair01(kr)
@@ -983,43 +840,43 @@ end
 end
 
 """
-    construct_dlp_matrix!(solver,D,pts,rws,k;multithreaded=true) → D
+    construct_dlp_matrix!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        D::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        rws::DLPKressReducedWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → D
 
-Assembles the symmetry-reduced DLP-Kress matrix.
+Assemble the symmetry-reduced DLP-Kress matrix.
 
-## Description
-The complete boundary discretization remains available through `pts` and the
-full workspace stored in `rws`.
-
-For fundamental indices `a,b`, the corresponding full-grid indices are
-
-    i=rws.Ifund[a],
-    j=rws.Ifund[b].
-
-The same physical copy of the source is evaluated using the full-grid Kress
-logarithmic split. All remaining symmetry copies are nonsingular relative to
-the fundamental source and are therefore added as ordinary regular DLP image
-kernels.
+For each pair of fundamental nodes, the identity copy is evaluated using the
+full-grid Kress split. The remaining members of the source orbit are regular
+and are added using the ordinary DLP kernel weighted by their irrep factors.
 
 ## Arguments
-* `solver`: DLP-Kress solver with active symmetry.
-* `D`: Preallocated reduced `m×m` destination matrix.
-* `pts`: Full boundary discretization.
-* `rws`: Reduced DLP-Kress workspace.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
+* `D::AbstractMatrix{Complex{T}}`: Preallocated reduced destination matrix.
+* `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
+* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the same-copy block assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the same-copy Kress assembly.
 
 ## Returns
-* `D`: Reduced DLP matrix.
+* `D::AbstractMatrix{Complex{T}}`: Symmetry-reduced DLP matrix.
 """
 function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    m=rws.m
-    @assert size(D,1)==m&&size(D,2)==m
-    Rmat=rws.full.Rmat
-    G=rws.full.G
-    Ifund=rws.Ifund
+    full=rws.full
+    orbits=rws.orbits
+    Ifund=orbits.Ifund
+    m=fundamental_size(orbits)
+    ng=orbit_size(orbits)
+    @assert size(D)==(m,m)
+    Rmat=full.Rmat
+    G=full.G
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
     fill!(D,zero(Complex{T}))
@@ -1042,18 +899,18 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
             end
         end
     end
-    for b in 1:m
-        j=Ifund[b]
-        @inbounds for a in 1:m
+    @inbounds for b in 1:m
+        for a in 1:m
             i=Ifund[a]
-            xi=rws.xs[i]
-            yi=rws.ys[i]
-            for ℓ in eachindex(rws.fund_to_full[b])
-                q=rws.fund_to_full[b][ℓ]
-                q==j&&continue
-                scale=rws.fund_to_scale[b][ℓ]
-                wq=rws.speed[q]*pts.ws[q]
-                D[a,b]+=_regular_dlp_image_D(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wq,k,scale)
+            pi=pts.xy[i]
+            for l in 2:ng
+                q=orbits.fund_to_full[l,b]
+                scale=orbits.fund_to_scale[l,b]
+                pq=pts.xy[q]
+                nq=pts.normal[q]
+                tq=pts.tangent[q]
+                wq=hypot(tq[1],tq[2])*pts.ws[q]
+                D[a,b]+=_regular_dlp_image_D(pi[1],pi[2],pq[1],pq[2],nq[1],nq[2],wq,k,scale)
             end
         end
     end
@@ -1061,24 +918,31 @@ function construct_dlp_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners}
 end
 
 """
-    construct_fredholm_matrix!(solver,F,pts,rws,k;multithreaded=true) → F
+    construct_fredholm_matrix!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        F::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        rws::DLPKressReducedWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → F
 
-Assembles the symmetry-reduced Fredholm matrix
+Assemble the symmetry-reduced DLP-Kress Fredholm matrix
 
     F(k)=I-D(k).
 
 ## Arguments
-* `solver`: DLP-Kress solver with active symmetry.
-* `F`: Preallocated reduced destination matrix.
-* `pts`: Full boundary discretization.
-* `rws`: Reduced DLP-Kress workspace.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
+* `F::AbstractMatrix{Complex{T}}`: Preallocated reduced destination matrix.
+* `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
+* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the underlying DLP assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the DLP assembly.
 
 ## Returns
-* `F`: Reduced Fredholm matrix.
+* `F::AbstractMatrix{Complex{T}}`: Symmetry-reduced Fredholm matrix.
 """
 function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_dlp_matrix!(solver,F,pts,rws,k;multithreaded=multithreaded)
@@ -1092,40 +956,52 @@ function construct_fredholm_matrix!(solver::Union{DLP_kress,DLP_kress_global_cor
 end
 
 """
-    construct_dlp_matrix_derivatives!(solver,D,D1,D2,pts,rws,k;multithreaded=true) → D,D1,D2
+    construct_dlp_matrix_derivatives!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        D::AbstractMatrix{Complex{T}},
+        D1::AbstractMatrix{Complex{T}},
+        D2::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        rws::DLPKressReducedWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → D,D1,D2
 
-Assembles the symmetry-reduced DLP matrix and its first two wavenumber
+Assemble the symmetry-reduced DLP matrix and its first two wavenumber
 derivatives.
 
-## Description
-The same-copy fundamental block is evaluated with the complete full-grid Kress
-split. Symmetry-image terms are regular and their derivatives are added through
-[`_regular_dlp_image_D_derivs`](@ref).
+The identity-copy interaction uses the complete Kress split. All nonidentity
+symmetry images are regular and their analytical wavenumber derivatives are
+added directly.
 
 ## Arguments
-* `solver`: DLP-Kress solver with active symmetry.
-* `D`: Reduced destination matrix for the DLP operator.
-* `D1`: Reduced destination matrix for the first derivative.
-* `D2`: Reduced destination matrix for the second derivative.
-* `pts`: Full boundary discretization.
-* `rws`: Reduced DLP-Kress workspace.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
+* `D::AbstractMatrix{Complex{T}}`: Destination matrix for the reduced DLP operator.
+* `D1::AbstractMatrix{Complex{T}}`: Destination matrix for the first derivative.
+* `D2::AbstractMatrix{Complex{T}}`: Destination matrix for the second derivative.
+* `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
+* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the same-copy block assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the same-copy Kress assembly.
 
 ## Returns
-* `D`: Reduced DLP matrix.
-* `D1`: First derivative.
-* `D2`: Second derivative.
+* `D::AbstractMatrix{Complex{T}}`: Reduced DLP matrix.
+* `D1::AbstractMatrix{Complex{T}}`: First wavenumber derivative.
+* `D2::AbstractMatrix{Complex{T}}`: Second wavenumber derivative.
 """
 function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},D::AbstractMatrix{Complex{T}},D1::AbstractMatrix{Complex{T}},D2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    m=rws.m
-    @assert size(D,1)==m&&size(D,2)==m
     full=rws.full
+    orbits=rws.orbits
+    Ifund=orbits.Ifund
+    m=fundamental_size(orbits)
+    ng=orbit_size(orbits)
+    @assert size(D)==(m,m)
+    @assert size(D1)==(m,m)
+    @assert size(D2)==(m,m)
     Rmat=full.Rmat
     G=full.G
-    Ifund=rws.Ifund
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
     fill!(D,zero(Complex{T}))
@@ -1158,18 +1034,18 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
             end
         end
     end
-    for b in 1:m
-        j=Ifund[b]
-        @inbounds for a in 1:m
+    @inbounds for b in 1:m
+        for a in 1:m
             i=Ifund[a]
-            xi=rws.xs[i]
-            yi=rws.ys[i]
-            for ℓ in eachindex(rws.fund_to_full[b])
-                q=rws.fund_to_full[b][ℓ]
-                q==j&&continue
-                scale=rws.fund_to_scale[b][ℓ]
-                wq=rws.speed[q]*pts.ws[q]
-                d,d1,d2=_regular_dlp_image_D_derivs(xi,yi,rws.xs[q],rws.ys[q],rws.nx[q],rws.ny[q],wq,k,scale)
+            pi=pts.xy[i]
+            for l in 2:ng
+                q=orbits.fund_to_full[l,b]
+                scale=orbits.fund_to_scale[l,b]
+                pq=pts.xy[q]
+                nq=pts.normal[q]
+                tq=pts.tangent[q]
+                wq=hypot(tq[1],tq[2])*pts.ws[q]
+                d,d1,d2=_regular_dlp_image_D_derivs(pi[1],pi[2],pq[1],pq[2],nq[1],nq[2],wq,k,scale)
                 D[a,b]+=d
                 D1[a,b]+=d1
                 D2[a,b]+=d2
@@ -1180,33 +1056,39 @@ function construct_dlp_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_glo
 end
 
 """
-    construct_fredholm_matrix_derivatives!(solver,F,F1,F2,pts,rws,k;multithreaded=true) → F,F1,F2
+    construct_fredholm_matrix_derivatives!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        F::AbstractMatrix{Complex{T}},
+        F1::AbstractMatrix{Complex{T}},
+        F2::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        rws::DLPKressReducedWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → F,F1,F2
 
-Assembles the symmetry-reduced Fredholm matrix and its first two derivatives.
-
-## Description
-The reduced DLP quantities are converted according to
+Assemble the symmetry-reduced Fredholm matrix and its first two derivatives,
 
     F=I-D,
     F1=-D1,
     F2=-D2.
 
 ## Arguments
-* `solver`: DLP-Kress solver with active symmetry.
-* `F`: Reduced destination matrix for the Fredholm operator.
-* `F1`: Reduced destination matrix for the first derivative.
-* `F2`: Reduced destination matrix for the second derivative.
-* `pts`: Full boundary discretization.
-* `rws`: Reduced DLP-Kress workspace.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver with active symmetry.
+* `F::AbstractMatrix{Complex{T}}`: Destination matrix for the reduced Fredholm operator.
+* `F1::AbstractMatrix{Complex{T}}`: Destination matrix for the first derivative.
+* `F2::AbstractMatrix{Complex{T}}`: Destination matrix for the second derivative.
+* `pts::BoundaryPoints{T}`: Full periodic boundary discretization.
+* `rws::DLPKressReducedWorkspace{T}`: Symmetry-reduced workspace.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread the underlying DLP assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread the DLP assembly.
 
 ## Returns
-* `F`: Reduced Fredholm matrix.
-* `F1`: First derivative.
-* `F2`: Second derivative.
+* `F::AbstractMatrix{Complex{T}}`: Reduced Fredholm matrix.
+* `F1::AbstractMatrix{Complex{T}}`: First derivative.
+* `F2::AbstractMatrix{Complex{T}}`: Second derivative.
 """
 function construct_fredholm_matrix_derivatives!(solver::Union{DLP_kress,DLP_kress_global_corners},F::AbstractMatrix{Complex{T}},F1::AbstractMatrix{Complex{T}},F2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_dlp_matrix_derivatives!(solver,F,F1,F2,pts,rws,k;multithreaded=multithreaded)
@@ -1226,45 +1108,38 @@ end
 ########################################
 
 """
-    adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=true) → A
+    adjoint_fredholm_matrix!(
+        A::AbstractMatrix{Complex{T}},
+        D::AbstractMatrix{Complex{T}},
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        pts::BoundaryPoints{T},
+        ws::DLPKressAnyWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real} → A
 
-Assembles the adjoint full-grid DLP-Kress Fredholm matrix.
+Assemble the adjoint DLP-Kress Fredholm matrix
 
-## Description
-If `D` is the Kress-corrected source-normal double-layer matrix and
+    A=I-W⁻¹DᵀW,
 
-    W=diag(ds),
+with `W=diag(pts.ds)`.
 
-the discrete adjoint operator is
-
-    D'=W⁻¹DᵀW.
-
-Thus
-
-    A=I-D',
-
-with entries
-
-    A[i,j]=-D[j,i]*ds[j]/ds[i]
-
-before the identity shift.
-
-The right null vector of this matrix corresponds directly to the boundary
-normal derivative used for Husimi and boundary-function postprocessing.
+For a symmetry-reduced workspace the weighted transpose is applied to the
+fundamental-domain discretization.
 
 ## Arguments
-* `A`: Preallocated adjoint Fredholm destination matrix.
-* `D`: Preallocated DLP workspace matrix.
-* `solver`: DLP-Kress solver.
-* `pts`: Boundary discretization.
-* `ws`: Full DLP-Kress workspace.
-* `k`: Real wavenumber.
+* `A::AbstractMatrix{Complex{T}}`: Preallocated destination matrix for the adjoint Fredholm operator.
+* `D::AbstractMatrix{Complex{T}}`: Preallocated DLP workspace matrix.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `pts::BoundaryPoints{T}`: Full boundary discretization.
+* `ws::DLPKressAnyWorkspace{T}`: Full or symmetry-reduced workspace.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread DLP assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread DLP assembly.
 
 ## Returns
-* `A`: Adjoint Fredholm matrix.
+* `A::AbstractMatrix{Complex{T}}`: Adjoint Fredholm matrix.
 """
 function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     N=ws.N
@@ -1279,41 +1154,11 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
     return A
 end
 
-"""
-    adjoint_fredholm_matrix!(A,D,solver,pts,rws,k;multithreaded=true) → A
-
-Assembles the symmetry-reduced adjoint DLP-Kress Fredholm matrix.
-
-## Description
-The reduced DLP matrix is already indexed by fundamental indices. If
-
-    i=Ifund[a],
-    j=Ifund[b],
-
-the adjoint reduced matrix satisfies
-
-    A[a,b]=-D[b,a]*ds[j]/ds[i],
-
-followed by the identity shift.
-
-## Arguments
-* `A`: Preallocated reduced adjoint Fredholm matrix.
-* `D`: Preallocated reduced DLP workspace matrix.
-* `solver`: DLP-Kress solver.
-* `pts`: Full boundary discretization.
-* `rws`: Reduced DLP-Kress workspace.
-* `k`: Real wavenumber.
-
-## Keyword arguments
-* `multithreaded`: Whether to thread DLP assembly.
-
-## Returns
-* `A`: Reduced adjoint Fredholm matrix.
-"""
 function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    m=rws.m
+    orbits=rws.orbits
+    Ifund=orbits.Ifund
+    m=fundamental_size(orbits)
     construct_dlp_matrix!(solver,D,pts,rws,k;multithreaded=multithreaded)
-    Ifund=rws.Ifund
     ds=pts.ds
     @inbounds for b in 1:m,a in 1:m
         i=Ifund[a]
@@ -1326,80 +1171,42 @@ function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatri
     return A
 end
 
-"""
-    adjoint_fredholm_matrix!(A,D,solver,pts,k;multithreaded=true) → A
-
-Convenience wrapper that constructs the appropriate DLP-Kress workspace
-internally.
-
-## Arguments
-* `A`: Preallocated adjoint Fredholm matrix.
-* `D`: Preallocated DLP workspace matrix.
-* `solver`: DLP-Kress solver.
-* `pts`: Boundary discretization.
-* `k`: Real wavenumber.
-
-## Keyword arguments
-* `multithreaded`: Whether to thread DLP assembly.
-
-## Returns
-* `A`: Adjoint Fredholm matrix.
-"""
 function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_dlp_kress_workspace(solver,pts)
     return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
 end
 
-"""
-    adjoint_fredholm_matrix!(A,D,solver,pts,Rmat,k;multithreaded=true) → A
-
-Convenience wrapper using a precomputed Kress correction matrix.
-
-## Description
-The geometry cache is constructed from `pts`. If symmetry is active, the
-corresponding reduced workspace is generated before adjoint assembly.
-
-## Arguments
-* `A`: Preallocated adjoint Fredholm matrix.
-* `D`: Preallocated DLP workspace matrix.
-* `solver`: DLP-Kress solver.
-* `pts`: Boundary discretization.
-* `Rmat`: Precomputed Kress correction matrix.
-* `k`: Real wavenumber.
-
-## Keyword arguments
-* `multithreaded`: Whether to thread DLP assembly.
-
-## Returns
-* `A`: Adjoint Fredholm matrix.
-"""
 function adjoint_fredholm_matrix!(A::AbstractMatrix{Complex{T}},D::AbstractMatrix{Complex{T}},solver::Union{DLP_kress,DLP_kress_global_corners},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=boundary_geom_cache(pts,_is_dlp_kress_graded(solver,pts))
-    parr=_boundary_panel_arrays_cache(pts)
-    full=DLPKressWorkspace(Rmat,G,parr,length(pts))
-    if isnothing(solver.symmetry)
-        return adjoint_fredholm_matrix!(A,D,solver,pts,full,k;multithreaded=multithreaded)
-    end
-    Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
-    xs=getindex.(pts.xy,1)
-    ys=getindex.(pts.xy,2)
-    nx,ny,speed=dlp_kress_component_normals(pts)
-    rws=DLPKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,speed,length(Ifund))
-    return adjoint_fredholm_matrix!(A,D,solver,pts,rws,k;multithreaded=multithreaded)
+    ws=_dlp_kress_workspace_from_Rmat(solver,pts,Rmat)
+    return adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
 end
 
-##########################################
+########################################
+######## MATRIX ASSEMBLY INTERFACE #####
+########################################
 
 """
-    construct_matrices!(solver,A,pts,ws,k;multithreaded=true)
-    construct_matrices!(solver,A,pts,Rmat,k;multithreaded=true)
-    construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=true)
-    construct_matrices!(solver,A,A1,A2,pts,Rmat,k;multithreaded=true)
+    construct_matrices!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        A::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        ws::DLPKressAnyWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real}
 
-High-level in-place assembly interface for the DLP-Kress Fredholm operator.
+    construct_matrices!(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        A::AbstractMatrix{Complex{T}},
+        A1::AbstractMatrix{Complex{T}},
+        A2::AbstractMatrix{Complex{T}},
+        pts::BoundaryPoints{T},
+        ws::DLPKressAnyWorkspace{T},
+        k::T;
+        multithreaded::Bool=true,
+    ) where {T<:Real}
 
-## Description
-The methods assemble
+Assemble
 
     A(k)=I-D(k),
 
@@ -1408,44 +1215,46 @@ and, when requested,
     A1(k)=-D'(k),
     A2(k)=-D''(k).
 
-Cached-workspace overloads avoid recomputing the geometry and Kress correction
-data during repeated wavenumber sweeps.
-
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `A`: Destination matrix for the Fredholm operator.
-* `A1`: Destination matrix for the first derivative.
-* `A2`: Destination matrix for the second derivative.
-* `pts`: Boundary discretization.
-* `ws`: Cached full DLP-Kress workspace.
-* `Rmat`: Precomputed Kress logarithmic correction matrix.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `A::AbstractMatrix{Complex{T}}`: Destination matrix for the Fredholm operator.
+* `A1::AbstractMatrix{Complex{T}}`: Destination matrix for the first derivative.
+* `A2::AbstractMatrix{Complex{T}}`: Destination matrix for the second derivative.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `ws::DLPKressAnyWorkspace{T}`: Full or symmetry-reduced workspace.
+* `k::T`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread low-level matrix assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread low-level matrix assembly.
 
 ## Returns
-Single-matrix overloads return `A`. Derivative overloads return
-`(A,A1,A2)`.
+* `A::AbstractMatrix{Complex{T}}` for the single-matrix overload.
+* `(A,A1,A2)` for the derivative overload.
 """
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     return construct_fredholm_matrix!(solver,A,pts,ws.Rmat,ws.G,ws.parr,k;multithreaded=multithreaded)
 end
 
+function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    return construct_fredholm_matrix!(solver,A,pts,rws,k;multithreaded=multithreaded)
+end
+
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=boundary_geom_cache(pts,_is_dlp_kress_graded(solver,pts))
-    parr=_boundary_panel_arrays_cache(pts)
-    return construct_fredholm_matrix!(solver,A,pts,Rmat,G,parr,k;multithreaded=multithreaded)
+    ws=_dlp_kress_workspace_from_Rmat(solver,pts,Rmat)
+    return construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     return construct_fredholm_matrix_derivatives!(solver,A,A1,A2,pts,ws.Rmat,ws.G,ws.parr,k;multithreaded=multithreaded)
 end
 
+function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+    return construct_fredholm_matrix_derivatives!(solver,A,A1,A2,pts,rws,k;multithreaded=multithreaded)
+end
+
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    G=boundary_geom_cache(pts,_is_dlp_kress_graded(solver,pts))
-    parr=_boundary_panel_arrays_cache(pts)
-    return construct_fredholm_matrix_derivatives!(solver,A,A1,A2,pts,Rmat,G,parr,k;multithreaded=multithreaded)
+    ws=_dlp_kress_workspace_from_Rmat(solver,pts,Rmat)
+    return construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k::T;multithreaded::Bool=true) where {T<:Real}
@@ -1454,17 +1263,9 @@ function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},b
     return A,dA,ddA
 end
 
-function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressAnyWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_matrices!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
     return A,dA,ddA
-end
-
-###############################################
-############ DESYMMETRIZED PATHWAY ############
-###############################################
-
-function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    return construct_fredholm_matrix!(solver,A,pts,rws,k;multithreaded=multithreaded)
 end
 
 function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
@@ -1473,51 +1274,55 @@ function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},b
 end
 
 function construct_matrices(solver::Union{DLP_kress,DLP_kress_global_corners},basis::AbstractHankelBasis,pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    A=Matrix{Complex{T}}(undef,rws.m,rws.m)
+    n=_workspace_dim(rws)
+    A=Matrix{Complex{T}}(undef,n,n)
     construct_matrices!(solver,basis,A,pts,rws,k;multithreaded=multithreaded)
     return A
 end
 
-function construct_matrices!(solver::Union{DLP_kress,DLP_kress_global_corners},A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
-    return construct_fredholm_matrix_derivatives!(solver,A,dA,ddA,pts,rws,k;multithreaded=multithreaded)
-end
-
-###############################################
+########################################
+############### SOLVE ##################
+########################################
 
 """
-    solve(solver,basis,pts,k;multithreaded=true,use_krylov=true,which=:det)
-    solve(solver,basis,pts,ws,k;multithreaded=true,use_krylov=true,which=:det_argmin)
-    solve(solver,basis,A,pts,k,Rmat;multithreaded=true,use_krylov=true,which=:det_argmin)
-    solve(solver,basis,A,pts,ws,k;multithreaded=true,use_krylov=true,which=:det_argmin)
+    solve(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        basis::Ba,
+        pts::BoundaryPoints{T},
+        k;
+        multithreaded::Bool=true,
+        use_krylov::Bool=true,
+        which::Symbol=:det,
+    ) where {T<:Real,Ba<:AbsBasis}
 
-Evaluates a scalar spectral diagnostic of the DLP-Kress Fredholm matrix.
+    solve(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        basis::Ba,
+        pts::BoundaryPoints{T},
+        ws::DLPKressAnyWorkspace{T},
+        k;
+        multithreaded::Bool=true,
+        use_krylov::Bool=true,
+        which::Symbol=:det_argmin,
+    ) where {T<:Real,Ba<:AbsBasis}
 
-## Description
-The Fredholm matrix
-
-    A(k)=I-D(k)
-
-is assembled and passed to the common SVD/determinant backend.
-
-The different overloads allow the caller to reuse a boundary workspace, a Kress
-correction matrix and/or the complex matrix buffer itself.
+Assemble the DLP-Kress Fredholm matrix and evaluate the scalar spectral
+diagnostic selected by `which`.
 
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `basis`: Basis placeholder retained for the common solver interface.
-* `pts`: Boundary discretization.
-* `ws`: Optional cached workspace.
-* `A`: Optional preallocated matrix buffer.
-* `Rmat`: Optional precomputed Kress correction matrix.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `basis::Ba`: Basis argument retained for the common solver interface.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `ws::DLPKressAnyWorkspace{T}`: Optional full or symmetry-reduced workspace.
+* `k`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread matrix assembly.
-* `use_krylov`: Whether the scalar backend may use its Krylov pathway.
-* `which`: Scalar diagnostic selected by the common backend.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread matrix assembly.
+* `use_krylov::Bool`: Whether the common spectral backend may use its Krylov pathway.
+* `which::Symbol`: Scalar spectral diagnostic to evaluate.
 
 ## Returns
-A scalar spectral diagnostic determined by `which`.
+* Scalar spectral diagnostic selected by `which`.
 """
 function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     ws=build_dlp_kress_workspace(solver,pts)
@@ -1527,8 +1332,9 @@ function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
-    A=Matrix{Complex{T}}(undef,ws.N,ws.N)
+function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},ws::DLPKressAnyWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+    n=_workspace_dim(ws)
+    A=Matrix{Complex{T}}(undef,n,n)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
@@ -1538,89 +1344,74 @@ function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::Ab
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressAnyWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-###############################################
-############ DESYMMETRIZED PATHWAY ############
-###############################################
-
-function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
-    A=Matrix{Complex{T}}(undef,rws.m,rws.m)
-    @blas_1 construct_matrices!(solver,A,pts,rws,k;multithreaded=multithreaded)
-    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
-end
-
-function solve(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},rws::DLPKressReducedWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
-    @blas_1 construct_matrices!(solver,A,pts,rws,k;multithreaded=multithreaded)
-    @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
-end
-
-###############################################
+########################################
+############## SOLVE VECT ##############
+########################################
 
 """
-    solve_vect(solver,basis,A,pts,k,Rmat;multithreaded=true)
-    solve_vect(solver,basis,A,pts,ws,k;multithreaded=true)
-    solve_vect(solver,basis,pts,ws,k;multithreaded=true)
-    solve_vect(solver,basis,pts,k;multithreaded=true)
+    solve_vect(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        basis::Ba,
+        pts::BoundaryPoints{T},
+        k;
+        multithreaded::Bool=true,
+        tol=1e-12,
+        maxiter::Int=2000,
+        krylovdim::Int=40,
+    ) where {T<:Real,Ba<:AbsBasis}
 
-Computes the near-null vector of the adjoint DLP-Kress Fredholm matrix.
+    solve_vect(
+        solver::Union{DLP_kress,DLP_kress_global_corners},
+        basis::Ba,
+        pts::BoundaryPoints{T},
+        ws::DLPKressAnyWorkspace{T},
+        k;
+        multithreaded::Bool=true,
+        tol=1e-12,
+        maxiter::Int=2000,
+        krylovdim::Int=40,
+    ) where {T<:Real,Ba<:AbsBasis}
 
-## Description
-The adjoint Fredholm matrix is assembled and passed to
-[`smallest_nullvec_krylov!`](@ref), which applies a Krylov eigensolver to the
-inverse matrix.
+Compute the near-null vector of the adjoint DLP-Kress Fredholm matrix.
 
-The returned vector is therefore the boundary-function representation required
-for Husimi and related postprocessing.
-
-Both full and symmetry-reduced workspaces are supported.
+The returned vector represents the boundary normal derivative used for Husimi
+and related boundary-function reconstruction.
 
 ## Arguments
-* `solver`: Smooth or global-corner DLP-Kress solver.
-* `basis`: Basis placeholder retained for the common solver interface.
-* `A`: Optional preallocated matrix buffer.
-* `pts`: Boundary discretization.
-* `ws`: Full or reduced DLP-Kress workspace.
-* `Rmat`: Optional precomputed Kress correction matrix.
-* `k`: Real wavenumber.
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: DLP-Kress solver.
+* `basis::Ba`: Basis argument retained for the common solver interface.
+* `pts::BoundaryPoints{T}`: Boundary discretization.
+* `ws::DLPKressAnyWorkspace{T}`: Optional full or symmetry-reduced workspace.
+* `k`: Wavenumber.
 
-## Keyword arguments
-* `multithreaded`: Whether to thread matrix assembly.
+## Keyword Arguments
+* `multithreaded::Bool`: Whether to thread matrix assembly.
 * `tol`: Krylov convergence tolerance.
-* `maxiter`: Maximum number of Krylov iterations.
-* `krylovdim`: Krylov subspace dimension.
+* `maxiter::Int`: Maximum number of Krylov iterations.
+* `krylovdim::Int`: Krylov subspace dimension.
 
 ## Returns
-* `σ`: Smallest-eigenvalue/singular-value proxy.
-* `u`: Corresponding normalized near-null vector.
+* `σ`: Smallest-eigenvalue or near-null residual proxy.
+* `u`: Corresponding normalized near-null boundary vector.
 """
 function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},k,Rmat::AbstractMatrix{T};multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
-    G=boundary_geom_cache(pts,_is_dlp_kress_graded(solver,pts))
-    parr=_boundary_panel_arrays_cache(pts)
-    full=DLPKressWorkspace(Rmat,G,parr,length(pts))
-    ws=if isnothing(solver.symmetry)
-        full
-    else
-        Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale=symmetry_index_orbits(T,pts,solver.symmetry,solver.billiard)
-        xs=getindex.(pts.xy,1)
-        ys=getindex.(pts.xy,2)
-        nx,ny,speed=dlp_kress_component_normals(pts)
-        DLPKressReducedWorkspace(full,Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale,xs,ys,nx,ny,speed,length(Ifund))
-    end
+    ws=_dlp_kress_workspace_from_Rmat(solver,pts,Rmat)
     return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::BoundaryPoints{T},ws::DLPKressAnyWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     D=similar(A)
     @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=multithreaded)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
 
-function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},ws::Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},ws::DLPKressAnyWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     n=_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,n,n)
     return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
@@ -1631,10 +1422,12 @@ function solve_vect(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,
     return solve_vect(solver,basis,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
-###############################################
+########################################
+############## SOLVE INFO ##############
+########################################
 
 # INTERNAL - for checking allocation patterns and execution time of the single-k solve variants.
-function solve_INFO(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},ws::Union{DLPKressWorkspace{T},DLPKressReducedWorkspace{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::Union{DLP_kress,DLP_kress_global_corners},basis::Ba,pts::BoundaryPoints{T},ws::DLPKressAnyWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     N=_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,N,N)
     t0=time()

@@ -2,8 +2,8 @@
 # Core Chebyshev routines for piecewise spectral approximation.
 #
 # This file provides the low–level building blocks used throughout the BIM /
-# Beyn machinery to approximate special functions (Hankel, Legendre Q, Green’s
-# functions, etc.) on many geometric panels with high accuracy and stability.
+# Beyn machinery to approximate Bessel functions
+# on many geometric panels with high accuracy and stability.
 #
 # Contents
 # --------
@@ -28,8 +28,7 @@
 # Usage Pattern
 # -------------
 # These routines are intentionally minimal: they know nothing about the
-# underlying special function or geometry.  High-level modules (H1x Hankel
-# tables, Q_ν tables, Green’s function tables, etc.) call these primitives to:
+# underlying special function or geometry.  High-level modules call these primitives to:
 #
 #   • evaluate f(r) at Chebyshev nodes on each panel;
 #   • use _chebfit! to obtain Chebyshev coefficients;
@@ -39,8 +38,6 @@
 #
 # All functions are allocation-free inside tight loops and suitable for
 # multi-threaded vectorized usage.
-#
-# MO/8/5/26
 ###############################################################################
 
 # =============================================================================
@@ -59,10 +56,6 @@
 #       c_m = (2/M) * ∑_{j=0}^M w_j * f_j * cos(π j m / M),
 #   with Lobatto endpoint weights
 #       w_0 = w_M = 1/2,   and   w_j = 1 for j=1..M-1.
-#
-# Normalization note (matches _cheb_clenshaw):
-#   After the DCT-I sum, we set c_0 ← c_0/2 (i.e. c[1] *= 0.5) so that
-#       f(t) ≈ c_0 + c_1 T_1(t) + … + c_M T_M(t)
 # =============================================================================
 @inline function _chebfit!(c::Vector{ComplexF64},f::Vector{ComplexF64})::Vector{ComplexF64}
     M=length(f)-1
@@ -76,6 +69,7 @@
         c[m+1]=(2/M)*s
     end
     c[1]*=0.5
+    c[end]*=0.5
     return c
 end
 

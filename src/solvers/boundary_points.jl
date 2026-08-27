@@ -143,7 +143,7 @@ function BoundaryPoints(xy::Vector{SVector{2,T}},normal::Vector{SVector{2,T}},s:
 end
 
 """
-    BoundaryPoints(xy,tangent,tangent_2,ts,tphys,ws,ws_der,ds,compid,is_periodic,xL,xR,tL,tR) → bp::BoundaryPoints
+    BoundaryPoints(xy,tangent,tangent_2,ts,tphys,ws,ws_der,s,ds,compid,is_periodic,xL,xR,tL,tR) → bp::BoundaryPoints
 
 Constructs a parametrized boundary discretization from sampled points, first and
 second derivatives of the parametrization, computational nodes and quadrature
@@ -163,7 +163,7 @@ underlying parametrization in addition to the physical boundary data.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with both physical and parametric boundary data populated.
 """
-function BoundaryPoints(xy::Vector{SVector{2,T}},tangent::Vector{SVector{2,T}},tangent_2::Vector{SVector{2,T}},ts::Vector{T},tphys::Vector{T},ws::Vector{T},ws_der::Vector{T},ds::Vector{T},compid::Int,is_periodic::Bool,xL::SVector{2,T},xR::SVector{2,T},tL::SVector{2,T},tR::SVector{2,T}) where {T<:Real}
+function BoundaryPoints(xy::Vector{SVector{2,T}},tangent::Vector{SVector{2,T}},tangent_2::Vector{SVector{2,T}},ts::Vector{T},tphys::Vector{T},ws::Vector{T},ws_der::Vector{T},s::Vector{T},ds::Vector{T},compid::Int,is_periodic::Bool,xL::SVector{2,T},xR::SVector{2,T},tL::SVector{2,T},tR::SVector{2,T}) where {T<:Real}
     n=length(xy)
     normal=Vector{SVector{2,T}}(undef,n)
     @inbounds for i in eachindex(tangent)
@@ -171,8 +171,6 @@ function BoundaryPoints(xy::Vector{SVector{2,T}},tangent::Vector{SVector{2,T}},t
         sp=hypot(tx,ty)
         normal[i]=SVector{2,T}(ty/sp,-tx/sp)
     end
-    s=isempty(ds) ? T[] : cumsum(ds)
-    isempty(s)||s.-=s[1]
     return BoundaryPoints(xy;normal=normal,s=s,ds=ds,tangent=tangent,tangent_2=tangent_2,ts=ts,tphys=tphys,ws=ws,ws_der=ws_der,compid=compid,is_periodic=is_periodic,xL=xL,xR=xR,tL=tL,tR=tR)
 end
 
@@ -309,7 +307,7 @@ Otherwise the quadrature elements are given by `crv.length .* dt`.
 * `s`: Arc-length coordinates along the curve.
 * `ds`: Arc-length quadrature elements.
 """
-function boundary_coords(crv::C,sampler::S,N) where {C<:AbsCurve,S<:AbsSampler}
+function boundary_coords(crv::C,sampler::S,N) where {C<:BilliardGeometry.AbsCurve,S<:BilliardGeometry.AbsSampler}
     L=crv.length
     t,dt=sample_points(sampler,N)
     xy=curve(crv,t)
@@ -326,7 +324,7 @@ function boundary_coords(crv::C,sampler::S,N) where {C<:AbsCurve,S<:AbsSampler}
 end
 
 """
-    boundary_coords(crv::C,t,dt) where {C<:AbsCurve}
+    boundary_coords(crv::C,t,dt) where {C<:BilliardGeometry.AbsCurve}
 
 Evaluates the boundary geometry of `crv` at the supplied parameter nodes `t`
 and parameter-space quadrature weights `dt`.
@@ -337,13 +335,13 @@ and parameter-space quadrature weights `dt`.
 * `s`: Arc-length coordinates.
 * `ds`: Arc-length quadrature elements.
 """
-function boundary_coords(crv::C,t,dt) where {C<:AbsCurve}
+function boundary_coords(crv::C,t,dt) where {C<:BilliardGeometry.AbsCurve}
     L=crv.length
     xy=curve(crv,t)
-    normal=domain_gradient_vector(crv,xy)
+    normal=BilliardGeometry.domain_gradient_vector(crv,xy)
     normal./=norm.(normal)
     s=arc_length(crv,t)
-    if crv isa PolarSegment
+    if crv isa BilliardGeometry.PolarSegment
         ds=diff(s)
         append!(ds,L+s[1]-s[end])
     else
@@ -353,7 +351,7 @@ function boundary_coords(crv::C,t,dt) where {C<:AbsCurve}
 end
 
 """
-    boundary_coords(billiard::Bi,samplers::Vector{AbsSampler},Ns::Vector{Int64}) where {Bi<:AbsBilliard} → bp::BoundaryPoints
+    boundary_coords(billiard::Bi,samplers::Vector{BilliardGeometry.AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard} → bp::BoundaryPoints
 
 Samples the complete physical boundary of `billiard` and returns the resulting
 boundary discretization.
@@ -376,8 +374,8 @@ concatenated physical boundary.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with `xy`, `normal`, `s` and `ds` populated.
 """
-function boundary_coords(billiard::Bi,samplers::Vector{AbsSampler},Ns::Vector{Int64}) where {Bi<:AbsBilliard}
-    curves=filter(crv->crv.bc isa SpecularReflection||crv.bc isa QuantumSolverIgnore,get_all_curves(billiard))
+function boundary_coords(billiard::Bi,samplers::Vector{BilliardGeometry.AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard}
+    curves=filter(crv->crv.bc isa BilliardGeometry.SpecularReflection||crv.bc isa BilliardGeometry.QuantumSolverIgnore,BilliardGeometry.get_all_curves(billiard))
     T=typeof(curves[1].length)
     M=length(curves)
     length(samplers)==M||throw(DimensionMismatch("Expected $M samplers, received $(length(samplers))"))
@@ -399,7 +397,7 @@ function boundary_coords(billiard::Bi,samplers::Vector{AbsSampler},Ns::Vector{In
 end
 
 """
-    boundary_coords(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard} → bp::BoundaryPoints
+    boundary_coords(billiard::Bi,sampler::BilliardGeometry.FourierNodes,N) where {Bi<:BilliardGeometry.AbsBilliard} → bp::BoundaryPoints
 
 Samples the complete physical boundary of `billiard` using a global
 [`FourierNodes`](@ref) discretization.
@@ -422,8 +420,8 @@ over the complete physical boundary.
 ## Returns
 * `bp`: A [`BoundaryPoints`](@ref) instance with `xy`, `normal`, `s` and `ds` populated.
 """
-function boundary_coords(billiard::Bi,sampler::FourierNodes,N) where {Bi<:AbsBilliard}
-    curves=filter(crv->crv.bc isa SpecularReflection||crv.bc isa QuantumSolverIgnore,get_all_curves(billiard))
+function boundary_coords(billiard::Bi,sampler::BilliardGeometry.FourierNodes,N) where {Bi<:BilliardGeometry.AbsBilliard}
+    curves=filter(crv->crv.bc isa BilliardGeometry.SpecularReflection||crv.bc isa BilliardGeometry.QuantumSolverIgnore,BilliardGeometry.get_all_curves(billiard))
     T=typeof(curves[1].length)
     M=length(curves)
     ts,dts=sample_points(sampler,N)
@@ -453,7 +451,7 @@ Returns the interior-membership mask of `pts` with respect to `billiard`.
 Interior testing is delegated directly to `BilliardGeometry.is_inside`, avoiding
 a separate polygonal approximation of the billiard boundary.
 """
-@inline points_in_billiard(pts,billiard)=is_inside(billiard,pts)
+@inline points_in_billiard(pts,billiard)=BilliardGeometry.is_inside(billiard,pts)
 
 """
     kress_R_even!(R0::AbstractMatrix{T}) where {T<:Real}
@@ -477,19 +475,22 @@ The matrix corresponds to the periodic logarithmic kernel
 * `nothing`.
 """
 function kress_R_even!(R0::AbstractMatrix{T}) where {T<:Real}
+    # Provides kress_R! to compute the circulant R matrix for the Kress method. kress_R! uses the FFT to compute the matrix efficiently, while kress_R! with ts computes it using a direct summation approach. Both functions modify the input matrix R0 in place.
+    # Ref: Kress, R., Boundary integral equations in time-harmonic acoustic scattering. Mathematics Comput. Modelling Vol 15, pp. 229-243). Pergamon Press, 1991, GB.
+    # Alex Barnett's code via ifft to get the circulant vector kernel and construct the circulant with circshift.
     N=size(R0,1)
-    n=N÷2
-    a=zeros(Complex{T},N)
-    @inbounds for m in 1:n-1
-        a[m+1]=1/m
-        a[N-m+1]=1/m
-    end
-    rjn=real(FFTW.ifft(a))
-    ks=0:N-1
-    alt=(-1).^ks
-    @. R0[:,1]=-two_pi*rjn-(2*two_pi/N^2)*alt
-    @inbounds for j in 2:N
-        @views R0[:,j].=circshift(R0[:,j-1],1)
+    n=N÷2 # integer division
+    a=zeros(Complex{T},N) #  build the spectral vector a (first col)
+    @inbounds for m in 1:(n-1)
+        a[m+1]=1/m     # positive freq
+        a[N-m+1]=1/m     # negative freq
+    end # leave a[n+1] == 0  (no 1/n term)
+    rjn=real(FFTW.ifft(a)) # inverse FFT → rjn[j] = (2/N)*∑_{m=1..n-1} (1/m) cos(2π m (j-1)/N)
+    ks=0:(N-1) # build the first column, adding the “alternating” correction
+    alt=(-1).^ks # alt[j+1] = (-1)^j
+    @. R0[:,1]=-two_pi*rjn-(2*two_pi/(N^2))*alt # R0[:,1] = -2π*rjn .- (4π/N^2)*alt, first col is ref
+    @inbounds for j in 2:N # fill out the rest circulantly:
+        @views R0[:,j].=circshift(R0[:,j-1],1) # shift by +1 wrt previous column
     end
     return nothing
 end
@@ -512,16 +513,18 @@ circulant shifts.
 * `nothing`.
 """
 function kress_R_odd!(R0::AbstractMatrix{T}) where {T<:Real}
+    # This version of kress_R! computes the R matrix for the odd case (2n-1 points) where the Nyquist frequency is not included, so we only have m=1,...,n-1 positive and negative frequencies.
+    # The first column is built using the same FFT approach, but with the appropriate range of m. The rest of the matrix is filled circulantly as before.
     N=size(R0,1)
     n=(N-1)÷2
-    a=zeros(Complex{T},N)
-    @inbounds for m in 1:n
-        a[m+1]=1/m
-        a[N-m+1]=1/m
+    a=zeros(Complex{T},N)   # spectral first column
+    for m in 1:n
+        a[m+1]=1/m   # positive freq
+        a[N-m+1]=1/m   # negative freq
     end
-    rjn=real(FFTW.ifft(a))
-    @. R0[:,1]=-two_pi*rjn
-    @inbounds for j in 2:N
+    rjn=real(FFTW.ifft(a)) # gives (1/N) * sum_m a_m exp(2πimj/N)
+    @. R0[:,1]= -two_pi*rjn
+    for j in 2:N
         @views R0[:,j].=circshift(R0[:,j-1],1)
     end
     return nothing
@@ -882,7 +885,7 @@ function _eval_composite_geom_global_t(::Type{T},comp::Vector,t::T) where {T<:Re
     lens,_,Ltot=component_lengths(comp)
     j,u=_global_t_to_segment_u(T,comp,t)
     crv=comp[j]
-    xy=curve(crv,u)
+    xy=BilliardGeometry.curve(crv,u)
     du_dt=lens[j]==zero(T) ? zero(T) : Ltot/(T(two_pi)*lens[j])
     γu=tangent(crv,u)
     γuu=tangent_2(crv,u)

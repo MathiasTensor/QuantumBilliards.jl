@@ -3,248 +3,192 @@
 # operators in 2D.
 #
 # This file provides reusable plan construction and evaluation routines for
-# Hankel and Bessel functions of the form
 #
 #     H_ν^(κ)(k r),   J_ν(k r),
 #
-# where `r ≥ 0` is a geometric distance and `k` may be real or complex.
+# where r≥0 is a geometric distance and k may be real or complex.
 #
-# The main purpose is to separate:
-#   1. geometric work        (distances, panel lookup, block caches),
-#   2. special-function work (Hankel/Bessel evaluation),
-# so that matrix assembly code can stay clean and only call a small evaluator
-# API at the point where values are needed.
+# The special-function layer is separated from geometry and matrix assembly:
+#
+#     geometry             -> distances, panel lookup, local coordinates,
+#     special functions    -> Hankel/Bessel Chebyshev interpolation,
+#     operator assembly    -> DLP, DLP-Kress, CFIE-Kress, Alpert, etc.
 #
 # ---------------------------------------------------------------------------
-# DESIGN OVERVIEW
+# CHEBYSHEV REPRESENTATIONS
 # ---------------------------------------------------------------------------
 #
-# The core idea is to approximate the distance dependence of the kernels on a
-# fixed interval `[rmin, rmax]` by piecewise Chebyshev expansions. Since many
-# matrix entries reuse the same distance-to-special-function map, this is much
-# cheaper than repeatedly calling AMOS / Bessels.jl inside inner assembly loops.
+# Two plan families are used:
 #
-# We support three related plan families:
-#
-# 1. ChebHankelPlanH1x
-#    Complex-k scaled H1 plan for the legacy Beyn / EBIM route:
-#
-#        H1x(z) = exp(-i z) H_1^(1)(z),    z = k r.
-#
-#    On each panel we interpolate
-#
-#        G1(r) = sqrt(r) * H1x(k r),
-#
-#    because the `sqrt(r)` factor regularizes the small-r behavior and the
-#    exponential scaling improves stability for complex arguments with nonzero
-#    imaginary part.
-#
-# 2. ChebHankelPlanH
-#    Unscaled Hankel plan for
+# 1. ChebHankelPlanH
 #
 #        H_ν^(κ)(k r),
 #
-#    used in the CFIE / DLP Kress and Alpert code paths. This is the standard
-#    route when the physical unscaled Hankel values are needed directly.
+#    an unscaled piecewise-Chebyshev representation of the physical Hankel
+#    function. It supports real and complex k and is shared by the ordinary
+#    DLP, DLP-Kress, CFIE-Kress, and Alpert pathways.
 #
-# 3. ChebJPlan
-#    Unscaled Bessel-J plan for
+# 2. ChebJPlan
 #
 #        J_ν(k r),
 #
-#    needed especially in the Kress logarithmic split, where for complex `k`
-#    one must not replace `J_ν` by `real(H_ν^(1))`.
+#    an unscaled piecewise-Chebyshev representation of the Bessel-J function.
+#    These plans are needed by the Kress logarithmic split. For complex k,
+#    J_ν(k r) must be evaluated independently and cannot in general be replaced
+#    by real(H_ν^(1)(k r)).
+#
+# Each radial interval [rmin,rmax] is divided into uniform panels. On every
+# panel [a,b], the special function is interpolated at Chebyshev-Lobatto nodes
+#
+#     t_j=cos(πj/M),   j=0,...,M,
+#
+# mapped to
+#
+#     r_j=(a+b)/2+(b-a)t_j/2.
+#
+# Evaluation uses the stored Chebyshev coefficients and Clenshaw recurrence.
 #
 # ---------------------------------------------------------------------------
 # SMALL-ARGUMENT STRATEGY
 # ---------------------------------------------------------------------------
 #
-# The singular / nearly singular regime near `z = k r = 0` is handled outside
-# the Chebyshev interpolation itself.
+# Hankel functions are singular at z=k r=0, so very small arguments are not
+# handled solely by polynomial interpolation.
 #
-# This file implements a layered strategy:
+# The evaluation hierarchy is
 #
-#   - for very small |z|:
-#         use explicit small-argument series for H0 / H1,
+#     |z| < hankel_z_chebyshev_cutoff_small_z
+#         -> explicit small-z H₀/H₁ series,
 #
-#   - for a slightly larger near-zero window:
-#         optionally use direct special-function evaluation,
+#     hankel_z_chebyshev_cutoff_small_z ≤ |z|
+#       < hankel_z_chebyshev_cutoff
+#         -> direct special-function evaluation,
 #
-#   - otherwise:
-#         use the Chebyshev panel expansions.
+#     otherwise
+#         -> Chebyshev interpolation.
 #
-# This avoids polluting the whole interpolation interval with excessively many
-# tiny panels just to resolve the singular structure near zero. In practice this
-# is especially important for:
+# Higher-level geometry caches may additionally use
 #
-#   - !!! Alpert self-correction nodes, where some off-grid distances can be very
-#     small !!!
+#     pidx==0
 #
-# In higher-level code, this is typically represented by:
+# to indicate that a distance lies below the interpolated Hankel interval.
+# Such entries are evaluated by the direct/low-z fallback rather than by a
+# Chebyshev panel.
 #
-#   pidx == 0
-#
-# meaning:
-#   “this distance is outside the interpolated radial range and should be
-#    evaluated through the low-z patch instead of panel interpolation.”
-#
-# That convention lets block caches and evaluators carry the switching logic,
-# rather than pushing it into matrix assembly.
+# This is particularly useful for quadratures such as Alpert correction rules,
+# where some auxiliary off-grid distances can become very small.
 #
 # ---------------------------------------------------------------------------
 # PANELIZATION AND GEOMETRIC PRECOMPUTATION
 # ---------------------------------------------------------------------------
 #
-# For interpolated distances, each radius `r` is mapped to:
+# For an interpolated radius r, the geometry layer stores
 #
-#   - a panel index `pidx`,
-#   - a local Chebyshev coordinate `t ∈ [-1,1]`,
-#   - and, for the scaled H1x route, `invsqrt = 1/sqrt(r)`.
+#     pidx    panel index,
+#     t       local Chebyshev coordinate in [-1,1].
 #
-# These quantities are geometry-dependent but k-independent, so they can be
-# precomputed once and then reused across:
+# The helpers
 #
-#   - many contour points,
-#   - many matrix entries with repeated geometry,
-#   - derivative evaluations,
-#   - multi-k assembly loops.
+#     panel_indices
+#     precompute_geom
+#     panel_and_geom
 #
-# This file therefore exposes both scalar and vectorized lookup helpers:
+# precompute these k-independent quantities. Uniform panels allow O(1) lookup
 #
-#   - _find_panel / panel_indices
-#   - precompute_geom
-#   - panel_and_geom
+#     p=floor((r-rmin)/dr)+1.
 #
-# Uniform panel layouts use O(1) arithmetic lookup.
+# For compatibility with existing matrix-assembly code, `precompute_geom` and
+# `panel_and_geom` continue to return
 #
-# ---------------------------------------------------------------------------
-# MULTI-k EVALUATION API
-# ---------------------------------------------------------------------------
+#     invsqrt=1/sqrt(r)
 #
-# A major use case is evaluating the same special function at one fixed distance
-# `r`, but for many wavenumbers `k_m` simultaneously. This appears throughout:
-#
-#   - Beyn contour matrix construction,
-#   - CFIE-Kress same-block assembly,
-#   - CFIE-Alpert correction nodes,
-#   - DLP-Kress derivative assembly.
-#
-# To support that efficiently, this file provides low-level multi-k evaluators
-# which fill user-provided output buffers in place, for example:
-#
-#   - eval_h1x_multi_ks!
-#   - eval_h_multi_ks!
-#   - eval_j_multi_ks!
-#   - h0_h1_multi_ks_at_r!
-#   - h0_h1_j0_j1_multi_ks_at_r!
-#   - h1_j1_multi_ks_at_r!
-#   - h1_multi_ks_at_r!
-#
-# These routines are intentionally written as the “special-function layer” under
-# the matrix constructors, so that future changes in the low-z strategy,
-# interpolation cutoffs, or direct-evaluation policy can be made here without
-# touching the matrix assembly code.
+# in addition to the panel data. The current unscaled Hankel representation does
+# not require this factor, but retaining it avoids changing established caller
+# interfaces in the Kress and related Chebyshev backends.
 #
 # ---------------------------------------------------------------------------
-# THREADING / PERFORMANCE NOTES
+# MULTI-k EVALUATION
 # ---------------------------------------------------------------------------
 #
-# Plan construction over panels is threaded.
-# Vectorized lookup and evaluation kernels are also threaded where beneficial.
+# Boundary-integral assembly frequently evaluates one fixed distance r for many
+# wavenumbers k_m. The multi-k evaluators therefore fill preallocated buffers
+# without allocation inside the matrix-entry loops.
 #
-# In practice, the dominant runtime is usually controlled by:
+# Core evaluators include
 #
-#   - number of distance panels,
-#   - Chebyshev degree per panel,
-#   - number of special-function evaluations per matrix entry,
+#     eval_h_multi_ks!
+#     eval_j_multi_ks!
+#     h0_h1_multi_ks_at_r!
+#     h0_h1_j0_j1_multi_ks_at_r!
+#     h1_j1_multi_ks_at_r!
+#     h1_multi_ks_at_r!
 #
-# rather than by the tiny extra branch used to distinguish:
+# The required special functions depend on the operator:
 #
-#   interpolated region   vs   small-z patched region.
+#     ordinary DLP value          H₁
+#     ordinary DLP derivatives    H₀,H₁ (and currently H₂ by recurrence)
+#     DLP-Kress value             H₁,J₁
+#     DLP-Kress derivatives       H₀,H₁,J₀,J₁
+#     CFIE-Kress                  H₀,H₁,J₀,J₁.
 #
-# The branch cost is negligible compared to a Hankel / Bessel evaluation or a
-# Clenshaw recurrence, so keeping the switching logic in this low-level core is
-# the correct tradeoff for maintainability.
+# For the ordinary DLP value path, `h1_multi_ks_at_r!` and `h1_at_r` are thin
+# wrappers around the same unscaled Hankel evaluator used elsewhere.
 #
 # ---------------------------------------------------------------------------
-# MAIN PUBLIC / SEMI-PUBLIC API
+# THREADING / PERFORMANCE
+# ---------------------------------------------------------------------------
+#
+# Chebyshev tables are constructed independently panel-by-panel and therefore
+# use threading. Vectorized geometry and evaluation routines are also threaded
+# where appropriate.
+#
+# The dominant costs are generally controlled by
+#
+#     number of radial panels,
+#     Chebyshev degree per panel,
+#     number of special-function families,
+#     number of matrix-entry evaluations.
+#
+# The low-z switching branch is negligible compared with direct Hankel/Bessel
+# evaluation or a Clenshaw recurrence.
+#
+# ---------------------------------------------------------------------------
+# PUBLIC / SEMI-PUBLIC API
 # ---------------------------------------------------------------------------
 #
 # Plan builders
-#   - plan_h1x
-#   - plan_h
-#   - plan_j
+#     plan_h
+#     plan_j
 #
-# Panel / geometry helpers
-#   - panel_indices
-#   - precompute_geom
-#   - panel_and_geom
-#   - precompute_phase
+# Geometry helpers
+#     _find_panel
+#     panel_indices
+#     precompute_geom
+#     panel_and_geom
 #
 # Scalar evaluators
-#   - eval_h1x! / eval_h1x
-#   - eval_h!   / eval_h
-#   - eval_j!   / eval_j
+#     eval_h! / eval_h
+#     eval_j! / eval_j
+#     h1_at_r
 #
 # Multi-k evaluators
-#   - eval_h1x_multi_ks!
-#   - eval_h_multi_ks!
-#   - eval_j_multi_ks!
-#   - h0_h1_multi_ks_at_r!
-#   - h0_h1_j0_j1_multi_ks_at_r!
-#   - h1_j1_multi_ks_at_r!
-#   - h1_multi_ks_at_r!
-#   - h1_at_r
+#     eval_h_multi_ks!
+#     eval_j_multi_ks!
+#     h0_h1_multi_ks_at_r!
+#     h0_h1_j0_j1_multi_ks_at_r!
+#     h1_j1_multi_ks_at_r!
+#     h1_multi_ks_at_r!
+#     h0_h1_h2_multi_ks_at_r!
 #
 # Low-z support
-#   - _small_h0_series
-#   - _small_h1_series
-#
-# ---------------------------------------------------------------------------
-# FILE ROLE IN THE LARGER CODEBASE
-# ---------------------------------------------------------------------------
-#
-# This is the central special-function backend shared by:
-#
-#   - legacy EBIM / Beyn DLP code,
-#   - CFIE-Kress code paths,
-#   - DLP-Kress code paths,
-#   - CFIE-Alpert code paths.
-#
-# The goal is that assembly files should not contain detailed logic about when
-# to interpolate, when to use a series, or when to call direct special
-# functions. They should pass only the geometry-side quantities needed by the
-# relevant evaluator:
-#
-#   - Hankel evaluators:
-#         (pidx_h, t_h, r, invsqrt, plans, output buffers)
-#
-#   - Bessel-J evaluators:
-#         (r, plans, output buffers)
-#
-# The Hankel family may use a precomputed panel index and local coordinate,
-# because its interpolation grid is often fine and has a near-zero cutoff.
-# The Bessel-J family is regular at r = 0 and may use a separate, coarser
-# interpolation grid, so it locates its own panel directly from r.
-#
-# This keeps the assembly code independent of the low-z strategy, interpolation
-# cutoffs, and the fact that Hankel and Bessel-J plans may use different radial
-# panelizations.
-#
-# MO/8/5/26
+#     _small_h0_series
+#     _small_h1_series
 #############################################################################
 
 const γ=MathConstants.eulergamma
 const hankel_z_chebyshev_cutoff_small_z=0.001 # for z=k*r below this we use the small-argument series expansions for the Hankel functions instead of the Chebyshev evaluation, since the Chebyshev approximation is not accurate near zero due to the singularity. This is a bit hacky but it works and is fast since we only need to evaluate a few terms in the series expansion for small z. We can afford to be conservative here since this only affects a small portion of the domain near r=0, and we want to ensure high accuracy there.
 const hankel_z_chebyshev_cutoff=0.2 # this is the region between [hankel_z_chebyshev_cutoff_small_z, hankel_z_chebyshev_cutoff] where we switch from the small-argument series expansions to the direct evaluation since only 12th degree small z poly.
 #TODO Differentiation of Chebyshev polynomials to get other orders of hankels. Is this even good to do for performance, how much does it really matter?
-
-struct ChebHankelTableH1x
-    a::Float64 # start of panel 
-    b::Float64 # end of panel
-    M::Int # order of the chebyshev polynomial for panel [a,b]
-    c1::Vector{ComplexF64}   # coeffs of Gν(r) = √r * Hνx(k r)
-end
 
 struct ChebHankelTableH
     a::Float64 # start of panel 
@@ -261,37 +205,6 @@ struct ChebJTable
     M::Int # order of the chebyshev polynomial for panel [a,b]
     ν::Int # degree of the J
     c::Vector{ComplexF64} 
-end
-
-# =============================================================================
-# Construct a Chebyshev table on a single panel [a,b] for the scaled Hankel:
-#   H1x(z) = exp(-i z) * H1^(1)(z),  with  z = k*r.
-# We approximate
-#   G1(r) = sqrt(r) * H1x(k r)
-# on Chebyshev–Lobatto nodes t_j = cos(π j / M), j=0..M, mapped to r_j ∈ [a,b].
-# The sqrt(r) factor regularizes the r→0 behavior.
-#
-# Inputs
-#   k :: ComplexF64         # (fixed) complex wavenumber
-#   a,b :: Float64          # panel endpoints, 0 < a < b
-#   M :: Int                # Chebyshev degree (stores M+1 coeffs)
-#
-# Output
-#   ChebHankelTableH1x(a,b,M,c) where c are the Chebyshev coeffs of G1.
-# =============================================================================
-function _build_table_h1x!(k::ComplexF64,a::Float64,b::Float64;M::Int=16)::ChebHankelTableH1x
-    @assert a>0 && b>a "a=$(a), b=$(b)" # sanity check to keep the interval bounded above 0 and to not be degenerate/reversed
-    f1=Vector{ComplexF64}(undef,M+1) # preallocate the vector storing function evalutions at chebyshev nodes
-    @inbounds for j in 0:M
-        t=cospi(j/M) # chebyshev node in [-1,1]
-        r=((b+a)+(b-a)*t)/2 # affine map to [a,b] so we are in the correct sector
-        z=k*r # argument for Hankel in local coordinates
-        H1x=SpecialFunctions.besselhx(1,1,z) # scaled: exp(-i z) * H1^(1)(z) since AMOS provides this directly and is more stable than computing the unscaled version due to underflow/overflow issues with large/small |Im(z)|.
-        f1[j+1]=sqrt(r)*H1x # G1(r) since for small r this is well behaved
-    end
-    c1=Vector{ComplexF64}(undef,M+1) # preallocate chebyshev coeffs
-    _chebfit!(c1,f1) # fit the chebyshev coeffs to the chebyshev node evaluations
-    return ChebHankelTableH1x(a,b,M,c1) # construct the table for that particular panel with local cheby polynomial 
 end
 
 # =============================================================================
@@ -371,17 +284,6 @@ function _build_table_j!(ν::Int,k::ComplexF64,a::Float64,b::Float64;M::Int=16):
     return ChebJTable(a,b,M,ν,c)
 end
 
-# LEGACY USED FOR BEYN; need it for backwards compatibility
-struct ChebHankelPlanH1x
-    k::ComplexF64
-    panels::Vector{ChebHankelTableH1x}
-    rmin::Float64
-    rmax::Float64
-    dr::Float64
-    invdr::Float64
-    npanels::Int
-end
-
 struct ChebHankelPlanH
     k::Union{Float64,ComplexF64}
     ν::Int
@@ -403,32 +305,6 @@ struct ChebJPlan
     dr::Float64
     invdr::Float64
     npanels::Int
-end
-
-# =============================================================================
-# Build a piecewise-Chebyshev plan for G1(r) = sqrt(r) * H1x(k * r) over r ∈ [rmin,rmax].
-# The interval is split into `npanels` uniformly. 
-# Each panel stores M+1 Chebyshev coefficients (degree M). This plan is reused for the unscaled hankel function.
-#
-# Inputs
-#   k :: ComplexF64
-#   rmin,rmax :: Float64      # 0 < rmin < rmax
-#   npanels :: Int          # number of panels
-#   M :: Int order of the Chebyshev polynomial for each panel
-#
-# Output
-#   ChebHankelPlanH1x(k, panels)
-# =============================================================================
-function plan_h1x(k::ComplexF64,rmin::Float64,rmax::Float64;npanels::Int=64,M::Int=16)::ChebHankelPlanH1x
-    @assert rmin>0 && rmax>rmin
-    br=_breaks_uniform(rmin,rmax,npanels) 
-    panels=Vector{ChebHankelTableH1x}(undef,npanels)
-    @inbounds Threads.@threads for i in 1:npanels
-        panels[i]=_build_table_h1x!(k,br[i],br[i+1];M=M)
-    end
-    dr=(rmax-rmin)/npanels
-    invdr=inv(dr)
-    return ChebHankelPlanH1x(k,panels,rmin,rmax,dr,invdr,npanels)
 end
 
 # =============================================================================
@@ -508,11 +384,10 @@ end
 # Locate the panel index p such that panels[p].a ≤ r ≤ panels[p].b.
 #
 # This is a scalar binary search used to identify which Chebyshev panel
-# contains the given radius `r`.  Each panel corresponds to one interval [a,b]
-# on which the Chebyshev coefficients for G₁(r) = √r * H₁x(k r) were fitted.
+# contains the given radius `r`.
 #
 # Inputs
-#   panels :: Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}}   # vector of panel structs
+#   panels :: Union{Vector{ChebHankelTableH},Vector{ChebJTable}}   # vector of panel structs
 #   r      :: Float64                      # query radius (must be positive)
 #
 # Output
@@ -527,7 +402,7 @@ end
 #   - @inbounds avoids bounds checks for speed.
 #   - Typical Np = 50–300, so this function is negligible cost compared to Hankel evaluation.
 # =============================================================================
-@inline function _find_panel_binary(panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}},r::Float64)::Int
+@inline function _find_panel_binary(panels::Union{Vector{ChebHankelTableH},Vector{ChebJTable}},r::Float64)::Int
     lo=1;hi=length(panels)
     @inbounds while lo≤hi
         mid=(lo+hi)>>>1
@@ -554,7 +429,7 @@ end
 # where dr = (rmax - rmin) / npanels.
 #
 # Inputs
-#   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
+#   pl :: Union{ChebHankelPlanH,ChebJPlan}
 #          # plan with uniform panel spacing; must contain fields rmin, invdr, npanels
 #   r  :: Float64
 #          # query radius (must lie within [pl.rmin, pl.rmax])
@@ -571,7 +446,7 @@ end
 #   - O(1) cost: one multiply, one floor, and clamping.
 # =============================================================================
 
-@inline function _find_panel_uniform(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r::Float64)::Int
+@inline function _find_panel_uniform(pl::Union{ChebHankelPlanH,ChebJPlan},r::Float64)::Int
     p=Int(floor((r-pl.rmin)*pl.invdr))+1
     return ifelse(p<1,1,ifelse(p>pl.npanels,pl.npanels,p))
 end
@@ -585,7 +460,7 @@ end
 # p such that r ∈ [panels[p].a, panels[p].b].
 #
 # Inputs
-#   pl :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
+#   pl :: Union{ChebHankelPlanH,ChebJPlan}
 #          # Chebyshev plan containing panels
 #   r  :: Float64
 #          # query radius (must lie within plan range)
@@ -594,7 +469,7 @@ end
 #   Int
 #   # panel index p corresponding to r
 # =============================================================================
-@inline function _find_panel(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r::Float64)::Int
+@inline function _find_panel(pl::Union{ChebHankelPlanH,ChebJPlan},r::Float64)::Int
     return _find_panel_uniform(pl,r)
 end
 
@@ -603,11 +478,11 @@ end
 # [a,b] of the Chebyshev plan `pl` contains it.
 #
 # This creates an Int32 vector of panel indices to enable later vectorized
-# evaluation of H₁x or H₁.
+# evaluation of H₁.
 #
 # Inputs
-#   pl    :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}
-#             # plan containing `panels::Union{Vector{ChebHankelTableH1x},Vector{ChebHankelTableH},Vector{ChebJTable}` 
+#   pl    :: Union{ChebHankelPlanH,ChebJPlan}
+#             # plan containing `panels::Union{Vector{ChebHankelTableH},Vector{ChebJTable}` 
 #   rvec  :: AbstractVector{Float64}
 #             # radii (each must satisfy pl.panels[1].a ≤ r ≤ pl.panels[end].b)
 #
@@ -615,7 +490,7 @@ end
 #   pidx  :: Vector{Int32}
 #             # pidx[i] = index of panel that contains rvec[i]
 # =============================================================================
-function panel_indices(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Vector{Int32}
+function panel_indices(pl::Union{ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Vector{Int32}
     p=similar(rvec,Int32)
     @inbounds Threads.@threads for i in eachindex(rvec)
         p[i]=Int32(_find_panel(pl,rvec[i]))
@@ -625,16 +500,10 @@ end
 
 # =============================================================================
 # Precompute Chebyshev coordinates and normalization factors for the given
-# radii rvec, to enable fast, k-independent evaluation of
-#   G₁(r) = √r * H₁x(k r)
-# and hence H₁x and H₁.
-#
-# For each r[i], this function computes:
-#   • t[i]        = (2r[i] − (a+b)) / (b−a)     # mapped Chebyshev coordinate ∈ [−1,1]
-#   • invsqrt[i]  = 1 / √r[i]
+# radii rvec, to enable fast, k-independent evaluation of H₁.
 #
 # Inputs
-#   pl     :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}  # plan containing panels [a,b]
+#   pl     :: Union{ChebHankelPlanH,ChebJPlan}  # plan containing panels [a,b]
 #   rvec   :: AbstractVector{Float64}  # radii (must lie in total range of plan)
 #   pidx   :: AbstractVector{Int32}    # panel indices for each r[i]
 #
@@ -643,7 +512,7 @@ end
 #       t        :: Vector{Float64}     # mapped Chebyshev coordinates
 #       invsqrt  :: Vector{Float64}     # 1/√r for normalization
 # =============================================================================
-function precompute_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64},pidx::AbstractVector{Int32})::Tuple{Vector{Float64},Vector{Float64}}
+function precompute_geom(pl::Union{ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64},pidx::AbstractVector{Int32})::Tuple{Vector{Float64},Vector{Float64}}
     @assert length(rvec)==length(pidx)
     n=length(rvec)
     t=Vector{Float64}(undef,n)
@@ -668,7 +537,7 @@ end
 # an extra pass over rvec and redundant memory traffic.
 #
 # Inputs
-#   pl   :: Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan}  # Chebyshev plan with panels
+#   pl   :: Union{ChebHankelPlanH,ChebJPlan}  # Chebyshev plan with panels
 #   rvec :: Vector{Float64}  # radii (must lie in [panels[1].a, panels[end].b])
 #
 # Outputs
@@ -680,7 +549,7 @@ end
 #   - Uses uniform O(1) arithmetic lookup per element.
 #   - Forces no allocations inside the threaded loop.
 # =============================================================================
-function panel_and_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Tuple{Vector{Int32},Vector{Float64},Vector{Float64}}
+function panel_and_geom(pl::Union{ChebHankelPlanH,ChebJPlan},rvec::AbstractVector{Float64})::Tuple{Vector{Int32},Vector{Float64},Vector{Float64}}
     n=length(rvec)
     pidx=Vector{Int32}(undef,n)
     t=Vector{Float64}(undef,n)
@@ -699,24 +568,6 @@ function panel_and_geom(pl::Union{ChebHankelPlanH1x,ChebHankelPlanH,ChebJPlan},r
         invsqrt[i]=inv(sqrt(r))
     end
     return pidx,t,invsqrt
-end
-
-# Cheap exp(i k r) with k = a + i b:
-# exp(i k r) = exp(-b r) * (cos(a r) + i sin(a r))
-@inline function _exp_ikr(a::Float64,b::Float64,r::Float64)::ComplexF64
-    u=exp(-b*r)
-    ar=a*r
-    return ComplexF64(u*cos(ar),u*sin(ar))
-end
-
-# Optional: precompute phase once if you'll reuse the same k & r many times
-function precompute_phase(k::ComplexF64,r::AbstractVector{Float64})::Vector{ComplexF64}
-    a=real(k);b=imag(k)
-    φ=Vector{ComplexF64}(undef,length(r))
-    @inbounds Threads.@threads for i in eachindex(r)
-        φ[i]=_exp_ikr(a,b,r[i])
-    end
-    return φ
 end
 
 ##################################################################
@@ -758,54 +609,6 @@ end
 ##################################################################
 ###################### EVALUATION FUNCTIONS ######################
 ##################################################################
-
-# =============================================================================
-# Fast evaluation of the *scaled* Hankel:
-#   H1x(z) = exp(-i z) * H1^(1)(z),  with z = k*r.
-#
-# Storage model
-# -------------
-# Each panel stores Chebyshev coefficients of
-#   G1(r) = √r * H1x(k r)
-#
-# With k-independent precomputations:
-#   - pidx[i]   : which panel r_i belongs to
-#   - t[i]      : mapped Chebyshev coordinate in [-1,1] on that panel
-#   - invsqrt[i]: 1/√r_i
-#
-# we evaluate
-#   H1x(k r_i) ≈ _cheb_clenshaw(c_panel, t[i]) * invsqrt[i].
-#
-# Inputs
-#   H1x     :: Vector{ComplexF64}        # output (length = length(t))
-#   pl      :: ChebHankelPlanH1x  # plan at a fixed complex k
-#   r       :: AbstractVector{Float64}   # radii (only used for indexing)
-#   pidx    :: AbstractVector{Int32}     # panel index for each i
-#   t       :: AbstractVector{Float64}   # Chebyshev coordinate for each i
-#   invsqrt :: AbstractVector{Float64}   # 1/√r for each i
-#
-# Output
-#   Fills H1x in place.
-# =============================================================================
-function eval_h1x!(H1x::AbstractVector{ComplexF64},pl::ChebHankelPlanH1x,r::AbstractVector{Float64},pidx::AbstractVector{Int32},t::AbstractVector{Float64},invsqrt::AbstractVector{Float64})
-    pans=pl.panels
-    k=pl.k
-    @inbounds Threads.@threads for i in eachindex(r)
-        z=k*r[i]
-        if pidx[i]==0
-            if abs(z)<hankel_z_chebyshev_cutoff_small_z
-                H1x[i]=exp(-1*im*z)*_small_h1_series(z)
-            else
-                H1x[i]=SpecialFunctions.besselhx(1,1,z)
-            end
-        else
-            T=pans[pidx[i]]
-            g1=_cheb_clenshaw(T.c1,t[i])
-            H1x[i]=g1*invsqrt[i]
-        end
-    end
-    return nothing
-end
 
 # =============================================================================
 # Fast evaluation of the unscaled Hankel for the real-k plan:
@@ -894,42 +697,6 @@ function eval_j!(J::AbstractVector{ComplexF64},pl::ChebJPlan,r::AbstractVector{F
 end
 
 # =============================================================================
-# ----------------------------------
-# Evaluate the *scaled* Hankel function
-#       H1x(z) = exp(-i z) * H1^(1)(z)
-# for a single point z = k*r using the Chebyshev approximation table stored
-# in a ChebHankelPlanH1x.
-#
-# The scaled form H1x is used to avoid overflow/underflow in AMOS for large
-# |Im(k r)|.  The plan stores Chebyshev coefficients of
-#
-#       G1(r) = √r * H1x(k r)
-#
-# on each panel [a,b].  We evaluate G1(r) using the Clenshaw recurrence on
-# Chebyshev coefficients, then divide by √r to recover H1x(k r).
-#
-# Inputs
-#   pl       :: ChebHankelPlanH1x   # precomputed Chebyshev plan for given k
-#   pidx     :: Int32               # panel index such that r ∈ [a,b]
-#   t        :: Float64             # mapped Chebyshev coordinate in [-1,1]
-#   invsqrt  :: Float64             # 1 / √r
-#
-# Output
-#   ComplexF64                     # approximation of H1x(k r)
-@inline function eval_h1x(pl::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64)
-    r=1/invsqrt^2
-    z=pl.k*r
-    if pidx==0
-        if abs(z)<hankel_z_chebyshev_cutoff_small_z
-            return exp(-1*im*z)*_small_h1_series(z)
-        else
-            return SpecialFunctions.besselhx(1,1,z)
-        end
-    end
-    return _cheb_clenshaw(pl.panels[pidx].c1,t)*invsqrt
-end
-
-# =============================================================================
 # Evaluate the unscaled Hankel
 #   H_ν^(κ)(k r),  with k real,
 # at a single point using the real-k Chebyshev plan.
@@ -985,45 +752,6 @@ end
 # =============================================================================
 @inline function eval_j(pl::ChebJPlan,pidx::Int32,t::Float64,r::Float64)
     return _cheb_clenshaw(pl.panels[pidx].c,t)
-end
-
-# =============================================================================
-# Evaluate the *scaled* Hankel H1x(k r) for the *same radius r* across multiple
-# complex wavenumbers (one per plan). Each plan must have been built over the
-# *same panel breaks* so that `pidx` and `t` are valid for every plan.
-#
-# Storage model:
-#   Each ChebHankelPlanH1x stores Chebyshev coeffs c for G1(r) = √r * H1x(k r).
-# For a fixed r we reuse:
-#   - pidx    : panel index s.t. panels[pidx].a ≤ r ≤ panels[pidx].b
-#   - t       : mapped Chebyshev coord in [-1,1] for that panel
-#   - invsqrt : 1 / √r
-#
-# Inputs
-#   out    :: AbstractVector{ComplexF64}             # length == length(plans)
-#   plans  :: AbstractVector{ChebHankelPlanH1x}      # k-dependent Cheb plans
-#   pidx   :: Int32                                  # panel index for r
-#   t      :: Float64                                # Chebyshev coord for r
-#   invsqrt:: Float64                                # 1/√r
-#
-# Output
-#   out[m] = H1x_{k_m}(r) for m = 1..length(plans).
-# =============================================================================
-function eval_h1x_multi_ks!(out::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64)
-    r=1/invsqrt^2
-    @inbounds for m in eachindex(plans)
-        z=plans[m].k*r
-        if pidx==0
-            if abs(z)<hankel_z_chebyshev_cutoff_small_z
-                out[m]=exp(-1*im*z)*_small_h1_series(z)
-            else
-                out[m]=SpecialFunctions.besselhx(1,1,z)
-            end
-        else
-            out[m]=_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
-        end
-    end
-    return nothing
 end
 
 # =============================================================================
@@ -1093,6 +821,16 @@ end
         out[m]=_cheb_clenshaw(plans[m].panels[pidx].c,t)
     end
     return nothing
+end
+
+# Locate the radial panel and Chebyshev coordinate for both the H and J plans. Used primarily in the default dlp chebyhsev construction.
+@inline function panel_t(pl::Union{ChebHankelPlanH,ChebJPlan},r::Float64)
+    if r<pl.rmin
+        return Int32(0),0.0
+    end
+    p=_find_panel(pl,r)
+    P=pl.panels[p]
+    return Int32(p),(2*r-(P.b+P.a))/(P.b-P.a)
 end
 
 ############################################################
@@ -1367,101 +1105,45 @@ evaluation to avoid loss of accuracy.
 end
 
 """
-        h1_multi_ks_at_r!(hvals::AbstractVector{ComplexF64},phases::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,ab::AbstractVector{NTuple{2,Float64}})
+    h1_multi_ks_at_r!(h1vals,plans1,pidx,t,r)
 
-Evaluate `H₁^(1)` for all wavenumbers at one fixed distance panel/location, writing the results in place. Only used for standard DLP kernel where we need only H₁^(1) and not J₁, but we want to use the scaled Chebyshev expansions for complex k. The `phases` vector is used to store the exp(-i k r) factors for each wavenumber, which can be reused across multiple evaluations at the same radius.
+Evaluate `H₁^(1)(k_m r)` for all stored wavenumbers at one fixed distance.
 
-If `pidx==0`, the evaluation point is close to zero and the small-argument series expansion is used for all wavenumbers. Otherwise, the Chebyshev expansions are evaluated with Clenshaw recurrence. This is to avoid too many panels, which would cause unnecessary overhead in the Chebyshev evaluation and also workspace construction.
+This is the value-only special-function evaluator used by the standard DLP
+Chebyshev assembly.
 
-# Arguments
-- `h1vals::AbstractVector{ComplexF64}`:
-  Output vector for the `H₁^(1)` values.
-- `phases::AbstractVector{ComplexF64}`:
-  Workspace vector for the `exp(-i k r)` factors for each wavenumber.
-- `plans::AbstractVector{ChebHankelPlanH1x}`:
-  Chebyshev plans for the scaled Hankel `H1x`.
-- `pidx::Int32`:
-  Panel index for the active distance.
-- `t::Float64`:
-  Local Chebyshev coordinate in that panel.
-- `invsqrt::Float64`:
-  1 / √r for normalization.
-- `r::Float64`:
-  Distance at which to evaluate the functions.
-- `ab::AbstractVector{NTuple{2,Float64}}`:
-  Real and Imag parts of k for each plan, pre-extracted.
+## Arguments
+* `h1vals`: Output buffer for `H₁^(1)` values.
+* `plans1`: Order-one outgoing Hankel plans.
+* `pidx`: Hankel panel index, with `0` selecting the direct/low-z fallback.
+* `t`: Local Chebyshev coordinate.
+* `r`: Physical distance.
 
-# Returns
-- `nothing`
+## Returns
+`nothing`.
 """
-@inline function h1_multi_ks_at_r!(hvals::AbstractVector{ComplexF64},phases::AbstractVector{ComplexF64},plans::AbstractVector{ChebHankelPlanH1x},pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,ab::AbstractVector{NTuple{2,Float64}})
-    @inbounds for m in eachindex(plans)
-        a,b=ab[m]
-        phases[m]=_exp_ikr(a,b,r)
-        z=ComplexF64(plans[m].k)*r
-        az=abs(z)
-        if az<hankel_z_chebyshev_cutoff_small_z
-            hvals[m]=phases[m]*_small_h1_series(z)
-        elseif az<hankel_z_chebyshev_cutoff || pidx==0
-            hvals[m]=phases[m]*SpecialFunctions.hankelh1(1,z)
-        else
-            hvals[m]=phases[m]*_cheb_clenshaw(plans[m].panels[pidx].c1,t)*invsqrt
-        end
-    end
+@inline function h1_multi_ks_at_r!(h1vals::AbstractVector{ComplexF64},plans1::AbstractVector{ChebHankelPlanH},pidx::Int32,t::Float64,r::Float64)
+    eval_h_multi_ks!(h1vals,plans1,r,pidx,t)
     return nothing
 end
 
 """
-    h1_at_r(plan::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,a::Float64,b::Float64)
+    h1_at_r(plan1,pidx,t,r)
 
-Evaluate `H₁^(1)` at one fixed distance for a single complex wavenumber using
-the scaled-Hankel Chebyshev plan, returning the unscaled value directly.
+Evaluate the unscaled outgoing Hankel function `H₁^(1)(k r)` at one fixed
+distance using an order-one Chebyshev plan.
 
-    H1x(z) = exp(-i z) H₁^(1)(z),
+## Arguments
+* `plan1`: Order-one outgoing Hankel plan.
+* `pidx`: Hankel panel index, with `0` selecting the direct/low-z fallback.
+* `t`: Local Chebyshev coordinate.
+* `r`: Physical distance.
 
-with `z = k r`.
-
-For the interpolated regime, the function evaluates the stored Chebyshev
-approximation to `H1x(k r)` and then restores the unscaled Hankel value by
-multiplying with
-
-    exp(i k r).
-
-Near zero, it switches to the small-argument series or direct special-function
-evaluation.
-
-# Arguments
-- `plan::ChebHankelPlanH1x`:
-  Chebyshev plan for the scaled Hankel function `H1x`.
-- `pidx::Int32`:
-  Panel index containing the current distance. If `pidx==0`, the evaluation is
-  taken from the near-zero patch instead of the Chebyshev panels.
-- `t::Float64`:
-  Local Chebyshev coordinate in the active panel.
-- `invsqrt::Float64`:
-  The factor `1/sqrt(r)` used to undo the radial regularization stored in the
-  plan coefficients.
-- `r::Float64`:
-  Distance at which to evaluate the Hankel function.
-- `a::Float64`:
-  Real part of the complex wavenumber `k`.
-- `b::Float64`:
-  Imaginary part of the complex wavenumber `k`.
-
-# Returns
-- `ComplexF64`
+## Returns
+`H₁^(1)(k r)`.
 """
-@inline function h1_at_r(plan::ChebHankelPlanH1x,pidx::Int32,t::Float64,invsqrt::Float64,r::Float64,a::Float64,b::Float64)
-    phase=_exp_ikr(a,b,r)
-    z=ComplexF64(plan.k)*r
-    az=abs(z)
-    if az<hankel_z_chebyshev_cutoff_small_z
-        return phase*_small_h1_series(z)
-    elseif az<hankel_z_chebyshev_cutoff || pidx==0
-        return phase*SpecialFunctions.hankelh1(1,z)
-    else
-        return phase*_cheb_clenshaw(plan.panels[pidx].c1,t)*invsqrt
-    end
+@inline function h1_at_r(plan1::ChebHankelPlanH,pidx::Int32,t::Float64,r::Float64)
+    return eval_h(plan1,pidx,t,r)
 end
 
 ##################################################################
