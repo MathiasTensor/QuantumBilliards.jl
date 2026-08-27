@@ -65,7 +65,7 @@
 #   R. Kress, "Boundary Integral Equations in Time-Harmonic Acoustic
 #   Scattering," Mathl. Comput. Modelling 15(3-5), 229-243 (1991).
 ################################################################################
-
+const INV_TWO_PI=1/(2*pi)
 """
     DLPKressBlockCache{T} where {T<:Real}
 
