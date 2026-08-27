@@ -17,7 +17,7 @@ unit tangent and not a derivative with respect to arclength.
 ## Returns
 * `tangents`: First parameter derivative at each value in `ts`.
 """
-function tangent(crv::BilliardGeometry.AbsCurve,ts::AbstractArray)
+function tangent(crv::BilliardGeometry.AbsCurve,ts::AbstractArray{<:Real})
     return [tangent(crv,t) for t in ts]
 end
 
@@ -37,7 +37,7 @@ For a parametrized boundary `r(t)`, `tangent_2(crv,t)` denotes the derivative
 ## Returns
 * `tangents_2`: Second parameter derivative at each value in `ts`.
 """
-function tangent_2(crv::BilliardGeometry.AbsCurve,ts::AbstractArray)
+function tangent_2(crv::BilliardGeometry.AbsCurve,ts::AbstractArray{<:Real})
     return [tangent_2(crv,t) for t in ts]
 end
 
@@ -57,7 +57,7 @@ For `r(t)=p₀+t(p₁-p₀)`, the derivative is constant,
 ## Returns
 * `dr`: Constant first parameter derivative of the line.
 """
-@inline function tangent(line::L,t) where {L<:BilliardGeometry.AbsLine}
+@inline function tangent(line::L,t::Real) where {L<:BilliardGeometry.AbsLine}
     return line.pt1-line.pt0
 end
 
@@ -77,7 +77,7 @@ Because a line segment is affine in its curve parameter,
 ## Returns
 * `ddr`: Zero vector with the same coordinate type as the line.
 """
-@inline function tangent_2(line::L,t) where {L<:BilliardGeometry.AbsLine}
+@inline function tangent_2(line::L,t::Real) where {L<:BilliardGeometry.AbsLine}
     return zero(line.pt0)
 end
 
@@ -105,7 +105,7 @@ the derivative is
 ## Returns
 * `dr`: First parameter derivative `dr/dt`.
 """
-@inline function tangent(circle::L,t) where {L<:BilliardGeometry.CircleSegment}
+@inline function tangent(circle::L,t::Real) where {L<:BilliardGeometry.CircleSegment}
     phi=circle.arc_angle*t+circle.shift_angle
     Ra=circle.radius*circle.arc_angle
     return SVector(-Ra*sin(phi),Ra*cos(phi))
@@ -127,7 +127,7 @@ For `phi(t)=shift_angle+arc_angle*t`,
 ## Returns
 * `ddr`: Second parameter derivative `d²r/dt²`.
 """
-@inline function tangent_2(circle::L,t) where {L<:BilliardGeometry.CircleSegment}
+@inline function tangent_2(circle::L,t::Real) where {L<:BilliardGeometry.CircleSegment}
     phi=circle.arc_angle*t+circle.shift_angle
     Ra2=circle.radius*circle.arc_angle^2
     return SVector(-Ra2*cos(phi),-Ra2*sin(phi))
