@@ -112,6 +112,8 @@ export CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners
 export CFIEKressWorkspace,build_cfie_kress_workspace,build_Rmat_kress,cfie_reduced_orbit_size
 export construct_matrices_reduced!,construct_matrices_reduced_deriv!
 
+include("solvers/sweepmethods.jl")
+
 # Chebyshev core
 include("chebyshev/chebyshev_core.jl")
 export _cheb_clenshaw,_chebfit!,_breaks_uniform
