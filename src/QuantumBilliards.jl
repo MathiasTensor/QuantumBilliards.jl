@@ -24,6 +24,7 @@ using BilliardGeometry
 # abstract types
 include("abstracttypes.jl")
 export CoordinateSystem,AbsBasis,AbsSolver,AbsPoints,SweepSolver,AcceleratedSolver,AbsState,StationaryState,CFIE
+include("utils/special_function_calls.jl")
 
 # utilities
 include("utils/macros.jl")
