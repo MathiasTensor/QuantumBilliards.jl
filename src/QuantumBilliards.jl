@@ -196,9 +196,6 @@ export Eigenstate,BasisState,compute_eigenstate
 
 include("states/boundary_and_layer_density_functions.jl")
 export regularize!,boundary_function,momentum_function,symmetrize_layer_density
-export periodic_derivative_t,tangential_derivative_density
-export slp_boundary_kress,hypersingular_maue_kress,boundary_function_hypersingular_part
-export adjoint_K_from_dlp_matrix,adjoint_K_action_from_dlp_matrix,cfie_kress_adjoint_K_action
 
 include("states/wavefunctions.jl")
 export boundary_limits,wavefunction,wavefunctions,compute_psi

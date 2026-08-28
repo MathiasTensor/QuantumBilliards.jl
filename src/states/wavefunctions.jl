@@ -79,7 +79,7 @@ end
     n,M,_,_,plans0,_,_,_,errs,_,_,_=chebyshev_params(solver,pts,zj;tol=tol,verbose=verbose)
     return n,M,plans0,errs
 end
-@inline function _cfie_wavefunction_chebyshev_plans(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};tol::Real=1e-8,verbose::Bool=false) where {T<:Real}
+@inline function _cfie_wavefunction_chebyshev_plans(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},zj::AbstractVector{Complex{T}};tol::Real=1e-8,verbose::Bool=false) where {T<:Real}
     n,M,_,_,plans0,plans1,_,_,err0,err1,_,_=chebyshev_params(solver,pts,zj;tol=tol,verbose=verbose)
     plans=[CFIEWavefunctionChebPlan(plans0[i],plans1[i]) for i in eachindex(zj)]
     return n,M,plans,err0,err1
@@ -234,25 +234,31 @@ struct CFIEWavefunctionCache{T<:Real}
     w::Vector{T}      # parameter-space quadrature weights dt
 end
 
-function CFIEWavefunctionCache(pts::BoundaryPoints{T}) where {T<:Real}
-    N=length(pts.xy)
+function CFIEWavefunctionCache(pts::Vector{BoundaryPoints{T}}) where {T<:Real}
+    N=sum(length,pts)
     x=Vector{T}(undef,N)
     y=Vector{T}(undef,N)
     tx=Vector{T}(undef,N)
     ty=Vector{T}(undef,N)
     sj=Vector{T}(undef,N)
-    @inbounds for j in 1:N
-        q=pts.xy[j]
-        t=pts.tangent[j]
-        txj=t[1]
-        tyj=t[2]
-        x[j]=q[1]
-        y[j]=q[2]
-        tx[j]=txj
-        ty[j]=tyj
-        sj[j]=sqrt(txj*txj+tyj*tyj) # |γ'(t)|
+    w=Vector{T}(undef,N)
+    g=1
+    @inbounds for p in pts
+        for j in eachindex(p.xy)
+            q=p.xy[j]
+            t=p.tangent[j]
+            txj=t[1]
+            tyj=t[2]
+            x[g]=q[1]
+            y[g]=q[2]
+            tx[g]=txj
+            ty[g]=tyj
+            sj[g]=hypot(txj,tyj)
+            w[g]=p.ws[j]
+            g+=1
+        end
     end
-    return CFIEWavefunctionCache(x,y,tx,ty,sj,copy(pts.ws))
+    return CFIEWavefunctionCache(x,y,tx,ty,sj,w)
 end
 
 """
@@ -341,7 +347,7 @@ factor is irrelevant after wavefunction normalization.
 end
 
 """
-    wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::Vector{<:BoundaryPoints{T}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real} → Tuple
+    wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real} → Tuple
 
 Reconstruct a batch of CFIE eigenfunctions on a common Cartesian grid.
 
@@ -371,11 +377,12 @@ wavenumber on that common interval.
 * `x_grid::Vector{T}`: Common x grid.
 * `y_grid::Vector{T}`: Common y grid.
 """
-function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::Vector{<:BoundaryPoints{T}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
+function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     kmax,idx_max=findmax(ks)
-    L=sum(crv.length for crv in billiard.full_boundary)
+    L=boundary_length(billiard.full_boundary)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
-    xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
+    outer=_boundary_components(billiard.full_boundary)[1]
+    xlim,ylim=boundary_limits(outer;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
     dy=ylim[2]-ylim[1]
     nx=max(round(Int,kmax*dx*b/(2*pi)),512)
@@ -391,8 +398,11 @@ function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_gl
     nstates=length(ks)
     Psi2ds=Vector{Matrix{Complex{T}}}(undef,nstates)
     caches=Vector{CFIEWavefunctionCache{T}}(undef,nstates)
+    μ_full=Vector{Vector{Complex{T}}}(undef,nstates)
     @inbounds for i in 1:nstates
-        caches[i]=CFIEWavefunctionCache(vec_pts[i])
+        ptsi,μi=symmetrize_layer_density(solver,vec_μ[i],vec_pts[i],billiard)
+        caches[i]=CFIEWavefunctionCache(ptsi)
+        μ_full[i]=Complex{T}.(μi)
     end
     if use_chebyshev
         zj=Complex{T}.(ks)
@@ -407,7 +417,7 @@ function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_gl
     @inbounds for i in eachindex(ks)
         k=ks[i]
         cache=caches[i]
-        μ=vec_μ[i]
+        μ=μ_full[i]
         fill!(Psi_flat,zero(Complex{T}))
         Threads.@threads :static for t in 1:NT_eff
             lo=(t-1)*q+min(t-1,r)+1
