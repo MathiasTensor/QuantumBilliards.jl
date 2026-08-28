@@ -397,10 +397,7 @@ wavenumber on that common interval.
 function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     kmax,idx_max=findmax(ks)
     outer_bdry=_boundary_components(billiard.full_boundary)[1]
-    L=0
-    for bdry in outer_bdry
-        L+=sum(c.length for c in bdry)
-    end
+    L=sum(c.length for c in outer_bdry)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     xlim,ylim=boundary_limits(outer_bdry;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
