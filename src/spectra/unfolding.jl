@@ -147,6 +147,35 @@ function area(curves::AbstractVector{<:BilliardGeometry.AbsCurve};rtol=1e-10)
 end
 
 """
+    area(components::AbstractVector{<:AbstractVector{<:BilliardGeometry.AbsCurve}};rtol=1e-10)
+
+Return the geometric area of a multiply connected planar domain.
+
+The first connected boundary component is interpreted as the outer boundary and
+all subsequent components as holes. The area of each component is evaluated
+independently using Green's theorem and the hole areas are subtracted,
+
+    A = A_outer - Σₕ A_h.
+
+## Arguments
+* `components::AbstractVector{<:AbstractVector{<:BilliardGeometry.AbsCurve}}`: Connected physical boundary components, with the outer boundary first and holes following.
+
+## Keyword Arguments
+* `rtol::Real=1e-10`: Relative tolerance used by the Green-theorem quadrature.
+
+## Returns
+* `A`: Physical area enclosed by the outer boundary with all hole areas removed.
+"""
+function area(components::AbstractVector{<:AbstractVector{<:BilliardGeometry.AbsCurve}};rtol=1e-10)
+    isempty(components)&&return 0.0
+    A=area(first(components);rtol=rtol)
+    @inbounds for comp in @view components[2:end]
+        A-=area(comp;rtol=rtol)
+    end
+    return A
+end
+
+"""
     area(billiard::BilliardGeometry.AbsBilliard;kwargs...)
 
 Return the area of the complete physical billiard.
