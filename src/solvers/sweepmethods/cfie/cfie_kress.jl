@@ -197,7 +197,7 @@ Constructs a smooth periodic Kress combined-field solver.
 ## Returns
 * `solver`: Configured [`CFIE_kress`](@ref) instance.
 """
-function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
+function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=200,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[BilliardGeometry.LinearNodes()]
     Sym=typeof(symmetry)
@@ -205,7 +205,7 @@ function CFIE_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=
 end
 
 """
-    CFIE_kress_corners(pts_scaling_factor,billiard;min_pts=20,eps=1e-15,symmetry=nothing,kressq=4,min_t_spacing=1e-12) → solver::CFIE_kress_corners
+    CFIE_kress_corners(pts_scaling_factor,billiard;min_pts=200,eps=1e-15,symmetry=nothing,kressq=2,min_t_spacing=1e-12) → solver::CFIE_kress_corners
 
 Constructs a single-curve corner-graded Kress combined-field solver.
 
@@ -228,7 +228,7 @@ For `Float64`, values of `kressq` substantially larger than `4` should be used
 with care because the graded nodes may become indistinguishable at machine
 precision.
 """
-function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
+function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=200,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=2,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[BilliardGeometry.LinearNodes()]
     Sym=typeof(symmetry)
@@ -236,7 +236,7 @@ function CFIE_kress_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;
 end
 
 """
-    CFIE_kress_global_corners(pts_scaling_factor,billiard;min_pts=20,eps=1e-15,symmetry=nothing,kressq=4,min_t_spacing=1e-12) → solver::CFIE_kress_global_corners
+    CFIE_kress_global_corners(pts_scaling_factor,billiard;min_pts=200,eps=1e-15,symmetry=nothing,kressq=2,min_t_spacing=1e-12) → solver::CFIE_kress_global_corners
 
 Constructs a globally graded Kress combined-field solver for composite boundary
 components.
@@ -255,7 +255,7 @@ components.
 ## Returns
 * `solver`: Configured [`CFIE_kress_global_corners`](@ref) instance.
 """
-function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
+function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=200,eps=T(1e-15),symmetry::Union{Nothing,AbsSymmetry}=nothing,kressq=2,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[BilliardGeometry.LinearNodes()]
     Sym=typeof(symmetry)
