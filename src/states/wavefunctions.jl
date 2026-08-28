@@ -401,7 +401,6 @@ function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_gl
     for bdry in outer_bdry
         L+=sum(c.length for c in bdry)
     end
-    L=boundary_length(billiard.full_boundary)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     xlim,ylim=boundary_limits(outer_bdry;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
