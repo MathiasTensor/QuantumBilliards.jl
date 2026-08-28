@@ -604,8 +604,10 @@ Composite multi-segment components require
 """
 function evaluate_points(solver::Union{CFIE_kress{T},CFIE_kress_corners{T}},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     comps=_boundary_components(billiard.full_boundary)
+    isempty(comps)&&error("Boundary cannot be empty.")
     pts=Vector{BoundaryPoints{T}}(undef,length(comps))
     for (idx,comp) in enumerate(comps)
+        isempty(comp)&&error("Boundary component cannot be empty.")
         length(comp)==1||error("Periodic Kress requires each boundary component to be represented by one closed curve. Use CFIE_kress_global_corners for composite components.")
         p=_evaluate_points(solver,comp[1],k,idx)
         pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
@@ -641,25 +643,13 @@ components are treated globally and graded only when true corners are detected.
 * `pts`: Vector of [`BoundaryPoints`](@ref), one per connected component.
 """
 function evaluate_points(solver::CFIE_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
-    boundary=billiard.full_boundary
-    isempty(boundary)&&error("Boundary cannot be empty.")
-    if length(boundary)==1&&!(boundary[1] isa AbstractVector)
-        base=CFIE_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
-        return [_evaluate_points(base,boundary[1],k,1)]
-    end
-    if _is_single_composite_boundary(boundary)
-        return [_evaluate_points(solver,boundary,k,1)]
-    end
-    comps=_boundary_components(boundary)
+    comps=_boundary_components(billiard.full_boundary)
+    isempty(comps)&&error("Boundary cannot be empty.")
     pts=Vector{BoundaryPoints{T}}(undef,length(comps))
+    base=CFIE_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
     for (idx,comp) in enumerate(comps)
         isempty(comp)&&error("Boundary component cannot be empty.")
-        p=if length(comp)==1
-            base=CFIE_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
-            _evaluate_points(base,comp[1],k,idx)
-        else
-            _evaluate_points(solver,comp,k,idx)
-        end
+        p=length(comp)==1 ? _evaluate_points(base,comp[1],k,idx) : _evaluate_points(solver,comp,k,idx)
         pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
     end
     return pts

@@ -227,6 +227,11 @@ end
     return Ltot
 end
 
+# since we will need future compatibility for holes, these need to be added (for CFIE)
+@inline _boundary_components(boundary::AbstractVector{<:BilliardGeometry.AbsCurve})=[boundary]
+@inline _boundary_components(boundary::AbstractVector{<:AbstractVector{<:BilliardGeometry.AbsCurve}})=boundary
+@inline _is_single_composite_boundary(boundary)=length(_boundary_components(boundary))==1
+
 """
     _evaluate_points(
         solver::DLP_kress{T},
@@ -408,13 +413,11 @@ single curve.
 function evaluate_points(solver::DLP_kress{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     boundary=billiard.full_boundary
     isempty(boundary)&&error("Boundary cannot be empty.")
-    if length(boundary)==1&&!(boundary[1] isa AbstractVector)
-        return _evaluate_points(solver,boundary[1],k,1)
-    end
-    if _is_single_composite_boundary(boundary)
-        error("DLP_kress requires a single smooth closed curve. This boundary is piecewise/composite; use DLP_kress_global_corners instead.")
-    end
-    error("DLP_kress supports exactly one smooth outer boundary component. Geometries with holes or multiple closed components require a multiply-connected boundary-integral formulation.")
+    comps=_boundary_components(boundary)
+    length(comps)==1||error("DLP_kress supports exactly one smooth outer boundary component. Geometries with holes or multiple closed components require a multiply-connected boundary-integral formulation.")
+    comp=comps[1]
+    length(comp)==1||error("DLP_kress requires a single smooth closed curve. This boundary is piecewise/composite; use DLP_kress_global_corners instead.")
+    return _evaluate_points(solver,comp[1],k,1)
 end
 
 """
@@ -442,15 +445,14 @@ corners are present.
 function evaluate_points(solver::DLP_kress_global_corners{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     boundary=billiard.full_boundary
     isempty(boundary)&&error("Boundary cannot be empty.")
-    if length(boundary)==1&&!(boundary[1] isa AbstractVector)
-        crv=boundary[1]
+    comps=_boundary_components(boundary)
+    length(comps)==1||error("DLP_kress_global_corners supports exactly one outer boundary component. Multiple closed components require a multiply-connected boundary-integral formulation.")
+    comp=comps[1]
+    if length(comp)==1
         base_solver=DLP_kress(solver.pts_scaling_factor,solver.billiard;min_pts=solver.min_pts,eps=solver.eps,symmetry=solver.symmetry)
-        return _evaluate_points(base_solver,crv,k,1)
+        return _evaluate_points(base_solver,comp[1],k,1)
     end
-    if _is_single_composite_boundary(boundary)
-        return _evaluate_points(solver,boundary,k,1)
-    end
-    error("DLP_kress_global_corners supports exactly one outer boundary component. Multiple closed components require a multiply-connected boundary-integral formulation.")
+    return _evaluate_points(solver,comp,k,1)
 end
 
 """
