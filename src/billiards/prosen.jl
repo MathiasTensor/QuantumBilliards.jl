@@ -49,7 +49,6 @@ function ProsenBilliard(a::T;center=SVector{2,T}(zero(T),zero(T))) where {T<:Rea
         BilliardGeometry.XAxisReflection(),
         BilliardGeometry.YAxisReflection(),
         BilliardGeometry.XYAxisReflection(),
-        BilliardGeometry.NFoldRotation(4,0)
     ]
     return ProsenBilliard{T}(fundamental_domain,full_boundary,symmetries)
 end
