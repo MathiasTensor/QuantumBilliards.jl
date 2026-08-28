@@ -173,7 +173,7 @@ is used to construct one `H₀⁽¹⁾` plan for every wavenumber in the batch.
 """
 function wavefunctions(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:BoundaryPoints{T}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     k_max,idx_max=findmax(ks)
-    L=billiard.length
+    L=sum(crv.length for crv in billiard.full_boundary)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,k_max*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]
@@ -373,7 +373,7 @@ wavenumber on that common interval.
 """
 function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::Vector{<:BoundaryPoints{T}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     kmax,idx_max=findmax(ks)
-    L=billiard.length
+    L=sum(crv.length for crv in billiard.full_boundary)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
     xlim,ylim=boundary_limits(billiard.full_boundary;grd=max(1000,round(Int,kmax*L*b/(2*pi))))
     dx=xlim[2]-xlim[1]

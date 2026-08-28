@@ -43,6 +43,10 @@ include("utils/kress_grading_multi_corner.jl")
 # billiards
 include("billiards/circle.jl")
 export CircleBilliard
+include("billiards/rectangle.jl")
+export RectangleBilliard
+include("billiards/triangle.jl")
+export TriangleBilliard,IsoscelesTriangleBilliard
 
 # basis
 include("basis/planewaves/realplanewaves.jl")
