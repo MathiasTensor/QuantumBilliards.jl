@@ -283,7 +283,7 @@ function symmetrize_layer_density(solver::BoundaryIntegralMethod,layer_density::
     Nfull=length(pts)
     length(layer_density)==Nfull&&return pts,layer_density
     isnothing(solver.symmetry)&&throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected full length $Nfull because no symmetry is active"))
-    Ifund,full_to_fund,full_to_scale,_,_=symmetry_index_orbits(T,pts,solver.symmetry,billiard)
+    Ifund,full_to_fund,full_to_scale,_,_=symmetry_index_orbits(T,pts,solver.symmetry)
     Nred=length(Ifund)
     length(layer_density)==Nred||throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected reduced $Nred or full $Nfull"))
     S=promote_type(N,Complex{T})
@@ -318,7 +318,7 @@ function symmetrize_layer_density(solver::Union{DLP_kress,DLP_kress_global_corne
     Nfull=length(pts)
     length(layer_density)==Nfull&&return pts,layer_density
     isnothing(solver.symmetry)&&throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected full length $Nfull because no symmetry is active"))
-    Ifund,full_to_fund,full_to_scale,_,_=symmetry_index_orbits(T,pts,solver.symmetry,billiard)
+    Ifund,full_to_fund,full_to_scale,_,_=symmetry_index_orbits(T,pts,solver.symmetry)
     Nred=length(Ifund)
     length(layer_density)==Nred||throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected reduced $Nred or full $Nfull"))
     S=promote_type(N,Complex{T})

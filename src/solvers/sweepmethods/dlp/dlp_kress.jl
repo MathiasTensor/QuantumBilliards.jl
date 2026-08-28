@@ -146,7 +146,7 @@ function DLP_kress(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=2
     return DLP_kress{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
 end
 
-function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,BilliardGeometry.AbsSymmetry}=nothing,kressq=4,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
+function DLP_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billiard::Bi;min_pts=20,eps=T(1e-15),symmetry::Union{Nothing,BilliardGeometry.AbsSymmetry}=nothing,kressq=2,min_t_spacing=1e-12) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[BilliardGeometry.LinearNodes()]
     Sym=typeof(symmetry)
