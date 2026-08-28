@@ -47,6 +47,10 @@ include("billiards/rectangle.jl")
 export RectangleBilliard
 include("billiards/triangle.jl")
 export TriangleBilliard,IsoscelesTriangleBilliard
+include("billiards/limacon.jl")
+export LimaconBilliard
+include("billiards/prosen.jl")
+export ProsenBilliard
 
 # basis
 include("basis/planewaves/realplanewaves.jl")
