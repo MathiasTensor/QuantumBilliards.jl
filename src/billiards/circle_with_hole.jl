@@ -116,7 +116,7 @@ function CircleStarBilliard(R_outer::T,R_inner::T,a::T,n::Int;center=SVector{2,T
         BilliardGeometry.AbsCurve[outer],
         BilliardGeometry.AbsCurve[inner]
     ]
-    symmetries=BilliardGeometry.AbsSymmetry[BilliardGeometry.XAxisReflection(),BilliardGeometry.Cn_symmetry(n)...]
+    symmetries=BilliardGeometry.AbsSymmetry[]
     if iseven(n)
         push!(symmetries,BilliardGeometry.YAxisReflection())
         push!(symmetries,BilliardGeometry.XYAxisReflection())
