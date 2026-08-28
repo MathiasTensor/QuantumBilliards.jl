@@ -394,7 +394,7 @@ wavenumber on that common interval.
 * `x_grid::Vector{T}`: Common x grid.
 * `y_grid::Vector{T}`: Common y grid.
 """
-function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
+function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ,vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     kmax,idx_max=findmax(ks)
     outer_bdry=_boundary_components(billiard.full_boundary)[1]
     L=sum(c.length for c in outer_bdry)
