@@ -8,6 +8,21 @@ function rectify_grid(grid)
     return grid
 end
 
+# helper to determine based on the fundamental_domain kwarg if the points are inside the billiard or not
+@inline function inside_mask(billiard::Bi,pts;fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard}
+    fundamental_domain&&return BilliardGeometry.is_inside(billiard,pts)
+    comps=_boundary_components(billiard.full_boundary)
+    isempty(comps)&&return fill(false,length(pts))
+    outer=comps[1]
+    mask=[all(BilliardGeometry.is_inside(crv,pt) for crv in outer) for pt in pts]
+    @inbounds for comp in comps[2:end]
+        for i in eachindex(pts)
+            mask[i]&&all(BilliardGeometry.is_inside(crv,pts[i]) for crv in comp)&&(mask[i]=false)
+        end
+    end
+    return mask
+end
+
 ###########################################################################
 ###################### SLP CHEBYSHEV H0 TUNER ############################
 ###########################################################################
@@ -165,13 +180,14 @@ is used to construct one `H₀⁽¹⁾` plan for every wavenumber in the batch.
 * `use_chebyshev::Bool=true`: Use Chebyshev-interpolated `H₀⁽¹⁾`.
 * `tol_cheb::Real=1e-8`: Chebyshev interpolation tolerance.
 * `cheb_verbose::Bool=true`: Print Chebyshev tuning diagnostics.
+* `fundamental_domain::Bool=true`: Use the fundamental domain for inside/outside masking.
 
 ## Returns
 * `Psi2ds::Vector{Matrix}`: Reconstructed wavefunction matrices.
 * `x_grid::Vector{T}`: Common x grid.
 * `y_grid::Vector{T}`: Common y grid.
 """
-function wavefunctions(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:BoundaryPoints{T}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
+function wavefunctions(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners},ks::Vector{T},vec_us::Vector{<:AbstractVector},vec_bdPoints::Vector{<:BoundaryPoints{T}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,use_float_32::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     k_max,idx_max=findmax(ks)
     L=sum(crv.length for crv in billiard.full_boundary)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
@@ -183,7 +199,7 @@ function wavefunctions(solver::Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_
     x_grid=collect(T,range(xlim...,nx))
     y_grid=collect(T,range(ylim...,ny))
     pts=[SVector(x,y) for y in y_grid for x in x_grid]
-    pts_mask=inside_only ? BilliardGeometry.is_inside(billiard,pts) : fill(true,length(pts))
+    pts_mask=inside_only ? inside_mask(billiard,pts;fundamental_domain=fundamental_domain) : fill(true,length(pts))
     pts_masked_indices=findall(pts_mask)
     if use_chebyshev
         zj=Complex{T}.(ks)
@@ -371,13 +387,14 @@ wavenumber on that common interval.
 * `use_chebyshev::Bool=true`: Use Chebyshev-interpolated Hankel functions.
 * `tol_cheb::Real=1e-8`: Chebyshev interpolation tolerance.
 * `cheb_verbose::Bool=true`: Print Chebyshev tuning diagnostics.
+* `fundamental_domain::Bool=true`: Use the fundamental domain for inside/outside masking.
 
 ## Returns
 * `Psi2ds::Vector{Matrix{Complex{T}}}`: Normalized complex wavefunctions.
 * `x_grid::Vector{T}`: Common x grid.
 * `y_grid::Vector{T}`: Common y grid.
 """
-function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
+function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     kmax,idx_max=findmax(ks)
     L=boundary_length(billiard.full_boundary)
     b=b==:auto ? (typeof(solver.pts_scaling_factor)<:Real ? solver.pts_scaling_factor : solver.pts_scaling_factor[1]) : b
@@ -390,7 +407,7 @@ function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_gl
     x_grid=collect(T,range(xlim[1],xlim[2],length=nx))
     y_grid=collect(T,range(ylim[1],ylim[2],length=ny))
     pts=[SVector(x,y) for y in y_grid for x in x_grid]
-    pts_mask=inside_only ? BilliardGeometry.is_inside(billiard,pts) : fill(true,length(pts))
+    pts_mask=inside_only ? inside_mask(billiard,pts;fundamental_domain=fundamental_domain) : fill(true,length(pts))
     pts_masked_indices=findall(pts_mask)
     nmask=length(pts_masked_indices)
     NT=Threads.nthreads()
