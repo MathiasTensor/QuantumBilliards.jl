@@ -504,22 +504,22 @@ end
 Store a merged real spectrum without basis coefficient vectors.
 
 ## Attributes
-* `k::Vector{T}`: Retained real wavenumbers.
-* `ten::Vector{T}`: Corresponding tensions.
+* `ks::Vector{T}`: Retained real wavenumbers.
+* `tens::Vector{T}`: Corresponding tensions.
 * `control::Vector{Bool}`: `true` for states selected while resolving an overlap.
 * `k_min::T`: Minimum retained wavenumber.
 * `k_max::T`: Maximum retained wavenumber.
 """
 struct SpectralData{T}
-    k::Vector{T}
-    ten::Vector{T}
+    ks::Vector{T}
+    tens::Vector{T}
     control::Vector{Bool}
     k_min::T
     k_max::T
 end
 
 """
-    SpectralData(k::Vector{T},ten::Vector{T},control::Vector{Bool}) where {T<:Real} → SpectralData{T}
+    SpectralData(ks::Vector{T},tens::Vector{T},control::Vector{Bool}) where {T<:Real} → SpectralData{T}
 
 Construct [`SpectralData`](@ref) and cache the minimum and maximum retained
 wavenumbers.
