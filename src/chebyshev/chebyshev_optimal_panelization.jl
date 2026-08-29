@@ -13,7 +13,7 @@
 # so the user does not need to know the actual :Symbol
 @inline chebyshev_kind(::BoundaryIntegralMethod)=Val(:dlp)
 @inline chebyshev_kind(::Union{DLP_kress,DLP_kress_global_corners})=Val(:dlp_kress)
-@inline chebyshev_kind(::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners})=Val(:cfie_kress)
+@inline chebyshev_kind(::CFIE)=Val(:cfie_kress)
 
 # common API so that e.g. Beyn and EBIM can call the same function to construct the boundary matrices for any solver type
 @inline function construct_boundary_matrices!(Tbufs::Vector{Matrix{Complex{T}}},solver,pts,zj::AbstractVector{Complex{T}};multithreaded::Bool=true,use_chebyshev::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
@@ -218,7 +218,7 @@ end
 ######## KRESS H0/H1/J0/J1 TUNER #######
 ########################################
 """
-    chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts,zj;...)
+    chebyshev_params(solver::CFIE,pts,zj;...)
 
 Determine suitable Chebyshev panel counts and polynomial degrees for the
 `H₀⁽¹⁾`, `H₁⁽¹⁾`, `J₀`, and `J₁` functions used by the Kress backends.
@@ -262,11 +262,11 @@ A tuple
 containing the final Hankel and Bessel-J interpolation parameters, the four plan
 collections, and the corresponding per-wavenumber maximum validation errors.
 """
-function chebyshev_params(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,DLP_kress,DLP_kress_global_corners},pts::Union{Vector{BoundaryPoints{T}},BoundaryPoints{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::CFIE,pts::Union{Vector{BoundaryPoints{T}},BoundaryPoints{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
     rmin_cheb=maximum(hankel_z_chebyshev_cutoff./abs.(zj))
     ptsv=pts isa Vector ? pts : [pts]
     pts1=((pts isa Vector)&(solver isa Union{DLP_kress,DLP_kress_global_corners})) ? (length(pts)==1 ? pts[1] : error("DLP_kress expects one BoundaryPoints component.")) : pts
-    block_cache=solver isa Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners} ? build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb) : build_dlp_kress_block_cache(solver,pts1;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
+    block_cache=solver isa CFIE ? build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb) : build_dlp_kress_block_cache(solver,pts1;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
     rmin_h=Float64(block_cache.rmin)
     rmax=Float64(block_cache.rmax)
     rmin_h<rmax||throw(ArgumentError("Empty Kress Hankel interpolation interval: rmin=$rmin_h, rmax=$rmax"))
