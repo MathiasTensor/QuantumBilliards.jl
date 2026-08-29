@@ -94,7 +94,7 @@ end
     n,M,_,_,plans0,_,_,_,errs,_,_,_=chebyshev_params(solver,pts,zj;tol=tol,verbose=verbose)
     return n,M,plans0,errs
 end
-@inline function _cfie_wavefunction_chebyshev_plans(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},zj::AbstractVector{Complex{T}};tol::Real=1e-8,verbose::Bool=false) where {T<:Real}
+@inline function _cfie_wavefunction_chebyshev_plans(solver::CFIE,pts::Vector{BoundaryPoints{T}},zj::AbstractVector{Complex{T}};tol::Real=1e-8,verbose::Bool=false) where {T<:Real}
     n,M,_,_,plans0,plans1,_,_,err0,err1,_,_=chebyshev_params(solver,pts,zj;tol=tol,verbose=verbose)
     plans=[CFIEWavefunctionChebPlan(plans0[i],plans1[i]) for i in eachindex(zj)]
     return n,M,plans,err0,err1
@@ -356,7 +356,7 @@ factor is irrelevant after wavefunction normalization.
 end
 
 """
-    wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real} → Tuple
+    wavefunctions(solver::CFIE,ks::Vector{T},vec_μ::Vector{<:AbstractVector{Complex{T}}},vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real} → Tuple
 
 Reconstruct a batch of CFIE eigenfunctions on a common Cartesian grid.
 
@@ -366,7 +366,7 @@ The Chebyshev radial bounds are obtained once from `vec_pts[idx_max]`, where
 wavenumber on that common interval.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE Kress solver.
+* `solver::CFIE`: CFIE Kress solver.
 * `ks::Vector{T}`: Wavenumbers.
 * `vec_μ::Vector{<:AbstractVector{Complex{T}}}`: CFIE layer densities.
 * `vec_pts::Vector{<:BoundaryPoints{T}}`: Boundary discretizations, one per state.
@@ -387,7 +387,7 @@ wavenumber on that common interval.
 * `x_grid::Vector{T}`: Common x grid.
 * `y_grid::Vector{T}`: Common y grid.
 """
-function wavefunctions(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},ks::Vector{T},vec_μ,vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
+function wavefunctions(solver::CFIE,ks::Vector{T},vec_μ,vec_pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;b::Union{Real,Symbol}=:auto,inside_only::Bool=true,MIN_CHUNK::Int=4096,float32_bessel::Bool=true,use_chebyshev::Bool=true,tol_cheb::Real=1e-8,cheb_verbose::Bool=true,fundamental_domain::Bool=true) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     kmax,idx_max=findmax(ks)
     outer_bdry=_boundary_components(billiard.full_boundary)[1]
     L=sum(c.length for c in outer_bdry)

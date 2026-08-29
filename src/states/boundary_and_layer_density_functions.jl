@@ -344,7 +344,7 @@ function symmetrize_layer_density(solver::Union{DLP_kress,DLP_kress_global_corne
 end
 
 # Internal workspace overload used when the CFIE workspace already exists.
-function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners},layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T}) where {N<:Number,T<:Real}
+function symmetrize_layer_density(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T}) where {N<:Number,T<:Real}
     Nfull=ws.Ntot
     length(layer_density)==Nfull&&return pts,layer_density
     isnothing(solver.symmetry)&&throw(DimensionMismatch("Boundary data has length $(length(layer_density)); expected full length $Nfull because no symmetry is active"))
@@ -361,7 +361,7 @@ function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_cor
 end
 
 """
-    symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners},layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
+    symmetrize_layer_density(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
 
 Expand a symmetry-reduced CFIE-Kress layer density onto the complete physical
 boundary. `pts` contains one `BoundaryPoints` object per connected boundary
@@ -370,17 +370,17 @@ global boundary ordering.
 
 Full-length input is returned unchanged.
 """
-function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners},layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function symmetrize_layer_density(solver::CFIE,layer_density::AbstractVector{N},pts::Vector{BoundaryPoints{T}},billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     ws=build_cfie_kress_workspace(solver,pts)
     return symmetrize_layer_density(solver,layer_density,pts,ws)
 end
 
 """
-    symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    symmetrize_layer_density(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
 
 Batch version of CFIE-Kress symmetry expansion.
 """
-function symmetrize_layer_density(solver::Union{CFIE_kress,CFIE_kress_global_corners,CFIE_kress_corners},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function symmetrize_layer_density(solver::CFIE,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:Vector{BoundaryPoints{T}}},billiard::Bi;multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     us_all=Vector{Vector}(undef,length(layer_density))
     @use_threads multithreading=multithreaded for i in eachindex(layer_density)
