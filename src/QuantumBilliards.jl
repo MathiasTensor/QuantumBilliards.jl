@@ -76,6 +76,8 @@ export component_lengths,component_normals,flatten_boundary_components,flatten_b
 export print_component_junctions
 
 # symmetry
+include("states/symmetry/symmetry.jl")
+export DiagonalReflection,AntiDiagonalReflection
 include("states/symmetry/symmetry_orbits.jl")
 export SymmetryOrbitMap,symmetry_index_orbits,symmetry_orbit
 
