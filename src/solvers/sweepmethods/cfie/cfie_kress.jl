@@ -930,10 +930,7 @@ end
 
 Build the global block-diagonal Kress logarithmic correction matrix.
 
-Each connected boundary component is treated independently. Components carrying
-a nontrivial Kress grading use [`kress_R_corner!`](@ref), while uniformly
-parameterized smooth components use [`kress_R!`](@ref).
-
+Each connected boundary component is treated independently.
 Thus
 
     R=diag(R₁,R₂,...,R_nc),
@@ -954,11 +951,7 @@ function build_Rmat_kress(solver::CFIE,pts::Vector{BoundaryPoints{T}}) where {T<
     Rmat=zeros(T,Ntot,Ntot)
     @inbounds for a in eachindex(pts)
         ra=offs[a]:(offs[a+1]-1)
-        if _is_nontrivial_grading(pts[a])
-            kress_R_corner!(@view Rmat[ra,ra])
-        else
-            kress_R!(@view Rmat[ra,ra])
-        end
+        kress_R!(@view Rmat[ra,ra])
     end
     return Rmat
 end

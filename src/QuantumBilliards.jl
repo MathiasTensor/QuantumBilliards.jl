@@ -68,7 +68,7 @@ export resize_basis,basis_fun,dk_fun,gradient,basis_and_gradient
 include("solvers/boundary_points.jl")
 export BoundaryPoints,boundary_matrix_size,boundary_coords,boundary_s,component_offsets
 export points_in_billiard
-export kress_R!,kress_R_even!,kress_R_odd!,kress_R_corner!,kress_R_corner_even!,kress_R_corner_odd!
+export kress_R!,kress_R_even!,kress_R_odd!
 export BoundaryPanelArrays,BoundaryGeomCache,boundary_geom_cache
 export component_lengths,component_normals,flatten_boundary_components,flatten_boundary_ds
 export print_component_junctions

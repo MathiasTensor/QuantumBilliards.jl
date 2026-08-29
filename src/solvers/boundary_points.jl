@@ -548,54 +548,6 @@ function kress_R!(R0::AbstractMatrix{T}) where {T<:Real}
 end
 
 """
-    kress_R_corner_odd!(R0::AbstractMatrix{T}) where {T<:Real}
-
-Constructs the Kress logarithmic correction matrix for an odd-sized
-corner-graded periodic discretization.
-
-## Returns
-* `nothing`.
-"""
-function kress_R_corner_odd!(R0::AbstractMatrix{T}) where {T<:Real}
-    isodd(size(R0,1))||throw(ArgumentError("kress_R_corner_odd! expects odd size"))
-    kress_R_odd!(R0)
-    return nothing
-end
-
-"""
-    kress_R_corner_even!(R0::AbstractMatrix{T}) where {T<:Real}
-
-Constructs the Kress logarithmic correction matrix for an even-sized
-corner-graded periodic discretization.
-
-## Returns
-* `nothing`.
-"""
-function kress_R_corner_even!(R0::AbstractMatrix{T}) where {T<:Real}
-    iseven(size(R0,1))||throw(ArgumentError("kress_R_corner_even! expects even size"))
-    kress_R_even!(R0)
-    return nothing
-end
-
-"""
-    kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
-
-Constructs the Kress logarithmic correction matrix for a corner-graded
-discretization.
-
-## Description
-The appropriate odd or even periodic construction is selected automatically from
-the dimension of `R0`.
-
-## Returns
-* `nothing`.
-"""
-function kress_R_corner!(R0::AbstractMatrix{T}) where {T<:Real}
-    iseven(size(R0,1)) ? kress_R_corner_even!(R0) : kress_R_corner_odd!(R0)
-    return nothing
-end
-
-"""
     BoundaryPanelArrays{T}
 
 Stores one-dimensional coordinate arrays extracted from a parametrized
