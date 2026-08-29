@@ -52,7 +52,7 @@
 @inline symmetry_node_multiple(::BilliardGeometry.YAxisReflection)=4
 @inline symmetry_node_multiple(::BilliardGeometry.XYAxisReflection)=4
 @inline symmetry_node_multiple(::DiagonalReflection)=4
-@inline symmetry_node_multiple(::AntiDiagonalReflection)=4
+@inline symmetry_node_multiple(::AntiDiagonalReflection)=4x
 @inline symmetry_node_multiple(sym::BilliardGeometry.NFoldRotation)=sym.order
 @inline symmetry_node_multiple(syms::AbstractVector{<:BilliardGeometry.NFoldRotation})=isempty(syms) ? 1 : syms[1].order
 
@@ -323,7 +323,7 @@ function symmetry_index_orbits(::Type{T},N::Int,sym::DiagonalReflection) where {
     @inbounds for q in 1:N
         refl[q]=_idx_reflect_diag_plus(q,N)
     end
-    χ=BilliardGeometry.symmetry_irrep_character(T,sym)
+    χ=symmetry_irrep_character(T,sym)
     return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
 end
 
@@ -350,7 +350,7 @@ function symmetry_index_orbits(::Type{T},N::Int,sym::AntiDiagonalReflection) whe
     @inbounds for q in 1:N
         refl[q]=_idx_reflect_diag_minus(q,N)
     end
-    χ=BilliardGeometry.symmetry_irrep_character(T,sym)
+    χ=symmetry_irrep_character(T,sym)
     return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
 end
 
