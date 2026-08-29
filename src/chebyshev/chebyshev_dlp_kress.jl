@@ -155,7 +155,7 @@ function build_dlp_kress_block_cache(solver::Union{DLP_kress,DLP_kress_global_co
     logterm=copy(G.logterm)
     kappa=copy(G.kappa)
     Rkress=zeros(T,N,N)
-    graded ? kress_R_corner!(Rkress) : kress_R!(Rkress)
+    kress_R!(Rkress)
     rmin0=typemax(T)
     rmax0=zero(T)
     @inbounds for j in 1:N,i in 1:N

@@ -260,7 +260,7 @@ function build_cfie_kress_block_caches(solver::CFIE,comps::Vector{BoundaryPoints
             logterm=Ga.logterm
             kappa_i=Ga.kappa
             Rkress=zeros(T,Ni,Ni)
-            _is_nontrivial_grading(pa) ? kress_R_corner!(Rkress) : kress_R!(Rkress)
+            kress_R!(Rkress)
             blocks[a,b]=CFIEKressBlockCache{T}(true,offs[a],offs[b],Ni,Nj,R,invR,inner,speed_i,speed_j,wi,wj,pidx,tloc,pidxj,tlocj,logterm,kappa_i,Rkress)
         else
             Xa=getindex.(pa.xy,1)
