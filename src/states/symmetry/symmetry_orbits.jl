@@ -51,8 +51,8 @@
 @inline symmetry_node_multiple(::BilliardGeometry.XAxisReflection)=4
 @inline symmetry_node_multiple(::BilliardGeometry.YAxisReflection)=4
 @inline symmetry_node_multiple(::BilliardGeometry.XYAxisReflection)=4
-@inline symmetry_node_multiple(::DiagonalReflection)=4
-@inline symmetry_node_multiple(::AntiDiagonalReflection)=4x
+@inline symmetry_node_multiple(::DiagonalReflection)=8
+@inline symmetry_node_multiple(::AntiDiagonalReflection)=8
 @inline symmetry_node_multiple(sym::BilliardGeometry.NFoldRotation)=sym.order
 @inline symmetry_node_multiple(syms::AbstractVector{<:BilliardGeometry.NFoldRotation})=isempty(syms) ? 1 : syms[1].order
 
@@ -186,6 +186,16 @@ function _rotation_orbits(::Type{T},N::Int,sym::BilliardGeometry.NFoldRotation,o
     return _build_periodic_symmetry_orbit_map(T,perms,scales)
 end
 
+function _reflection_orbits(::Type{T},N::Int,χ::Complex{T},idxmap) where {T<:Real}
+    N%4==0||throw(ArgumentError("Reflection symmetry requires N divisible by four; received N=$N"))
+    id=collect(1:N)
+    refl=Vector{Int}(undef,N)
+    @inbounds for q in 1:N
+        refl[q]=idxmap(q,N)
+    end
+    return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
+end
+
 ################################################################################
 ######################## PERIODIC SINGLE-BOUNDARY MAPS #########################
 ################################################################################
@@ -317,14 +327,8 @@ carries the irrep parity stored by `sym`.
 * `orbits::SymmetryOrbitMap{T}`: Orbit map with orbit size `2` and reduced size `N/2`.
 """
 function symmetry_index_orbits(::Type{T},N::Int,sym::DiagonalReflection) where {T<:Real}
-    N%4==0||throw(ArgumentError("DiagonalReflection requires N divisible by four; received N=$N"))
-    id=collect(1:N)
-    refl=Vector{Int}(undef,N)
-    @inbounds for q in 1:N
-        refl[q]=_idx_reflect_diag_plus(q,N)
-    end
     χ=symmetry_irrep_character(T,sym)
-    return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
+    return _reflection_orbits(T,N,χ,_idx_reflect_diag_plus)
 end
 
 """
@@ -344,14 +348,8 @@ carries the irrep parity stored by `sym`.
 * `orbits::SymmetryOrbitMap{T}`: Orbit map with orbit size `2` and reduced size `N/2`.
 """
 function symmetry_index_orbits(::Type{T},N::Int,sym::AntiDiagonalReflection) where {T<:Real}
-    N%4==0||throw(ArgumentError("AntiDiagonalReflection requires N divisible by four; received N=$N"))
-    id=collect(1:N)
-    refl=Vector{Int}(undef,N)
-    @inbounds for q in 1:N
-        refl[q]=_idx_reflect_diag_minus(q,N)
-    end
     χ=symmetry_irrep_character(T,sym)
-    return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
+    return _reflection_orbits(T,N,χ,_idx_reflect_diag_minus)
 end
 
 """
@@ -532,7 +530,13 @@ The resulting local orbit maps are concatenated in flattened boundary order.
 * `orbits::SymmetryOrbitMap{T}`: Global two-element reflection orbit map.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::DiagonalReflection) where {T<:Real}
-    maps=[symmetry_index_orbits(T,p,sym) for p in pts]
+    isempty(pts)&&throw(ArgumentError("Boundary cannot be empty"))
+    χ=symmetry_irrep_character(T,sym)
+    maps=Vector{SymmetryOrbitMap{T}}(undef,length(pts))
+    maps[1]=_reflection_orbits(T,length(pts[1]),χ,_idx_reflect_diag_plus)
+    @inbounds for a in 2:length(pts)
+        maps[a]=_reflection_orbits(T,length(pts[a]),χ,_idx_reflect_diag_minus)
+    end
     return _combine_component_orbits(T,pts,maps)
 end
 
@@ -553,7 +557,13 @@ The resulting local orbit maps are concatenated in flattened boundary order.
 * `orbits::SymmetryOrbitMap{T}`: Global two-element reflection orbit map.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::AntiDiagonalReflection) where {T<:Real}
-    maps=[symmetry_index_orbits(T,p,sym) for p in pts]
+    isempty(pts)&&throw(ArgumentError("Boundary cannot be empty"))
+    χ=symmetry_irrep_character(T,sym)
+    maps=Vector{SymmetryOrbitMap{T}}(undef,length(pts))
+    maps[1]=_reflection_orbits(T,length(pts[1]),χ,_idx_reflect_diag_minus)
+    @inbounds for a in 2:length(pts)
+        maps[a]=_reflection_orbits(T,length(pts[a]),χ,_idx_reflect_diag_plus)
+    end
     return _combine_component_orbits(T,pts,maps)
 end
 
