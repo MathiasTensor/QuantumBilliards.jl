@@ -24,7 +24,7 @@ Practical guidance
 =#
 
 # when adding new ones just put them here and make sure they have construct construct_boundary_matrices! dispatch
-const BeynSolver{T}=Union{BoundaryIntegralMethod{T},CFIE_kress{T},CFIE_kress_corners{T},CFIE_kress_global_corners{T},DLP_kress{T},DLP_kress_global_corners{T}}
+const BeynSolver{T}=Union{BoundaryIntegralMethod{T},CFIE_kress{T},CFIE_kress_corners{T},CFIE_kress_global_corners{T},DLP_kress{T},DLP_kress_global_corners{T},CFIE_kress_composite_solver{T}}
 
 #################
 #### HELPERS ####

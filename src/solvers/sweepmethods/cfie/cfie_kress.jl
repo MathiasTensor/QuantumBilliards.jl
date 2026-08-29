@@ -262,6 +262,96 @@ function CFIE_kress_global_corners(pts_scaling_factor::Union{T,Vector{T}},billia
     return CFIE_kress_global_corners{T,Bi,Sym}(sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry,kressq,min_t_spacing)
 end
 
+"""
+    CFIE_kress_composite_solver{T,Bi,Sym,CS} <: CFIE
+
+Combined-field integral equation solver for multiply connected geometries whose
+connected boundary components require different Kress discretizations.
+
+## Description
+`CFIE_kress_composite_solver` assigns one existing CFIE-Kress solver to each connected
+physical boundary component. This allows, for example,
+
+    outer boundary -> CFIE_kress
+    inner polygon  -> CFIE_kress_global_corners
+
+while assembling one globally coupled CFIE operator
+
+    A(k)=I-(D(k)+ikS(k)).
+
+The component solvers control only the discretization and same-component Kress
+quadrature. Inter-component interactions remain smooth and are evaluated with
+ordinary Nyström quadrature.
+
+The first connected component is interpreted as the outer boundary. Components
+`2:end` are interpreted as holes and are orientation reversed after
+discretization.
+
+## Attributes
+* `component_solvers::CS`: Tuple containing one CFIE solver per connected boundary component.
+* `sampler::Vector{BilliardGeometry.LinearNodes}`: Placeholder sampler retained for the common solver API.
+* `pts_scaling_factor::Vector{T}`: Representative boundary-resolution factors.
+* `dim_scaling_factor::T`: Compatibility field for the generic solver interface.
+* `eps::T`: Numerical tolerance placeholder.
+* `min_dim::Int64`: Compatibility field for the generic solver interface.
+* `min_pts::Int64`: Minimum point count used for generic solver metadata.
+* `billiard::Bi`: Underlying billiard geometry.
+* `symmetry::Sym`: Optional active symmetry descriptor.
+
+## Notes
+The number of component solvers must equal the number of connected components in
+`billiard.full_boundary`.
+
+All component solvers must use the same active symmetry as the composite solver,
+because symmetry-compatible node counts and the global symmetry-orbit map must
+refer to one common representation.
+"""
+struct CFIE_kress_composite_solver{T<:Real,Bi<:BilliardGeometry.AbsBilliard,Sym,CS<:Tuple}<:CFIE
+    component_solvers::CS
+    sampler::Vector{BilliardGeometry.LinearNodes}
+    pts_scaling_factor::Vector{T}
+    dim_scaling_factor::T
+    eps::T
+    min_dim::Int64
+    min_pts::Int64
+    billiard::Bi
+    symmetry::Sym
+end
+
+"""
+    CFIE_kress_composite_solver(component_solvers::Tuple,billiard::Bi;symmetry=nothing) where {Bi<:BilliardGeometry.AbsBilliard} → CFIE_kress_composite_solver
+
+Construct a component-wise CFIE-Kress solver.
+
+## Arguments
+* `component_solvers::Tuple`: One `CFIE` solver for each connected physical boundary component.
+* `billiard::Bi`: Multiply connected billiard geometry.
+
+## Keyword Arguments
+* `symmetry::Union{Nothing,AbsSymmetry}=nothing`: Active global symmetry descriptor.
+
+## Returns
+* `solver::CFIE_kress_composite_solver`: Component-wise CFIE solver.
+
+## Throws
+* `DimensionMismatch`: If the number of component solvers differs from the number of connected boundary components.
+* `ArgumentError`: If a component solver uses a symmetry different from the global symmetry.
+"""
+function CFIE_kress_composite_solver(component_solvers::Tuple,billiard::Bi;symmetry::Union{Nothing,AbsSymmetry}=nothing) where {Bi<:BilliardGeometry.AbsBilliard}
+    comps=_boundary_components(billiard.full_boundary)
+    length(component_solvers)==length(comps)||throw(DimensionMismatch("Received $(length(component_solvers)) component solvers for $(length(comps)) connected boundary components"))
+    all(s->s isa CFIE,component_solvers)||throw(ArgumentError("Every component solver must be a CFIE solver"))
+    for (i,s) in enumerate(component_solvers) # there is still a global symmetry, so all component solvers must use the same symmetry
+        isequal(s.symmetry,symmetry)||throw(ArgumentError("Component solver $i uses symmetry $(s.symmetry), but the composite solver uses symmetry $symmetry"))
+    end
+    T=promote_type(map(s->eltype(s.pts_scaling_factor),component_solvers)...)
+    bs=T[s.pts_scaling_factor[1] for s in component_solvers] # each boundary has its own ppw
+    eps=maximum(T(s.eps) for s in component_solvers)
+    min_pts=maximum(s.min_pts for s in component_solvers)
+    sampler=[BilliardGeometry.LinearNodes()]
+    return CFIE_kress_composite_solver{T,Bi,typeof(symmetry),typeof(component_solvers)}(component_solvers,sampler,bs,bs[1],eps,min_pts,min_pts,billiard,symmetry)
+end
+
 #### Equispaced periodic parameters ####
 @inline s(k::Int,N::Int)=two_pi*k/N
 @inline s_mid(k::Int,N::Int)=two_pi*(k-0.5)/N
@@ -608,7 +698,7 @@ function evaluate_points(solver::Union{CFIE_kress{T},CFIE_kress_corners{T}},bill
     pts=Vector{BoundaryPoints{T}}(undef,length(comps))
     for (idx,comp) in enumerate(comps)
         isempty(comp)&&error("Boundary component cannot be empty.")
-        length(comp)==1||error("Periodic Kress requires each boundary component to be represented by one closed curve. Use CFIE_kress_global_corners for composite components.")
+        length(comp)==1||error("Periodic Kress requires each boundary component to be represented by one closed curve. Use CFIE_kress_global_corners or CFIE_kress_composite_solver for composite components.")
         p=_evaluate_points(solver,comp[1],k,idx)
         pts[idx]=idx==1 ? p : _reverse_component_orientation(solver,p)
     end
@@ -656,6 +746,59 @@ function evaluate_points(solver::CFIE_kress_global_corners{T},billiard::Bi,k::T)
 end
 
 """
+    evaluate_points(solver::CFIE_kress_composite_solver{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard} → pts::Vector{BoundaryPoints{T}}
+
+Construct the boundary discretization of a multiply connected geometry using one
+CFIE-Kress solver for each connected physical boundary component.
+
+Each component is discretized independently by the corresponding entry in
+`solver.component_solvers`. Smooth and single-curve graded solvers require one
+closed curve, while `CFIE_kress_global_corners` handles composite components.
+The first component retains its orientation and components `2:end` are reversed
+to represent holes.
+
+## Arguments
+* `solver::CFIE_kress_composite_solver{T}`: Component-wise CFIE-Kress solver.
+* `billiard::Bi`: Billiard geometry.
+* `k::T`: Real wavenumber controlling boundary resolution.
+
+## Returns
+* `pts::Vector{BoundaryPoints{T}}`: One boundary discretization per connected component.
+
+## Throws
+* `DimensionMismatch`: If the number of component solvers does not match the number of connected physical boundary components.
+* `ArgumentError`: If a component is empty or incompatible with its assigned solver.
+"""
+function evaluate_points(solver::CFIE_kress_composite_solver{T},billiard::Bi,k::T) where {T<:Real,Bi<:BilliardGeometry.AbsBilliard}
+    comps=_boundary_components(billiard.full_boundary)
+    length(comps)==length(solver.component_solvers)||throw(DimensionMismatch("Billiard has $(length(comps)) connected components but composite solver has $(length(solver.component_solvers)) component solvers"))
+    pts=Vector{BoundaryPoints{T}}(undef,length(comps))
+    @inbounds for i in eachindex(comps)
+        comp=comps[i]
+        isempty(comp)&&throw(ArgumentError("Boundary component $i cannot be empty"))
+        s=solver.component_solvers[i]
+        if s isa CFIE_kress
+            length(comp)==1||throw(ArgumentError("CFIE_kress requires boundary component $i to contain exactly one closed smooth curve"))
+            p=_evaluate_points(s,comp[1],k,i)
+        elseif s isa CFIE_kress_corners
+            length(comp)==1||throw(ArgumentError("CFIE_kress_corners requires boundary component $i to contain exactly one closed curve"))
+            p=_evaluate_points(s,comp[1],k,i)
+        elseif s isa CFIE_kress_global_corners
+            if length(comp)==1
+                base=CFIE_kress(s.pts_scaling_factor,s.billiard;min_pts=s.min_pts,eps=s.eps,symmetry=s.symmetry)
+                p=_evaluate_points(base,comp[1],k,i)
+            else
+                p=_evaluate_points(s,comp,k,i)
+            end
+        else
+            throw(ArgumentError("Unsupported component solver $(typeof(s)) for boundary component $i"))
+        end
+        pts[i]=i==1 ? p : _reverse_component_orientation(solver,p)
+    end
+    return pts
+end
+
+"""
     CFIEKressWorkspace{T,M,S}
 
 Reusable geometry and symmetry cache for CFIE-Kress matrix assembly.
@@ -696,27 +839,27 @@ struct CFIEKressWorkspace{T<:Real,M<:AbstractMatrix{T},S}
 end
 
 @inline _cfie_workspace_dim(ws::CFIEKressWorkspace)=isnothing(ws.orbits) ? ws.Ntot : fundamental_size(ws.orbits)
-@inline function boundary_matrix_size(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}}) where {T<:Real}
+@inline function boundary_matrix_size(solver::CFIE,pts::Vector{BoundaryPoints{T}}) where {T<:Real}
     isnothing(solver.symmetry)&&return boundary_matrix_size(pts)
     return fundamental_size(symmetry_index_orbits(T,pts,solver.symmetry))
 end
 
 """
     cfie_reduced_orbit_size(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         pts::Vector{BoundaryPoints{T}},
     ) where {T<:Real} → Int
 
 Return the CFIE matrix dimension after applying the active symmetry reduction.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `pts::Vector{BoundaryPoints{T}}`: Full boundary discretizations.
 
 ## Returns
 * `n::Int`: Full matrix dimension without symmetry or number of fundamental symmetry orbits with symmetry.
 """
-function cfie_reduced_orbit_size(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}}) where {T<:Real}
+function cfie_reduced_orbit_size(solver::CFIE,pts::Vector{BoundaryPoints{T}}) where {T<:Real}
     isnothing(solver.symmetry)&&return boundary_matrix_size(pts)
     return fundamental_size(symmetry_index_orbits(T,pts,solver.symmetry))
 end
@@ -740,7 +883,7 @@ end
 
 """
     build_cfie_kress_workspace(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         pts::Vector{BoundaryPoints{T}},
     ) where {T<:Real} → CFIEKressWorkspace
 
@@ -755,13 +898,13 @@ If symmetry is active, the exact [`SymmetryOrbitMap`](@ref) is also constructed
 and stored.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `pts::Vector{BoundaryPoints{T}}`: Full boundary discretizations.
 
 ## Returns
 * `ws::CFIEKressWorkspace`: Reusable full or symmetry-reduced CFIE-Kress workspace.
 """
-function build_cfie_kress_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}}) where {T<:Real}
+function build_cfie_kress_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Rmat=build_Rmat_kress(solver,pts)
     Gs=[boundary_geom_cache(p,_is_nontrivial_grading(p)) for p in pts]
@@ -772,7 +915,7 @@ function build_cfie_kress_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,
     return CFIEKressWorkspace(offs,Rmat,Gs,parr,Ntot,solver.symmetry,orbits,g2c,g2l)
 end
 
-function _cfie_kress_workspace_from_Rmat(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T}) where {T<:Real}
+function _cfie_kress_workspace_from_Rmat(solver::CFIE,pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T}) where {T<:Real}
     offs=component_offsets(pts)
     Gs=[boundary_geom_cache(p,_is_nontrivial_grading(p)) for p in pts]
     parr=[_boundary_panel_arrays_cache(p) for p in pts]
@@ -783,58 +926,33 @@ function _cfie_kress_workspace_from_Rmat(solver::Union{CFIE_kress,CFIE_kress_cor
 end
 
 """
-    build_Rmat_kress(
-        solver::CFIE_kress,
-        pts::Vector{BoundaryPoints{T}},
-    ) where {T<:Real} → Matrix{T}
+    build_Rmat_kress(solver::CFIE,pts::Vector{BoundaryPoints{T}}) where {T<:Real} → Rmat::Matrix{T}
 
-Build the global periodic Kress logarithmic correction matrix.
+Build the global block-diagonal Kress logarithmic correction matrix.
 
-For disconnected components the singular correction is component local, hence
+Each connected boundary component is treated independently. Components carrying
+a nontrivial Kress grading use [`kress_R_corner!`](@ref), while uniformly
+parameterized smooth components use [`kress_R!`](@ref).
 
-    R=diag(R₁,R₂,...,R_nc).
+Thus
+
+    R=diag(R₁,R₂,...,R_nc),
+
+with the correction rule selected from the actual discretization stored in each
+[`BoundaryPoints`](@ref) object.
 
 ## Arguments
-* `solver::CFIE_kress`: Smooth periodic CFIE-Kress solver.
+* `solver::CFIE`: CFIE solver. Retained for the common workspace API.
 * `pts::Vector{BoundaryPoints{T}}`: Boundary discretizations.
 
 ## Returns
 * `Rmat::Matrix{T}`: Global block-diagonal Kress correction matrix.
 """
-function build_Rmat_kress(solver::CFIE_kress,pts::Vector{BoundaryPoints{T}}) where {T<:Real}
+function build_Rmat_kress(solver::CFIE,pts::Vector{BoundaryPoints{T}}) where {T<:Real}
     offs=component_offsets(pts)
     Ntot=offs[end]-1
     Rmat=zeros(T,Ntot,Ntot)
-    for a in eachindex(pts)
-        ra=offs[a]:(offs[a+1]-1)
-        kress_R!(@view Rmat[ra,ra])
-    end
-    return Rmat
-end
-
-"""
-    build_Rmat_kress(
-        solver::Union{CFIE_kress_corners,CFIE_kress_global_corners},
-        pts::Vector{BoundaryPoints{T}},
-    ) where {T<:Real} → Matrix{T}
-
-Build the global Kress correction matrix for corner-capable CFIE formulations.
-
-Each graded component uses [`kress_R_corner!`](@ref), while components with a
-trivial grading use the ordinary periodic [`kress_R!`](@ref).
-
-## Arguments
-* `solver::Union{CFIE_kress_corners,CFIE_kress_global_corners}`: Corner-capable CFIE-Kress solver.
-* `pts::Vector{BoundaryPoints{T}}`: Boundary discretizations.
-
-## Returns
-* `Rmat::Matrix{T}`: Global block-diagonal Kress correction matrix.
-"""
-function build_Rmat_kress(solver::Union{CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}}) where {T<:Real}
-    offs=component_offsets(pts)
-    Ntot=offs[end]-1
-    Rmat=zeros(T,Ntot,Ntot)
-    for a in eachindex(pts)
+    @inbounds for a in eachindex(pts)
         ra=offs[a]:(offs[a+1]-1)
         if _is_nontrivial_grading(pts[a])
             kress_R_corner!(@view Rmat[ra,ra])
@@ -851,7 +969,7 @@ end
 
 """
     construct_matrices!(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         A::AbstractMatrix{Complex{T}},
         pts::Vector{BoundaryPoints{T}},
         Rmat::AbstractMatrix{T},
@@ -870,7 +988,7 @@ Same-component interactions use the Kress logarithmic split. Inter-component
 interactions are smooth and use ordinary quadrature.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `A::AbstractMatrix{Complex{T}}`: Preallocated full destination matrix.
 * `pts::Vector{BoundaryPoints{T}}`: Boundary discretizations.
 * `Rmat::AbstractMatrix{T}`: Global Kress correction matrix.
@@ -885,7 +1003,7 @@ interactions are smooth and use ordinary quadrature.
 ## Returns
 * `A::AbstractMatrix{Complex{T}}`: Full CFIE-Kress Fredholm matrix.
 """
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},Gs::Vector{BoundaryGeomCache{T}},parr::Vector{BoundaryPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},Gs::Vector{BoundaryGeomCache{T}},parr::Vector{BoundaryPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
     αM1=-inv_two_pi
@@ -990,7 +1108,7 @@ end
 
 """
     construct_matrices_reduced!(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         A::AbstractMatrix{Complex{T}},
         pts::Vector{BoundaryPoints{T}},
         ws::CFIEKressWorkspace{T},
@@ -1009,7 +1127,7 @@ All source quadrature weights are already included in the corresponding
 full-space CFIE entries, so no additional orbit-weight ratio is required.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `A::AbstractMatrix{Complex{T}}`: Preallocated reduced destination matrix.
 * `pts::Vector{BoundaryPoints{T}}`: Full boundary discretizations.
 * `ws::CFIEKressWorkspace{T}`: Cached geometry and symmetry workspace.
@@ -1021,7 +1139,7 @@ full-space CFIE entries, so no additional orbit-weight ratio is required.
 ## Returns
 * `A::AbstractMatrix{Complex{T}}`: Symmetry-reduced CFIE-Kress matrix.
 """
-function construct_matrices_reduced!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices_reduced!(solver::CFIE,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     orbits=ws.orbits
     isnothing(orbits)&&throw(ArgumentError("Reduced CFIE assembly requires an active symmetry"))
     Ifund=orbits.Ifund
@@ -1106,7 +1224,7 @@ end
 
 """
     construct_matrices!(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         A::AbstractMatrix{Complex{T}},
         A1::AbstractMatrix{Complex{T}},
         A2::AbstractMatrix{Complex{T}},
@@ -1135,7 +1253,7 @@ and
     A''(k)=-(D''(k)+2iS'(k)+ikS''(k)).
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `A::AbstractMatrix{Complex{T}}`: Destination matrix for `A(k)`.
 * `A1::AbstractMatrix{Complex{T}}`: Destination matrix for `A'(k)`.
 * `A2::AbstractMatrix{Complex{T}}`: Destination matrix for `A''(k)`.
@@ -1154,7 +1272,7 @@ and
 * `A1::AbstractMatrix{Complex{T}}`: First derivative.
 * `A2::AbstractMatrix{Complex{T}}`: Second derivative.
 """
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},Gs::Vector{BoundaryGeomCache{T}},parr::Vector{BoundaryPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},Gs::Vector{BoundaryGeomCache{T}},parr::Vector{BoundaryPanelArrays{T}},offs::Vector{Int},k::T;multithreaded::Bool=true) where {T<:Real}
     αL1=-k*inv_two_pi
     αL2=Complex{T}(0,k/2)
     αM1=-inv_two_pi
@@ -1300,7 +1418,7 @@ end
 
 """
     construct_matrices_reduced_deriv!(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         A::AbstractMatrix{Complex{T}},
         A1::AbstractMatrix{Complex{T}},
         A2::AbstractMatrix{Complex{T}},
@@ -1314,7 +1432,7 @@ Assemble the symmetry-reduced CFIE-Kress operator and its first two analytical
 wavenumber derivatives.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `A::AbstractMatrix{Complex{T}}`: Destination matrix for the reduced operator.
 * `A1::AbstractMatrix{Complex{T}}`: Destination matrix for its first derivative.
 * `A2::AbstractMatrix{Complex{T}}`: Destination matrix for its second derivative.
@@ -1330,7 +1448,7 @@ wavenumber derivatives.
 * `A1::AbstractMatrix{Complex{T}}`: First derivative.
 * `A2::AbstractMatrix{Complex{T}}`: Second derivative.
 """
-function construct_matrices_reduced_deriv!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices_reduced_deriv!(solver::CFIE,A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     orbits=ws.orbits
     isnothing(orbits)&&throw(ArgumentError("Reduced CFIE assembly requires an active symmetry"))
     Ifund=orbits.Ifund
@@ -1448,7 +1566,7 @@ end
 
 """
     construct_matrices!(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         A::AbstractMatrix{Complex{T}},
         pts::Vector{BoundaryPoints{T}},
         ws::CFIEKressWorkspace{T},
@@ -1457,7 +1575,7 @@ end
     ) where {T<:Real} → A
 
     construct_matrices!(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         A::AbstractMatrix{Complex{T}},
         A1::AbstractMatrix{Complex{T}},
         A2::AbstractMatrix{Complex{T}},
@@ -1471,7 +1589,7 @@ Assemble the full or symmetry-reduced CFIE-Kress operator, selected
 automatically from the cached workspace.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `A::AbstractMatrix{Complex{T}}`: Destination operator matrix.
 * `A1::AbstractMatrix{Complex{T}}`: Destination first derivative.
 * `A2::AbstractMatrix{Complex{T}}`: Destination second derivative.
@@ -1486,7 +1604,7 @@ automatically from the cached workspace.
 * `A::AbstractMatrix{Complex{T}}` for the single-matrix overload.
 * `(A,A1,A2)` for the derivative overload.
 """
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(ws.orbits)
         @blas_1 construct_matrices!(solver,A,pts,ws.Rmat,ws.Gs,ws.parr,ws.offs,k;multithreaded=multithreaded)
     else
@@ -1495,12 +1613,12 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
     return A
 end
 
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=_cfie_kress_workspace_from_Rmat(solver,pts,Rmat)
     return construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
 end
 
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     if isnothing(ws.orbits)
         construct_matrices!(solver,A,A1,A2,pts,ws.Rmat,ws.Gs,ws.parr,ws.offs,k;multithreaded=multithreaded)
     else
@@ -1509,18 +1627,18 @@ function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kr
     return A,A1,A2
 end
 
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,A::AbstractMatrix{Complex{T}},A1::AbstractMatrix{Complex{T}},A2::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},Rmat::AbstractMatrix{T},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=_cfie_kress_workspace_from_Rmat(solver,pts,Rmat)
     return construct_matrices!(solver,A,A1,A2,pts,ws,k;multithreaded=multithreaded)
 end
 
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},k::T;multithreaded::Bool=true) where {T<:Real}
     ws=build_cfie_kress_workspace(solver,pts)
     construct_matrices!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
     return A,dA,ddA
 end
 
-function construct_matrices!(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices!(solver::CFIE,basis::AbstractHankelBasis,A::AbstractMatrix{Complex{T}},dA::AbstractMatrix{Complex{T}},ddA::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k::T;multithreaded::Bool=true) where {T<:Real}
     construct_matrices!(solver,A,dA,ddA,pts,ws,k;multithreaded=multithreaded)
     return A,dA,ddA
 end
@@ -1531,7 +1649,7 @@ end
 
 """
     solve(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         basis::Ba,
         pts::Vector{BoundaryPoints{T}},
         k;
@@ -1543,7 +1661,7 @@ end
 Evaluate the selected scalar spectral diagnostic of the CFIE-Kress operator.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `basis::Ba`: Basis placeholder retained for the common solver API.
 * `pts::Vector{BoundaryPoints{T}}`: Boundary discretizations.
 * `k`: Wavenumber.
@@ -1556,7 +1674,7 @@ Evaluate the selected scalar spectral diagnostic of the CFIE-Kress operator.
 ## Returns
 * Scalar spectral diagnostic selected by `which`.
 """
-function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPoints{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPoints{T}},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det) where {T<:Real,Ba<:AbsBasis}
     ws=build_cfie_kress_workspace(solver,pts)
     N=_cfie_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,N,N)
@@ -1564,14 +1682,14 @@ function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_cor
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE,basis::Ba,pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     N=_cfie_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,N,N)
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
 
-function solve(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve(solver::CFIE,basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     @svd_or_det_solve A use_krylov which MAX_BLAS_THREADS
 end
@@ -1582,7 +1700,7 @@ end
 
 """
     solve_vect(
-        solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},
+        solver::CFIE,
         basis::Ba,
         pts::Vector{BoundaryPoints{T}},
         ws::CFIEKressWorkspace{T},
@@ -1596,7 +1714,7 @@ end
 Compute a near-null vector of the CFIE-Kress matrix.
 
 ## Arguments
-* `solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}`: CFIE-Kress solver.
+* `solver::CFIE`: CFIE-Kress solver.
 * `basis::Ba`: Basis placeholder retained for API compatibility.
 * `pts::Vector{BoundaryPoints{T}}`: Boundary discretizations.
 * `ws::CFIEKressWorkspace{T}`: Cached CFIE-Kress workspace.
@@ -1612,19 +1730,19 @@ Compute a near-null vector of the CFIE-Kress matrix.
 * `σ`: Near-zero eigenvalue-magnitude proxy returned by [`smallest_nullvec_krylov!`](@ref).
 * `u`: Corresponding normalized near-null vector.
 """
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE,basis::Ba,A::AbstractMatrix{Complex{T}},pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     @blas_1 construct_matrices!(solver,A,pts,ws,k;multithreaded=multithreaded)
     σ,u,_=smallest_nullvec_krylov!(A;nev=1,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
     return σ,u
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
+function solve_vect(solver::CFIE,basis::Ba,pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis}
     N=_cfie_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,N,N)
     return solve_vect(solver,basis,A,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
 
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,pts::Vector{BoundaryPoints{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard}
+function solve_vect(solver::CFIE,billiard::Bi,basis::Ba,pts::Vector{BoundaryPoints{T}},k;multithreaded::Bool=true,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard}
     ws=build_cfie_kress_workspace(solver,pts)
     return solve_vect(solver,basis,pts,ws,k;multithreaded=multithreaded,tol=tol,maxiter=maxiter,krylovdim=krylovdim)
 end
@@ -1634,7 +1752,7 @@ end
 ################################################################################
 
 # INTERNAL - for benchmarking and diagnostics only.
-function solve_INFO(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},basis::Ba,pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
+function solve_INFO(solver::CFIE,basis::Ba,pts::Vector{BoundaryPoints{T}},ws::CFIEKressWorkspace{T},k;multithreaded::Bool=true,use_krylov::Bool=true,which::Symbol=:det_argmin) where {T<:Real,Ba<:AbsBasis}
     N=_cfie_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,N,N)
     t0=time()

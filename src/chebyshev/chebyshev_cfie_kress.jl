@@ -211,12 +211,12 @@ end
 ################################################################################
 
 """
-    build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPoints{T}};npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real} → CFIEKressSystemCache{T}
+    build_cfie_kress_block_caches(solver::CFIE,comps::Vector{BoundaryPoints{T}};npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real} → CFIEKressSystemCache{T}
 
 Build the wavenumber-independent ordered component-block cache used by
 CFIE-Kress Chebyshev assembly.
 """
-function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},comps::Vector{BoundaryPoints{T}};npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
+function build_cfie_kress_block_caches(solver::CFIE,comps::Vector{BoundaryPoints{T}};npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real}
     nc=length(comps)
     offs=component_offsets(comps)
     Gs=[boundary_geom_cache(p,_is_nontrivial_grading(p)) for p in comps]
@@ -341,11 +341,11 @@ function build_cfie_kress_block_caches(solver::Union{CFIE_kress,CFIE_kress_corne
 end
 
 """
-    build_cfie_kress_reduced_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},sym::S;npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real,S} → CFIEKressReducedWorkspace{T,S}
+    build_cfie_kress_reduced_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},sym::S;npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real,S} → CFIEKressReducedWorkspace{T,S}
 
 Build the exact symmetry-reduced CFIE-Kress geometry workspace.
 """
-function build_cfie_kress_reduced_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},sym::S;npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real,S}
+function build_cfie_kress_reduced_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},sym::S;npanels_h::Int=10000,M_h::Int=5,npanels_j::Int=3000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing) where {T<:Real,S}
     block_cache=build_cfie_kress_block_caches(solver,pts;npanels_h=npanels_h,M_h=M_h,npanels_j=npanels_j,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     global_to_block,global_to_local=global_to_component_local(pts)
     orbits=symmetry_index_orbits(T,pts,sym)
@@ -380,11 +380,11 @@ end
 @inline _cheb_workspace_length(ws::CFIEKressChebWorkspace)=ws.Mk
 
 """
-    build_cfie_kress_cheb_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real} → CFIEKressChebWorkspace
+    build_cfie_kress_cheb_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real} → CFIEKressChebWorkspace
 
 Build a reusable full or symmetry-reduced CFIE-Kress Chebyshev workspace.
 """
-function build_cfie_kress_cheb_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
+function build_cfie_kress_cheb_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,ntls::Int=Threads.nthreads(),timeit::Bool=false) where {T<:Real}
     zks=ComplexF64.(ks)
     @benchit timeit=timeit "CFIE-Kress geometry cache" cache=isnothing(solver.symmetry) ? build_cfie_kress_block_caches(solver,pts;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb) : build_cfie_kress_reduced_workspace(solver,pts,solver.symmetry;npanels_h=n_panels_h,M_h=M_h,npanels_j=n_panels_j,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb)
     if cache isa CFIEKressSystemCache
@@ -400,12 +400,12 @@ function build_cfie_kress_cheb_workspace(solver::Union{CFIE_kress,CFIE_kress_cor
 end
 
 """
-    build_derivative_chebyshev_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,timeit::Bool=false) where {T<:Real} → CFIEKressChebWorkspace
+    build_derivative_chebyshev_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,timeit::Bool=false) where {T<:Real} → CFIEKressChebWorkspace
 
 Build the reusable derivative-aware CFIE-Kress workspace used by common
 higher-level algorithms such as EBIM.
 """
-function build_derivative_chebyshev_workspace(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,timeit::Bool=false) where {T<:Real}
+function build_derivative_chebyshev_workspace(solver::CFIE,pts::Vector{BoundaryPoints{T}},ks::AbstractVector{<:Number};n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,pad::Tuple{T,T}=(T(0.95),T(1.05)),rmin_cheb::Union{Nothing,Float64}=nothing,timeit::Bool=false) where {T<:Real}
     return build_cfie_kress_cheb_workspace(solver,pts,ks;n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,pad=pad,rmin_cheb=rmin_cheb,timeit=timeit)
 end
 
@@ -1028,11 +1028,11 @@ end
 ################################################################################
 
 """
-    construct_matrices_chebyshev!(As::Vector{Matrix{ComplexF64}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real} → Nothing
+    construct_matrices_chebyshev!(As::Vector{Matrix{ComplexF64}},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real} → Nothing
 
 Construct all cached CFIE-Kress Fredholm matrices from a reusable workspace.
 """
-function construct_matrices_chebyshev!(As::Vector{Matrix{ComplexF64}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices_chebyshev!(As::Vector{Matrix{ComplexF64}},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real}
     Mk=_cheb_workspace_length(ws)
     n=_cheb_workspace_dim(ws)
     @assert length(As)==Mk
@@ -1045,12 +1045,12 @@ function construct_matrices_chebyshev!(As::Vector{Matrix{ComplexF64}},solver::Un
 end
 
 """
-    construct_matrices_chebyshev_with_derivatives!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real} → Nothing
+    construct_matrices_chebyshev_with_derivatives!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real} → Nothing
 
 Construct all cached CFIE-Kress Fredholm matrices and first two wavenumber
 derivatives from a reusable workspace.
 """
-function construct_matrices_chebyshev_with_derivatives!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real}
+function construct_matrices_chebyshev_with_derivatives!(As::Vector{Matrix{ComplexF64}},A1s::Vector{Matrix{ComplexF64}},A2s::Vector{Matrix{ComplexF64}},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace;multithreaded::Bool=true) where {T<:Real}
     Mk=_cheb_workspace_length(ws)
     n=_cheb_workspace_dim(ws)
     @assert length(As)==Mk
@@ -1067,12 +1067,12 @@ function construct_matrices_chebyshev_with_derivatives!(As::Vector{Matrix{Comple
 end
 
 """
-    construct_matrix_chebyshev_at!(A::Matrix{ComplexF64},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real} → Nothing
+    construct_matrix_chebyshev_at!(A::Matrix{ComplexF64},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real} → Nothing
 
 Construct the value-only CFIE-Kress Fredholm matrix corresponding to cached
 wavenumber `idx`.
 """
-function construct_matrix_chebyshev_at!(A::Matrix{ComplexF64},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real}
+function construct_matrix_chebyshev_at!(A::Matrix{ComplexF64},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real}
     checkbounds(ws.ks,idx)
     n=_cheb_workspace_dim(ws)
     @assert size(A)==(n,n)
@@ -1082,12 +1082,12 @@ function construct_matrix_chebyshev_at!(A::Matrix{ComplexF64},solver::Union{CFIE
 end
 
 """
-    construct_matrix_chebyshev_with_derivatives_at!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real} → Nothing
+    construct_matrix_chebyshev_with_derivatives_at!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real} → Nothing
 
 Construct one cached CFIE-Kress Fredholm matrix and its first two wavenumber
 derivatives.
 """
-function construct_matrix_chebyshev_with_derivatives_at!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real}
+function construct_matrix_chebyshev_with_derivatives_at!(A::Matrix{ComplexF64},A1::Matrix{ComplexF64},A2::Matrix{ComplexF64},solver::CFIE,pts::Vector{BoundaryPoints{T}},ws::CFIEKressChebWorkspace,idx::Int;multithreaded::Bool=true) where {T<:Real}
     checkbounds(ws.ks,idx)
     n=_cheb_workspace_dim(ws)
     @assert size(A)==(n,n)
@@ -1103,7 +1103,7 @@ end
 ################################################################################
 
 """
-    construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real} → Nothing
+    construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::CFIE,pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real} → Nothing
 
 Construct the CFIE-Kress Fredholm matrices
 
@@ -1111,7 +1111,7 @@ Construct the CFIE-Kress Fredholm matrices
 
 for all complex wavenumbers in `zj`.
 """
-function construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::CFIE,pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     @assert length(Tbufs)==length(zj)
     ws=build_cfie_kress_cheb_workspace(solver,pts,zj;n_panels_h=n_panels_h,M_h=M_h,n_panels_j=n_panels_j,M_j=M_j,ntls=Threads.nthreads(),timeit=timeit)
     n=_cheb_workspace_dim(ws)
@@ -1123,7 +1123,7 @@ function construct_matrices_chebyshev!(Tbufs::Vector{Matrix{ComplexF64}},::Val{:
 end
 
 """
-    construct_matrices_chebyshev_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real} → Nothing
+    construct_matrices_chebyshev_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::CFIE,pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real} → Nothing
 
 Construct the CFIE-Kress Fredholm matrices and first two wavenumber derivatives
 
@@ -1133,7 +1133,7 @@ Construct the CFIE-Kress Fredholm matrices and first two wavenumber derivatives
 
 for all complex wavenumbers in `zj`.
 """
-function construct_matrices_chebyshev_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
+function construct_matrices_chebyshev_with_derivatives!(Tbufs::Vector{Matrix{ComplexF64}},dTbufs::Vector{Matrix{ComplexF64}},ddTbufs::Vector{Matrix{ComplexF64}},::Val{:cfie_kress},solver::CFIE,pts::Vector{BoundaryPoints{T}},zj::AbstractVector{ComplexF64};multithreaded::Bool=true,n_panels_h::Int=15000,M_h::Int=5,n_panels_j::Int=10000,M_j::Int=5,timeit::Bool=false) where {T<:Real}
     @assert length(Tbufs)==length(zj)
     @assert length(dTbufs)==length(zj)
     @assert length(ddTbufs)==length(zj)
@@ -1153,7 +1153,7 @@ end
 ################################################################################
 
 """
-    solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15000,M_h_init::Int=5,npanels_j_init::Int=3000,M_j_init::Int=5,sampling_points::Int=50000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard} → Tuple{Vector{Vector{ComplexF64}},Vector{Vector{BoundaryPoints{T}}}}
+    solve_vect(solver::CFIE,billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15000,M_h_init::Int=5,npanels_j_init::Int=3000,M_j_init::Int=5,sampling_points::Int=50000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard} → Tuple{Vector{Vector{ComplexF64}},Vector{Vector{BoundaryPoints{T}}}}
 
 Compute CFIE-Kress near-null boundary vectors for several real wavenumbers.
 
@@ -1161,7 +1161,7 @@ Each batch shares one boundary discretization. The Chebyshev pathway tunes the
 special-function interpolation parameters once and then constructs a reusable
 full or symmetry-reduced `CFIEKressChebWorkspace`.
 """
-function solve_vect(solver::Union{CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners},billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard}
+function solve_vect(solver::CFIE,billiard::Bi,basis::Ba,ks::Vector{T};batch_size::Int=40,multithreaded::Bool=true,use_chebyshev::Bool=true,cheb_tol::Real=1e-12,npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=3_000,M_j_init::Int=5,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,cheb_verbose::Bool=false,tol=1e-12,maxiter::Int=2000,krylovdim::Int=40) where {T<:Real,Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard}
     Nk=length(ks)
     us_all=Vector{Vector{ComplexF64}}(undef,Nk)
     pts_all=Vector{Vector{BoundaryPoints{T}}}(undef,Nk)

@@ -119,7 +119,7 @@ export construct_dlp_matrix_derivatives!,construct_fredholm_matrix_derivatives!
 
 # CFIE Kress
 include("solvers/sweepmethods/cfie/cfie_kress.jl")
-export CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners
+export CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_kress_composite_solver
 export CFIEKressWorkspace,build_cfie_kress_workspace,build_Rmat_kress,cfie_reduced_orbit_size
 export construct_matrices_reduced!,construct_matrices_reduced_deriv!
 

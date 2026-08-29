@@ -30,7 +30,7 @@ Boundary-integral solver backends supporting the production EBIM workflow.
 Every solver must provide direct derivative matrix construction and the common
 derivative-aware Chebyshev workspace interface used by EBIM.
 """
-const EBIMSolver=Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners}
+const EBIMSolver=Union{BoundaryIntegralMethod,DLP_kress,DLP_kress_global_corners,CFIE_kress,CFIE_kress_corners,CFIE_kress_global_corners,CFIE_kress_composite_solver}
 
 ################################################################################
 ######################## CHEBYSHEV PATHWAY #####################################
