@@ -248,33 +248,23 @@ struct CFIEWavefunctionCache{T<:Real}
     ty::Vector{T}     # y component of γ'(t)
     sj::Vector{T}     # |γ'(t)|, converting parameter measure to arclength
     w::Vector{T}      # parameter-space quadrature weights dt
+    hmin::T           # minimum ds size
 end
 
 function CFIEWavefunctionCache(pts::Vector{BoundaryPoints{T}}) where {T<:Real}
     N=sum(length,pts)
-    x=Vector{T}(undef,N)
-    y=Vector{T}(undef,N)
-    tx=Vector{T}(undef,N)
-    ty=Vector{T}(undef,N)
-    sj=Vector{T}(undef,N)
-    w=Vector{T}(undef,N)
+    x=Vector{T}(undef,N);y=Vector{T}(undef,N);tx=Vector{T}(undef,N);ty=Vector{T}(undef,N);sj=Vector{T}(undef,N);w=Vector{T}(undef,N)
+    hmin=typemax(T)
     g=1
     @inbounds for p in pts
         for j in eachindex(p.xy)
-            q=p.xy[j]
-            t=p.tangent[j]
-            txj=t[1]
-            tyj=t[2]
-            x[g]=q[1]
-            y[g]=q[2]
-            tx[g]=txj
-            ty[g]=tyj
-            sj[g]=hypot(txj,tyj)
-            w[g]=p.ws[j]
+            q=p.xy[j];t=p.tangent[j]
+            x[g]=q[1];y[g]=q[2];tx[g]=t[1];ty[g]=t[2];sj[g]=hypot(t[1],t[2]);w[g]=p.ws[j]
+            hmin=min(hmin,p.ds[j])
             g+=1
         end
     end
-    return CFIEWavefunctionCache(x,y,tx,ty,sj,w)
+    return CFIEWavefunctionCache(x,y,tx,ty,sj,w,hmin)
 end
 
 """
@@ -312,7 +302,11 @@ factor is irrelevant after wavefunction normalization.
     sj=cache.sj
     w=cache.w
     N=length(x)
-    @assert length(μ)==N
+    tol2=(close_factor*cache.hmin)^2
+    @inbounds for j in 1:N
+        dx=xp-x[j];dy=yp-y[j]
+        muladd(dx,dx,dy*dy)<=tol2&&return zero(Complex{T})
+    end
     ψr=zero(T)
     ψi=zero(T)
     # Constants:
@@ -328,7 +322,6 @@ factor is irrelevant after wavefunction normalization.
         dx=xp-x[j]
         dy=yp-y[j]
         r2=muladd(dx,dx,dy*dy)
-        r2<1e-6 && continue 
         r=sqrt(r2)
         invr=inv(r)
         inn=muladd(ty[j],dx,-tx[j]*dy) # ty*dx - tx*dy
