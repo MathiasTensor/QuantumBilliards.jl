@@ -328,7 +328,7 @@ factor is irrelevant after wavefunction normalization.
         dx=xp-x[j]
         dy=yp-y[j]
         r2=muladd(dx,dx,dy*dy)
-        r2==zero(T)&&continue # only guard exact coincidence with a source node
+        r2<1e-6 && continue 
         r=sqrt(r2)
         invr=inv(r)
         inn=muladd(ty[j],dx,-tx[j]*dy) # ty*dx - tx*dy
