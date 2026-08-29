@@ -268,230 +268,155 @@ end
 ################################################################################
 ######################## MULTICOMPONENT EXACT ORBITS ############################
 ################################################################################
-# For CFIE-type geometries the same symmetry reduction must also account for
-# permutations of complete boundary components. Symmetry-related components are
-# constructed with identical discretizations and stored in a known block order,
-# so the full node permutation can again be generated exactly from indices.
+# A multicomponent boundary consists of one outer physical boundary followed by
+# zero or more interior holes:
+#
+#     pts = [outer,hole₁,hole₂,...].
+#
+# Each BoundaryPoints object represents one complete closed physical component,
+# even when that component was geometrically constructed from several curve
+# pieces. Under the supported symmetries every physical component is individually
+# invariant; symmetry does not permute distinct boundary components.
+#
+# The full multicomponent orbit map is therefore obtained by constructing the
+# ordinary periodic symmetry map independently on every component and then
+# concatenating the resulting maps in flattened boundary order.
+#
+# Different components may have different node counts. Only each individual
+# component must satisfy the divisibility requirements of the active symmetry.
 
 """
-    _component_block_permutation(pts,component_map;reverse_nodes=false)
-Lift an exact permutation of boundary components to a permutation of the
-flattened boundary-node indices.
-If component `a` maps to component
-    b=component_map[a],
-then every local node of `a` is mapped to the corresponding local node of `b`.
-Symmetry-related components must therefore contain the same number of nodes.
-For an orientation-reversing reflection, `reverse_nodes=true` additionally maps
-local index
-    j -> N-j+1,
-so that the transformed component follows the stored boundary orientation.
+    _combine_component_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},maps::Vector{SymmetryOrbitMap{T}}) where {T<:Real} → SymmetryOrbitMap{T}
+
+Combine independently symmetry-reduced closed boundary components into one
+global [`SymmetryOrbitMap`](@ref).
+
+Each entry of `pts` is one complete connected physical boundary component. The
+corresponding entry of `maps` is its local periodic symmetry-orbit map. Distinct
+components may have different node counts and reduced dimensions, but must have
+the same symmetry-group order.
+
+Local full-boundary indices are shifted by the component offsets and local
+fundamental indices are concatenated in component order.
+
 ## Arguments
-* `pts`: Boundary components in flattened assembly order.
-* `component_map`: Exact component permutation.
-* `reverse_nodes`: Reverse the local node ordering after mapping components.
+* `T`: Real scalar type used by the complex irrep factors.
+* `pts::Vector{BoundaryPoints{T}}`: Complete connected boundary components.
+* `maps::Vector{SymmetryOrbitMap{T}}`: Local symmetry-orbit maps, one per component.
+
 ## Returns
-A global permutation of the flattened boundary-node indices.
+* `orbits::SymmetryOrbitMap{T}`: Global orbit map for the flattened multicomponent boundary.
 """
-function _component_block_permutation(pts::Vector{BoundaryPoints{T}},component_map::AbstractVector{Int};reverse_nodes::Bool=false) where {T<:Real}
+function _combine_component_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},maps::Vector{SymmetryOrbitMap{T}}) where {T<:Real}
     nc=length(pts)
-    length(component_map)==nc||throw(DimensionMismatch("Expected $nc component-map entries, received $(length(component_map))"))
+    length(maps)==nc||throw(DimensionMismatch("Received $(length(maps)) symmetry maps for $nc boundary components"))
+    nc>0||throw(ArgumentError("Boundary cannot be empty"))
+    ng=orbit_size(maps[1])
+    all(m->orbit_size(m)==ng,maps)||throw(DimensionMismatch("All boundary components must use the same symmetry-group order"))
     offs=component_offsets(pts)
-    N=offs[end]-1
-    perm=Vector{Int}(undef,N)
+    Ntot=offs[end]-1
+    Nred=sum(fundamental_size,maps)
+    Ifund=Vector{Int}(undef,Nred)
+    full_to_fund=Vector{Int}(undef,Ntot)
+    full_to_scale=Vector{Complex{T}}(undef,Ntot)
+    fund_to_full=Matrix{Int}(undef,ng,Nred)
+    fund_to_scale=Matrix{Complex{T}}(undef,ng,Nred)
+    bred=0
     @inbounds for a in 1:nc
-        b=component_map[a]
-        1<=b<=nc||throw(BoundsError(component_map,b))
-        Na=length(pts[a])
-        Nb=length(pts[b])
-        Na==Nb||throw(DimensionMismatch("Symmetry-related components $a and $b have node counts $Na and $Nb"))
-        oa=offs[a]
-        ob=offs[b]
-        for j in 1:Na
-            jb=reverse_nodes ? Na-j+1 : j
-            perm[oa+j-1]=ob+jb-1
+        map=maps[a]
+        off=offs[a]-1
+        ma=fundamental_size(map)
+        for b in 1:ma
+            bg=bred+b
+            Ifund[bg]=off+map.Ifund[b]
+            for g in 1:ng
+                q=off+map.fund_to_full[g,b]
+                χ=map.fund_to_scale[g,b]
+                fund_to_full[g,bg]=q
+                fund_to_scale[g,bg]=χ
+                full_to_fund[q]=bg
+                full_to_scale[q]=χ
+            end
         end
+        bred+=ma
     end
-    return perm
+    return SymmetryOrbitMap{T}(Ifund,full_to_fund,full_to_scale,fund_to_full,fund_to_scale)
 end
 
 """
-    _component_identity_map(nc)
-Return the identity permutation of `nc` boundary components.
-"""
-@inline _component_identity_map(nc::Int)=collect(1:nc)
+    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XAxisReflection) where {T<:Real} → SymmetryOrbitMap{T}
 
-"""
-    _component_rotation_map(nc,n,l)
-Return the exact component permutation generated by the `l`-th power of a
-`Cₙ` rotation.
-Components are assumed to be stored in consecutive symmetry-orbit blocks:
-    [O₁⁰,O₁¹,...,O₁ⁿ⁻¹,O₂⁰,O₂¹,...,O₂ⁿ⁻¹,...].
-Within each block, rotation by `R^l` maps image index
-    j -> j+l mod n.
-The total component count must therefore be divisible by `n`.
-"""
-function _component_rotation_map(nc::Int,n::Int,l::Int)
-    nc%n==0||throw(ArgumentError("$nc boundary components cannot be partitioned into C$n component orbits"))
-    map=Vector{Int}(undef,nc)
-    @inbounds for a in 1:nc
-        orbit=(a-1)÷n
-        img=(a-1)%n
-        map[a]=orbit*n+mod(img+l,n)+1
-    end
-    return map
-end
+Build the global x-axis-reflection orbit map for one outer boundary and any
+number of interior holes.
 
-"""
-    _component_reflection_pair_map(nc)
-Return the component permutation for a single reflection when symmetry-related
-components are stored in consecutive pairs: (1,2),(3,4),...
-Each pair is exchanged by the reflection. The component count must therefore be
-even.
-"""
-function _component_reflection_pair_map(nc::Int)
-    iseven(nc)||throw(ArgumentError("Single-reflection component reduction requires an even number of components; received $nc"))
-    map=Vector{Int}(undef,nc)
-    @inbounds for a in 1:2:nc
-        map[a]=a+1
-        map[a+1]=a
-    end
-    return map
-end
-
-"""
-    _component_d2_maps(nc)
-Return the three nontrivial component permutations of the reflection group `D₂`.
-Each physical component orbit must be stored as [I,Rx,Ry,RxRy].
-The returned maps implement left multiplication by `Rx`, `Ry`, and `RxRy`
-within each four-component block.
-## Returns
-`rx,ry,rxy`, where each vector is an exact component permutation.
-"""
-function _component_d2_maps(nc::Int)
-    nc%4==0||throw(ArgumentError("D₂ component reduction requires the component count to be divisible by four; received $nc"))
-    rx=Vector{Int}(undef,nc)
-    ry=Vector{Int}(undef,nc)
-    rxy=Vector{Int}(undef,nc)
-    @inbounds for a0 in 1:4:nc
-        i=a0
-        x=a0+1
-        y=a0+2
-        xy=a0+3
-        rx[i]=x
-        rx[x]=i
-        rx[y]=xy
-        rx[xy]=y
-        ry[i]=y
-        ry[y]=i
-        ry[x]=xy
-        ry[xy]=x
-        rxy[i]=xy
-        rxy[xy]=i
-        rxy[x]=y
-        rxy[y]=x
-    end
-    return rx,ry,rxy
-end
-
-"""
-    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XAxisReflection)
-Build the complete symmetry-orbit map for a multicomponent boundary reflected
-across the x-axis.
-Symmetry-related components must occur in consecutive pairs and have identical
-node counts. Reflection exchanges each component pair and reverses the local
-boundary-node ordering.
-Each reduced degree of freedom therefore represents two full-boundary nodes with
-factors {1,parity_y}.
+Each connected boundary component is reflected onto itself and reduced using
+its own periodic node ordering. Components may have different node counts.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XAxisReflection) where {T<:Real}
-    nc=length(pts)
-    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
-    id=_component_block_permutation(pts,_component_identity_map(nc))
-    refl=_component_block_permutation(pts,_component_reflection_pair_map(nc);reverse_nodes=true)
-    χ=BilliardGeometry.symmetry_irrep_character(T,sym)
-    return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
+    maps=[symmetry_index_orbits(T,p,sym) for p in pts]
+    return _combine_component_orbits(T,pts,maps)
 end
 
 """
-    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.YAxisReflection)
-Build the complete symmetry-orbit map for a multicomponent boundary reflected
-across the y-axis.
-Symmetry-related components must occur in consecutive pairs and have identical
-node counts. Reflection exchanges each pair and reverses the local node ordering.
-Each reduced degree of freedom represents two full-boundary nodes with factors
-    {1,parity_x}.
+    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.YAxisReflection) where {T<:Real} → SymmetryOrbitMap{T}
+
+Build the global y-axis-reflection orbit map for one outer boundary and any
+number of interior holes.
+
+Each connected boundary component is reflected onto itself and reduced using
+its own periodic node ordering. Components may have different node counts.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.YAxisReflection) where {T<:Real}
-    nc=length(pts)
-    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
-    id=_component_block_permutation(pts,_component_identity_map(nc))
-    refl=_component_block_permutation(pts,_component_reflection_pair_map(nc);reverse_nodes=true)
-    χ=BilliardGeometry.symmetry_irrep_character(T,sym)
-    return _build_periodic_symmetry_orbit_map(T,[id,refl],[one(Complex{T}),χ])
+    maps=[symmetry_index_orbits(T,p,sym) for p in pts]
+    return _combine_component_orbits(T,pts,maps)
 end
 
 """
-    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XYAxisReflection)
-Build the complete `D₂` orbit map for a multicomponent boundary invariant under
-both coordinate reflections.
-Each component orbit must be stored as [I,Rx,Ry,RxRy],
-with identical node counts. The single reflections reverse local node ordering,
-whereas the double reflection preserves it.
-The corresponding irrep factors are {1,parity_x,parity_y,parity_x*parity_y}.
+    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XYAxisReflection) where {T<:Real} → SymmetryOrbitMap{T}
+
+Build the global `D₂` orbit map for one outer boundary and any number of
+interior holes.
+
+Every connected component is individually invariant under both coordinate
+reflections. Components may have different node counts, provided each local
+count is compatible with the four-element symmetry group.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.XYAxisReflection) where {T<:Real}
-    nc=length(pts)
-    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
-    idmap=_component_identity_map(nc)
-    rxmap,rymap,rxymap=_component_d2_maps(nc)
-    id=_component_block_permutation(pts,idmap)
-    rx=_component_block_permutation(pts,rxmap;reverse_nodes=true)
-    ry=_component_block_permutation(pts,rymap;reverse_nodes=true)
-    rxy=_component_block_permutation(pts,rxymap;reverse_nodes=false)
-    χx=Complex{T}(sym.parity_x)
-    χy=Complex{T}(sym.parity_y)
-    scales=Complex{T}[one(Complex{T}),χx,χy,χx*χy]
-    return _build_periodic_symmetry_orbit_map(T,[id,rx,ry,rxy],scales)
+    maps=[symmetry_index_orbits(T,p,sym) for p in pts]
+    return _combine_component_orbits(T,pts,maps)
 end
 
 """
-    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.NFoldRotation)
-Build the complete `Cₙ` orbit map for a multicomponent rotationally symmetric
-boundary.
-Components are assumed to be stored in consecutive `n`-image blocks, with
-identical node counts within each orbit. Rotation preserves the local node order.
-For irrep sector `s`, the `l`-th rotational image contributes with χ_l=exp(2π i s l/n).
-The resulting reduced boundary contains one representative for every complete
-`Cₙ` node orbit.
+    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.NFoldRotation) where {T<:Real} → SymmetryOrbitMap{T}
+
+Build the global `Cₙ` orbit map for one outer boundary and any number of
+interior holes.
+
+Every connected component is individually invariant under the rotation group
+and is reduced independently using its periodic node ordering. Components may
+have different node counts, provided each count is divisible by the rotation
+order.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},sym::BilliardGeometry.NFoldRotation) where {T<:Real}
-    nc=length(pts)
-    nc==1&&return symmetry_index_orbits(T,pts[1],sym)
-    n=sym.order
-    nc%n==0||throw(ArgumentError("$nc components cannot be partitioned into C$n symmetry orbits"))
-    perms=Vector{Vector{Int}}(undef,n)
-    scales=Vector{Complex{T}}(undef,n)
-    @inbounds for l in 0:n-1
-        cmap=_component_rotation_map(nc,n,l)
-        perms[l+1]=_component_block_permutation(pts,cmap)
-        scales[l+1]=cis(T(2pi)*T(sym.sector*l)/T(n))
-    end
-    return _build_periodic_symmetry_orbit_map(T,perms,scales)
+    maps=[symmetry_index_orbits(T,p,sym) for p in pts]
+    return _combine_component_orbits(T,pts,maps)
 end
 
 """
-    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},syms::AbstractVector{<:BilliardGeometry.NFoldRotation})
-Build a multicomponent cyclic orbit map from the nontrivial rotation images
-returned by [`Cn_symmetry`](@ref).
-All images must belong to the same cyclic group and irrep sector. The complete
-group action is reconstructed from their common order and sector.
+    symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},syms::AbstractVector{<:BilliardGeometry.NFoldRotation}) where {T<:Real} → SymmetryOrbitMap{T}
+
+Build the global cyclic orbit map for [`Cn_symmetry`](@ref).
+
+All supplied rotations must belong to the same cyclic group and irrep sector.
+Each connected physical boundary component is reduced independently.
 """
 function symmetry_index_orbits(::Type{T},pts::Vector{BoundaryPoints{T}},syms::AbstractVector{<:BilliardGeometry.NFoldRotation}) where {T<:Real}
     isempty(syms)&&throw(ArgumentError("Rotation image collection cannot be empty"))
     order=syms[1].order
     sector=syms[1].sector
     all(s->s.order==order&&s.sector==sector,syms)||throw(ArgumentError("All NFoldRotation images must have identical order and irrep sector"))
-    return symmetry_index_orbits(T,pts,syms[1])
+    maps=[symmetry_index_orbits(T,p,syms) for p in pts]
+    return _combine_component_orbits(T,pts,maps)
 end
 
 @inline symmetry_index_orbits(::Type{T},pts::BoundaryPoints,sym::BilliardGeometry.XAxisReflection) where {T<:Real}=symmetry_index_orbits(T,length(pts),sym)

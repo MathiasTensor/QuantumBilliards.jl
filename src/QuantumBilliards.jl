@@ -55,6 +55,8 @@ include("billiards/circle_with_hole.jl")
 export CircleStarBilliard,AnnularBilliard
 include("billiards/sinai.jl")
 export SinaiBilliard
+include("billiards/rectangle_in_rectangle.jl")
+export RectangleWithinRectangleBilliard
 
 # basis
 include("basis/planewaves/realplanewaves.jl")
