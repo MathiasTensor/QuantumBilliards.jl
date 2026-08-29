@@ -239,7 +239,7 @@ symmetry group.
 function _evaluate_points(solver::DLP_kress{T},crv::C,k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
     L=T(crv.length)
     N=max(solver.min_pts,round(Int,k*L*solver.pts_scaling_factor[1]/two_pi))
-    needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_order(solver.symmetry))
+    needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_node_multiple(solver.symmetry))
     N=cld(N,needed)*needed
     ts=T[s_mid(j,N) for j in 1:N] # computational Kress parameter σ ∈ [0,2π)
     tphys=ts./T(two_pi) # physical BilliardGeometry curve parameter u ∈ [0,1)
@@ -285,7 +285,7 @@ boundary consists of several joined curve pieces but contains no true corners.
 function _evaluate_points_smooth_composite(solver::DLP_kress_global_corners{T},comp::Vector{C},k::T,idx::Int) where {T<:Real,C<:BilliardGeometry.AbsCurve}
     _,_,Ltot=component_lengths(comp)
     N=max(solver.min_pts,round(Int,k*Ltot*solver.pts_scaling_factor[1]/two_pi))
-    needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_order(solver.symmetry))
+    needed=isnothing(solver.symmetry) ? 2 : lcm(2,symmetry_node_multiple(solver.symmetry))
     N=cld(N,needed)*needed
     ts=T[s_mid(j,N) for j in 1:N]
     tphys=copy(ts) # physical global composite parameter t ∈ [0,2π)
@@ -343,7 +343,7 @@ function _evaluate_points(solver::DLP_kress_global_corners{T},comp::Vector{C},k:
     isempty(corners)&&return _evaluate_points_smooth_composite(solver,comp,k,idx)
     _,_,Ltot=component_lengths(comp)
     N=max(solver.min_pts,round(Int,k*Ltot*solver.pts_scaling_factor[1]/two_pi))
-    needed=isnothing(solver.symmetry) ? 1 : symmetry_order(solver.symmetry)
+    needed=isnothing(solver.symmetry) ? 2 : symmetry_node_multiple(solver.symmetry)
     N=cld(N,needed)*needed
     σ,tmap,jac,jac2,_=multi_kress_graded_nodes_data(T,N,corners;q=solver.kressq,minsep_tol=solver.min_t_spacing)
     tphys=tmap

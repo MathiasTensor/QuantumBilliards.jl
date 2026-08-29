@@ -137,7 +137,7 @@ function evaluate_points(solver::BoundaryIntegralMethod,billiard::Bi,k) where {B
         L=crv.length
         N=max(solver.min_pts,round(Int,k*L*bs[i]/TWO_PI))
         if !isnothing(solver.symmetry)
-            order=symmetry_order(solver.symmetry)
+            order=symmetry_node_multiple(solver.symmetry)
             N=cld(N,order)*order
         end
         sampler=samplers[i]
