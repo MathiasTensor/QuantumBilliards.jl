@@ -302,7 +302,7 @@ factor is irrelevant after wavefunction normalization.
     sj=cache.sj
     w=cache.w
     N=length(x)
-    tol2=(0.5*cache.hmin)^2
+    tol2=(5*cache.hmin)^2
     @inbounds for j in 1:N
         dx=xp-x[j];dy=yp-y[j]
         muladd(dx,dx,dy*dy)<=tol2&&return zero(Complex{T})
