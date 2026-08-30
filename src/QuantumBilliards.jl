@@ -51,6 +51,8 @@ include("billiards/limacon.jl")
 export LimaconBilliard
 include("billiards/prosen.jl")
 export ProsenBilliard
+include("billiards/star.jl")
+export StarBilliard
 include("billiards/circle_with_hole.jl")
 export CircleStarBilliard,AnnularBilliard
 include("billiards/sinai.jl")
