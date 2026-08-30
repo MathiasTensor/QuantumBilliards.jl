@@ -26,22 +26,36 @@ end
 """
     IsoscelesTriangleBilliard(a::T=one(T),h::T=one(T);center=SVector{2,T}(zero(T),zero(T))) where {T<:Real}
 
-Construct an isosceles triangular billiard with half-base `a`, height `h`, and reflection symmetry about the y-axis. The fundamental domain is the right half of the triangle.
+Construct an isosceles triangular billiard with half-base `a`, height `h`, and
+reflection symmetry about the y-axis.
+
+## Arguments
+* `a::T=one(T)`: Half-width of the base.
+* `h::T=one(T)`: Height of the triangle.
+
+## Keyword Arguments
+* `center::SVector{2,T}=SVector{2,T}(zero(T),zero(T))`: Translation of the triangle. Its x-coordinate must be zero for compatibility with the origin-centered y-axis reflection.
 
 ## Returns
-A `TriangleBilliard{T}` containing the full boundary, symmetry-reduced fundamental domain, and `YAxisReflection`.
+* `billiard::TriangleBilliard{T}`: Isosceles triangle with full physical boundary, right-half fundamental domain, and `YAxisReflection` symmetry.
 """
 function IsoscelesTriangleBilliard(a::T=one(T),h::T=one(T);center=SVector{2,T}(zero(T),zero(T))) where {T<:Real}
-    a>0||throw(ArgumentError("a must be positive"));h>0||throw(ArgumentError("h must be positive"))
-    c=SVector{2,T}(center);cx,cy=c
-    pl=SVector{2,T}(cx-a,cy);pr=SVector{2,T}(cx+a,cy);pt=SVector{2,T}(cx,cy+h);pm=SVector{2,T}(cx,cy)
-    left=BilliardGeometry.LineSegment(pt,pl;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=1)
-    base=BilliardGeometry.LineSegment(pl,pr;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=2)
-    right=BilliardGeometry.LineSegment(pr,pt;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=3)
-    full_boundary=BilliardGeometry.AbsCurve[left,base,right]
+    c=SVector{2,T}(center)
+    cx,cy=c
+    iszero(cx)||throw(ArgumentError("YAxisReflection requires center[1] == 0; received center[1]=$cx"))
+    pl=SVector{2,T}(cx-a,cy)
+    pr=SVector{2,T}(cx+a,cy)
+    pt=SVector{2,T}(cx,cy+h)
+    pm=SVector{2,T}(cx,cy)
+    # Full physical boundary: canonical start at +x and CCW orientation.
+    right=BilliardGeometry.LineSegment(pr,pt;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=1)
+    left=BilliardGeometry.LineSegment(pt,pl;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=2)
+    base=BilliardGeometry.LineSegment(pl,pr;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=3)
+    full_boundary=BilliardGeometry.AbsCurve[right,left,base]
+    # Right-half fundamental domain: pr -> pt -> pm -> pr.
     physical=BilliardGeometry.LineSegment(pr,pt;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=1)
-    halfbase=BilliardGeometry.LineSegment(pm,pr;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=2)
-    symwall=BilliardGeometry.LineSegment(pt,pm;bc=BilliardGeometry.ReflectionSymmetry(BilliardGeometry.YAxisReflection(),2),domain_id=1,segment_id=3)
-    fd=BilliardGeometry.SimpleDomain{T}(BilliardGeometry.AbsCurve[physical,symwall,halfbase],SVector{2,T}[pr,pt,pm],1)
-    return TriangleBilliard{T}(fd,full_boundary,BilliardGeometry.AbsSymmetry[BilliardGeometry.YAxisReflection()])
+    symwall=BilliardGeometry.LineSegment(pt,pm;bc=BilliardGeometry.ReflectionSymmetry(BilliardGeometry.YAxisReflection(),2),domain_id=1,segment_id=2)
+    halfbase=BilliardGeometry.LineSegment(pm,pr;bc=BilliardGeometry.SpecularReflection(),domain_id=1,segment_id=3)
+    fundamental_domain=BilliardGeometry.SimpleDomain{T}(BilliardGeometry.AbsCurve[physical,symwall,halfbase],SVector{2,T}[pr,pt,pm],1)
+    return TriangleBilliard{T}(fundamental_domain,full_boundary,BilliardGeometry.AbsSymmetry[BilliardGeometry.YAxisReflection()])
 end
