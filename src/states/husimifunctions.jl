@@ -1,39 +1,12 @@
-"""
-    antisym_vec(x::AbstractVector) → Vector
-
-Construct an antisymmetric vector by reversing `x[2:end]`, negating the
-reversed values and prepending them to `x`.
-
-## Arguments
-* `x::AbstractVector`: Starting nonnegative half of the final vector.
-
-## Returns
-* `v::Vector`: Antisymmetric vector constructed from `x`.
-"""
+# Construct an antisymmetric vector by reversing `x[2:end]`, negating the
+# reversed values and prepending them to `x`.
 function antisym_vec(x::AbstractVector)
     v=reverse(-x[2:end])
     return append!(v,x)
 end
 
-"""
-    _husimi_symmetric_window(s::AbstractVector{T},ds::AbstractVector{T},width::Real) where {T<:Real} → Tuple{Vector{T},Vector{T},Int}
-
-Extract the boundary nodes satisfying `s<=width` and construct the corresponding
-symmetric relative-coordinate window together with its reflected quadrature
-weights.
-
-The first node is not duplicated under reflection, matching [`antisym_vec`](@ref).
-
-## Arguments
-* `s::AbstractVector{T}`: Boundary arclength coordinates.
-* `ds::AbstractVector{T}`: Corresponding boundary quadrature weights.
-* `width::Real`: Positive arclength-window width.
-
-## Returns
-* `x::Vector{T}`: Symmetric relative-arclength window.
-* `dx::Vector{T}`: Quadrature weights corresponding to `x`.
-* `idx::Int`: Number of nodes in the original nonnegative half-window.
-"""
+# Extract the boundary nodes satisfying `s<=width` and construct the corresponding
+# symmetric relative-coordinate window together with its reflected quadrature weights.
 function _husimi_symmetric_window(s::AbstractVector{T},ds::AbstractVector{T},width::Real) where {T<:Real}
     mask=s.<=width
     x=collect(s[mask])
@@ -44,75 +17,68 @@ function _husimi_symmetric_window(s::AbstractVector{T},ds::AbstractVector{T},wid
     return x,dx,idx
 end
 
+# check of teh spacing is equidistant so one can use a sliding window approach for the Husimi function evaluation
+function _husimi_uniform_arclength_grid(s::AbstractVector{T},ds::AbstractVector{T};rtol::Real=100*eps(T)) where {T<:Real}
+    N=length(s)
+    N==length(ds)||throw(DimensionMismatch("s and ds must have equal length"))
+    Δs=s[2]-s[1]
+    atol_s=rtol*max(one(T),abs(Δs))
+    atol_ds=rtol*max(one(T),abs(ds[1]))
+    return all(isapprox(s[i+1]-s[i],Δs;rtol=rtol,atol=atol_s) for i in 2:N-1)&&all(isapprox(ds[i],ds[1];rtol=rtol,atol=atol_ds) for i in 2:N)
+end
+
 """
-    husimi_function(k::T,s::AbstractVector{T},ds::AbstractVector{T},u::AbstractVector{Num},L::T;c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real,Num<:Number} → Tuple{Matrix{T},Vector{T},Vector{T}}
+    _husimi_uniform_arclength(k::T,s::AbstractVector{T},ds::AbstractVector{T},u::AbstractVector{Num},L::T;c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real,Num<:Number} → Tuple{Matrix{T},Vector{T},Vector{T}}
 
-Compute the Poincaré-Husimi function on an automatically generated phase-space
-grid.
-
-This is the fast sliding-window implementation of the Husimi construction. The
-coherent-state width is `1/sqrt(k)`. The parameter `c` determines the grid
-density relative to this width, while `w` determines the Gaussian truncation
-window.
-
-The physical positions of the boundary nodes are given by `s`, while `ds`
-contains the corresponding quadrature weights for integration with respect to
-boundary arclength.
+Evaluate the Poincaré-Husimi function using the fast translating stencil for a
+uniform physical-arclength boundary grid.
 
 ## Arguments
 * `k::T`: Wavenumber.
-* `s::AbstractVector{T}`: Physical boundary arclength coordinates.
-* `ds::AbstractVector{T}`: Boundary quadrature weights for integration with respect to arclength.
+* `s::AbstractVector{T}`: Uniform physical boundary arclength coordinates.
+* `ds::AbstractVector{T}`: Uniform boundary quadrature weights.
 * `u::AbstractVector{Num}`: Boundary-function values.
 * `L::T`: Total boundary length.
 
 ## Keyword Arguments
-* `c::Real=10.0`: Density of points in the coherent-state peak.
-* `w::Real=7.0`: Gaussian truncation width in units of `σ`.
-* `full_p::Bool=false`: Whether to explicitly evaluate the full signed momentum interval.
+* `c::Real=10.0`: Phase-space sampling density in units of the coherent-state width.
+* `w::Real=7.0`: Gaussian truncation width in units of `σ=1/√k`.
+* `full_p::Bool=false`: Whether to evaluate both signs of momentum explicitly.
 
 ## Returns
 * `H::Matrix{T}`: Husimi-function matrix.
 * `qs::Vector{T}`: Boundary-position coordinates.
-* `ps::Vector{T}`: Signed momentum coordinates.
+* `ps::Vector{T}`: Full signed momentum coordinates.
 """
-function husimi_function(k::T,s::AbstractVector{T},ds::AbstractVector{T},u::AbstractVector{Num},L::T;c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real,Num<:Number}
-    #c density of points in coherent state peak, w width in units of sigma
-    #L is the boundary length for periodization
-    #compute coherrent state weights
+function _husimi_uniform_arclength(k::T,s::AbstractVector{T},ds::AbstractVector{T},u::AbstractVector{Num},L::T;c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real,Num<:Number}
     N=length(s)
     length(ds)==N==length(u)||throw(DimensionMismatch("s, ds and u must have equal length"))
-    sig=one(k)/sqrt(k) # width of the Gaussian
-    x,dx,idx=_husimi_symmetric_window(s,ds,w*sig)
-    a=one(k)/(2*pi*sqrt(pi*k)) # normalization factor (Husimi not normalized to 1)
-    uc=CircularVector(u) # allows circular indexing
-    gauss=@. exp(-k/2*x^2)*dx
-    gauss_l=@. exp(-k/2*(x+L)^2)*dx
-    gauss_r=@. exp(-k/2*(x-L)^2)*dx
-    if full_p
-        ps=collect(range(-one(T),one(T),step=sig/T(c))) # evaluation points in p coordinate if p -> -p cannot be guaranteed
-    else
-        ps=collect(range(zero(T),one(T),step=sig/T(c))) # evaluation points in p coordinate if p -> -p no >1d irreps
-    end
-    q_stride=length(s[s.<=sig/T(c)])==0 ? 1 : length(s[s.<=sig/T(c)])
+    sig=inv(sqrt(k))
+    x,dx,idx=_husimi_symmetric_window(s,ds,T(w)*sig)
+    a=inv(T(2π)*sqrt(T(π)*k))
+    uc=CircularVector(u)
+    gauss=@. exp(-k*x^2/2)*dx
+    gauss_l=@. exp(-k*(x+L)^2/2)*dx
+    gauss_r=@. exp(-k*(x-L)^2/2)*dx
+    np=max(1,ceil(Int,T(c)*sqrt(k)))
+    ps=full_p ? collect(range(-one(T),one(T);length=2np+1)) : collect(range(zero(T),one(T);length=np+1))
+    Δs=s[2]-s[1]
+    q_stride=max(1,round(Int,(sig/T(c))/Δs))
     q_idx=collect(1:q_stride:N)
-    if isempty(q_idx) || last(q_idx)!=N
-        push!(q_idx,N) # add last point carefully
-    end
-    qs=s[q_idx] # evaluation points in q coordinate
+    qs=collect(s[q_idx])
     H=zeros(T,length(qs),length(ps))
-    @fastmath for i in eachindex(ps)
-        cs=@. exp(-im*ps[i]*k*x)*gauss + exp(-im*ps[i]*k*(x+L))*gauss_l + exp(-im*ps[i]*k*(x-L))*gauss_r # exp(-im) is the convention since we take the complex conjugate of the wavepacket in the construction of PH functions
-        for j in eachindex(q_idx) # innermost loop cant have @simd due to sum
-            u_w=uc[q_idx[j]-idx+1:q_idx[j]+idx-1] # window with relevant values of u
-            h=sum(cs.*u_w)
-            H[j,i]=a*abs2(h)
+    @fastmath for ip in eachindex(ps)
+        p=ps[ip]
+        cs=@. exp(-im*p*k*x)*gauss + exp(-im*p*k*(x+L))*gauss_l + exp(-im*p*k*(x-L))*gauss_r
+        @inbounds for iq in eachindex(q_idx)
+            j=q_idx[iq]
+            h=sum(cs.*uc[j-idx+1:j+idx-1])
+            H[iq,ip]=a*abs2(h)
         end
     end
     if !full_p
-        ps=antisym_vec(ps) # make [-1,1] grid
-        H_ref=reverse(H[:,2:end];dims=2)   # reflect columns dropping the p=0 duplicate
-        H=hcat(H_ref,H)
+        H=hcat(reverse(H[:,2:end];dims=2),H)
+        ps=antisym_vec(ps)
     end
     return H,qs,ps
 end
@@ -254,8 +220,8 @@ function husimi_function(k::T,s::AbstractVector{T},ds::AbstractVector{T},u::Abst
         H=permutedims(Hp)
         ps_out=collect(ps)
     else
-        H=vcat(reverse(Hp;dims=1),Hp[2:end,:])|>permutedims
-        ps_out=vcat(-reverse(ps)[1:end-1],ps)
+        H=vcat(reverse(Hp[2:end,:];dims=1),Hp)|>permutedims
+        ps_out=vcat(-reverse(ps[2:end]),ps)
     end
     H./=sum(H) # normalize it in the end since the 1/(2πk) normalization does not work well in practice with finite grids
     return H,qs,ps_out
@@ -264,47 +230,71 @@ end
 """
     husimi_function(k::T,pts::BoundaryPoints{T},u::AbstractVector{Num};c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real,Num<:Number} → Tuple{Matrix{T},Vector{T},Vector{T}}
 
-Compute an automatically gridded Poincaré-Husimi function directly from a
+Compute an automatically gridded Poincaré-Husimi function from a
 [`BoundaryPoints`](@ref) discretization.
+
+If `pts.s` and `pts.ds` define a uniform physical-arclength grid, the fast
+translating-stencil implementation [`_husimi_uniform_arclength`](@ref) is used.
+Otherwise an approximately equally resolved phase-space grid is constructed and
+the general nonuniform-arclength quadrature is used.
+
+The automatic grid spacing is approximately `σ/c`, where `σ=1/√k`. The
+boundary-position grid is periodic and therefore contains `q=0` but not the
+duplicate endpoint `q=L`.
 
 ## Arguments
 * `k::T`: Wavenumber.
-* `pts::BoundaryPoints{T}`: Boundary discretization.
-* `u::AbstractVector{Num}`: Boundary-function values.
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization containing arclength coordinates `s` and quadrature weights `ds`.
+* `u::AbstractVector{Num}`: Boundary-function values corresponding to `pts`.
 
 ## Keyword Arguments
-* `c::Real=10.0`: Density of points in the coherent-state peak.
+* `c::Real=10.0`: Phase-space sampling density in units of the coherent-state width `σ=1/√k`.
 * `w::Real=7.0`: Gaussian truncation width in units of `σ`.
-* `full_p::Bool=false`: Whether to explicitly evaluate the full signed momentum interval.
+* `full_p::Bool=false`: Whether to evaluate both signs of momentum explicitly. If `false`, only `p≥0` is evaluated and the negative half is reconstructed by reflection.
 
 ## Returns
-The tuple `(H,qs,ps)` returned by the low-level [`husimi_function`](@ref).
+* `H::Matrix{T}`: Poincaré-Husimi function on the returned phase-space grid.
+* `qs::Vector{T}`: Periodic boundary-position grid.
+* `ps::Vector{T}`: Full signed momentum grid.
 """
 function husimi_function(k::T,pts::BoundaryPoints{T},u::AbstractVector{Num};c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real,Num<:Number}
+    length(pts)==length(u)||throw(DimensionMismatch("pts and u must have equal length"))
     L=sum(pts.ds)
-    return husimi_function(k,pts.s,pts.ds,u,L;c=c,w=w,full_p=full_p)
+    if _husimi_uniform_arclength_grid(pts.s,pts.ds)
+        return _husimi_uniform_arclength(k,pts.s,pts.ds,u,L;c=c,w=w,full_p=full_p)
+    end
+    sig=inv(sqrt(k))
+    nq=max(2,ceil(Int,L*T(c)/sig))
+    np=max(1,ceil(Int,T(c)/sig))
+    qs=collect(range(zero(T),L;length=nq+1))[1:end-1]
+    ps=full_p ? collect(range(-one(T),one(T);length=2np+1)) : collect(range(zero(T),one(T);length=np+1))
+    return husimi_function(k,pts.s,pts.ds,u,L,qs,ps;w=w,full_p=full_p)
 end
 
 """
     husimi_function(k::T,pts::BoundaryPoints{T},u::AbstractVector{Num},q::T,p::T;w::Real=4.0) where {T<:Real,Num<:Number} → T
 
-Evaluate the Poincaré-Husimi function at one phase-space point directly from a
+Evaluate the Poincaré-Husimi function at one phase-space point `(q,p)` from a
 [`BoundaryPoints`](@ref) discretization.
+
+This overload uses the general physical-arclength quadrature and is valid for
+both uniform and nonuniform boundary discretizations.
 
 ## Arguments
 * `k::T`: Wavenumber.
-* `pts::BoundaryPoints{T}`: Boundary discretization.
-* `u::AbstractVector{Num}`: Boundary-function values.
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization containing arclength coordinates `s` and quadrature weights `ds`.
+* `u::AbstractVector{Num}`: Boundary-function values corresponding to `pts`.
 * `q::T`: Boundary-position coordinate.
 * `p::T`: Momentum coordinate.
 
 ## Keyword Arguments
-* `w::Real=4.0`: Gaussian truncation width in units of `σ`.
+* `w::Real=4.0`: Gaussian truncation width in units of `σ=1/√k`.
 
 ## Returns
-* `H::T`: Husimi-function value at `(q,p)`.
+* `H::T`: Poincaré-Husimi value at `(q,p)`.
 """
 function husimi_function(k::T,pts::BoundaryPoints{T},u::AbstractVector{Num},q::T,p::T;w::Real=4.0) where {T<:Real,Num<:Number}
+    length(pts)==length(u)||throw(DimensionMismatch("pts and u must have equal length"))
     L=sum(pts.ds)
     return husimi_function(k,pts.s,pts.ds,u,L,q,p;w=w)
 end
@@ -312,24 +302,30 @@ end
 """
     husimi_function(k::T,pts::BoundaryPoints{T},u::AbstractVector{Num},qs::AbstractVector{T},ps::AbstractVector{T};w::Real=4.0,full_p::Bool=false) where {T<:Real,Num<:Number} → Tuple{Matrix{T},AbstractVector{T},Vector{T}}
 
-Evaluate the Poincaré-Husimi function on prescribed grids directly from a
+Evaluate the Poincaré-Husimi function on prescribed phase-space grids from a
 [`BoundaryPoints`](@ref) discretization.
+
+The general physical-arclength quadrature is used directly, so this overload is
+valid for both uniform and nonuniform boundary discretizations.
 
 ## Arguments
 * `k::T`: Wavenumber.
-* `pts::BoundaryPoints{T}`: Boundary discretization.
-* `u::AbstractVector{Num}`: Boundary-function values.
-* `qs::AbstractVector{T}`: Boundary-position grid.
-* `ps::AbstractVector{T}`: Momentum grid.
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization containing arclength coordinates `s` and quadrature weights `ds`.
+* `u::AbstractVector{Num}`: Boundary-function values corresponding to `pts`.
+* `qs::AbstractVector{T}`: Boundary-position coordinates at which to evaluate the Husimi function.
+* `ps::AbstractVector{T}`: Momentum coordinates to evaluate explicitly.
 
 ## Keyword Arguments
-* `w::Real=4.0`: Gaussian truncation width in units of `σ`.
-* `full_p::Bool=false`: Whether `ps` already spans the full signed momentum interval.
+* `w::Real=4.0`: Gaussian truncation width in units of `σ=1/√k`.
+* `full_p::Bool=false`: Whether `ps` already spans the full signed momentum interval. If `false`, `ps` must contain the nonnegative half and the negative half is reconstructed by reflection.
 
 ## Returns
-The tuple `(H,qs,ps_out)` returned by the low-level [`husimi_function`](@ref).
+* `H::Matrix{T}`: Normalized Poincaré-Husimi function on the returned phase-space grid.
+* `qs::AbstractVector{T}`: Input boundary-position grid.
+* `ps_out::Vector{T}`: Full signed momentum grid.
 """
 function husimi_function(k::T,pts::BoundaryPoints{T},u::AbstractVector{Num},qs::AbstractVector{T},ps::AbstractVector{T};w::Real=4.0,full_p::Bool=false) where {T<:Real,Num<:Number}
+    length(pts)==length(u)||throw(DimensionMismatch("pts and u must have equal length"))
     L=sum(pts.ds)
     return husimi_function(k,pts.s,pts.ds,u,L,qs,ps;w=w,full_p=full_p)
 end
@@ -340,49 +336,45 @@ end
 Construct automatically gridded Poincaré-Husimi functions for a collection of
 states.
 
-Each state uses the physical arclength coordinates and boundary quadrature
-weights stored in its corresponding [`BoundaryPoints`](@ref) object.
+Each state is dispatched independently according to its boundary discretization.
+Uniform physical-arclength grids use the fast translating-stencil algorithm,
+while nonuniform grids use the general physical-arclength quadrature.
 
 ## Arguments
-* `ks::AbstractVector{T}`: Wavenumbers.
-* `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: Boundary-function values, one vector per state.
+* `ks::AbstractVector{T}`: Eigenwavenumbers.
+* `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: Boundary functions, one vector per state.
 * `vec_pts::AbstractVector{<:BoundaryPoints{T}}`: Boundary discretizations, one per state.
 
 ## Keyword Arguments
-* `c::Real=10.0`: Density of points in the coherent-state peak.
+* `c::Real=10.0`: Phase-space sampling density in units of the coherent-state width `σ=1/√k`.
 * `w::Real=7.0`: Gaussian truncation width in units of `σ`.
-* `full_p::Bool=false`: Whether to explicitly evaluate the full signed momentum interval.
+* `full_p::Bool=false`: Whether to evaluate both signs of momentum explicitly.
 
 ## Returns
-* `Hs_return::Vector{Matrix}`: Husimi-function matrices.
-* `ps_return::Vector{Vector}`: Momentum grids.
-* `qs_return::Vector{Vector}`: Boundary-position grids.
+* `Hs_return::Vector{Matrix}`: Poincaré-Husimi matrices for successfully processed states.
+* `ps_return::Vector{Vector}`: Full signed momentum grids corresponding to `Hs_return`.
+* `qs_return::Vector{Vector}`: Boundary-position grids corresponding to `Hs_return`.
 """
 function husimi_function(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_pts::AbstractVector{<:BoundaryPoints{T}};c::Real=10.0,w::Real=7.0,full_p::Bool=false) where {T<:Real}
     length(ks)==length(vec_us)==length(vec_pts)||throw(DimensionMismatch("ks, vec_us and vec_pts must have equal length"))
-    valid_indices=fill(true,length(ks))
+    valid_indices=trues(length(ks))
     Hs_return=Vector{Matrix}(undef,length(ks))
     ps_return=Vector{Vector}(undef,length(ks))
     qs_return=Vector{Vector}(undef,length(ks))
-    p=Progress(length(ks);desc="Constructing husimi matrices, N=$(length(ks))")
+    p=Progress(length(ks);desc="Constructing Husimi matrices, N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)
         try
-            pts=vec_pts[i]
-            L=sum(pts.ds)
-            H,qs,ps=husimi_function(ks[i],pts.s,pts.ds,vec_us[i],L;c=c,w=w,full_p=full_p)
+            H,qs,ps=husimi_function(ks[i],vec_pts[i],vec_us[i];c=c,w=w,full_p=full_p)
             Hs_return[i]=H
             ps_return[i]=ps
             qs_return[i]=qs
         catch e
-            println("Error while constructing Husimi for k = $(ks[i]): $e")
+            @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
             valid_indices[i]=false
         end
         next!(p)
     end
-    Hs_return=Hs_return[valid_indices]
-    ps_return=ps_return[valid_indices]
-    qs_return=qs_return[valid_indices]
-    return Hs_return,ps_return,qs_return
+    return Hs_return[valid_indices],ps_return[valid_indices],qs_return[valid_indices]
 end
 
 """
@@ -390,40 +382,43 @@ end
 
 Construct fixed-grid Poincaré-Husimi functions for a collection of states.
 
-A common phase-space grid is used for all states. The physical boundary
-positions are obtained from `BoundaryPoints.s` and the integration weights from
-`BoundaryPoints.ds`.
+All states are evaluated on a common periodic boundary-position grid containing
+`nx` points on `[0,L)` and a common momentum grid. The general
+physical-arclength quadrature is used, so the underlying boundary
+discretizations may be nonuniform.
+
+The perimeter estimate is taken from the boundary discretization corresponding
+to the largest wavenumber, which normally has the highest boundary resolution.
 
 ## Arguments
-* `ks::AbstractVector{T}`: Wavenumbers.
-* `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: Boundary-function values, one vector per state.
+* `ks::AbstractVector{T}`: Eigenwavenumbers.
+* `vec_us::AbstractVector{<:AbstractVector{<:Number}}`: Boundary functions, one vector per state.
 * `vec_pts::AbstractVector{<:BoundaryPoints{T}}`: Boundary discretizations, one per state.
-* `nx::Integer`: Number of boundary-position grid points.
-* `ny::Integer`: Number of points on the final signed momentum grid.
+* `nx::Integer`: Number of periodic boundary-position grid points.
+* `ny::Integer`: Requested number of momentum grid points. For `full_p=false`, reflection through `p=0` produces an odd signed grid and therefore the returned count is `2cld(ny,2)-1`.
 
 ## Keyword Arguments
-* `w::Real=4.0`: Gaussian truncation width in units of `σ`.
-* `full_p::Bool=false`: Whether to explicitly evaluate the full signed momentum interval.
+* `w::Real=4.0`: Gaussian truncation width in units of `σ=1/√k`.
+* `full_p::Bool=false`: Whether to evaluate the full signed momentum interval directly.
 
 ## Returns
-* `Hs::Vector{Matrix{T}}`: Husimi-function matrices.
-* `ps::Vector{Vector{T}}`: Momentum grids.
-* `qs::Vector{Vector{T}}`: Boundary-position grids.
+* `Hs::Vector{Matrix{T}}`: Poincaré-Husimi matrices for successfully processed states.
+* `ps_return::Vector{Vector{T}}`: Full signed momentum grids corresponding to `Hs`.
+* `qs_return::Vector{Vector{T}}`: Common periodic boundary-position grids corresponding to `Hs`.
 """
 function husimi_function(ks::AbstractVector{T},vec_us::AbstractVector{<:AbstractVector{<:Number}},vec_pts::AbstractVector{<:BoundaryPoints{T}},nx::Integer,ny::Integer;w::Real=4.0,full_p::Bool=false) where {T<:Real}
     length(ks)==length(vec_us)==length(vec_pts)||throw(DimensionMismatch("ks, vec_us and vec_pts must have equal length"))
     isempty(ks)&&return Matrix{T}[],Vector{Vector{T}}(),Vector{Vector{T}}()
     imax=argmax(ks)
     L=sum(vec_pts[imax].ds)
-    qs=range(zero(T),stop=L,length=nx)
-    ps=full_p ? range(-one(T),one(T),length=ny) : range(zero(T),one(T),length=cld(ny,2))
+    qs=collect(range(zero(T),L;length=nx+1))[1:end-1]
+    ps=full_p ? collect(range(-one(T),one(T);length=ny)) : collect(range(zero(T),one(T);length=cld(ny,2)))
     Hs=Vector{Matrix{T}}(undef,length(ks))
     ok=trues(length(ks))
     pbar=Progress(length(ks);desc="Husimi N=$(length(ks))")
     Threads.@threads for i in eachindex(ks)
         try
-            pts=vec_pts[i]
-            H,_,_=husimi_function(ks[i],pts.s,pts.ds,vec_us[i],L,qs,ps;w=w,full_p=full_p)
+            H,_,_=husimi_function(ks[i],vec_pts[i],vec_us[i],qs,ps;w=w,full_p=full_p)
             Hs[i]=H
         catch e
             @debug "Husimi fail at k=$(ks[i])" exception=(e,catch_backtrace())
@@ -431,8 +426,7 @@ function husimi_function(ks::AbstractVector{T},vec_us::AbstractVector{<:Abstract
         end
         next!(pbar)
     end
-    ps_out=collect(full_p ? ps : vcat(-reverse(ps)[1:end-1],ps))
-    qs_out=collect(qs)
+    ps_out=full_p ? ps : vcat(-reverse(ps[2:end]),ps)
     n=count(ok)
-    return Hs[ok],[copy(ps_out) for _ in 1:n],[copy(qs_out) for _ in 1:n]
+    return Hs[ok],[copy(ps_out) for _ in 1:n],[copy(qs) for _ in 1:n]
 end

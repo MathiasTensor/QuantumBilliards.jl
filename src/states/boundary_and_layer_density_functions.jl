@@ -76,6 +76,9 @@ This method is intended for basis-type solvers such as
 `VerginiSaracenoSolver`, `DecompositionMethodSolver` and
 `ParticularSolutionsMethod`.
 
+## Note
+The sampler used is [`FourierNodes`](@ref FourierNodes) so that we have uniformly spaced nodes on each boundary curve. This is important for the momentum function, which uses FFTs to compute the Fourier coefficients of the boundary function and also Poincare-Husimi function construction via the [`husimi_function`](@ref husimi_function). The sliding window approach is applicable only in this scenario.
+
 ## Arguments
 * `state::Eigenstate`: Basis-expanded eigenstate.
 
@@ -396,25 +399,77 @@ end
 """
     boundary_function(solver::BoundaryIntegralMethod,layer_density::AbstractVector{N},pts::BoundaryPoints{T},k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
 
-Expand the boundary density to the full physical boundary when necessary and
-Rellich-normalize it.
+Construct the physical Dirichlet boundary normal derivative from the nullspace
+of the weighted-transpose BIM Fredholm matrix, expand it to the full physical
+boundary when symmetry reduction is active, and Rellich-normalize it.
+
+## Arguments
+* `solver::BoundaryIntegralMethod`: Boundary integral solver configuration.
+* `layer_density::AbstractVector{N}`: Primal BIM layer density associated with the eigenstate.
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization used by the BIM solver.
+* `k::T`: Eigenwavenumber at which the adjoint Fredholm nullspace is computed.
+* `billiard::Bi`: Billiard geometry used when expanding symmetry-reduced boundary data.
+
+## Returns
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization corresponding to the returned boundary function.
+* `u::Vector`: Rellich-normalized physical boundary normal derivative `∂ₙψ`.
 """
 function boundary_function(solver::BoundaryIntegralMethod,layer_density::AbstractVector{N},pts::BoundaryPoints{T},k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    pts,layer_density=symmetrize_layer_density(solver,layer_density,pts,billiard)
-    nrlz=_rellich(pts,layer_density,k)
-    return pts,layer_density./sqrt(nrlz)
+    orbits=_dlp_symmetry_orbits(solver,pts)
+    n=_dlp_matrix_dim(pts,orbits)
+    A=Matrix{Complex{T}}(undef,n,n)
+    D=similar(A)
+    if isnothing(orbits)
+        @blas_1 adjoint_fredholm_matrix!(A,D,pts,nothing,k;multithreaded=true)
+    else
+        @blas_1 adjoint_fredholm_matrix!(A,D,pts,orbits,k;multithreaded=true)
+    end
+    _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=1e-12,maxiter=2000,krylovdim=40)
+    pts,u=symmetrize_layer_density(solver,u,pts,billiard)
+    nrlz=_rellich(pts,u,k)
+    return pts,u./sqrt(nrlz)
 end
 
 """
     boundary_function(solver::BoundaryIntegralMethod,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
 
-Batch boundary-function construction for `BoundaryIntegralMethod`.
+Construct Rellich-normalized physical BIM boundary normal derivatives for a
+batch of eigenstates from the nullspaces of the corresponding
+weighted-transpose Fredholm matrix.
+
+## Arguments
+* `solver::BoundaryIntegralMethod`: Boundary integral solver configuration.
+* `layer_density::AbstractVector{<:AbstractVector{N}}`: Primal BIM layer densities associated with the eigenstates.
+* `pts::AbstractVector{<:BoundaryPoints{T}}`: Boundary discretizations corresponding to the states.
+* `billiard::Bi`: Billiard geometry used when expanding symmetry-reduced boundary functions.
+* `ks::AbstractVector{T}`: Eigenwavenumbers corresponding to the boundary discretizations.
+
+## Keyword Arguments
+* `multithreaded::Bool=true`: Whether to process different eigenstates in parallel.
+
+## Returns
+* `pts_all::Vector`: Full physical boundary discretizations corresponding to the returned boundary functions.
+* `us_all::Vector{Vector}`: Rellich-normalized physical boundary normal derivatives `∂ₙψ` for all states.
 """
 function boundary_function(solver::BoundaryIntegralMethod,layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    length(layer_density)==length(pts)==length(ks)||throw(DimensionMismatch("layer_density, pts and ks must have equal length"))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     us_all=Vector{Vector}(undef,length(layer_density))
     @use_threads multithreading=multithreaded for i in eachindex(layer_density)
-        pts_all[i],us_all[i]=boundary_function(solver,layer_density[i],pts[i],ks[i],billiard)
+        orbits=_dlp_symmetry_orbits(solver,pts[i])
+        n=_dlp_matrix_dim(pts[i],orbits)
+        A=Matrix{Complex{T}}(undef,n,n)
+        D=similar(A)
+        if isnothing(orbits)
+            @blas_1 adjoint_fredholm_matrix!(A,D,pts[i],nothing,ks[i];multithreaded=false)
+        else
+            @blas_1 adjoint_fredholm_matrix!(A,D,pts[i],orbits,ks[i];multithreaded=false)
+        end
+        _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=1e-12,maxiter=2000,krylovdim=40)
+        pts_i,u=symmetrize_layer_density(solver,u,pts[i],billiard)
+        nrlz=_rellich(pts_i,u,ks[i])
+        pts_all[i]=pts_i
+        us_all[i]=u./sqrt(nrlz)
     end
     return pts_all,us_all
 end
@@ -422,25 +477,73 @@ end
 """
     boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{N},pts::BoundaryPoints{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
 
-Expand a DLP-Kress density to the full physical boundary when necessary and
-Rellich-normalize it.
+Construct the physical Dirichlet boundary normal derivative from the nullspace
+of the weighted-transpose DLP-Kress Fredholm matrix, expand it to the full
+physical boundary when symmetry reduction is active, and Rellich-normalize it.
+
+## Arguments
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: Smooth or globally graded DLP-Kress solver.
+* `layer_density::AbstractVector{N}`: Primal DLP layer density associated with the eigenstate.
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization used by the DLP-Kress solver.
+* `billiard::Bi`: Billiard geometry used when expanding symmetry-reduced boundary data.
+* `k::T`: Eigenwavenumber at which the adjoint Fredholm nullspace is computed.
+
+## Returns
+* `pts::BoundaryPoints{T}`: Full physical boundary discretization corresponding to the returned boundary function.
+* `u::Vector`: Rellich-normalized physical boundary normal derivative `∂ₙψ`.
 """
 function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{N},pts::BoundaryPoints{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
-    pts,layer_density=symmetrize_layer_density(solver,layer_density,pts,billiard)
-    nrlz=_rellich(pts,layer_density,k)
-    return pts,layer_density./sqrt(nrlz)
+    ws=build_dlp_kress_workspace(solver,pts)
+    n=_workspace_dim(ws)
+    A=Matrix{Complex{T}}(undef,n,n)
+    D=similar(A)
+    @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts,ws,k;multithreaded=true)
+    _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=1e-12,maxiter=2000,krylovdim=40)
+    pts,u=symmetrize_layer_density(solver,u,pts,billiard)
+    nrlz=_rellich(pts,u,k)
+    return pts,u./sqrt(nrlz)
 end
 
 """
     boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
 
-Batch DLP-Kress boundary-function construction.
+Construct Rellich-normalized physical DLP-Kress boundary normal derivatives for
+a batch of eigenstates from the nullspaces of the corresponding
+weighted-transpose Fredholm matrix.
+
+Each state is processed independently. When `multithreaded=true`, threading is
+performed over states and individual matrix assemblies are kept single-threaded
+to avoid nested threading.
+
+## Arguments
+* `solver::Union{DLP_kress,DLP_kress_global_corners}`: Smooth or globally graded DLP-Kress solver.
+* `layer_density::AbstractVector{<:AbstractVector{N}}`: Primal DLP layer densities associated with the eigenstates.
+* `pts::AbstractVector{<:BoundaryPoints{T}}`: Boundary discretizations corresponding to the states.
+* `billiard::Bi`: Billiard geometry used when expanding symmetry-reduced boundary functions.
+* `ks::AbstractVector{T}`: Eigenwavenumbers corresponding to the boundary discretizations.
+
+## Keyword Arguments
+* `multithreaded::Bool=true`: Whether to process different eigenstates in parallel.
+
+## Returns
+* `pts_all::Vector`: Full physical boundary discretizations corresponding to the returned boundary functions.
+* `us_all::Vector{Vector}`: Rellich-normalized physical boundary normal derivatives `∂ₙψ` for all states.
 """
 function boundary_function(solver::Union{DLP_kress,DLP_kress_global_corners},layer_density::AbstractVector{<:AbstractVector{N}},pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+    length(layer_density)==length(pts)==length(ks)||throw(DimensionMismatch("layer_density, pts and ks must have equal length"))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     us_all=Vector{Vector}(undef,length(layer_density))
     @use_threads multithreading=multithreaded for i in eachindex(layer_density)
-        pts_all[i],us_all[i]=boundary_function(solver,layer_density[i],pts[i],billiard,ks[i])
+        ws=build_dlp_kress_workspace(solver,pts[i])
+        n=_workspace_dim(ws)
+        A=Matrix{Complex{T}}(undef,n,n)
+        D=similar(A)
+        @blas_1 adjoint_fredholm_matrix!(A,D,solver,pts[i],ws,ks[i];multithreaded=false)
+        _,u,_=smallest_nullvec_krylov!(A;nev=1,tol=1e-12,maxiter=2000,krylovdim=40)
+        pts_i,u=symmetrize_layer_density(solver,u,pts[i],billiard)
+        nrlz=_rellich(pts_i,u,ks[i])
+        pts_all[i]=pts_i
+        us_all[i]=u./sqrt(nrlz)
     end
     return pts_all,us_all
 end
