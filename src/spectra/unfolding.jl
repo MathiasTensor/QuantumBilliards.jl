@@ -192,6 +192,8 @@ domain.
 @inline symmetry_reduction_factor(::BilliardGeometry.XAxisReflection)=2
 @inline symmetry_reduction_factor(::BilliardGeometry.YAxisReflection)=2
 @inline symmetry_reduction_factor(::BilliardGeometry.XYAxisReflection)=4
+@inline symmetry_reduction_factor(::DiagonalReflection)=2
+@inline symmetry_reduction_factor(::AntiDiagonalReflection)=2
 @inline symmetry_reduction_factor(sym::BilliardGeometry.NFoldRotation)=sym.order
 
 function maximal_symmetry(billiard::BilliardGeometry.AbsBilliard)
