@@ -12,7 +12,7 @@
 
 # so the user does not need to know the actual :Symbol
 @inline chebyshev_kind(::BoundaryIntegralMethod)=Val(:dlp)
-@inline chebyshev_kind(::Union{DLP_kress,DLP_kress_global_corners})=Val(:dlp_kress)
+@inline chebyshev_kind(::DLP)=Val(:dlp_kress)
 @inline chebyshev_kind(::CFIE)=Val(:cfie_kress)
 
 # common API so that e.g. Beyn and EBIM can call the same function to construct the boundary matrices for any solver type
@@ -218,7 +218,7 @@ end
 ######## KRESS H0/H1/J0/J1 TUNER #######
 ########################################
 """
-    chebyshev_params(solver::CFIE,pts,zj;...)
+    chebyshev_params(solver::Union{CFIE,DLP},pts,zj;...)
 
 Determine suitable Chebyshev panel counts and polynomial degrees for the
 `H₀⁽¹⁾`, `H₁⁽¹⁾`, `J₀`, and `J₁` functions used by the Kress backends.
@@ -262,43 +262,31 @@ A tuple
 containing the final Hankel and Bessel-J interpolation parameters, the four plan
 collections, and the corresponding per-wavenumber maximum validation errors.
 """
-function chebyshev_params(solver::CFIE,pts::Union{Vector{BoundaryPoints{T}},BoundaryPoints{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
+function chebyshev_params(solver::Union{CFIE,DLP},pts::Union{Vector{BoundaryPoints{T}},BoundaryPoints{T}},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
     rmin_cheb=maximum(hankel_z_chebyshev_cutoff./abs.(zj))
-    ptsv=pts isa Vector ? pts : [pts]
-    pts1=((pts isa Vector)&(solver isa Union{DLP_kress,DLP_kress_global_corners})) ? (length(pts)==1 ? pts[1] : error("DLP_kress expects one BoundaryPoints component.")) : pts
-    block_cache=solver isa CFIE ? build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb) : build_dlp_kress_block_cache(solver,pts1;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
-    rmin_h=Float64(block_cache.rmin)
-    rmax=Float64(block_cache.rmax)
+    if solver isa CFIE
+        ptsv=pts isa Vector ? pts : [pts]
+        block_cache=build_cfie_kress_block_caches(solver,ptsv;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
+    else
+        pts1=pts isa Vector ? (length(pts)==1 ? pts[1] : error("DLP-Kress expects one BoundaryPoints component.")) : pts
+        block_cache=build_dlp_kress_block_cache(solver,pts1;npanels_h=16,M_h=4,npanels_j=16,M_j=4,rmin_cheb=rmin_cheb)
+    end
+    rmin_h=Float64(block_cache.rmin);rmax=Float64(block_cache.rmax)
     rmin_h<rmax||throw(ArgumentError("Empty Kress Hankel interpolation interval: rmin=$rmin_h, rmax=$rmax"))
-    rsH=collect(range(rmin_h,rmax;length=sampling_points))
-    rsJ=collect(range(0.0,rmax;length=sampling_points))
-    nz=length(zj)
-    nh=npanels_h_init
-    nj=npanels_j_init
-    Mh=M_h_init
-    Mj=M_j_init
-    plans0=Vector{ChebHankelPlanH}(undef,nz)
-    plans1=Vector{ChebHankelPlanH}(undef,nz)
-    plansj0=Vector{ChebJPlan}(undef,nz)
-    plansj1=Vector{ChebJPlan}(undef,nz)
-    errH0=fill(Inf,nz)
-    errH1=fill(Inf,nz)
-    errJ0=fill(Inf,nz)
-    errJ1=fill(Inf,nz)
+    rsH=collect(range(rmin_h,rmax;length=sampling_points));rsJ=collect(range(0.0,rmax;length=sampling_points))
+    nz=length(zj);nh=npanels_h_init;nj=npanels_j_init;Mh=M_h_init;Mj=M_j_init
+    plans0=Vector{ChebHankelPlanH}(undef,nz);plans1=Vector{ChebHankelPlanH}(undef,nz)
+    plansj0=Vector{ChebJPlan}(undef,nz);plansj1=Vector{ChebJPlan}(undef,nz)
+    errH0=fill(Inf,nz);errH1=fill(Inf,nz);errJ0=fill(Inf,nz);errJ1=fill(Inf,nz)
     for it in 1:max_iter
         plans0,plans1,plansj0,plansj1=build_cfie_kress_plans(zj,rmin_h,rmax;npanels_h=nh,M_h=Mh,npanels_j=nj,M_j=Mj)
         _check_H0H1_errors!(errH0,errH1,plans0,plans1,zj,rsH)
         _check_J0J1_errors!(errJ0,errJ1,plansj0,plansj1,zj,rsJ)
-        okH=all(<(tol),errH0)&&all(<(tol),errH1)
-        okJ=all(<(tol),errJ0)&&all(<(tol),errJ1)
+        okH=all(<(tol),errH0)&&all(<(tol),errH1);okJ=all(<(tol),errJ0)&&all(<(tol),errJ1)
         verbose&&@info "Worst Kress H0 H1 J0 J1 | nh Mh nj Mj" maximum(errH0) maximum(errH1) maximum(errJ0) maximum(errJ1) nh Mh nj Mj
         okH&&okJ&&return nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1
-        if !okH
-            it%5==0 ? (Mh+=grow_M) : (nh=ceil(Int,grow_panels*nh))
-        end
-        if !okJ
-            it%5==0 ? (Mj+=grow_M) : (nj=ceil(Int,grow_panels*nj))
-        end
+        !okH&&(it%5==0 ? (Mh+=grow_M) : (nh=ceil(Int,grow_panels*nh)))
+        !okJ&&(it%5==0 ? (Mj+=grow_M) : (nj=ceil(Int,grow_panels*nj)))
     end
     @warn "Kress Chebyshev tuning did not reach tol=$tol after $max_iter iterations. Returning best effort."
     return nh,Mh,nj,Mj,plans0,plans1,plansj0,plansj1,errH0,errH1,errJ0,errJ1
