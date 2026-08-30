@@ -413,7 +413,7 @@ boundary when symmetry reduction is active, and Rellich-normalize it.
 * `pts::BoundaryPoints{T}`: Full physical boundary discretization corresponding to the returned boundary function.
 * `u::Vector`: Rellich-normalized physical boundary normal derivative `∂ₙψ`.
 """
-function boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
     orbits=_dlp_symmetry_orbits(solver,pts)
     n=_dlp_matrix_dim(pts,orbits)
     A=Matrix{Complex{T}}(undef,n,n)
