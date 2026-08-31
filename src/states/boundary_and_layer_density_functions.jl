@@ -397,7 +397,7 @@ end
 #######################################################################
 
 """
-    boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},k::T,billiard::Bi) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
+    boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard} → Tuple
 
 Construct the physical Dirichlet boundary normal derivative from the nullspace
 of the weighted-transpose BIM Fredholm matrix, expand it to the full physical
@@ -413,7 +413,7 @@ boundary when symmetry reduction is active, and Rellich-normalize it.
 * `pts::BoundaryPoints{T}`: Full physical boundary discretization corresponding to the returned boundary function.
 * `u::Vector`: Rellich-normalized physical boundary normal derivative `∂ₙψ`.
 """
-function boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     orbits=_dlp_symmetry_orbits(solver,pts)
     n=_dlp_matrix_dim(pts,orbits)
     A=Matrix{Complex{T}}(undef,n,n)
@@ -430,7 +430,7 @@ function boundary_function(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T}
 end
 
 """
-    boundary_function(solver::BoundaryIntegralMethod,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
+    boundary_function(solver::BoundaryIntegralMethod,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard} → Tuple
 
 Construct Rellich-normalized physical BIM boundary normal derivatives for a
 batch of eigenstates from the nullspaces of the corresponding
@@ -449,7 +449,7 @@ weighted-transpose Fredholm matrix.
 * `pts_all::Vector`: Full physical boundary discretizations corresponding to the returned boundary functions.
 * `us_all::Vector{Vector}`: Rellich-normalized physical boundary normal derivatives `∂ₙψ` for all states.
 """
-function boundary_function(solver::BoundaryIntegralMethod,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::BoundaryIntegralMethod,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     length(pts)==length(ks)||throw(DimensionMismatch("pts and ks must have equal length"))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     us_all=Vector{Vector}(undef,length(pts))
@@ -473,7 +473,7 @@ function boundary_function(solver::BoundaryIntegralMethod,pts::AbstractVector{<:
 end
 
 """
-    boundary_function(solver::DLP,pts::BoundaryPoints{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
+    boundary_function(solver::DLP,pts::BoundaryPoints{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard} → Tuple
 
 Construct the physical Dirichlet boundary normal derivative from the nullspace
 of the weighted-transpose DLP-Kress Fredholm matrix, expand it to the full
@@ -489,7 +489,7 @@ physical boundary when symmetry reduction is active, and Rellich-normalize it.
 * `pts::BoundaryPoints{T}`: Full physical boundary discretization corresponding to the returned boundary function.
 * `u::Vector`: Rellich-normalized physical boundary normal derivative `∂ₙψ`.
 """
-function boundary_function(solver::DLP,pts::BoundaryPoints{T},billiard::Bi,k::T) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::DLP,pts::BoundaryPoints{T},billiard::Bi,k::T) where {T<:Real,Bi<:AbsBilliard}
     ws=build_dlp_kress_workspace(solver,pts)
     n=_workspace_dim(ws)
     A=Matrix{Complex{T}}(undef,n,n)
@@ -502,7 +502,7 @@ function boundary_function(solver::DLP,pts::BoundaryPoints{T},billiard::Bi,k::T)
 end
 
 """
-    boundary_function(solver::DLP,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard} → Tuple
+    boundary_function(solver::DLP,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard} → Tuple
 
 Construct Rellich-normalized physical DLP-Kress boundary normal derivatives for
 a batch of eigenstates from the nullspaces of the corresponding
@@ -526,7 +526,7 @@ to avoid nested threading.
 * `pts_all::Vector`: Full physical boundary discretizations corresponding to the returned boundary functions.
 * `us_all::Vector{Vector}`: Rellich-normalized physical boundary normal derivatives `∂ₙψ` for all states.
 """
-function boundary_function(solver::DLP,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {N<:Number,T<:Real,Bi<:AbsBilliard}
+function boundary_function(solver::DLP,pts::AbstractVector{<:BoundaryPoints{T}},billiard::Bi,ks::AbstractVector{T};multithreaded::Bool=true) where {T<:Real,Bi<:AbsBilliard}
     length(pts)==length(ks)||throw(DimensionMismatch("pts and ks must have equal length"))
     pts_all=Vector{typeof(pts[1])}(undef,length(pts))
     us_all=Vector{Vector}(undef,length(pts))
