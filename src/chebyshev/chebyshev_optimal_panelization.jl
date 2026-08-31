@@ -181,8 +181,7 @@ where `n` is the final Hankel panel count, `M` is the final polynomial degree,
 error for each wavenumber.
 """
 function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
-    orbits=_dlp_symmetry_orbits(solver,pts)
-    rmin_raw,rmax=_dlp_cheb_rmin_rmax(pts,orbits)
+    rmin_raw,rmax=estimate_rmin_rmax(pts,solver.symmetry)
     rmin_cheb=maximum(hankel_z_chebyshev_cutoff./abs.(zj))
     rmin_interp=max(rmin_raw,Float64(rmin_cheb))
     rmin_interp<rmax||throw(ArgumentError("Empty Hankel interpolation interval: rmin=$rmin_interp, rmax=$rmax"))
