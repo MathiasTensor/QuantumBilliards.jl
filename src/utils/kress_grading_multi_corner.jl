@@ -32,12 +32,6 @@
 # - jac2 : d²t/dσ²
 # - wq   : quadrature weights h * jac
 #
-# Properties
-# - Preserves periodic Kress log structure (depends only on σ differences)
-# - Enforces exact corner alignment
-# - Applies grading only at true tangent-discontinuous corners
-# - Reduces to uniform parametrization if no corners are present
-#
 # Usage
 # Use this for piecewise-smooth closed curves (rectangles, polygons,
 # mushrooms, half-stadium with flat edges, etc.). Smooth joins must NOT
@@ -45,6 +39,10 @@
 #
 # Reference
 # Kress (1991), extended here to multiple corners via local interval mapping.
+
+# NOTE: This will still probably cluster 2 pts below machine precision to the corner, but no problem since they
+# have jacobian weight also below machine precision. When practically doing computations they have not bearing to
+# the accuracy of the result. One can even safely take adjoints ds[j]/ds[i] at this point since it gives finite values.
 
 const TWO_PI=2*pi
 
@@ -58,20 +56,6 @@ const TWO_PI=2*pi
         abs(cs[j]-out[end])>sqrt(eps(T)) && push!(out,cs[j])
     end
     return out
-end
-
-@inline function _choose_sigma_shift(::Type{T},h::T,corners) where {T<:Real}
-    isempty(corners)&&return h/T(2)
-    candidates=T[h/T(2),h/T(3),T(2)*h/T(3),h/T(5),T(2)*h/T(5),T(3)*h/T(5)]
-    bestδ=candidates[1];bestd=-one(T)
-    for δ in candidates
-        mind=typemax(T)
-        for c in corners
-            r=mod(c-δ,h);d=min(r,h-r);mind=min(mind,d)
-        end
-        if mind>bestd;bestd=mind;bestδ=δ;end
-    end
-    return bestδ
 end
 
 @inline function _kress_smoothstep(u::T,q::T) where {T<:Real}
@@ -112,7 +96,6 @@ function multi_kress_graded_nodes_data(::Type{T},N::Int,corners_in;q=3,minsep_to
     corners=_sort_unique_corners(T,corners_in)
     h=T(TWO_PI)/T(N)
     σ=Vector{T}(undef,N)
-    #δ=_choose_sigma_shift(T,h,corners)
     δ=h/2
     @inbounds for k in 1:N;σ[k]=_wrap_to_2pi(δ+T(k-1)*h);end
     sort!(σ)

@@ -3,6 +3,10 @@
 #  Math. Comput. Modelling 15 (1991), 229–243.
 const TWO_PI=2*pi
 
+# NOTE: This will still probably cluster 2 pts below machine precision to the corner, but no problem since they
+# have jacobian weight also below machine precision. When practically doing computations they have not bearing to
+# the accuracy of the result. One can even safely take adjoints ds[j]/ds[i] at this point since it gives finite values.
+
 # v(s,q)
 @inline function _kress_v(s::T,q::T) where {T<:Real}
     x=(pi-s)/pi
