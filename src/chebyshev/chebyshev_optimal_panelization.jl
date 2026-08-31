@@ -151,15 +151,6 @@ end
 Determine suitable Chebyshev panel count and polynomial degree for the
 unscaled `H₁⁽¹⁾` kernel used by `BoundaryIntegralMethod`.
 
-The geometric radial interval is obtained from `estimate_rmin_rmax`. The
-interpolation lower bound is chosen so that
-
-    |k_j|r >= hankel_z_chebyshev_cutoff
-
-for every supplied wavenumber `k_j`. Radii below this common bound are handled
-by the direct small-argument Hankel pathway rather than by Chebyshev
-interpolation.
-
 The tuner constructs `H₁⁽¹⁾` plans, validates them against
 `SpecialFunctions.besselh`, and increases the radial panel count or polynomial
 degree until the requested absolute tolerance is reached.
@@ -190,13 +181,13 @@ where `n` is the final Hankel panel count, `M` is the final polynomial degree,
 error for each wavenumber.
 """
 function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},zj::AbstractVector{Complex{T}};npanels_h_init::Int=15_000,M_h_init::Int=5,npanels_j_init::Int=10_000,M_j_init::Int=5,tol::Real=1e-10,sampling_points::Int=50_000,max_iter::Int=20,grow_panels::Real=1.5,grow_M::Int=2,verbose::Bool=false) where {T<:Real}
-    rmin_raw,rmax=estimate_rmin_rmax(pts,solver.symmetry)
+    orbits=_dlp_symmetry_orbits(solver,pts)
+    rmin_raw,rmax=_dlp_cheb_rmin_rmax(pts,orbits)
     rmin_cheb=maximum(hankel_z_chebyshev_cutoff./abs.(zj))
-    rmin_interp=max(Float64(rmin_raw),Float64(rmin_cheb))
-    rmaxf=Float64(rmax)
-    rmin_interp<rmaxf||throw(ArgumentError("Empty Hankel interpolation interval: rmin=$rmin_interp, rmax=$rmaxf"))
+    rmin_interp=max(rmin_raw,Float64(rmin_cheb))
+    rmin_interp<rmax||throw(ArgumentError("Empty Hankel interpolation interval: rmin=$rmin_interp, rmax=$rmax"))
     verbose&&@info "Estimated BIM Chebyshev radial bounds" rmin_raw rmax rmin_cheb rmin_interp
-    rs=collect(range(rmin_interp,rmaxf;length=sampling_points))
+    rs=collect(range(rmin_interp,rmax;length=sampling_points))
     nz=length(zj)
     n=npanels_h_init
     M=M_h_init
@@ -204,7 +195,7 @@ function chebyshev_params(solver::BoundaryIntegralMethod,pts::BoundaryPoints{T},
     err1=fill(Inf,nz)
     for it in 1:max_iter
         Threads.@threads for j in eachindex(zj)
-            plans1[j]=plan_h(1,1,ComplexF64(zj[j]),rmin_interp,rmaxf;npanels=n,M=M)
+            plans1[j]=plan_h(1,1,ComplexF64(zj[j]),rmin_interp,rmax;npanels=n,M=M)
         end
         _check_H1_errors!(err1,plans1,zj,rs)
         verbose&&@info "Worst BIM H1 | n_panels M" maximum(err1) n M
@@ -222,15 +213,6 @@ end
 
 Determine suitable Chebyshev panel counts and polynomial degrees for the
 `H₀⁽¹⁾`, `H₁⁽¹⁾`, `J₀`, and `J₁` functions used by the Kress backends.
-
-Hankel and Bessel-J interpolation use different radial intervals:
-
-    Hν⁽¹⁾ : [rmin_H,rmax],
-    Jν    : [0,rmax].
-
-The Hankel lower bound excludes the common small-argument region. The Bessel-J
-functions are regular at the origin and are therefore interpolated all the way
-down to `r=0`.
 
 The tuner constructs all four plan families, validates them against direct
 `SpecialFunctions` values, and independently refines the Hankel and Bessel-J
