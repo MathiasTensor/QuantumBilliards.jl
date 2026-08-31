@@ -29,6 +29,6 @@ function StarBilliard(R::T,a::T,n::Int;center=SVector{2,T}(zero(T),zero(T))) whe
         push!(symmetries,BilliardGeometry.YAxisReflection())
         push!(symmetries,BilliardGeometry.XYAxisReflection())
     end
-    #append!(symmetries,BilliardGeometry.Cn_symmetry(n))
+    append!(symmetries,BilliardGeometry.Cn_symmetry(n))
     return StarBilliard{T}(full_boundary,symmetries)
 end
