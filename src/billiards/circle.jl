@@ -54,7 +54,7 @@ struct CircleWedgeBilliard{T}<:BilliardGeometry.AbsBilliard
 end
 
 """
-    CircleWedgeBilliard(R::T=one(T),α::T=T(pi/6)) where {T<:Real}
+    CircleWedgeBilliard(α::T,R::T=one(T)) where {T<:Real}
 
 Construct a circle of radius `R` with a wedge of opening angle `2α` removed
 around the positive x-axis.
@@ -66,7 +66,7 @@ around the positive x-axis.
 ## Returns
 * `CircleWedgeBilliard{T}`: Constructed billiard.
 """
-function CircleWedgeBilliard(R::T=one(T),α::T=T(pi/6)) where {T<:Real}
+function CircleWedgeBilliard(α::T,R::T=one(T)) where {T<:Real}
     zero(T)<α<T(pi)||throw(ArgumentError("α must satisfy 0<α<π; received α=$α"))
     c=SVector{2,T}(zero(T),zero(T))
     pplus=R*SVector{2,T}(cos(α),sin(α))
