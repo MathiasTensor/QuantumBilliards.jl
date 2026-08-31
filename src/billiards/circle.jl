@@ -66,7 +66,7 @@ around the positive x-axis.
 ## Returns
 * `CircleWedgeBilliard{T}`: Constructed billiard.
 """
-function CircleWedgeBilliard(α::T,R::T=one(T)) where {T<:Real}
+function CircleWedgeBilliard(α::T;R::T=one(T)) where {T<:Real}
     zero(T)<α<T(pi)||throw(ArgumentError("α must satisfy 0<α<π; received α=$α"))
     c=SVector{2,T}(zero(T),zero(T))
     pplus=R*SVector{2,T}(cos(α),sin(α))
