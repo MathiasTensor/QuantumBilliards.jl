@@ -177,6 +177,23 @@ blocks are filled with zeros.
 """
 directsum(A::Matrix,B::Matrix)=[A zeros(size(A,1), size(B,2)); zeros(size(B,1), size(A,2)) B]
 
+function _adjust_scaling_and_samplers(solver::AbsSolver,n_curves::Int)
+    n_curves>=1||throw(ArgumentError("The boundary must contain at least one physical curve"))
+    bs=copy(solver.pts_scaling_factor)
+    samplers=copy(solver.sampler)
+    isempty(bs)&&throw(ArgumentError("pts_scaling_factor must contain at least one value"))
+    isempty(samplers)&&throw(ArgumentError("sampler must contain at least one sampling rule"))
+    b_min=minimum(bs)
+    default=samplers[1]
+    while length(bs)<n_curves
+        push!(bs,b_min)
+    end
+    while length(samplers)<n_curves
+        push!(samplers,default)
+    end
+    return bs,samplers
+end
+
 """
     adjust_scaling_and_samplers(solver::AbsSolver, billiard::BilliardGeometry.AbsBilliard) → (bs::Vector, samplers::Vector{<:AbsSampler})
 
@@ -194,17 +211,5 @@ scaling factors and samplers, filling in defaults where necessary.
 * `samplers`: The adjusted vector of samplers, with length equal to the number of fundamental boundary curves. Missing entries are filled with `solver.sampler[1]`.
 """
 function adjust_scaling_and_samplers(solver::AbsSolver,billiard::Bi) where {Bi<:BilliardGeometry.AbsBilliard}
-    bs=solver.pts_scaling_factor
-    samplers=solver.sampler
-    default=samplers[1]
-    n_curves=length(get_boundary_curves(billiard))
-    length(samplers)==n_curves&&return bs,samplers # early return, nothing to do
-    b_min=minimum(bs)
-    while length(bs)<n_curves
-        push!(bs, b_min)
-    end
-    while length(samplers)<n_curves
-        push!(samplers,default)
-    end
-    return bs, samplers
+    return _adjust_scaling_and_samplers(solver,length(BilliardGeometry.get_boundary_curves(billiard)))
 end
