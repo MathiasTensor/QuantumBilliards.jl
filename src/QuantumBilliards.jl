@@ -59,6 +59,8 @@ include("billiards/sinai.jl")
 export SinaiBilliard
 include("billiards/rectangle_in_rectangle.jl")
 export RectangleWithinRectangleBilliard
+include("billiards/c3.jl")
+export C3Billiard
 
 # basis
 include("basis/planewaves/realplanewaves.jl")
