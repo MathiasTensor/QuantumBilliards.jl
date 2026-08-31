@@ -54,31 +54,34 @@ struct CircleWedgeBilliard{T}<:BilliardGeometry.AbsBilliard
 end
 
 """
-    CircleWedgeBilliard(α::T,R::T=one(T)) where {T<:Real}
+    CircleWedgeBilliard(α::T;R::T=one(T)) where {T<:Real}
 
 Construct a circle of radius `R` with a wedge of opening angle `2α` removed
 around the positive x-axis.
 
 ## Arguments
-* `R::T`: Circle radius.
 * `α::T`: Half-angle of the removed wedge.
+
+## Keyword Arguments
+* `R::T`: Circle radius.
 
 ## Returns
 * `CircleWedgeBilliard{T}`: Constructed billiard.
 """
 function CircleWedgeBilliard(α::T;R::T=one(T)) where {T<:Real}
+    R>zero(T)||throw(ArgumentError("R must be positive; received R=$R"))
     zero(T)<α<T(pi)||throw(ArgumentError("α must satisfy 0<α<π; received α=$α"))
     c=SVector{2,T}(zero(T),zero(T))
     pplus=R*SVector{2,T}(cos(α),sin(α))
     pminus=R*SVector{2,T}(cos(α),-sin(α))
     pleft=SVector{2,T}(-R,zero(T))
     bc=BilliardGeometry.SpecularReflection()
-    arc=BilliardGeometry.CircleSegment(R,T(2pi)-T(2)*α;shift_angle=α,center=c,bc=bc,domain_id=1,segment_id=1)
+    arc=BilliardGeometry.CircleSegment(R,T(2pi)-T(2)*α,α,c;bc=bc,domain_id=1,segment_id=1)
     radial_minus=BilliardGeometry.LineSegment(pminus,c;bc=bc,domain_id=1,segment_id=2)
     radial_plus=BilliardGeometry.LineSegment(c,pplus;bc=bc,domain_id=1,segment_id=3)
     full_boundary=BilliardGeometry.AbsCurve[arc,radial_minus,radial_plus]
     sym=BilliardGeometry.XAxisReflection()
-    arc_half=BilliardGeometry.CircleSegment(R,T(pi)-α;shift_angle=α,center=c,bc=bc,domain_id=1,segment_id=1)
+    arc_half=BilliardGeometry.CircleSegment(R,T(pi)-α,α,c;bc=bc,domain_id=1,segment_id=1)
     xwall=BilliardGeometry.LineSegment(pleft,c;bc=BilliardGeometry.ReflectionSymmetry(sym,3),domain_id=1,segment_id=2)
     radial=BilliardGeometry.LineSegment(c,pplus;bc=bc,domain_id=1,segment_id=3)
     fundamental_boundary=BilliardGeometry.AbsCurve[arc_half,xwall,radial]
