@@ -37,3 +37,53 @@ function CircleBilliard(R::T=one(T);center=SVector{2,T}(zero(T),zero(T))) where 
     symmetries=BilliardGeometry.AbsSymmetry[BilliardGeometry.D2_symmetry...]
     return CircleBilliard{T}(fundamental_domain,full_boundary,symmetries)
 end
+
+"""
+    CircleWedgeBilliard{T}<:BilliardGeometry.AbsBilliard
+
+Circular billiard with a sector removed along the positive x-axis.
+
+The removed wedge has opening angle `2α`. The remaining boundary consists of
+one circular arc and two radial line segments and has `XAxisReflection`
+symmetry.
+"""
+struct CircleWedgeBilliard{T}<:BilliardGeometry.AbsBilliard
+    fundamental_domain::BilliardGeometry.SimpleDomain{T}
+    full_boundary::Vector{BilliardGeometry.AbsCurve}
+    symmetries::Vector{BilliardGeometry.AbsSymmetry}
+end
+
+"""
+    CircleWedgeBilliard(R::T=one(T),α::T=T(pi/6)) where {T<:Real}
+
+Construct a circle of radius `R` with a wedge of opening angle `2α` removed
+around the positive x-axis.
+
+## Arguments
+* `R::T`: Circle radius.
+* `α::T`: Half-angle of the removed wedge.
+
+## Returns
+* `CircleWedgeBilliard{T}`: Constructed billiard.
+"""
+function CircleWedgeBilliard(R::T=one(T),α::T=T(pi/6)) where {T<:Real}
+    zero(T)<α<T(pi)||throw(ArgumentError("α must satisfy 0<α<π; received α=$α"))
+    c=SVector{2,T}(zero(T),zero(T))
+    pplus=R*SVector{2,T}(cos(α),sin(α))
+    pminus=R*SVector{2,T}(cos(α),-sin(α))
+    pleft=SVector{2,T}(-R,zero(T))
+    bc=BilliardGeometry.SpecularReflection()
+    arc=BilliardGeometry.CircleSegment(R,T(2pi)-T(2)*α;shift_angle=α,center=c,bc=bc,domain_id=1,segment_id=1)
+    radial_minus=BilliardGeometry.LineSegment(pminus,c;bc=bc,domain_id=1,segment_id=2)
+    radial_plus=BilliardGeometry.LineSegment(c,pplus;bc=bc,domain_id=1,segment_id=3)
+    full_boundary=BilliardGeometry.AbsCurve[arc,radial_minus,radial_plus]
+    sym=BilliardGeometry.XAxisReflection()
+    arc_half=BilliardGeometry.CircleSegment(R,T(pi)-α;shift_angle=α,center=c,bc=bc,domain_id=1,segment_id=1)
+    xwall=BilliardGeometry.LineSegment(pleft,c;bc=BilliardGeometry.ReflectionSymmetry(sym,3),domain_id=1,segment_id=2)
+    radial=BilliardGeometry.LineSegment(c,pplus;bc=bc,domain_id=1,segment_id=3)
+    fundamental_boundary=BilliardGeometry.AbsCurve[arc_half,xwall,radial]
+    vertices=SVector{2,T}[pplus,pleft,c]
+    fundamental_domain=BilliardGeometry.SimpleDomain{T}(fundamental_boundary,vertices,1)
+    symmetries=BilliardGeometry.AbsSymmetry[sym]
+    return CircleWedgeBilliard{T}(fundamental_domain,full_boundary,symmetries)
+end

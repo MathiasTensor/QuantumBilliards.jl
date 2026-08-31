@@ -42,7 +42,7 @@ include("utils/kress_grading_multi_corner.jl")
 
 # billiards
 include("billiards/circle.jl")
-export CircleBilliard
+export CircleBilliard,CircleWedgeBilliard
 include("billiards/rectangle.jl")
 export RectangleBilliard
 include("billiards/triangle.jl")
