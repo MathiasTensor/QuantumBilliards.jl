@@ -34,31 +34,8 @@ export try_MKL!
 include("utils/coordinatesystems.jl")
 export CartesianCS,PolarCS,polar_to_cartesian,cartesian_to_polar
 
-include("solvers/samplers.jl")
 include("utils/kress_grading_single_corner.jl")
 include("utils/kress_grading_multi_corner.jl")
-
-# billiards
-include("billiards/circle.jl")
-export CircleBilliard,CircleWedgeBilliard
-include("billiards/rectangle.jl")
-export RectangleBilliard
-include("billiards/triangle.jl")
-export TriangleBilliard,IsoscelesTriangleBilliard
-include("billiards/limacon.jl")
-export LimaconBilliard
-include("billiards/prosen.jl")
-export ProsenBilliard
-include("billiards/star.jl")
-export StarBilliard
-include("billiards/circle_with_hole.jl")
-export CircleStarBilliard,AnnularBilliard
-include("billiards/sinai.jl")
-export SinaiBilliard
-include("billiards/rectangle_in_rectangle.jl")
-export RectangleWithinRectangleBilliard
-include("billiards/c3.jl")
-export C3Billiard
 
 # basis
 include("basis/planewaves/realplanewaves.jl")

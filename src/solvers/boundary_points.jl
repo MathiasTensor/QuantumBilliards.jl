@@ -289,68 +289,6 @@ function _determine_bp_sizes(curves,bs,k)
 end
 
 """
-    boundary_coords(crv::C,sampler::S,N) where {C<:AbsCurve,S<:AbsSampler}
-
-Samples a single boundary curve using `sampler`.
-
-## Description
-The curve coordinates, outward unit normals, arc-length coordinates and
-arc-length quadrature elements are evaluated at `N` parameter nodes.
-
-For `PolarSegment` curves, `ds` is reconstructed directly from differences of
-the arc-length coordinates to account for the nonuniform parametrization.
-Otherwise the quadrature elements are given by `crv.length .* dt`.
-
-## Returns
-* `xy`: Sampled boundary coordinates.
-* `normal`: Outward unit normal vectors.
-* `s`: Arc-length coordinates along the curve.
-* `ds`: Arc-length quadrature elements.
-"""
-function boundary_coords(crv::C,sampler::S,N) where {C<:BilliardGeometry.AbsCurve,S<:QuantumBilliards.AbsSampler}
-    L=crv.length
-    t,dt=sample_points(sampler,N)
-    xy=BilliardGeometry.curve(crv,t)
-    normal=BilliardGeometry.domain_gradient_vector(crv,xy)
-    normal./=norm.(normal)
-    s=arc_length(crv,t)
-    if crv isa BilliardGeometry.PolarSegment
-        ds=diff(s)
-        append!(ds,L+s[1]-s[end])
-    else
-        ds=L.*dt
-    end
-    return xy,normal,s,ds
-end
-
-"""
-    boundary_coords(crv::C,t,dt) where {C<:BilliardGeometry.AbsCurve}
-
-Evaluates the boundary geometry of `crv` at the supplied parameter nodes `t`
-and parameter-space quadrature weights `dt`.
-
-## Returns
-* `xy`: Boundary coordinates.
-* `normal`: Outward unit normal vectors.
-* `s`: Arc-length coordinates.
-* `ds`: Arc-length quadrature elements.
-"""
-function boundary_coords(crv::C,t,dt) where {C<:BilliardGeometry.AbsCurve}
-    L=crv.length
-    xy=BilliardGeometry.curve(crv,t)
-    normal=BilliardGeometry.domain_gradient_vector(crv,xy)
-    normal./=norm.(normal)
-    s=arc_length(crv,t)
-    if crv isa BilliardGeometry.PolarSegment
-        ds=diff(s)
-        append!(ds,L+s[1]-s[end])
-    else
-        ds=L.*dt
-    end
-    return xy,normal,s,ds
-end
-
-"""
     boundary_coords(billiard::Bi,samplers::Vector{AbsSampler},Ns::Vector{Int64}) where {Bi<:BilliardGeometry.AbsBilliard} → bp::BoundaryPoints
 
 Samples the complete physical boundary of `billiard` and returns the resulting
