@@ -20,6 +20,7 @@ using Rotations
 using CircularArrays
 using Logging,TimerOutputs
 using BilliardGeometry
+import BilliardGeometry: boundary_coords
 
 # abstract types
 include("abstracttypes.jl")
