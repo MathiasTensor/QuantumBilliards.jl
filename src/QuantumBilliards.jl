@@ -43,7 +43,8 @@ include("basis/planewaves/realplanewaves.jl")
 export RealPlaneWaves
 
 include("basis/fourierbessel/corneradapted.jl")
-export CornerAdaptedFourierBessel
+include("basis/fourierbessel/multi_cafb.jl")
+export CornerAdaptedFourierBessel,MultiCornerAdaptedFourierBessel
 export resize_basis,basis_fun,dk_fun,gradient,basis_and_gradient
 
 # boundary geometry
