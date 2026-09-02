@@ -72,6 +72,11 @@ struct MultiCornerAdaptedFourierBessel{T<:Real,B<:Tuple,Sy} <: AbsBasis
     scaling_origin::SVector{2,T}
 end
 
+# check for DM and VS since the origins need to mathc with evalute_points and the one used in dk_fun
+@inline basis_origin_check(::AbsBasis,::Type{T}) where {T<:Real}=SVector{2,T}(zero(T),zero(T))
+@inline basis_origin_check(basis::CornerAdaptedFourierBessel,::Type{T}) where {T<:Real}=SVector{2,T}(basis.cs.origin)
+@inline basis_origin_check(basis::MultiCornerAdaptedFourierBessel,::Type{T}) where {T<:Real}=SVector{2,T}(basis.scaling_origin)
+
 """
     MultiCornerAdaptedFourierBessel(blocks::Vararg{CornerAdaptedFourierBessel,N};symmetries=nothing,scaling_origin=nothing) where {N}
 

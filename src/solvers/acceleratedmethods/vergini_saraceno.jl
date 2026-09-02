@@ -16,7 +16,7 @@ method.
 
 The Vergini-Saraceno boundary weight
 
-wᵢ = dsᵢ/(rᵢ ⋅ nᵢ)
+wᵢ = dsᵢ/((xᵢ-c₀) ⋅ nᵢ)
 
 is stored in `BoundaryPoints.w`.
 
@@ -24,6 +24,7 @@ is stored in `BoundaryPoints.w`.
 * `dim_scaling_factor::T`: Scaling factor used to determine the real basis dimension.
 * `pts_scaling_factor::Vector{T}`: Boundary-point scaling factors.
 * `sampler::Vector`: Samplers used on the physical fundamental boundary.
+* `scaling_origin::SVector{2,T}`: c₀: Origin used for scaling the boundary points.
 * `eps::T`: Relative tolerance used in the generalized eigensolver.
 * `min_dim::Int64`: Minimum basis dimension.
 * `min_pts::Int64`: Minimum number of boundary sampling points.
@@ -35,6 +36,7 @@ struct VerginiSaracenoSolver{T}<:AbsScalingMethod where {T<:Real}
     eps::T
     min_dim::Int64
     min_pts::Int64
+    scaling_origin::SVector{2,T}
 end
 
 """
@@ -50,13 +52,14 @@ boundary sampling.
 ## Keyword Arguments
 * `min_dim::Int=100`: Minimum basis dimension.
 * `min_pts::Int=500`: Minimum number of boundary sampling points.
+* `scaling_origin::SVector{2,T}=SVector{2,T}(zero(T),zero(T))`: Origin used for scaling the boundary points.
 
 ## Returns
 * `solver::VerginiSaracenoSolver{T}`: Constructed solver.
 """
-function VerginiSaracenoSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim::Int=100,min_pts::Int=500) where {T<:Real}
+function VerginiSaracenoSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim::Int=100,min_pts::Int=500,scaling_origin::SVector{2,T}=SVector{2,T}(zero(T),zero(T))) where {T<:Real}
     bs=pts_scaling_factor isa T ? T[pts_scaling_factor] : pts_scaling_factor
-    return VerginiSaracenoSolver(dim_scaling_factor,bs,[BilliardGeometry.GaussLegendreNodes()],eps(T),min_dim,min_pts)
+    return VerginiSaracenoSolver(dim_scaling_factor,bs,[BilliardGeometry.GaussLegendreNodes()],eps(T),min_dim,min_pts,scaling_origin)
 end
 
 """
@@ -73,32 +76,27 @@ samplers.
 ## Keyword Arguments
 * `min_dim::Int=100`: Minimum basis dimension.
 * `min_pts::Int=500`: Minimum number of boundary sampling points.
+* `scaling_origin::SVector{2,T}=SVector{2,T}(zero(T),zero(T))`: Origin used for scaling the boundary points.
 
 ## Returns
 * `solver::VerginiSaracenoSolver{T}`: Constructed solver.
 """
-function VerginiSaracenoSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{Sam};min_dim::Int=100,min_pts::Int=500) where {T<:Real,Sam<:BilliardGeometry.AbsSampler}
+function VerginiSaracenoSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{Sam};min_dim::Int=100,min_pts::Int=500,scaling_origin::SVector{2,T}=SVector{2,T}(zero(T),zero(T))) where {T<:Real,Sam<:BilliardGeometry.AbsSampler}
     bs=pts_scaling_factor isa T ? T[pts_scaling_factor] : pts_scaling_factor
-    return VerginiSaracenoSolver(dim_scaling_factor,bs,samplers,eps(T),min_dim,min_pts)
+    return VerginiSaracenoSolver(dim_scaling_factor,bs,samplers,eps(T),min_dim,min_pts,scaling_origin)
 end
 
 """
     evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k::T) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real} → BoundaryPoints
 
-Sample the physical fundamental boundary used by the Vergini-Saraceno basis
-solver.
+Sample the physical fundamental boundary used by the Vergini-Saraceno solver.
 
-The boundary components are obtained with [`BilliardGeometry.get_boundary_curves`](@ref). For
-each curve, [`boundary_coords`](@ref) supplies the positions, outward normals,
-physical arclength coordinates and quadrature weights. The Vergini-Saraceno
-weight
+The Vergini-Saraceno weight is
 
-wᵢ = dsᵢ/(rᵢ ⋅ nᵢ)
+    wᵢ = dsᵢ/((xᵢ-c₀)⋅nᵢ),
 
-is stored in `BoundaryPoints.w`.
-
-This is deliberately the basis-solver pathway: BIE solvers use
-`billiard.full_boundary` instead.
+where `c₀=solver.scaling_origin` is the same dilation origin used by the
+basis wavenumber derivative entering `Fk`.
 
 ## Arguments
 * `solver::VerginiSaracenoSolver`: Scaling-method solver.
@@ -106,7 +104,8 @@ This is deliberately the basis-solver pathway: BIE solvers use
 * `k::T`: Real scaling wavenumber controlling the boundary-point density.
 
 ## Returns
-* `pts::BoundaryPoints`: Fundamental-boundary discretization containing `xy`, `normal`, `s`, `ds` and `w`.
+* `pts::BoundaryPoints`: Fundamental-boundary discretization containing `xy`,
+  `normal`, `s`, `ds` and the VS weights `w`.
 """
 function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k::T) where {Bi<:BilliardGeometry.AbsBilliard,T<:Real}
     bs,samplers=adjust_scaling_and_samplers(solver,billiard)
@@ -119,10 +118,15 @@ function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k::T) where 
     s_all=Vector{Vector{W}}(undef,M)
     ds_all=Vector{Vector{W}}(undef,M)
     w_all=Vector{Vector{W}}(undef,M)
+    c0=solver.scaling_origin
     L0=zero(W)
     @inbounds for i in eachindex(curves)
         xy,normal,s,ds=boundary_coords(curves[i],samplers[i],Ns[i])
-        rn=dot.(xy,normal)
+        rn=Vector{W}(undef,length(xy))
+        @inbounds @simd for j in eachindex(xy)
+            rn[j]=dot(xy[j]-c0,normal[j])
+        end
+        minimum(rn)>zero(W)||throw(ArgumentError("VS scaling origin $c0 is outside the star kernel: minimum (x-c0)⋅n=$(minimum(rn))"))
         xy_all[i]=xy
         normal_all[i]=normal
         s_all[i]=s.+L0
@@ -131,6 +135,14 @@ function evaluate_points(solver::VerginiSaracenoSolver,billiard::Bi,k::T) where 
         L0+=curves[i].length
     end
     return BoundaryPoints(vcat(xy_all...);normal=vcat(normal_all...),s=vcat(s_all...),ds=vcat(ds_all...),w=vcat(w_all...))
+end
+
+# internal check so that the scaling origin of the basis and the solver match. This is important since the dk_fun uses the scaling origin of the basis to compute the derivative with respect to k
+@inline function check_basis_origin(solver::VerginiSaracenoSolver,basis::AbsBasis)
+    T=eltype(solver.scaling_origin)
+    c0=basis_origin_check(basis,T)
+    solver.scaling_origin==c0||throw(ArgumentError("inconsistent VS scaling origins: solver=$(solver.scaling_origin), basis=$c0"))
+    return nothing
 end
 
 """
@@ -165,6 +177,7 @@ passed only to preserve the existing `_scale_rows_sqrtw!` helper interface.
 * `Fk::Matrix`: Real wavenumber derivative matrix.
 """
 function construct_matrices(solver::VerginiSaracenoSolver,basis::Ba,pts::BoundaryPoints,k::T;multithreaded::Bool=true) where {Ba<:AbsBasis,T<:Real}
+    check_basis_origin(solver,basis)
     @timeit_debug "construct_matrices" begin
         xy=pts.xy
         w=pts.w
@@ -578,7 +591,7 @@ The `control` vector is initialized to `false`; overlap flags are set when
 neighboring windows are merged.
 """
 function solve_state_data_bundle(solver::VerginiSaracenoSolver,basis::Ba,billiard::Bi,k::T,dk::T;multithreaded::Bool=true) where {Ba<:AbsBasis,Bi<:BilliardGeometry.AbsBilliard,T<:Real}
-    L=billiard.full_boundary.length
+    L=sum(crv.length for crv in BilliardGeometry.get_boundary_curves(billiard))
     dim=max(solver.min_dim,round(Int,L*k*solver.dim_scaling_factor/(2*pi)))
     basis_new=resize_basis(basis,billiard,dim,k)
     pts=evaluate_points(solver,billiard,k)

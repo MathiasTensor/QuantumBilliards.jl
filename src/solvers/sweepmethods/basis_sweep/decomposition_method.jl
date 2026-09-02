@@ -21,6 +21,7 @@ billiard.
 * `eps`: Relative tolerance used to filter small eigenvalues in the generalized eigenvalue decomposition.
 * `min_dim`: Minimum basis dimension.
 * `min_pts`: Minimum number of boundary sampling points.
+* `rellich_origin`: Origin `c₀` used in the Rellich boundary weight.
 
 ## API
 The following functions can be evaluated for this type:
@@ -38,6 +39,7 @@ struct DecompositionMethodSolver{T} <: SweepSolver where {T<:Real}
     eps::T
     min_dim::Int64
     min_pts::Int64
+    rellich_origin::SVector{2,T}
 end
 
 """
@@ -53,15 +55,16 @@ sampler shared by every fundamental boundary curve.
 ## Keyword arguments
 * `min_dim::Int = 100`: Minimum basis dimension.
 * `min_pts::Int = 500`: Minimum number of boundary sampling points.
+* `rellich_origin`: Origin `c₀` used in the Rellich boundary weight.
 
 ## Returns
 * `solver`: A [`DecompositionMethodSolver{T}`](@ref) instance.
 """
-function DecompositionMethodSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim::Int=100,min_pts::Int=500) where {T<:Real}
+function DecompositionMethodSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}};min_dim::Int=100,min_pts::Int=500,rellich_origin::SVector{2,T}=SVector{2,T}(zero(T),zero(T))) where {T<:Real}
     d=dim_scaling_factor
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
     sampler=[BilliardGeometry.GaussLegendreNodes()]
-    return DecompositionMethodSolver(d,bs,sampler,eps(T),min_dim,min_pts)
+    return DecompositionMethodSolver(d,bs,sampler,eps(T),min_dim,min_pts,rellich_origin)
 end
 
 """
@@ -78,14 +81,15 @@ each fundamental boundary curve.
 ## Keyword arguments
 * `min_dim::Int = 100`: Minimum basis dimension.
 * `min_pts::Int = 500`: Minimum number of boundary sampling points.
+* `rellich_origin`: Origin `c₀` used in the Rellich boundary weight.
 
 ## Returns
 * `solver`: A [`DecompositionMethodSolver{T}`](@ref) instance.
 """
-function DecompositionMethodSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{<:BilliardGeometry.AbsSampler};min_dim::Int=100,min_pts::Int=500) where {T<:Real}
+function DecompositionMethodSolver(dim_scaling_factor::T,pts_scaling_factor::Union{T,Vector{T}},samplers::Vector{<:BilliardGeometry.AbsSampler};min_dim::Int=100,min_pts::Int=500,rellich_origin::SVector{2,T}=SVector{2,T}(zero(T),zero(T))) where {T<:Real}
     d=dim_scaling_factor
     bs=pts_scaling_factor isa T ? [pts_scaling_factor] : pts_scaling_factor
-    return DecompositionMethodSolver(d,bs,samplers,eps(T),min_dim,min_pts)
+    return DecompositionMethodSolver(d,bs,samplers,eps(T),min_dim,min_pts,rellich_origin)
 end
 
 """
@@ -101,9 +105,9 @@ is then sampled with its own sampler using [`boundary_coords`](@ref), which
 provides the boundary coordinates, outward normals, arc-length coordinates and
 arc-length quadrature elements. The normal-derivative decomposition weight is
 
-    w_n = (ds * r ⋅ n) / (2 k²),
+    w_n = ds * ((x-c₀) ⋅ n) / (2 k²),
 
-where `r` is the boundary point and `n` its outward unit normal.
+where `c₀=solver.rellich_origin`, `x` is the boundary point and `n` its outward unit normal.
 
 ## Arguments
 * `solver`: The [`DecompositionMethodSolver`](@ref) used to determine the sampling parameters.
@@ -124,10 +128,16 @@ function evaluate_points(solver::DecompositionMethodSolver,billiard::Bi,k) where
     s_all=Vector{Vector{T}}(undef,M)
     ds_all=Vector{Vector{T}}(undef,M)
     w_n_all=Vector{Vector{T}}(undef,M)
+    c0=solver.rellich_origin
     L0=zero(T)
     @inbounds for i in eachindex(curves)
         xy,normal,s,ds=boundary_coords(curves[i],samplers[i],Ns[i])
-        rn=dot.(xy,normal)
+        rn=Vector{T}(undef,length(xy))
+        @inbounds @simd for j in eachindex(xy)
+            rn[j]=dot(xy[j]-c0,normal[j])
+        end
+        rnmin=minimum(rn)
+        rnmin>zero(T)||throw(ArgumentError("DM Rellich origin $c0 is outside the star kernel: minimum (x-c0)⋅n=$rnmin"))
         xy_all[i]=xy
         normal_all[i]=normal
         s_all[i]=s.+L0
